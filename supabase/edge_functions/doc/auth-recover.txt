@@ -1,0 +1,53 @@
+Edge Function: auth-recover
+
+Objetivo
+- Resolver `login_name -> email` em `public.app_users`.
+- Disparar reset de senha pelo Supabase Auth sem expor se o login existe.
+- Aplicar rate limit por `IP + login_name`.
+
+Dependencias
+- Tabela: `public.app_users`
+- RPC: `public.rate_limit_check_and_hit(...)`
+- Supabase Auth com envio de reset por e-mail habilitado
+
+Secrets obrigatorios
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Secrets opcionais
+- `SUPABASE_PASSWORD_REDIRECT`
+- `AUTH_RECOVER_DEBUG`
+
+Payload de entrada
+```json
+{
+  "login_name": "usuario.login"
+}
+```
+
+Resposta de sucesso
+```json
+{
+  "ok": true
+}
+```
+
+Erros principais
+- `400`: login nao informado
+- `422`: login encontrado sem email cadastrado
+- `429`: rate limit excedido
+- `500`: falha ao consultar login ou enviar email
+
+Rate limit
+- Scope: `auth`
+- Route: `auth.recover`
+- Janela atual: usa o padrao da RPC `rate_limit_check_and_hit`
+
+Deploy
+```bash
+supabase functions deploy auth-recover
+```
+
+Observacoes
+- Quando o login nao existe, a resposta continua sendo `200` com `{ "ok": true }`.
+- `SUPABASE_PASSWORD_REDIRECT` pode apontar para a rota web de redefinicao de senha.
