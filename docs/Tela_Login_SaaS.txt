@@ -53,6 +53,7 @@ Atualizacao 2026-03
 - Backend preparado para recuperacao de senha por `login_name`.
 - Container da tela ajustado para ocupar todo o viewport e manter o card centralizado em telas amplas.
 - Tela reorganizada para `page.tsx` fino em `src/app` e implementacao visual em `src/modules/auth/login`.
+- Texto da tela simplificado para remover termos tecnicos visiveis ao usuario final.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -88,3 +89,5 @@ Ajuda contextual
 - A recuperacao de senha exige `auth-recover` publicada e, se houver redirect customizado, `SUPABASE_PASSWORD_REDIRECT`.
 - Antes: o container podia nao preencher toda a largura visivel e o card ficava deslocado para a esquerda.
 - Depois: o container ocupa o viewport e centraliza o card no eixo horizontal e vertical.
+- Antes: a tela exibia badge e mensagem tecnica de ambiente (`Modo remoto`).
+- Depois: a tela mostra uma mensagem curta e orientada ao uso final.
