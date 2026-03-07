@@ -1,0 +1,40 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Workspace
+*.code-workspace
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Package manager / logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel/
+
+# Supabase local artifacts
+.supabase/
+
+# Keys
+*.pem
+
+# Database
+AGENTS.md
+estrutura_saas_multitenant.md

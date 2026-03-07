@@ -1,0 +1,71 @@
+﻿Tela: Arquitetura SaaS
+
+Visao geral
+-----------
+- Documento de referencia da base web criada para o SaaS.
+- Cobre stack, rotas iniciais e fronteira com Supabase.
+
+Arquitetura
+-----------
+- Frontend: `SaaS (Web)/` em Next.js App Router.
+- Backend: Supabase (Edge Functions, Auth, tabelas com RLS e migrations versionadas).
+- Login web: `auth-login-web`.
+- Login local: `SaaS (Web)/src/app/api/auth/local-login/route.ts`.
+
+Cadastro
+--------
+- Modulos previstos: Cadastro Base, Pessoas e Materiais.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica nesta etapa.
+
+Boas praticas
+-------------
+- `app_users` separado de `people`.
+- `login_name` unico globalmente enquanto o tenant nao for resolvido antes do login.
+- RLS e tenant scope mantidos no Supabase.
+- React Query como base de chamadas ao servidor desde o inicio.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa inicial do frontend.
+
+Atalhos
+-------
+- Rota publica: `/login`
+- Rotas protegidas: `/home`, `/cadastro-base`, `/pessoas`, `/materiais`, `/entrada`, `/saida`, `/estoque`
+
+Atualizacao 2026-03
+-------------------
+- Base do `SaaS (Web)` criada.
+- Edge Function `auth-login-web` criada.
+- Migration `016_add_login_name_to_auth_tables.sql` criada.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `SaaS (Web)/src/services/auth/auth.service.ts`
+  - Responsavel por: login remoto/local e limpeza da sessao.
+- Caminho: `supabase/edge_functions/auth-login-web/index.ts`
+  - Responsavel por: autenticar `login_name`, aplicar rate limit e devolver tokens.
+
+Constantes e configuracoes
+- Caminho: `SaaS (Web)/.env.example`
+  - Responsavel por: ambiente do login.
+- Caminho: `supabase/migrations/016_add_login_name_to_auth_tables.sql`
+  - Responsavel por: suporte de banco ao login web.
+
+Funcoes utilitarias relacionadas
+- Caminho: `SaaS (Web)/src/context/AuthContext.tsx`
+  - Responsavel por: hidratar e manter a sessao.
+- Caminho: `SaaS (Web)/src/lib/react-query/provider.tsx`
+  - Responsavel por: provider global de cache e chamadas remotas.
+
+Servicos e integracoes externas
+- Supabase Auth
+- Supabase Edge Functions
+- Supabase RLS
+
+Ajuda contextual
+- Sessao por inatividade, recovery e touch/revoke ainda nao entraram nesta fase.

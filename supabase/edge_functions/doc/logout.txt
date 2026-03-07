@@ -1,0 +1,19 @@
+﻿Edge Function: logout
+
+Objetivo
+- Registrar o encerramento da sessao no login_audit.
+
+Dependencias
+- 000_create_auth_and_audit_tables.sql
+- public.app_users
+- public.login_audit
+
+Payload
+{
+  "login_audit_id": "uuid",
+  "reason": "USER_LOGOUT",
+  "source": "APP"
+}
+
+Regra
+- So atualiza o login_audit do proprio usuario autenticado.

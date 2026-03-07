@@ -1,0 +1,29 @@
+﻿SaaS Web - Indice de continuidade
+
+Arquivos principais para nova task
+- README.md
+- TASKS.md
+- docs/Handoff_SaaS.txt
+- docs/Arquitetura_SaaS.txt
+- docs/Backend_Contratos_SaaS.txt
+- docs/Tela_Login_SaaS.txt
+- docs/Layout_Principal_SaaS.txt
+- docs/Tela_Home_SaaS.txt
+
+Ordem recomendada de leitura
+1. README.md
+2. TASKS.md
+3. docs/Handoff_SaaS.txt
+4. docs/Backend_Contratos_SaaS.txt
+5. docs/Arquitetura_SaaS.txt
+6. docs das telas
+
+Objetivo
+- Permitir mover `SaaS (Web)/` para outro repositorio sem perder o contexto tecnico da conversa.
+
+Estado atual resumido
+- Login implementado
+- Shell principal implementado
+- Home inicial implementada
+- Modulos de cadastro e estoque ainda em placeholder
+- Backend minimo de login web mapeado no Supabase

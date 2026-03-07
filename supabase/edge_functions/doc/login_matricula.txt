@@ -1,0 +1,38 @@
+Edge Functions - login_matricula
+
+Arquivos
+- supabase/edge_functions/login_matricula/index.ts
+
+Secrets obrigatorios (Supabase)
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+
+Como configurar secrets (CLI)
+1) supabase secrets set SUPABASE_URL="https://SEU-PROJETO.supabase.co"
+2) supabase secrets set SUPABASE_SERVICE_ROLE_KEY="SUA_SERVICE_ROLE_KEY"
+
+Tabelas esperadas
+- app_users (id, matricula, email, role, tenant_id, ativo)
+- imei_whitelist (tenant_id, imei, ativo)
+- login_audit (id, user_id, tenant_id, matricula, device_imei, status, reason, source, created_at)
+
+Campos esperados na request
+- matricula (string)
+- senha (string)
+- imei (string)
+- source (opcional: "APP" / "SITE")
+- skip_imei_check (opcional: boolean)
+
+Retorno esperado pelo app
+- success (boolean)
+- message (string)
+- access_token (string)
+- user_id (string)
+- role (string)
+- tenant_id (string)
+- login_audit_id (string|null)
+
+Observacoes
+- Se o IMEI ainda nao estiver cadastrado, a funcao retorna 403.
+- Se o usuario estiver inativo, retorna 403.
+- Para login invalido, retorna 401.

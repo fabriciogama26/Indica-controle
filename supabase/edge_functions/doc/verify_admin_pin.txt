@@ -1,0 +1,31 @@
+﻿Edge Function: verify_admin_pin
+
+Objetivo
+- Validar o PIN admin do usuario autenticado.
+
+Dependencias
+- 000_create_auth_and_audit_tables.sql
+- public.app_users com:
+  - id
+  - auth_user_id
+  - role
+  - ativo
+  - admin_pin_hash
+
+Payload
+{
+  "user_id": "uuid-do-app-user",
+  "pin": "1234",
+  "source": "APP"
+}
+
+Regra
+- O usuario autenticado precisa ser o mesmo do payload.
+- O role precisa ser admin.
+- O PIN e comparado pelo SHA-256 do valor informado.
+
+Como gravar o hash
+- Exemplo SQL:
+  update public.app_users
+  set admin_pin_hash = encode(digest(''1234'', ''sha256''), ''hex'')
+  where id = ''<user_id>'';

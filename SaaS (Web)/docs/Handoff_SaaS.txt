@@ -1,0 +1,85 @@
+﻿Tela: Handoff SaaS
+
+Visao geral
+-----------
+- Documento de continuidade para abrir uma nova task ou mover o frontend para outro repositorio.
+- Resume decisoes tecnicas, o que ja esta pronto e a ordem segura de continuidade.
+
+Arquitetura
+-----------
+- Frontend: Next.js App Router em `SaaS (Web)/`.
+- Backend: Supabase fora da pasta do web, em `d:\RQM\supabase`.
+- Auth web: `auth-login-web`.
+- Auth local: `src/app/api/auth/local-login/route.ts`.
+
+Cadastro
+--------
+- Ja previstos no fluxo: Cadastro Base, Pessoas e Materiais.
+- Ainda nao implementados como CRUD real.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Ainda nao implementados no SaaS.
+- Estao planejados para Pessoas, Materiais e Estoque Atual.
+
+Boas praticas
+-------------
+- Nao misturar `app_users` com `people`.
+- O login do SaaS usa `login_name`, nao matricula.
+- `login_name` foi assumido como unico globalmente nesta fase.
+- Multi-tenant deve continuar resolvido no backend, nunca na UI.
+- A pasta `supabase/` deve permanecer fora do projeto Next.js para evitar build/typecheck em Edge Functions Deno.
+
+Cancelamento e saldo
+--------------------
+- Ainda nao se aplica ao frontend web inicial.
+- As regras de saldo e materiais continuam no backend Supabase.
+
+Atalhos
+-------
+- Entrar por `/login`.
+- Rotas ativas hoje: `/home`, `/cadastro-base`, `/pessoas`, `/materiais`, `/entrada`, `/saida`, `/estoque`.
+
+Atualizacao 2026-03
+-------------------
+- Base do SaaS criada.
+- Login visual com `indica.png` criado.
+- Shell principal criado.
+- Handoff consolidado dentro da propria pasta do web.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/services/auth/auth.service.ts`
+  - Responsavel por: login remoto/local e logout.
+- Caminho: `src/context/AuthContext.tsx`
+  - Responsavel por: hidratar e persistir a sessao.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: shell pos-login.
+- Caminho: `src/app/login/page.tsx`
+  - Responsavel por: formulario de login.
+
+Constantes e configuracoes
+- Caminho: `.env.example`
+  - Responsavel por: base das variaveis do SaaS.
+- Caminho: `TASKS.md`
+  - Responsavel por: backlog local do frontend web.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: consumo da sessao.
+- Caminho: `src/lib/react-query/provider.tsx`
+  - Responsavel por: provider de queries/mutations.
+
+Servicos e integracoes externas
+- Supabase Auth
+- Edge Function `auth-login-web`
+- Edge Function `logout`
+- Edge Function `log_error`
+
+Ajuda contextual
+- Se a pasta `SaaS (Web)/` for movida para outro repositorio, levar tambem:
+  - `README.md`
+  - `TASKS.md`
+  - toda a pasta `docs/`
+- Manter um apontamento claro para o backend compartilhado em `supabase/`.

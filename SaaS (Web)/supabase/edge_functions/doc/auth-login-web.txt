@@ -1,0 +1,64 @@
+﻿Edge Function: auth-login-web
+
+Objetivo
+- Realizar login web usando `login_name + senha`.
+- Resolver `login_name -> email` em `public.app_users`.
+- Autenticar no Supabase Auth e retornar os tokens para o frontend aplicar `supabase.auth.setSession(...)`.
+- Registrar auditoria em `public.login_audit`.
+
+Dependencias
+- Migration: `supabase/migrations/016_add_login_name_to_auth_tables.sql`
+- Tabela: `public.app_users`
+- Tabela: `public.login_audit`
+- RPC: `public.rate_limit_check_and_hit(...)`
+
+Secrets obrigatorios
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Payload de entrada
+```json
+{
+  "login_name": "usuario.login",
+  "password": "senha",
+  "source": "SITE"
+}
+```
+
+Resposta de sucesso
+```json
+{
+  "success": true,
+  "message": "OK",
+  "access_token": "...",
+  "refresh_token": "...",
+  "expires_in": 3600,
+  "token_type": "bearer",
+  "user_id": "uuid",
+  "role": "admin",
+  "tenant_id": "uuid",
+  "login_name": "usuario.login",
+  "login_audit_id": "uuid"
+}
+```
+
+Erros principais
+- `400`: login ou senha nao informados
+- `401`: login ou senha invalidos
+- `403`: usuario inativo
+- `429`: rate limit excedido
+- `500`: falha interna/rate limit
+
+Rate limit
+- Scope: `auth`
+- Route: `auth.login.web`
+- Janela atual: `5 chamadas por 60 segundos` por `IP + login_name`
+
+Deploy
+```bash
+supabase functions deploy auth-login-web
+```
+
+Observacoes
+- O frontend do SaaS deve chamar esta function em modo remoto.
+- O logout continua usando `functions/v1/logout`.
