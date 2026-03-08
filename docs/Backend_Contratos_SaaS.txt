@@ -43,6 +43,8 @@ Atualizacao 2026-03
 - Migration `017_sync_auth_users_to_app_users.sql` criada.
 - Migration `018_make_auth_user_sync_fail_open.sql` criada.
 - Migration `019_login_audit_event_log.sql` criada.
+- Migration `020_harden_rls_auth_uid_active.sql` criada.
+- Migration `021_rls_to_authenticated.sql` criada.
 - `auth-login-web` implementada.
 - `auth-recover` implementada para reset por `login_name`.
 - `auth-login-web` e `logout` ajustadas para tratar `login_audit` como log de eventos imutaveis com `session_ref`.
@@ -70,6 +72,10 @@ Constantes e configuracoes
   - Responsavel por: impedir que falhas na sincronizacao bloqueiem `Authentication > Invite user`.
 - Caminho: `supabase/migrations/019_login_audit_event_log.sql`
   - Responsavel por: transformar `login_audit` em log de eventos com `event_type`, `event_at` e `session_ref`.
+- Caminho: `supabase/migrations/020_harden_rls_auth_uid_active.sql`
+  - Responsavel por: reforcar as policies RLS para usar `auth.uid()` com `app_users.ativo = true`.
+- Caminho: `supabase/migrations/021_rls_to_authenticated.sql`
+  - Responsavel por: limitar as policies multi-tenant ao role `authenticated`.
 - Caminho: `supabase/migrations/011_create_rate_limit.sql`
   - Responsavel por: rate limit das functions.
 
@@ -91,6 +97,8 @@ Ajuda contextual
   - `017_sync_auth_users_to_app_users.sql`
   - `018_make_auth_user_sync_fail_open.sql`
   - `019_login_audit_event_log.sql`
+  - `020_harden_rls_auth_uid_active.sql`
+  - `021_rls_to_authenticated.sql`
 - Functions minimas para o SaaS web:
   - `auth-login-web`
   - `auth-recover`
@@ -99,3 +107,5 @@ Ajuda contextual
 - Nenhuma RPC nova e obrigatoria para login, recover ou shell nesta fase alem da `rate_limit_check_and_hit`.
 - Criar usuario apenas em `Authentication > Users` nao deve mais falhar por causa da sincronizacao. O vinculo com `app_users` ainda depende de email unico correspondente ou metadata minima no Auth (`tenant_id` e `matricula`).
 - `login_audit` agora registra duas linhas por sessao do SaaS web: uma com `event_type = 'LOGIN'` e outra com `event_type = 'LOGOUT'`, correlacionadas por `session_ref`.
+- As policies RLS multi-tenant agora devem considerar `auth.uid()` e `app_users.ativo = true` para evitar acesso de usuarios desativados com sessao ainda valida.
+- As policies multi-tenant agora tambem devem ser `TO authenticated`, evitando depender apenas de `auth.uid() is null` para bloquear `anon`.

@@ -21,6 +21,8 @@ Ordem de aplicacao
 17. 017_sync_auth_users_to_app_users.sql
 18. 018_make_auth_user_sync_fail_open.sql
 19. 019_login_audit_event_log.sql
+20. 020_harden_rls_auth_uid_active.sql
+21. 021_rls_to_authenticated.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -82,6 +84,12 @@ Resumo por arquivo
 
 019_login_audit_event_log.sql
 - Converte login_audit para log de eventos com uma linha por login e outra por logout.
+
+020_harden_rls_auth_uid_active.sql
+- Reforca as policies RLS multi-tenant para usar auth.uid() com app_users.ativo = true.
+
+021_rls_to_authenticated.sql
+- Restringe as policies multi-tenant ao role authenticated no Supabase.
 
 Lacunas ainda nao versionadas
 - modelagem final de projects
