@@ -4,6 +4,8 @@
 - [x] Reforcar o fluxo de `login_audit` para registrar entrada e saida do SaaS web como eventos imutaveis em duas linhas.
 - [x] Adicionar observabilidade no `auth-login-web` para expor detalhes da falha de auditoria nos logs da Edge Function.
 - [x] Isolar o client administrativo da `auth-login-web` para impedir que o insert em `login_audit` caia no RLS depois do `signInWithPassword`.
+- [x] Endurecer RLS multi-tenant com base em `auth.uid()` e `app_users.ativo = true`.
+- [x] Restringir as policies multi-tenant ao role `authenticated`.
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.

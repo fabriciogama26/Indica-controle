@@ -158,12 +158,14 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 4. Em modo local, o frontend usa `/api/auth/local-login`.
 5. O backend busca `login_name` em `public.app_users`, que precisa estar vinculado ao `auth.users`.
 6. As migrations `017_sync_auth_users_to_app_users.sql` e `018_make_auth_user_sync_fail_open.sql` sincronizam `auth.users` com `app_users` por e-mail unico ou metadata minima no Auth, sem bloquear o Invite User do Supabase.
-7. O frontend persiste a sessao e redireciona para `/home`.
-8. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
-9. O shell principal libera navegacao para os modulos do SaaS.
-10. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
-11. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`.
-12. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
+7. A migration `020_harden_rls_auth_uid_active.sql` reforca as policies para liberar dados somente quando `auth.uid()` estiver vinculado a um `app_users` ativo do mesmo tenant.
+8. A migration `021_rls_to_authenticated.sql` limita as policies multi-tenant ao role `authenticated`.
+9. O frontend persiste a sessao e redireciona para `/home`.
+10. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
+11. O shell principal libera navegacao para os modulos do SaaS.
+12. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+13. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`.
+14. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
 
 ---
 
@@ -196,6 +198,9 @@ npm run build
 - `Falha ao enviar email de recuperacao.`:
   - Causa: `auth-recover` nao publicada, email ausente no `app_users` ou redirect invalido.
   - Solucao: publicar a function, revisar o email do usuario e conferir `PASSWORD_REDIRECT_URL` nos secrets da function.
+- `Usuario autenticado nao enxerga dados do tenant.`:
+  - Causa: `app_users.auth_user_id` nao vinculado ao `auth.users`, `tenant_id` divergente ou usuario com `ativo = false`.
+  - Solucao: revisar o vinculo em `app_users`, aplicar as migrations `020_harden_rls_auth_uid_active.sql` e `021_rls_to_authenticated.sql` e confirmar o tenant correto do usuario.
 - `Informe seu login para enviar o email de recuperacao.`:
   - Causa: clique em `Esqueci minha senha` sem preencher o `login_name`.
   - Solucao: informar o `login_name` na tela de login antes de solicitar a recuperacao.
