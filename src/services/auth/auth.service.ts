@@ -1,8 +1,21 @@
-﻿import { supabase } from "@/lib/supabase/client";
+import { Session as SupabaseSession } from "@supabase/supabase-js";
+
+import { resolveDefaultPageAccess } from "@/lib/auth/authorization";
+import { supabase } from "@/lib/supabase/client";
 import { AuthMode, AuthSession, LoginPayload, LoginResponse } from "@/types/auth";
 
-const STORAGE_KEY = "rqm.saas.auth";
+const STORAGE_KEY = "INDICA.saas.auth";
+const AUTH_FEEDBACK_KEY = "INDICA.saas.auth.feedback";
+
 type PasswordLinkType = "invite" | "recovery";
+
+type ClearSessionOptions = {
+  reason?: string;
+  source?: string;
+  feedbackMessage?: string | null;
+  skipRemoteLogout?: boolean;
+  skipSupabaseSignOut?: boolean;
+};
 
 function authMode(): AuthMode {
   return process.env.NEXT_PUBLIC_AUTH_MODE?.toLowerCase() === "local" ? "local" : "remote";
@@ -14,6 +27,44 @@ function baseUrl() {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
   }
   return url;
+}
+
+function toExpiresAt(expiresIn: number, expiresAt?: unknown) {
+  if (typeof expiresAt === "number" && Number.isFinite(expiresAt)) {
+    return expiresAt;
+  }
+
+  if (typeof expiresAt === "string" && expiresAt.trim()) {
+    const parsed = Number(expiresAt);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  if (Number.isFinite(expiresIn) && expiresIn > 0) {
+    return Math.floor(Date.now() / 1000) + expiresIn;
+  }
+
+  return null;
+}
+
+async function fetchSessionAccess(accessToken: string) {
+  const response = await fetch("/api/auth/session-access", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok || !data.user) {
+    return null;
+  }
+
+  return {
+    user: data.user as Record<string, unknown>,
+    pageAccess: Array.isArray(data.pageAccess) ? data.pageAccess.map((value) => String(value)) : [],
+    hasCustomPermissions: Boolean(data.hasCustomPermissions),
+  };
 }
 
 async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
@@ -38,18 +89,28 @@ async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
     };
   }
 
+  const expiresIn = Number(data.expires_in ?? 0);
+  const access = await fetchSessionAccess(String(data.access_token ?? ""));
+  const resolvedRole = String(access?.user.role ?? data.role ?? "");
+  const resolvedRoleId = access?.user.roleId ? String(access.user.roleId) : data.role_id ? String(data.role_id) : null;
+  const resolvedLoginName = String(access?.user.loginName ?? data.login_name ?? payload.loginName);
+  const resolvedDisplayName = access?.user.displayName ? String(access.user.displayName) : data.display_name ? String(data.display_name) : null;
   const session: AuthSession = {
     source: "remote",
     accessToken: String(data.access_token ?? ""),
     refreshToken: String(data.refresh_token ?? ""),
-    expiresIn: Number(data.expires_in ?? 0),
+    expiresIn,
+    expiresAt: toExpiresAt(expiresIn, data.expires_at),
     tokenType: String(data.token_type ?? "bearer"),
     user: {
       userId: String(data.user_id ?? ""),
-      role: String(data.role ?? ""),
-      tenantId: String(data.tenant_id ?? ""),
-      loginName: String(data.login_name ?? payload.loginName),
-      displayName: data.display_name ? String(data.display_name) : null,
+      role: resolvedRole,
+      roleId: resolvedRoleId,
+      tenantId: String(access?.user.tenantId ?? data.tenant_id ?? ""),
+      loginName: resolvedLoginName,
+      displayName: resolvedDisplayName,
+      pageAccess: access?.pageAccess ?? resolveDefaultPageAccess(resolvedRole),
+      hasCustomPermissions: access?.hasCustomPermissions ?? false,
       loginAuditId: data.login_audit_id ? String(data.login_audit_id) : null,
       sessionRef: data.session_ref ? String(data.session_ref) : null,
     },
@@ -91,18 +152,24 @@ async function localLogin(payload: LoginPayload): Promise<LoginResponse> {
     };
   }
 
+  const expiresIn = Number(data.expires_in ?? 43_200);
+  const role = String(data.role ?? "admin");
   const session: AuthSession = {
     source: "local",
     accessToken: String(data.access_token ?? "local-token"),
     refreshToken: String(data.refresh_token ?? "local-refresh"),
-    expiresIn: Number(data.expires_in ?? 43_200),
+    expiresIn,
+    expiresAt: toExpiresAt(expiresIn, data.expires_at),
     tokenType: String(data.token_type ?? "bearer"),
     user: {
       userId: String(data.user_id ?? "local-user"),
-      role: String(data.role ?? "admin"),
+      role,
+      roleId: data.role_id ? String(data.role_id) : null,
       tenantId: String(data.tenant_id ?? "local-tenant"),
       loginName: String(data.login_name ?? payload.loginName),
       displayName: data.display_name ? String(data.display_name) : String(data.login_name ?? payload.loginName),
+      pageAccess: resolveDefaultPageAccess(role),
+      hasCustomPermissions: false,
       loginAuditId: data.login_audit_id ? String(data.login_audit_id) : null,
       sessionRef: data.session_ref ? String(data.session_ref) : null,
     },
@@ -156,6 +223,88 @@ function normalizePasswordLinkType(value: string | null): PasswordLinkType | nul
 function clearLocalAppSessionStorage() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(STORAGE_KEY);
+}
+
+function writeAuthFeedback(message: string | null | undefined) {
+  if (typeof window === "undefined") return;
+
+  if (!message) {
+    window.localStorage.removeItem(AUTH_FEEDBACK_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(AUTH_FEEDBACK_KEY, message);
+}
+
+export function consumeAuthFeedback() {
+  if (typeof window === "undefined") return null;
+
+  const message = window.localStorage.getItem(AUTH_FEEDBACK_KEY);
+  if (!message) {
+    return null;
+  }
+
+  window.localStorage.removeItem(AUTH_FEEDBACK_KEY);
+  return message;
+}
+
+export function syncRemoteSessionTokens(currentSession: SupabaseSession, currentAppSession: AuthSession | null) {
+  if (!currentAppSession || currentAppSession.source !== "remote") {
+    return currentAppSession;
+  }
+
+  const nextSession: AuthSession = {
+    ...currentAppSession,
+    accessToken: currentSession.access_token,
+    refreshToken: currentSession.refresh_token,
+    expiresIn: Number(currentSession.expires_in ?? currentAppSession.expiresIn),
+    expiresAt: toExpiresAt(
+      Number(currentSession.expires_in ?? currentAppSession.expiresIn),
+      currentSession.expires_at ?? currentAppSession.expiresAt,
+    ),
+    tokenType: currentSession.token_type ?? currentAppSession.tokenType,
+  };
+
+  persistSession(nextSession);
+  return nextSession;
+}
+
+export async function hydrateSessionAccess(currentAppSession: AuthSession) {
+  if (currentAppSession.source !== "remote") {
+    return currentAppSession;
+  }
+
+  const access = await fetchSessionAccess(currentAppSession.accessToken);
+  if (!access) {
+    return {
+      ...currentAppSession,
+      user: {
+        ...currentAppSession.user,
+        pageAccess: currentAppSession.user.pageAccess?.length
+          ? currentAppSession.user.pageAccess
+          : resolveDefaultPageAccess(currentAppSession.user.role),
+        hasCustomPermissions: currentAppSession.user.hasCustomPermissions ?? false,
+      },
+    };
+  }
+
+  const nextSession: AuthSession = {
+    ...currentAppSession,
+    user: {
+      ...currentAppSession.user,
+      userId: String(access.user.userId ?? currentAppSession.user.userId),
+      role: String(access.user.role ?? currentAppSession.user.role),
+      roleId: access.user.roleId ? String(access.user.roleId) : currentAppSession.user.roleId,
+      tenantId: String(access.user.tenantId ?? currentAppSession.user.tenantId),
+      loginName: String(access.user.loginName ?? currentAppSession.user.loginName),
+      displayName: access.user.displayName ? String(access.user.displayName) : currentAppSession.user.displayName,
+      pageAccess: access.pageAccess,
+      hasCustomPermissions: access.hasCustomPermissions,
+    },
+  };
+
+  persistSession(nextSession);
+  return nextSession;
 }
 
 export async function requestPasswordRecovery(loginName: string) {
@@ -341,11 +490,13 @@ export async function updatePassword(password: string) {
   };
 }
 
-export async function clearPersistedSession() {
+export async function clearPersistedSession(options: ClearSessionOptions = {}) {
   const session = readPersistedSession();
+  const reason = options.reason ?? "USER_LOGOUT";
+  const source = options.source ?? "SITE";
   let logoutAuditError: string | null = null;
 
-  if (session?.source === "remote" && (session.user.loginAuditId || session.user.sessionRef)) {
+  if (!options.skipRemoteLogout && session?.source === "remote" && (session.user.loginAuditId || session.user.sessionRef)) {
     const response = await fetch(`${baseUrl()}/functions/v1/logout`, {
       method: "POST",
       headers: {
@@ -356,8 +507,8 @@ export async function clearPersistedSession() {
       body: JSON.stringify({
         login_audit_id: session.user.loginAuditId,
         session_ref: session.user.sessionRef,
-        reason: "USER_LOGOUT",
-        source: "SITE",
+        reason,
+        source,
       }),
     }).catch(() => null);
 
@@ -371,17 +522,16 @@ export async function clearPersistedSession() {
     }
   }
 
-  if (session?.source === "remote" && !session.user.loginAuditId && !session.user.sessionRef) {
+  if (!options.skipRemoteLogout && session?.source === "remote" && !session.user.loginAuditId && !session.user.sessionRef) {
     logoutAuditError = "Sessao sem referencia para registrar logout.";
   }
 
-  if (session?.source === "remote" && supabase) {
-    await supabase.auth.signOut();
+  if (session?.source === "remote" && supabase && !options.skipSupabaseSignOut) {
+    await supabase.auth.signOut().catch(() => null);
   }
 
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(STORAGE_KEY);
-  }
+  clearLocalAppSessionStorage();
+  writeAuthFeedback(options.feedbackMessage);
 
   return {
     success: !logoutAuditError,

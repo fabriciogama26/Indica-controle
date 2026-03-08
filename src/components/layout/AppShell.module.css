@@ -117,6 +117,46 @@
   cursor: pointer;
 }
 
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settingsLink,
+.settingsLinkActive {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.settingsLink {
+  background: #ffffff;
+  color: #17347a;
+}
+
+.settingsLink:hover {
+  transform: translateY(-1px);
+  border-color: rgba(23, 52, 122, 0.2);
+  box-shadow: 0 12px 24px rgba(17, 35, 84, 0.12);
+}
+
+.settingsLinkActive {
+  background: linear-gradient(180deg, #16285b 0%, #21448f 100%);
+  color: #f7faff;
+  box-shadow: 0 16px 28px rgba(22, 40, 91, 0.2);
+}
+
+.settingsIcon {
+  width: 20px;
+  height: 20px;
+}
+
 .contentArea {
   display: flex;
   flex-direction: column;
@@ -248,7 +288,13 @@
     flex-wrap: wrap;
   }
 
-  .logoutButton {
+  .headerActions {
     width: 100%;
+  }
+
+  .settingsLink,
+  .settingsLinkActive,
+  .logoutButton {
+    flex: 1;
   }
 }

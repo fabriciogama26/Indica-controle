@@ -1,0 +1,128 @@
+Tela: Permissoes SaaS
+
+Visao geral
+-----------
+- Tela administrativa para editar credenciais e permissoes por usuario.
+- Exibe o fluxo real de selecao de usuario, role, status e visibilidade por tela.
+- A tela agora carrega e salva `role`, `ativo/inativo` e a liberacao das telas em `app_user_page_permissions`.
+- As telas salvas para o usuario agora tambem sao consumidas no bootstrap da sessao para esconder ou liberar a navegacao no shell.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/permissoes/page.tsx`
+- Busca de usuarios: `src/app/api/app-users/search/route.ts`
+- Carga e salvamento: `src/app/api/app-users/[userId]/permissions/route.ts`
+- View: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Estilo: `src/modules/dashboard/permissoes/PermissionsPageView.module.css`
+- Guard de acesso: `src/lib/auth/authorization.ts`
+- Navegacao: `src/components/layout/AppShell.tsx`
+- Base SQL: `supabase/migrations/022_create_page_permissions.sql`
+- Matriz futura por usuario: `supabase/migrations/024_create_user_page_permissions.sql`
+
+Cadastro
+--------
+- O front permite:
+  - buscar e selecionar um usuario real do `app_users` do tenant atual
+  - carregar `role`, `status` e a matriz salva do usuario escolhido
+  - trocar a role
+  - alternar status ativo/inativo
+  - marcar somente se a tela fica liberada ou bloqueada para o usuario
+  - salvar `role`, `status` e as telas liberadas no Supabase
+
+Filtros, auto-complete e listagem
+---------------------------------
+- A busca chama `src/app/api/app-users/search/route.ts` com o token atual da sessao.
+- A rota valida o usuario autenticado, resolve o tenant dele e retorna apenas usuarios do mesmo tenant.
+- A pesquisa considera apenas `login_name` e `matricula`.
+- A listagem nao depende de `app_roles` com join obrigatorio; usuarios do tenant continuam aparecendo mesmo se o `role_id` ainda estiver incompleto.
+- O bloqueio administrativo vale apenas para quem abre a tela de configuracao; a listagem retornada pela busca inclui qualquer usuario do mesmo tenant.
+- A route usa `SUPABASE_SERVICE_ROLE_KEY` no servidor, mas aplica checagem explicita de operador admin/master e filtro obrigatorio por `tenant_id`.
+- Ao selecionar o usuario, a tela chama `src/app/api/app-users/[userId]/permissions/route.ts` para carregar os dados salvos.
+- Ao salvar, a route:
+  - atualiza `app_users.role_id`
+  - atualiza `app_users.ativo`
+  - faz `upsert` em `app_user_page_permissions`
+  - espelha o toggle da tela em `can_access`, `can_select`, `can_insert` e `can_update`
+- No login e na reidratacao da sessao, o frontend consulta `src/app/api/auth/session-access/route.ts` para aplicar no shell as telas realmente liberadas para o usuario.
+- Ao selecionar o resultado da busca, a tela aplica `role`, `status` e a matriz visual do usuario escolhido.
+- A grade de permissao usa estado local para simular a matriz final por usuario e por tela.
+- A listagem atual considera apenas as telas que ja existem no SaaS web: Home, Estoque Atual, Entradas, Saidas, Materiais, Pessoas e Cadastro Base.
+
+Boas praticas
+-------------
+- Restringir a tela a perfis administrativos.
+- Nao confiar apenas na navegacao; aplicar bloqueio de rota tambem no shell.
+- Manter o catalogo de paginas em `app_pages`, os perfis em `app_roles` e o acesso por tenant em `role_page_permissions`.
+- A matriz final deve persistir apenas a liberacao da tela por usuario.
+- Quando a tela estiver liberada, o usuario herda o pacote de permissao daquela pagina.
+- Nao modelar `delete`.
+- Registrar alteracoes reais de permissao com auditoria em proxima etapa.
+- Manter a UI coerente com o conceito final: primeiro selecionar o usuario, depois definir as permissoes dele.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica.
+
+Atalhos
+-------
+- Rota ativa: `/permissoes`
+- Acesso visual pelo icone de engrenagem no topo direito.
+- Nao faz parte da navegacao principal da sidebar.
+- Visivel somente para `admin` e `master`.
+
+Atualizacao 2026-03
+-------------------
+- Migration `022_create_page_permissions.sql` criada.
+- Tabela global `app_pages` criada para catalogar rotas controladas.
+- Tabela global `app_roles` criada como fonte de verdade dos perfis.
+- Tabela multi-tenant `role_page_permissions` criada para acesso por `role_id`.
+- Migration `024_create_user_page_permissions.sql` criada para persistir permissao por usuario e por tela sem `delete`.
+- Migration `025_app_users_admin_tenant_select.sql` criada para liberar leitura de `app_users` do mesmo tenant apenas para admin/master autenticado.
+- Route `src/app/api/app-users/[userId]/permissions/route.ts` criada para carregar e salvar credenciais por usuario.
+- Route `src/app/api/auth/session-access/route.ts` criada para devolver as telas liberadas ao usuario autenticado.
+- Helper `authorization.ts` criado para normalizar `role`, identificar admin e bloquear rotas administrativas.
+- Shell principal passou a expor `Permissoes` apenas pela engrenagem do topo para perfis administrativos.
+- Tela frontend evoluida para o formato final de credenciais e permissoes:
+  - bloco superior curto com busca de usuario, role e status
+  - grade por secao/tela com um unico toggle `Liberado/Bloqueado`
+  - a permissao de visualizar a tela passa a representar o pacote inteiro da pagina
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/permissoes/page.tsx`
+  - Responsavel por: expor a rota autenticada `/permissoes`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: apresentar a UI de credenciais e permissoes, com busca de usuario, role, status, resumo do tenant e matriz local de liberacao por tela.
+- Caminho: `src/app/api/app-users/search/route.ts`
+  - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado e buscar `app_users` do mesmo tenant por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin/master.
+- Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
+  - Responsavel por: carregar e salvar `role`, `ativo/inativo` e a matriz de telas do usuario selecionado.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: `normalizeRole`, `isAdminRole`, fallback por role, resolucao de `pageAccess` e bloqueio de rotas do shell.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: expor a engrenagem de configuracao para admin, filtrar a sidebar pelas telas liberadas e redirecionar perfis sem acesso para a primeira rota disponivel.
+- Caminho: `src/app/api/auth/session-access/route.ts`
+  - Responsavel por: devolver `pageAccess` e `hasCustomPermissions` do usuario autenticado para o frontend.
+
+Constantes e configuracoes
+- Caminho: `supabase/migrations/022_create_page_permissions.sql`
+  - Responsavel por: tabelas `app_pages`, `role_page_permissions`, seed inicial e policies RLS.
+- Caminho: `supabase/migrations/023_normalize_roles_to_app_roles.sql`
+  - Responsavel por: criar `app_roles` e migrar a matriz para `role_id`.
+- Caminho: `supabase/migrations/024_create_user_page_permissions.sql`
+  - Responsavel por: criar a base SQL inicial da matriz por usuario, hoje ainda pendente de simplificacao para o conceito final de liberacao por tela.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/context/AuthContext.tsx`
+  - Responsavel por: manter a sessao autenticada usada pelo guard da pagina.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS
+
+Ajuda contextual
+- Antes: a rota existia, mas ainda estava no formato de base visual inicial.
+- Depois: a rota `/permissoes` representa o fluxo real esperado para selecionar usuario e liberar ou bloquear cada tela.
+- Estado atual: a tela ja consome e grava `app_user_page_permissions`, mas a tabela ainda usa internamente `can_select`, `can_insert` e `can_update` espelhados a partir do mesmo toggle visual.
+- Estado atual: a tela ja consome e grava `app_user_page_permissions`, e o shell ja passa a esconder as telas desabilitadas quando o usuario faz login ou reabre a sessao.
+- A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.

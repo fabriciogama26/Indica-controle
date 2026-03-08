@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
-import { requestPasswordRecovery } from "@/services/auth/auth.service";
+import { consumeAuthFeedback, requestPasswordRecovery } from "@/services/auth/auth.service";
 import styles from "./LoginPageView.module.css";
 
 export function LoginPageView() {
@@ -45,6 +45,19 @@ export function LoginPageView() {
       router.replace("/home");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    const authFeedback = consumeAuthFeedback();
+    if (authFeedback) {
+      const timeoutId = window.setTimeout(() => {
+        setFeedback(authFeedback);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }
+  }, []);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

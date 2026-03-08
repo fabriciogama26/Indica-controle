@@ -26,6 +26,8 @@ Boas praticas
 - Resolver titulo e subtitulo pela rota atual.
 - Exibir nome do usuario e status de conexao na barra superior, sem confiar na UI para seguranca.
 - Preparar a UI para consumir um futuro campo `display` de `app_users`, com fallback para `login_name`.
+- Esconder rotas administrativas quando o `role` nao permitir acesso.
+- Respeitar `app_user_page_permissions` quando o usuario tiver permissoes customizadas por tela.
 
 Cancelamento e saldo
 --------------------
@@ -33,7 +35,8 @@ Cancelamento e saldo
 
 Atalhos
 -------
-- Links de navegacao para Home, Cadastro Base, Pessoas, Materiais, Entrada, Saida e Estoque.
+- Links de navegacao laterais para Home, Cadastro Base, Pessoas, Materiais, Entrada, Saida e Estoque.
+- Botao de engrenagem no topo direito abre `/permissoes` apenas para `admin` e `master`.
 - Botao `Sair` no topo direito limpa a sessao local e chama o logout remoto quando aplicavel.
 
 Atualizacao 2026-03
@@ -46,18 +49,23 @@ Atualizacao 2026-03
 - Bloco do logo ampliado para dar mais presenca visual na coluna lateral.
 - Bloco do logo ajustado para acompanhar a mesma largura visual dos botoes do menu.
 - Menu lateral reorganizado em secoes expansivas, sem icones nos botoes, mantendo a paleta alinhada a logo.
+- Atalho de `Permissoes` movido para um botao de engrenagem no topo direito, ao lado de `Sair`.
+- Shell passou a bloquear a rota `/permissoes` para perfis sem acesso e redirecionar para `/home`.
+- Shell passou a reidratar a sessao remota com `pageAccess` e esconder os botoes da sidebar quando a tela nao estiver liberada em `app_user_page_permissions`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: renderizar shell, proteger rotas, exibir usuario conectado e executar logout.
+  - Responsavel por: renderizar shell, proteger rotas, exibir usuario conectado, expor o atalho de configuracoes, executar logout e filtrar a navegacao por `pageAccess`.
 - Caminho: `src/app/(dashboard)/layout.tsx`
   - Responsavel por: aplicar o shell em todas as rotas do dashboard.
 
 Constantes e configuracoes
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: `menuItems` e `titleMap`.
+  - Responsavel por: `menuSections` e `titleMap`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: regras de acesso a rotas administrativas, fallback por role e bloqueio por `pageAccess`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/hooks/useAuth.ts`
@@ -67,9 +75,11 @@ Funcoes utilitarias relacionadas
 
 Servicos e integracoes externas
 - Caminho: `src/services/auth/auth.service.ts`
-  - Responsavel por: limpar sessao, chamar `logout` do Supabase e preparar `display_name` para a sessao.
+  - Responsavel por: limpar sessao, chamar `logout` do Supabase, hidratar `pageAccess` a partir de `/api/auth/session-access` e preparar `display_name` para a sessao.
 
 Ajuda contextual
-- O shell atual usa protecao client-side. Middleware e sessao por inatividade entram na proxima fase.
+- O shell atual usa protecao client-side e agora tambem respeita timeout por inatividade via `AuthContext`.
+- O shell atual usa protecao client-side, respeita timeout por inatividade via `AuthContext` e passa a ocultar itens da sidebar conforme `app_user_page_permissions`.
 - Antes: o topo exibia apenas titulo da rota e badges tecnicos, e o logout ficava isolado no rodape da sidebar.
 - Depois: a navegacao segue o desenho com sidebar limpa, logo destacado, menu vertical e barra superior com nome do usuario, status de conexao e botao `Sair`.
+- Estado atual: a tela `Permissoes` fica acessivel pelo icone de engrenagem no topo e nao participa da navegacao principal.

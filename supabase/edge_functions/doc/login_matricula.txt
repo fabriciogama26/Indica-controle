@@ -12,7 +12,8 @@ Como configurar secrets (CLI)
 2) supabase secrets set SUPABASE_SERVICE_ROLE_KEY="SUA_SERVICE_ROLE_KEY"
 
 Tabelas esperadas
-- app_users (id, matricula, email, role, tenant_id, ativo)
+- app_users (id, matricula, email, role_id, tenant_id, ativo)
+- app_roles (id, role_key, is_admin, ativo)
 - imei_whitelist (tenant_id, imei, ativo)
 - login_audit (id, user_id, tenant_id, matricula, device_imei, status, reason, source, created_at)
 
@@ -29,6 +30,7 @@ Retorno esperado pelo app
 - access_token (string)
 - user_id (string)
 - role (string)
+- role_id (string)
 - tenant_id (string)
 - login_audit_id (string|null)
 

@@ -29,7 +29,14 @@ if (!supabaseUrl || !serviceRoleKey) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
 }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+})
+
+const supabaseAuth = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
@@ -56,14 +63,14 @@ serve(async (req) => {
     return respond(400, { success: false, message: 'Informe matricula, senha e IMEI.' })
   }
 
-  const { data: userRow, error: userErr } = await supabase
+  const { data: userRow, error: userErr } = await supabaseAdmin
     .from('app_users')
-    .select('id, email, role, tenant_id, ativo')
+    .select('id, email, role_id, tenant_id, ativo')
     .eq('matricula', matricula)
     .maybeSingle()
 
   if (userErr || !userRow?.email) {
-    await supabase.from('login_audit').insert({
+    await supabaseAdmin.from('login_audit').insert({
       user_id: null,
       tenant_id: null,
       source,
@@ -76,7 +83,7 @@ serve(async (req) => {
   }
 
   if (userRow.ativo === false) {
-    await supabase.from('login_audit').insert({
+    await supabaseAdmin.from('login_audit').insert({
       user_id: userRow.id,
       tenant_id: userRow.tenant_id,
       source,
@@ -91,7 +98,7 @@ serve(async (req) => {
   }
 
   if (!skipImeiCheck) {
-    const { data: imeiRow } = await supabase
+    const { data: imeiRow } = await supabaseAdmin
       .from('imei_whitelist')
       .select('id, ativo')
       .eq('tenant_id', userRow.tenant_id)
@@ -99,7 +106,7 @@ serve(async (req) => {
       .maybeSingle()
 
     if (!imeiRow || imeiRow.ativo === false) {
-      await supabase.from('login_audit').insert({
+      await supabaseAdmin.from('login_audit').insert({
         user_id: userRow.id,
         tenant_id: userRow.tenant_id,
         source,
@@ -114,13 +121,13 @@ serve(async (req) => {
     }
   }
 
-  const { data, error: signInError } = await supabase.auth.signInWithPassword({
+  const { data, error: signInError } = await supabaseAuth.auth.signInWithPassword({
     email: userRow.email,
     password: senha,
   })
 
   if (signInError || !data?.session?.access_token) {
-    await supabase.from('login_audit').insert({
+    await supabaseAdmin.from('login_audit').insert({
       user_id: userRow.id,
       tenant_id: userRow.tenant_id,
       source,
@@ -134,7 +141,13 @@ serve(async (req) => {
     return respond(401, { success: false, message: 'Login ou senha invalidos.' })
   }
 
-  const { data: auditRow } = await supabase
+  const { data: roleRow } = await supabaseAdmin
+    .from('app_roles')
+    .select('id, role_key')
+    .eq('id', userRow.role_id)
+    .maybeSingle()
+
+  const { data: auditRow } = await supabaseAdmin
     .from('login_audit')
     .insert({
       user_id: userRow.id,
@@ -154,7 +167,8 @@ serve(async (req) => {
     message: 'OK',
     access_token: data.session.access_token,
     user_id: userRow.id,
-    role: userRow.role,
+    role: roleRow?.role_key ?? 'user',
+    role_id: userRow.role_id,
     tenant_id: userRow.tenant_id,
     login_audit_id: auditRow?.id ?? null,
   })

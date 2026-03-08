@@ -23,6 +23,10 @@ Ordem de aplicacao
 19. 019_login_audit_event_log.sql
 20. 020_harden_rls_auth_uid_active.sql
 21. 021_rls_to_authenticated.sql
+22. 022_create_page_permissions.sql
+23. 023_normalize_roles_to_app_roles.sql
+24. 024_create_user_page_permissions.sql
+25. 025_app_users_admin_tenant_select.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -91,8 +95,21 @@ Resumo por arquivo
 021_rls_to_authenticated.sql
 - Restringe as policies multi-tenant ao role authenticated no Supabase.
 
+022_create_page_permissions.sql
+- Cria `app_pages` e `role_page_permissions` para a futura matriz de acesso por pagina.
+
+023_normalize_roles_to_app_roles.sql
+- Cria `app_roles` e migra `app_users` e `role_page_permissions` de `role` texto para `role_id`.
+
+024_create_user_page_permissions.sql
+- Cria `app_user_page_permissions` e a funcao `user_has_page_action(text, text)` para a matriz por usuario e por tela, sem `delete`.
+
+025_app_users_admin_tenant_select.sql
+- Cria policy em `app_users` para liberar leitura de usuarios do mesmo tenant apenas a perfis administrativos autenticados.
+
 Lacunas ainda nao versionadas
 - modelagem final de projects
+- CRUD final da matriz de permissoes
 
 Observacao
 - As migrations acima suportam o app atual.

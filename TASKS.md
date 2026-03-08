@@ -6,6 +6,10 @@
 - [x] Isolar o client administrativo da `auth-login-web` para impedir que o insert em `login_audit` caia no RLS depois do `signInWithPassword`.
 - [x] Endurecer RLS multi-tenant com base em `auth.uid()` e `app_users.ativo = true`.
 - [x] Restringir as policies multi-tenant ao role `authenticated`.
+- [x] Criar a base de permissoes por pagina com `app_pages`, `role_page_permissions` e a rota administrativa `/permissoes`.
+- [x] Normalizar os perfis em `app_roles` e migrar `app_users`/`role_page_permissions` para `role_id`.
+- [x] Criar a base `app_user_page_permissions` para a futura matriz por usuario e por tela, sem suporte a `delete`.
+- [x] Adicionar policy RLS para permitir que admin/master leia `app_users` do proprio tenant na tela `/permissoes`.
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
@@ -24,8 +28,15 @@
 - [ ] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
-- [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
-- [ ] Implementar gestao de sessao web com expiracao por inatividade, touch/revoke e tratamento de token expirado.
+- [x] Implementar timeout por inatividade no frontend com retorno para `/login`.
+- [x] Implementar tratamento de token expirado e refresh de sessao remota no `AuthContext`.
+- [x] Evoluir o frontend da tela `/permissoes` para o fluxo real de selecao de usuario, role, status e liberacao por tela.
+- [x] Buscar usuarios reais do tenant na tela `/permissoes`, sem lista mockada.
+- [x] Ajustar a busca de usuarios em `/permissoes` para pesquisar por `login_name` e `matricula`.
+- [ ] Simplificar a modelagem de `app_user_page_permissions` para refletir o conceito final de liberacao por tela, sem matriz de acoes individuais.
+- [x] Implementar CRUD real da matriz de permissoes consumindo `app_user_page_permissions`.
+- [x] Conectar a tela `/permissoes` ao Supabase para buscar usuario, carregar permissoes e salvar alteracoes.
+- [x] Expandir o controle de permissao no frontend para o shell principal, escondendo telas bloqueadas por `app_user_page_permissions`.
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.
 - [x] Ajustar a UX de recuperacao para usar o `login_name` digitado na tela de login antes do envio do email pelo Supabase.
 - [x] Adaptar `/recuperar-senha` para aceitar `token_hash` e validar links customizados de invite/reset com `verifyOtp`.
@@ -37,7 +48,7 @@
 - [ ] Corrigir o `build` atual do Next para nao type-checkar imports Deno de `SaaS (Web)/supabase/edge_functions`, ou remover essa copia do app web.
 
 - [ ] Definir uma fonte unica de verdade para `supabase/`, porque hoje existe copia na raiz do repositorio e outra em `SaaS (Web)/supabase`.
-- [ ] Revisar README e docs que ainda assumem backend somente externo em `d:\\RQM\\supabase`, enquanto este repositorio ja contem artefatos Supabase versionados.
+- [x] Revisar README e docs que ainda assumiam backend somente externo em `d:\\RQM\\supabase`.
 - [ ] Confirmar se o frontend web vai continuar consumindo Edge Functions service-role ou se parte dos acessos passara a usar cliente autenticado + RLS diretamente.
 - [ ] Mapear quais operacoes sensiveis de estoque precisam gerar auditoria adicional alem de `login_audit` e `app_error_logs`.
 - [ ] Definir backlog funcional do SaaS de engenharia eletrica alem do modulo atual de materiais/estoque.

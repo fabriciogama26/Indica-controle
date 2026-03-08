@@ -36,6 +36,7 @@ Resposta de sucesso
   "token_type": "bearer",
   "user_id": "uuid",
   "role": "admin",
+  "role_id": "uuid",
   "tenant_id": "uuid",
   "login_name": "usuario.login",
   "login_audit_id": "uuid",
@@ -66,3 +67,4 @@ Observacoes
 - Cada login gera uma nova linha em `public.login_audit` com `event_type = 'LOGIN'`.
 - O `session_ref` retornado deve ser preservado pelo frontend para correlacionar o evento de logout.
 - A function usa um client administrativo separado do client de `signInWithPassword` para evitar que o insert de auditoria herde o JWT do usuario e bata no RLS.
+- O papel do usuario agora e resolvido por `app_roles`; a resposta expoe `role` como `role_key` e `role_id` como referencia tecnica.
