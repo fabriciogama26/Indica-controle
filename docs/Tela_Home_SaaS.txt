@@ -1,0 +1,62 @@
+﻿Tela: Home SaaS
+
+Visao geral
+-----------
+- Primeira tela apos o login.
+- Resume o escopo entregue e aponta os modulos iniciais do SaaS.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/home/page.tsx`
+- View: `src/modules/dashboard/home/HomePageView.tsx`
+- Estilo: `src/modules/dashboard/home/HomePageView.module.css`
+- Shell: `src/components/layout/AppShell.tsx`
+
+Cadastro
+--------
+- Nao se aplica.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica.
+
+Boas praticas
+-------------
+- Usar a home como ponto de entrada, nao como concentrador de regras de negocio.
+- Exibir cards curtos com direcionamento dos proximos modulos.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica.
+
+Atalhos
+-------
+- Navegacao principal via sidebar do shell.
+
+Atualizacao 2026-03
+-------------------
+- Home criada.
+- Cards iniciais e resumo do escopo atual implementados.
+- Home reorganizada para `page.tsx` fino em `src/app` e implementacao visual em `src/modules/dashboard/home`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/home/page.tsx`
+  - Responsavel por: expor a rota `/home` e montar a view da home.
+- Caminho: `src/modules/dashboard/home/HomePageView.tsx`
+  - Responsavel por: renderizar hero e cards do estado atual do SaaS.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/home/HomePageView.tsx`
+  - Responsavel por: array `cards` com os blocos de resumo.
+
+Funcoes utilitarias relacionadas
+- Nao se aplica.
+
+Servicos e integracoes externas
+- Shell: `src/components/layout/AppShell.tsx`
+
+Ajuda contextual
+- Esta home e propositalmente simples. Os modulos reais entram nas proximas etapas.
+- O arquivo de rota da home deve permanecer fino; a manutencao de texto/UI fica em `src/modules/dashboard/home`.

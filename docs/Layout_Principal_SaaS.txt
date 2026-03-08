@@ -1,0 +1,75 @@
+Tela: Layout Principal SaaS
+
+Visao geral
+-----------
+- Shell principal exibido apos autenticacao.
+- Mantem coluna lateral de navegacao, barra superior horizontal, nome do usuario conectado e logout.
+
+Arquitetura
+-----------
+- Rota de layout: `src/app/(dashboard)/layout.tsx`
+- Componente central: `src/components/layout/AppShell.tsx`
+- Estilo: `src/components/layout/AppShell.module.css`
+- Sessao: `src/context/AuthContext.tsx`
+
+Cadastro
+--------
+- Nao se aplica.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica.
+
+Boas praticas
+-------------
+- Bloquear acesso ao shell quando `isAuthenticated` for falso.
+- Resolver titulo e subtitulo pela rota atual.
+- Exibir nome do usuario e status de conexao na barra superior, sem confiar na UI para seguranca.
+- Preparar a UI para consumir um futuro campo `display` de `app_users`, com fallback para `login_name`.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica.
+
+Atalhos
+-------
+- Links de navegacao para Home, Cadastro Base, Pessoas, Materiais, Entrada, Saida e Estoque.
+- Botao `Sair` no topo direito limpa a sessao local e chama o logout remoto quando aplicavel.
+
+Atualizacao 2026-03
+-------------------
+- Shell criado.
+- Sidebar, topbar e protecao basica de rota implementadas.
+- Layout reorganizado para seguir o padrao de coluna lateral fixa + barra superior horizontal.
+- Bloco do usuario movido para o canto superior direito com indicador visual de conexao e botao `Sair`.
+- Area do logo isolada no topo esquerdo da sidebar.
+- Bloco do logo ampliado para dar mais presenca visual na coluna lateral.
+- Bloco do logo ajustado para acompanhar a mesma largura visual dos botoes do menu.
+- Menu lateral reorganizado em secoes expansivas, sem icones nos botoes, mantendo a paleta alinhada a logo.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: renderizar shell, proteger rotas, exibir usuario conectado e executar logout.
+- Caminho: `src/app/(dashboard)/layout.tsx`
+  - Responsavel por: aplicar o shell em todas as rotas do dashboard.
+
+Constantes e configuracoes
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: `menuItems` e `titleMap`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: consumo do estado autenticado.
+- Caminho: `src/types/auth.ts`
+  - Responsavel por: manter o `displayName` opcional do usuario autenticado.
+
+Servicos e integracoes externas
+- Caminho: `src/services/auth/auth.service.ts`
+  - Responsavel por: limpar sessao, chamar `logout` do Supabase e preparar `display_name` para a sessao.
+
+Ajuda contextual
+- O shell atual usa protecao client-side. Middleware e sessao por inatividade entram na proxima fase.
+- Antes: o topo exibia apenas titulo da rota e badges tecnicos, e o logout ficava isolado no rodape da sidebar.
+- Depois: a navegacao segue o desenho com sidebar limpa, logo destacado, menu vertical e barra superior com nome do usuario, status de conexao e botao `Sair`.

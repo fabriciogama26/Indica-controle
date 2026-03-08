@@ -2,6 +2,7 @@
 
 Arquivos implementados
 - supabase/edge_functions/login_matricula/index.ts
+- supabase/edge_functions/auth-recover/index.ts
 - supabase/edge_functions/verify_admin_pin/index.ts
 - supabase/edge_functions/logout/index.ts
 - supabase/edge_functions/log_error/index.ts
@@ -16,11 +17,14 @@ Resumo
 login_matricula
 - Login por matricula, senha e IMEI.
 
+auth-recover
+- Recuperacao de senha por login_name para o SaaS web.
+
 verify_admin_pin
 - Valida o PIN admin do usuario autenticado.
 
 logout
-- Fecha o registro da sessao em login_audit.
+- Registra um evento imutavel de logout em login_audit.
 
 log_error
 - Grava erros do app em app_error_logs.
@@ -52,3 +56,4 @@ Lacunas ainda nao versionadas
 
 Observacao
 - O que ainda depende de definicao e a modelagem final de projects.
+- Fluxos web de recuperacao de senha ficam cobertos por `auth-recover`.
