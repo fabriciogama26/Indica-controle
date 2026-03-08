@@ -3,9 +3,12 @@
 export type AuthUser = {
   userId: string;
   role: string;
+  roleId: string | null;
   tenantId: string;
   loginName: string;
   displayName?: string | null;
+  pageAccess: string[];
+  hasCustomPermissions: boolean;
   loginAuditId: string | null;
   sessionRef: string | null;
 };
@@ -15,6 +18,7 @@ export type AuthSession = {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  expiresAt: number | null;
   tokenType: string;
   user: AuthUser;
 };

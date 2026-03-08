@@ -7,6 +7,7 @@ Arquivos principais para nova task
 - docs/Arquitetura_SaaS.txt
 - docs/Backend_Contratos_SaaS.txt
 - docs/Tela_Login_SaaS.txt
+- docs/Tela_Permissoes_SaaS.txt
 - docs/Layout_Principal_SaaS.txt
 - docs/Tela_Home_SaaS.txt
 
@@ -24,6 +25,7 @@ Objetivo
 Estado atual resumido
 - Login implementado
 - Shell principal implementado
+- Base de permissoes por pagina criada
 - Home inicial implementada
 - Modulos de cadastro e estoque ainda em placeholder
 - Backend minimo de login web mapeado no Supabase

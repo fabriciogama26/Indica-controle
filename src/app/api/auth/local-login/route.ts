@@ -29,17 +29,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const expiresIn = 43200;
+  const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
+
   return NextResponse.json({
     success: true,
     message: "Login local concluido.",
     access_token: "local-token",
     refresh_token: "local-refresh-token",
-    expires_in: 43200,
+    expires_in: expiresIn,
+    expires_at: expiresAt,
     token_type: "bearer",
     user_id: process.env.LOCAL_USER_ID ?? "local-user",
     role: process.env.LOCAL_ROLE ?? "admin",
+    role_id: null,
     tenant_id: process.env.LOCAL_TENANT_ID ?? "local-tenant",
     login_name: loginName,
+    display_name: loginName,
     login_audit_id: null,
     session_ref: null,
   });

@@ -8,9 +8,13 @@ Dependencias
 - public.app_users com:
   - id
   - auth_user_id
-  - role
+  - role_id
   - ativo
   - admin_pin_hash
+- public.app_roles com:
+  - id
+  - role_key
+  - is_admin
 
 Payload
 {
@@ -21,7 +25,7 @@ Payload
 
 Regra
 - O usuario autenticado precisa ser o mesmo do payload.
-- O role precisa ser admin.
+- O papel do usuario precisa ser administrativo em `app_roles`.
 - O PIN e comparado pelo SHA-256 do valor informado.
 
 Como gravar o hash

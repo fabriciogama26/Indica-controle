@@ -4,7 +4,7 @@ import { AppProviders } from "@/providers/AppProviders";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RQM SaaS",
+  title: "INDICA SaaS",
   description: "Painel web multi-tenant para operacao de materiais.",
 };
 

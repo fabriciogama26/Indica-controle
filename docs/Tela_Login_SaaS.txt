@@ -36,6 +36,8 @@ Boas praticas
 - Manter `login_name` como identificador tecnico, sem depender de `people`.
 - Concentrar a identidade visual no card central para manter foco no login.
 - Reaproveitar o `login_name` digitado na tela para disparar o email de recuperacao sem expor o email ao usuario.
+- Encerrar a sessao por inatividade no frontend e devolver feedback claro ao usuario na tela de login.
+- Tratar token expirado no `AuthContext` antes de reidratar a sessao local.
 
 Cancelamento e saldo
 --------------------
@@ -60,6 +62,9 @@ Atualizacao 2026-03
 - `Esqueci minha senha` passou a chamar o backend de recuperacao a partir do `login_name` preenchido na tela.
 - Login remoto passou a persistir `session_ref` para correlacionar a auditoria de entrada e saida no backend.
 - Login remoto passou a logar detalhes da falha de auditoria em `auth-login-web` para diagnostico no painel do Supabase.
+- Login remoto passou a receber `role` como `role_key` e `role_id` resolvidos a partir de `app_roles`.
+- Login passou a consumir mensagens transitorias de autenticacao para diferenciar logout manual, inatividade e token expirado.
+- Sessao web passou a expirar por inatividade no frontend, com retorno para `/login`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -71,13 +76,13 @@ Funcoes principais
 - Caminho: `src/modules/auth/login/LoginPageView.module.css`
   - Responsavel por: centralizacao do card, fundo da tela e responsividade do login.
 - Caminho: `src/services/auth/auth.service.ts`
-  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `requestPasswordRecovery` e `clearPersistedSession`, preservando `session_ref` da sessao web.
+  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `requestPasswordRecovery`, `clearPersistedSession`, `consumeAuthFeedback` e sincronizacao de token remoto, preservando `session_ref` da sessao web.
 - Caminho: `supabase/edge_functions/auth-login-web/index.ts`
-  - Responsavel por: exigir gravacao valida de evento `LOGIN` antes de concluir o login remoto.
+  - Responsavel por: exigir gravacao valida de evento `LOGIN` antes de concluir o login remoto e resolver `role_key` via `app_roles`.
 - Caminho: `supabase/edge_functions/logout/index.ts`
   - Responsavel por: registrar um novo evento `LOGOUT` e correlaciona-lo por `session_ref`.
 - Caminho: `src/context/AuthContext.tsx`
-  - Responsavel por: hidratar sessao, manter estado autenticado e expor `login/logout`.
+  - Responsavel por: hidratar sessao, manter estado autenticado, tratar timeout por inatividade, token expirado e expor `login/logout`.
 
 Constantes e configuracoes
 - Caminho: `.env.example`
@@ -96,6 +101,7 @@ Servicos e integracoes externas
 
 Ajuda contextual
 - O login remoto exige `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e a Edge Function `auth-login-web` publicada.
+- O controle de sessao por inatividade usa `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`.
 - A recuperacao de senha exige `auth-recover` publicada e, se houver redirect customizado, o secret `PASSWORD_REDIRECT_URL`.
 - Antes: o container podia nao preencher toda a largura visivel e o card ficava deslocado para a esquerda.
 - Depois: o container ocupa o viewport e centraliza o card no eixo horizontal e vertical.
@@ -105,3 +111,5 @@ Ajuda contextual
 - Estado atual: `Esqueci minha senha` usa o `login_name` digitado para chamar `auth-recover` e disparar o email.
 - Estado atual: o rodape inferior exibe `Registre cada movimentacao. Tenha controle total das informacoes.`.
 - Estado atual: login remoto e logout web geram duas linhas em `login_audit`, uma para `LOGIN` e outra para `LOGOUT`.
+- Estado atual: a tela passa a mostrar feedback de `sessao expirada` e `expirada por inatividade` quando o `AuthContext` limpa a sessao.
+- Estado atual: a sessao frontend preserva `role` como `role_key` e `roleId` como referencia tecnica do perfil.

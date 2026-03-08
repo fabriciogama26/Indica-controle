@@ -110,7 +110,7 @@ serve(async (req) => {
 
   const { data: userRow, error: userErr } = await supabaseAdmin
     .from('app_users')
-    .select('id, email, role, tenant_id, ativo, login_name')
+    .select('id, email, role_id, tenant_id, ativo, login_name')
     .eq('login_name', loginName)
     .maybeSingle()
 
@@ -150,6 +150,12 @@ serve(async (req) => {
 
     return respond(403, { success: false, message: 'Usuario inativo.' })
   }
+
+  const { data: roleRow } = await supabaseAdmin
+    .from('app_roles')
+    .select('id, role_key')
+    .eq('id', userRow.role_id)
+    .maybeSingle()
 
   const { data: authData, error: signInError } = await supabaseAuth.auth.signInWithPassword({
     email: userRow.email,
@@ -218,7 +224,8 @@ serve(async (req) => {
     expires_in: authData.session.expires_in,
     token_type: authData.session.token_type,
     user_id: userRow.id,
-    role: userRow.role,
+    role: roleRow?.role_key ?? 'user',
+    role_id: userRow.role_id,
     tenant_id: userRow.tenant_id,
     login_name: userRow.login_name,
     login_audit_id: auditRow.id,

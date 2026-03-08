@@ -51,7 +51,7 @@ serve(async (req) => {
 
   const { data: appUser, error } = await supabase
     .from('app_users')
-    .select('id, tenant_id, role, ativo, admin_pin_hash')
+    .select('id, tenant_id, role_id, ativo, admin_pin_hash')
     .eq('auth_user_id', authData.user.id)
     .eq('id', userId)
     .maybeSingle()
@@ -60,7 +60,13 @@ serve(async (req) => {
     return respond(403, { success: false, message: 'Usuario sem permissao.' })
   }
 
-  if (String(appUser.role ?? '').toLowerCase() !== 'admin') {
+  const { data: roleRow } = await supabase
+    .from('app_roles')
+    .select('id, role_key, is_admin')
+    .eq('id', appUser.role_id)
+    .maybeSingle()
+
+  if (!roleRow?.is_admin) {
     return respond(403, { success: false, message: 'Acesso restrito a administradores.' })
   }
 
