@@ -55,6 +55,7 @@ Atualizacao 2026-03
 - Atalho de `Permissoes` movido para um botao de engrenagem no topo direito, ao lado de `Sair`.
 - Shell passou a bloquear a rota `/permissoes` para perfis sem acesso e redirecionar para `/home`.
 - Shell passou a reidratar a sessao remota com `pageAccess` e esconder os botoes da sidebar quando a tela nao estiver liberada em `app_user_page_permissions`.
+- Rotas novas do dashboard que ainda nao estiverem mapeadas em `authorization.ts` passam a ser bloqueadas por padrao ate entrarem no catalogo de paginas.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

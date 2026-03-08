@@ -497,13 +497,18 @@ export async function clearPersistedSession(options: ClearSessionOptions = {}) {
   let logoutAuditError: string | null = null;
 
   if (!options.skipRemoteLogout && session?.source === "remote" && (session.user.loginAuditId || session.user.sessionRef)) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+    };
+
+    if (session.accessToken) {
+      headers.Authorization = `Bearer ${session.accessToken}`;
+    }
+
     const response = await fetch(`${baseUrl()}/functions/v1/logout`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-        Authorization: `Bearer ${session.accessToken}`,
-      },
+      headers,
       body: JSON.stringify({
         login_audit_id: session.user.loginAuditId,
         session_ref: session.user.sessionRef,

@@ -54,6 +54,8 @@ Atualizacao 2026-03
 - Base de permissao por pagina criada com `app_pages` e `role_page_permissions`.
 - Perfis normalizados em `app_roles`, com `app_users.role_id` como referencia principal.
 - Sessao web passou a tratar timeout por inatividade e expiracao de token no frontend.
+- `TOKEN_EXPIRED` passou a registrar `LOGOUT` no `login_audit` usando `session_ref`.
+- A tela `/permissoes` passou a salvar historico e a oferecer envio de convite de primeiro acesso a partir do pre-cadastro em `app_users`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -75,7 +77,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/home/HomePageView.tsx`
   - Responsavel por: textos e cards da home autenticada.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: base visual da futura matriz de permissao por pagina.
+  - Responsavel por: editar role, status, telas liberadas e enviar convite de primeiro acesso do usuario selecionado.
 - Caminho: `supabase/migrations/017_sync_auth_users_to_app_users.sql`
   - Responsavel por: vincular usuarios do Supabase Auth ao cadastro `app_users`.
 - Caminho: `supabase/migrations/018_make_auth_user_sync_fail_open.sql`
@@ -84,6 +86,10 @@ Funcoes principais
   - Responsavel por: base de permissoes por pagina para o tenant.
 - Caminho: `supabase/migrations/023_normalize_roles_to_app_roles.sql`
   - Responsavel por: normalizar perfis e trocar `role` texto por `role_id`.
+- Caminho: `supabase/migrations/026_simplify_user_page_permissions.sql`
+  - Responsavel por: simplificar a matriz por usuario para um unico `can_access` por tela.
+- Caminho: `supabase/migrations/027_create_permission_change_history.sql`
+  - Responsavel por: auditar mudancas administrativas de role, status, telas e convites.
 
 Constantes e configuracoes
 - Caminho: `.env.example`
@@ -116,3 +122,4 @@ Ajuda contextual
 - O link `Esqueci minha senha` no login depende de `login_name` preenchido para acionar `auth-recover`.
 - Templates de invite/reset agora podem usar `token_hash` apontando para `/recuperar-senha`.
 - `AuthContext` ja trata limpeza de sessao por inatividade e token expirado, com feedback mostrado na tela de login.
+- O fluxo oficial de provisionamento web agora pode seguir `pre-cadastro em app_users + invite no Auth`.
