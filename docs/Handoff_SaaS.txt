@@ -47,6 +47,10 @@ Atualizacao 2026-03
 - Shell principal criado.
 - Handoff consolidado dentro da propria pasta do web.
 - Login e Home reorganizados para `page.tsx` finos em `src/app` e views em `src/modules`.
+- Auth pode sincronizar `auth.users` com `app_users` pelas migrations `017` e `018`, sem bloquear o Invite User do painel.
+- Recuperacao de senha frontend criada em rota publica unica para solicitacao e definicao da senha.
+- A solicitacao inicial de recuperacao passou a sair da propria tela de login, reaproveitando o `login_name` digitado.
+- A rota de recuperacao passou a aceitar `token_hash` para templates customizados de invite/reset.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -61,8 +65,16 @@ Funcoes principais
   - Responsavel por: expor a rota `/login`.
 - Caminho: `src/modules/auth/login/LoginPageView.tsx`
   - Responsavel por: formulario, textos e layout da tela de login.
+- Caminho: `src/modules/auth/recovery/RecoveryPasswordPageView.tsx`
+  - Responsavel por: concluir convite/reset pela mesma tela ao abrir o link do Supabase.
+- Caminho: `src/services/auth/auth.service.ts`
+  - Responsavel por: validar `token_hash`, `code` e sessao de recovery/invite no frontend.
 - Caminho: `src/modules/dashboard/home/HomePageView.tsx`
   - Responsavel por: textos e cards da home autenticada.
+- Caminho: `supabase/migrations/017_sync_auth_users_to_app_users.sql`
+  - Responsavel por: vincular usuarios do Supabase Auth ao cadastro `app_users`.
+- Caminho: `supabase/migrations/018_make_auth_user_sync_fail_open.sql`
+  - Responsavel por: impedir que erros do sync bloqueiem convites internos do Supabase Auth.
 
 Constantes e configuracoes
 - Caminho: `.env.example`
@@ -89,3 +101,7 @@ Ajuda contextual
   - toda a pasta `docs/`
 - Manter um apontamento claro para o backend compartilhado em `supabase/`.
 - Ler `src/app` como mapa de rotas e `src/modules` como implementacao das telas.
+- Criar usuario no Auth sem metadata suficiente ainda pode exigir ajuste manual em `app_users`, mas nao deve mais derrubar o Invite User do painel.
+- Configurar o redirect do Supabase para `/recuperar-senha` se a mesma tela for usada por reset e convite.
+- O link `Esqueci minha senha` no login depende de `login_name` preenchido para acionar `auth-recover`.
+- Templates de invite/reset agora podem usar `token_hash` apontando para `/recuperar-senha`.

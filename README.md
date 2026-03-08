@@ -65,7 +65,7 @@ npm run start
 - `LOCAL_TENANT_ID`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_PASSWORD_REDIRECT`
+- `PASSWORD_REDIRECT_URL`
 - `AUTH_RECOVER_DEBUG`
 
 ---
@@ -86,6 +86,7 @@ npm run start
   - `layout.tsx`: layout raiz com providers.
   - `page.tsx`: redirect inicial para `/login` ou `/home`.
   - `(public)/login/page.tsx`: wrapper fino da rota publica de login.
+  - `(public)/recuperar-senha/page.tsx`: wrapper fino da rota publica de recuperacao de senha.
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
@@ -98,6 +99,9 @@ npm run start
 - `src/modules/auth/login/`
   - `LoginPageView.tsx`: implementacao visual da tela de login.
   - `LoginPageView.module.css`: estilo do login.
+- `src/modules/auth/recovery/`
+  - `RecoveryPasswordPageView.tsx`: solicitacao de recuperacao e definicao da nova senha.
+  - `RecoveryPasswordPageView.module.css`: estilo da tela de recuperacao.
 - `src/modules/dashboard/home/`
   - `HomePageView.tsx`: implementacao visual da home.
   - `HomePageView.module.css`: estilo da home.
@@ -133,6 +137,7 @@ npm run start
   - `Layout_Principal_SaaS.txt`: shell principal.
   - `Tela_Home_SaaS.txt`: home inicial.
   - `Tela_Login_SaaS.txt`: login do SaaS.
+  - `Tela_Recuperacao_Senha_SaaS.txt`: recuperacao e definicao de senha.
 - `.env`: variaveis locais do ambiente, ignoradas pelo Git.
 - `.env.example`: variaveis de ambiente esperadas.
 - `TASKS.md`: backlog do SaaS separado do app Android.
@@ -151,10 +156,14 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 2. A rota `src/app/(public)/login/page.tsx` monta a tela implementada em `src/modules/auth/login/`.
 3. Em modo remoto, o frontend chama `auth-login-web` no Supabase.
 4. Em modo local, o frontend usa `/api/auth/local-login`.
-5. O frontend persiste a sessao e redireciona para `/home`.
-6. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
-7. O shell principal libera navegacao para os modulos do SaaS.
-8. A recuperacao de senha backend usa `auth-recover` para resolver `login_name -> email`.
+5. O backend busca `login_name` em `public.app_users`, que precisa estar vinculado ao `auth.users`.
+6. As migrations `017_sync_auth_users_to_app_users.sql` e `018_make_auth_user_sync_fail_open.sql` sincronizam `auth.users` com `app_users` por e-mail unico ou metadata minima no Auth, sem bloquear o Invite User do Supabase.
+7. O frontend persiste a sessao e redireciona para `/home`.
+8. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
+9. O shell principal libera navegacao para os modulos do SaaS.
+10. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+11. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`.
+12. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
 
 ---
 
@@ -178,9 +187,21 @@ npm run build
 - `Falha ao autenticar.`:
   - Causa: `auth-login-web` nao publicada ou `login_name` nao cadastrado em `app_users`.
   - Solucao: aplicar a migration `016` e revisar o usuario no Supabase.
+- `Usuario criado no Auth nao entra no SaaS.`:
+  - Causa: `app_users` nao foi sincronizado por falta de email unico ou metadata minima (`tenant_id` e `matricula`).
+  - Solucao: aplicar as migrations `017` e `018` e revisar o cadastro no `auth.users` ou em `app_users`.
+- `Failed to invite user` no painel do Supabase:
+  - Causa: trigger de sincronizacao em `auth.users` levantando erro ao tentar tocar `app_users`.
+  - Solucao: aplicar a migration `018`, repetir o invite e depois revisar se o vinculo em `app_users` foi feito por e-mail ou se exige complemento manual.
 - `Falha ao enviar email de recuperacao.`:
   - Causa: `auth-recover` nao publicada, email ausente no `app_users` ou redirect invalido.
-  - Solucao: publicar a function, revisar o email do usuario e conferir `SUPABASE_PASSWORD_REDIRECT`.
+  - Solucao: publicar a function, revisar o email do usuario e conferir `PASSWORD_REDIRECT_URL` nos secrets da function.
+- `Informe seu login para enviar o email de recuperacao.`:
+  - Causa: clique em `Esqueci minha senha` sem preencher o `login_name`.
+  - Solucao: informar o `login_name` na tela de login antes de solicitar a recuperacao.
+- `Link invalido ou expirado. Solicite uma nova recuperacao.`:
+  - Causa: `token_hash`, codigo ou token do Supabase expirado, ausente ou redirect incorreto para `/recuperar-senha`.
+  - Solucao: solicitar um novo link e revisar a URL de redirect configurada no projeto Supabase.
 
 ---
 

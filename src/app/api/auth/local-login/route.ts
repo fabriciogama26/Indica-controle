@@ -41,5 +41,6 @@ export async function POST(request: NextRequest) {
     tenant_id: process.env.LOCAL_TENANT_ID ?? "local-tenant",
     login_name: loginName,
     login_audit_id: null,
+    session_ref: null,
   });
 }

@@ -1,19 +1,23 @@
 ﻿Edge Function: logout
 
 Objetivo
-- Registrar o encerramento da sessao no login_audit.
+- Registrar um novo evento de logout no `login_audit`.
 
 Dependencias
 - 000_create_auth_and_audit_tables.sql
+- 019_login_audit_event_log.sql
 - public.app_users
 - public.login_audit
 
 Payload
 {
   "login_audit_id": "uuid",
+  "session_ref": "uuid",
   "reason": "USER_LOGOUT",
   "source": "APP"
 }
 
 Regra
-- So atualiza o login_audit do proprio usuario autenticado.
+- So insere evento de logout para o proprio usuario autenticado.
+- Se `session_ref` nao vier, a function tenta resolver pela linha de login ou pela ultima sessao encontrada.
+- Cada logout gera uma nova linha com `event_type = 'LOGOUT'`.

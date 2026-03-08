@@ -41,6 +41,7 @@ Atualizacao 2026-03
 - Base do `SaaS (Web)` criada.
 - Edge Function `auth-login-web` criada.
 - Migration `016_add_login_name_to_auth_tables.sql` criada.
+- Migration `017_sync_auth_users_to_app_users.sql` criada.
 - Rotas reorganizadas para separar `app = rotas/layouts` de `modules = telas`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -62,6 +63,8 @@ Constantes e configuracoes
   - Responsavel por: ambiente do login.
 - Caminho: `supabase/migrations/016_add_login_name_to_auth_tables.sql`
   - Responsavel por: suporte de banco ao login web.
+- Caminho: `supabase/migrations/017_sync_auth_users_to_app_users.sql`
+  - Responsavel por: vincular `auth.users` com `public.app_users`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`

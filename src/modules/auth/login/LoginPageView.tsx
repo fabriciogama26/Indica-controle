@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { requestPasswordRecovery } from "@/services/auth/auth.service";
 import styles from "./LoginPageView.module.css";
 
 export function LoginPageView() {
@@ -29,6 +30,16 @@ export function LoginPageView() {
     },
   });
 
+  const recoveryMutation = useMutation({
+    mutationFn: () => requestPasswordRecovery(loginName),
+    onSuccess: (result) => {
+      setFeedback(result.message);
+    },
+    onError: () => {
+      setFeedback("Falha ao solicitar a recuperacao de senha.");
+    },
+  });
+
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
       router.replace("/home");
@@ -39,6 +50,16 @@ export function LoginPageView() {
     event.preventDefault();
     setFeedback(null);
     loginMutation.mutate();
+  }
+
+  function handleRecoveryClick() {
+    if (!loginName.trim()) {
+      setFeedback("Informe seu login para enviar o email de recuperacao.");
+      return;
+    }
+
+    setFeedback(null);
+    recoveryMutation.mutate();
   }
 
   return (
@@ -85,6 +106,15 @@ export function LoginPageView() {
               />
             </label>
 
+            <button
+              type="button"
+              className={styles.recoveryLink}
+              onClick={handleRecoveryClick}
+              disabled={recoveryMutation.isPending}
+            >
+              {recoveryMutation.isPending ? "Enviando recuperacao..." : "Esqueci minha senha"}
+            </button>
+
             {feedback ? <div className={styles.errorBox}>{feedback}</div> : null}
 
             <button type="submit" className={styles.submitButton} disabled={loginMutation.isPending}>
@@ -93,7 +123,6 @@ export function LoginPageView() {
           </form>
 
           <div className={styles.footerBlock}>
-            <span className={styles.modeTag}>Controle total</span>
             <p>Registre cada movimentacao. Tenha controle total das informacoes.</p>
           </div>
         </div>

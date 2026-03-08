@@ -24,7 +24,7 @@ verify_admin_pin
 - Valida o PIN admin do usuario autenticado.
 
 logout
-- Fecha o registro da sessao em login_audit.
+- Registra um evento imutavel de logout em login_audit.
 
 log_error
 - Grava erros do app em app_error_logs.

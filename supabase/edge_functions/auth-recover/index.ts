@@ -1,6 +1,6 @@
 // Edge Function: auth-recover
 // Resolve login_name -> email e dispara reset de senha.
-// Requer variaveis: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_PASSWORD_REDIRECT (opcional).
+// Requer variaveis: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PASSWORD_REDIRECT_URL (opcional).
 
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -44,7 +44,7 @@ const sha256Hex = async (value: string) => {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const redirectTo = (Deno.env.get('SUPABASE_PASSWORD_REDIRECT') ?? '').trim()
+const redirectTo = (Deno.env.get('PASSWORD_REDIRECT_URL') ?? '').trim()
 const debugAuthRecover = (Deno.env.get('AUTH_RECOVER_DEBUG') ?? '').trim() === 'true'
 
 if (!supabaseUrl || !serviceRoleKey) {

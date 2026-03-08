@@ -5,7 +5,9 @@ export type AuthUser = {
   role: string;
   tenantId: string;
   loginName: string;
+  displayName?: string | null;
   loginAuditId: string | null;
+  sessionRef: string | null;
 };
 
 export type AuthSession = {

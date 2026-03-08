@@ -38,7 +38,8 @@ Resposta de sucesso
   "role": "admin",
   "tenant_id": "uuid",
   "login_name": "usuario.login",
-  "login_audit_id": "uuid"
+  "login_audit_id": "uuid",
+  "session_ref": "uuid"
 }
 ```
 
@@ -62,3 +63,6 @@ supabase functions deploy auth-login-web
 Observacoes
 - O frontend do SaaS deve chamar esta function em modo remoto.
 - O logout continua usando `functions/v1/logout`.
+- Cada login gera uma nova linha em `public.login_audit` com `event_type = 'LOGIN'`.
+- O `session_ref` retornado deve ser preservado pelo frontend para correlacionar o evento de logout.
+- A function usa um client administrativo separado do client de `signInWithPassword` para evitar que o insert de auditoria herde o JWT do usuario e bata no RLS.

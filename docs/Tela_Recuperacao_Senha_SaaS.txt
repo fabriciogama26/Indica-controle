@@ -1,0 +1,83 @@
+Tela: Recuperacao de Senha SaaS
+
+Visao geral
+-----------
+- Tela publica para solicitar recuperacao por `login_name` e para definir a nova senha no mesmo fluxo.
+- Reaproveita a mesma rota tanto para recuperacao quanto para aceite de convite do Supabase.
+- Trabalha em dois estados: solicitacao do link e definicao da nova senha.
+
+Arquitetura
+-----------
+- Rota: `src/app/(public)/recuperar-senha/page.tsx`
+- View: `src/modules/auth/recovery/RecoveryPasswordPageView.tsx`
+- Estilo: `src/modules/auth/recovery/RecoveryPasswordPageView.module.css`
+- Servico de auth: `src/services/auth/auth.service.ts`
+- Integracao Supabase: `src/lib/supabase/client.ts`
+- Integracao React Query: `src/lib/react-query/provider.tsx`
+- Edge Function de solicitacao: `supabase/edge_functions/auth-recover/index.ts`
+
+Cadastro
+--------
+- Nao se aplica.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica.
+
+Boas praticas
+-------------
+- Centralizar o fluxo de convite e recuperacao na mesma tela para evitar duplicacao.
+- Delegar `login_name -> email` para a Edge Function `auth-recover`.
+- Validar `token_hash`, `code` ou tokens do Supabase antes de exibir o formulario de nova senha.
+- Limpar `token_hash`, `code`, `type` e tokens da URL apos hidratar a sessao de recuperacao.
+- Exigir confirmacao de senha e comprimento minimo antes de atualizar o usuario.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica.
+
+Atalhos
+-------
+- `login -> /recuperar-senha` pelo link `Esqueci minha senha`.
+- Link de convite ou reset do Supabase -> `/recuperar-senha`.
+- `recuperar-senha -> /login` apos senha salva com sucesso.
+
+Atualizacao 2026-03
+-------------------
+- Tela publica de recuperacao criada.
+- Fluxo unificado para recuperacao e aceite de convite planejado.
+- Integracao frontend com Edge Function `auth-recover` implementada.
+- Integracao frontend com `supabase.auth.verifyOtp`, `exchangeCodeForSession`, `setSession` e `updateUser` implementada.
+- Tela passou a ser usada principalmente como destino do link recebido por email do Supabase.
+- Tela adaptada para links customizados com `token_hash` em templates de invite e reset.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(public)/recuperar-senha/page.tsx`
+  - Responsavel por: expor a rota publica `/recuperar-senha`.
+- Caminho: `src/modules/auth/recovery/RecoveryPasswordPageView.tsx`
+  - Responsavel por: alternar entre solicitacao do link e definicao da senha, exibir feedback e redirecionar para o login.
+- Caminho: `src/services/auth/auth.service.ts`
+  - Responsavel por: `requestPasswordRecovery`, `resolvePasswordFlow`, `updatePassword` e leitura de `token_hash`.
+
+Constantes e configuracoes
+- Caminho: `.env.example`
+  - Responsavel por: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e o secret backend `PASSWORD_REDIRECT_URL`.
+- Caminho: `src/lib/supabase/client.ts`
+  - Responsavel por: cliente Supabase usado para hidratar a sessao e atualizar a senha.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/auth/login/LoginPageView.tsx`
+  - Responsavel por: capturar o `login_name` e disparar a solicitacao inicial de recuperacao.
+- Caminho: `src/context/AuthContext.tsx`
+  - Responsavel por: manter a sessao do app separada do fluxo publico de recuperacao.
+
+Servicos e integracoes externas
+- Edge Function: `supabase/edge_functions/auth-recover/index.ts`
+- Supabase Auth: `verifyOtp`, `exchangeCodeForSession`, `setSession`, `getSession`, `updateUser`
+
+Ajuda contextual
+- Antes: o login exibia `Esqueci minha senha`, mas o frontend nao tinha tela para solicitar o reset nem concluir a troca.
+- Depois: a tela de login dispara o envio do email via `auth-recover`, e a rota `/recuperar-senha` cobre a definicao da senha por `token_hash`, `code` ou link do Supabase.
+- Estado atual: o link do convite pode apontar para a mesma tela desde que o redirect do Supabase esteja configurado para `/recuperar-senha`.

@@ -49,7 +49,14 @@ if (!supabaseUrl || !serviceRoleKey) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
 }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+})
+
+const supabaseAuth = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
@@ -77,7 +84,7 @@ serve(async (req) => {
   const ip = getClientIp(req) || 'unknown'
   const identityHash = await sha256Hex(`${ip}|${loginName}`)
 
-  const { data: rateData, error: rateError } = await supabase.rpc('rate_limit_check_and_hit', {
+  const { data: rateData, error: rateError } = await supabaseAdmin.rpc('rate_limit_check_and_hit', {
     p_scope: 'auth',
     p_route: 'auth.login.web',
     p_identity_hash: identityHash,
@@ -101,34 +108,42 @@ serve(async (req) => {
     )
   }
 
-  const { data: userRow, error: userErr } = await supabase
+  const { data: userRow, error: userErr } = await supabaseAdmin
     .from('app_users')
     .select('id, email, role, tenant_id, ativo, login_name')
     .eq('login_name', loginName)
     .maybeSingle()
 
   if (userErr || !userRow?.email) {
-    await supabase.from('login_audit').insert({
+    const failedEventAt = new Date().toISOString()
+    await supabaseAdmin.from('login_audit').insert({
       user_id: null,
       tenant_id: null,
+      event_type: 'LOGIN',
+      event_at: failedEventAt,
       status: 'FAILED',
       reason: 'USER_NOT_FOUND',
       source,
       login_name: loginName,
-      created_at: new Date().toISOString(),
+      logged_in_at: failedEventAt,
+      created_at: failedEventAt,
     })
 
     return respond(401, { success: false, message: 'Login ou senha invalidos.' })
   }
 
   if (userRow.ativo === false) {
-    await supabase.from('login_audit').insert({
+    const failedEventAt = new Date().toISOString()
+    await supabaseAdmin.from('login_audit').insert({
       user_id: userRow.id,
       tenant_id: userRow.tenant_id,
+      event_type: 'LOGIN',
+      event_at: failedEventAt,
       status: 'FAILED',
       reason: 'INACTIVE',
       source,
       login_name: loginName,
+      logged_in_at: failedEventAt,
       created_by: userRow.id,
       updated_by: userRow.id,
     })
@@ -136,19 +151,23 @@ serve(async (req) => {
     return respond(403, { success: false, message: 'Usuario inativo.' })
   }
 
-  const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+  const { data: authData, error: signInError } = await supabaseAuth.auth.signInWithPassword({
     email: userRow.email,
     password,
   })
 
   if (signInError || !authData?.session?.access_token || !authData.session.refresh_token) {
-    await supabase.from('login_audit').insert({
+    const failedEventAt = new Date().toISOString()
+    await supabaseAdmin.from('login_audit').insert({
       user_id: userRow.id,
       tenant_id: userRow.tenant_id,
+      event_type: 'LOGIN',
+      event_at: failedEventAt,
       status: 'FAILED',
       reason: 'AUTH_INVALID',
       source,
       login_name: loginName,
+      logged_in_at: failedEventAt,
       created_by: userRow.id,
       updated_by: userRow.id,
     })
@@ -156,19 +175,40 @@ serve(async (req) => {
     return respond(401, { success: false, message: 'Login ou senha invalidos.' })
   }
 
-  const { data: auditRow } = await supabase
+  const sessionRef = crypto.randomUUID()
+  const eventAt = new Date().toISOString()
+
+  const { data: auditRow, error: auditError } = await supabaseAdmin
     .from('login_audit')
     .insert({
       user_id: userRow.id,
       tenant_id: userRow.tenant_id,
+      event_type: 'LOGIN',
+      event_at: eventAt,
+      session_ref: sessionRef,
       status: 'SUCCESS',
       source,
       login_name: loginName,
+      logged_in_at: eventAt,
       created_by: userRow.id,
       updated_by: userRow.id,
     })
     .select('id')
     .maybeSingle()
+
+  if (auditError || !auditRow?.id) {
+    console.error('auth-login-web login_audit insert failed', {
+      auditError,
+      auditRow,
+      userId: userRow.id,
+      tenantId: userRow.tenant_id,
+      loginName,
+      sessionRef,
+      eventAt,
+    })
+    await supabaseAuth.auth.signOut(authData.session.access_token).catch(() => null)
+    return respond(500, { success: false, message: 'Falha ao registrar auditoria de login.' })
+  }
 
   return respond(200, {
     success: true,
@@ -181,6 +221,7 @@ serve(async (req) => {
     role: userRow.role,
     tenant_id: userRow.tenant_id,
     login_name: userRow.login_name,
-    login_audit_id: auditRow?.id ?? null,
+    login_audit_id: auditRow.id,
+    session_ref: sessionRef,
   })
 })

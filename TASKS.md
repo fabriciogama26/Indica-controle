@@ -1,12 +1,18 @@
 - [x] Estruturar o frontend do SaaS em `SaaS (Web)/` com Next.js 16, React 19, TypeScript e App Router.
 - [x] Implementar login web com `login_name`, suporte a modo local (`/api/auth/local-login`) e modo remoto (`auth-login-web`).
 - [x] Implementar persistencia/hidratacao de sessao no frontend com `AuthContext` e Supabase Auth.
+- [x] Reforcar o fluxo de `login_audit` para registrar entrada e saida do SaaS web como eventos imutaveis em duas linhas.
+- [x] Adicionar observabilidade no `auth-login-web` para expor detalhes da falha de auditoria nos logs da Edge Function.
+- [x] Isolar o client administrativo da `auth-login-web` para impedir que o insert em `login_audit` caia no RLS depois do `signInWithPassword`.
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
+- [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
 - [x] Implementar Edge Function `auth-recover` para recuperar senha a partir de `login_name`.
+- [x] Criar migration `017_sync_auth_users_to_app_users.sql` para sincronizar `auth.users` com `app_users`.
+- [x] Criar migration `018_make_auth_user_sync_fail_open.sql` para impedir que o Invite User do Supabase seja bloqueado por falha de sync com `app_users`.
 - [x] Disponibilizar Edge Functions ja existentes para login, logout, log de erro, sincronismo, materiais, responsaveis e saldo de estoque.
 - [x] Documentar handoff, arquitetura, contratos de backend, login, home e layout principal em `docs/`.
 
@@ -18,7 +24,11 @@
 - [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
 - [ ] Implementar gestao de sessao web com expiracao por inatividade, touch/revoke e tratamento de token expirado.
-- [ ] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover`.
+- [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.
+- [x] Ajustar a UX de recuperacao para usar o `login_name` digitado na tela de login antes do envio do email pelo Supabase.
+- [x] Adaptar `/recuperar-senha` para aceitar `token_hash` e validar links customizados de invite/reset com `verifyOtp`.
+- [ ] Definir fluxo oficial de provisionamento de usuarios no Supabase Auth com metadata minima (`tenant_id`, `matricula`, `login_name`).
+- [ ] Definir se o provisionamento padrao de usuarios sera por pre-cadastro em `app_users` + invite no Auth, ou por metadata obrigatoria no invite admin.
 - [ ] Integrar `log_error` no frontend para registrar falhas por modulo.
 - [ ] Adicionar testes automatizados para auth e fluxo base de navegacao.
 - [ ] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.

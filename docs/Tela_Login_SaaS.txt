@@ -35,6 +35,7 @@ Boas praticas
 - Persistir sessao apenas apos retorno valido do backend.
 - Manter `login_name` como identificador tecnico, sem depender de `people`.
 - Concentrar a identidade visual no card central para manter foco no login.
+- Reaproveitar o `login_name` digitado na tela para disparar o email de recuperacao sem expor o email ao usuario.
 
 Cancelamento e saldo
 --------------------
@@ -54,6 +55,11 @@ Atualizacao 2026-03
 - Container da tela ajustado para ocupar todo o viewport e manter o card centralizado em telas amplas.
 - Tela reorganizada para `page.tsx` fino em `src/app` e implementacao visual em `src/modules/auth/login`.
 - Texto da tela simplificado para remover termos tecnicos visiveis ao usuario final.
+- Tela ajustada para exibir `Esqueci minha senha` entre o campo `Senha` e o botao `Entrar`.
+- Rodape visual ajustado para exibir a mensagem institucional do acesso.
+- `Esqueci minha senha` passou a chamar o backend de recuperacao a partir do `login_name` preenchido na tela.
+- Login remoto passou a persistir `session_ref` para correlacionar a auditoria de entrada e saida no backend.
+- Login remoto passou a logar detalhes da falha de auditoria em `auth-login-web` para diagnostico no painel do Supabase.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -61,11 +67,15 @@ Funcoes principais
 - Caminho: `src/app/(public)/login/page.tsx`
   - Responsavel por: expor a rota `/login` e montar a view da tela.
 - Caminho: `src/modules/auth/login/LoginPageView.tsx`
-  - Responsavel por: formulario, textos visiveis, envio do login, feedback de erro e redirect.
+  - Responsavel por: formulario, textos visiveis, envio do login, feedback de erro, redirect e disparo do email de recuperacao.
 - Caminho: `src/modules/auth/login/LoginPageView.module.css`
   - Responsavel por: centralizacao do card, fundo da tela e responsividade do login.
 - Caminho: `src/services/auth/auth.service.ts`
-  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `clearPersistedSession`.
+  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `requestPasswordRecovery` e `clearPersistedSession`, preservando `session_ref` da sessao web.
+- Caminho: `supabase/edge_functions/auth-login-web/index.ts`
+  - Responsavel por: exigir gravacao valida de evento `LOGIN` antes de concluir o login remoto.
+- Caminho: `supabase/edge_functions/logout/index.ts`
+  - Responsavel por: registrar um novo evento `LOGOUT` e correlaciona-lo por `session_ref`.
 - Caminho: `src/context/AuthContext.tsx`
   - Responsavel por: hidratar sessao, manter estado autenticado e expor `login/logout`.
 
@@ -86,8 +96,12 @@ Servicos e integracoes externas
 
 Ajuda contextual
 - O login remoto exige `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e a Edge Function `auth-login-web` publicada.
-- A recuperacao de senha exige `auth-recover` publicada e, se houver redirect customizado, `SUPABASE_PASSWORD_REDIRECT`.
+- A recuperacao de senha exige `auth-recover` publicada e, se houver redirect customizado, o secret `PASSWORD_REDIRECT_URL`.
 - Antes: o container podia nao preencher toda a largura visivel e o card ficava deslocado para a esquerda.
 - Depois: o container ocupa o viewport e centraliza o card no eixo horizontal e vertical.
 - Antes: a tela exibia badge e mensagem tecnica de ambiente (`Modo remoto`).
 - Depois: a tela mostra uma mensagem curta e orientada ao uso final.
+- Estado atual: a tela exibe `Esqueci minha senha` entre o campo `Senha` e o botao `Entrar`.
+- Estado atual: `Esqueci minha senha` usa o `login_name` digitado para chamar `auth-recover` e disparar o email.
+- Estado atual: o rodape inferior exibe `Registre cada movimentacao. Tenha controle total das informacoes.`.
+- Estado atual: login remoto e logout web geram duas linhas em `login_audit`, uma para `LOGIN` e outra para `LOGOUT`.

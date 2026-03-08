@@ -15,7 +15,7 @@ Secrets obrigatorios
 - `SUPABASE_SERVICE_ROLE_KEY`
 
 Secrets opcionais
-- `SUPABASE_PASSWORD_REDIRECT`
+- `PASSWORD_REDIRECT_URL`
 - `AUTH_RECOVER_DEBUG`
 
 Payload de entrada
@@ -50,4 +50,4 @@ supabase functions deploy auth-recover
 
 Observacoes
 - Quando o login nao existe, a resposta continua sendo `200` com `{ "ok": true }`.
-- `SUPABASE_PASSWORD_REDIRECT` pode apontar para a rota web de redefinicao de senha.
+- `PASSWORD_REDIRECT_URL` pode apontar para a rota web de redefinicao de senha.

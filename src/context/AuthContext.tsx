@@ -23,7 +23,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (payload: LoginPayload) => Promise<{ success: boolean; message: string }>;
-  logout: () => Promise<void>;
+  logout: () => Promise<{ success: boolean; message: string | null }>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -84,8 +84,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const logout = useCallback(async () => {
-    await clearPersistedSession();
+    const result = await clearPersistedSession();
     setSession(null);
+    return result;
   }, []);
 
   const value = useMemo(
