@@ -12,6 +12,7 @@
 - [x] Adicionar policy RLS para permitir que admin/master leia `app_users` do proprio tenant na tela `/permissoes`.
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
+- [x] Refinar a sidebar para o padrao de menu lateral SaaS compacto, com secoes, icones e estados hover/ativo mais leves.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.

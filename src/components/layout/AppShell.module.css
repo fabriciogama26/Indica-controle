@@ -1,110 +1,106 @@
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 232px 1fr;
   background: linear-gradient(180deg, #edf1f6 0%, #dce3ee 100%);
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 16px 18px 28px;
-  background: linear-gradient(180deg, #16285b 0%, #1f377a 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 24px;
+  padding: 18px 14px 24px;
+  background: #1f2a44;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
 .logoBlock {
   display: grid;
   place-items: center;
   width: 100%;
-  height: 168px;
-  padding: 18px;
-  border-radius: 32px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 22px 44px rgba(13, 25, 64, 0.18);
+  min-height: 116px;
+  padding: 14px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .logoImage {
-  width: 128px;
+  width: 104px;
   height: auto;
 }
 
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 20px;
 }
 
 .navSection {
   display: grid;
-  gap: 12px;
-}
-
-.sectionToggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
+  gap: 8px;
 }
 
 .sectionTitle {
-  color: #f7f9ff;
-  font-size: 0.84rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.sectionCaret {
-  color: #b9c7ef;
-  font-size: 1.2rem;
-  line-height: 1;
+  padding: 0 8px;
+  color: rgba(229, 236, 255, 0.64);
+  font-size: 0.7rem;
   font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .sectionItems {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .navItem,
 .navItemActive {
   display: flex;
   align-items: center;
-  min-height: 56px;
-  padding: 14px 18px;
-  border-radius: 18px;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 8px;
   font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  border: 1px solid transparent;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .navItem {
-  background: rgba(255, 255, 255, 0.06);
-  color: #edf2ff;
+  background: transparent;
+  color: rgba(236, 241, 255, 0.86);
 }
 
 .navItem:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 12px 24px rgba(13, 25, 64, 0.18);
-  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .navItemActive {
-  background: linear-gradient(135deg, #26479a 0%, #375dc0 100%);
+  background: rgba(75, 117, 219, 0.34);
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 14px 30px rgba(11, 28, 78, 0.24);
+  border-color: rgba(113, 151, 244, 0.3);
+}
+
+.navIcon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+  flex: 0 0 auto;
+}
+
+.navIcon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .navLabel {
-  font-size: 0.98rem;
+  font-size: 0.92rem;
+  line-height: 1.2;
 }
 
 .logoutButton {
