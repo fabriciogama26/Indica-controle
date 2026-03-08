@@ -45,10 +45,13 @@
 - [x] Adaptar `/recuperar-senha` para aceitar `token_hash` e validar links customizados de invite/reset com `verifyOtp`.
 - [x] Definir fluxo oficial de provisionamento de usuarios no Supabase Auth com metadata minima (`tenant_id`, `matricula`, `login_name`).
 - [x] Definir o provisionamento padrao de usuarios como pre-cadastro em `app_users` + invite no Auth.
+- [x] Corrigir a hidratacao tipada do `AuthContext` para liberar o `next build`.
+- [x] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
+- [x] Excluir `supabase/edge_functions` do type-check do Next para manter o deploy web separado das Edge Functions do Supabase.
+- [x] Preparar o frontend Next.js para deploy no Vercel, mantendo Auth, banco e Edge Functions no Supabase.
 - [ ] Integrar `log_error` no frontend para registrar falhas por modulo.
 - [ ] Adicionar testes automatizados para auth e fluxo base de navegacao.
-- [ ] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
-- [ ] Corrigir o `build` atual do Next para nao type-checkar imports Deno de `SaaS (Web)/supabase/edge_functions`, ou remover essa copia do app web.
+- [ ] Configurar no Vercel as variaveis de ambiente de `Preview` e `Production` e validar o dominio final de `PASSWORD_REDIRECT_URL`.
 
 - [ ] Definir uma fonte unica de verdade para `supabase/`, porque hoje existe copia na raiz do repositorio e outra em `SaaS (Web)/supabase`.
 - [x] Revisar README e docs que ainda assumiam backend somente externo em `d:\\RQM\\supabase`.
@@ -57,7 +60,7 @@
 - [x] Tratar `TOKEN_EXPIRED` com auditoria no `login_audit`.
 - [ ] Definir backlog funcional do SaaS de engenharia eletrica alem do modulo atual de materiais/estoque.
 
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `react` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `react-dom` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `@types/node` `20.19.37 -> 25.3.5`.
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `eslint` `9.39.4 -> 10.0.3`.
+- [ ] Pendencia de dependencia registrada em 2026-03-08: `react` `19.2.3 -> 19.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-03-08: `react-dom` `19.2.3 -> 19.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-03-08: `@types/node` `20.19.37 -> 25.3.5`.
+- [ ] Pendencia de dependencia registrada em 2026-03-08: `eslint` `9.39.4 -> 10.0.3`.

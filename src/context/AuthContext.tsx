@@ -94,7 +94,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           return;
         }
 
-        const syncedSession = data.session ? syncRemoteSessionTokens(data.session, persisted) : persisted;
+        const syncedSession = data.session ? syncRemoteSessionTokens(data.session, persisted) ?? persisted : persisted;
         const hydratedSession = await hydrateSessionAccess(syncedSession);
 
         if (active) {

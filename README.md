@@ -1,13 +1,13 @@
 ﻿# RQM SaaS
 
-Frontend web do SaaS para login, shell principal, cadastros base e modulos de estoque integrados ao Supabase.
+Frontend web do SaaS para login, shell principal, cadastros base e modulos de estoque integrados ao Supabase, com hospedagem web prevista no Vercel.
 
 ---
 
 ## Visao geral
 - Problema resolvido: separar o frontend web do app Android e manter o contexto tecnico do SaaS em uma estrutura propria.
-- Solucao proposta: projeto Next.js em `SaaS (Web)/` com docs, backlog e contratos de backend dentro da propria pasta.
-- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Pessoas, Materiais e Estoque.
+- Solucao proposta: projeto Next.js publicado no Vercel para servir a interface web, mantendo Auth, banco, RLS e Edge Functions no Supabase.
+- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Pessoas, Materiais e Estoque, acessado por dominio web publico.
 
 ---
 
@@ -16,7 +16,9 @@ Frontend web do SaaS para login, shell principal, cadastros base e modulos de es
 - React 19
 - TypeScript
 - CSS Modules
+- Vercel
 - Supabase JS
+- Supabase Edge Functions
 - TanStack React Query
 - ESLint
 
@@ -25,6 +27,7 @@ Frontend web do SaaS para login, shell principal, cadastros base e modulos de es
 ## Requisitos
 - Node.js instalado
 - npm disponivel
+- Conta/projeto no Vercel para publicacao do frontend
 - Projeto Supabase configurado para o modo remoto
 - Edge Functions e migrations publicadas quando o ambiente nao estiver em modo local
 
@@ -47,27 +50,45 @@ npm run dev
 ---
 
 ### Build / Producao
+1. Validar o build local:
 ```bash
 npm run build
-npm run start
+```
+2. Publicar o frontend no Vercel como projeto `Next.js` apontando para a raiz deste repositorio.
+3. Configurar no Vercel as mesmas variaveis listadas em `.env.example`, inclusive as variaveis server-side usadas pelas rotas `src/app/api/*`.
+4. Definir `PASSWORD_REDIRECT_URL` com o dominio publico do frontend:
+```bash
+https://SEU-DOMINIO/recuperar-senha
+```
+5. Manter as Edge Functions no Supabase e atualizar no proprio Supabase os secrets usados por elas (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `PASSWORD_REDIRECT_URL`).
+6. Se publicar pela CLI do Vercel:
+```bash
+vercel
+vercel --prod
 ```
 
 ---
 
 ## Variaveis de ambiente
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_AUTH_MODE`
-- `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`
-- `LOCAL_AUTH_USERNAME`
-- `LOCAL_AUTH_PASSWORD`
-- `LOCAL_USER_ID`
-- `LOCAL_ROLE`
-- `LOCAL_TENANT_ID`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `PASSWORD_REDIRECT_URL`
-- `AUTH_RECOVER_DEBUG`
+- Frontend publico / browser:
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `NEXT_PUBLIC_AUTH_MODE`
+  - `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`
+- Rotas server-side do Next no Vercel:
+  - `SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `PASSWORD_REDIRECT_URL`
+  - `AUTH_RECOVER_DEBUG`
+- Modo local:
+  - `LOCAL_AUTH_USERNAME`
+  - `LOCAL_AUTH_PASSWORD`
+  - `LOCAL_USER_ID`
+  - `LOCAL_ROLE`
+  - `LOCAL_TENANT_ID`
+- Observacao tecnica:
+  - `PASSWORD_REDIRECT_URL` deve apontar para a rota publica `/recuperar-senha` do dominio publicado no Vercel.
+  - Os mesmos segredos usados pelas Edge Functions continuam sendo configurados no Supabase, nao no Vercel.
 
 ---
 
@@ -79,6 +100,7 @@ npm run start
 - `src/lib`: cliente Supabase e React Query.
 - `src/services`: integracoes do frontend.
 - `docs`: handoff e documentacao funcional do SaaS.
+- `vercel.json`: declaracao minima do deploy web no Vercel.
 
 ---
 
@@ -152,8 +174,9 @@ npm run start
   - `Tela_Recuperacao_Senha_SaaS.txt`: recuperacao e definicao de senha.
 - `.env`: variaveis locais do ambiente, ignoradas pelo Git.
 - `.env.example`: variaveis de ambiente esperadas.
+- `vercel.json`: identifica o projeto como `nextjs` no Vercel.
 - `TASKS.md`: backlog do SaaS separado do app Android.
-- `package.json`: scripts e dependencias.
+- `package.json`: scripts, dependencias e versao minima de Node.js.
 - `tsconfig.json`: configuracao TypeScript.
 - `eslint.config.mjs`: configuracao do lint.
 
@@ -164,33 +187,34 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 - Referencia externa opcional. Nao e usada diretamente por este frontend.
 
 ## Fluxo principal
-1. Usuario acessa `/login`.
-2. A rota `src/app/(public)/login/page.tsx` monta a tela implementada em `src/modules/auth/login/`.
-3. Em modo remoto, o frontend chama `auth-login-web` no Supabase.
-4. Em modo local, o frontend usa `/api/auth/local-login`.
-5. O backend busca `login_name` em `public.app_users`, que precisa estar vinculado ao `auth.users`.
-6. As migrations `017_sync_auth_users_to_app_users.sql` e `018_make_auth_user_sync_fail_open.sql` sincronizam `auth.users` com `app_users` por e-mail unico ou metadata minima no Auth, sem bloquear o Invite User do Supabase.
-7. A migration `020_harden_rls_auth_uid_active.sql` reforca as policies para liberar dados somente quando `auth.uid()` estiver vinculado a um `app_users` ativo do mesmo tenant.
-8. A migration `021_rls_to_authenticated.sql` limita as policies multi-tenant ao role `authenticated`.
-9. A migration `023_normalize_roles_to_app_roles.sql` normaliza os perfis em `app_roles` e passa `app_users` e `role_page_permissions` para `role_id`.
-10. A migration `024_create_user_page_permissions.sql` cria a matriz por usuario e por tela, com `access`, `select`, `insert` e `update`.
-11. O backend continua retornando `role` como `role_key` para o frontend, mesmo com a modelagem normalizada.
-12. O frontend persiste a sessao e redireciona para `/home`.
-13. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
-14. O shell principal libera navegacao para os modulos do SaaS.
-15. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
-16. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
-17. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
-18. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
-19. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
-20. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
-21. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
-22. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
-23. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
-24. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`.
-25. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
-26. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
-27. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
+1. Usuario acessa o dominio publicado no Vercel.
+2. O App Router do Next resolve `/login`.
+3. A rota `src/app/(public)/login/page.tsx` monta a tela implementada em `src/modules/auth/login/`.
+4. Em modo remoto, o frontend chama `auth-login-web` no Supabase.
+5. Em modo local, o frontend usa `/api/auth/local-login`.
+6. O backend busca `login_name` em `public.app_users`, que precisa estar vinculado ao `auth.users`.
+7. As migrations `017_sync_auth_users_to_app_users.sql` e `018_make_auth_user_sync_fail_open.sql` sincronizam `auth.users` com `app_users` por e-mail unico ou metadata minima no Auth, sem bloquear o Invite User do Supabase.
+8. A migration `020_harden_rls_auth_uid_active.sql` reforca as policies para liberar dados somente quando `auth.uid()` estiver vinculado a um `app_users` ativo do mesmo tenant.
+9. A migration `021_rls_to_authenticated.sql` limita as policies multi-tenant ao role `authenticated`.
+10. A migration `023_normalize_roles_to_app_roles.sql` normaliza os perfis em `app_roles` e passa `app_users` e `role_page_permissions` para `role_id`.
+11. A migration `024_create_user_page_permissions.sql` cria a matriz por usuario e por tela, com `access`, `select`, `insert` e `update`.
+12. O backend continua retornando `role` como `role_key` para o frontend, mesmo com a modelagem normalizada.
+13. O frontend persiste a sessao e redireciona para `/home`.
+14. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
+15. O shell principal libera navegacao para os modulos do SaaS.
+16. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
+17. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
+18. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
+19. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
+20. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
+21. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
+22. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
+23. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
+24. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+25. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
+26. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
+27. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
+28. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
 
 ---
 
@@ -211,6 +235,9 @@ npm run build
 - `Login local nao configurado.`:
   - Causa: `LOCAL_AUTH_USERNAME` ou `LOCAL_AUTH_PASSWORD` ausentes.
   - Solucao: preencher as variaveis locais.
+- `Environment Variable "SUPABASE_SERVICE_ROLE_KEY" references Secret that does not exist` no Vercel:
+  - Causa: variavel server-side nao cadastrada no projeto Vercel.
+  - Solucao: cadastrar `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL` e `PASSWORD_REDIRECT_URL` no ambiente correto (`Preview`/`Production`).
 - `Falha ao autenticar.`:
   - Causa: `auth-login-web` nao publicada ou `login_name` nao cadastrado em `app_users`.
   - Solucao: aplicar a migration `016` e revisar o usuario no Supabase.
@@ -223,6 +250,9 @@ npm run build
 - `Falha ao enviar email de recuperacao.`:
   - Causa: `auth-recover` nao publicada, email ausente no `app_users` ou redirect invalido.
   - Solucao: publicar a function, revisar o email do usuario e conferir `PASSWORD_REDIRECT_URL` nos secrets da function.
+- O email de recuperacao abre `localhost` ou dominio antigo:
+  - Causa: `PASSWORD_REDIRECT_URL` configurada no Vercel ou no Supabase com URL desatualizada.
+  - Solucao: atualizar `PASSWORD_REDIRECT_URL` para `https://SEU-DOMINIO/recuperar-senha` no Vercel e tambem nos secrets da Edge Function `auth-recover`.
 - `Sua sessao expirou por inatividade. Entre novamente.`:
   - Causa: tempo configurado em `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` atingido sem atividade do usuario.
   - Solucao: entrar novamente e revisar o timeout configurado para o ambiente.

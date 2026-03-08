@@ -32,6 +32,7 @@ Boas praticas
 - Nao expor senha local no frontend.
 - Em modo remoto, delegar autenticacao para a Edge Function `auth-login-web`.
 - Em recuperacao de senha, delegar a resolucao `login_name -> email` para a Edge Function `auth-recover`.
+- Publicar o frontend no Vercel sem mover `auth-login-web`, `auth-recover` e `logout` para dentro do projeto Next.
 - Persistir sessao apenas apos retorno valido do backend.
 - Manter `login_name` como identificador tecnico, sem depender de `people`.
 - Concentrar a identidade visual no card central para manter foco no login.
@@ -67,6 +68,8 @@ Atualizacao 2026-03
 - Login passou a consumir mensagens transitorias de autenticacao para diferenciar logout manual, inatividade e token expirado.
 - Sessao web passou a expirar por inatividade no frontend, com retorno para `/login`.
 - `TOKEN_EXPIRED` passou a tentar registrar `LOGOUT` no backend mesmo quando o JWT ja expirou.
+- `AuthContext` passou a tratar a hidratacao tipada sem bloquear o `next build` usado no deploy do Vercel.
+- O fluxo de deploy passou a exigir `PASSWORD_REDIRECT_URL` apontando para o dominio publico `/recuperar-senha`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -105,10 +108,13 @@ Ajuda contextual
 - O login remoto exige `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e a Edge Function `auth-login-web` publicada.
 - O controle de sessao por inatividade usa `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`.
 - A recuperacao de senha exige `auth-recover` publicada e, se houver redirect customizado, o secret `PASSWORD_REDIRECT_URL`.
+- Em producao, `PASSWORD_REDIRECT_URL` deve usar o dominio do frontend publicado no Vercel.
 - Antes: o container podia nao preencher toda a largura visivel e o card ficava deslocado para a esquerda.
 - Depois: o container ocupa o viewport e centraliza o card no eixo horizontal e vertical.
 - Antes: a tela exibia badge e mensagem tecnica de ambiente (`Modo remoto`).
 - Depois: a tela mostra uma mensagem curta e orientada ao uso final.
+- Antes: o build do Next podia falhar na hidratacao tipada da sessao antes do deploy.
+- Depois: a hidratacao reutiliza a sessao persistida com fallback tipado e o `next build` volta a compilar.
 - Estado atual: a tela exibe `Esqueci minha senha` entre o campo `Senha` e o botao `Entrar`.
 - Estado atual: `Esqueci minha senha` usa o `login_name` digitado para chamar `auth-recover` e disparar o email.
 - Estado atual: o rodape inferior exibe `Registre cada movimentacao. Tenha controle total das informacoes.`.
