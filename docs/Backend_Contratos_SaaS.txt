@@ -8,6 +8,7 @@ Visao geral
 Arquitetura
 -----------
 - Backend versionado neste repositorio em `supabase/`.
+- Frontend publicado no Vercel, sem portar Edge Functions para serverless functions do Vercel.
 - O contrato minimo atual do SaaS cobre autenticacao web, recuperacao, logout, auditoria e base de permissao por pagina.
 - O contrato atual tambem cobre a edicao de credenciais por usuario na tela `/permissoes`.
 - O contrato atual tambem cobre a leitura das permissoes salvas por usuario no bootstrap da sessao web.
@@ -25,6 +26,7 @@ Boas praticas
 - Publicar migrations no Supabase e manter docs atualizadas.
 - Nao acoplar frontend web a SQL embutido dentro do Next.js.
 - Usar Edge Functions como porta de entrada do frontend quando a regra exigir autenticacao, rate limit e auditoria.
+- Manter `PASSWORD_REDIRECT_URL` alinhado com o dominio publicado no Vercel para invite e recuperacao de senha.
 
 Cancelamento e saldo
 --------------------
@@ -65,6 +67,8 @@ Atualizacao 2026-03
 - A tela `/permissoes` passou a gravar historico em `app_user_permission_history`.
 - O fluxo oficial de provisionamento web passou a ser `pre-cadastro em app_users + invite no Auth`.
 - A route `src/app/api/auth/session-access/route.ts` passou a devolver `pageAccess` e `hasCustomPermissions` para o frontend montar o shell conforme as permissoes salvas.
+- O frontend passou a ter preparo explicito para deploy no Vercel, mantendo `auth-login-web`, `auth-recover`, `logout` e demais Edge Functions no Supabase.
+- `tsconfig.json` do frontend passou a excluir `supabase/edge_functions` do type-check do Next para evitar conflito entre runtime Node e runtime Deno.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -85,6 +89,8 @@ Funcoes principais
   - Responsavel por: enviar o convite de primeiro acesso a partir do pre-cadastro existente em `app_users`.
 - Caminho: `src/app/api/auth/session-access/route.ts`
   - Responsavel por: resolver o usuario autenticado atual e devolver as telas liberadas em `app_user_page_permissions`.
+- Caminho: `vercel.json`
+  - Responsavel por: declarar o deploy do frontend como projeto `nextjs`, sem substituir o backend Supabase.
 
 Constantes e configuracoes
 - Caminho: `supabase/migrations/016_add_login_name_to_auth_tables.sql`
@@ -113,6 +119,10 @@ Constantes e configuracoes
   - Responsavel por: criar `app_user_permission_history` para auditoria de alteracoes administrativas e convites.
 - Caminho: `supabase/migrations/011_create_rate_limit.sql`
   - Responsavel por: rate limit das functions.
+- Caminho: `.env.example`
+  - Responsavel por: listar as variaveis que precisam existir no Vercel e no Supabase para login, invite e reset.
+- Caminho: `tsconfig.json`
+  - Responsavel por: impedir que o build web tente tipar imports Deno das Edge Functions.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/services/auth/auth.service.ts`
@@ -145,6 +155,7 @@ Ajuda contextual
   - `auth-recover`
   - `logout`
   - `log_error`
+- O Vercel nao substitui essas functions; ele hospeda apenas o frontend Next.js e as rotas `src/app/api/*`.
 - Nenhuma RPC nova e obrigatoria para login, recover ou shell nesta fase alem da `rate_limit_check_and_hit`.
 - Criar usuario apenas em `Authentication > Users` nao deve mais falhar por causa da sincronizacao. O vinculo com `app_users` ainda depende de email unico correspondente ou metadata minima no Auth (`tenant_id` e `matricula`).
 - `login_audit` agora registra duas linhas por sessao do SaaS web: uma com `event_type = 'LOGIN'` e outra com `event_type = 'LOGOUT'`, correlacionadas por `session_ref`.

@@ -173,6 +173,16 @@ export async function resolveAdminOperator(request: NextRequest): Promise<AdminO
     return resolution;
   }
 
+  const roleId = resolution.appUser.role_id;
+  if (!roleId) {
+    return {
+      error: {
+        status: 403,
+        message: "Acesso negado para pesquisar usuarios do tenant.",
+      },
+    };
+  }
+
   if (!resolution.role.isAdmin) {
     return {
       error: {
@@ -188,7 +198,7 @@ export async function resolveAdminOperator(request: NextRequest): Promise<AdminO
       appUserId: resolution.appUser.id,
       authUserId: resolution.authUserId,
       tenantId: resolution.appUser.tenant_id,
-      roleId: resolution.appUser.role_id,
+      roleId,
       roleKey: resolution.role.roleKey,
     },
   };

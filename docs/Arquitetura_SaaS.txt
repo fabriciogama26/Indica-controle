@@ -8,6 +8,7 @@ Visao geral
 Arquitetura
 -----------
 - Frontend: Next.js App Router com `src/app` para rotas/layouts e `src/modules` para as telas.
+- Hospedagem web: Vercel para publicar o frontend Next.js.
 - Backend: Supabase (Edge Functions, Auth, tabelas com RLS e migrations versionadas).
 - Login web: `auth-login-web`.
 - Login local: `src/app/api/auth/local-login/route.ts`.
@@ -25,6 +26,7 @@ Boas praticas
 - `app_users` separado de `people`.
 - `login_name` unico globalmente enquanto o tenant nao for resolvido antes do login.
 - RLS e tenant scope mantidos no Supabase.
+- Edge Functions continuam no Supabase; o Vercel hospeda apenas o app Next e as rotas `src/app/api/*`.
 - React Query como base de chamadas ao servidor desde o inicio.
 
 Cancelamento e saldo
@@ -43,6 +45,10 @@ Atualizacao 2026-03
 - Migration `016_add_login_name_to_auth_tables.sql` criada.
 - Migration `017_sync_auth_users_to_app_users.sql` criada.
 - Rotas reorganizadas para separar `app = rotas/layouts` de `modules = telas`.
+- Deploy do frontend documentado para Vercel, sem mover Edge Functions do Supabase.
+- `package.json` passou a declarar Node.js `>=20.9.0` para alinhar o runtime com o Next.js 16.
+- `vercel.json` passou a declarar explicitamente o framework `nextjs`.
+- `tsconfig.json` passou a excluir `supabase/edge_functions` do type-check do app Next.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -55,12 +61,18 @@ Funcoes principais
   - Responsavel por: implementar a home autenticada.
 - Caminho: `src/services/auth/auth.service.ts`
   - Responsavel por: login remoto/local e limpeza da sessao.
+- Caminho: `vercel.json`
+  - Responsavel por: declarar o frontend como projeto `nextjs` no Vercel.
 - Caminho: `supabase/edge_functions/auth-login-web/index.ts`
   - Responsavel por: autenticar `login_name`, aplicar rate limit e devolver tokens.
 
 Constantes e configuracoes
 - Caminho: `SaaS (Web)/.env.example`
   - Responsavel por: ambiente do login.
+- Caminho: `package.json`
+  - Responsavel por: scripts do Next.js e versao minima de Node.js do deploy.
+- Caminho: `tsconfig.json`
+  - Responsavel por: excluir `supabase/edge_functions` do type-check do frontend web.
 - Caminho: `supabase/migrations/016_add_login_name_to_auth_tables.sql`
   - Responsavel por: suporte de banco ao login web.
 - Caminho: `supabase/migrations/017_sync_auth_users_to_app_users.sql`
@@ -80,3 +92,5 @@ Servicos e integracoes externas
 Ajuda contextual
 - Sessao por inatividade, recovery e touch/revoke ainda nao entraram nesta fase.
 - O objetivo atual e manter `src/app` limpo, com page/layout finos, e concentrar texto/UI das telas em `src/modules`.
+- Antes: nao havia preparo explicito de deploy para o frontend em hospedagem publica.
+- Depois: o frontend pode ser publicado no Vercel, enquanto `/functions/v1/*`, Auth e RLS continuam centralizados no Supabase.

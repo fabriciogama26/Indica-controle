@@ -14,10 +14,26 @@ const corsHeaders = {
 const respond = (status: number, payload: Record<string, unknown>) =>
   new Response(JSON.stringify(payload), { status, headers: corsHeaders })
 
+type JobTitleRow = {
+  code: string | null
+  name: string | null
+}
+
+type ResponsavelRow = {
+  id: string
+  nome: string
+  job_titles: JobTitleRow | JobTitleRow[] | null
+}
+
 const getBearerToken = (req: Request) => {
   const auth = req.headers.get('authorization') || req.headers.get('Authorization') || ''
   if (!auth.toLowerCase().startsWith('bearer ')) return ''
   return auth.substring(7).trim()
+}
+
+const resolveCargo = (jobTitles: ResponsavelRow['job_titles']) => {
+  const currentJobTitle = Array.isArray(jobTitles) ? jobTitles[0] : jobTitles
+  return currentJobTitle?.name ?? currentJobTitle?.code ?? ''
 }
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -58,10 +74,11 @@ serve(async (req) => {
     return respond(500, { success: false, message: 'Falha ao consultar responsaveis.' })
   }
 
-  const items = (data ?? []).map((item: any) => ({
+  const rows = Array.isArray(data) ? (data as ResponsavelRow[]) : []
+  const items = rows.map((item) => ({
     id: item.id,
     nome: item.nome,
-    cargo: item.job_titles?.name ?? item.job_titles?.code ?? '',
+    cargo: resolveCargo(item.job_titles),
   }))
 
   return respond(200, {
