@@ -6,12 +6,14 @@ Visao geral
 - Exibe o fluxo real de selecao de usuario, role, status e visibilidade por tela.
 - A tela agora carrega e salva `role`, `ativo/inativo` e a liberacao das telas em `app_user_page_permissions`.
 - As telas salvas para o usuario agora tambem sao consumidas no bootstrap da sessao para esconder ou liberar a navegacao no shell.
+- A tela agora tambem permite enviar convite de primeiro acesso para usuarios pre-cadastrados em `app_users`.
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/permissoes/page.tsx`
 - Busca de usuarios: `src/app/api/app-users/search/route.ts`
 - Carga e salvamento: `src/app/api/app-users/[userId]/permissions/route.ts`
+- Invite de primeiro acesso: `src/app/api/app-users/[userId]/invite/route.ts`
 - View: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Estilo: `src/modules/dashboard/permissoes/PermissionsPageView.module.css`
 - Guard de acesso: `src/lib/auth/authorization.ts`
@@ -28,6 +30,7 @@ Cadastro
   - alternar status ativo/inativo
   - marcar somente se a tela fica liberada ou bloqueada para o usuario
   - salvar `role`, `status` e as telas liberadas no Supabase
+  - enviar convite de primeiro acesso quando o usuario ainda nao estiver vinculado ao Auth
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -41,11 +44,16 @@ Filtros, auto-complete e listagem
 - Ao salvar, a route:
   - atualiza `app_users.role_id`
   - atualiza `app_users.ativo`
-  - faz `upsert` em `app_user_page_permissions`
-  - espelha o toggle da tela em `can_access`, `can_select`, `can_insert` e `can_update`
+  - faz `upsert` em `app_user_page_permissions` usando apenas `can_access`
+  - registra historico imutavel em `app_user_permission_history`
+- Ao clicar em `Enviar convite`, a route:
+  - valida se o operador atual e admin/master do tenant
+  - valida se o usuario alvo possui `email`, `matricula` e `login_name`
+  - envia `inviteUserByEmail` para o email do pre-cadastro em `app_users`
+  - usa a metadata minima para sincronizar `auth.users` com `app_users`
+  - registra historico com `change_type = 'INVITE_SENT'`
 - No login e na reidratacao da sessao, o frontend consulta `src/app/api/auth/session-access/route.ts` para aplicar no shell as telas realmente liberadas para o usuario.
 - Ao selecionar o resultado da busca, a tela aplica `role`, `status` e a matriz visual do usuario escolhido.
-- A grade de permissao usa estado local para simular a matriz final por usuario e por tela.
 - A listagem atual considera apenas as telas que ja existem no SaaS web: Home, Estoque Atual, Entradas, Saidas, Materiais, Pessoas e Cadastro Base.
 
 Boas praticas
@@ -56,8 +64,8 @@ Boas praticas
 - A matriz final deve persistir apenas a liberacao da tela por usuario.
 - Quando a tela estiver liberada, o usuario herda o pacote de permissao daquela pagina.
 - Nao modelar `delete`.
-- Registrar alteracoes reais de permissao com auditoria em proxima etapa.
 - Manter a UI coerente com o conceito final: primeiro selecionar o usuario, depois definir as permissoes dele.
+- O operador da tela precisa ser administrativo; o usuario alvo pode ser qualquer `app_user` do mesmo tenant.
 
 Cancelamento e saldo
 --------------------
@@ -78,7 +86,10 @@ Atualizacao 2026-03
 - Tabela multi-tenant `role_page_permissions` criada para acesso por `role_id`.
 - Migration `024_create_user_page_permissions.sql` criada para persistir permissao por usuario e por tela sem `delete`.
 - Migration `025_app_users_admin_tenant_select.sql` criada para liberar leitura de `app_users` do mesmo tenant apenas para admin/master autenticado.
+- Migration `026_simplify_user_page_permissions.sql` criada para simplificar a matriz por usuario para um unico `can_access` por tela.
+- Migration `027_create_permission_change_history.sql` criada para registrar historico imutavel de mudancas de role, status, telas liberadas e envio de convite.
 - Route `src/app/api/app-users/[userId]/permissions/route.ts` criada para carregar e salvar credenciais por usuario.
+- Route `src/app/api/app-users/[userId]/invite/route.ts` criada para enviar o convite de primeiro acesso a partir do pre-cadastro em `app_users`.
 - Route `src/app/api/auth/session-access/route.ts` criada para devolver as telas liberadas ao usuario autenticado.
 - Helper `authorization.ts` criado para normalizar `role`, identificar admin e bloquear rotas administrativas.
 - Shell principal passou a expor `Permissoes` apenas pela engrenagem do topo para perfis administrativos.
@@ -97,7 +108,9 @@ Funcoes principais
 - Caminho: `src/app/api/app-users/search/route.ts`
   - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado e buscar `app_users` do mesmo tenant por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin/master.
 - Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
-  - Responsavel por: carregar e salvar `role`, `ativo/inativo` e a matriz de telas do usuario selecionado.
+  - Responsavel por: carregar e salvar `role`, `ativo/inativo`, a matriz de telas do usuario selecionado e registrar historico em `app_user_permission_history`.
+- Caminho: `src/app/api/app-users/[userId]/invite/route.ts`
+  - Responsavel por: enviar convite de primeiro acesso com base no pre-cadastro existente em `app_users`.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: `normalizeRole`, `isAdminRole`, fallback por role, resolucao de `pageAccess` e bloqueio de rotas do shell.
 - Caminho: `src/components/layout/AppShell.tsx`
@@ -111,7 +124,11 @@ Constantes e configuracoes
 - Caminho: `supabase/migrations/023_normalize_roles_to_app_roles.sql`
   - Responsavel por: criar `app_roles` e migrar a matriz para `role_id`.
 - Caminho: `supabase/migrations/024_create_user_page_permissions.sql`
-  - Responsavel por: criar a base SQL inicial da matriz por usuario, hoje ainda pendente de simplificacao para o conceito final de liberacao por tela.
+  - Responsavel por: criar a base SQL inicial da matriz por usuario.
+- Caminho: `supabase/migrations/026_simplify_user_page_permissions.sql`
+  - Responsavel por: simplificar `app_user_page_permissions` para o conceito final de liberacao unica por tela.
+- Caminho: `supabase/migrations/027_create_permission_change_history.sql`
+  - Responsavel por: criar `app_user_permission_history` para auditoria de alteracoes administrativas.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
@@ -123,6 +140,7 @@ Servicos e integracoes externas
 Ajuda contextual
 - Antes: a rota existia, mas ainda estava no formato de base visual inicial.
 - Depois: a rota `/permissoes` representa o fluxo real esperado para selecionar usuario e liberar ou bloquear cada tela.
-- Estado atual: a tela ja consome e grava `app_user_page_permissions`, mas a tabela ainda usa internamente `can_select`, `can_insert` e `can_update` espelhados a partir do mesmo toggle visual.
 - Estado atual: a tela ja consome e grava `app_user_page_permissions`, e o shell ja passa a esconder as telas desabilitadas quando o usuario faz login ou reabre a sessao.
+- Estado atual: o save usa apenas `can_access`, sem matriz individual de `select/insert/update`.
+- Estado atual: toda alteracao de role, status, telas liberadas e envio de convite passa a gerar historico em `app_user_permission_history`.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.

@@ -33,6 +33,7 @@ type TenantUser = {
   roleLabel: string;
   status: UserStatus;
   tenantId: string;
+  canInvite?: boolean;
 };
 
 const roleOptions: RoleOption[] = [
@@ -106,6 +107,7 @@ export function PermissionsPageView() {
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [isLoadingSelectedUser, setIsLoadingSelectedUser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
 
   useEffect(() => {
     if (!session?.accessToken) {
@@ -314,7 +316,11 @@ export function PermissionsPageView() {
 
       setFeedback({
         type: "success",
-        message: data.message ?? "Credencial atualizada com sucesso.",
+        message:
+          data.message ??
+          (selectedUser.id === session?.user.userId
+            ? "Credencial atualizada com sucesso. Entre novamente para aplicar as mudancas na sua sessao."
+            : "Credencial atualizada com sucesso."),
       });
     } catch {
       setFeedback({
@@ -323,6 +329,60 @@ export function PermissionsPageView() {
       });
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleInvite() {
+    if (!selectedUser) {
+      setFeedback({ type: "error", message: "Selecione um usuario antes de enviar o convite." });
+      return;
+    }
+
+    if (!selectedUser.canInvite) {
+      setFeedback({ type: "error", message: "Usuario ja vinculado ao Auth ou sem email para convite." });
+      return;
+    }
+
+    if (!session?.accessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para enviar o convite." });
+      return;
+    }
+
+    setIsInviting(true);
+
+    try {
+      const response = await fetch(`/api/app-users/${selectedUser.id}/invite`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+      };
+
+      if (!response.ok || !data.success) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao enviar convite do usuario.",
+        });
+        return;
+      }
+
+      setSelectedUser((current) => (current ? { ...current, canInvite: false } : current));
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Convite enviado com sucesso.",
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao enviar convite do usuario.",
+      });
+    } finally {
+      setIsInviting(false);
     }
   }
 
@@ -468,6 +528,14 @@ export function PermissionsPageView() {
       ) : null}
 
       <div className={styles.actionsFooter}>
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={handleInvite}
+          disabled={!selectedUser || !selectedUser.canInvite || isInviting || isLoadingSelectedUser}
+        >
+          {isInviting ? "Enviando convite..." : "Enviar convite"}
+        </button>
         <button
           type="button"
           className={styles.primaryButton}

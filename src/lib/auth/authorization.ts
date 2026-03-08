@@ -99,7 +99,7 @@ export function canAccessRoute(context: RouteAccessContext, pathname: string | n
 
   const pageKey = resolvePageKeyFromPath(currentPath);
   if (!pageKey) {
-    return true;
+    return false;
   }
 
   return hasPageAccess(context, pageKey);

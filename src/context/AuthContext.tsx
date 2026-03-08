@@ -55,7 +55,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await clearPersistedSession({
       reason,
       feedbackMessage,
-      skipRemoteLogout: reason === "TOKEN_EXPIRED",
       skipSupabaseSignOut: reason === "TOKEN_EXPIRED",
     }).catch(() => null);
 
@@ -85,7 +84,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
           await clearPersistedSession({
             reason: "TOKEN_EXPIRED",
             feedbackMessage: "Sua sessao expirou. Entre novamente.",
-            skipRemoteLogout: true,
             skipSupabaseSignOut: true,
           }).catch(() => null);
 

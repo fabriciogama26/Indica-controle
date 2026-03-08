@@ -4,6 +4,7 @@ Visao geral
 -----------
 - Shell principal exibido apos autenticacao.
 - Mantem coluna lateral de navegacao, barra superior horizontal, nome do usuario conectado e logout.
+- Usa menu lateral compacto no padrao SaaS, com icones por item e secoes visuais fixas.
 
 Arquitetura
 -----------
@@ -28,6 +29,7 @@ Boas praticas
 - Preparar a UI para consumir um futuro campo `display` de `app_users`, com fallback para `login_name`.
 - Esconder rotas administrativas quando o `role` nao permitir acesso.
 - Respeitar `app_user_page_permissions` quando o usuario tiver permissoes customizadas por tela.
+- Evitar botoes grandes na lateral; a navegacao deve parecer menu de dashboard e nao grade de acoes.
 
 Cancelamento e saldo
 --------------------
@@ -49,15 +51,17 @@ Atualizacao 2026-03
 - Bloco do logo ampliado para dar mais presenca visual na coluna lateral.
 - Bloco do logo ajustado para acompanhar a mesma largura visual dos botoes do menu.
 - Menu lateral reorganizado em secoes expansivas, sem icones nos botoes, mantendo a paleta alinhada a logo.
+- Sidebar redesenhada para menu compacto estilo dashboard SaaS, com fundo azul escuro, itens de 36-40px, hover leve e icones a esquerda.
 - Atalho de `Permissoes` movido para um botao de engrenagem no topo direito, ao lado de `Sair`.
 - Shell passou a bloquear a rota `/permissoes` para perfis sem acesso e redirecionar para `/home`.
 - Shell passou a reidratar a sessao remota com `pageAccess` e esconder os botoes da sidebar quando a tela nao estiver liberada em `app_user_page_permissions`.
+- Rotas novas do dashboard que ainda nao estiverem mapeadas em `authorization.ts` passam a ser bloqueadas por padrao ate entrarem no catalogo de paginas.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: renderizar shell, proteger rotas, exibir usuario conectado, expor o atalho de configuracoes, executar logout e filtrar a navegacao por `pageAccess`.
+  - Responsavel por: renderizar shell, proteger rotas, exibir usuario conectado, expor o atalho de configuracoes, executar logout, filtrar a navegacao por `pageAccess` e montar o menu lateral com icones por secao.
 - Caminho: `src/app/(dashboard)/layout.tsx`
   - Responsavel por: aplicar o shell em todas as rotas do dashboard.
 

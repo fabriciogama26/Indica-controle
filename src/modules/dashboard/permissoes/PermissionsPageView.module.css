@@ -55,7 +55,8 @@
 }
 
 .historyButton,
-.primaryButton {
+.primaryButton,
+.secondaryButton {
   border: none;
   cursor: pointer;
   font-weight: 800;
@@ -295,6 +296,18 @@
 .actionsFooter {
   display: flex;
   justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.secondaryButton {
+  min-width: 176px;
+  height: 50px;
+  padding: 0 22px;
+  border-radius: 16px;
+  background: rgba(37, 74, 156, 0.08);
+  color: #17347a;
+  border: 1px solid rgba(23, 52, 122, 0.14);
 }
 
 .primaryButton {
@@ -307,6 +320,7 @@
   box-shadow: 0 16px 28px rgba(23, 52, 122, 0.18);
 }
 
+.secondaryButton:disabled,
 .primaryButton:disabled {
   cursor: not-allowed;
   opacity: 0.6;

@@ -48,16 +48,22 @@ Atualizacao 2026-03
 - Migration `021_rls_to_authenticated.sql` criada.
 - Migration `022_create_page_permissions.sql` criada.
 - Migration `023_normalize_roles_to_app_roles.sql` criada.
+- Migration `024_create_user_page_permissions.sql` criada.
 - Migration `025_app_users_admin_tenant_select.sql` criada.
+- Migration `026_simplify_user_page_permissions.sql` criada.
+- Migration `027_create_permission_change_history.sql` criada.
 - `auth-login-web` implementada.
 - `auth-recover` implementada para reset por `login_name`.
 - `auth-login-web` e `logout` ajustadas para tratar `login_audit` como log de eventos imutaveis com `session_ref`.
+- `logout` passou a registrar `TOKEN_EXPIRED` no `login_audit` usando `session_ref`/`login_audit_id`, mesmo quando o token ja venceu.
 - `auth-login-web` passou a registrar `console.error` detalhado quando o insert em `login_audit` falhar.
 - `auth-login-web` passou a separar o client administrativo do client de autenticacao para nao executar o insert de auditoria com o JWT do usuario final.
 - Base de permissao por pagina criada com `app_pages` e `role_page_permissions`.
 - Perfis normalizados em `app_roles`, com `app_users.role_id` e `role_page_permissions.role_id`.
 - Busca administrativa de usuarios do tenant usa `SUPABASE_SERVICE_ROLE_KEY` no backend, com validacao explicita do operador admin/master e filtro por tenant.
 - A tela `/permissoes` passou a salvar `app_users.role_id`, `app_users.ativo` e `app_user_page_permissions`.
+- A tela `/permissoes` passou a gravar historico em `app_user_permission_history`.
+- O fluxo oficial de provisionamento web passou a ser `pre-cadastro em app_users + invite no Auth`.
 - A route `src/app/api/auth/session-access/route.ts` passou a devolver `pageAccess` e `hasCustomPermissions` para o frontend montar o shell conforme as permissoes salvas.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -74,7 +80,9 @@ Funcoes principais
 - Caminho: `src/app/api/app-users/search/route.ts`
   - Responsavel por: listar usuarios reais do tenant atual para a tela `/permissoes`.
 - Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
-  - Responsavel por: carregar e salvar `role`, `ativo/inativo` e permissoes por tela do usuario selecionado.
+  - Responsavel por: carregar e salvar `role`, `ativo/inativo`, permissoes por tela e historico de alteracoes do usuario selecionado.
+- Caminho: `src/app/api/app-users/[userId]/invite/route.ts`
+  - Responsavel por: enviar o convite de primeiro acesso a partir do pre-cadastro existente em `app_users`.
 - Caminho: `src/app/api/auth/session-access/route.ts`
   - Responsavel por: resolver o usuario autenticado atual e devolver as telas liberadas em `app_user_page_permissions`.
 
@@ -99,6 +107,10 @@ Constantes e configuracoes
   - Responsavel por: criar `app_user_page_permissions` e a funcao `user_has_page_action(text, text)` para a matriz por usuario e por tela.
 - Caminho: `supabase/migrations/025_app_users_admin_tenant_select.sql`
   - Responsavel por: liberar leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
+- Caminho: `supabase/migrations/026_simplify_user_page_permissions.sql`
+  - Responsavel por: simplificar `app_user_page_permissions` para usar apenas `can_access`.
+- Caminho: `supabase/migrations/027_create_permission_change_history.sql`
+  - Responsavel por: criar `app_user_permission_history` para auditoria de alteracoes administrativas e convites.
 - Caminho: `supabase/migrations/011_create_rate_limit.sql`
   - Responsavel por: rate limit das functions.
 
@@ -124,6 +136,10 @@ Ajuda contextual
   - `021_rls_to_authenticated.sql`
   - `022_create_page_permissions.sql`
   - `023_normalize_roles_to_app_roles.sql`
+  - `024_create_user_page_permissions.sql`
+  - `025_app_users_admin_tenant_select.sql`
+  - `026_simplify_user_page_permissions.sql`
+  - `027_create_permission_change_history.sql`
 - Functions minimas para o SaaS web:
   - `auth-login-web`
   - `auth-recover`
@@ -139,5 +155,7 @@ Ajuda contextual
 - A funcao `user_is_admin_in_tenant(uuid)` agora resolve o papel administrativo via `app_roles.is_admin`.
 - A busca da tela `/permissoes` valida o operador atual como admin/master e consulta `app_users` do mesmo tenant com `service_role` no backend, sem expor esse acesso ao frontend.
 - O operador da tela `/permissoes` precisa ser admin/master, mas a busca retorna qualquer `app_user` do mesmo tenant para configuracao de acesso.
-- O salvamento da tela `/permissoes` nao usa `delete`; ele faz `upsert` em `app_user_page_permissions` e espelha o mesmo toggle visual em `can_access`, `can_select`, `can_insert` e `can_update`.
+- O salvamento da tela `/permissoes` nao usa `delete`; ele faz `upsert` em `app_user_page_permissions` usando apenas `can_access`.
 - O shell e a protecao de rotas nao devem confiar so em `role`; quando `hasCustomPermissions = true`, a navegacao passa a ser definida pelas linhas salvas em `app_user_page_permissions`.
+- `TOKEN_EXPIRED` deve continuar gerando evento `LOGOUT` no `login_audit`, agora usando fallback por `session_ref` quando o JWT ja expirou.
+- O provisionamento oficial no painel web deve partir de um usuario ja pre-cadastrado em `app_users`, com envio de invite para o email salvo no cadastro.

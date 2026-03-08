@@ -27,6 +27,8 @@ Ordem de aplicacao
 23. 023_normalize_roles_to_app_roles.sql
 24. 024_create_user_page_permissions.sql
 25. 025_app_users_admin_tenant_select.sql
+26. 026_simplify_user_page_permissions.sql
+27. 027_create_permission_change_history.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -107,9 +109,15 @@ Resumo por arquivo
 025_app_users_admin_tenant_select.sql
 - Cria policy em `app_users` para liberar leitura de usuarios do mesmo tenant apenas a perfis administrativos autenticados.
 
+026_simplify_user_page_permissions.sql
+- Simplifica `app_user_page_permissions` para permissao unica por tela, usando apenas `can_access`.
+
+027_create_permission_change_history.sql
+- Cria `app_user_permission_history` para auditar mudancas de role, status, telas liberadas e envio de convite.
+
 Lacunas ainda nao versionadas
 - modelagem final de projects
-- CRUD final da matriz de permissoes
+- integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
 
 Observacao
 - As migrations acima suportam o app atual.

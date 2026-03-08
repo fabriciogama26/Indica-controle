@@ -12,6 +12,7 @@
 - [x] Adicionar policy RLS para permitir que admin/master leia `app_users` do proprio tenant na tela `/permissoes`.
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
+- [x] Refinar a sidebar para o padrao de menu lateral SaaS compacto, com secoes, icones e estados hover/ativo mais leves.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
@@ -33,15 +34,17 @@
 - [x] Evoluir o frontend da tela `/permissoes` para o fluxo real de selecao de usuario, role, status e liberacao por tela.
 - [x] Buscar usuarios reais do tenant na tela `/permissoes`, sem lista mockada.
 - [x] Ajustar a busca de usuarios em `/permissoes` para pesquisar por `login_name` e `matricula`.
-- [ ] Simplificar a modelagem de `app_user_page_permissions` para refletir o conceito final de liberacao por tela, sem matriz de acoes individuais.
+- [x] Simplificar a modelagem de `app_user_page_permissions` para refletir o conceito final de liberacao por tela, sem matriz de acoes individuais.
 - [x] Implementar CRUD real da matriz de permissoes consumindo `app_user_page_permissions`.
 - [x] Conectar a tela `/permissoes` ao Supabase para buscar usuario, carregar permissoes e salvar alteracoes.
 - [x] Expandir o controle de permissao no frontend para o shell principal, escondendo telas bloqueadas por `app_user_page_permissions`.
+- [x] Bloquear por padrao novas rotas do dashboard ate que entrem no catalogo de paginas e no mapeamento de `authorization.ts`.
+- [x] Registrar historico imutavel de alteracoes de role, status, telas liberadas e envio de convite.
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.
 - [x] Ajustar a UX de recuperacao para usar o `login_name` digitado na tela de login antes do envio do email pelo Supabase.
 - [x] Adaptar `/recuperar-senha` para aceitar `token_hash` e validar links customizados de invite/reset com `verifyOtp`.
-- [ ] Definir fluxo oficial de provisionamento de usuarios no Supabase Auth com metadata minima (`tenant_id`, `matricula`, `login_name`).
-- [ ] Definir se o provisionamento padrao de usuarios sera por pre-cadastro em `app_users` + invite no Auth, ou por metadata obrigatoria no invite admin.
+- [x] Definir fluxo oficial de provisionamento de usuarios no Supabase Auth com metadata minima (`tenant_id`, `matricula`, `login_name`).
+- [x] Definir o provisionamento padrao de usuarios como pre-cadastro em `app_users` + invite no Auth.
 - [ ] Integrar `log_error` no frontend para registrar falhas por modulo.
 - [ ] Adicionar testes automatizados para auth e fluxo base de navegacao.
 - [ ] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
@@ -51,6 +54,7 @@
 - [x] Revisar README e docs que ainda assumiam backend somente externo em `d:\\RQM\\supabase`.
 - [ ] Confirmar se o frontend web vai continuar consumindo Edge Functions service-role ou se parte dos acessos passara a usar cliente autenticado + RLS diretamente.
 - [ ] Mapear quais operacoes sensiveis de estoque precisam gerar auditoria adicional alem de `login_audit` e `app_error_logs`.
+- [x] Tratar `TOKEN_EXPIRED` com auditoria no `login_audit`.
 - [ ] Definir backlog funcional do SaaS de engenharia eletrica alem do modulo atual de materiais/estoque.
 
 - [ ] Pendencia de dependencia registrada em 2026-03-07: `react` `19.2.3 -> 19.2.4`.

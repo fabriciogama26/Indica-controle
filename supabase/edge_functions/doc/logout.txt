@@ -13,7 +13,7 @@ Payload
 {
   "login_audit_id": "uuid",
   "session_ref": "uuid",
-  "reason": "USER_LOGOUT",
+  "reason": "USER_LOGOUT | IDLE_TIMEOUT | TOKEN_EXPIRED",
   "source": "APP"
 }
 
@@ -21,3 +21,4 @@ Regra
 - So insere evento de logout para o proprio usuario autenticado.
 - Se `session_ref` nao vier, a function tenta resolver pela linha de login ou pela ultima sessao encontrada.
 - Cada logout gera uma nova linha com `event_type = 'LOGOUT'`.
+- Quando `reason = TOKEN_EXPIRED`, a function aceita fallback por `login_audit_id` ou `session_ref` para registrar o logout mesmo que o JWT ja tenha expirado.

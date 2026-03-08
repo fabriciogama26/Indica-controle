@@ -38,6 +38,7 @@ Boas praticas
 - Reaproveitar o `login_name` digitado na tela para disparar o email de recuperacao sem expor o email ao usuario.
 - Encerrar a sessao por inatividade no frontend e devolver feedback claro ao usuario na tela de login.
 - Tratar token expirado no `AuthContext` antes de reidratar a sessao local.
+- Registrar `TOKEN_EXPIRED` no `login_audit` sempre que a sessao remota precisar ser encerrada por expiracao.
 
 Cancelamento e saldo
 --------------------
@@ -65,6 +66,7 @@ Atualizacao 2026-03
 - Login remoto passou a receber `role` como `role_key` e `role_id` resolvidos a partir de `app_roles`.
 - Login passou a consumir mensagens transitorias de autenticacao para diferenciar logout manual, inatividade e token expirado.
 - Sessao web passou a expirar por inatividade no frontend, com retorno para `/login`.
+- `TOKEN_EXPIRED` passou a tentar registrar `LOGOUT` no backend mesmo quando o JWT ja expirou.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -80,7 +82,7 @@ Funcoes principais
 - Caminho: `supabase/edge_functions/auth-login-web/index.ts`
   - Responsavel por: exigir gravacao valida de evento `LOGIN` antes de concluir o login remoto e resolver `role_key` via `app_roles`.
 - Caminho: `supabase/edge_functions/logout/index.ts`
-  - Responsavel por: registrar um novo evento `LOGOUT` e correlaciona-lo por `session_ref`.
+  - Responsavel por: registrar um novo evento `LOGOUT`, inclusive para `TOKEN_EXPIRED`, correlacionando-o por `session_ref`.
 - Caminho: `src/context/AuthContext.tsx`
   - Responsavel por: hidratar sessao, manter estado autenticado, tratar timeout por inatividade, token expirado e expor `login/logout`.
 
@@ -113,3 +115,4 @@ Ajuda contextual
 - Estado atual: login remoto e logout web geram duas linhas em `login_audit`, uma para `LOGIN` e outra para `LOGOUT`.
 - Estado atual: a tela passa a mostrar feedback de `sessao expirada` e `expirada por inatividade` quando o `AuthContext` limpa a sessao.
 - Estado atual: a sessao frontend preserva `role` como `role_key` e `roleId` como referencia tecnica do perfil.
+- Estado atual: `TOKEN_EXPIRED` continua limpando a sessao local, mas agora tambem tenta registrar a saida no `login_audit` com base no `session_ref` salvo.
