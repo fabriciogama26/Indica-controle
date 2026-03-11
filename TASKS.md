@@ -8,6 +8,7 @@
 - [x] Restringir as policies multi-tenant ao role `authenticated`.
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
+- [x] Ajustar o shell para scroll interno no conteudo das telas (`mainContent`), mantendo sidebar e topbar fixos no desktop.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
 - [x] Expandir a navegacao de `Operacao` com `Projetos`, `Locacao`, `Programacao` e mover `Materiais` para a mesma secao.
 - [x] Criar placeholders iniciais para `Projetos`, `Locacao` e `Programacao` no dashboard.

@@ -5,6 +5,7 @@ Visao geral
 - Shell principal exibido apos autenticacao.
 - Mantem coluna lateral de navegacao, barra superior horizontal, nome do usuario conectado e logout.
 - Usa menu lateral compacto no padrao SaaS, com icones por item e secoes visuais fixas.
+- Scroll interno: somente a area de conteudo (`mainContent`) deve rolar; sidebar e topbar permanecem fixos no desktop.
 
 Arquitetura
 -----------
@@ -30,6 +31,7 @@ Boas praticas
 - Esconder rotas administrativas quando o `role` nao permitir acesso.
 - Respeitar `app_user_page_permissions` quando o usuario tiver permissoes customizadas por tela.
 - Evitar botoes grandes na lateral; a navegacao deve parecer menu de dashboard e nao grade de acoes.
+- Em desktop, usar scroll apenas em `mainContent` para evitar mover a sidebar e a topbar durante a navegacao nas telas.
 
 Cancelamento e saldo
 --------------------
@@ -59,6 +61,7 @@ Atualizacao 2026-03
 - Sidebar de `Operacao` expandida com `Projetos`, `Locacao`, `Programacao` e `Materiais`.
 - Labels atualizados para `Entrada Estoque` e `Saida Estoque`.
 - `Materiais` movido de `Cadastros` para `Operacao`.
+- Ajustado o shell para scroll interno no `mainContent`, com sidebar e topbar fixos no desktop.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -89,4 +92,6 @@ Ajuda contextual
 - O shell atual usa protecao client-side, respeita timeout por inatividade via `AuthContext` e passa a ocultar itens da sidebar conforme `app_user_page_permissions`.
 - Antes: o topo exibia apenas titulo da rota e badges tecnicos, e o logout ficava isolado no rodape da sidebar.
 - Depois: a navegacao segue o desenho com sidebar limpa, logo destacado, menu vertical e barra superior com nome do usuario, status de conexao e botao `Sair`.
+- Antes: ao rolar telas longas, o movimento afetava o layout inteiro.
+- Depois: a rolagem ocorre apenas dentro do bloco de conteudo da tela, mantendo topo e lateral estaveis no desktop.
 - Estado atual: a tela `Permissoes` fica acessivel pelo icone de engrenagem no topo e nao participa da navegacao principal.
