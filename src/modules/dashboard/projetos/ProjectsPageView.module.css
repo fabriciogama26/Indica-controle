@@ -74,6 +74,14 @@
   box-shadow: 0 0 0 3px rgba(43, 79, 168, 0.12);
 }
 
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled {
+  background: #f1f4fb;
+  color: #7382a2;
+  cursor: not-allowed;
+}
+
 .fieldWide {
   grid-column: span 2;
 }

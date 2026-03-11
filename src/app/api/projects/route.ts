@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 
@@ -30,6 +31,22 @@ type ProjectCreatorRow = {
   id: string;
   display: string | null;
   login_name: string | null;
+};
+
+type ProjectLookupRow = {
+  id: string;
+  name: string;
+  name_normalized: string;
+  ativo: boolean;
+};
+
+type JobTitleIdRow = {
+  id: string;
+};
+
+type PersonNameRow = {
+  id: string;
+  name: string;
 };
 
 type CreateProjectPayload = {
@@ -98,6 +115,89 @@ function getSobRuleError(priority: string, sob: string) {
   }
 
   return null;
+}
+
+async function resolveLookupByName(
+  supabase: SupabaseClient,
+  table: string,
+  tenantId: string,
+  value: string,
+  required: boolean,
+  fieldLabel: string,
+) {
+  const normalized = normalizeText(value).toUpperCase();
+  if (!normalized) {
+    return required
+      ? { data: null, message: `Selecione ${fieldLabel}.` }
+      : { data: null, message: null };
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .select("id, name, name_normalized, ativo")
+    .eq("tenant_id", tenantId)
+    .eq("name_normalized", normalized)
+    .eq("ativo", true)
+    .maybeSingle<ProjectLookupRow>();
+
+  if (error || !data) {
+    return { data: null, message: `${fieldLabel} invalido(a).` };
+  }
+
+  return { data, message: null };
+}
+
+async function resolveContractorResponsibleSupervisorByName(
+  supabase: SupabaseClient,
+  tenantId: string,
+  value: string,
+  required: boolean,
+  fieldLabel: string,
+) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return required
+      ? { data: null, message: `Selecione ${fieldLabel}.` }
+      : { data: null, message: null };
+  }
+
+  const { data: supervisorJobTitles, error: supervisorJobTitlesError } = await supabase
+    .from("job_titles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .ilike("code", "SUPERVISOR")
+    .returns<JobTitleIdRow[]>();
+
+  if (supervisorJobTitlesError) {
+    return { data: null, message: `Falha ao validar ${fieldLabel}.` };
+  }
+
+  const supervisorJobTitleIds = (supervisorJobTitles ?? []).map((item) => item.id).filter(Boolean);
+  if (supervisorJobTitleIds.length === 0) {
+    return { data: null, message: `${fieldLabel} invalido(a).` };
+  }
+
+  const { data: peopleRows, error: peopleError } = await supabase
+    .from("people")
+    .select("id, name:nome")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .in("job_title_id", supervisorJobTitleIds)
+    .returns<PersonNameRow[]>();
+
+  if (peopleError) {
+    return { data: null, message: `${fieldLabel} invalido(a).` };
+  }
+
+  const normalizedInput = normalized.toUpperCase();
+  const person = (peopleRows ?? []).find((item) => normalizeText(item.name).toUpperCase() === normalizedInput);
+
+  if (!person) {
+    return { data: null, message: `${fieldLabel} invalido(a).` };
+  }
+
+  return { data: person, message: null };
 }
 
 export async function GET(request: NextRequest) {
@@ -263,7 +363,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Data limite invalida." }, { status: 422 });
     }
 
-    const sobRuleError = getSobRuleError(priority, sob);
+    const [
+      priorityLookup,
+      serviceCenterLookup,
+      serviceTypeLookup,
+      voltageLevelLookup,
+      projectSizeLookup,
+      municipalityLookup,
+      contractorResponsibleLookup,
+      utilityResponsibleLookup,
+      utilityFieldManagerLookup,
+    ] = await Promise.all([
+      resolveLookupByName(supabase, "project_priorities", appUser.tenant_id, priority, true, "a Prioridade"),
+      resolveLookupByName(supabase, "project_service_centers", appUser.tenant_id, serviceCenter, true, "o Centro de Servico"),
+      resolveLookupByName(supabase, "project_service_types", appUser.tenant_id, serviceType, true, "o Tipo de Servico"),
+      resolveLookupByName(supabase, "project_voltage_levels", appUser.tenant_id, voltageLevel ?? "", false, "o Nivel de Tensao"),
+      resolveLookupByName(supabase, "project_sizes", appUser.tenant_id, projectSize ?? "", false, "o Porte"),
+      resolveLookupByName(supabase, "project_municipalities", appUser.tenant_id, city, true, "o Municipio"),
+      resolveContractorResponsibleSupervisorByName(
+        supabase,
+        appUser.tenant_id,
+        contractorResponsible,
+        true,
+        "o Responsavel Contratada (Supervisor)",
+      ),
+      resolveLookupByName(
+        supabase,
+        "project_utility_responsibles",
+        appUser.tenant_id,
+        utilityResponsible,
+        true,
+        "o Responsavel Distribuidora",
+      ),
+      resolveLookupByName(
+        supabase,
+        "project_utility_field_managers",
+        appUser.tenant_id,
+        utilityFieldManager,
+        true,
+        "o Gestor de campo Distribuidora",
+      ),
+    ]);
+
+    const lookupMessage =
+      priorityLookup.message ??
+      serviceCenterLookup.message ??
+      serviceTypeLookup.message ??
+      voltageLevelLookup.message ??
+      projectSizeLookup.message ??
+      municipalityLookup.message ??
+      contractorResponsibleLookup.message ??
+      utilityResponsibleLookup.message ??
+      utilityFieldManagerLookup.message;
+
+    if (lookupMessage) {
+      return NextResponse.json({ message: lookupMessage }, { status: 422 });
+    }
+
+    const sobRuleError = getSobRuleError(normalizePriority(priorityLookup.data?.name ?? priority), sob);
     if (sobRuleError) {
       return NextResponse.json({ message: sobRuleError }, { status: 422 });
     }
@@ -271,20 +428,29 @@ export async function POST(request: NextRequest) {
     const { error } = await supabase.from("project").insert({
       tenant_id: appUser.tenant_id,
       sob,
-      service_center: serviceCenter,
+      service_center: String(serviceCenterLookup.data?.name ?? serviceCenter),
       partner,
-      service_type: serviceType,
+      service_type: String(serviceTypeLookup.data?.name ?? serviceType),
       execution_deadline: executionDeadline,
-      priority,
+      priority: String(priorityLookup.data?.name ?? priority),
       estimated_value: estimatedValue,
-      voltage_level: voltageLevel,
-      project_size: projectSize,
-      contractor_responsible: contractorResponsible,
-      utility_responsible: utilityResponsible,
-      utility_field_manager: utilityFieldManager,
+      voltage_level: voltageLevelLookup.data ? String(voltageLevelLookup.data.name) : null,
+      project_size: projectSizeLookup.data ? String(projectSizeLookup.data.name) : null,
+      contractor_responsible: String(contractorResponsibleLookup.data?.name ?? contractorResponsible),
+      utility_responsible: String(utilityResponsibleLookup.data?.name ?? utilityResponsible),
+      utility_field_manager: String(utilityFieldManagerLookup.data?.name ?? utilityFieldManager),
       street,
       neighborhood,
-      city,
+      city: String(municipalityLookup.data?.name ?? city),
+      priority_id: priorityLookup.data?.id,
+      service_center_id: serviceCenterLookup.data?.id,
+      service_type_id: serviceTypeLookup.data?.id,
+      voltage_level_id: voltageLevelLookup.data?.id ?? null,
+      project_size_id: projectSizeLookup.data?.id ?? null,
+      municipality_id: municipalityLookup.data?.id,
+      contractor_responsible_id: contractorResponsibleLookup.data?.id,
+      utility_responsible_id: utilityResponsibleLookup.data?.id,
+      utility_field_manager_id: utilityFieldManagerLookup.data?.id,
       service_description: serviceDescription,
       observation,
       created_by: appUser.id,

@@ -215,19 +215,21 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 15. O shell principal libera navegacao para os modulos do SaaS.
 16. A rota `/projetos` permite cadastrar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
 17. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
-18. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
-19. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
-20. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
-21. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
-22. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
-23. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
-24. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
-25. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
-26. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
-27. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
-28. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
-29. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
-30. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
+18. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
+19. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
+20. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
+21. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
+22. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
+23. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
+24. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
+25. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
+26. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
+27. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
+28. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+29. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
+30. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
+31. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
+32. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
 
 ---
 
@@ -248,6 +250,15 @@ npm run build
 - `Para esta prioridade, Projeto (SOB) deve iniciar ...` ou `Para FUSESAVER, Projeto (SOB) deve iniciar ...`:
   - Causa: `SOB` informado fora do formato exigido pela prioridade selecionada.
   - Solucao: aplicar o padrao: `A` + 9 numeros para prioridades de fluxo/DRP-DRC, ou `ZX/FS` + 8 numeros para `FUSESAVER`.
+- `Falha ao carregar opcoes de projetos.`:
+  - Causa: tabelas de dominio da tela `Projetos` nao existem no banco.
+  - Solucao: aplicar a migration `031_create_project_lookup_tables.sql` e recarregar a pagina.
+- `Responsavel Contratada` sem opcoes no cadastro de projetos:
+  - Causa: cargos/pessoas de supervisor nao configurados no tenant.
+  - Solucao: garantir `job_titles.code = SUPERVISOR` ativo e pessoas ativas vinculadas em `people.job_title_id`.
+- `relation "contract" does not exist`:
+  - Causa: migrations da tabela de contrato por tenant nao aplicadas no banco remoto.
+  - Solucao: aplicar `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` e repetir a operacao.
 - `Missing NEXT_PUBLIC_SUPABASE_URL`:
   - Causa: ambiente remoto sem variaveis.
   - Solucao: preencher `.env` ou `.env.local`.

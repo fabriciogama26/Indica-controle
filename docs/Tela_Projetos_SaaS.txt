@@ -15,6 +15,8 @@ Arquitetura
 - API de metadados/filtros: `src/app/api/projects/meta/route.ts`
 - Banco: `supabase/migrations/029_create_project_table.sql`
 - Banco (regras de SOB por prioridade): `supabase/migrations/030_project_sob_priority_rules.sql`
+- Banco (tabelas de dominio por tenant): `supabase/migrations/031_create_project_lookup_tables.sql`
+- Banco (responsavel contratada via pessoas supervisoras): `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
 
 Cadastro
 --------
@@ -38,10 +40,22 @@ Cadastro
   - `Descricao do servico`
   - `Observacao`
 - `Centro de Servico` e `Parceira` sao preenchidos automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
+- Campos carregados de tabelas de dominio:
+  - `Prioridade`
+  - `Centro de Servico`
+  - `Tipo de Servico`
+  - `Nivel de Tensao`
+  - `Porte`
+  - `Municipio`
+  - `Responsavel Distribuidora`
+  - `Gestor de campo Distribuidora`
+- Campo `Responsavel Contratada` carregado de `people` ativo, filtrando apenas cargos `SUPERVISOR` em `job_titles`.
 - Regra de validacao do `SOB` antes do banco:
   - Se prioridade for `GRUPO B - FLUXO`, `DRP / DRC` ou `GRUPO A - FLUXO`, o `SOB` deve ser `A` + 9 numeros.
   - Se prioridade for `FUSESAVER`, o `SOB` deve iniciar com `ZX` ou `FS` + 8 numeros.
   - `SOB` duplicado no mesmo tenant nao pode ser cadastrado.
+- Regra de habilitacao no formulario:
+  - `Projeto (SOB)` so fica ativo depois que `Prioridade` for selecionada.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -83,6 +97,7 @@ Atualizacao 2026-03
 - Depois: tela com cadastro, filtros e lista paginada integrada ao backend.
 - Criada migration `029_create_project_table.sql` para tabela `public.project` com RLS e auditoria.
 - Criada migration `030_project_sob_priority_rules.sql` para validar formato de `SOB` por prioridade e unicidade case-insensitive no tenant.
+- Criada migration `031_create_project_lookup_tables.sql` para normalizar campos de dominio em tabelas por tenant e vincular `project` com FKs.
 - Criada API `src/app/api/projects/route.ts` para `GET` (lista/filtros) e `POST` (cadastro).
 - Criada API `src/app/api/projects/meta/route.ts` para opcoes de filtros e auto-complete.
 - `src/app/(dashboard)/projetos/page.tsx` passou a renderizar `ProjectsPageView`.
@@ -95,6 +110,11 @@ Atualizacao 2026-03
 - Ajuste visual: lista de projetos atualizada com coluna `Registrado por` e sem colunas `Prioridade`/`Responsavel Contratada`.
 - Ajuste de regras: campo `Prioridade` movido para antes de `Projeto (SOB)` no cadastro.
 - Ajuste de regras: validacao de `SOB` aplicada no frontend, na API e no banco.
+- Ajuste de UX: `Projeto (SOB)` desabilitado ate selecionar `Prioridade`.
+- Ajuste de dados: formulario de projeto passou a carregar opcoes a partir de tabelas de dominio no backend.
+- Ajuste de dados: `Responsavel Contratada` deixou de usar tabela de lookup dedicada e passou a usar `people` com filtro de cargo `SUPERVISOR`.
+- Ajuste de layout: ordem dos campos de endereco no cadastro alterada para `Municipio`, `Logradouro`, `Bairro`.
+- Ajuste de robustez: API de metadados de projetos passou a usar fallback de opcoes via `project` quando algum lookup especifico falhar, evitando zerar todas as selectboxes.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -113,6 +133,10 @@ Constantes e configuracoes
   - Responsavel por: tabela `project`, indices, policies RLS e trigger de auditoria.
 - Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
   - Responsavel por: regra de formato do `SOB` por prioridade e unicidade case-insensitive de `SOB` por tenant.
+- Caminho: `supabase/migrations/031_create_project_lookup_tables.sql`
+  - Responsavel por: normalizar e disponibilizar tabelas de dominio para o formulario de projetos.
+- Caminho: `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
+  - Responsavel por: remover a tabela `project_contractor_responsibles` e vincular `project.contractor_responsible_id` a `people`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -133,6 +157,8 @@ Ajuda contextual
   - `src/app/api/projects/meta/route.ts`
   - `supabase/migrations/029_create_project_table.sql`
   - `supabase/migrations/030_project_sob_priority_rules.sql`
+  - `supabase/migrations/031_create_project_lookup_tables.sql`
+  - `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
 - Funcoes/hooks/constantes tocadas:
   - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `applyFilters`, `clearFilters`, `getSobRuleError`
   - `GET`/`POST` de `/api/projects`

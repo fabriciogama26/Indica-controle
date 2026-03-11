@@ -64,8 +64,14 @@ type SobBaseItem = {
 
 type MetaResponse = {
   priorities: string[];
+  serviceCenters: string[];
+  serviceTypes: string[];
+  voltageLevels: string[];
+  projectSizes: string[];
   cities: string[];
-  responsibles: string[];
+  contractorResponsibles: string[];
+  utilityResponsibles: string[];
+  utilityFieldManagers: string[];
   sobCatalog: SobBaseItem[];
 };
 
@@ -185,8 +191,14 @@ export function ProjectsPageView() {
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [meta, setMeta] = useState<MetaResponse>({
     priorities: [],
+    serviceCenters: [],
+    serviceTypes: [],
+    voltageLevels: [],
+    projectSizes: [],
     cities: [],
-    responsibles: [],
+    contractorResponsibles: [],
+    utilityResponsibles: [],
+    utilityFieldManagers: [],
     sobCatalog: [],
   });
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -198,6 +210,7 @@ export function ProjectsPageView() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const isSobEnabled = Boolean(form.priority.trim());
   const priorityOptions = useMemo(
     () =>
       Array.from(
@@ -238,8 +251,14 @@ export function ProjectsPageView() {
 
       setMeta({
         priorities: data.priorities ?? [],
+        serviceCenters: data.serviceCenters ?? [],
+        serviceTypes: data.serviceTypes ?? [],
+        voltageLevels: data.voltageLevels ?? [],
+        projectSizes: data.projectSizes ?? [],
         cities: data.cities ?? [],
-        responsibles: data.responsibles ?? [],
+        contractorResponsibles: data.contractorResponsibles ?? [],
+        utilityResponsibles: data.utilityResponsibles ?? [],
+        utilityFieldManagers: data.utilityFieldManagers ?? [],
         sobCatalog: data.sobCatalog ?? [],
       });
     } catch {
@@ -456,8 +475,10 @@ export function ProjectsPageView() {
               value={form.sob}
               onChange={(event) => updateFormField("sob", normalizeSob(event.target.value))}
               onBlur={(event) => handleSobAutoFill(event.target.value)}
-              placeholder="Digite o SOB"
+              placeholder={isSobEnabled ? "Digite o SOB" : "Selecione a Prioridade primeiro"}
               list="sob-list"
+              disabled={!isSobEnabled}
+              aria-disabled={!isSobEnabled}
               required
             />
           </label>
@@ -466,13 +487,18 @@ export function ProjectsPageView() {
             <span>
               Centro de Servico <span className="requiredMark">*</span>
             </span>
-            <input
-              type="text"
+            <select
               value={form.serviceCenter}
               onChange={(event) => updateFormField("serviceCenter", event.target.value)}
-              placeholder="Preenchimento auto pela base"
               required
-            />
+            >
+              <option value="">Selecione</option>
+              {meta.serviceCenters.map((serviceCenter) => (
+                <option key={serviceCenter} value={serviceCenter}>
+                  {serviceCenter}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
@@ -492,13 +518,14 @@ export function ProjectsPageView() {
             <span>
               Tipo de Servico <span className="requiredMark">*</span>
             </span>
-            <input
-              type="text"
-              value={form.serviceType}
-              onChange={(event) => updateFormField("serviceType", event.target.value)}
-              placeholder="Digite o tipo de servico"
-              required
-            />
+            <select value={form.serviceType} onChange={(event) => updateFormField("serviceType", event.target.value)} required>
+              <option value="">Selecione</option>
+              {meta.serviceTypes.map((serviceType) => (
+                <option key={serviceType} value={serviceType}>
+                  {serviceType}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
@@ -530,64 +557,94 @@ export function ProjectsPageView() {
 
           <label className={styles.field}>
             <span>Nivel de Tensao</span>
-            <input
-              type="text"
-              value={form.voltageLevel}
-              onChange={(event) => updateFormField("voltageLevel", event.target.value)}
-              placeholder="Digite o nivel de tensao"
-            />
+            <select value={form.voltageLevel} onChange={(event) => updateFormField("voltageLevel", event.target.value)}>
+              <option value="">Selecione</option>
+              {meta.voltageLevels.map((voltageLevel) => (
+                <option key={voltageLevel} value={voltageLevel}>
+                  {voltageLevel}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
             <span>Porte</span>
-            <input
-              type="text"
-              value={form.projectSize}
-              onChange={(event) => updateFormField("projectSize", event.target.value)}
-              placeholder="Digite o porte"
-            />
+            <select value={form.projectSize} onChange={(event) => updateFormField("projectSize", event.target.value)}>
+              <option value="">Selecione</option>
+              {meta.projectSizes.map((projectSize) => (
+                <option key={projectSize} value={projectSize}>
+                  {projectSize}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
             <span>
               Responsavel Contratada <span className="requiredMark">*</span>
             </span>
-            <input
-              type="text"
+            <select
               value={form.contractorResponsible}
               onChange={(event) => updateFormField("contractorResponsible", event.target.value)}
-              placeholder="Digite o responsavel"
-              list="responsibles-list"
               required
-            />
+            >
+              <option value="">Selecione</option>
+              {meta.contractorResponsibles.map((responsible) => (
+                <option key={responsible} value={responsible}>
+                  {responsible}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
             <span>
               Responsavel Distribuidora <span className="requiredMark">*</span>
             </span>
-            <input
-              type="text"
+            <select
               value={form.utilityResponsible}
               onChange={(event) => updateFormField("utilityResponsible", event.target.value)}
-              placeholder="Digite o responsavel"
-              list="responsibles-list"
               required
-            />
+            >
+              <option value="">Selecione</option>
+              {meta.utilityResponsibles.map((responsible) => (
+                <option key={responsible} value={responsible}>
+                  {responsible}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
             <span>
               Gestor de campo Distribuidora <span className="requiredMark">*</span>
             </span>
-            <input
-              type="text"
+            <select
               value={form.utilityFieldManager}
               onChange={(event) => updateFormField("utilityFieldManager", event.target.value)}
-              placeholder="Digite o gestor de campo"
-              list="responsibles-list"
               required
-            />
+            >
+              <option value="">Selecione</option>
+              {meta.utilityFieldManagers.map((responsible) => (
+                <option key={responsible} value={responsible}>
+                  {responsible}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
+              Municipio <span className="requiredMark">*</span>
+            </span>
+            <select value={form.city} onChange={(event) => updateFormField("city", event.target.value)} required>
+              <option value="">Selecione</option>
+              {meta.cities.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
@@ -612,20 +669,6 @@ export function ProjectsPageView() {
               value={form.neighborhood}
               onChange={(event) => updateFormField("neighborhood", event.target.value)}
               placeholder="Digite o bairro"
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>
-              Municipio <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.city}
-              onChange={(event) => updateFormField("city", event.target.value)}
-              placeholder="Digite o municipio"
-              list="city-list"
               required
             />
           </label>
@@ -877,21 +920,9 @@ export function ProjectsPageView() {
 
       {isLoadingMeta ? <div className={styles.loadingHint}>Atualizando opcoes de cadastro e filtros...</div> : null}
 
-      <datalist id="city-list">
-        {meta.cities.map((city) => (
-          <option key={city} value={city} />
-        ))}
-      </datalist>
-
       <datalist id="sob-list">
         {meta.sobCatalog.map((item) => (
           <option key={item.sob} value={item.sob} />
-        ))}
-      </datalist>
-
-      <datalist id="responsibles-list">
-        {meta.responsibles.map((responsible) => (
-          <option key={responsible} value={responsible} />
         ))}
       </datalist>
     </section>

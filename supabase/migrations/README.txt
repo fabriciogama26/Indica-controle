@@ -32,6 +32,10 @@ Ordem de aplicacao
 28. 028_add_operation_menu_pages.sql
 29. 029_create_project_table.sql
 30. 030_project_sob_priority_rules.sql
+31. 031_create_project_lookup_tables.sql
+32. 032_create_contrato_table.sql
+33. 033_rename_contrato_to_contract.sql
+34. 034_use_people_for_project_contractor_responsible.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -126,6 +130,18 @@ Resumo por arquivo
 
 030_project_sob_priority_rules.sql
 - Aplica validacao de formato do SOB por prioridade e unicidade case-insensitive de SOB por tenant.
+
+031_create_project_lookup_tables.sql
+- Cria tabelas de dominio de Projetos por tenant (prioridade, centro, tipo, tensao, porte, municipio e responsaveis) e vincula `project` por chaves estrangeiras.
+
+032_create_contrato_table.sql
+- Cria a tabela `contrato` por tenant, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
+
+033_rename_contrato_to_contract.sql
+- Renomeia a tabela `contrato` para `contract` e padroniza policy, trigger e indice com o novo nome.
+
+034_use_people_for_project_contractor_responsible.sql
+- Remove `project_contractor_responsibles` e passa `project.contractor_responsible_id` a referenciar `people` (cargo `SUPERVISOR`).
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

@@ -22,6 +22,13 @@
 - [x] Atualizar lista de `Projetos` removendo colunas `Prioridade` e `Responsavel Contratada` e adicionando `Registrado por`.
 - [x] Aplicar regra de SOB por prioridade em `Projetos` (frontend + API + constraint SQL).
 - [x] Mover `Prioridade` para antes de `Projeto (SOB)` no formulario de cadastro.
+- [x] Criar tabelas de dominio de `Projetos` por tenant e fazer a tela puxar opcoes dessas tabelas.
+- [x] Bloquear edicao de `Projeto (SOB)` ate selecionar `Prioridade` no cadastro de `Projetos`.
+- [x] Criar tabela `contrato` por tenant com `valor` derivado do `tenant_id`, RLS e auditoria.
+- [x] Incluir coluna `name` na tabela `contrato` com backfill para tenants existentes.
+- [x] Renomear a tabela `contrato` para `contract` com ajuste de index/policies/trigger.
+- [x] Remover lookup de `Responsavel Contratada` em projetos e usar `people` filtrado por cargo `SUPERVISOR`.
+- [x] Reordenar campos de endereco em `Projetos` para `Municipio`, `Logradouro`, `Bairro` e reforcar fallback das selectboxes no `/api/projects/meta`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.

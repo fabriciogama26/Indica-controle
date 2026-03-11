@@ -57,6 +57,10 @@ Atualizacao 2026-03
 - Migration `028_add_operation_menu_pages.sql` criada.
 - Migration `029_create_project_table.sql` criada.
 - Migration `030_project_sob_priority_rules.sql` criada.
+- Migration `031_create_project_lookup_tables.sql` criada.
+- Migration `032_create_contrato_table.sql` criada.
+- Migration `033_rename_contrato_to_contract.sql` criada.
+- Migration `034_use_people_for_project_contractor_responsible.sql` criada.
 - `auth-login-web` implementada.
 - `auth-recover` implementada para reset por `login_name`.
 - `auth-login-web` e `logout` ajustadas para tratar `login_audit` como log de eventos imutaveis com `session_ref`.
@@ -72,6 +76,7 @@ Atualizacao 2026-03
 - A route `src/app/api/auth/session-access/route.ts` passou a devolver `pageAccess` e `hasCustomPermissions` para o frontend montar o shell conforme as permissoes salvas.
 - Rotas `src/app/api/projects/route.ts` e `src/app/api/projects/meta/route.ts` criadas para cadastro, filtros e listagem paginada da tela `/projetos`.
 - A rota `src/app/api/projects/route.ts` passou a validar formato de `SOB` por prioridade antes do insert.
+- A rota `src/app/api/projects/meta/route.ts` passou a ler opcoes de cadastro das tabelas de dominio de projetos, com excecao de `Responsavel Contratada` que passou a vir de `people` com cargo `SUPERVISOR`.
 - O frontend passou a ter preparo explicito para deploy no Vercel, mantendo `auth-login-web`, `auth-recover`, `logout` e demais Edge Functions no Supabase.
 - `tsconfig.json` do frontend passou a excluir `supabase/edge_functions` do type-check do Next para evitar conflito entre runtime Node e runtime Deno.
 
@@ -132,6 +137,14 @@ Constantes e configuracoes
   - Responsavel por: criar a tabela `project` com campos da tela, auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`) e policies RLS por tenant.
 - Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
   - Responsavel por: validar formato do `SOB` por prioridade e garantir unicidade case-insensitive de `SOB` por tenant.
+- Caminho: `supabase/migrations/031_create_project_lookup_tables.sql`
+  - Responsavel por: criar tabelas de dominio de projetos por tenant e vincular `project` por FKs.
+- Caminho: `supabase/migrations/032_create_contrato_table.sql`
+  - Responsavel por: criar a tabela `contrato` com um registro por tenant, coluna `name` e `valor` derivado do `tenant_id`.
+- Caminho: `supabase/migrations/033_rename_contrato_to_contract.sql`
+  - Responsavel por: renomear `contrato` para `contract` e alinhar indice/policies/trigger ao novo nome.
+- Caminho: `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
+  - Responsavel por: remover o lookup `project_contractor_responsibles` e usar `people` com cargo `SUPERVISOR` no campo `contractor_responsible`.
 - Caminho: `supabase/migrations/011_create_rate_limit.sql`
   - Responsavel por: rate limit das functions.
 - Caminho: `.env.example`
@@ -168,6 +181,10 @@ Ajuda contextual
   - `028_add_operation_menu_pages.sql`
   - `029_create_project_table.sql`
   - `030_project_sob_priority_rules.sql`
+  - `031_create_project_lookup_tables.sql`
+  - `032_create_contrato_table.sql`
+  - `033_rename_contrato_to_contract.sql`
+  - `034_use_people_for_project_contractor_responsible.sql`
 - Functions minimas para o SaaS web:
   - `auth-login-web`
   - `auth-recover`
