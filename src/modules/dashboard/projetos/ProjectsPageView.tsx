@@ -390,6 +390,7 @@ export function ProjectsPageView() {
 
     try {
       const response = await fetch("/api/projects/meta", {
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
@@ -438,6 +439,7 @@ export function ProjectsPageView() {
       try {
         const query = buildQuery(filters, targetPage);
         const response = await fetch(`/api/projects?${query}`, {
+          cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
@@ -570,6 +572,7 @@ export function ProjectsPageView() {
       params.set("historyPageSize", String(HISTORY_PAGE_SIZE));
 
       const response = await fetch(`/api/projects?${params.toString()}`, {
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
@@ -636,6 +639,7 @@ export function ProjectsPageView() {
     try {
       const response = await fetch("/api/projects", {
         method: isEditing ? "PUT" : "POST",
+        cache: "no-store",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
@@ -696,6 +700,7 @@ export function ProjectsPageView() {
     try {
       const response = await fetch("/api/projects", {
         method: "PATCH",
+        cache: "no-store",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
@@ -761,6 +766,7 @@ export function ProjectsPageView() {
       while (true) {
         const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE);
         const response = await fetch(`/api/projects?${query}`, {
+          cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },

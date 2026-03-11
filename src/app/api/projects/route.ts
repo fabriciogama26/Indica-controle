@@ -298,6 +298,12 @@ function buildUserDisplayMap(users: ProjectUserRow[]) {
     ]),
   );
 }
+
+function buildUserLoginNameMap(users: ProjectUserRow[]) {
+  return new Map(
+    users.map((user) => [user.id, String(user.login_name ?? "").trim() || "Nao identificado"]),
+  );
+}
 async function resolveLookupByName(
   supabase: SupabaseClient,
   table: string,
@@ -688,6 +694,7 @@ export async function GET(request: NextRequest) {
       : { data: [] as ProjectUserRow[] };
 
     const userMap = buildUserDisplayMap(users ?? []);
+    const userLoginNameMap = buildUserLoginNameMap(users ?? []);
 
     return NextResponse.json({
       projects: (data ?? []).map((item) => ({
@@ -713,7 +720,9 @@ export async function GET(request: NextRequest) {
         cancellationReason: item.cancellation_reason,
         canceledAt: item.canceled_at,
         canceledByName: item.canceled_by ? userMap.get(item.canceled_by) ?? "Nao identificado" : null,
-        createdByName: item.created_by ? userMap.get(item.created_by) ?? "Nao identificado" : "Nao identificado",
+        createdByName: item.created_by
+          ? userLoginNameMap.get(item.created_by) ?? "Nao identificado"
+          : "Nao identificado",
         updatedByName: item.updated_by ? userMap.get(item.updated_by) ?? "Nao identificado" : "Nao identificado",
         createdAt: item.created_at,
         updatedAt: item.updated_at,

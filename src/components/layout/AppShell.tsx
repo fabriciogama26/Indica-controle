@@ -275,7 +275,7 @@ export function AppShell({ children }: PropsWithChildren) {
     );
   }
 
-  const displayName = session.user.displayName?.trim() || session.user.loginName || "Usuario";
+  const displayName = session.user.displayName?.trim() || "Usuario";
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>

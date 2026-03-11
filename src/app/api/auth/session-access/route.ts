@@ -7,6 +7,12 @@ type PermissionRow = {
   can_access: boolean;
 };
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+} as const;
+
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -15,7 +21,10 @@ export async function GET(request: NextRequest) {
     });
 
     if ("error" in resolution) {
-      return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+      return NextResponse.json(
+        { message: resolution.error.message },
+        { status: resolution.error.status, headers: NO_STORE_HEADERS },
+      );
     }
 
     const { supabase, appUser, role } = resolution;
@@ -28,23 +37,32 @@ export async function GET(request: NextRequest) {
       .returns<PermissionRow[]>();
 
     if (permissionsError) {
-      return NextResponse.json({ message: "Falha ao carregar permissoes da sessao." }, { status: 500 });
+      return NextResponse.json(
+        { message: "Falha ao carregar permissoes da sessao." },
+        { status: 500, headers: NO_STORE_HEADERS },
+      );
     }
 
-    return NextResponse.json({
-      user: {
-        userId: appUser.id,
-        tenantId: appUser.tenant_id,
-        role: role.roleKey,
-        roleId: appUser.role_id,
-        loginName: appUser.login_name,
-        displayName: appUser.display ?? appUser.login_name,
-        status: appUser.ativo ? "Ativo" : "Inativo",
+    return NextResponse.json(
+      {
+        user: {
+          userId: appUser.id,
+          tenantId: appUser.tenant_id,
+          role: role.roleKey,
+          roleId: appUser.role_id,
+          loginName: appUser.login_name,
+          displayName: appUser.display,
+          status: appUser.ativo ? "Ativo" : "Inativo",
+        },
+        pageAccess: (permissions ?? []).filter((item) => item.can_access).map((item) => item.page_key),
+        hasCustomPermissions: (permissions ?? []).length > 0,
       },
-      pageAccess: (permissions ?? []).filter((item) => item.can_access).map((item) => item.page_key),
-      hasCustomPermissions: (permissions ?? []).length > 0,
-    });
+      { headers: NO_STORE_HEADERS },
+    );
   } catch {
-    return NextResponse.json({ message: "Falha ao carregar permissoes da sessao." }, { status: 500 });
+    return NextResponse.json(
+      { message: "Falha ao carregar permissoes da sessao." },
+      { status: 500, headers: NO_STORE_HEADERS },
+    );
   }
 }

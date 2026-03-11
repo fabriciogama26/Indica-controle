@@ -9,6 +9,7 @@
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
 - [x] Ajustar o shell para scroll interno no conteudo das telas (`mainContent`), mantendo sidebar e topbar fixos no desktop.
+- [x] Ajustar bloco `Conectado` para exibir o nome a partir de `app_users.display`.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
 - [x] Expandir a navegacao de `Operacao` com `Projetos`, `Locacao`, `Programacao` e mover `Materiais` para a mesma secao.
 - [x] Criar placeholders iniciais para `Projetos`, `Locacao` e `Programacao` no dashboard.
@@ -22,7 +23,9 @@
 - [x] Reordenar lista de `Projetos` para exibir `Atualizado em` antes da coluna `Acoes`.
 - [x] Atualizar lista de `Projetos` para exibir `Registrado em` no lugar de `Atualizado em`.
 - [x] Atualizar lista de `Projetos` removendo colunas `Prioridade` e `Responsavel Contratada` e adicionando `Registrado por`.
+- [x] Ajustar `Registrado por` da lista de `Projetos` para exibir `app_users.login_name`.
 - [x] Adicionar botao de exportacao `Exportar Excel (CSV)` na lista de `Projetos` com base nos filtros ativos.
+- [x] Desabilitar cache nas chamadas autenticadas de `Projetos` para evitar dados antigos apos troca de sessao.
 - [x] Aplicar regra de SOB por prioridade em `Projetos` (frontend + API + constraint SQL).
 - [x] Mover `Prioridade` para antes de `Projeto (SOB)` no formulario de cadastro.
 - [x] Criar tabelas de dominio de `Projetos` por tenant e fazer a tela puxar opcoes dessas tabelas.
@@ -63,6 +66,8 @@
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.
 - [x] Ajustar a UX de recuperacao para usar o `login_name` digitado na tela de login antes do envio do email pelo Supabase.
 - [x] Adaptar `/recuperar-senha` para aceitar `token_hash` e validar links customizados de invite/reset com `verifyOtp`.
+- [x] Evitar corrida de hidratacao em `AuthContext` para nao sobrescrever sessao recem-logada e reduzir efeito de tela piscando.
+- [x] Garantir backfill das telas `Projetos`, `Locacao` e `Programacao` em permissoes (`app_pages`, `role_page_permissions`, `app_user_page_permissions`).
 - [ ] Definir fluxo oficial de provisionamento de usuarios no Supabase Auth com metadata minima (`tenant_id`, `matricula`, `login_name`).
 - [ ] Definir se o provisionamento padrao de usuarios sera por pre-cadastro em `app_users` + invite no Auth, ou por metadata obrigatoria no invite admin.
 - [ ] Integrar `log_error` no frontend para registrar falhas por modulo.

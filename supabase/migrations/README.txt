@@ -40,6 +40,7 @@ Ordem de aplicacao
 36. 036_create_project_history_and_cancellation.sql
 37. 037_project_activation_history_rules.sql
 38. 038_project_lookup_uuid_columns.sql
+39. 039_backfill_operation_page_permissions.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -158,6 +159,9 @@ Resumo por arquivo
 
 038_project_lookup_uuid_columns.sql
 - Migra `project` para usar UUID nas colunas de dominio (lookups), remove redundancia `*_text` da tabela e cria `project_with_labels` para exibicao textual.
+
+039_backfill_operation_page_permissions.sql
+- Garante `projetos`, `locacao` e `programacao` em `app_pages` e faz backfill de permissoes faltantes em `role_page_permissions` e `app_user_page_permissions`.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
