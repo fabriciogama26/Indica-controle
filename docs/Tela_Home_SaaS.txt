@@ -39,6 +39,7 @@ Atualizacao 2026-03
 - Cards iniciais e resumo do escopo atual implementados.
 - Home reorganizada para `page.tsx` fino em `src/app` e implementacao visual em `src/modules/dashboard/home`.
 - Resumo visual das proximas telas atualizado para incluir `Projetos`, `Locacao` e `Programacao`.
+- Resumo visual atualizado para refletir a navegacao em `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

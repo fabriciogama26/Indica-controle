@@ -1,0 +1,74 @@
+Tela: Cargo SaaS
+
+Visao geral
+-----------
+- Tela placeholder para o modulo de cargos no dashboard.
+- Disponibiliza o atalho de navegacao na secao `Cadastros`.
+- Ja integrada a matriz de permissao por pagina.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/cargo/page.tsx`
+- Componente de base visual: `src/components/ui/ModulePlaceholder.tsx`
+- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
+- Guard de rota por permissao: `src/lib/auth/authorization.ts`
+- Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Cadastro
+--------
+- Nao se aplica nesta etapa.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica nesta etapa.
+
+Boas praticas
+-------------
+- Manter `cargo` como `pageKey` explicito em `app_pages`.
+- Reutilizar esse dominio no CRUD de `Pessoas`.
+- Garantir isolamento por tenant em consultas e manutencao.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa.
+
+Atalhos
+-------
+- Rota ativa: `/cargo`.
+- Exibida na secao `Cadastros` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Arquivo `src/app/(dashboard)/cargo/page.tsx` criado.
+- `AppShell` atualizado para expor `Cargo` em `Cadastros`.
+- `authorization.ts` atualizado para mapear `/cargo` para `pageKey = cargo`.
+- `PermissionsPageView` atualizado para incluir a liberacao da tela `Cargo`.
+- Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para inserir `cargo` em `app_pages` e backfill de permissoes.
+- Antes: o modulo de cargos nao tinha rota dedicada no SaaS web.
+- Depois: rota placeholder criada e protegida por permissao de pagina.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/cargo/page.tsx`
+  - Responsavel por: montar o placeholder da rota `Cargo`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: renderizar o item de menu lateral de `Cargo`.
+
+Constantes e configuracoes
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear rota para `pageKey` e aplicar fallback de permissao.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: incluir `cargo` no catalogo de permissoes por usuario.
+- Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
+  - Responsavel por: garantir `cargo` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: disponibilizar sessao usada na protecao de rota no shell.
+
+Servicos e integracoes externas
+- Nao se aplica nesta etapa (sem chamada de API nesta tela).
+
+Ajuda contextual
+- Estado atual: tela em placeholder com permissao por pagina ativa.

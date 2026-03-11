@@ -40,7 +40,12 @@ Cancelamento e saldo
 
 Atalhos
 -------
-- Links de navegacao laterais para Home, Projetos, Locacao, Programacao, Materiais, Estoque Atual, Entrada Estoque, Saida Estoque, Pessoas e Cadastro Base.
+- Links de navegacao laterais para:
+  - `Visao Geral`: Home (`Dashboard Estoque`)
+  - `Operacao`: Projetos, Locacao, Programacao e Medicao
+  - `Almoxarifado`: Estoque Atual, Entrada Estoque e Saida Estoque
+  - `Cadastros`: Materiais, Pessoas e Cargo
+  - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 - Botao de engrenagem no topo direito abre `/permissoes` apenas para `admin` e `master`.
 - Botao `Sair` no topo direito limpa a sessao local e chama o logout remoto quando aplicavel.
 
@@ -59,9 +64,11 @@ Atualizacao 2026-03
 - Shell passou a bloquear a rota `/permissoes` para perfis sem acesso e redirecionar para `/home`.
 - Shell passou a reidratar a sessao remota com `pageAccess` e esconder os botoes da sidebar quando a tela nao estiver liberada em `app_user_page_permissions`.
 - Rotas novas do dashboard que ainda nao estiverem mapeadas em `authorization.ts` passam a ser bloqueadas por padrao ate entrarem no catalogo de paginas.
-- Sidebar de `Operacao` expandida com `Projetos`, `Locacao`, `Programacao` e `Materiais`.
-- Labels atualizados para `Entrada Estoque` e `Saida Estoque`.
-- `Materiais` movido de `Cadastros` para `Operacao`.
+- Sidebar reorganizada nas secoes `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
+- `Medicao` adicionada na secao `Operacao`.
+- `Materiais` movido para a secao `Cadastros`.
+- `Cargo` adicionado na secao `Cadastros`.
+- Secao `Cadastro Base` criada com atalhos para `Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
 - Ajustado o shell para scroll interno no `mainContent`, com sidebar e topbar fixos no desktop.
 - Bloco `Conectado` ajustado para priorizar somente `display` no nome do usuario.
 
@@ -75,9 +82,9 @@ Funcoes principais
 
 Constantes e configuracoes
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: `menuSections`, `titleMap` e icones das novas entradas de operacao.
+  - Responsavel por: `menuSections`, `titleMap` e icones das secoes `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
 - Caminho: `src/lib/auth/authorization.ts`
-  - Responsavel por: regras de acesso a rotas administrativas, fallback por role e bloqueio por `pageAccess`.
+  - Responsavel por: regras de acesso a rotas administrativas, fallback por role e bloqueio por `pageAccess` das novas rotas.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/hooks/useAuth.ts`
@@ -96,4 +103,6 @@ Ajuda contextual
 - Depois: a navegacao segue o desenho com sidebar limpa, logo destacado, menu vertical e barra superior com nome do usuario, status de conexao e botao `Sair`.
 - Antes: ao rolar telas longas, o movimento afetava o layout inteiro.
 - Depois: a rolagem ocorre apenas dentro do bloco de conteudo da tela, mantendo topo e lateral estaveis no desktop.
+- Antes: as opcoes de estoque e cadastros estavam concentradas em secoes menos granulares.
+- Depois: a navegacao separa explicitamente operacao, almoxarifado, cadastros e cadastro base, com permissao por pagina.
 - Estado atual: a tela `Permissoes` fica acessivel pelo icone de engrenagem no topo e nao participa da navegacao principal.

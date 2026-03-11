@@ -64,6 +64,7 @@ Atualizacao 2026-03
 - Migration `035_add_matriculation_to_people.sql` criada.
 - Migration `036_create_project_history_and_cancellation.sql` criada.
 - Migration `037_project_activation_history_rules.sql` criada.
+- Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada.
 - `auth-login-web` implementada.
 - `auth-recover` implementada para reset por `login_name`.
 - `auth-login-web` e `logout` ajustadas para tratar `login_audit` como log de eventos imutaveis com `session_ref`.
@@ -138,7 +139,9 @@ Constantes e configuracoes
 - Caminho: `supabase/migrations/027_create_permission_change_history.sql`
   - Responsavel por: criar `app_user_permission_history` para auditoria de alteracoes administrativas e convites.
 - Caminho: `supabase/migrations/028_add_operation_menu_pages.sql`
-  - Responsavel por: incluir `projetos`, `locacao` e `programacao` no catalogo `app_pages`, mover `materiais` para `Operacao` e atualizar labels de entrada/saida.
+  - Responsavel por: incluir paginas iniciais de `Operacao` no catalogo `app_pages` e ajustar labels de estoque.
+- Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
+  - Responsavel por: reorganizar secoes do menu (`Operacao`, `Almoxarifado`, `Cadastros`, `Cadastro Base`) e fazer backfill de permissoes para novas telas.
 - Caminho: `supabase/migrations/029_create_project_table.sql`
   - Responsavel por: criar a tabela `project` com campos da tela, auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`) e policies RLS por tenant.
 - Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
@@ -200,6 +203,7 @@ Ajuda contextual
   - `035_add_matriculation_to_people.sql`
   - `036_create_project_history_and_cancellation.sql`
   - `037_project_activation_history_rules.sql`
+  - `040_reorganize_menu_sections_and_page_permissions.sql`
 - Functions minimas para o SaaS web:
   - `auth-login-web`
   - `auth-recover`

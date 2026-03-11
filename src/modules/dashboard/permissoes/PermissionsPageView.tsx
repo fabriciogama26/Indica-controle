@@ -49,25 +49,60 @@ const permissionCatalog = [
   { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
   { pageKey: "locacao", label: "Locacao", path: "/locacao", section: "Operacao" },
   { pageKey: "programacao", label: "Programacao", path: "/programacao", section: "Operacao" },
-  { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Operacao" },
-  { pageKey: "estoque", label: "Estoque Atual", path: "/estoque", section: "Operacao" },
-  { pageKey: "entrada", label: "Entrada Estoque", path: "/entrada", section: "Operacao" },
-  { pageKey: "saida", label: "Saida Estoque", path: "/saida", section: "Operacao" },
+  { pageKey: "medicao", label: "Medicao", path: "/medicao", section: "Operacao" },
+  { pageKey: "estoque", label: "Estoque Atual", path: "/estoque", section: "Almoxarifado" },
+  { pageKey: "entrada", label: "Entrada Estoque", path: "/entrada", section: "Almoxarifado" },
+  { pageKey: "saida", label: "Saida Estoque", path: "/saida", section: "Almoxarifado" },
+  { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },
   { pageKey: "pessoas", label: "Pessoas", path: "/pessoas", section: "Cadastros" },
-  { pageKey: "cadastro-base", label: "Cadastro Base", path: "/cadastro-base", section: "Cadastros" },
+  { pageKey: "cargo", label: "Cargo", path: "/cargo", section: "Cadastros" },
+  { pageKey: "prioridade", label: "Prioridade", path: "/prioridade", section: "Cadastro Base" },
+  { pageKey: "centro-servico", label: "Centro de Servico", path: "/centro-servico", section: "Cadastro Base" },
+  { pageKey: "contrato", label: "Contrato", path: "/contrato", section: "Cadastro Base" },
+  { pageKey: "imei", label: "Imei", path: "/imei", section: "Cadastro Base" },
+  { pageKey: "tipo-servico", label: "Tipo de Servico", path: "/tipo-servico", section: "Cadastro Base" },
+  { pageKey: "nivel-tensao", label: "Nivel de Tensao", path: "/nivel-tensao", section: "Cadastro Base" },
+  { pageKey: "porte", label: "Porte", path: "/porte", section: "Cadastro Base" },
+  {
+    pageKey: "responsavel-distribuidora",
+    label: "Responsavel Distribuidora",
+    path: "/responsavel-distribuidora",
+    section: "Cadastro Base",
+  },
+  { pageKey: "municipio", label: "Municipio", path: "/municipio", section: "Cadastro Base" },
 ] as const;
 
 function createPermissionSet(role: string): PermissionCard[] {
+  const defaultPageAccess = [
+    "home",
+    "projetos",
+    "locacao",
+    "programacao",
+    "medicao",
+    "estoque",
+    "entrada",
+    "saida",
+    "materiais",
+    "pessoas",
+    "cargo",
+    "prioridade",
+    "centro-servico",
+    "contrato",
+    "imei",
+    "tipo-servico",
+    "nivel-tensao",
+    "porte",
+    "responsavel-distribuidora",
+    "municipio",
+  ];
+
   return permissionCatalog.map((item) => {
     if (role === "master" || role === "admin") {
       return { ...item, enabled: true };
     }
 
     if (role === "supervisor") {
-      return {
-        ...item,
-        enabled: item.pageKey !== "cadastro-base",
-      };
+      return { ...item, enabled: defaultPageAccess.includes(item.pageKey) };
     }
 
     if (role === "viewer") {
@@ -79,7 +114,7 @@ function createPermissionSet(role: string): PermissionCard[] {
 
     return {
       ...item,
-      enabled: ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas"].includes(item.pageKey),
+      enabled: defaultPageAccess.includes(item.pageKey),
     };
   });
 }

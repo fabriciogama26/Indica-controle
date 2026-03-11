@@ -14,7 +14,7 @@ Arquitetura
 
 Cadastro
 --------
-- Ja previstos no fluxo: Projetos, Locacao, Programacao, Materiais, Cadastro Base e Pessoas.
+- Ja previstos no fluxo: Operacao (Projetos, Locacao, Programacao, Medicao), Almoxarifado (Estoque, Entrada, Saida), Cadastros (Materiais, Pessoas, Cargo) e Cadastro Base.
 - Ainda nao implementados como CRUD real.
 
 Filtros, auto-complete e listagem
@@ -56,7 +56,7 @@ Atualizacao 2026-03
 - Sessao web passou a tratar timeout por inatividade e expiracao de token no frontend.
 - `TOKEN_EXPIRED` passou a registrar `LOGOUT` no `login_audit` usando `session_ref`.
 - A tela `/permissoes` passou a salvar historico e a oferecer envio de convite de primeiro acesso a partir do pre-cadastro em `app_users`.
-- Navegacao de `Operacao` expandida com `Projetos`, `Locacao` e `Programacao`.
+- Navegacao lateral reorganizada em `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`, com novas rotas de `Medicao`, `Cargo` e dominios base.
 - A tela `/projetos` passou a operar com cadastro, filtros e listagem paginada persistindo na tabela `project`.
 
 Mapa de Codigo (funcoes, hooks e constantes)

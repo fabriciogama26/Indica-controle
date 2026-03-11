@@ -3,11 +3,11 @@ import styles from "./HomePageView.module.css";
 const cards = [
   {
     title: "Cadastro Base",
-    description: "Entrada para pessoas, materiais e cadastros de apoio.",
+    description: "Entrada para cadastros estruturantes como prioridade, centro de servico e contrato.",
   },
   {
-    title: "Operacao de Estoque",
-    description: "Entrada, saida e consulta do estoque fisico.",
+    title: "Operacao e Almoxarifado",
+    description: "Projetos, locacao, programacao, medicao e o fluxo de estoque fisico.",
   },
   {
     title: "Preparado para multi-tenant",
@@ -31,7 +31,7 @@ export function HomePageView() {
           <div className={styles.summaryLabel}>Escopo atual</div>
           <div className={styles.summaryValue}>Login + shell + home</div>
           <div className={styles.summaryHint}>
-            Proximas telas: Projetos, Locacao, Programacao, Materiais, Entrada Estoque, Saida Estoque e Estoque Atual.
+            Navegacao ativa: Operacao, Almoxarifado, Cadastros e Cadastro Base com permissao por pagina.
           </div>
         </div>
       </div>

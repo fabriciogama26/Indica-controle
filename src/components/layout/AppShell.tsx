@@ -20,7 +20,12 @@ const menuSections = [
       { href: "/projetos", label: "Projetos", icon: "folder" },
       { href: "/locacao", label: "Locacao", icon: "briefcase" },
       { href: "/programacao", label: "Programacao", icon: "calendar" },
-      { href: "/materiais", label: "Materiais", icon: "package" },
+      { href: "/medicao", label: "Medicao", icon: "calendar" },
+    ],
+  },
+  {
+    title: "Almoxarifado",
+    items: [
       { href: "/estoque", label: "Estoque Atual", icon: "box" },
       { href: "/entrada", label: "Entrada Estoque", icon: "arrow-down" },
       { href: "/saida", label: "Saida Estoque", icon: "arrow-up" },
@@ -29,8 +34,23 @@ const menuSections = [
   {
     title: "Cadastros",
     items: [
+      { href: "/materiais", label: "Materiais", icon: "package" },
       { href: "/pessoas", label: "Pessoas", icon: "users" },
-      { href: "/cadastro-base", label: "Cadastro Base", icon: "settings" },
+      { href: "/cargo", label: "Cargo", icon: "settings" },
+    ],
+  },
+  {
+    title: "Cadastro Base",
+    items: [
+      { href: "/prioridade", label: "Prioridade", icon: "settings" },
+      { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
+      { href: "/contrato", label: "Contrato", icon: "settings" },
+      { href: "/imei", label: "Imei", icon: "settings" },
+      { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
+      { href: "/nivel-tensao", label: "Nivel de Tensao", icon: "settings" },
+      { href: "/porte", label: "Porte", icon: "settings" },
+      { href: "/responsavel-distribuidora", label: "Responsavel Distribuidora", icon: "settings" },
+      { href: "/municipio", label: "Municipio", icon: "settings" },
     ],
   },
 ] as const;
@@ -39,10 +59,6 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/home": {
     title: "Home",
     subtitle: "Resumo inicial do tenant e atalhos principais.",
-  },
-  "/cadastro-base": {
-    title: "Cadastro Base",
-    subtitle: "Ponto de entrada para os cadastros do SaaS.",
   },
   "/pessoas": {
     title: "Pessoas",
@@ -64,6 +80,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Programacao",
     subtitle: "Planejamento e agenda das operacoes.",
   },
+  "/medicao": {
+    title: "Medicao",
+    subtitle: "Gestao de medicoes operacionais por projeto e periodo.",
+  },
   "/entrada": {
     title: "Entrada Estoque",
     subtitle: "Lancamentos de entrada no estoque fisico.",
@@ -75,6 +95,46 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/estoque": {
     title: "Estoque Atual",
     subtitle: "Consulta de saldo fisico consolidado.",
+  },
+  "/cargo": {
+    title: "Cargo",
+    subtitle: "Cadastro e manutencao dos cargos operacionais.",
+  },
+  "/prioridade": {
+    title: "Prioridade",
+    subtitle: "Cadastro base de prioridades operacionais.",
+  },
+  "/centro-servico": {
+    title: "Centro de Servico",
+    subtitle: "Cadastro base dos centros de servico do tenant.",
+  },
+  "/contrato": {
+    title: "Contrato",
+    subtitle: "Cadastro base de contratos do tenant.",
+  },
+  "/imei": {
+    title: "Imei",
+    subtitle: "Cadastro base de identificadores IMEI operacionais.",
+  },
+  "/tipo-servico": {
+    title: "Tipo de Servico",
+    subtitle: "Cadastro base dos tipos de servico.",
+  },
+  "/nivel-tensao": {
+    title: "Nivel de Tensao",
+    subtitle: "Cadastro base dos niveis de tensao.",
+  },
+  "/porte": {
+    title: "Porte",
+    subtitle: "Cadastro base de porte para classificacao operacional.",
+  },
+  "/responsavel-distribuidora": {
+    title: "Responsavel Distribuidora",
+    subtitle: "Cadastro base dos responsaveis da distribuidora.",
+  },
+  "/municipio": {
+    title: "Municipio",
+    subtitle: "Cadastro base de municipios do tenant.",
   },
   "/permissoes": {
     title: "Permissoes",
