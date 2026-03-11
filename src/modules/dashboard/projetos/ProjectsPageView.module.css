@@ -95,7 +95,8 @@
 
 .primaryButton,
 .secondaryButton,
-.ghostButton {
+.ghostButton,
+.dangerButton {
   border: none;
   border-radius: 14px;
   min-height: 44px;
@@ -122,9 +123,16 @@
   border: 1px solid rgba(23, 52, 122, 0.15);
 }
 
+.dangerButton {
+  background: #c62828;
+  color: #ffffff;
+  border: 1px solid #b71c1c;
+}
+
 .primaryButton:disabled,
 .secondaryButton:disabled,
-.ghostButton:disabled {
+.ghostButton:disabled,
+.dangerButton:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -186,6 +194,26 @@
   gap: 8px;
 }
 
+.sobCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statusTag {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #8b1e1e;
+  background: #ffe7e7;
+  border: 1px solid #f4b0b0;
+}
+
+.inactiveRow {
+  background: rgba(170, 183, 210, 0.1);
+}
+
 .actionButton {
   width: 34px;
   height: 34px;
@@ -206,6 +234,12 @@
 .actionButton:hover {
   transform: translateY(-1px);
   filter: brightness(0.97);
+}
+
+.actionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .actionView {
@@ -266,6 +300,115 @@
   font-size: 0.88rem;
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 22, 47, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 60;
+}
+
+.modalCard {
+  width: min(900px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  box-shadow: 0 22px 48px rgba(16, 35, 77, 0.3);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.modalHeader h4 {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.05rem;
+}
+
+.modalCloseButton {
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #17347a;
+  border-radius: 10px;
+  min-height: 34px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.modalBody {
+  display: grid;
+  gap: 12px;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detailGrid div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #f8faff;
+  color: #1f2f54;
+  font-size: 0.9rem;
+}
+
+.detailWide {
+  grid-column: span 2;
+}
+
+.historyCard {
+  border: 1px solid rgba(23, 52, 122, 0.14);
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.historyCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: #17347a;
+}
+
+.historyCardHeader span {
+  color: #5b6a85;
+  font-size: 0.84rem;
+}
+
+.historyChanges {
+  display: grid;
+  gap: 8px;
+}
+
+.historyChangeItem {
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fbfcff;
+  display: grid;
+  gap: 3px;
+  color: #1f2f54;
+  font-size: 0.88rem;
+}
+
 @media (max-width: 1260px) {
   .formGrid,
   .filterGrid {
@@ -275,11 +418,25 @@
 
 @media (max-width: 780px) {
   .formGrid,
-  .filterGrid {
+  .filterGrid,
+  .detailGrid {
     grid-template-columns: 1fr;
   }
 
   .fieldWide {
     grid-column: span 1;
+  }
+
+  .detailWide {
+    grid-column: span 1;
+  }
+
+  .modalOverlay {
+    padding: 10px;
+  }
+
+  .modalCard {
+    max-height: calc(100vh - 20px);
+    padding: 14px;
   }
 }

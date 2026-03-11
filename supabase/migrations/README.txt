@@ -36,6 +36,8 @@ Ordem de aplicacao
 32. 032_create_contrato_table.sql
 33. 033_rename_contrato_to_contract.sql
 34. 034_use_people_for_project_contractor_responsible.sql
+35. 035_add_matriculation_to_people.sql
+36. 036_create_project_history_and_cancellation.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -142,6 +144,12 @@ Resumo por arquivo
 
 034_use_people_for_project_contractor_responsible.sql
 - Remove `project_contractor_responsibles` e passa `project.contractor_responsible_id` a referenciar `people` (cargo `SUPERVISOR`).
+
+035_add_matriculation_to_people.sql
+- Adiciona a coluna `matriculation` em `people` com validacao de nao vazio (quando informada) e indice por tenant.
+
+036_create_project_history_and_cancellation.sql
+- Adiciona status ativo/inativo em `project` e cria historicos `project_history` e `project_cancellation_history` com RLS e auditoria.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

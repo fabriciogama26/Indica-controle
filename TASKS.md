@@ -29,6 +29,11 @@
 - [x] Renomear a tabela `contrato` para `contract` com ajuste de index/policies/trigger.
 - [x] Remover lookup de `Responsavel Contratada` em projetos e usar `people` filtrado por cargo `SUPERVISOR`.
 - [x] Reordenar campos de endereco em `Projetos` para `Municipio`, `Logradouro`, `Bairro` e reforcar fallback das selectboxes no `/api/projects/meta`.
+- [x] Adicionar coluna `matriculation` na tabela `people` via migration versionada.
+- [x] Remover campo `Parceira` do front de Projetos e preencher `partner` automaticamente no backend por `contract.name`.
+- [x] Implementar acoes da lista de Projetos (`Editar`, `Detalhes`, `Historico`, `Cancelar`) com modais e fluxo completo no frontend.
+- [x] Implementar `PUT` e `PATCH` em `/api/projects` para edicao e cancelamento com motivo obrigatorio.
+- [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
