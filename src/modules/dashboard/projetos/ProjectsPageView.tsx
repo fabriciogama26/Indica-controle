@@ -93,8 +93,15 @@ type ProjectHistoryResponse = {
   message?: string;
 };
 
+type ProjectListResponse = {
+  projects?: ProjectItem[];
+  pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
+const EXPORT_PAGE_SIZE = 100;
 const PRIORITY_OPTIONS = ["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO", "FUSESAVER"] as const;
 const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO"]);
 const HISTORY_FIELD_LABELS: Record<string, string> = {
@@ -181,7 +188,7 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function buildQuery(filters: FilterState, page: number) {
+function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
 
   if (filters.sob.trim()) {
@@ -198,8 +205,55 @@ function buildQuery(filters: FilterState, page: number) {
   }
 
   params.set("page", String(page));
-  params.set("pageSize", String(PAGE_SIZE));
+  params.set("pageSize", String(pageSize));
   return params.toString();
+}
+
+function escapeCsvValue(value: string | number | null | undefined) {
+  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
+  if (raw.includes(";") || raw.includes('"')) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function buildProjectsCsv(projectItems: ProjectItem[]) {
+  const header = [
+    "Projeto (SOB)",
+    "Centro de Servico",
+    "Tipo de Servico",
+    "Data limite",
+    "Municipio",
+    "Valor estimado",
+    "Registrado por",
+    "Registrado em",
+    "Status",
+  ];
+
+  const rows = projectItems.map((project) => [
+    project.sob,
+    project.serviceCenter,
+    project.serviceType,
+    formatDate(project.executionDeadline),
+    project.city,
+    project.estimatedValue.toFixed(2),
+    project.createdByName,
+    formatDateTime(project.createdAt),
+    project.isActive ? "Ativo" : "Inativo",
+  ]);
+
+  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+  return `\uFEFF${csvLines.join("\n")}`;
+}
+
+function downloadCsvFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function normalizePriority(value: string) {
@@ -292,6 +346,7 @@ export function ProjectsPageView() {
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [detailProject, setDetailProject] = useState<ProjectItem | null>(null);
@@ -388,11 +443,7 @@ export function ProjectsPageView() {
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as {
-          projects?: ProjectItem[];
-          pagination?: { page: number; pageSize: number; total: number };
-          message?: string;
-        };
+        const data = (await response.json().catch(() => ({}))) as ProjectListResponse;
 
         if (!response.ok) {
           setProjects([]);
@@ -688,6 +739,77 @@ export function ProjectsPageView() {
       });
     } finally {
       setIsCancelling(false);
+    }
+  }
+
+  async function handleExportProjects() {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para exportar projetos.",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const allProjects: ProjectItem[] = [];
+      let exportPage = 1;
+      let totalItems = 0;
+
+      while (true) {
+        const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE);
+        const response = await fetch(`/api/projects?${query}`, {
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        });
+
+        const data = (await response.json().catch(() => ({}))) as ProjectListResponse;
+
+        if (!response.ok) {
+          setFeedback({
+            type: "error",
+            message: data.message ?? "Falha ao exportar projetos.",
+          });
+          return;
+        }
+
+        const pageItems = data.projects ?? [];
+        totalItems = data.pagination?.total ?? totalItems;
+        allProjects.push(...pageItems);
+
+        if (pageItems.length === 0 || allProjects.length >= totalItems) {
+          break;
+        }
+
+        exportPage += 1;
+      }
+
+      if (allProjects.length === 0) {
+        setFeedback({
+          type: "error",
+          message: "Nenhum projeto encontrado para exportar com os filtros atuais.",
+        });
+        return;
+      }
+
+      const csv = buildProjectsCsv(allProjects);
+      const exportDate = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(csv, `projetos_${exportDate}.csv`);
+
+      setFeedback({
+        type: "success",
+        message: `${allProjects.length} projeto(s) exportado(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao exportar projetos.",
+      });
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -1007,8 +1129,18 @@ export function ProjectsPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Projetos</h3>
-          <div className={styles.tableHint}>
-            Listagem paginada no servidor ({PAGE_SIZE} por pagina) para evitar limite de retorno.
+          <div className={styles.tableHeaderActions}>
+            <div className={styles.tableHint}>
+              Listagem paginada no servidor ({PAGE_SIZE} por pagina) para evitar limite de retorno.
+            </div>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => void handleExportProjects()}
+              disabled={isExporting || isLoadingList}
+            >
+              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
+            </button>
           </div>
         </div>
 
@@ -1023,7 +1155,7 @@ export function ProjectsPageView() {
                 <th>Municipio</th>
                 <th>Valor estimado</th>
                 <th>Registrado por</th>
-                <th>Atualizado em</th>
+                <th>Registrado em</th>
                 <th>Acoes</th>
               </tr>
             </thead>
@@ -1043,7 +1175,7 @@ export function ProjectsPageView() {
                       <td>{project.city}</td>
                       <td>{formatCurrency(project.estimatedValue)}</td>
                       <td>{project.createdByName}</td>
-                      <td>{formatDateTime(project.updatedAt)}</td>
+                      <td>{formatDateTime(project.createdAt)}</td>
                       <td className={styles.actionsCell}>
                         <div className={styles.tableActions}>
                           <button

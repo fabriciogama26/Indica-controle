@@ -39,6 +39,7 @@ Ordem de aplicacao
 35. 035_add_matriculation_to_people.sql
 36. 036_create_project_history_and_cancellation.sql
 37. 037_project_activation_history_rules.sql
+38. 038_project_lookup_uuid_columns.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -154,6 +155,9 @@ Resumo por arquivo
 
 037_project_activation_history_rules.sql
 - Permite evento `ACTIVATE` em `project_history` e adiciona `action_type` em `project_cancellation_history`.
+
+038_project_lookup_uuid_columns.sql
+- Migra `project` para usar UUID nas colunas de dominio (lookups), remove redundancia `*_text` da tabela e cria `project_with_labels` para exibicao textual.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

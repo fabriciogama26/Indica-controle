@@ -20,6 +20,7 @@ Arquitetura
 - Banco (responsavel contratada via pessoas supervisoras): `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
 - Banco (status ativo + historicos): `supabase/migrations/036_create_project_history_and_cancellation.sql`
 - Banco (regras de ativacao em historico): `supabase/migrations/037_project_activation_history_rules.sql`
+- Banco (colunas de dominio em UUID + view de labels): `supabase/migrations/038_project_lookup_uuid_columns.sql`
 
 Cadastro
 --------
@@ -75,6 +76,7 @@ Filtros, auto-complete e listagem
   - `Municipio`
   - `Responsaveis`
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
+- Botao `Exportar Excel (CSV)` na lista para exportar os projetos filtrados.
 - Coluna `Parceira` removida da lista para reduzir redundancia visual.
 - Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico` e `Cancelar`.
 - Quando a obra estiver inativa, o botao `Cancelar` vira botao `Ativar`.
@@ -84,6 +86,7 @@ Filtros, auto-complete e listagem
 - `Ativar` abre modal com motivo obrigatorio e valida a reativacao da obra.
 - Colunas `Prioridade` e `Responsavel Contratada` removidas da lista.
 - Coluna `Registrado por` adicionada na lista com base em `created_by`.
+- Coluna de data na lista padronizada como `Registrado em` (com base em `created_at`).
 
 Boas praticas
 -------------
@@ -121,14 +124,18 @@ Atualizacao 2026-03
 - Criada migration `034_use_people_for_project_contractor_responsible.sql` para usar `people` (SUPERVISOR) em `Responsavel Contratada`.
 - Criada migration `036_create_project_history_and_cancellation.sql` para status ativo e historicos de projeto/cancelamento.
 - Criada migration `037_project_activation_history_rules.sql` para suportar ativacao no historico do projeto e no historico de cancelamento.
+- Criada migration `038_project_lookup_uuid_columns.sql` para usar UUID nas colunas de dominio da `project` e expor textos pela view `project_with_labels`.
 - API `src/app/api/projects/route.ts` evoluida para:
   - `GET` lista e historico por `historyProjectId` com paginacao (`historyPage`, `historyPageSize`).
+  - `GET` agora le dados em `public.project_with_labels` para exibir textos de lookup sem redundancia na tabela base.
   - `POST` cadastro.
   - `PUT` edicao com diff em `project_history`.
   - `PATCH` cancelamento/ativacao com motivo obrigatorio.
-- API `src/app/api/projects/meta/route.ts` mantida para opcoes de filtros e auto-complete.
+- API `src/app/api/projects/meta/route.ts` ajustada para ler `project_with_labels` nos fallbacks de filtros e auto-complete.
 - Campo `Parceira` removido do formulario; valor preenchido automaticamente no backend por `contract.name`.
 - Botoes da coluna `Acoes` implementados de ponta a ponta na tela.
+- Adicionado botao `Exportar Excel (CSV)` para exportar a lista filtrada de projetos.
+- Ajustada coluna da lista de `Atualizado em` para `Registrado em`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -155,6 +162,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar status ativo em `project` e criar `project_history` e `project_cancellation_history`.
 - Caminho: `supabase/migrations/037_project_activation_history_rules.sql`
   - Responsavel por: permitir `ACTIVATE` no `project_history` e adicionar `action_type` no `project_cancellation_history`.
+- Caminho: `supabase/migrations/038_project_lookup_uuid_columns.sql`
+  - Responsavel por: migrar colunas de dominio da `project` para UUID e criar a view `project_with_labels` para listas e detalhes.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -171,10 +180,12 @@ Ajuda contextual
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
   - `src/app/api/projects/route.ts`
+  - `src/app/api/projects/meta/route.ts`
   - `supabase/migrations/036_create_project_history_and_cancellation.sql`
   - `supabase/migrations/037_project_activation_history_rules.sql`
+  - `supabase/migrations/038_project_lookup_uuid_columns.sql`
 - Funcoes/hooks/constantes tocadas:
-  - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `confirmCancellation`, `openHistoryModal`, `getSobRuleError`
+  - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `confirmCancellation`, `openHistoryModal`, `handleExportProjects`, `getSobRuleError`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/projects`
   - `GET` de `/api/projects/meta`
   - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`

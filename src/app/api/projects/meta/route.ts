@@ -4,15 +4,15 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 
 type ProjectMetaRow = {
   sob: string;
-  service_center: string;
-  priority: string | null;
-  service_type: string | null;
-  voltage_level: string | null;
-  project_size: string | null;
-  city: string | null;
-  contractor_responsible: string | null;
-  utility_responsible: string | null;
-  utility_field_manager: string | null;
+  service_center_text: string | null;
+  priority_text: string | null;
+  service_type_text: string | null;
+  voltage_level_text: string | null;
+  project_size_text: string | null;
+  city_text: string | null;
+  contractor_responsible_text: string | null;
+  utility_responsible_text: string | null;
+  utility_field_manager_text: string | null;
 };
 
 type LookupNameRow = {
@@ -64,9 +64,9 @@ export async function GET(request: NextRequest) {
       utilityFieldManagersResult,
     ] = await Promise.all([
       supabase
-        .from("project")
+        .from("project_with_labels")
         .select(
-          "sob, service_center, priority, service_type, voltage_level, project_size, city, contractor_responsible, utility_responsible, utility_field_manager",
+          "sob, service_center_text, priority_text, service_type_text, voltage_level_text, project_size_text, city_text, contractor_responsible_text, utility_responsible_text, utility_field_manager_text",
         )
         .eq("tenant_id", appUser.tenant_id)
         .order("updated_at", { ascending: false })
@@ -165,14 +165,14 @@ export async function GET(request: NextRequest) {
     }
 
     if (contractorResponsibles.length === 0) {
-      contractorResponsibles = normalizeNames(projectRows.map((item) => String(item.contractor_responsible ?? "")));
+      contractorResponsibles = normalizeNames(projectRows.map((item) => String(item.contractor_responsible_text ?? "")));
     }
 
     const sobSeen = new Set<string>();
     const sobCatalog = projectRows
       .map((item) => ({
         sob: String(item.sob ?? "").trim(),
-        serviceCenter: String(item.service_center ?? "").trim(),
+        serviceCenter: String(item.service_center_text ?? "").trim(),
       }))
       .filter((item) => {
         const key = item.sob.toLowerCase();
@@ -187,29 +187,29 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       priorities: prioritiesResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.priority ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.priority_text ?? "")))
         : normalizeNames((prioritiesResult.data ?? []).map((item) => item.name)),
       serviceCenters: serviceCentersResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.service_center ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.service_center_text ?? "")))
         : normalizeNames((serviceCentersResult.data ?? []).map((item) => item.name)),
       serviceTypes: serviceTypesResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.service_type ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.service_type_text ?? "")))
         : normalizeNames((serviceTypesResult.data ?? []).map((item) => item.name)),
       voltageLevels: voltageLevelsResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.voltage_level ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.voltage_level_text ?? "")))
         : normalizeNames((voltageLevelsResult.data ?? []).map((item) => item.name)),
       projectSizes: projectSizesResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.project_size ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.project_size_text ?? "")))
         : normalizeNames((projectSizesResult.data ?? []).map((item) => item.name)),
       cities: municipalitiesResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.city ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.city_text ?? "")))
         : normalizeNames((municipalitiesResult.data ?? []).map((item) => item.name)),
       contractorResponsibles,
       utilityResponsibles: utilityResponsiblesResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.utility_responsible ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.utility_responsible_text ?? "")))
         : normalizeNames((utilityResponsiblesResult.data ?? []).map((item) => item.name)),
       utilityFieldManagers: utilityFieldManagersResult.error
-        ? normalizeNames(projectRows.map((item) => String(item.utility_field_manager ?? "")))
+        ? normalizeNames(projectRows.map((item) => String(item.utility_field_manager_text ?? "")))
         : normalizeNames((utilityFieldManagersResult.data ?? []).map((item) => item.name)),
       sobCatalog,
     });

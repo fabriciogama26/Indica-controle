@@ -8,52 +8,40 @@ type ProjectRow = {
   id: string;
   sob: string;
   service_center: string;
+  service_center_text: string | null;
   partner: string;
+  partner_text: string | null;
   service_type: string;
+  service_type_text: string | null;
   execution_deadline: string;
   priority: string;
+  priority_text: string | null;
   estimated_value: number;
   voltage_level: string | null;
+  voltage_level_text: string | null;
   project_size: string | null;
+  project_size_text: string | null;
   contractor_responsible: string;
+  contractor_responsible_text: string | null;
   utility_responsible: string;
+  utility_responsible_text: string | null;
   utility_field_manager: string;
+  utility_field_manager_text: string | null;
   street: string;
   neighborhood: string;
   city: string;
+  city_text: string | null;
   service_description: string | null;
   observation: string | null;
   is_active: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
   canceled_by: string | null;
-  priority_id: string;
-  service_center_id: string;
-  service_type_id: string;
-  voltage_level_id: string | null;
-  project_size_id: string | null;
-  municipality_id: string;
-  contractor_responsible_id: string;
-  utility_responsible_id: string;
-  utility_field_manager_id: string;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
 };
-
-type ProjectSummaryRow = Omit<
-  ProjectRow,
-  | "priority_id"
-  | "service_center_id"
-  | "service_type_id"
-  | "voltage_level_id"
-  | "project_size_id"
-  | "municipality_id"
-  | "contractor_responsible_id"
-  | "utility_responsible_id"
-  | "utility_field_manager_id"
->;
 
 type ProjectUserRow = {
   id: string;
@@ -78,6 +66,7 @@ type PersonNameRow = {
 };
 
 type ContractRow = {
+  id: string;
   name: string;
 };
 
@@ -143,7 +132,7 @@ type ProjectInput = {
 };
 
 type ResolvedProjectLookups = {
-  partnerName: string;
+  partner: ContractRow;
   priority: ProjectLookupRow;
   serviceCenter: ProjectLookupRow;
   serviceType: ProjectLookupRow;
@@ -395,20 +384,27 @@ async function resolveContractorResponsibleSupervisorByName(
 async function resolveContractPartnerName(supabase: SupabaseClient, tenantId: string) {
   const { data, error } = await supabase
     .from("contract")
-    .select("name")
+    .select("id, name")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .maybeSingle<ContractRow>();
 
+  const contractId = String(data?.id ?? "").trim();
   const partnerName = String(data?.name ?? "").trim();
-  if (error || !partnerName) {
+  if (error || !contractId || !partnerName) {
     return {
-      name: null,
+      data: null,
       message: "Nao foi encontrado contrato ativo com campo name para preencher Parceira automaticamente.",
     };
   }
 
-  return { name: partnerName, message: null };
+  return {
+    data: {
+      id: contractId,
+      name: partnerName,
+    },
+    message: null,
+  };
 }
 
 async function resolveProjectLookups(
@@ -478,7 +474,7 @@ async function resolveProjectLookups(
 
   return {
     data: {
-      partnerName: String(partnerFromContract.name),
+      partner: partnerFromContract.data as ContractRow,
       priority: priorityLookup.data as ProjectLookupRow,
       serviceCenter: serviceCenterLookup.data as ProjectLookupRow,
       serviceType: serviceTypeLookup.data as ProjectLookupRow,
@@ -496,68 +492,57 @@ async function resolveProjectLookups(
 function buildProjectWritePayload(
   input: ProjectInput,
   lookups: ResolvedProjectLookups,
-  updatedBy: string,
 ) {
   return {
     sob: input.sob,
-    service_center: lookups.serviceCenter.name,
-    partner: lookups.partnerName,
-    service_type: lookups.serviceType.name,
+    priority: lookups.priority.id,
+    service_center: lookups.serviceCenter.id,
+    partner: lookups.partner.id,
+    service_type: lookups.serviceType.id,
     execution_deadline: input.executionDeadline,
-    priority: lookups.priority.name,
     estimated_value: input.estimatedValue,
-    voltage_level: lookups.voltageLevel ? lookups.voltageLevel.name : null,
-    project_size: lookups.projectSize ? lookups.projectSize.name : null,
-    contractor_responsible: lookups.contractorResponsible.name,
-    utility_responsible: lookups.utilityResponsible.name,
-    utility_field_manager: lookups.utilityFieldManager.name,
+    voltage_level: lookups.voltageLevel ? lookups.voltageLevel.id : null,
+    project_size: lookups.projectSize ? lookups.projectSize.id : null,
+    contractor_responsible: lookups.contractorResponsible.id,
+    utility_responsible: lookups.utilityResponsible.id,
+    utility_field_manager: lookups.utilityFieldManager.id,
     street: input.street,
     neighborhood: input.neighborhood,
-    city: lookups.municipality.name,
-    priority_id: lookups.priority.id,
-    service_center_id: lookups.serviceCenter.id,
-    service_type_id: lookups.serviceType.id,
-    voltage_level_id: lookups.voltageLevel?.id ?? null,
-    project_size_id: lookups.projectSize?.id ?? null,
-    municipality_id: lookups.municipality.id,
-    contractor_responsible_id: lookups.contractorResponsible.id,
-    utility_responsible_id: lookups.utilityResponsible.id,
-    utility_field_manager_id: lookups.utilityFieldManager.id,
+    city: lookups.municipality.id,
     service_description: input.serviceDescription,
     observation: input.observation,
-    updated_by: updatedBy,
   };
 }
 
-function buildProjectUpdateChanges(current: ProjectRow, next: ReturnType<typeof buildProjectWritePayload>) {
+function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, lookups: ResolvedProjectLookups) {
   const changes: Record<string, HistoryChange> = {};
 
-  addChange(changes, "priority", current.priority, next.priority);
-  addChange(changes, "sob", current.sob, next.sob);
-  addChange(changes, "serviceCenter", current.service_center, next.service_center);
-  addChange(changes, "serviceType", current.service_type, next.service_type);
-  addChange(changes, "executionDeadline", current.execution_deadline, next.execution_deadline);
-  addChange(changes, "estimatedValue", current.estimated_value, next.estimated_value);
-  addChange(changes, "voltageLevel", current.voltage_level, next.voltage_level);
-  addChange(changes, "projectSize", current.project_size, next.project_size);
-  addChange(changes, "contractorResponsible", current.contractor_responsible, next.contractor_responsible);
-  addChange(changes, "utilityResponsible", current.utility_responsible, next.utility_responsible);
-  addChange(changes, "utilityFieldManager", current.utility_field_manager, next.utility_field_manager);
-  addChange(changes, "city", current.city, next.city);
-  addChange(changes, "street", current.street, next.street);
-  addChange(changes, "neighborhood", current.neighborhood, next.neighborhood);
-  addChange(changes, "serviceDescription", current.service_description, next.service_description);
-  addChange(changes, "observation", current.observation, next.observation);
-  addChange(changes, "partner", current.partner, next.partner);
+  addChange(changes, "priority", current.priority_text, lookups.priority.name);
+  addChange(changes, "sob", current.sob, input.sob);
+  addChange(changes, "serviceCenter", current.service_center_text, lookups.serviceCenter.name);
+  addChange(changes, "serviceType", current.service_type_text, lookups.serviceType.name);
+  addChange(changes, "executionDeadline", current.execution_deadline, input.executionDeadline);
+  addChange(changes, "estimatedValue", current.estimated_value, input.estimatedValue);
+  addChange(changes, "voltageLevel", current.voltage_level_text, lookups.voltageLevel?.name ?? null);
+  addChange(changes, "projectSize", current.project_size_text, lookups.projectSize?.name ?? null);
+  addChange(changes, "contractorResponsible", current.contractor_responsible_text, lookups.contractorResponsible.name);
+  addChange(changes, "utilityResponsible", current.utility_responsible_text, lookups.utilityResponsible.name);
+  addChange(changes, "utilityFieldManager", current.utility_field_manager_text, lookups.utilityFieldManager.name);
+  addChange(changes, "city", current.city_text, lookups.municipality.name);
+  addChange(changes, "street", current.street, input.street);
+  addChange(changes, "neighborhood", current.neighborhood, input.neighborhood);
+  addChange(changes, "serviceDescription", current.service_description, input.serviceDescription);
+  addChange(changes, "observation", current.observation, input.observation);
+  addChange(changes, "partner", current.partner_text, lookups.partner.name);
 
   return changes;
 }
 
 async function fetchProjectById(supabase: SupabaseClient, tenantId: string, projectId: string) {
   const { data, error } = await supabase
-    .from("project")
+    .from("project_with_labels")
     .select(
-      "id, sob, service_center, partner, service_type, execution_deadline, priority, estimated_value, voltage_level, project_size, contractor_responsible, utility_responsible, utility_field_manager, street, neighborhood, city, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, priority_id, service_center_id, service_type_id, voltage_level_id, project_size_id, municipality_id, contractor_responsible_id, utility_responsible_id, utility_field_manager_id, created_by, updated_by, created_at, updated_at",
+      "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", projectId)
@@ -654,9 +639,9 @@ export async function GET(request: NextRequest) {
     const to = from + pageSize - 1;
 
     let query = supabase
-      .from("project")
+      .from("project_with_labels")
       .select(
-        "id, sob, service_center, partner, service_type, execution_deadline, priority, estimated_value, voltage_level, project_size, contractor_responsible, utility_responsible, utility_field_manager, street, neighborhood, city, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -668,10 +653,10 @@ export async function GET(request: NextRequest) {
       query = query.eq("execution_deadline", executionDate);
     }
     if (priority) {
-      query = query.eq("priority", priority);
+      query = query.eq("priority_text", priority);
     }
     if (city) {
-      query = query.eq("city", city);
+      query = query.eq("city_text", city);
     }
 
     const { data, error, count } = await query
@@ -679,7 +664,7 @@ export async function GET(request: NextRequest) {
       .order("execution_deadline", { ascending: true })
       .order("created_at", { ascending: false })
       .range(from, to)
-      .returns<ProjectSummaryRow[]>();
+      .returns<ProjectRow[]>();
 
     if (error) {
       return NextResponse.json({ message: "Falha ao listar projetos." }, { status: 500 });
@@ -708,20 +693,20 @@ export async function GET(request: NextRequest) {
       projects: (data ?? []).map((item) => ({
         id: item.id,
         sob: item.sob,
-        serviceCenter: item.service_center,
-        partner: item.partner,
-        serviceType: item.service_type,
+        serviceCenter: item.service_center_text ?? "Nao identificado",
+        partner: item.partner_text ?? "Nao identificado",
+        serviceType: item.service_type_text ?? "Nao identificado",
         executionDeadline: item.execution_deadline,
-        priority: item.priority,
+        priority: item.priority_text ?? "Nao identificado",
         estimatedValue: Number(item.estimated_value ?? 0),
-        voltageLevel: item.voltage_level,
-        projectSize: item.project_size,
-        contractorResponsible: item.contractor_responsible,
-        utilityResponsible: item.utility_responsible,
-        utilityFieldManager: item.utility_field_manager,
+        voltageLevel: item.voltage_level_text,
+        projectSize: item.project_size_text,
+        contractorResponsible: item.contractor_responsible_text ?? "Nao identificado",
+        utilityResponsible: item.utility_responsible_text ?? "Nao identificado",
+        utilityFieldManager: item.utility_field_manager_text ?? "Nao identificado",
         street: item.street,
         neighborhood: item.neighborhood,
-        city: item.city,
+        city: item.city_text ?? "Nao identificado",
         serviceDescription: item.service_description,
         observation: item.observation,
         isActive: Boolean(item.is_active),
@@ -774,7 +759,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: sobRuleError }, { status: 422 });
     }
 
-    const insertPayload = buildProjectWritePayload(input, lookupResolution.data, appUser.id);
+    const insertPayload = buildProjectWritePayload(input, lookupResolution.data);
 
     const { error } = await supabase.from("project").insert({
       tenant_id: appUser.tenant_id,
@@ -847,8 +832,8 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: sobRuleError }, { status: 422 });
     }
 
-    const updatePayload = buildProjectWritePayload(input, lookupResolution.data, appUser.id);
-    const changes = buildProjectUpdateChanges(currentProject, updatePayload);
+    const updatePayload = buildProjectWritePayload(input, lookupResolution.data);
+    const changes = buildProjectUpdateChanges(currentProject, input, lookupResolution.data);
 
     if (Object.keys(changes).length === 0) {
       return NextResponse.json({ success: true, message: `Nenhuma alteracao detectada no projeto ${currentProject.sob}.` });
