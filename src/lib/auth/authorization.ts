@@ -2,6 +2,9 @@ const ADMIN_ONLY_ROUTE_PREFIXES = ["/permissoes"] as const;
 
 const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/home", pageKey: "home" },
+  { prefix: "/projetos", pageKey: "projetos" },
+  { prefix: "/locacao", pageKey: "locacao" },
+  { prefix: "/programacao", pageKey: "programacao" },
   { prefix: "/estoque", pageKey: "estoque" },
   { prefix: "/entrada", pageKey: "entrada" },
   { prefix: "/saida", pageKey: "saida" },
@@ -29,18 +32,18 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   const normalized = normalizeRole(role);
 
   if (normalized === "master" || normalized === "admin") {
-    return ["home", "estoque", "entrada", "saida", "materiais", "pessoas", "cadastro-base"];
+    return ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas", "cadastro-base"];
   }
 
   if (normalized === "supervisor") {
-    return ["home", "estoque", "entrada", "saida", "materiais", "pessoas"];
+    return ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas"];
   }
 
   if (normalized === "viewer") {
     return ["home", "estoque"];
   }
 
-  return ["home", "estoque", "entrada", "saida", "materiais", "pessoas"];
+  return ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas"];
 }
 
 export function normalizePageAccess(pageAccess: string[] | null | undefined) {

@@ -1,0 +1,72 @@
+Tela: Programacao SaaS
+
+Visao geral
+-----------
+- Tela placeholder para o modulo de programacao no dashboard.
+- Disponibiliza o atalho de navegacao da secao `Operacao`.
+- Ainda nao possui agenda funcional nem integracao de dados.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/programacao/page.tsx`
+- Componente de base visual: `src/components/ui/ModulePlaceholder.tsx`
+- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
+- Guard de rota por permissao: `src/lib/auth/authorization.ts`
+
+Cadastro
+--------
+- Nao se aplica nesta etapa.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica nesta etapa.
+
+Boas praticas
+-------------
+- Tratar `programacao` como `pageKey` oficial no controle de permissao.
+- Manter nomenclatura consistente de rota e label entre shell e matriz de acesso.
+- Nao acoplar logica de agenda sem contrato backend versionado.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa.
+
+Atalhos
+-------
+- Rota ativa: `/programacao`.
+- Exibida na secao `Operacao` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Arquivo `src/app/(dashboard)/programacao/page.tsx` criado.
+- `AppShell` atualizado para expor o item `Programacao` na navegacao lateral.
+- `authorization.ts` atualizado para mapear `/programacao` para `pageKey = programacao`.
+- `PermissionsPageView` atualizado para incluir o toggle de acesso da tela `Programacao`.
+- Antes: a rota nao existia.
+- Depois: rota placeholder existente e protegida por permissao de pagina.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/programacao/page.tsx`
+  - Responsavel por: montar o placeholder da rota `Programacao`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: renderizar o atalho lateral de `Programacao`.
+
+Constantes e configuracoes
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: entrada da rota em `menuSections` e titulo em `titleMap`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapeamento de rota em `ROUTE_PAGE_KEYS` e fallback de acesso por role.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: `permissionCatalog` para liberar/bloquear a rota por usuario.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: sessao autenticada consumida no shell.
+
+Servicos e integracoes externas
+- Nao se aplica nesta etapa (sem chamada de API nesta tela).
+
+Ajuda contextual
+- Estado atual: tela em placeholder com proximo passo de definir agenda operacional.

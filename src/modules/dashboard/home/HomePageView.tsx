@@ -30,7 +30,9 @@ export function HomePageView() {
         <div className={styles.summaryCard}>
           <div className={styles.summaryLabel}>Escopo atual</div>
           <div className={styles.summaryValue}>Login + shell + home</div>
-          <div className={styles.summaryHint}>Proximas telas: Cadastro Base, Pessoas, Materiais, Entrada, Saida e Estoque.</div>
+          <div className={styles.summaryHint}>
+            Proximas telas: Projetos, Locacao, Programacao, Materiais, Entrada Estoque, Saida Estoque e Estoque Atual.
+          </div>
         </div>
       </div>
 

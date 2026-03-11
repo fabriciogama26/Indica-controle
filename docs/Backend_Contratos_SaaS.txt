@@ -54,6 +54,9 @@ Atualizacao 2026-03
 - Migration `025_app_users_admin_tenant_select.sql` criada.
 - Migration `026_simplify_user_page_permissions.sql` criada.
 - Migration `027_create_permission_change_history.sql` criada.
+- Migration `028_add_operation_menu_pages.sql` criada.
+- Migration `029_create_project_table.sql` criada.
+- Migration `030_project_sob_priority_rules.sql` criada.
 - `auth-login-web` implementada.
 - `auth-recover` implementada para reset por `login_name`.
 - `auth-login-web` e `logout` ajustadas para tratar `login_audit` como log de eventos imutaveis com `session_ref`.
@@ -67,6 +70,8 @@ Atualizacao 2026-03
 - A tela `/permissoes` passou a gravar historico em `app_user_permission_history`.
 - O fluxo oficial de provisionamento web passou a ser `pre-cadastro em app_users + invite no Auth`.
 - A route `src/app/api/auth/session-access/route.ts` passou a devolver `pageAccess` e `hasCustomPermissions` para o frontend montar o shell conforme as permissoes salvas.
+- Rotas `src/app/api/projects/route.ts` e `src/app/api/projects/meta/route.ts` criadas para cadastro, filtros e listagem paginada da tela `/projetos`.
+- A rota `src/app/api/projects/route.ts` passou a validar formato de `SOB` por prioridade antes do insert.
 - O frontend passou a ter preparo explicito para deploy no Vercel, mantendo `auth-login-web`, `auth-recover`, `logout` e demais Edge Functions no Supabase.
 - `tsconfig.json` do frontend passou a excluir `supabase/edge_functions` do type-check do Next para evitar conflito entre runtime Node e runtime Deno.
 
@@ -89,6 +94,10 @@ Funcoes principais
   - Responsavel por: enviar o convite de primeiro acesso a partir do pre-cadastro existente em `app_users`.
 - Caminho: `src/app/api/auth/session-access/route.ts`
   - Responsavel por: resolver o usuario autenticado atual e devolver as telas liberadas em `app_user_page_permissions`.
+- Caminho: `src/app/api/projects/route.ts`
+  - Responsavel por: cadastrar projeto e listar projetos filtrados por tenant com paginação server-side.
+- Caminho: `src/app/api/projects/meta/route.ts`
+  - Responsavel por: carregar opcoes de filtros/auto-complete da tela de projetos.
 - Caminho: `vercel.json`
   - Responsavel por: declarar o deploy do frontend como projeto `nextjs`, sem substituir o backend Supabase.
 
@@ -117,6 +126,12 @@ Constantes e configuracoes
   - Responsavel por: simplificar `app_user_page_permissions` para usar apenas `can_access`.
 - Caminho: `supabase/migrations/027_create_permission_change_history.sql`
   - Responsavel por: criar `app_user_permission_history` para auditoria de alteracoes administrativas e convites.
+- Caminho: `supabase/migrations/028_add_operation_menu_pages.sql`
+  - Responsavel por: incluir `projetos`, `locacao` e `programacao` no catalogo `app_pages`, mover `materiais` para `Operacao` e atualizar labels de entrada/saida.
+- Caminho: `supabase/migrations/029_create_project_table.sql`
+  - Responsavel por: criar a tabela `project` com campos da tela, auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`) e policies RLS por tenant.
+- Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
+  - Responsavel por: validar formato do `SOB` por prioridade e garantir unicidade case-insensitive de `SOB` por tenant.
 - Caminho: `supabase/migrations/011_create_rate_limit.sql`
   - Responsavel por: rate limit das functions.
 - Caminho: `.env.example`
@@ -150,6 +165,9 @@ Ajuda contextual
   - `025_app_users_admin_tenant_select.sql`
   - `026_simplify_user_page_permissions.sql`
   - `027_create_permission_change_history.sql`
+  - `028_add_operation_menu_pages.sql`
+  - `029_create_project_table.sql`
+  - `030_project_sob_priority_rules.sql`
 - Functions minimas para o SaaS web:
   - `auth-login-web`
   - `auth-recover`

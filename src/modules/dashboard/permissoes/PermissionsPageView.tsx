@@ -46,10 +46,13 @@ const roleOptions: RoleOption[] = [
 
 const permissionCatalog = [
   { pageKey: "home", label: "Dashboard Estoque", path: "/home", section: "Visao Geral" },
+  { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
+  { pageKey: "locacao", label: "Locacao", path: "/locacao", section: "Operacao" },
+  { pageKey: "programacao", label: "Programacao", path: "/programacao", section: "Operacao" },
+  { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Operacao" },
   { pageKey: "estoque", label: "Estoque Atual", path: "/estoque", section: "Operacao" },
-  { pageKey: "entrada", label: "Entradas", path: "/entrada", section: "Operacao" },
-  { pageKey: "saida", label: "Saidas", path: "/saida", section: "Operacao" },
-  { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },
+  { pageKey: "entrada", label: "Entrada Estoque", path: "/entrada", section: "Operacao" },
+  { pageKey: "saida", label: "Saida Estoque", path: "/saida", section: "Operacao" },
   { pageKey: "pessoas", label: "Pessoas", path: "/pessoas", section: "Cadastros" },
   { pageKey: "cadastro-base", label: "Cadastro Base", path: "/cadastro-base", section: "Cadastros" },
 ] as const;
@@ -76,7 +79,7 @@ function createPermissionSet(role: string): PermissionCard[] {
 
     return {
       ...item,
-      enabled: ["home", "estoque", "entrada", "saida", "materiais", "pessoas"].includes(item.pageKey),
+      enabled: ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas"].includes(item.pageKey),
     };
   });
 }

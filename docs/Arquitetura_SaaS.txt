@@ -15,7 +15,7 @@ Arquitetura
 
 Cadastro
 --------
-- Modulos previstos: Cadastro Base, Pessoas e Materiais.
+- Modulos previstos: Projetos, Locacao, Programacao, Materiais, Cadastro Base e Pessoas.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -36,7 +36,8 @@ Cancelamento e saldo
 Atalhos
 -------
 - Rota publica: `/login`
-- Rotas protegidas: `/home`, `/cadastro-base`, `/pessoas`, `/materiais`, `/entrada`, `/saida`, `/estoque`
+- Rotas protegidas: `/home`, `/projetos`, `/locacao`, `/programacao`, `/materiais`, `/estoque`, `/entrada`, `/saida`, `/pessoas`, `/cadastro-base`
+- A rota `/projetos` possui API dedicada em `src/app/api/projects/*` para cadastro e consulta.
 
 Atualizacao 2026-03
 -------------------

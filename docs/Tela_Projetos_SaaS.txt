@@ -1,0 +1,140 @@
+Tela: Projetos SaaS
+
+Visao geral
+-----------
+- Tela operacional para cadastro, filtro e listagem de projetos por tenant.
+- Implementa o fluxo completo inicial de Projetos com persistencia em `public.project`.
+- Mantem o padrao visual com blocos separados: cadastro, filtros e lista em colunas.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/projetos/page.tsx`
+- View: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+- Estilo: `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+- API de listagem/cadastro: `src/app/api/projects/route.ts`
+- API de metadados/filtros: `src/app/api/projects/meta/route.ts`
+- Banco: `supabase/migrations/029_create_project_table.sql`
+- Banco (regras de SOB por prioridade): `supabase/migrations/030_project_sob_priority_rules.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `Prioridade`
+  - `Projeto (SOB)`
+  - `Centro de Servico`
+  - `Parceira`
+  - `Tipo de Servico`
+  - `Data limite`
+  - `Valor estimado`
+  - `Responsavel Contratada`
+  - `Responsavel Distribuidora`
+  - `Gestor de campo Distribuidora`
+  - `Logradouro`
+  - `Bairro`
+  - `Municipio`
+- Campos opcionais:
+  - `Nivel de Tensao`
+  - `Porte`
+  - `Descricao do servico`
+  - `Observacao`
+- `Centro de Servico` e `Parceira` sao preenchidos automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
+- Regra de validacao do `SOB` antes do banco:
+  - Se prioridade for `GRUPO B - FLUXO`, `DRP / DRC` ou `GRUPO A - FLUXO`, o `SOB` deve ser `A` + 9 numeros.
+  - Se prioridade for `FUSESAVER`, o `SOB` deve iniciar com `ZX` ou `FS` + 8 numeros.
+  - `SOB` duplicado no mesmo tenant nao pode ser cadastrado.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros implementados:
+  - `Projeto (SOB)` (texto)
+  - `Data Execucao` (data)
+  - `Prioridade` (select)
+  - `Municipio` (select)
+- Auto-complete implementado para:
+  - `SOB`
+  - `Prioridade`
+  - `Municipio`
+  - `Responsaveis`
+- Listagem em colunas com paginação server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
+- Coluna `Parceira` removida da lista para reduzir redundancia visual.
+- Coluna `Acoes` adicionada com botoes: `Ver detalhes`, `Editar`, `Historico` e `Cancelar`.
+- Colunas `Prioridade` e `Responsavel Contratada` removidas da lista.
+- Coluna `Registrado por` adicionada na lista com base em `created_by`.
+
+Boas praticas
+-------------
+- Sempre filtrar e gravar com `tenant_id` no backend.
+- Usar validação de campos obrigatorios na API antes do insert.
+- Manter paginação server-side para listas grandes.
+- Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa da tela Projetos.
+
+Atalhos
+-------
+- Rota ativa: `/projetos`.
+- Exibida na secao `Operacao` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Antes: rota `/projetos` era placeholder sem CRUD.
+- Depois: tela com cadastro, filtros e lista paginada integrada ao backend.
+- Criada migration `029_create_project_table.sql` para tabela `public.project` com RLS e auditoria.
+- Criada migration `030_project_sob_priority_rules.sql` para validar formato de `SOB` por prioridade e unicidade case-insensitive no tenant.
+- Criada API `src/app/api/projects/route.ts` para `GET` (lista/filtros) e `POST` (cadastro).
+- Criada API `src/app/api/projects/meta/route.ts` para opcoes de filtros e auto-complete.
+- `src/app/(dashboard)/projetos/page.tsx` passou a renderizar `ProjectsPageView`.
+- Ajuste visual: removida a legenda redundante do topo (`* campo obrigatorio` e `-- campo de digitacao`).
+- Ajuste visual: removido o bloco de titulo interno da tela acima de `Cadastro de Projeto`.
+- Ajuste visual: marcador `*` dos campos obrigatorios aplicado em vermelho como padrao (`.requiredMark` global).
+- Ajuste visual: reforcada prioridade da classe global `.requiredMark` para evitar sobrescrita por estilos locais de label.
+- Ajuste textual: campo `Data limite da execucao` renomeado para `Data limite`.
+- Ajuste visual: lista de projetos atualizada com coluna `Acoes` por linha e sem coluna `Parceira`.
+- Ajuste visual: lista de projetos atualizada com coluna `Registrado por` e sem colunas `Prioridade`/`Responsavel Contratada`.
+- Ajuste de regras: campo `Prioridade` movido para antes de `Projeto (SOB)` no cadastro.
+- Ajuste de regras: validacao de `SOB` aplicada no frontend, na API e no banco.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - Responsavel por: estado da tela, cadastro, filtros, paginação e listagem.
+- Caminho: `src/app/api/projects/route.ts`
+  - Responsavel por: validar payload, inserir projeto e listar projetos por tenant.
+- Caminho: `src/app/api/projects/meta/route.ts`
+  - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`.
+- Caminho: `supabase/migrations/029_create_project_table.sql`
+  - Responsavel por: tabela `project`, indices, policies RLS e trigger de auditoria.
+- Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
+  - Responsavel por: regra de formato do `SOB` por prioridade e unicidade case-insensitive de `SOB` por tenant.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handlers (`/api/projects` e `/api/projects/meta`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/projetos/page.tsx`
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+  - `src/app/api/projects/route.ts`
+  - `src/app/api/projects/meta/route.ts`
+  - `supabase/migrations/029_create_project_table.sql`
+  - `supabase/migrations/030_project_sob_priority_rules.sql`
+- Funcoes/hooks/constantes tocadas:
+  - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `applyFilters`, `clearFilters`, `getSobRuleError`
+  - `GET`/`POST` de `/api/projects`
+  - `GET` de `/api/projects/meta`
+  - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`

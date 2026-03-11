@@ -6,14 +6,22 @@
 - [x] Isolar o client administrativo da `auth-login-web` para impedir que o insert em `login_audit` caia no RLS depois do `signInWithPassword`.
 - [x] Endurecer RLS multi-tenant com base em `auth.uid()` e `app_users.ativo = true`.
 - [x] Restringir as policies multi-tenant ao role `authenticated`.
-- [x] Criar a base de permissoes por pagina com `app_pages`, `role_page_permissions` e a rota administrativa `/permissoes`.
-- [x] Normalizar os perfis em `app_roles` e migrar `app_users`/`role_page_permissions` para `role_id`.
-- [x] Criar a base `app_user_page_permissions` para a futura matriz por usuario e por tela, sem suporte a `delete`.
-- [x] Adicionar policy RLS para permitir que admin/master leia `app_users` do proprio tenant na tela `/permissoes`.
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
-- [x] Refinar a sidebar para o padrao de menu lateral SaaS compacto, com secoes, icones e estados hover/ativo mais leves.
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
+- [x] Expandir a navegacao de `Operacao` com `Projetos`, `Locacao`, `Programacao` e mover `Materiais` para a mesma secao.
+- [x] Criar placeholders iniciais para `Projetos`, `Locacao` e `Programacao` no dashboard.
+- [x] Implementar tela de `Projetos` com cadastro, filtros e listagem em colunas integrada a `/api/projects`.
+- [x] Criar migration `029_create_project_table.sql` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`) para persistencia de projetos.
+- [x] Ajustar a tela de `Projetos` removendo a legenda redundante de campos no topo.
+- [x] Ajustar a tela de `Projetos` removendo o bloco de titulo interno acima de `Cadastro de Projeto`.
+- [x] Padronizar marcador `*` de campo obrigatorio em vermelho (`.requiredMark`) na tela de `Projetos`.
+- [x] Renomear o campo `Data limite da execucao` para `Data limite` na tela de `Projetos`.
+- [x] Atualizar lista de `Projetos` removendo coluna `Parceira` e adicionando coluna `Acoes` com botoes de operacao.
+- [x] Reordenar lista de `Projetos` para exibir `Atualizado em` antes da coluna `Acoes`.
+- [x] Atualizar lista de `Projetos` removendo colunas `Prioridade` e `Responsavel Contratada` e adicionando `Registrado por`.
+- [x] Aplicar regra de SOB por prioridade em `Projetos` (frontend + API + constraint SQL).
+- [x] Mover `Prioridade` para antes de `Projeto (SOB)` no formulario de cadastro.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
@@ -29,38 +37,28 @@
 - [ ] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
-- [x] Implementar timeout por inatividade no frontend com retorno para `/login`.
-- [x] Implementar tratamento de token expirado e refresh de sessao remota no `AuthContext`.
-- [x] Evoluir o frontend da tela `/permissoes` para o fluxo real de selecao de usuario, role, status e liberacao por tela.
-- [x] Buscar usuarios reais do tenant na tela `/permissoes`, sem lista mockada.
-- [x] Ajustar a busca de usuarios em `/permissoes` para pesquisar por `login_name` e `matricula`.
-- [x] Simplificar a modelagem de `app_user_page_permissions` para refletir o conceito final de liberacao por tela, sem matriz de acoes individuais.
-- [x] Implementar CRUD real da matriz de permissoes consumindo `app_user_page_permissions`.
-- [x] Conectar a tela `/permissoes` ao Supabase para buscar usuario, carregar permissoes e salvar alteracoes.
-- [x] Expandir o controle de permissao no frontend para o shell principal, escondendo telas bloqueadas por `app_user_page_permissions`.
-- [x] Bloquear por padrao novas rotas do dashboard ate que entrem no catalogo de paginas e no mapeamento de `authorization.ts`.
-- [x] Registrar historico imutavel de alteracoes de role, status, telas liberadas e envio de convite.
+- [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
+- [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
+- [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.
+- [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
+- [ ] Implementar gestao de sessao web com expiracao por inatividade, touch/revoke e tratamento de token expirado.
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.
 - [x] Ajustar a UX de recuperacao para usar o `login_name` digitado na tela de login antes do envio do email pelo Supabase.
 - [x] Adaptar `/recuperar-senha` para aceitar `token_hash` e validar links customizados de invite/reset com `verifyOtp`.
-- [x] Definir fluxo oficial de provisionamento de usuarios no Supabase Auth com metadata minima (`tenant_id`, `matricula`, `login_name`).
-- [x] Definir o provisionamento padrao de usuarios como pre-cadastro em `app_users` + invite no Auth.
-- [x] Corrigir a hidratacao tipada do `AuthContext` para liberar o `next build`.
-- [x] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
-- [x] Excluir `supabase/edge_functions` do type-check do Next para manter o deploy web separado das Edge Functions do Supabase.
-- [x] Preparar o frontend Next.js para deploy no Vercel, mantendo Auth, banco e Edge Functions no Supabase.
+- [ ] Definir fluxo oficial de provisionamento de usuarios no Supabase Auth com metadata minima (`tenant_id`, `matricula`, `login_name`).
+- [ ] Definir se o provisionamento padrao de usuarios sera por pre-cadastro em `app_users` + invite no Auth, ou por metadata obrigatoria no invite admin.
 - [ ] Integrar `log_error` no frontend para registrar falhas por modulo.
 - [ ] Adicionar testes automatizados para auth e fluxo base de navegacao.
-- [ ] Configurar no Vercel as variaveis de ambiente de `Preview` e `Production` e validar o dominio final de `PASSWORD_REDIRECT_URL`.
+- [ ] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
+- [ ] Corrigir o `build` atual do Next para nao type-checkar imports Deno de `SaaS (Web)/supabase/edge_functions`, ou remover essa copia do app web.
 
 - [ ] Definir uma fonte unica de verdade para `supabase/`, porque hoje existe copia na raiz do repositorio e outra em `SaaS (Web)/supabase`.
-- [x] Revisar README e docs que ainda assumiam backend somente externo em `d:\\RQM\\supabase`.
+- [ ] Revisar README e docs que ainda assumem backend somente externo em `d:\\RQM\\supabase`, enquanto este repositorio ja contem artefatos Supabase versionados.
 - [ ] Confirmar se o frontend web vai continuar consumindo Edge Functions service-role ou se parte dos acessos passara a usar cliente autenticado + RLS diretamente.
 - [ ] Mapear quais operacoes sensiveis de estoque precisam gerar auditoria adicional alem de `login_audit` e `app_error_logs`.
-- [x] Tratar `TOKEN_EXPIRED` com auditoria no `login_audit`.
 - [ ] Definir backlog funcional do SaaS de engenharia eletrica alem do modulo atual de materiais/estoque.
 
-- [ ] Pendencia de dependencia registrada em 2026-03-08: `react` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-08: `react-dom` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-08: `@types/node` `20.19.37 -> 25.3.5`.
-- [ ] Pendencia de dependencia registrada em 2026-03-08: `eslint` `9.39.4 -> 10.0.3`.
+- [ ] Pendencia de dependencia registrada em 2026-03-07: `react` `19.2.3 -> 19.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-03-07: `react-dom` `19.2.3 -> 19.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-03-07: `@types/node` `20.19.37 -> 25.3.5`.
+- [ ] Pendencia de dependencia registrada em 2026-03-07: `eslint` `9.39.4 -> 10.0.3`.

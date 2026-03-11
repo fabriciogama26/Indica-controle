@@ -17,16 +17,19 @@ const menuSections = [
   {
     title: "Operacao",
     items: [
+      { href: "/projetos", label: "Projetos", icon: "folder" },
+      { href: "/locacao", label: "Locacao", icon: "briefcase" },
+      { href: "/programacao", label: "Programacao", icon: "calendar" },
+      { href: "/materiais", label: "Materiais", icon: "package" },
       { href: "/estoque", label: "Estoque Atual", icon: "box" },
-      { href: "/entrada", label: "Entradas", icon: "arrow-down" },
-      { href: "/saida", label: "Saidas", icon: "arrow-up" },
+      { href: "/entrada", label: "Entrada Estoque", icon: "arrow-down" },
+      { href: "/saida", label: "Saida Estoque", icon: "arrow-up" },
     ],
   },
   {
     title: "Cadastros",
     items: [
       { href: "/pessoas", label: "Pessoas", icon: "users" },
-      { href: "/materiais", label: "Materiais", icon: "package" },
       { href: "/cadastro-base", label: "Cadastro Base", icon: "settings" },
     ],
   },
@@ -49,12 +52,24 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Materiais",
     subtitle: "Cadastro e manutencao do catalogo de materiais.",
   },
+  "/projetos": {
+    title: "Projetos",
+    subtitle: "Cadastro e acompanhamento dos projetos operacionais.",
+  },
+  "/locacao": {
+    title: "Locacao",
+    subtitle: "Controle de recursos alocados por locacao.",
+  },
+  "/programacao": {
+    title: "Programacao",
+    subtitle: "Planejamento e agenda das operacoes.",
+  },
   "/entrada": {
-    title: "Entrada",
+    title: "Entrada Estoque",
     subtitle: "Lancamentos de entrada no estoque fisico.",
   },
   "/saida": {
-    title: "Saida",
+    title: "Saida Estoque",
     subtitle: "Lancamentos de saida do estoque fisico.",
   },
   "/estoque": {
@@ -92,6 +107,50 @@ function renderMenuIcon(icon: (typeof menuSections)[number]["items"][number]["ic
             strokeLinejoin="round"
           />
           <path d="M5.25 7.5 12 11l6.75-3.5M12 11v9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      );
+    case "folder":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M3.75 8.25a1.5 1.5 0 0 1 1.5-1.5h4.2l1.5 1.5h7.8a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5h-13.5a1.5 1.5 0 0 1-1.5-1.5v-9Z"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "briefcase":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M4.75 8.75h14.5a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H4.75a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1Z"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M8.5 8.75V7.5A1.75 1.75 0 0 1 10.25 5.75h3.5A1.75 1.75 0 0 1 15.5 7.5v1.25"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "calendar":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M5.25 6.75h13.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-10a1.5 1.5 0 0 1 1.5-1.5Z"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path d="M8 4.75v3M16 4.75v3M3.75 10.25h16.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
         </svg>
       );
     case "arrow-down":
