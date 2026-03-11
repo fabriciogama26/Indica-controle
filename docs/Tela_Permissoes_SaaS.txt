@@ -55,7 +55,7 @@ Filtros, auto-complete e listagem
   - registra historico com `change_type = 'INVITE_SENT'`
 - No login e na reidratacao da sessao, o frontend consulta `src/app/api/auth/session-access/route.ts` para aplicar no shell as telas realmente liberadas para o usuario.
 - Ao selecionar o resultado da busca, a tela aplica `role`, `status` e a matriz visual do usuario escolhido.
-- A listagem atual considera apenas as telas que ja existem no SaaS web: Home, Estoque Atual, Entradas, Saidas, Materiais, Pessoas e Cadastro Base.
+- A listagem atual considera as telas do SaaS web: Home, Projetos, Locacao, Programacao, Materiais, Estoque Atual, Entrada Estoque, Saida Estoque, Pessoas e Cadastro Base.
 
 Boas praticas
 -------------
@@ -89,6 +89,7 @@ Atualizacao 2026-03
 - Migration `025_app_users_admin_tenant_select.sql` criada para liberar leitura de `app_users` do mesmo tenant apenas para admin/master autenticado.
 - Migration `026_simplify_user_page_permissions.sql` criada para simplificar a matriz por usuario para um unico `can_access` por tela.
 - Migration `027_create_permission_change_history.sql` criada para registrar historico imutavel de mudancas de role, status, telas liberadas e envio de convite.
+- Migration `028_add_operation_menu_pages.sql` criada para incluir novas telas de `Operacao` em `app_pages`.
 - Route `src/app/api/app-users/[userId]/permissions/route.ts` criada para carregar e salvar credenciais por usuario.
 - Route `src/app/api/app-users/[userId]/invite/route.ts` criada para enviar o convite de primeiro acesso a partir do pre-cadastro em `app_users`.
 - Route `src/app/api/auth/session-access/route.ts` criada para devolver as telas liberadas ao usuario autenticado.
@@ -99,6 +100,10 @@ Atualizacao 2026-03
   - bloco superior curto com busca de usuario, role e status
   - grade por secao/tela com um unico toggle `Liberado/Bloqueado`
   - a permissao de visualizar a tela passa a representar o pacote inteiro da pagina
+- Catalogo frontend de permissao atualizado para refletir o novo menu de `Operacao`:
+  - adicionadas as telas `Projetos`, `Locacao` e `Programacao`
+  - `Materiais` movido para a secao `Operacao`
+  - labels `Entrada Estoque` e `Saida Estoque` aplicados na matriz de permissao
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -106,7 +111,7 @@ Funcoes principais
 - Caminho: `src/app/(dashboard)/permissoes/page.tsx`
   - Responsavel por: expor a rota autenticada `/permissoes`.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: apresentar a UI de credenciais e permissoes, com busca de usuario, role, status, resumo do tenant e matriz local de liberacao por tela.
+  - Responsavel por: apresentar a UI de credenciais e permissoes, com busca de usuario, role, status, resumo do tenant e matriz local de liberacao por tela com o novo catalogo de operacao.
 - Caminho: `src/app/api/app-users/search/route.ts`
   - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado e buscar `app_users` do mesmo tenant por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin/master.
 - Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
@@ -118,7 +123,7 @@ Funcoes principais
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: `normalizeRole`, `isAdminRole`, fallback por role, resolucao de `pageAccess` e bloqueio de rotas do shell.
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: expor a engrenagem de configuracao para admin, filtrar a sidebar pelas telas liberadas e redirecionar perfis sem acesso para a primeira rota disponivel.
+  - Responsavel por: expor a engrenagem de configuracao para admin, filtrar a sidebar pelas telas liberadas e redirecionar perfis sem acesso para a primeira rota disponivel, incluindo as novas rotas de operacao.
 - Caminho: `src/app/api/auth/session-access/route.ts`
   - Responsavel por: devolver `pageAccess` e `hasCustomPermissions` do usuario autenticado para o frontend.
 

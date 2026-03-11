@@ -3,7 +3,7 @@
 Visao geral
 -----------
 - Primeira tela apos o login.
-- Resume o escopo entregue e aponta os modulos iniciais do SaaS.
+- Resume o escopo entregue e aponta os modulos iniciais de operacao e cadastro do SaaS.
 
 Arquitetura
 -----------
@@ -38,6 +38,7 @@ Atualizacao 2026-03
 - Home criada.
 - Cards iniciais e resumo do escopo atual implementados.
 - Home reorganizada para `page.tsx` fino em `src/app` e implementacao visual em `src/modules/dashboard/home`.
+- Resumo visual das proximas telas atualizado para incluir `Projetos`, `Locacao` e `Programacao`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

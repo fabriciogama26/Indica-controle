@@ -44,3 +44,8 @@ button,
 input {
   font: inherit;
 }
+
+.requiredMark {
+  color: #c62828 !important;
+  font-weight: 800;
+}

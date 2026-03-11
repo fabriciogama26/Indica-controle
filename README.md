@@ -1,13 +1,13 @@
 ﻿# RQM SaaS
 
-Frontend web do SaaS para login, shell principal, cadastros base e modulos de estoque integrados ao Supabase, com hospedagem web prevista no Vercel.
+Frontend web do SaaS para login, shell principal, operacao de estoque e cadastros base integrados ao Supabase, com hospedagem web prevista no Vercel.
 
 ---
 
 ## Visao geral
 - Problema resolvido: separar o frontend web do app Android e manter o contexto tecnico do SaaS em uma estrutura propria.
 - Solucao proposta: projeto Next.js publicado no Vercel para servir a interface web, mantendo Auth, banco, RLS e Edge Functions no Supabase.
-- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Pessoas, Materiais e Estoque, acessado por dominio web publico.
+- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Projetos, Pessoas, Materiais e Estoque, acessado por dominio web publico.
 
 ---
 
@@ -112,16 +112,21 @@ vercel --prod
   - `(public)/recuperar-senha/page.tsx`: wrapper fino da rota publica de recuperacao de senha.
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
+  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros e listagem.
+  - `(dashboard)/locacao/page.tsx`: placeholder de Locacao.
+  - `(dashboard)/programacao/page.tsx`: placeholder de Programacao.
+  - `(dashboard)/materiais/page.tsx`: placeholder de Materiais.
+  - `(dashboard)/estoque/page.tsx`: placeholder de Estoque Atual.
+  - `(dashboard)/entrada/page.tsx`: placeholder de Entrada Estoque.
+  - `(dashboard)/saida/page.tsx`: placeholder de Saida Estoque.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/pessoas/page.tsx`: placeholder de Pessoas.
-  - `(dashboard)/materiais/page.tsx`: placeholder de Materiais.
-  - `(dashboard)/entrada/page.tsx`: placeholder de Entrada.
-  - `(dashboard)/saida/page.tsx`: placeholder de Saida.
-  - `(dashboard)/estoque/page.tsx`: placeholder de Estoque Atual.
   - `(dashboard)/permissoes/page.tsx`: tela administrativa base para permissoes por pagina.
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
   - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users`.
+  - `api/projects/route.ts`: cadastra e lista projetos por tenant com paginação server-side.
+  - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
   - `api/auth/session-access/route.ts`: devolve role, tenant e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
 - `src/modules/auth/login/`
@@ -133,6 +138,9 @@ vercel --prod
 - `src/modules/dashboard/home/`
   - `HomePageView.tsx`: implementacao visual da home.
   - `HomePageView.module.css`: estilo da home.
+- `src/modules/dashboard/projetos/`
+  - `ProjectsPageView.tsx`: tela de projetos com cadastro, filtros e listagem em colunas.
+  - `ProjectsPageView.module.css`: estilos da tela de projetos.
 - `src/modules/dashboard/permissoes/`
   - `PermissionsPageView.tsx`: front administrativo para pesquisar usuario por `login_name` ou `matricula`, ajustar role, status e permissoes por tela.
   - `PermissionsPageView.module.css`: estilo da tela de permissoes.
@@ -170,6 +178,9 @@ vercel --prod
   - `Layout_Principal_SaaS.txt`: shell principal.
   - `Tela_Home_SaaS.txt`: home inicial.
   - `Tela_Login_SaaS.txt`: login do SaaS.
+  - `Tela_Projetos_SaaS.txt`: tela de projetos com cadastro, filtros e listagem.
+  - `Tela_Locacao_SaaS.txt`: placeholder do modulo de locacao.
+  - `Tela_Programacao_SaaS.txt`: placeholder do modulo de programacao.
   - `Tela_Permissoes_SaaS.txt`: base da futura tela de permissao por pagina.
   - `Tela_Recuperacao_Senha_SaaS.txt`: recuperacao e definicao de senha.
 - `.env`: variaveis locais do ambiente, ignoradas pelo Git.
@@ -202,19 +213,23 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 13. O frontend persiste a sessao e redireciona para `/home`.
 14. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
 15. O shell principal libera navegacao para os modulos do SaaS.
-16. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
-17. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
-18. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
-19. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
-20. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
-21. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
-22. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
-23. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
-24. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
-25. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
-26. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
-27. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
-28. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
+16. A rota `/projetos` permite cadastrar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
+17. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
+18. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
+19. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
+20. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
+21. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
+22. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
+23. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
+24. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
+25. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
+26. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
+27. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
+28. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+29. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
+30. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
+31. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
+32. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
 
 ---
 
@@ -229,6 +244,21 @@ npm run build
 ---
 
 ## Troubleshooting
+- `Falha ao listar projetos.` ou `relation "project" does not exist`:
+  - Causa: migration de projetos nao aplicada no banco remoto.
+  - Solucao: aplicar `029_create_project_table.sql` antes de usar a tela `/projetos`.
+- `Para esta prioridade, Projeto (SOB) deve iniciar ...` ou `Para FUSESAVER, Projeto (SOB) deve iniciar ...`:
+  - Causa: `SOB` informado fora do formato exigido pela prioridade selecionada.
+  - Solucao: aplicar o padrao: `A` + 9 numeros para prioridades de fluxo/DRP-DRC, ou `ZX/FS` + 8 numeros para `FUSESAVER`.
+- `Falha ao carregar opcoes de projetos.`:
+  - Causa: tabelas de dominio da tela `Projetos` nao existem no banco.
+  - Solucao: aplicar a migration `031_create_project_lookup_tables.sql` e recarregar a pagina.
+- `Responsavel Contratada` sem opcoes no cadastro de projetos:
+  - Causa: cargos/pessoas de supervisor nao configurados no tenant.
+  - Solucao: garantir `job_titles.code = SUPERVISOR` ativo e pessoas ativas vinculadas em `people.job_title_id`.
+- `relation "contract" does not exist`:
+  - Causa: migrations da tabela de contrato por tenant nao aplicadas no banco remoto.
+  - Solucao: aplicar `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` e repetir a operacao.
 - `Missing NEXT_PUBLIC_SUPABASE_URL`:
   - Causa: ambiente remoto sem variaveis.
   - Solucao: preencher `.env` ou `.env.local`.

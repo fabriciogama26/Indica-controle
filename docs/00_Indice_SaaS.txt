@@ -10,6 +10,9 @@ Arquivos principais para nova task
 - docs/Tela_Permissoes_SaaS.txt
 - docs/Layout_Principal_SaaS.txt
 - docs/Tela_Home_SaaS.txt
+- docs/Tela_Projetos_SaaS.txt
+- docs/Tela_Locacao_SaaS.txt
+- docs/Tela_Programacao_SaaS.txt
 
 Ordem recomendada de leitura
 1. README.md
@@ -27,5 +30,6 @@ Estado atual resumido
 - Shell principal implementado
 - Base de permissoes por pagina criada
 - Home inicial implementada
-- Modulos de cadastro e estoque ainda em placeholder
+- Tela de Projetos com cadastro/filtros/lista implementada
+- Modulos de cadastro e estoque ainda em placeholder (exceto Projetos)
 - Backend minimo de login web mapeado no Supabase
