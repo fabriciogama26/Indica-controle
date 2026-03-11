@@ -1,22 +1,24 @@
+
 Tela: Projetos SaaS
 
 Visao geral
 -----------
 - Tela operacional para cadastro, filtro e listagem de projetos por tenant.
-- Implementa o fluxo completo inicial de Projetos com persistencia em `public.project`.
-- Mantem o padrao visual com blocos separados: cadastro, filtros e lista em colunas.
+- Implementa fluxo completo com criacao, edicao, inativacao e historico de alteracoes.
+- Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/projetos/page.tsx`
 - View: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
 - Estilo: `src/modules/dashboard/projetos/ProjectsPageView.module.css`
-- API de listagem/cadastro: `src/app/api/projects/route.ts`
+- API de projetos: `src/app/api/projects/route.ts`
 - API de metadados/filtros: `src/app/api/projects/meta/route.ts`
 - Banco: `supabase/migrations/029_create_project_table.sql`
 - Banco (regras de SOB por prioridade): `supabase/migrations/030_project_sob_priority_rules.sql`
 - Banco (tabelas de dominio por tenant): `supabase/migrations/031_create_project_lookup_tables.sql`
 - Banco (responsavel contratada via pessoas supervisoras): `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
+- Banco (status ativo + historicos): `supabase/migrations/036_create_project_history_and_cancellation.sql`
 
 Cadastro
 --------
@@ -24,22 +26,22 @@ Cadastro
   - `Prioridade`
   - `Projeto (SOB)`
   - `Centro de Servico`
-  - `Parceira`
   - `Tipo de Servico`
   - `Data limite`
   - `Valor estimado`
   - `Responsavel Contratada`
   - `Responsavel Distribuidora`
   - `Gestor de campo Distribuidora`
+  - `Municipio`
   - `Logradouro`
   - `Bairro`
-  - `Municipio`
 - Campos opcionais:
   - `Nivel de Tensao`
   - `Porte`
   - `Descricao do servico`
   - `Observacao`
-- `Centro de Servico` e `Parceira` sao preenchidos automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
+- `Centro de Servico` e preenchido automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
+- `Parceira` nao aparece no frontend; o backend preenche automaticamente com `contract.name` do tenant ativo.
 - Campos carregados de tabelas de dominio:
   - `Prioridade`
   - `Centro de Servico`
@@ -56,6 +58,8 @@ Cadastro
   - `SOB` duplicado no mesmo tenant nao pode ser cadastrado.
 - Regra de habilitacao no formulario:
   - `Projeto (SOB)` so fica ativo depois que `Prioridade` for selecionada.
+- Regra de edicao no formulario:
+  - Botao `Editar` carrega o projeto no bloco de cadastro e move a pagina para o topo.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -69,22 +73,30 @@ Filtros, auto-complete e listagem
   - `Prioridade`
   - `Municipio`
   - `Responsaveis`
-- Listagem em colunas com paginação server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
+- Listagem em colunas com paginacao server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
 - Coluna `Parceira` removida da lista para reduzir redundancia visual.
-- Coluna `Acoes` adicionada com botoes: `Ver detalhes`, `Editar`, `Historico` e `Cancelar`.
+- Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico` e `Cancelar`.
+- `Ver detalhes` abre modal com todos os campos da obra.
+- `Historico` abre modal com apenas os campos alterados por evento.
+- `Cancelar` abre modal com motivo obrigatorio e valida a inativacao da obra.
 - Colunas `Prioridade` e `Responsavel Contratada` removidas da lista.
 - Coluna `Registrado por` adicionada na lista com base em `created_by`.
 
 Boas praticas
 -------------
 - Sempre filtrar e gravar com `tenant_id` no backend.
-- Usar validação de campos obrigatorios na API antes do insert.
-- Manter paginação server-side para listas grandes.
+- Usar validacao de campos obrigatorios na API antes de gravar.
+- Manter paginacao server-side para listas grandes.
 - Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
 
 Cancelamento e saldo
 --------------------
-- Nao se aplica nesta etapa da tela Projetos.
+- Cancelamento implementado para Projetos:
+  - Inativa a obra (`project.is_active = false`).
+  - Exige motivo antes de validar cancelamento.
+  - Registra em `project_cancellation_history`.
+  - Registra no `project_history` como evento `CANCEL`.
+- Saldo nao se aplica a esta tela.
 
 Atalhos
 -------
@@ -94,49 +106,44 @@ Atalhos
 Atualizacao 2026-03
 -------------------
 - Antes: rota `/projetos` era placeholder sem CRUD.
-- Depois: tela com cadastro, filtros e lista paginada integrada ao backend.
+- Depois: tela com cadastro, filtros, lista paginada e acoes completas.
 - Criada migration `029_create_project_table.sql` para tabela `public.project` com RLS e auditoria.
 - Criada migration `030_project_sob_priority_rules.sql` para validar formato de `SOB` por prioridade e unicidade case-insensitive no tenant.
-- Criada migration `031_create_project_lookup_tables.sql` para normalizar campos de dominio em tabelas por tenant e vincular `project` com FKs.
-- Criada API `src/app/api/projects/route.ts` para `GET` (lista/filtros) e `POST` (cadastro).
-- Criada API `src/app/api/projects/meta/route.ts` para opcoes de filtros e auto-complete.
-- `src/app/(dashboard)/projetos/page.tsx` passou a renderizar `ProjectsPageView`.
-- Ajuste visual: removida a legenda redundante do topo (`* campo obrigatorio` e `-- campo de digitacao`).
-- Ajuste visual: removido o bloco de titulo interno da tela acima de `Cadastro de Projeto`.
-- Ajuste visual: marcador `*` dos campos obrigatorios aplicado em vermelho como padrao (`.requiredMark` global).
-- Ajuste visual: reforcada prioridade da classe global `.requiredMark` para evitar sobrescrita por estilos locais de label.
-- Ajuste textual: campo `Data limite da execucao` renomeado para `Data limite`.
-- Ajuste visual: lista de projetos atualizada com coluna `Acoes` por linha e sem coluna `Parceira`.
-- Ajuste visual: lista de projetos atualizada com coluna `Registrado por` e sem colunas `Prioridade`/`Responsavel Contratada`.
-- Ajuste de regras: campo `Prioridade` movido para antes de `Projeto (SOB)` no cadastro.
-- Ajuste de regras: validacao de `SOB` aplicada no frontend, na API e no banco.
-- Ajuste de UX: `Projeto (SOB)` desabilitado ate selecionar `Prioridade`.
-- Ajuste de dados: formulario de projeto passou a carregar opcoes a partir de tabelas de dominio no backend.
-- Ajuste de dados: `Responsavel Contratada` deixou de usar tabela de lookup dedicada e passou a usar `people` com filtro de cargo `SUPERVISOR`.
-- Ajuste de layout: ordem dos campos de endereco no cadastro alterada para `Municipio`, `Logradouro`, `Bairro`.
-- Ajuste de robustez: API de metadados de projetos passou a usar fallback de opcoes via `project` quando algum lookup especifico falhar, evitando zerar todas as selectboxes.
+- Criada migration `031_create_project_lookup_tables.sql` para normalizar campos de dominio e vincular `project` com FKs.
+- Criada migration `034_use_people_for_project_contractor_responsible.sql` para usar `people` (SUPERVISOR) em `Responsavel Contratada`.
+- Criada migration `036_create_project_history_and_cancellation.sql` para status ativo e historicos de projeto/cancelamento.
+- API `src/app/api/projects/route.ts` evoluida para:
+  - `GET` lista e historico por `historyProjectId`.
+  - `POST` cadastro.
+  - `PUT` edicao com diff em `project_history`.
+  - `PATCH` cancelamento com motivo obrigatorio.
+- API `src/app/api/projects/meta/route.ts` mantida para opcoes de filtros e auto-complete.
+- Campo `Parceira` removido do formulario; valor preenchido automaticamente no backend por `contract.name`.
+- Botoes da coluna `Acoes` implementados de ponta a ponta na tela.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
-  - Responsavel por: estado da tela, cadastro, filtros, paginação e listagem.
+  - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, inserir projeto e listar projetos por tenant.
+  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
-  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`.
+  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
 - Caminho: `supabase/migrations/029_create_project_table.sql`
   - Responsavel por: tabela `project`, indices, policies RLS e trigger de auditoria.
 - Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
-  - Responsavel por: regra de formato do `SOB` por prioridade e unicidade case-insensitive de `SOB` por tenant.
+  - Responsavel por: regra de formato do `SOB` por prioridade e unicidade case-insensitive por tenant.
 - Caminho: `supabase/migrations/031_create_project_lookup_tables.sql`
-  - Responsavel por: normalizar e disponibilizar tabelas de dominio para o formulario de projetos.
+  - Responsavel por: normalizar e disponibilizar tabelas de dominio do formulario de projetos.
 - Caminho: `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
-  - Responsavel por: remover a tabela `project_contractor_responsibles` e vincular `project.contractor_responsible_id` a `people`.
+  - Responsavel por: remover tabela `project_contractor_responsibles` e vincular `project.contractor_responsible_id` a `people`.
+- Caminho: `supabase/migrations/036_create_project_history_and_cancellation.sql`
+  - Responsavel por: adicionar status ativo em `project` e criar `project_history` e `project_cancellation_history`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -150,17 +157,12 @@ Servicos e integracoes externas
 
 Ajuda contextual
 - Arquivos alterados/criados:
-  - `src/app/(dashboard)/projetos/page.tsx`
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
   - `src/app/api/projects/route.ts`
-  - `src/app/api/projects/meta/route.ts`
-  - `supabase/migrations/029_create_project_table.sql`
-  - `supabase/migrations/030_project_sob_priority_rules.sql`
-  - `supabase/migrations/031_create_project_lookup_tables.sql`
-  - `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
+  - `supabase/migrations/036_create_project_history_and_cancellation.sql`
 - Funcoes/hooks/constantes tocadas:
-  - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `applyFilters`, `clearFilters`, `getSobRuleError`
-  - `GET`/`POST` de `/api/projects`
+  - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `confirmCancellation`, `openHistoryModal`, `getSobRuleError`
+  - `GET`/`POST`/`PUT`/`PATCH` de `/api/projects`
   - `GET` de `/api/projects/meta`
-  - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`
+  - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`

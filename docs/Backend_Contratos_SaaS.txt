@@ -61,6 +61,8 @@ Atualizacao 2026-03
 - Migration `032_create_contrato_table.sql` criada.
 - Migration `033_rename_contrato_to_contract.sql` criada.
 - Migration `034_use_people_for_project_contractor_responsible.sql` criada.
+- Migration `035_add_matriculation_to_people.sql` criada.
+- Migration `036_create_project_history_and_cancellation.sql` criada.
 - `auth-login-web` implementada.
 - `auth-recover` implementada para reset por `login_name`.
 - `auth-login-web` e `logout` ajustadas para tratar `login_audit` como log de eventos imutaveis com `session_ref`.
@@ -75,8 +77,11 @@ Atualizacao 2026-03
 - O fluxo oficial de provisionamento web passou a ser `pre-cadastro em app_users + invite no Auth`.
 - A route `src/app/api/auth/session-access/route.ts` passou a devolver `pageAccess` e `hasCustomPermissions` para o frontend montar o shell conforme as permissoes salvas.
 - Rotas `src/app/api/projects/route.ts` e `src/app/api/projects/meta/route.ts` criadas para cadastro, filtros e listagem paginada da tela `/projetos`.
+- A rota `src/app/api/projects/route.ts` passou a suportar `PUT` para edicao e `PATCH` para cancelamento com motivo obrigatorio.
+- A rota `src/app/api/projects/route.ts` passou a consultar historico por `historyProjectId` usando a tabela `project_history`.
 - A rota `src/app/api/projects/route.ts` passou a validar formato de `SOB` por prioridade antes do insert.
 - A rota `src/app/api/projects/meta/route.ts` passou a ler opcoes de cadastro das tabelas de dominio de projetos, com excecao de `Responsavel Contratada` que passou a vir de `people` com cargo `SUPERVISOR`.
+- A rota `src/app/api/projects/route.ts` passou a preencher `partner` automaticamente com `contract.name` do tenant, sem campo `Parceira` no frontend.
 - O frontend passou a ter preparo explicito para deploy no Vercel, mantendo `auth-login-web`, `auth-recover`, `logout` e demais Edge Functions no Supabase.
 - `tsconfig.json` do frontend passou a excluir `supabase/edge_functions` do type-check do Next para evitar conflito entre runtime Node e runtime Deno.
 
@@ -100,7 +105,7 @@ Funcoes principais
 - Caminho: `src/app/api/auth/session-access/route.ts`
   - Responsavel por: resolver o usuario autenticado atual e devolver as telas liberadas em `app_user_page_permissions`.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: cadastrar projeto e listar projetos filtrados por tenant com paginação server-side.
+  - Responsavel por: cadastrar, editar, cancelar, listar e retornar historico de projetos por tenant.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar opcoes de filtros/auto-complete da tela de projetos.
 - Caminho: `vercel.json`
@@ -145,6 +150,10 @@ Constantes e configuracoes
   - Responsavel por: renomear `contrato` para `contract` e alinhar indice/policies/trigger ao novo nome.
 - Caminho: `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
   - Responsavel por: remover o lookup `project_contractor_responsibles` e usar `people` com cargo `SUPERVISOR` no campo `contractor_responsible`.
+- Caminho: `supabase/migrations/035_add_matriculation_to_people.sql`
+  - Responsavel por: adicionar a coluna `matriculation` na tabela `people`.
+- Caminho: `supabase/migrations/036_create_project_history_and_cancellation.sql`
+  - Responsavel por: adicionar status ativo em `project` e criar tabelas `project_history` e `project_cancellation_history`.
 - Caminho: `supabase/migrations/011_create_rate_limit.sql`
   - Responsavel por: rate limit das functions.
 - Caminho: `.env.example`
@@ -185,6 +194,8 @@ Ajuda contextual
   - `032_create_contrato_table.sql`
   - `033_rename_contrato_to_contract.sql`
   - `034_use_people_for_project_contractor_responsible.sql`
+  - `035_add_matriculation_to_people.sql`
+  - `036_create_project_history_and_cancellation.sql`
 - Functions minimas para o SaaS web:
   - `auth-login-web`
   - `auth-recover`

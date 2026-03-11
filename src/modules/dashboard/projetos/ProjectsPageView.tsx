@@ -1,3 +1,4 @@
+
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -24,15 +25,27 @@ type ProjectItem = {
   city: string;
   serviceDescription: string | null;
   observation: string | null;
+  isActive: boolean;
+  cancellationReason: string | null;
+  canceledAt: string | null;
+  canceledByName: string | null;
   createdByName: string;
+  updatedByName: string;
   createdAt: string;
   updatedAt: string;
+};
+
+type ProjectHistoryEntry = {
+  id: string;
+  changeType: "UPDATE" | "CANCEL";
+  createdAt: string;
+  createdByName: string;
+  changes: Record<string, { from: string | null; to: string | null }>;
 };
 
 type FormState = {
   sob: string;
   serviceCenter: string;
-  partner: string;
   serviceType: string;
   executionDeadline: string;
   priority: string;
@@ -59,7 +72,6 @@ type FilterState = {
 type SobBaseItem = {
   sob: string;
   serviceCenter: string;
-  partner: string;
 };
 
 type MetaResponse = {
@@ -75,14 +87,40 @@ type MetaResponse = {
   sobCatalog: SobBaseItem[];
 };
 
+type ProjectHistoryResponse = {
+  history?: ProjectHistoryEntry[];
+  message?: string;
+};
+
 const PAGE_SIZE = 20;
 const PRIORITY_OPTIONS = ["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO", "FUSESAVER"] as const;
 const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO"]);
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  priority: "Prioridade",
+  sob: "Projeto (SOB)",
+  serviceCenter: "Centro de Servico",
+  serviceType: "Tipo de Servico",
+  executionDeadline: "Data limite",
+  estimatedValue: "Valor estimado",
+  voltageLevel: "Nivel de Tensao",
+  projectSize: "Porte",
+  contractorResponsible: "Responsavel Contratada",
+  utilityResponsible: "Responsavel Distribuidora",
+  utilityFieldManager: "Gestor de campo Distribuidora",
+  city: "Municipio",
+  street: "Logradouro",
+  neighborhood: "Bairro",
+  serviceDescription: "Descricao do servico",
+  observation: "Observacao",
+  partner: "Parceira",
+  isActive: "Status",
+  cancellationReason: "Motivo do cancelamento",
+  canceledAt: "Data do cancelamento",
+};
 
 const INITIAL_FORM: FormState = {
   sob: "",
   serviceCenter: "",
-  partner: "",
   serviceType: "",
   executionDeadline: "",
   priority: "",
@@ -184,6 +222,51 @@ function getSobRuleError(priority: string, sob: string) {
   return null;
 }
 
+function toFormState(project: ProjectItem): FormState {
+  return {
+    sob: project.sob,
+    serviceCenter: project.serviceCenter,
+    serviceType: project.serviceType,
+    executionDeadline: project.executionDeadline,
+    priority: project.priority,
+    estimatedValue: String(project.estimatedValue ?? ""),
+    voltageLevel: project.voltageLevel ?? "",
+    projectSize: project.projectSize ?? "",
+    contractorResponsible: project.contractorResponsible,
+    utilityResponsible: project.utilityResponsible,
+    utilityFieldManager: project.utilityFieldManager,
+    street: project.street,
+    neighborhood: project.neighborhood,
+    city: project.city,
+    serviceDescription: project.serviceDescription ?? "",
+    observation: project.observation ?? "",
+  };
+}
+
+function formatHistoryValue(field: string, value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  if (field === "estimatedValue") {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? formatCurrency(numericValue) : value;
+  }
+
+  if (field === "isActive") {
+    return value === "true" ? "Ativo" : "Inativo";
+  }
+
+  if (field === "executionDeadline") {
+    return formatDate(value);
+  }
+
+  if (field === "canceledAt") {
+    return formatDateTime(value);
+  }
+
+  return value;
+}
 export function ProjectsPageView() {
   const { session } = useAuth();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -205,12 +288,23 @@ export function ProjectsPageView() {
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [detailProject, setDetailProject] = useState<ProjectItem | null>(null);
+  const [historyProject, setHistoryProject] = useState<ProjectItem | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<ProjectHistoryEntry[]>([]);
+  const [cancelProject, setCancelProject] = useState<ProjectItem | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const isSobEnabled = Boolean(form.priority.trim());
+  const isEditing = Boolean(editingProjectId);
+  const canSubmitCancellation = Boolean(cancelReason.trim()) && !isCancelling;
+
   const priorityOptions = useMemo(
     () =>
       Array.from(
@@ -327,6 +421,11 @@ export function ProjectsPageView() {
     void loadProjects(page, activeFilters);
   }, [activeFilters, loadProjects, page]);
 
+  function resetFormState() {
+    setForm(INITIAL_FORM);
+    setEditingProjectId(null);
+  }
+
   function handleSobAutoFill(sobValue: string) {
     const base = sobBaseMap.get(sobValue.trim().toLowerCase());
     if (!base) {
@@ -336,7 +435,6 @@ export function ProjectsPageView() {
     setForm((current) => ({
       ...current,
       serviceCenter: base.serviceCenter,
-      partner: base.partner,
     }));
   }
 
@@ -354,13 +452,96 @@ export function ProjectsPageView() {
     }));
   }
 
+  function applyFilters() {
+    setPage(1);
+    setActiveFilters(filterDraft);
+    setFeedback(null);
+  }
+
+  function clearFilters() {
+    setFilterDraft(INITIAL_FILTERS);
+    setActiveFilters(INITIAL_FILTERS);
+    setPage(1);
+    setFeedback(null);
+  }
+
+  function handleEditProject(project: ProjectItem) {
+    setEditingProjectId(project.id);
+    setForm(toFormState(project));
+    setFeedback(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleViewProject(project: ProjectItem) {
+    setDetailProject(project);
+  }
+
+  function closeHistoryModal() {
+    setHistoryProject(null);
+    setHistoryEntries([]);
+    setIsLoadingHistory(false);
+  }
+
+  function openCancelModal(project: ProjectItem) {
+    setCancelProject(project);
+    setCancelReason("");
+  }
+
+  function closeCancelModal() {
+    setCancelProject(null);
+    setCancelReason("");
+    setIsCancelling(false);
+  }
+  async function openHistoryModal(project: ProjectItem) {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para carregar historico.",
+      });
+      return;
+    }
+
+    setHistoryProject(project);
+    setHistoryEntries([]);
+    setIsLoadingHistory(true);
+
+    try {
+      const response = await fetch(`/api/projects?historyProjectId=${encodeURIComponent(project.id)}`, {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as ProjectHistoryResponse;
+
+      if (!response.ok) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao carregar historico do projeto.",
+        });
+        setHistoryProject(null);
+        return;
+      }
+
+      setHistoryEntries(data.history ?? []);
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao carregar historico do projeto.",
+      });
+      setHistoryProject(null);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!session?.accessToken) {
       setFeedback({
         type: "error",
-        message: "Sessao invalida para registrar projeto.",
+        message: isEditing ? "Sessao invalida para editar projeto." : "Sessao invalida para registrar projeto.",
       });
       return;
     }
@@ -379,12 +560,13 @@ export function ProjectsPageView() {
 
     try {
       const response = await fetch("/api/projects", {
-        method: "POST",
+        method: isEditing ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
         },
         body: JSON.stringify({
+          ...(isEditing ? { id: editingProjectId } : {}),
           ...form,
           sob: normalizeSob(form.sob),
           priority: normalizePriority(form.priority),
@@ -396,60 +578,85 @@ export function ProjectsPageView() {
       if (!response.ok) {
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao registrar projeto.",
+          message: data.message ?? (isEditing ? "Falha ao editar projeto." : "Falha ao registrar projeto."),
         });
         return;
       }
 
       setFeedback({
         type: "success",
-        message: "Projeto registrado com sucesso.",
+        message:
+          data.message ?? (isEditing ? "Projeto atualizado com sucesso." : "Projeto registrado com sucesso."),
       });
-      setForm(INITIAL_FORM);
 
+      resetFormState();
       await Promise.all([loadMeta(), loadProjects(1, activeFilters)]);
       setPage(1);
     } catch {
       setFeedback({
         type: "error",
-        message: "Falha ao registrar projeto.",
+        message: isEditing ? "Falha ao editar projeto." : "Falha ao registrar projeto.",
       });
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  function applyFilters() {
-    setPage(1);
-    setActiveFilters(filterDraft);
-    setFeedback(null);
-  }
+  async function confirmCancellation() {
+    if (!session?.accessToken || !cancelProject || !cancelReason.trim()) {
+      return;
+    }
 
-  function clearFilters() {
-    setFilterDraft(INITIAL_FILTERS);
-    setActiveFilters(INITIAL_FILTERS);
-    setPage(1);
-    setFeedback(null);
-  }
+    setIsCancelling(true);
 
-  function handleListAction(action: "view" | "edit" | "history" | "cancel", sob: string) {
-    const actionLabelMap: Record<typeof action, string> = {
-      view: "Ver detalhes",
-      edit: "Editar",
-      history: "Historico",
-      cancel: "Cancelar",
-    };
+    try {
+      const response = await fetch("/api/projects", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          id: cancelProject.id,
+          reason: cancelReason.trim(),
+        }),
+      });
 
-    setFeedback({
-      type: "success",
-      message: `${actionLabelMap[action]} do projeto ${sob} ainda em desenvolvimento.`,
-    });
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+
+      if (!response.ok) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao cancelar projeto.",
+        });
+        return;
+      }
+
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Projeto cancelado com sucesso.",
+      });
+
+      if (editingProjectId === cancelProject.id) {
+        resetFormState();
+      }
+
+      closeCancelModal();
+      await loadProjects(page, activeFilters);
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao cancelar projeto.",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
   }
 
   return (
     <section className={styles.wrapper}>
       <article className={styles.card}>
-        <h3 className={styles.cardTitle}>Cadastro de Projeto</h3>
+        <h3 className={styles.cardTitle}>{isEditing ? "Editar Projeto" : "Cadastro de Projeto"}</h3>
 
         <form className={styles.formGrid} onSubmit={handleSubmit}>
           <label className={styles.field}>
@@ -503,19 +710,6 @@ export function ProjectsPageView() {
 
           <label className={styles.field}>
             <span>
-              Parceira <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.partner}
-              onChange={(event) => updateFormField("partner", event.target.value)}
-              placeholder="Preenchimento auto pela base"
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>
               Tipo de Servico <span className="requiredMark">*</span>
             </span>
             <select value={form.serviceType} onChange={(event) => updateFormField("serviceType", event.target.value)} required>
@@ -539,7 +733,6 @@ export function ProjectsPageView() {
               required
             />
           </label>
-
           <label className={styles.field}>
             <span>
               Valor estimado <span className="requiredMark">*</span>
@@ -695,8 +888,13 @@ export function ProjectsPageView() {
 
           <div className={styles.actions}>
             <button type="submit" className={styles.primaryButton} disabled={isSubmitting}>
-              {isSubmitting ? "Registrando..." : "Registrar projeto"}
+              {isSubmitting ? (isEditing ? "Salvando..." : "Registrando...") : isEditing ? "Salvar alteracoes" : "Registrar projeto"}
             </button>
+            {isEditing ? (
+              <button type="button" className={styles.ghostButton} onClick={resetFormState} disabled={isSubmitting}>
+                Cancelar edicao
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -788,8 +986,13 @@ export function ProjectsPageView() {
             <tbody>
               {projects.length > 0
                 ? projects.map((project) => (
-                    <tr key={project.id}>
-                      <td>{project.sob}</td>
+                    <tr key={project.id} className={!project.isActive ? styles.inactiveRow : undefined}>
+                      <td>
+                        <div className={styles.sobCell}>
+                          <span>{project.sob}</span>
+                          {!project.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
+                        </div>
+                      </td>
                       <td>{project.serviceCenter}</td>
                       <td>{project.serviceType}</td>
                       <td>{formatDate(project.executionDeadline)}</td>
@@ -802,7 +1005,7 @@ export function ProjectsPageView() {
                           <button
                             type="button"
                             className={`${styles.actionButton} ${styles.actionView}`}
-                            onClick={() => handleListAction("view", project.sob)}
+                            onClick={() => handleViewProject(project)}
                             aria-label={`Ver detalhes do projeto ${project.sob}`}
                             title="Ver detalhes"
                           >
@@ -821,9 +1024,10 @@ export function ProjectsPageView() {
                           <button
                             type="button"
                             className={`${styles.actionButton} ${styles.actionEdit}`}
-                            onClick={() => handleListAction("edit", project.sob)}
+                            onClick={() => handleEditProject(project)}
                             aria-label={`Editar projeto ${project.sob}`}
                             title="Editar"
+                            disabled={!project.isActive}
                           >
                             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                               <path
@@ -840,7 +1044,7 @@ export function ProjectsPageView() {
                           <button
                             type="button"
                             className={`${styles.actionButton} ${styles.actionHistory}`}
-                            onClick={() => handleListAction("history", project.sob)}
+                            onClick={() => void openHistoryModal(project)}
                             aria-label={`Historico do projeto ${project.sob}`}
                             title="Historico"
                           >
@@ -859,9 +1063,10 @@ export function ProjectsPageView() {
                           <button
                             type="button"
                             className={`${styles.actionButton} ${styles.actionCancel}`}
-                            onClick={() => handleListAction("cancel", project.sob)}
+                            onClick={() => openCancelModal(project)}
                             aria-label={`Cancelar projeto ${project.sob}`}
                             title="Cancelar"
+                            disabled={!project.isActive}
                           >
                             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                               <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
@@ -919,6 +1124,135 @@ export function ProjectsPageView() {
       ) : null}
 
       {isLoadingMeta ? <div className={styles.loadingHint}>Atualizando opcoes de cadastro e filtros...</div> : null}
+
+      {detailProject ? (
+        <div className={styles.modalOverlay} onClick={() => setDetailProject(null)}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <h4>Detalhes do Projeto {detailProject.sob}</h4>
+              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailProject(null)}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.detailGrid}>
+                <div><strong>Status:</strong> {detailProject.isActive ? "Ativo" : "Inativo"}</div>
+                <div><strong>Prioridade:</strong> {detailProject.priority}</div>
+                <div><strong>Centro de Servico:</strong> {detailProject.serviceCenter}</div>
+                <div><strong>Parceira:</strong> {detailProject.partner}</div>
+                <div><strong>Tipo de Servico:</strong> {detailProject.serviceType}</div>
+                <div><strong>Data limite:</strong> {formatDate(detailProject.executionDeadline)}</div>
+                <div><strong>Valor estimado:</strong> {formatCurrency(detailProject.estimatedValue)}</div>
+                <div><strong>Nivel de Tensao:</strong> {detailProject.voltageLevel ?? "-"}</div>
+                <div><strong>Porte:</strong> {detailProject.projectSize ?? "-"}</div>
+                <div><strong>Responsavel Contratada:</strong> {detailProject.contractorResponsible}</div>
+                <div><strong>Responsavel Distribuidora:</strong> {detailProject.utilityResponsible}</div>
+                <div><strong>Gestor de campo Distribuidora:</strong> {detailProject.utilityFieldManager}</div>
+                <div><strong>Municipio:</strong> {detailProject.city}</div>
+                <div><strong>Logradouro:</strong> {detailProject.street}</div>
+                <div><strong>Bairro:</strong> {detailProject.neighborhood}</div>
+                <div><strong>Descricao do servico:</strong> {detailProject.serviceDescription ?? "-"}</div>
+                <div><strong>Observacao:</strong> {detailProject.observation ?? "-"}</div>
+                <div><strong>Registrado por:</strong> {detailProject.createdByName}</div>
+                <div><strong>Criado em:</strong> {formatDateTime(detailProject.createdAt)}</div>
+                <div><strong>Atualizado por:</strong> {detailProject.updatedByName}</div>
+                <div><strong>Atualizado em:</strong> {formatDateTime(detailProject.updatedAt)}</div>
+                {!detailProject.isActive ? (
+                  <>
+                    <div><strong>Cancelado em:</strong> {formatDateTime(detailProject.canceledAt ?? "")}</div>
+                    <div><strong>Cancelado por:</strong> {detailProject.canceledByName ?? "-"}</div>
+                    <div className={styles.detailWide}><strong>Motivo do cancelamento:</strong> {detailProject.cancellationReason ?? "-"}</div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {historyProject ? (
+        <div className={styles.modalOverlay} onClick={closeHistoryModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <h4>Historico do Projeto {historyProject.sob}</h4>
+              <button type="button" className={styles.modalCloseButton} onClick={closeHistoryModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              {isLoadingHistory ? <p>Carregando historico...</p> : null}
+
+              {!isLoadingHistory && historyEntries.length === 0 ? <p>Nenhuma alteracao registrada.</p> : null}
+
+              {!isLoadingHistory && historyEntries.length > 0
+                ? historyEntries.map((entry) => (
+                    <article key={entry.id} className={styles.historyCard}>
+                      <header className={styles.historyCardHeader}>
+                        <strong>{entry.changeType === "CANCEL" ? "Cancelamento" : "Edicao"}</strong>
+                        <span>{formatDateTime(entry.createdAt)} | {entry.createdByName}</span>
+                      </header>
+
+                      <div className={styles.historyChanges}>
+                        {Object.entries(entry.changes).map(([field, change]) => (
+                          <div key={field} className={styles.historyChangeItem}>
+                            <strong>{HISTORY_FIELD_LABELS[field] ?? field}</strong>
+                            <span>De: {formatHistoryValue(field, change.from)}</span>
+                            <span>Para: {formatHistoryValue(field, change.to)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))
+                : null}
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {cancelProject ? (
+        <div className={styles.modalOverlay} onClick={closeCancelModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <h4>Cancelar Projeto {cancelProject.sob}</h4>
+              <button type="button" className={styles.modalCloseButton} onClick={closeCancelModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <p>Informe o motivo do cancelamento. O botao validar so fica ativo quando o motivo for preenchido.</p>
+
+              <label className={styles.field}>
+                <span>
+                  Motivo do cancelamento <span className="requiredMark">*</span>
+                </span>
+                <textarea
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  rows={4}
+                  placeholder="Digite o motivo"
+                />
+              </label>
+
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={() => void confirmCancellation()}
+                  disabled={!canSubmitCancellation}
+                >
+                  {isCancelling ? "Cancelando..." : "Validar cancelamento"}
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={closeCancelModal} disabled={isCancelling}>
+                  Voltar
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
 
       <datalist id="sob-list">
         {meta.sobCatalog.map((item) => (

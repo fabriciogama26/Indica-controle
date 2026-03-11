@@ -5,7 +5,6 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 type ProjectMetaRow = {
   sob: string;
   service_center: string;
-  partner: string;
   priority: string | null;
   service_type: string | null;
   voltage_level: string | null;
@@ -67,7 +66,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from("project")
         .select(
-          "sob, service_center, partner, priority, service_type, voltage_level, project_size, city, contractor_responsible, utility_responsible, utility_field_manager",
+          "sob, service_center, priority, service_type, voltage_level, project_size, city, contractor_responsible, utility_responsible, utility_field_manager",
         )
         .eq("tenant_id", appUser.tenant_id)
         .order("updated_at", { ascending: false })
@@ -174,7 +173,6 @@ export async function GET(request: NextRequest) {
       .map((item) => ({
         sob: String(item.sob ?? "").trim(),
         serviceCenter: String(item.service_center ?? "").trim(),
-        partner: String(item.partner ?? "").trim(),
       }))
       .filter((item) => {
         const key = item.sob.toLowerCase();
