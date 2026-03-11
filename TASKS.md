@@ -19,10 +19,13 @@
 - [x] Renomear o campo `Data limite da execucao` para `Data limite` na tela de `Projetos`.
 - [x] Atualizar lista de `Projetos` removendo coluna `Parceira` e adicionando coluna `Acoes` com botoes de operacao.
 - [x] Reordenar lista de `Projetos` para exibir `Atualizado em` antes da coluna `Acoes`.
+- [x] Atualizar lista de `Projetos` para exibir `Registrado em` no lugar de `Atualizado em`.
 - [x] Atualizar lista de `Projetos` removendo colunas `Prioridade` e `Responsavel Contratada` e adicionando `Registrado por`.
+- [x] Adicionar botao de exportacao `Exportar Excel (CSV)` na lista de `Projetos` com base nos filtros ativos.
 - [x] Aplicar regra de SOB por prioridade em `Projetos` (frontend + API + constraint SQL).
 - [x] Mover `Prioridade` para antes de `Projeto (SOB)` no formulario de cadastro.
 - [x] Criar tabelas de dominio de `Projetos` por tenant e fazer a tela puxar opcoes dessas tabelas.
+- [x] Refatorar `project` para armazenar somente UUID nos campos de dominio e expor labels por `view` (`project_with_labels`).
 - [x] Bloquear edicao de `Projeto (SOB)` ate selecionar `Prioridade` no cadastro de `Projetos`.
 - [x] Criar tabela `contrato` por tenant com `valor` derivado do `tenant_id`, RLS e auditoria.
 - [x] Incluir coluna `name` na tabela `contrato` com backfill para tenants existentes.

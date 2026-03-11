@@ -150,6 +150,14 @@
   flex-wrap: wrap;
 }
 
+.tableHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .tableHint {
   color: #5b6a85;
   font-size: 0.88rem;
