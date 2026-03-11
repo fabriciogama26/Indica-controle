@@ -13,6 +13,9 @@ Arquivos principais para nova task
 - docs/Tela_Projetos_SaaS.txt
 - docs/Tela_Locacao_SaaS.txt
 - docs/Tela_Programacao_SaaS.txt
+- docs/Tela_Medicao_SaaS.txt
+- docs/Tela_Cargo_SaaS.txt
+- docs/Tela_Cadastro_Base_SaaS.txt
 
 Ordem recomendada de leitura
 1. README.md
@@ -31,5 +34,6 @@ Estado atual resumido
 - Base de permissoes por pagina criada
 - Home inicial implementada
 - Tela de Projetos com cadastro/filtros/lista implementada
+- Navegacao lateral reorganizada em Visao Geral, Operacao, Almoxarifado, Cadastros e Cadastro Base
 - Modulos de cadastro e estoque ainda em placeholder (exceto Projetos)
 - Backend minimo de login web mapeado no Supabase

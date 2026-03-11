@@ -13,6 +13,9 @@
 - [x] Criar placeholders iniciais para `Cadastro Base`, `Pessoas`, `Materiais`, `Entrada`, `Saida` e `Estoque Atual`.
 - [x] Expandir a navegacao de `Operacao` com `Projetos`, `Locacao`, `Programacao` e mover `Materiais` para a mesma secao.
 - [x] Criar placeholders iniciais para `Projetos`, `Locacao` e `Programacao` no dashboard.
+- [x] Reorganizar a navegacao lateral em `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
+- [x] Criar placeholders iniciais para `Medicao`, `Cargo` e telas de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
+- [x] Atualizar matriz de permissao por pagina (frontend + migration `040_reorganize_menu_sections_and_page_permissions.sql`) para o novo menu.
 - [x] Implementar tela de `Projetos` com cadastro, filtros e listagem em colunas integrada a `/api/projects`.
 - [x] Criar migration `029_create_project_table.sql` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`) para persistencia de projetos.
 - [x] Ajustar a tela de `Projetos` removendo a legenda redundante de campos no topo.
@@ -61,6 +64,9 @@
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
 - [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.
+- [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
+- [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
+- [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
 - [ ] Implementar gestao de sessao web com expiracao por inatividade, touch/revoke e tratamento de token expirado.
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.

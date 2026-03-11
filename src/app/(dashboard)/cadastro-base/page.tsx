@@ -4,11 +4,11 @@ export default function CadastroBasePage() {
   return (
     <ModulePlaceholder
       title="Cadastro Base"
-      description="Modulo indice dos cadastros estruturantes do SaaS."
+      description="Modulo indice dos cadastros estruturantes usados pelos demais fluxos."
       nextSteps={[
-        "Abrir atalhos para Pessoas e Materiais.",
-        "Padronizar cards e filtros retrateis.",
-        "Conectar cada modulo ao tenant autenticado.",
+        "Consolidar atalhos de Prioridade, Centro de Servico, Contrato, Imei e Tipo de Servico.",
+        "Padronizar atalhos para Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio.",
+        "Garantir persistencia multi-tenant dos dominios base.",
       ]}
     />
   );

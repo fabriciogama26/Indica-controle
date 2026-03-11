@@ -1,0 +1,74 @@
+Tela: Medicao SaaS
+
+Visao geral
+-----------
+- Tela placeholder para o modulo de medicao no dashboard.
+- Disponibiliza o atalho de navegacao na secao `Operacao`.
+- Ja integrada a matriz de permissao por pagina.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/medicao/page.tsx`
+- Componente de base visual: `src/components/ui/ModulePlaceholder.tsx`
+- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
+- Guard de rota por permissao: `src/lib/auth/authorization.ts`
+- Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Cadastro
+--------
+- Nao se aplica nesta etapa.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica nesta etapa.
+
+Boas praticas
+-------------
+- Manter `medicao` como `pageKey` explicito em `app_pages`.
+- Evitar regra de negocio local antes da definicao do backend.
+- Garantir visibilidade da rota apenas quando `can_access = true`.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa.
+
+Atalhos
+-------
+- Rota ativa: `/medicao`.
+- Exibida na secao `Operacao` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Arquivo `src/app/(dashboard)/medicao/page.tsx` criado.
+- `AppShell` atualizado para expor `Medicao` em `Operacao`.
+- `authorization.ts` atualizado para mapear `/medicao` para `pageKey = medicao`.
+- `PermissionsPageView` atualizado para incluir a liberacao da tela `Medicao`.
+- Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para inserir `medicao` em `app_pages` e backfill de permissoes.
+- Antes: a rota nao existia na navegacao e na matriz de permissao.
+- Depois: rota placeholder criada e protegida por permissao de pagina.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/medicao/page.tsx`
+  - Responsavel por: montar o placeholder da rota `Medicao`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: renderizar o item de menu lateral de `Medicao`.
+
+Constantes e configuracoes
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear rota para `pageKey` e aplicar fallback de permissao.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: incluir `medicao` no catalogo de permissoes por usuario.
+- Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
+  - Responsavel por: garantir `medicao` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: disponibilizar sessao usada na protecao de rota no shell.
+
+Servicos e integracoes externas
+- Nao se aplica nesta etapa (sem chamada de API nesta tela).
+
+Ajuda contextual
+- Estado atual: tela em placeholder com permissao por pagina ativa.

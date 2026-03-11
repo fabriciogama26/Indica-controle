@@ -5,12 +5,22 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/projetos", pageKey: "projetos" },
   { prefix: "/locacao", pageKey: "locacao" },
   { prefix: "/programacao", pageKey: "programacao" },
+  { prefix: "/medicao", pageKey: "medicao" },
   { prefix: "/estoque", pageKey: "estoque" },
   { prefix: "/entrada", pageKey: "entrada" },
   { prefix: "/saida", pageKey: "saida" },
   { prefix: "/materiais", pageKey: "materiais" },
   { prefix: "/pessoas", pageKey: "pessoas" },
-  { prefix: "/cadastro-base", pageKey: "cadastro-base" },
+  { prefix: "/cargo", pageKey: "cargo" },
+  { prefix: "/prioridade", pageKey: "prioridade" },
+  { prefix: "/centro-servico", pageKey: "centro-servico" },
+  { prefix: "/contrato", pageKey: "contrato" },
+  { prefix: "/imei", pageKey: "imei" },
+  { prefix: "/tipo-servico", pageKey: "tipo-servico" },
+  { prefix: "/nivel-tensao", pageKey: "nivel-tensao" },
+  { prefix: "/porte", pageKey: "porte" },
+  { prefix: "/responsavel-distribuidora", pageKey: "responsavel-distribuidora" },
+  { prefix: "/municipio", pageKey: "municipio" },
 ];
 
 export type RouteAccessContext = {
@@ -30,20 +40,42 @@ export function isAdminRole(role: string | null | undefined) {
 
 export function resolveDefaultPageAccess(role: string | null | undefined) {
   const normalized = normalizeRole(role);
+  const defaultPageAccess = [
+    "home",
+    "projetos",
+    "locacao",
+    "programacao",
+    "medicao",
+    "estoque",
+    "entrada",
+    "saida",
+    "materiais",
+    "pessoas",
+    "cargo",
+    "prioridade",
+    "centro-servico",
+    "contrato",
+    "imei",
+    "tipo-servico",
+    "nivel-tensao",
+    "porte",
+    "responsavel-distribuidora",
+    "municipio",
+  ];
 
   if (normalized === "master" || normalized === "admin") {
-    return ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas", "cadastro-base"];
+    return defaultPageAccess;
   }
 
   if (normalized === "supervisor") {
-    return ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas"];
+    return defaultPageAccess;
   }
 
   if (normalized === "viewer") {
     return ["home", "estoque"];
   }
 
-  return ["home", "projetos", "locacao", "programacao", "materiais", "estoque", "entrada", "saida", "pessoas"];
+  return defaultPageAccess;
 }
 
 export function normalizePageAccess(pageAccess: string[] | null | undefined) {

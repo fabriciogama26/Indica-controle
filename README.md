@@ -7,7 +7,7 @@ Frontend web do SaaS para login, shell principal, operacao de estoque e cadastro
 ## Visao geral
 - Problema resolvido: separar o frontend web do app Android e manter o contexto tecnico do SaaS em uma estrutura propria.
 - Solucao proposta: projeto Next.js publicado no Vercel para servir a interface web, mantendo Auth, banco, RLS e Edge Functions no Supabase.
-- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Projetos, Pessoas, Materiais e Estoque, acessado por dominio web publico.
+- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Operacao, Almoxarifado, Cadastros e Cadastro Base, acessado por dominio web publico.
 
 ---
 
@@ -115,11 +115,22 @@ vercel --prod
   - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros e listagem.
   - `(dashboard)/locacao/page.tsx`: placeholder de Locacao.
   - `(dashboard)/programacao/page.tsx`: placeholder de Programacao.
+  - `(dashboard)/medicao/page.tsx`: placeholder de Medicao.
   - `(dashboard)/materiais/page.tsx`: placeholder de Materiais.
+  - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
   - `(dashboard)/estoque/page.tsx`: placeholder de Estoque Atual.
   - `(dashboard)/entrada/page.tsx`: placeholder de Entrada Estoque.
   - `(dashboard)/saida/page.tsx`: placeholder de Saida Estoque.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
+  - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
+  - `(dashboard)/centro-servico/page.tsx`: placeholder de Centro de Servico.
+  - `(dashboard)/contrato/page.tsx`: placeholder de Contrato.
+  - `(dashboard)/imei/page.tsx`: placeholder de Imei.
+  - `(dashboard)/tipo-servico/page.tsx`: placeholder de Tipo de Servico.
+  - `(dashboard)/nivel-tensao/page.tsx`: placeholder de Nivel de Tensao.
+  - `(dashboard)/porte/page.tsx`: placeholder de Porte.
+  - `(dashboard)/responsavel-distribuidora/page.tsx`: placeholder de Responsavel Distribuidora.
+  - `(dashboard)/municipio/page.tsx`: placeholder de Municipio.
   - `(dashboard)/pessoas/page.tsx`: placeholder de Pessoas.
   - `(dashboard)/permissoes/page.tsx`: tela administrativa base para permissoes por pagina.
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
@@ -181,6 +192,9 @@ vercel --prod
   - `Tela_Projetos_SaaS.txt`: tela de projetos com cadastro, filtros e listagem.
   - `Tela_Locacao_SaaS.txt`: placeholder do modulo de locacao.
   - `Tela_Programacao_SaaS.txt`: placeholder do modulo de programacao.
+  - `Tela_Medicao_SaaS.txt`: placeholder do modulo de medicao.
+  - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
+  - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Permissoes_SaaS.txt`: base da futura tela de permissao por pagina.
   - `Tela_Recuperacao_Senha_SaaS.txt`: recuperacao e definicao de senha.
 - `.env`: variaveis locais do ambiente, ignoradas pelo Git.
@@ -212,7 +226,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 12. O backend continua retornando `role` como `role_key` para o frontend, mesmo com a modelagem normalizada.
 13. O frontend persiste a sessao e redireciona para `/home`.
 14. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
-15. O shell principal libera navegacao para os modulos do SaaS.
+15. O shell principal libera navegacao para as secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
 16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
 17. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
 18. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
@@ -233,6 +247,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 33. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
 34. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
 35. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
+36. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
 
 ---
 

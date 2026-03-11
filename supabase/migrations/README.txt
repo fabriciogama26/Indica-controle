@@ -41,6 +41,7 @@ Ordem de aplicacao
 37. 037_project_activation_history_rules.sql
 38. 038_project_lookup_uuid_columns.sql
 39. 039_backfill_operation_page_permissions.sql
+40. 040_reorganize_menu_sections_and_page_permissions.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -162,6 +163,9 @@ Resumo por arquivo
 
 039_backfill_operation_page_permissions.sql
 - Garante `projetos`, `locacao` e `programacao` em `app_pages` e faz backfill de permissoes faltantes em `role_page_permissions` e `app_user_page_permissions`.
+
+040_reorganize_menu_sections_and_page_permissions.sql
+- Reorganiza secoes do menu (`Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`) e faz backfill de permissoes para novas telas (`medicao`, `cargo` e cadastros base).
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

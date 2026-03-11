@@ -1,0 +1,92 @@
+Tela: Cadastro Base SaaS
+
+Visao geral
+-----------
+- Conjunto de telas placeholder para os cadastros estruturantes do SaaS.
+- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- Todas as rotas foram conectadas a permissao por pagina.
+
+Arquitetura
+-----------
+- Rotas:
+  - `src/app/(dashboard)/prioridade/page.tsx`
+  - `src/app/(dashboard)/centro-servico/page.tsx`
+  - `src/app/(dashboard)/contrato/page.tsx`
+  - `src/app/(dashboard)/imei/page.tsx`
+  - `src/app/(dashboard)/tipo-servico/page.tsx`
+  - `src/app/(dashboard)/nivel-tensao/page.tsx`
+  - `src/app/(dashboard)/porte/page.tsx`
+  - `src/app/(dashboard)/responsavel-distribuidora/page.tsx`
+  - `src/app/(dashboard)/municipio/page.tsx`
+- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
+- Guard de rota por permissao: `src/lib/auth/authorization.ts`
+- Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Base SQL de catalogo/permissao: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
+
+Cadastro
+--------
+- Nao se aplica nesta etapa (telas ainda em placeholder).
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao se aplica nesta etapa.
+
+Boas praticas
+-------------
+- Manter um `pageKey` por dominio base para permitir liberacao granular.
+- Garantir que tabelas de dominio usem escopo por tenant.
+- Evitar acoplamento entre catalogo de menu e regras de negocio antes do backend definitivo.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa.
+
+Atalhos
+-------
+- Rotas ativas:
+  - `/prioridade`
+  - `/centro-servico`
+  - `/contrato`
+  - `/imei`
+  - `/tipo-servico`
+  - `/nivel-tensao`
+  - `/porte`
+  - `/responsavel-distribuidora`
+  - `/municipio`
+- Exibidas na secao `Cadastro Base` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Novas rotas placeholder criadas para cada dominio de `Cadastro Base`.
+- `AppShell` reorganizado para exibir secao dedicada `Cadastro Base` com os nove atalhos.
+- `authorization.ts` atualizado com mapeamento de rota para `pageKey` correspondente.
+- `PermissionsPageView` atualizado para incluir os novos toggles de liberacao por tela.
+- Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para inserir/atualizar catalogo em `app_pages` e backfill de permissao por role/usuario.
+- Antes: havia apenas o atalho generico `/cadastro-base`.
+- Depois: cada dominio base possui rota e permissao individual.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: renderizar secao `Cadastro Base` e seus atalhos na sidebar.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear cada rota base para seu `pageKey` e bloquear acessos sem permissao.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: exibir e salvar liberacao por pagina para cada tela de `Cadastro Base`.
+
+Constantes e configuracoes
+- Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
+  - Responsavel por: catalogar as paginas de `Cadastro Base` e fazer backfill em `role_page_permissions` e `app_user_page_permissions`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/components/ui/ModulePlaceholder.tsx`
+  - Responsavel por: base visual comum das telas ainda nao implementadas.
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: disponibilizar sessao usada na protecao de rota do shell.
+
+Servicos e integracoes externas
+- Nao se aplica nesta etapa (sem chamada de API nas telas placeholder).
+
+Ajuda contextual
+- Estado atual: secao de `Cadastro Base` estruturada com rotas independentes e controle de permissao por pagina.
