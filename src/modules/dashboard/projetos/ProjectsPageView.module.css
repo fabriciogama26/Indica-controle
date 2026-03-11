@@ -93,6 +93,11 @@
   flex-wrap: wrap;
 }
 
+.formActions {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
 .primaryButton,
 .secondaryButton,
 .ghostButton,

@@ -655,6 +655,12 @@ export function ProjectsPageView() {
 
   return (
     <section className={styles.wrapper}>
+      {feedback ? (
+        <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
+      ) : null}
+
+      {isLoadingMeta ? <div className={styles.loadingHint}>Atualizando opcoes de cadastro e filtros...</div> : null}
+
       <article className={styles.card}>
         <h3 className={styles.cardTitle}>{isEditing ? "Editar Projeto" : "Cadastro de Projeto"}</h3>
 
@@ -886,7 +892,7 @@ export function ProjectsPageView() {
             />
           </label>
 
-          <div className={styles.actions}>
+          <div className={`${styles.actions} ${styles.formActions}`}>
             <button type="submit" className={styles.primaryButton} disabled={isSubmitting}>
               {isSubmitting ? (isEditing ? "Salvando..." : "Registrando...") : isEditing ? "Salvar alteracoes" : "Registrar projeto"}
             </button>
@@ -1118,12 +1124,6 @@ export function ProjectsPageView() {
           </div>
         </div>
       </article>
-
-      {feedback ? (
-        <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
-      ) : null}
-
-      {isLoadingMeta ? <div className={styles.loadingHint}>Atualizando opcoes de cadastro e filtros...</div> : null}
 
       {detailProject ? (
         <div className={styles.modalOverlay} onClick={() => setDetailProject(null)}>
