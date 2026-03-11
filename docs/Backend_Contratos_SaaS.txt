@@ -63,6 +63,7 @@ Atualizacao 2026-03
 - Migration `034_use_people_for_project_contractor_responsible.sql` criada.
 - Migration `035_add_matriculation_to_people.sql` criada.
 - Migration `036_create_project_history_and_cancellation.sql` criada.
+- Migration `037_project_activation_history_rules.sql` criada.
 - `auth-login-web` implementada.
 - `auth-recover` implementada para reset por `login_name`.
 - `auth-login-web` e `logout` ajustadas para tratar `login_audit` como log de eventos imutaveis com `session_ref`.
@@ -77,7 +78,7 @@ Atualizacao 2026-03
 - O fluxo oficial de provisionamento web passou a ser `pre-cadastro em app_users + invite no Auth`.
 - A route `src/app/api/auth/session-access/route.ts` passou a devolver `pageAccess` e `hasCustomPermissions` para o frontend montar o shell conforme as permissoes salvas.
 - Rotas `src/app/api/projects/route.ts` e `src/app/api/projects/meta/route.ts` criadas para cadastro, filtros e listagem paginada da tela `/projetos`.
-- A rota `src/app/api/projects/route.ts` passou a suportar `PUT` para edicao e `PATCH` para cancelamento com motivo obrigatorio.
+- A rota `src/app/api/projects/route.ts` passou a suportar `PATCH` para cancelamento e ativacao com motivo obrigatorio.
 - A rota `src/app/api/projects/route.ts` passou a consultar historico por `historyProjectId` usando a tabela `project_history`.
 - A rota `src/app/api/projects/route.ts` passou a validar formato de `SOB` por prioridade antes do insert.
 - A rota `src/app/api/projects/meta/route.ts` passou a ler opcoes de cadastro das tabelas de dominio de projetos, com excecao de `Responsavel Contratada` que passou a vir de `people` com cargo `SUPERVISOR`.
@@ -154,6 +155,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar a coluna `matriculation` na tabela `people`.
 - Caminho: `supabase/migrations/036_create_project_history_and_cancellation.sql`
   - Responsavel por: adicionar status ativo em `project` e criar tabelas `project_history` e `project_cancellation_history`.
+- Caminho: `supabase/migrations/037_project_activation_history_rules.sql`
+  - Responsavel por: permitir `ACTIVATE` no `project_history` e adicionar `action_type` no `project_cancellation_history`.
 - Caminho: `supabase/migrations/011_create_rate_limit.sql`
   - Responsavel por: rate limit das functions.
 - Caminho: `.env.example`
@@ -196,6 +199,7 @@ Ajuda contextual
   - `034_use_people_for_project_contractor_responsible.sql`
   - `035_add_matriculation_to_people.sql`
   - `036_create_project_history_and_cancellation.sql`
+  - `037_project_activation_history_rules.sql`
 - Functions minimas para o SaaS web:
   - `auth-login-web`
   - `auth-recover`

@@ -107,11 +107,12 @@ type UpdateProjectPayload = CreateProjectPayload & {
 type CancelProjectPayload = {
   id: string;
   reason: string;
+  action?: "cancel" | "activate";
 };
 
 type ProjectHistoryRow = {
   id: string;
-  change_type: "UPDATE" | "CANCEL";
+  change_type: "UPDATE" | "CANCEL" | "ACTIVATE";
   changes: unknown;
   created_at: string;
   created_by: string | null;
@@ -584,18 +585,23 @@ export async function GET(request: NextRequest) {
 
     const historyProjectId = normalizeText(params.get("historyProjectId"));
     if (historyProjectId) {
+      const historyPage = Math.max(1, Number(params.get("historyPage") ?? 1));
+      const historyPageSize = Math.min(20, Math.max(1, Number(params.get("historyPageSize") ?? 5)));
+      const historyFrom = (historyPage - 1) * historyPageSize;
+      const historyTo = historyFrom + historyPageSize - 1;
+
       const project = await fetchProjectById(supabase, appUser.tenant_id, historyProjectId);
       if (!project) {
         return NextResponse.json({ message: "Projeto nao encontrado." }, { status: 404 });
       }
 
-      const { data: historyRows, error: historyError } = await supabase
+      const { data: historyRows, error: historyError, count: historyCount } = await supabase
         .from("project_history")
-        .select("id, change_type, changes, created_at, created_by")
+        .select("id, change_type, changes, created_at, created_by", { count: "exact" })
         .eq("tenant_id", appUser.tenant_id)
         .eq("project_id", historyProjectId)
         .order("created_at", { ascending: false })
-        .limit(200)
+        .range(historyFrom, historyTo)
         .returns<ProjectHistoryRow[]>();
 
       if (historyError) {
@@ -630,6 +636,11 @@ export async function GET(request: NextRequest) {
           createdByName: item.created_by ? creatorMap.get(item.created_by) ?? "Nao identificado" : "Nao identificado",
           changes: normalizeHistoryChanges(item.changes),
         })),
+        pagination: {
+          page: historyPage,
+          pageSize: historyPageSize,
+          total: historyCount ?? 0,
+        },
       });
     }
 
@@ -786,7 +797,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Projeto registrado com sucesso.",
+      message: `Projeto ${input.sob} registrado com sucesso.`,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao registrar projeto." }, { status: 500 });
@@ -840,7 +851,7 @@ export async function PUT(request: NextRequest) {
     const changes = buildProjectUpdateChanges(currentProject, updatePayload);
 
     if (Object.keys(changes).length === 0) {
-      return NextResponse.json({ success: true, message: "Nenhuma alteracao detectada." });
+      return NextResponse.json({ success: true, message: `Nenhuma alteracao detectada no projeto ${currentProject.sob}.` });
     }
 
     const { error: updateError } = await supabase
@@ -875,7 +886,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Projeto atualizado com sucesso.",
+      message: `Projeto ${updatePayload.sob} atualizado com sucesso.`,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao editar projeto." }, { status: 500 });
@@ -885,7 +896,7 @@ export async function PUT(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para cancelar projetos.",
+      invalidSessionMessage: "Sessao invalida para atualizar status de projetos.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -897,13 +908,17 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Partial<CancelProjectPayload>;
     const projectId = normalizeText(body.id);
     const reason = normalizeText(body.reason);
+    const action = normalizeText(body.action).toUpperCase() === "ACTIVATE" ? "ACTIVATE" : "CANCEL";
 
     if (!projectId) {
-      return NextResponse.json({ message: "Projeto invalido para cancelamento." }, { status: 400 });
+      return NextResponse.json({ message: "Projeto invalido para atualizar status." }, { status: 400 });
     }
 
     if (!reason) {
-      return NextResponse.json({ message: "Informe o motivo do cancelamento." }, { status: 400 });
+      return NextResponse.json(
+        { message: action === "ACTIVATE" ? "Informe o motivo da ativacao." : "Informe o motivo do cancelamento." },
+        { status: 400 },
+      );
     }
 
     const currentProject = await fetchProjectById(supabase, appUser.tenant_id, projectId);
@@ -911,31 +926,49 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Projeto nao encontrado." }, { status: 404 });
     }
 
-    if (!currentProject.is_active) {
-      return NextResponse.json({ message: "Projeto ja esta inativo." }, { status: 409 });
+    if (action === "CANCEL" && !currentProject.is_active) {
+      return NextResponse.json({ message: `Projeto ${currentProject.sob} ja esta inativo.` }, { status: 409 });
     }
 
-    const canceledAt = new Date().toISOString();
+    if (action === "ACTIVATE" && currentProject.is_active) {
+      return NextResponse.json({ message: `Projeto ${currentProject.sob} ja esta ativo.` }, { status: 409 });
+    }
 
-    const { error: cancelError } = await supabase
+    const eventTimestamp = new Date().toISOString();
+
+    const { error: statusError } = await supabase
       .from("project")
-      .update({
-        is_active: false,
-        cancellation_reason: reason,
-        canceled_at: canceledAt,
-        canceled_by: appUser.id,
-        updated_by: appUser.id,
-      })
+      .update(
+        action === "ACTIVATE"
+          ? {
+              is_active: true,
+              cancellation_reason: null,
+              canceled_at: null,
+              canceled_by: null,
+              updated_by: appUser.id,
+            }
+          : {
+              is_active: false,
+              cancellation_reason: reason,
+              canceled_at: eventTimestamp,
+              canceled_by: appUser.id,
+              updated_by: appUser.id,
+            },
+      )
       .eq("tenant_id", appUser.tenant_id)
       .eq("id", projectId);
 
-    if (cancelError) {
-      return NextResponse.json({ message: "Falha ao cancelar projeto." }, { status: 500 });
+    if (statusError) {
+      return NextResponse.json(
+        { message: action === "ACTIVATE" ? "Falha ao ativar projeto." : "Falha ao cancelar projeto." },
+        { status: 500 },
+      );
     }
 
     const { error: cancellationHistoryError } = await supabase.from("project_cancellation_history").insert({
       tenant_id: appUser.tenant_id,
       project_id: projectId,
+      action_type: action,
       reason,
       created_by: appUser.id,
       updated_by: appUser.id,
@@ -943,44 +976,80 @@ export async function PATCH(request: NextRequest) {
 
     if (cancellationHistoryError) {
       return NextResponse.json(
-        { message: "Projeto cancelado, mas falhou ao registrar historico de cancelamento." },
+        {
+          message:
+            action === "ACTIVATE"
+              ? `Projeto ${currentProject.sob} ativado, mas falhou ao registrar historico de ativacao.`
+              : `Projeto ${currentProject.sob} cancelado, mas falhou ao registrar historico de cancelamento.`,
+        },
         { status: 500 },
       );
     }
 
-    const cancelChanges: Record<string, HistoryChange> = {
-      isActive: {
-        from: "true",
-        to: "false",
-      },
-      cancellationReason: {
-        from: null,
-        to: reason,
-      },
-      canceledAt: {
-        from: null,
-        to: canceledAt,
-      },
-    };
+    const statusChanges: Record<string, HistoryChange> =
+      action === "ACTIVATE"
+        ? {
+            isActive: {
+              from: "false",
+              to: "true",
+            },
+            activationReason: {
+              from: null,
+              to: reason,
+            },
+            canceledAt: {
+              from: currentProject.canceled_at,
+              to: null,
+            },
+            cancellationReason: {
+              from: currentProject.cancellation_reason,
+              to: null,
+            },
+          }
+        : {
+            isActive: {
+              from: "true",
+              to: "false",
+            },
+            cancellationReason: {
+              from: null,
+              to: reason,
+            },
+            canceledAt: {
+              from: null,
+              to: eventTimestamp,
+            },
+          };
 
     const { error: historyError } = await supabase.from("project_history").insert({
       tenant_id: appUser.tenant_id,
       project_id: projectId,
-      change_type: "CANCEL",
-      changes: cancelChanges,
+      change_type: action,
+      changes: statusChanges,
       created_by: appUser.id,
       updated_by: appUser.id,
     });
 
     if (historyError) {
-      return NextResponse.json({ message: "Projeto cancelado, mas falhou ao registrar historico do projeto." }, { status: 500 });
+      return NextResponse.json(
+        {
+          message:
+            action === "ACTIVATE"
+              ? `Projeto ${currentProject.sob} ativado, mas falhou ao registrar historico do projeto.`
+              : `Projeto ${currentProject.sob} cancelado, mas falhou ao registrar historico do projeto.`,
+        },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: "Projeto cancelado com sucesso.",
+      message:
+        action === "ACTIVATE"
+          ? `Projeto ${currentProject.sob} ativado com sucesso.`
+          : `Projeto ${currentProject.sob} cancelado com sucesso.`,
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao cancelar projeto." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao atualizar status do projeto." }, { status: 500 });
   }
 }
