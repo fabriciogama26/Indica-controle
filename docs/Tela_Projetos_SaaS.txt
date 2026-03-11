@@ -19,6 +19,7 @@ Arquitetura
 - Banco (tabelas de dominio por tenant): `supabase/migrations/031_create_project_lookup_tables.sql`
 - Banco (responsavel contratada via pessoas supervisoras): `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
 - Banco (status ativo + historicos): `supabase/migrations/036_create_project_history_and_cancellation.sql`
+- Banco (regras de ativacao em historico): `supabase/migrations/037_project_activation_history_rules.sql`
 
 Cadastro
 --------
@@ -76,9 +77,11 @@ Filtros, auto-complete e listagem
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
 - Coluna `Parceira` removida da lista para reduzir redundancia visual.
 - Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico` e `Cancelar`.
-- `Ver detalhes` abre modal com todos os campos da obra.
-- `Historico` abre modal com apenas os campos alterados por evento.
+- Quando a obra estiver inativa, o botao `Cancelar` vira botao `Ativar`.
+- `Ver detalhes` abre modal com todos os campos da obra e mostra o `ID do projeto` abaixo do titulo.
+- `Historico` abre modal com apenas os campos alterados por evento e paginacao interna para nao crescer demais.
 - `Cancelar` abre modal com motivo obrigatorio e valida a inativacao da obra.
+- `Ativar` abre modal com motivo obrigatorio e valida a reativacao da obra.
 - Colunas `Prioridade` e `Responsavel Contratada` removidas da lista.
 - Coluna `Registrado por` adicionada na lista com base em `created_by`.
 
@@ -94,8 +97,13 @@ Cancelamento e saldo
 - Cancelamento implementado para Projetos:
   - Inativa a obra (`project.is_active = false`).
   - Exige motivo antes de validar cancelamento.
-  - Registra em `project_cancellation_history`.
+  - Registra em `project_cancellation_history` com `action_type = CANCEL`.
   - Registra no `project_history` como evento `CANCEL`.
+- Ativacao implementada para Projetos:
+  - Reativa a obra (`project.is_active = true`).
+  - Exige motivo antes de validar ativacao.
+  - Registra em `project_cancellation_history` com `action_type = ACTIVATE`.
+  - Registra no `project_history` como evento `ACTIVATE`.
 - Saldo nao se aplica a esta tela.
 
 Atalhos
@@ -112,11 +120,12 @@ Atualizacao 2026-03
 - Criada migration `031_create_project_lookup_tables.sql` para normalizar campos de dominio e vincular `project` com FKs.
 - Criada migration `034_use_people_for_project_contractor_responsible.sql` para usar `people` (SUPERVISOR) em `Responsavel Contratada`.
 - Criada migration `036_create_project_history_and_cancellation.sql` para status ativo e historicos de projeto/cancelamento.
+- Criada migration `037_project_activation_history_rules.sql` para suportar ativacao no historico do projeto e no historico de cancelamento.
 - API `src/app/api/projects/route.ts` evoluida para:
-  - `GET` lista e historico por `historyProjectId`.
+  - `GET` lista e historico por `historyProjectId` com paginacao (`historyPage`, `historyPageSize`).
   - `POST` cadastro.
   - `PUT` edicao com diff em `project_history`.
-  - `PATCH` cancelamento com motivo obrigatorio.
+  - `PATCH` cancelamento/ativacao com motivo obrigatorio.
 - API `src/app/api/projects/meta/route.ts` mantida para opcoes de filtros e auto-complete.
 - Campo `Parceira` removido do formulario; valor preenchido automaticamente no backend por `contract.name`.
 - Botoes da coluna `Acoes` implementados de ponta a ponta na tela.
@@ -144,6 +153,8 @@ Constantes e configuracoes
   - Responsavel por: remover tabela `project_contractor_responsibles` e vincular `project.contractor_responsible_id` a `people`.
 - Caminho: `supabase/migrations/036_create_project_history_and_cancellation.sql`
   - Responsavel por: adicionar status ativo em `project` e criar `project_history` e `project_cancellation_history`.
+- Caminho: `supabase/migrations/037_project_activation_history_rules.sql`
+  - Responsavel por: permitir `ACTIVATE` no `project_history` e adicionar `action_type` no `project_cancellation_history`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -161,6 +172,7 @@ Ajuda contextual
   - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
   - `src/app/api/projects/route.ts`
   - `supabase/migrations/036_create_project_history_and_cancellation.sql`
+  - `supabase/migrations/037_project_activation_history_rules.sql`
 - Funcoes/hooks/constantes tocadas:
   - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `confirmCancellation`, `openHistoryModal`, `getSobRuleError`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/projects`

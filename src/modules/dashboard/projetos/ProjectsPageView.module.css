@@ -267,6 +267,11 @@
   background: #dce8f5;
 }
 
+.actionActivate {
+  color: #1f8d45;
+  background: #dce8f5;
+}
+
 .pagination {
   display: flex;
   justify-content: space-between;
@@ -336,10 +341,22 @@
   gap: 10px;
 }
 
+.modalTitleBlock {
+  display: grid;
+  gap: 2px;
+}
+
 .modalHeader h4 {
   margin: 0;
   color: #17347a;
   font-size: 1.05rem;
+}
+
+.modalSubtitle {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.84rem;
+  font-weight: 600;
 }
 
 .modalCloseButton {

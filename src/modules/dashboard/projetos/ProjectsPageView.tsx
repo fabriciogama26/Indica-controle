@@ -37,7 +37,7 @@ type ProjectItem = {
 
 type ProjectHistoryEntry = {
   id: string;
-  changeType: "UPDATE" | "CANCEL";
+  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
   createdAt: string;
   createdByName: string;
   changes: Record<string, { from: string | null; to: string | null }>;
@@ -89,10 +89,12 @@ type MetaResponse = {
 
 type ProjectHistoryResponse = {
   history?: ProjectHistoryEntry[];
+  pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
 
 const PAGE_SIZE = 20;
+const HISTORY_PAGE_SIZE = 5;
 const PRIORITY_OPTIONS = ["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO", "FUSESAVER"] as const;
 const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO"]);
 const HISTORY_FIELD_LABELS: Record<string, string> = {
@@ -116,6 +118,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   isActive: "Status",
   cancellationReason: "Motivo do cancelamento",
   canceledAt: "Data do cancelamento",
+  activationReason: "Motivo da ativacao",
 };
 
 const INITIAL_FORM: FormState = {
@@ -294,6 +297,8 @@ export function ProjectsPageView() {
   const [detailProject, setDetailProject] = useState<ProjectItem | null>(null);
   const [historyProject, setHistoryProject] = useState<ProjectItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<ProjectHistoryEntry[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
   const [cancelProject, setCancelProject] = useState<ProjectItem | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [page, setPage] = useState(1);
@@ -301,8 +306,10 @@ export function ProjectsPageView() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isSobEnabled = Boolean(form.priority.trim());
   const isEditing = Boolean(editingProjectId);
+  const statusAction = cancelProject?.isActive ? "cancel" : "activate";
   const canSubmitCancellation = Boolean(cancelReason.trim()) && !isCancelling;
 
   const priorityOptions = useMemo(
@@ -479,6 +486,8 @@ export function ProjectsPageView() {
   function closeHistoryModal() {
     setHistoryProject(null);
     setHistoryEntries([]);
+    setHistoryPage(1);
+    setHistoryTotal(0);
     setIsLoadingHistory(false);
   }
 
@@ -492,7 +501,7 @@ export function ProjectsPageView() {
     setCancelReason("");
     setIsCancelling(false);
   }
-  async function openHistoryModal(project: ProjectItem) {
+  async function loadProjectHistory(project: ProjectItem, targetPage: number) {
     if (!session?.accessToken) {
       setFeedback({
         type: "error",
@@ -501,12 +510,15 @@ export function ProjectsPageView() {
       return;
     }
 
-    setHistoryProject(project);
-    setHistoryEntries([]);
     setIsLoadingHistory(true);
 
     try {
-      const response = await fetch(`/api/projects?historyProjectId=${encodeURIComponent(project.id)}`, {
+      const params = new URLSearchParams();
+      params.set("historyProjectId", project.id);
+      params.set("historyPage", String(targetPage));
+      params.set("historyPageSize", String(HISTORY_PAGE_SIZE));
+
+      const response = await fetch(`/api/projects?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
@@ -519,20 +531,32 @@ export function ProjectsPageView() {
           type: "error",
           message: data.message ?? "Falha ao carregar historico do projeto.",
         });
-        setHistoryProject(null);
+        setHistoryEntries([]);
+        setHistoryTotal(0);
         return;
       }
 
       setHistoryEntries(data.history ?? []);
+      setHistoryPage(data.pagination?.page ?? targetPage);
+      setHistoryTotal(data.pagination?.total ?? 0);
     } catch {
       setFeedback({
         type: "error",
         message: "Falha ao carregar historico do projeto.",
       });
-      setHistoryProject(null);
+      setHistoryEntries([]);
+      setHistoryTotal(0);
     } finally {
       setIsLoadingHistory(false);
     }
+  }
+
+  async function openHistoryModal(project: ProjectItem) {
+    setHistoryProject(project);
+    setHistoryEntries([]);
+    setHistoryPage(1);
+    setHistoryTotal(0);
+    await loadProjectHistory(project, 1);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -578,7 +602,11 @@ export function ProjectsPageView() {
       if (!response.ok) {
         setFeedback({
           type: "error",
-          message: data.message ?? (isEditing ? "Falha ao editar projeto." : "Falha ao registrar projeto."),
+          message:
+            data.message ??
+            (isEditing
+              ? `Falha ao editar projeto ${normalizeSob(form.sob)}.`
+              : `Falha ao registrar projeto ${normalizeSob(form.sob)}.`),
         });
         return;
       }
@@ -586,7 +614,10 @@ export function ProjectsPageView() {
       setFeedback({
         type: "success",
         message:
-          data.message ?? (isEditing ? "Projeto atualizado com sucesso." : "Projeto registrado com sucesso."),
+          data.message ??
+          (isEditing
+            ? `Projeto ${normalizeSob(form.sob)} atualizado com sucesso.`
+            : `Projeto ${normalizeSob(form.sob)} registrado com sucesso.`),
       });
 
       resetFormState();
@@ -595,7 +626,7 @@ export function ProjectsPageView() {
     } catch {
       setFeedback({
         type: "error",
-        message: isEditing ? "Falha ao editar projeto." : "Falha ao registrar projeto.",
+        message: isEditing ? `Falha ao editar projeto ${normalizeSob(form.sob)}.` : `Falha ao registrar projeto ${normalizeSob(form.sob)}.`,
       });
     } finally {
       setIsSubmitting(false);
@@ -608,6 +639,8 @@ export function ProjectsPageView() {
     }
 
     setIsCancelling(true);
+    const action = cancelProject.isActive ? "cancel" : "activate";
+    const actionLabel = action === "cancel" ? "cancelar" : "ativar";
 
     try {
       const response = await fetch("/api/projects", {
@@ -619,6 +652,7 @@ export function ProjectsPageView() {
         body: JSON.stringify({
           id: cancelProject.id,
           reason: cancelReason.trim(),
+          action,
         }),
       });
 
@@ -627,14 +661,18 @@ export function ProjectsPageView() {
       if (!response.ok) {
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao cancelar projeto.",
+          message: data.message ?? `Falha ao ${actionLabel} projeto ${cancelProject.sob}.`,
         });
         return;
       }
 
       setFeedback({
         type: "success",
-        message: data.message ?? "Projeto cancelado com sucesso.",
+        message:
+          data.message ??
+          (action === "cancel"
+            ? `Projeto ${cancelProject.sob} cancelado com sucesso.`
+            : `Projeto ${cancelProject.sob} ativado com sucesso.`),
       });
 
       if (editingProjectId === cancelProject.id) {
@@ -646,7 +684,7 @@ export function ProjectsPageView() {
     } catch {
       setFeedback({
         type: "error",
-        message: "Falha ao cancelar projeto.",
+        message: `Falha ao ${actionLabel} projeto ${cancelProject.sob}.`,
       });
     } finally {
       setIsCancelling(false);
@@ -1068,21 +1106,35 @@ export function ProjectsPageView() {
 
                           <button
                             type="button"
-                            className={`${styles.actionButton} ${styles.actionCancel}`}
+                            className={`${styles.actionButton} ${
+                              project.isActive ? styles.actionCancel : styles.actionActivate
+                            }`}
                             onClick={() => openCancelModal(project)}
-                            aria-label={`Cancelar projeto ${project.sob}`}
-                            title="Cancelar"
-                            disabled={!project.isActive}
+                            aria-label={`${project.isActive ? "Cancelar" : "Ativar"} projeto ${project.sob}`}
+                            title={project.isActive ? "Cancelar" : "Ativar"}
                           >
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
-                              <path
-                                d="m9.5 9.5 5 5m0-5-5 5"
-                                stroke="currentColor"
-                                strokeWidth="1.7"
-                                strokeLinecap="round"
-                              />
-                            </svg>
+                            {project.isActive ? (
+                              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
+                                <path
+                                  d="m9.5 9.5 5 5m0-5-5 5"
+                                  stroke="currentColor"
+                                  strokeWidth="1.7"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            ) : (
+                              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
+                                <path
+                                  d="m8.5 12 2.2 2.2 4.8-4.8"
+                                  stroke="currentColor"
+                                  strokeWidth="1.7"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            )}
                           </button>
                         </div>
                       </td>
@@ -1129,7 +1181,10 @@ export function ProjectsPageView() {
         <div className={styles.modalOverlay} onClick={() => setDetailProject(null)}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
-              <h4>Detalhes do Projeto {detailProject.sob}</h4>
+              <div className={styles.modalTitleBlock}>
+                <h4>Detalhes do Projeto {detailProject.sob}</h4>
+                <p className={styles.modalSubtitle}>ID do projeto: {detailProject.id}</p>
+              </div>
               <button type="button" className={styles.modalCloseButton} onClick={() => setDetailProject(null)}>
                 Fechar
               </button>
@@ -1175,7 +1230,10 @@ export function ProjectsPageView() {
         <div className={styles.modalOverlay} onClick={closeHistoryModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
-              <h4>Historico do Projeto {historyProject.sob}</h4>
+              <div className={styles.modalTitleBlock}>
+                <h4>Historico do Projeto {historyProject.sob}</h4>
+                <p className={styles.modalSubtitle}>ID do projeto: {historyProject.id}</p>
+              </div>
               <button type="button" className={styles.modalCloseButton} onClick={closeHistoryModal}>
                 Fechar
               </button>
@@ -1190,7 +1248,13 @@ export function ProjectsPageView() {
                 ? historyEntries.map((entry) => (
                     <article key={entry.id} className={styles.historyCard}>
                       <header className={styles.historyCardHeader}>
-                        <strong>{entry.changeType === "CANCEL" ? "Cancelamento" : "Edicao"}</strong>
+                        <strong>
+                          {entry.changeType === "CANCEL"
+                            ? "Cancelamento"
+                            : entry.changeType === "ACTIVATE"
+                              ? "Ativacao"
+                              : "Edicao"}
+                        </strong>
                         <span>{formatDateTime(entry.createdAt)} | {entry.createdByName}</span>
                       </header>
 
@@ -1206,6 +1270,35 @@ export function ProjectsPageView() {
                     </article>
                   ))
                 : null}
+
+              {!isLoadingHistory && historyEntries.length > 0 ? (
+                <div className={styles.pagination}>
+                  <span>
+                    Pagina {Math.min(historyPage, historyTotalPages)} de {historyTotalPages} | Total: {historyTotal}
+                  </span>
+
+                  <div className={styles.paginationActions}>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => historyProject && void loadProjectHistory(historyProject, Math.max(1, historyPage - 1))}
+                      disabled={historyPage <= 1 || isLoadingHistory}
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() =>
+                        historyProject && void loadProjectHistory(historyProject, Math.min(historyTotalPages, historyPage + 1))
+                      }
+                      disabled={historyPage >= historyTotalPages || isLoadingHistory}
+                    >
+                      Proxima
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </article>
         </div>
@@ -1215,18 +1308,23 @@ export function ProjectsPageView() {
         <div className={styles.modalOverlay} onClick={closeCancelModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
-              <h4>Cancelar Projeto {cancelProject.sob}</h4>
+              <h4>{cancelProject.isActive ? "Cancelar" : "Ativar"} Projeto {cancelProject.sob}</h4>
               <button type="button" className={styles.modalCloseButton} onClick={closeCancelModal}>
                 Fechar
               </button>
             </header>
 
             <div className={styles.modalBody}>
-              <p>Informe o motivo do cancelamento. O botao validar so fica ativo quando o motivo for preenchido.</p>
+              <p>
+                {cancelProject.isActive
+                  ? "Informe o motivo do cancelamento. O botao validar so fica ativo quando o motivo for preenchido."
+                  : "Informe o motivo da ativacao. O botao validar so fica ativo quando o motivo for preenchido."}
+              </p>
 
               <label className={styles.field}>
                 <span>
-                  Motivo do cancelamento <span className="requiredMark">*</span>
+                  {cancelProject.isActive ? "Motivo do cancelamento" : "Motivo da ativacao"}{" "}
+                  <span className="requiredMark">*</span>
                 </span>
                 <textarea
                   value={cancelReason}
@@ -1239,11 +1337,11 @@ export function ProjectsPageView() {
               <div className={styles.actions}>
                 <button
                   type="button"
-                  className={styles.dangerButton}
+                  className={statusAction === "cancel" ? styles.dangerButton : styles.primaryButton}
                   onClick={() => void confirmCancellation()}
                   disabled={!canSubmitCancellation}
                 >
-                  {isCancelling ? "Cancelando..." : "Validar cancelamento"}
+                  {isCancelling ? (statusAction === "cancel" ? "Cancelando..." : "Ativando...") : `Validar ${statusAction === "cancel" ? "cancelamento" : "ativacao"}`}
                 </button>
                 <button type="button" className={styles.ghostButton} onClick={closeCancelModal} disabled={isCancelling}>
                   Voltar

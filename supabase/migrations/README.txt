@@ -38,6 +38,7 @@ Ordem de aplicacao
 34. 034_use_people_for_project_contractor_responsible.sql
 35. 035_add_matriculation_to_people.sql
 36. 036_create_project_history_and_cancellation.sql
+37. 037_project_activation_history_rules.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -150,6 +151,9 @@ Resumo por arquivo
 
 036_create_project_history_and_cancellation.sql
 - Adiciona status ativo/inativo em `project` e cria historicos `project_history` e `project_cancellation_history` com RLS e auditoria.
+
+037_project_activation_history_rules.sql
+- Permite evento `ACTIVATE` em `project_history` e adiciona `action_type` em `project_cancellation_history`.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

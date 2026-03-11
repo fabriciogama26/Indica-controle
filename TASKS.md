@@ -32,8 +32,10 @@
 - [x] Adicionar coluna `matriculation` na tabela `people` via migration versionada.
 - [x] Remover campo `Parceira` do front de Projetos e preencher `partner` automaticamente no backend por `contract.name`.
 - [x] Implementar acoes da lista de Projetos (`Editar`, `Detalhes`, `Historico`, `Cancelar`) com modais e fluxo completo no frontend.
-- [x] Implementar `PUT` e `PATCH` em `/api/projects` para edicao e cancelamento com motivo obrigatorio.
+- [x] Implementar `PUT` e `PATCH` em `/api/projects` para edicao e troca de status (cancelamento/ativacao) com motivo obrigatorio.
 - [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
+- [x] Paginar o modal de `Historico` de Projetos e exibir `ID do projeto` abaixo do titulo no modal de detalhes.
+- [x] Implementar reativacao de projeto pelo botao `Ativar` (no lugar de `Cancelar` quando inativo) com motivo obrigatorio e historico.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
