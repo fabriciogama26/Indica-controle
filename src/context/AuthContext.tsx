@@ -48,8 +48,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [isLoading, setIsLoading] = useState(true);
   const logoutInProgressRef = useRef(false);
   const lastActivityRef = useRef(0);
+  const hydrationVersionRef = useRef(0);
 
   const expireSession = useCallback(async (reason: string, feedbackMessage: string) => {
+    hydrationVersionRef.current += 1;
     logoutInProgressRef.current = true;
 
     await clearPersistedSession({
@@ -63,11 +65,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let active = true;
+    const hydrationVersion = ++hydrationVersionRef.current;
 
     async function hydrate() {
       const persisted = readPersistedSession();
       if (!persisted) {
-        if (active) {
+        if (active && hydrationVersion === hydrationVersionRef.current) {
           setSession(null);
           setIsLoading(false);
         }
@@ -87,7 +90,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             skipSupabaseSignOut: true,
           }).catch(() => null);
 
-          if (active) {
+          if (active && hydrationVersion === hydrationVersionRef.current) {
             setSession(null);
             setIsLoading(false);
           }
@@ -97,14 +100,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const syncedSession = data.session ? syncRemoteSessionTokens(data.session, persisted) ?? persisted : persisted;
         const hydratedSession = await hydrateSessionAccess(syncedSession);
 
-        if (active) {
+        if (active && hydrationVersion === hydrationVersionRef.current) {
           setSession(hydratedSession);
           setIsLoading(false);
         }
         return;
       }
 
-      if (active) {
+      if (active && hydrationVersion === hydrationVersionRef.current) {
         setSession(persisted);
         setIsLoading(false);
       }
@@ -185,8 +188,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [expireSession, session]);
 
   const login = useCallback(async (payload: LoginPayload) => {
+    const loginVersion = ++hydrationVersionRef.current;
     const result = await loginService(payload);
-    if (result.success && result.session) {
+    if (result.success && result.session && loginVersion === hydrationVersionRef.current) {
       lastActivityRef.current = Date.now();
       logoutInProgressRef.current = false;
       setSession(result.session);
@@ -195,6 +199,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const logout = useCallback(async () => {
+    hydrationVersionRef.current += 1;
     logoutInProgressRef.current = true;
     const result = await clearPersistedSession();
     setSession(null);

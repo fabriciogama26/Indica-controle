@@ -50,6 +50,7 @@ function toExpiresAt(expiresIn: number, expiresAt?: unknown) {
 
 async function fetchSessionAccess(accessToken: string) {
   const response = await fetch("/api/auth/session-access", {
+    cache: "no-store",
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -94,7 +95,16 @@ async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
   const resolvedRole = String(access?.user.role ?? data.role ?? "");
   const resolvedRoleId = access?.user.roleId ? String(access.user.roleId) : data.role_id ? String(data.role_id) : null;
   const resolvedLoginName = String(access?.user.loginName ?? data.login_name ?? payload.loginName);
-  const resolvedDisplayName = access?.user.displayName ? String(access.user.displayName) : data.display_name ? String(data.display_name) : null;
+  const hasAccessDisplayName = Boolean(
+    access?.user && Object.prototype.hasOwnProperty.call(access.user, "displayName"),
+  );
+  const resolvedDisplayName = hasAccessDisplayName
+    ? access?.user.displayName
+      ? String(access.user.displayName)
+      : null
+    : data.display_name
+      ? String(data.display_name)
+      : null;
   const session: AuthSession = {
     source: "remote",
     accessToken: String(data.access_token ?? ""),
@@ -288,6 +298,7 @@ export async function hydrateSessionAccess(currentAppSession: AuthSession) {
     };
   }
 
+  const hasAccessDisplayName = Object.prototype.hasOwnProperty.call(access.user, "displayName");
   const nextSession: AuthSession = {
     ...currentAppSession,
     user: {
@@ -297,7 +308,11 @@ export async function hydrateSessionAccess(currentAppSession: AuthSession) {
       roleId: access.user.roleId ? String(access.user.roleId) : currentAppSession.user.roleId,
       tenantId: String(access.user.tenantId ?? currentAppSession.user.tenantId),
       loginName: String(access.user.loginName ?? currentAppSession.user.loginName),
-      displayName: access.user.displayName ? String(access.user.displayName) : currentAppSession.user.displayName,
+      displayName: hasAccessDisplayName
+        ? access.user.displayName
+          ? String(access.user.displayName)
+          : null
+        : currentAppSession.user.displayName,
       pageAccess: access.pageAccess,
       hasCustomPermissions: access.hasCustomPermissions,
     },

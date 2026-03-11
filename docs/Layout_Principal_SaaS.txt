@@ -6,6 +6,7 @@ Visao geral
 - Mantem coluna lateral de navegacao, barra superior horizontal, nome do usuario conectado e logout.
 - Usa menu lateral compacto no padrao SaaS, com icones por item e secoes visuais fixas.
 - Scroll interno: somente a area de conteudo (`mainContent`) deve rolar; sidebar e topbar permanecem fixos no desktop.
+- O nome exibido no bloco `Conectado` usa o campo `display` do usuario autenticado.
 
 Arquitetura
 -----------
@@ -27,7 +28,7 @@ Boas praticas
 - Bloquear acesso ao shell quando `isAuthenticated` for falso.
 - Resolver titulo e subtitulo pela rota atual.
 - Exibir nome do usuario e status de conexao na barra superior, sem confiar na UI para seguranca.
-- Preparar a UI para consumir um futuro campo `display` de `app_users`, com fallback para `login_name`.
+- Exibir o nome no bloco `Conectado` com base em `app_users.display` (fallback visual para `Usuario` quando vazio).
 - Esconder rotas administrativas quando o `role` nao permitir acesso.
 - Respeitar `app_user_page_permissions` quando o usuario tiver permissoes customizadas por tela.
 - Evitar botoes grandes na lateral; a navegacao deve parecer menu de dashboard e nao grade de acoes.
@@ -62,6 +63,7 @@ Atualizacao 2026-03
 - Labels atualizados para `Entrada Estoque` e `Saida Estoque`.
 - `Materiais` movido de `Cadastros` para `Operacao`.
 - Ajustado o shell para scroll interno no `mainContent`, com sidebar e topbar fixos no desktop.
+- Bloco `Conectado` ajustado para priorizar somente `display` no nome do usuario.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

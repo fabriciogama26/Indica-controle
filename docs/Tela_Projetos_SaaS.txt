@@ -85,8 +85,9 @@ Filtros, auto-complete e listagem
 - `Cancelar` abre modal com motivo obrigatorio e valida a inativacao da obra.
 - `Ativar` abre modal com motivo obrigatorio e valida a reativacao da obra.
 - Colunas `Prioridade` e `Responsavel Contratada` removidas da lista.
-- Coluna `Registrado por` adicionada na lista com base em `created_by`.
+- Coluna `Registrado por` exibida com `app_users.login_name` do `created_by`.
 - Coluna de data na lista padronizada como `Registrado em` (com base em `created_at`).
+- Chamadas autenticadas da tela usam `cache: no-store` para evitar exibir dados de sessao antiga apos troca de usuario.
 
 Boas praticas
 -------------
@@ -136,6 +137,7 @@ Atualizacao 2026-03
 - Botoes da coluna `Acoes` implementados de ponta a ponta na tela.
 - Adicionado botao `Exportar Excel (CSV)` para exportar a lista filtrada de projetos.
 - Ajustada coluna da lista de `Atualizado em` para `Registrado em`.
+- Ajustado `Registrado por` para exibir sempre `app_users.login_name` de quem registrou.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

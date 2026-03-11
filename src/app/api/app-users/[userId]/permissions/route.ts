@@ -229,6 +229,16 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ use
     }
 
     const validPageKeys = new Set((validPages ?? []).map((item) => String((item as Record<string, unknown>).page_key)));
+    const invalidPageKeys = pageKeys.filter((pageKey) => !validPageKeys.has(pageKey));
+    if (invalidPageKeys.length > 0) {
+      return NextResponse.json(
+        {
+          message: `As telas ${invalidPageKeys.join(", ")} nao estao cadastradas em app_pages.`,
+        },
+        { status: 422 },
+      );
+    }
+
     const normalizedPermissions = permissions.filter((item) => validPageKeys.has(item.pageKey));
     const currentPermissionsMap = new Map((currentPermissions ?? []).map((item) => [item.page_key, item.can_access]));
 

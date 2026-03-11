@@ -40,6 +40,8 @@ Boas praticas
 - Encerrar a sessao por inatividade no frontend e devolver feedback claro ao usuario na tela de login.
 - Tratar token expirado no `AuthContext` antes de reidratar a sessao local.
 - Registrar `TOKEN_EXPIRED` no `login_audit` sempre que a sessao remota precisar ser encerrada por expiracao.
+- Invalidar hidratacoes antigas de sessao quando houver novo login/logout para evitar sobrescrever o usuario atual.
+- Desabilitar cache em `/api/auth/session-access` no frontend para evitar leitura de identidade/permissoes antigas.
 
 Cancelamento e saldo
 --------------------
@@ -69,6 +71,7 @@ Atualizacao 2026-03
 - Sessao web passou a expirar por inatividade no frontend, com retorno para `/login`.
 - `TOKEN_EXPIRED` passou a tentar registrar `LOGOUT` no backend mesmo quando o JWT ja expirou.
 - `AuthContext` passou a tratar a hidratacao tipada sem bloquear o `next build` usado no deploy do Vercel.
+- `AuthContext` passou a invalidar hidratacoes concorrentes para evitar efeito de tela piscando e troca indevida de usuario apos login.
 - O fluxo de deploy passou a exigir `PASSWORD_REDIRECT_URL` apontando para o dominio publico `/recuperar-senha`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -115,6 +118,8 @@ Ajuda contextual
 - Depois: a tela mostra uma mensagem curta e orientada ao uso final.
 - Antes: o build do Next podia falhar na hidratacao tipada da sessao antes do deploy.
 - Depois: a hidratacao reutiliza a sessao persistida com fallback tipado e o `next build` volta a compilar.
+- Antes: hidratacoes antigas podiam sobrescrever a sessao nova logo apos login, causando piscada e identidade inconsistente.
+- Depois: hidratacao antiga e descartada quando houver login/logout mais recente.
 - Estado atual: a tela exibe `Esqueci minha senha` entre o campo `Senha` e o botao `Entrar`.
 - Estado atual: `Esqueci minha senha` usa o `login_name` digitado para chamar `auth-recover` e disparar o email.
 - Estado atual: o rodape inferior exibe `Registre cada movimentacao. Tenha controle total das informacoes.`.
