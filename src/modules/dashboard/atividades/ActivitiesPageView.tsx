@@ -31,8 +31,15 @@ type ActivityFormState = {
 type ActivityFilterState = {
   code: string;
   description: string;
-  group: string;
 };
+
+type ActivitiesListResponse = {
+  activities?: ActivityItem[];
+  pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
+const PAGE_SIZE = 20;
 
 const INITIAL_FORM: ActivityFormState = {
   id: null,
@@ -47,7 +54,6 @@ const INITIAL_FORM: ActivityFormState = {
 const INITIAL_FILTERS: ActivityFilterState = {
   code: "",
   description: "",
-  group: "",
 };
 
 function formatMoney(value: number) {
@@ -83,10 +89,13 @@ export function ActivitiesPageView() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const loadActivities = useCallback(
-    async (filters: ActivityFilterState) => {
+    async (targetPage: number, filters: ActivityFilterState) => {
       if (!session?.accessToken) {
         return;
       }
@@ -101,9 +110,8 @@ export function ActivitiesPageView() {
         if (filters.description.trim()) {
           params.set("description", filters.description.trim());
         }
-        if (filters.group.trim()) {
-          params.set("group", filters.group.trim());
-        }
+        params.set("page", String(targetPage));
+        params.set("pageSize", String(PAGE_SIZE));
 
         const response = await fetch(`/api/activities?${params.toString()}`, {
           cache: "no-store",
@@ -112,13 +120,11 @@ export function ActivitiesPageView() {
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as {
-          activities?: ActivityItem[];
-          message?: string;
-        };
+        const data = (await response.json().catch(() => ({}))) as ActivitiesListResponse;
 
         if (!response.ok) {
           setActivities([]);
+          setTotal(0);
           setFeedback({
             type: "error",
             message: data.message ?? "Falha ao carregar atividades.",
@@ -127,7 +133,10 @@ export function ActivitiesPageView() {
         }
 
         setActivities(data.activities ?? []);
+        setTotal(data.pagination?.total ?? 0);
       } catch {
+        setActivities([]);
+        setTotal(0);
         setFeedback({
           type: "error",
           message: "Falha ao carregar atividades.",
@@ -140,8 +149,8 @@ export function ActivitiesPageView() {
   );
 
   useEffect(() => {
-    void loadActivities(activeFilters);
-  }, [activeFilters, loadActivities]);
+    void loadActivities(page, activeFilters);
+  }, [activeFilters, loadActivities, page]);
 
   const formTitle = useMemo(
     () => (form.id ? "Editar Atividade" : "Cadastro de Atividades"),
@@ -159,6 +168,7 @@ export function ActivitiesPageView() {
   }
 
   function applyFilters() {
+    setPage(1);
     setActiveFilters(filterDraft);
     setFeedback(null);
   }
@@ -166,6 +176,7 @@ export function ActivitiesPageView() {
   function clearFilters() {
     setFilterDraft(INITIAL_FILTERS);
     setActiveFilters(INITIAL_FILTERS);
+    setPage(1);
     setFeedback(null);
   }
 
@@ -232,7 +243,8 @@ export function ActivitiesPageView() {
         message: data.message ?? "Atividade salva com sucesso.",
       });
       resetForm();
-      await loadActivities(activeFilters);
+      await loadActivities(1, activeFilters);
+      setPage(1);
     } catch {
       setFeedback({
         type: "error",
@@ -277,19 +289,6 @@ export function ActivitiesPageView() {
 
           <label className={styles.field}>
             <span>
-              Grupo <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.group}
-              onChange={(event) => setForm((current) => ({ ...current, group: event.target.value }))}
-              placeholder="Grupo da atividade"
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>
               Valor <span className="requiredMark">*</span>
             </span>
             <input
@@ -316,22 +315,9 @@ export function ActivitiesPageView() {
             />
           </label>
 
-          <label className={styles.field}>
-            <span>
-              Alcance <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.scope}
-              onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value }))}
-              placeholder="Escopo da atividade"
-              required
-            />
-          </label>
-
           <div className={`${styles.actions} ${styles.formActions}`}>
             {isEditing ? (
-              <button type="button" className={styles.secondaryButton} onClick={resetForm} disabled={isSaving}>
+              <button type="button" className={styles.ghostButton} onClick={resetForm} disabled={isSaving}>
                 Cancelar
               </button>
             ) : null}
@@ -366,22 +352,13 @@ export function ActivitiesPageView() {
             />
           </label>
 
-          <label className={styles.field}>
-            <span>Grupo</span>
-            <input
-              type="text"
-              value={filterDraft.group}
-              onChange={(event) => updateFilterField("group", event.target.value)}
-              placeholder="Filtrar por grupo"
-            />
-          </label>
         </div>
 
         <div className={styles.actions}>
-          <button type="button" className={styles.primaryButton} onClick={applyFilters} disabled={isLoadingList}>
+          <button type="button" className={styles.secondaryButton} onClick={applyFilters} disabled={isLoadingList}>
             Aplicar
           </button>
-          <button type="button" className={styles.secondaryButton} onClick={clearFilters} disabled={isLoadingList}>
+          <button type="button" className={styles.ghostButton} onClick={clearFilters} disabled={isLoadingList}>
             Limpar
           </button>
         </div>
@@ -390,9 +367,7 @@ export function ActivitiesPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Atividades</h3>
-          <div className={styles.tableHint}>
-            {isLoadingList ? "Carregando atividades..." : `${activities.length} registro(s) encontrado(s)`}
-          </div>
+          <div className={styles.tableHint}>Listagem paginada no servidor ({PAGE_SIZE} por pagina).</div>
         </div>
 
         <div className={styles.tableWrapper}>
@@ -401,17 +376,15 @@ export function ActivitiesPageView() {
               <tr>
                 <th>Codigo</th>
                 <th>Descricao</th>
-                <th>Grupo</th>
                 <th>Valor</th>
                 <th>Unidade</th>
-                <th>Alcance</th>
                 <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
               {!isLoadingList && activities.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyRow}>
+                  <td colSpan={5} className={styles.emptyRow}>
                     Nenhuma atividade encontrada para os filtros informados.
                   </td>
                 </tr>
@@ -421,10 +394,8 @@ export function ActivitiesPageView() {
                 <tr key={activity.id}>
                   <td>{activity.code}</td>
                   <td>{activity.description}</td>
-                  <td>{activity.group}</td>
                   <td>{formatMoney(activity.value)}</td>
                   <td>{activity.unit}</td>
-                  <td>{activity.scope}</td>
                   <td className={styles.actionsCell}>
                     <button
                       type="button"
@@ -449,6 +420,31 @@ export function ActivitiesPageView() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className={styles.pagination}>
+          <span>
+            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
+          </span>
+
+          <div className={styles.paginationActions}>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1 || isLoadingList}
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages || isLoadingList}
+            >
+              Proxima
+            </button>
+          </div>
         </div>
       </article>
 

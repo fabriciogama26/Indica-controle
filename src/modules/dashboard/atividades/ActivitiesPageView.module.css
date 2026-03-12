@@ -101,7 +101,8 @@
 }
 
 .primaryButton,
-.secondaryButton {
+.secondaryButton,
+.ghostButton {
   border: none;
   border-radius: 14px;
   min-height: 44px;
@@ -122,8 +123,15 @@
   border: 1px solid rgba(23, 52, 122, 0.15);
 }
 
+.ghostButton {
+  background: #ffffff;
+  color: #17347a;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+}
+
 .primaryButton:disabled,
-.secondaryButton:disabled {
+.secondaryButton:disabled,
+.ghostButton:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -146,6 +154,20 @@
   border-radius: 16px;
   border: 1px solid rgba(23, 52, 122, 0.12);
   background: #ffffff;
+}
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: #5b6a85;
+}
+
+.paginationActions {
+  display: flex;
+  gap: 8px;
 }
 
 .table {
@@ -269,7 +291,8 @@
   }
 
   .actions .primaryButton,
-  .actions .secondaryButton {
+  .actions .secondaryButton,
+  .actions .ghostButton {
     flex: 1 1 auto;
   }
 }

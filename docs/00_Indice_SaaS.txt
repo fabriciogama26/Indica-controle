@@ -16,6 +16,7 @@ Arquivos principais para nova task
 - docs/Tela_Medicao_SaaS.txt
 - docs/Tela_Cargo_SaaS.txt
 - docs/Tela_Atividades_SaaS.txt
+- docs/Tela_Padrao_Cadastros_SaaS.txt
 - docs/Tela_Cadastro_Base_SaaS.txt
 
 Ordem recomendada de leitura

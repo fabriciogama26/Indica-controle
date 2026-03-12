@@ -66,6 +66,9 @@
 - [x] Criar migration `048_create_job_levels_and_people_level_link.sql` para disponibilizar niveis (`text`) por tenant e permitir `people.job_level` consumindo esse catalogo.
 - [x] Criar migration `049_create_service_activities_and_page_permissions.sql` para tabela `service_activities` e para incluir a pagina `atividades` na matriz de permissao.
 - [x] Implementar tela `Atividades` com cadastro, filtros e listagem integrada a `/api/activities`.
+- [x] Criar migration `050_activity_code_precheck_and_optional_fields.sql` para tornar `grupo/alcance` opcionais em `service_activities` e bloquear codigo duplicado via RPC `precheck_activity_code_conflict`.
+- [x] Implementar paginacao server-side na lista de `Atividades` (`page`, `pageSize`, `total`) com navegacao `Anterior/Proxima` na tela.
+- [x] Padronizar botoes da tela `Atividades` conforme baseline de `Projetos` e documentar o guia em `docs/Tela_Padrao_Cadastros_SaaS.txt`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.

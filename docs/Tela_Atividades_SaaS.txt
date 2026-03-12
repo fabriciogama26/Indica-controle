@@ -3,8 +3,10 @@ Tela: Atividades SaaS
 Visao geral
 -----------
 - Tela de cadastro de atividades para contratos e servicos por tenant.
-- Permite registrar e editar: `codigo`, `descricao`, `grupo`, `valor`, `unidade` e `alcance`.
-- Lista atividades cadastradas com filtro por codigo, descricao e grupo.
+- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `valor` e `unidade`.
+- `grupo` e `alcance` permanecem opcionais para compatibilidade de dados.
+- Lista atividades cadastradas com filtro por codigo e descricao.
+- Lista atividades com paginacao no servidor (20 por pagina).
 
 Arquitetura
 -----------
@@ -13,6 +15,7 @@ Arquitetura
 - Estilo: `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
 - API: `src/app/api/activities/route.ts`
 - Banco: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
+- Banco (evolucao): `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
 - Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -22,14 +25,14 @@ Cadastro
 - Campos obrigatorios:
   - `Codigo`
   - `Descricao`
-  - `Grupo`
   - `Valor`
   - `Unidade`
-  - `Alcance`
 - Regras:
   - `Codigo` e salvo em caixa alta.
   - `Valor` deve ser numerico e maior ou igual a zero.
+  - `Grupo` e `Alcance` sao opcionais.
   - `Codigo` deve ser unico por tenant.
+  - Pre-validacao de codigo via RPC `precheck_activity_code_conflict` (bloqueia duplicidade antes de inserir/editar).
 - Fluxo:
   - `POST /api/activities` para cadastro.
   - `PUT /api/activities` para edicao.
@@ -39,16 +42,20 @@ Filtros, auto-complete e listagem
 - Filtros na tela:
   - `Codigo`
   - `Descricao`
-  - `Grupo`
 - Listagem em tabela com colunas:
   - `Codigo`
   - `Descricao`
-  - `Grupo`
   - `Valor`
   - `Unidade`
-  - `Alcance`
   - `Acoes` (`Editar`)
 - Filtro e listagem via `GET /api/activities`.
+- Query params de paginacao:
+  - `page`
+  - `pageSize`
+- Resposta inclui:
+  - `pagination.page`
+  - `pagination.pageSize`
+  - `pagination.total`
 
 Boas praticas
 -------------
@@ -71,27 +78,36 @@ Atualizacao 2026-03
 - Tela `Atividades` criada com formulario funcional e listagem.
 - Layout visual ajustado para o mesmo padrao das telas `Projetos` e `Materiais` (cards, bloco de filtros e tabela principal).
 - API `src/app/api/activities/route.ts` criada com `GET`, `POST` e `PUT`.
+- Listagem de atividades ajustada para paginacao server-side (`page/pageSize`).
+- Hierarquia de botoes alinhada ao padrao da tela `Projetos` (`primary/secondary/ghost` conforme contexto de acao).
 - Migration `049_create_service_activities_and_page_permissions.sql` criada para:
   - criar tabela `service_activities`;
   - aplicar RLS/auditoria;
   - adicionar `atividades` em `app_pages` e backfill de permissoes.
+- Migration `050_activity_code_precheck_and_optional_fields.sql` criada para:
+  - tornar `group_name` e `scope` opcionais;
+  - criar RPC `precheck_activity_code_conflict` para bloqueio de codigo duplicado por tenant.
 - `AppShell`, `authorization.ts` e `PermissionsPageView` atualizados para incluir a nova rota.
 - Antes: nao existia a pagina de `Atividades`.
-- Depois: pagina ativa com cadastro e edicao por tenant.
+- Depois: pagina ativa com cadastro e edicao por tenant, exigindo somente `Codigo`, `Descricao`, `Valor` e `Unidade`.
+- Depois: pagina ativa com cadastro e edicao por tenant, exigindo somente `Codigo`, `Descricao`, `Valor` e `Unidade`, com lista paginada.
+- Depois: pagina ativa com padrao visual de botoes aderente ao baseline de `Projetos`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: estado da tela, cadastro/edicao, filtros e listagem de atividades.
+  - Responsavel por: estado da tela, cadastro/edicao, filtros e listagem paginada de atividades.
 - Caminho: `src/app/api/activities/route.ts`
-  - Responsavel por: validar payload, listar, cadastrar e editar atividades por tenant.
+  - Responsavel por: validar payload, listar com paginacao, cadastrar e editar atividades por tenant.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
   - Responsavel por: `INITIAL_FORM` e funcoes de formatacao de valor.
 - Caminho: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
   - Responsavel por: criar tabela, constraints, RLS, trigger de auditoria e permissao da pagina.
+- Caminho: `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
+  - Responsavel por: flexibilizar campos opcionais e adicionar RPC de pre-validacao de codigo.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear `/atividades` para `pageKey = atividades`.
 
@@ -112,13 +128,14 @@ Ajuda contextual
   - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
   - `src/app/api/activities/route.ts`
   - `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
+  - `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Funcoes/hooks/constantes tocadas:
-  - `loadActivities`, `handleSubmit`, `startEdit`, `resetForm`
+  - `loadActivities`, `handleSubmit`, `startEdit`, `resetForm`, `setPage`
   - `GET`/`POST`/`PUT` de `/api/activities`
   - `ROUTE_PAGE_KEYS`, `resolveDefaultPageAccess`, `permissionCatalog`
 - Comportamento antes/depois:
   - Antes: rota inexistente para atividades.
-  - Depois: rota ativa com cadastro e edicao no tenant atual.
+  - Depois: rota ativa com cadastro e edicao no tenant atual, com apenas 4 campos obrigatorios e precheck RPC anti-duplicidade de codigo.
