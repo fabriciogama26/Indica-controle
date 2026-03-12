@@ -16,6 +16,8 @@ Arquitetura
 - Banco (auditoria): `supabase/migrations/015_add_audit_columns.sql`
 - Banco (preco + status + historico): `supabase/migrations/042_materials_price_status_and_history.sql`
 - Banco (pre-check de codigo duplicado): `supabase/migrations/044_material_code_precheck_rpc.sql`
+- Banco (tenants + vinculo de acesso por usuario): `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
+- Banco (FK tenant global em tabelas com tenant_id): `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
 
 Cadastro
 --------
@@ -122,10 +124,15 @@ Constantes e configuracoes
   - Responsavel por: preco, status, historico e regras de consistencia de cancelamento em materiais.
 - Caminho: `supabase/migrations/044_material_code_precheck_rpc.sql`
   - Responsavel por: RPC de pre-check de codigo duplicado (`precheck_material_code_conflict`).
+- Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
+  - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
+- Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
+  - Responsavel por: aplicar integridade referencial de `tenant_id` para `tenants(id)` em todas as tabelas de negocio com coluna `tenant_id`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
+  - Suporta selecao de tenant por requisicao via header `x-tenant-id` (quando o usuario possui vinculo em `app_user_tenants`).
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
 
@@ -141,8 +148,10 @@ Ajuda contextual
   - `src/modules/dashboard/materiais/MaterialsPageView.module.css`
   - `src/app/api/materials/route.ts`
   - `supabase/migrations/042_materials_price_status_and_history.sql`
+  - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - `supabase/edge_functions/get_materials/index.ts`
   - `supabase/edge_functions/doc/get_materials.txt`
+  - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
   - `MaterialsPageView`, `loadMaterials`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/materials`

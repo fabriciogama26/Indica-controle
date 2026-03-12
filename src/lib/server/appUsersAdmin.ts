@@ -10,6 +10,12 @@ type CurrentUserRow = {
   ativo: boolean;
 };
 
+type CurrentUserTenantLinkRow = {
+  tenant_id: string;
+  is_default: boolean;
+  ativo: boolean;
+};
+
 type CurrentRoleRow = {
   role_key?: string | null;
   name?: string | null;
@@ -37,6 +43,10 @@ export type AuthenticatedAppUserContext = {
   supabase: SupabaseClient;
   authUserId: string;
   appUser: CurrentUserRow;
+  tenantAccess: {
+    activeTenantId: string;
+    availableTenantIds: string[];
+  };
   role: {
     roleKey: string;
     roleName: string;
@@ -85,6 +95,11 @@ function extractBearerToken(request: NextRequest) {
   }
 
   return authorization.slice(7).trim() || null;
+}
+
+function normalizeHeaderTenantId(value: string | null) {
+  const normalized = String(value ?? "").trim();
+  return normalized || null;
 }
 
 export async function resolveAuthenticatedAppUser(
@@ -155,10 +170,49 @@ export async function resolveAuthenticatedAppUser(
     };
   }
 
+  const requestedTenantId = normalizeHeaderTenantId(request.headers.get("x-tenant-id"));
+  let availableTenantIds = [currentUser.tenant_id];
+  let activeTenantId = currentUser.tenant_id;
+
+  const { data: tenantLinks, error: tenantLinksError } = await supabase
+    .from("app_user_tenants")
+    .select("tenant_id, is_default, ativo")
+    .eq("user_id", currentUser.id)
+    .eq("ativo", true)
+    .returns<CurrentUserTenantLinkRow[]>();
+
+  if (!tenantLinksError && (tenantLinks ?? []).length > 0) {
+    const uniqueTenantIds = Array.from(new Set((tenantLinks ?? []).map((item) => item.tenant_id).filter(Boolean)));
+    if (uniqueTenantIds.length > 0) {
+      availableTenantIds = uniqueTenantIds;
+      const defaultTenant = (tenantLinks ?? []).find((item) => item.is_default) ?? null;
+      activeTenantId = defaultTenant?.tenant_id ?? uniqueTenantIds[0];
+    }
+  }
+
+  if (requestedTenantId) {
+    if (!availableTenantIds.includes(requestedTenantId)) {
+      return {
+        error: {
+          status: 403,
+          message: "Tenant nao permitido para o usuario autenticado.",
+        },
+      };
+    }
+    activeTenantId = requestedTenantId;
+  }
+
   return {
     supabase,
     authUserId: user.id,
-    appUser: currentUser,
+    appUser: {
+      ...currentUser,
+      tenant_id: activeTenantId,
+    },
+    tenantAccess: {
+      activeTenantId,
+      availableTenantIds,
+    },
     role: {
       roleKey: String(currentRole.role_key ?? "user"),
       roleName: String(currentRole.name ?? "User"),

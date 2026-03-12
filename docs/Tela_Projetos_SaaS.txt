@@ -27,6 +27,8 @@ Arquitetura
 - Banco (colunas de dominio em UUID + view de labels): `supabase/migrations/038_project_lookup_uuid_columns.sql`
 - Banco (materiais previstos por projeto): `supabase/migrations/041_create_project_material_forecast.sql`
 - Banco (protecao de importacao por RPC): `supabase/migrations/043_project_forecast_import_guards.sql`
+- Banco (tenants + vinculo de acesso por usuario): `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
+- Banco (FK tenant global em tabelas com tenant_id): `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
 
 Cadastro
 --------
@@ -207,10 +209,15 @@ Constantes e configuracoes
   - Responsavel por: tabela `project_material_forecast`, policies RLS, trigger de auditoria e constraint unica por material no projeto.
 - Caminho: `supabase/migrations/043_project_forecast_import_guards.sql`
   - Responsavel por: RPC de pre-check e RPC de append para proteger importacoes contra duplicidade.
+- Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
+  - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
+- Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
+  - Responsavel por: aplicar integridade referencial de `tenant_id` para `tenants(id)` em todas as tabelas de negocio com coluna `tenant_id`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
+  - Suporta selecao de tenant por requisicao via header `x-tenant-id` (quando o usuario possui vinculo em `app_user_tenants`).
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
 - Caminho: `supabase/edge_functions/import_project_forecast/index.ts`
@@ -231,6 +238,8 @@ Ajuda contextual
   - `supabase/edge_functions/import_project_forecast/index.ts`
   - `supabase/migrations/041_create_project_material_forecast.sql`
   - `supabase/migrations/043_project_forecast_import_guards.sql`
+  - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
+  - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
   - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `handleForecastProjectSearchChange`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
   - `GET` de `/api/projects/forecast`

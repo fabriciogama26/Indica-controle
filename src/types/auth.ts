@@ -5,6 +5,8 @@ export type AuthUser = {
   role: string;
   roleId: string | null;
   tenantId: string;
+  activeTenantId?: string;
+  availableTenantIds?: string[];
   loginName: string;
   displayName?: string | null;
   pageAccess: string[];

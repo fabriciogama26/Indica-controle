@@ -46,6 +46,8 @@ Ordem de aplicacao
 42. 042_materials_price_status_and_history.sql
 43. 043_project_forecast_import_guards.sql
 44. 044_material_code_precheck_rpc.sql
+45. 045_create_tenants_and_user_tenant_access.sql
+46. 046_add_tenant_fk_to_all_tenant_tables.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -182,6 +184,12 @@ Resumo por arquivo
 
 044_material_code_precheck_rpc.sql
 - Adiciona RPC de pre-check (`precheck_material_code_conflict`) para bloquear cadastro/edicao de material com codigo duplicado no mesmo tenant.
+
+045_create_tenants_and_user_tenant_access.sql
+- Cria `tenants` como entidade de isolamento, cria `app_user_tenants` para vincular usuario a multiplos tenants/contratos, faz backfill e atualiza `user_can_access_tenant`.
+
+046_add_tenant_fk_to_all_tenant_tables.sql
+- Varre tabelas publicas com `tenant_id`, faz backfill de `tenants` com IDs faltantes e cria FK `tenant_id -> tenants(id)` onde ainda nao existir.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

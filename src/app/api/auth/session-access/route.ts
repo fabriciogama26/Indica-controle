@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { supabase, appUser, role } = resolution;
+    const { supabase, appUser, role, tenantAccess } = resolution;
 
     const { data: permissions, error: permissionsError } = await supabase
       .from("app_user_page_permissions")
@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
         user: {
           userId: appUser.id,
           tenantId: appUser.tenant_id,
+          activeTenantId: tenantAccess.activeTenantId,
+          availableTenantIds: tenantAccess.availableTenantIds,
           role: role.roleKey,
           roleId: appUser.role_id,
           loginName: appUser.login_name,
