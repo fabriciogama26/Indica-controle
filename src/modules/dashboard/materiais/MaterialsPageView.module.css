@@ -16,6 +16,11 @@
   gap: 14px;
 }
 
+.editingCard {
+  border: 2px solid #f1c21b;
+  box-shadow: 0 0 0 3px rgba(241, 194, 27, 0.18), 0 18px 38px rgba(15, 32, 74, 0.08);
+}
+
 .cardTitle {
   margin: 0;
   color: #17347a;

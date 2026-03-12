@@ -55,7 +55,9 @@
 - [x] Criar migration `043_project_forecast_import_guards.sql` com RPC de pre-check e append para bloquear codigos duplicados e codigos ja importados.
 - [x] Evoluir `materials` com `preco`, `status ativo`, `cancelamento/ativacao` e historico via migration `042_materials_price_status_and_history.sql`.
 - [x] Implementar tela `Materiais` no padrao de `Projetos`, com cadastro, filtros, listagem paginada e acoes `Editar`, `Historico` e `Cancelar/Ativar`.
+- [x] Destacar modo de edicao em `Projetos` e `Materiais` com borda amarela no bloco de cadastro e rolagem para o topo ao clicar em `Editar`.
 - [x] Implementar API `/api/materials` com `GET` (lista/historico), `POST`, `PUT` e `PATCH`.
+- [x] Proteger cadastro/edicao de materiais com RPC `precheck_material_code_conflict` para bloquear codigo duplicado por tenant.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
