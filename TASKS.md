@@ -89,7 +89,8 @@
 - [x] Documentar handoff, arquitetura, contratos de backend, login, home e layout principal em `docs/`.
 
 - [ ] Implementar consumo real no frontend para `get_materials`, `get_responsaveis` e `get_inventory_balance`.
-- [ ] Implementar CRUD de `Pessoas` integrado a `people` e `job_titles`.
+- [x] Implementar CRUD de `Pessoas` integrado a `people`, `job_titles`, `job_title_types` e `job_levels`, com historico, status e exportacao CSV.
+- [x] Proteger cadastro/edicao de `Pessoas` contra duplicidade pela combinacao `Nome + Matricula + Cargo + Tipo + Nivel` com validacao na API e trigger no banco.
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.
 - [ ] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.
