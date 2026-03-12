@@ -140,7 +140,7 @@ vercel --prod
   - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant.
-  - `api/auth/session-access/route.ts`: devolve role, tenant e telas liberadas do usuario autenticado para montar o shell.
+  - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
 - `src/modules/auth/login/`
   - `LoginPageView.tsx`: implementacao visual da tela de login.
@@ -258,6 +258,8 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 38. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
 39. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
 40. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
+41. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
+42. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
 
 ---
 
@@ -344,6 +346,9 @@ npm run build
 - `Usuario autenticado nao enxerga dados do tenant.`:
   - Causa: `app_users.auth_user_id` nao vinculado ao `auth.users`, `tenant_id` divergente ou usuario com `ativo = false`.
   - Solucao: revisar o vinculo em `app_users`, aplicar as migrations `020_harden_rls_auth_uid_active.sql` e `021_rls_to_authenticated.sql` e confirmar o tenant correto do usuario.
+- `Tenant nao permitido para o usuario autenticado.`:
+  - Causa: envio de `x-tenant-id` sem vinculo ativo em `app_user_tenants`.
+  - Solucao: aplicar a migration `045_create_tenants_and_user_tenant_access.sql`, conferir backfill e liberar o tenant para o usuario em `app_user_tenants`.
 - `Informe seu login para enviar o email de recuperacao.`:
   - Causa: clique em `Esqueci minha senha` sem preencher o `login_name`.
   - Solucao: informar o `login_name` na tela de login antes de solicitar a recuperacao.

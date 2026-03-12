@@ -117,6 +117,10 @@ async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
       role: resolvedRole,
       roleId: resolvedRoleId,
       tenantId: String(access?.user.tenantId ?? data.tenant_id ?? ""),
+      activeTenantId: access?.user.activeTenantId ? String(access.user.activeTenantId) : undefined,
+      availableTenantIds: Array.isArray(access?.user.availableTenantIds)
+        ? access?.user.availableTenantIds.map((value) => String(value))
+        : undefined,
       loginName: resolvedLoginName,
       displayName: resolvedDisplayName,
       pageAccess: access?.pageAccess ?? resolveDefaultPageAccess(resolvedRole),
@@ -307,6 +311,12 @@ export async function hydrateSessionAccess(currentAppSession: AuthSession) {
       role: String(access.user.role ?? currentAppSession.user.role),
       roleId: access.user.roleId ? String(access.user.roleId) : currentAppSession.user.roleId,
       tenantId: String(access.user.tenantId ?? currentAppSession.user.tenantId),
+      activeTenantId: access.user.activeTenantId
+        ? String(access.user.activeTenantId)
+        : currentAppSession.user.activeTenantId,
+      availableTenantIds: Array.isArray(access.user.availableTenantIds)
+        ? access.user.availableTenantIds.map((value) => String(value))
+        : currentAppSession.user.availableTenantIds,
       loginName: String(access.user.loginName ?? currentAppSession.user.loginName),
       displayName: hasAccessDisplayName
         ? access.user.displayName

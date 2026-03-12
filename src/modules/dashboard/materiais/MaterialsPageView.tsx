@@ -153,6 +153,20 @@ function toFormState(material: MaterialItem): FormState {
   };
 }
 
+function scrollDashboardContentToTop() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const content = document.querySelector<HTMLElement>('[data-main-content-scroll="true"]');
+  if (content) {
+    content.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 export function MaterialsPageView() {
   const { session } = useAuth();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -249,7 +263,7 @@ export function MaterialsPageView() {
     setEditingMaterialId(material.id);
     setForm(toFormState(material));
     setFeedback(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollDashboardContentToTop();
   }
 
   function closeHistoryModal() {

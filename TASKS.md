@@ -56,8 +56,12 @@
 - [x] Evoluir `materials` com `preco`, `status ativo`, `cancelamento/ativacao` e historico via migration `042_materials_price_status_and_history.sql`.
 - [x] Implementar tela `Materiais` no padrao de `Projetos`, com cadastro, filtros, listagem paginada e acoes `Editar`, `Historico` e `Cancelar/Ativar`.
 - [x] Destacar modo de edicao em `Projetos` e `Materiais` com borda amarela no bloco de cadastro e rolagem para o topo ao clicar em `Editar`.
+- [x] Corrigir rolagem para topo de `Editar` em `Projetos` e `Materiais` para usar o container de scroll interno do dashboard.
+- [x] Ajustar selecao de projeto em `Materiais previstos` para campo de texto com sugestao (datalist), no padrao digitavel.
 - [x] Implementar API `/api/materials` com `GET` (lista/historico), `POST`, `PUT` e `PATCH`.
 - [x] Proteger cadastro/edicao de materiais com RPC `precheck_material_code_conflict` para bloquear codigo duplicado por tenant.
+- [x] Formalizar `tenant` como entidade (`tenants`) e vinculo de acesso multi-tenant por usuario (`app_user_tenants`) com backfill e ajuste de `user_can_access_tenant`.
+- [x] Garantir FK de `tenant_id` para `tenants(id)` em todas as tabelas publicas com coluna `tenant_id`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
@@ -81,6 +85,7 @@
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
+- [ ] Implementar seletor de tenant/contrato no frontend e enviar `x-tenant-id` nas chamadas autenticadas para troca de contexto.
 - [ ] Implementar gestao de sessao web com expiracao por inatividade, touch/revoke e tratamento de token expirado.
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.
 - [x] Ajustar a UX de recuperacao para usar o `login_name` digitado na tela de login antes do envio do email pelo Supabase.
