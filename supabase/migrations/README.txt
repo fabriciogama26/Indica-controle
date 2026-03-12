@@ -51,6 +51,7 @@ Ordem de aplicacao
 47. 047_create_job_title_types_and_people_type_link.sql
 48. 048_create_job_levels_and_people_level_link.sql
 49. 049_create_service_activities_and_page_permissions.sql
+50. 050_activity_code_precheck_and_optional_fields.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -202,6 +203,9 @@ Resumo por arquivo
 
 049_create_service_activities_and_page_permissions.sql
 - Cria `service_activities` (codigo, descricao, grupo, valor, unidade, alcance) com RLS multi-tenant e adiciona a pagina `atividades` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+
+050_activity_code_precheck_and_optional_fields.sql
+- Torna `service_activities.group_name` e `service_activities.scope` opcionais, mantendo validacao de nao-vazio quando informado, e cria RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant em cadastro/edicao.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

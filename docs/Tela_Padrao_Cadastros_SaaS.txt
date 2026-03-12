@@ -1,0 +1,88 @@
+Tela: Padrao de Telas de Cadastro SaaS
+
+Visao geral
+-----------
+- Define o padrao visual e comportamental das telas de cadastro do SaaS.
+- A tela de referencia e `Projetos` (`ProjectsPageView`).
+- Regra do solicitante: botoes e estrutura devem seguir o padrao de `Projetos`, exceto a lista de `Materiais` (que possui acoes adicionais proprias).
+
+Arquitetura
+-----------
+- Referencia principal:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+- Tela ajustada para aderencia:
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+
+Cadastro
+--------
+- Estrutura obrigatoria:
+  - Card de cadastro (`.card`) com titulo (`.cardTitle`).
+  - Grid de campos (`.formGrid`) com marcador de obrigatorio.
+  - Destaque de modo edicao com borda amarela (`.editingCard`).
+- Padrao de botoes do formulario:
+  - Acao principal: `.primaryButton`.
+  - Acao secundaria de retorno/cancelamento: `.ghostButton`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Estrutura obrigatoria:
+  - Card de filtros com `Aplicar` e `Limpar`.
+  - Card de listagem com tabela, estado vazio e paginacao.
+- Padrao de botoes de filtro:
+  - `Aplicar`: `.secondaryButton`.
+  - `Limpar`: `.ghostButton`.
+- Padrao de paginacao:
+  - Texto `Pagina X de Y | Total: N`.
+  - Navegacao `Anterior` e `Proxima` com `.ghostButton`.
+
+Boas praticas
+-------------
+- Reutilizar classes e semantica de botoes da tela `Projetos`.
+- Manter consistencia de espacamento, altura de botoes e raio de borda.
+- Em listagens com acoes por linha, usar `actionButton` circular com variacoes de cor por acao.
+- Nao alterar o comportamento especifico da lista de `Materiais` sem demanda explicita.
+
+Atalhos
+-------
+- Sempre comparar nova tela de cadastro com:
+  - `ProjectsPageView.tsx` (estrutura/fluxo)
+  - `ProjectsPageView.module.css` (tokens visuais/classes)
+
+Atualizacao 2026-03
+-------------------
+- Padrao formalizado em arquivo dedicado para referencia continua.
+- Tela `Atividades` alinhada com o padrao de botoes de `Projetos`:
+  - `Cancelar` do formulario para `.ghostButton`
+  - `Aplicar`/`Limpar` dos filtros para `.secondaryButton`/`.ghostButton`
+  - `Anterior`/`Proxima` da paginacao para `.ghostButton`
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - Responsavel por: baseline de UX e padrao de acoes para cadastro/listagem.
+- Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - Responsavel por: aplicacao do padrao de botoes e layout de cadastro/listagem.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+  - Responsavel por: classes de referencia (`primaryButton`, `secondaryButton`, `ghostButton`, `actionButton`).
+- Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+  - Responsavel por: alinhamento das classes ao padrao de `Projetos`.
+
+Funcoes utilitarias relacionadas
+- Nao se aplica (padrao visual/comportamental de tela).
+
+Servicos e integracoes externas
+- Nao se aplica (documento de padrao frontend).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `docs/Tela_Padrao_Cadastros_SaaS.txt` (novo)
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+- Comportamento antes/depois:
+  - Antes: Atividades usava hierarquia de botoes diferente de Projetos em partes do fluxo.
+  - Depois: Atividades segue o mesmo padrao de botoes da tela Projetos.
