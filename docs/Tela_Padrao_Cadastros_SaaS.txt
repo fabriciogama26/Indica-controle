@@ -32,6 +32,7 @@ Filtros, auto-complete e listagem
 - Estrutura obrigatoria:
   - Card de filtros com `Aplicar` e `Limpar`.
   - Card de listagem com tabela, estado vazio e paginacao.
+  - Toda listagem deve expor botao `Exportar Excel (CSV)` no cabecalho.
 - Padrao de acoes na coluna `Acoes` (baseline `Projetos`):
   - `Detalhes`
   - `Editar`
@@ -41,7 +42,7 @@ Filtros, auto-complete e listagem
   - `Aplicar`: `.secondaryButton`.
   - `Limpar`: `.ghostButton`.
 - Padrao de paginacao:
-  - Texto `Pagina X de Y | Total: N`.
+  - Texto `Pagina X de Y | Total: N` no rodape da lista.
   - Navegacao `Anterior` e `Proxima` com `.ghostButton`.
   - Modal de `Historico`: obrigatorio paginar com `5` registros por pagina.
 

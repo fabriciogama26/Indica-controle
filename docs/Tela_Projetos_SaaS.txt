@@ -93,6 +93,7 @@ Filtros, auto-complete e listagem
   - `Responsaveis`
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
 - Botao `Exportar Excel (CSV)` na lista para exportar os projetos filtrados.
+- Texto fixo de pagina no cabecalho da lista removido para manter header mais limpo.
 - Coluna `Parceira` removida da lista para reduzir redundancia visual.
 - Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico`, `Materiais previstos` e `Cancelar`.
 - Quando a obra estiver inativa, o botao `Cancelar` vira botao `Ativar`.
@@ -107,6 +108,7 @@ Filtros, auto-complete e listagem
 - Quando a aba `Materiais previstos` esta ativa, os blocos de `Filtros` e `Lista de Projetos` ficam ocultos e a tela mostra:
   - `Filtros de Materiais Previstos` (codigo, descricao, tipo).
   - `Lista de Materiais Previstos` (somente materiais do projeto selecionado).
+  - Botao `Exportar Excel (CSV)` para exportar os materiais previstos filtrados.
 
 Boas praticas
 -------------

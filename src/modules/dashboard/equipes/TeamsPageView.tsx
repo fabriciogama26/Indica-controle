@@ -77,6 +77,7 @@ type TeamHistoryResponse = {
 
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
+const EXPORT_PAGE_SIZE = 100;
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome da equipe",
@@ -110,6 +111,58 @@ function normalizeText(value: string) {
 
 function normalizePlate(value: string) {
   return normalizeText(value).toUpperCase();
+}
+
+function buildQuery(filters: TeamFilterState, page: number, pageSize = PAGE_SIZE) {
+  const params = new URLSearchParams();
+  if (filters.name.trim()) {
+    params.set("name", filters.name.trim());
+  }
+  if (filters.vehiclePlate.trim()) {
+    params.set("vehiclePlate", filters.vehiclePlate.trim());
+  }
+  if (filters.teamTypeId.trim()) {
+    params.set("teamTypeId", filters.teamTypeId.trim());
+  }
+  if (filters.foremanId.trim()) {
+    params.set("foremanId", filters.foremanId.trim());
+  }
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  return params.toString();
+}
+
+function escapeCsvValue(value: string | number | null | undefined) {
+  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
+  if (raw.includes(";") || raw.includes('"')) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function buildTeamsCsv(teamItems: TeamItem[]) {
+  const header = ["Nome da equipe", "Placa do veiculo", "Tipo", "Encarregado", "Registrado em", "Status"];
+  const rows = teamItems.map((team) => [
+    team.name,
+    team.vehiclePlate,
+    team.teamTypeName,
+    team.foremanName,
+    formatDateTime(team.createdAt),
+    team.isActive ? "Ativo" : "Inativo",
+  ]);
+
+  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+  return `\uFEFF${csvLines.join("\n")}`;
+}
+
+function downloadCsvFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function formatDateTime(value: string | null) {
@@ -168,6 +221,7 @@ export function TeamsPageView() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [detailTeam, setDetailTeam] = useState<TeamItem | null>(null);
   const [historyTeam, setHistoryTeam] = useState<TeamItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<TeamHistoryEntry[]>([]);
@@ -233,23 +287,8 @@ export function TeamsPageView() {
       setIsLoadingList(true);
 
       try {
-        const params = new URLSearchParams();
-        if (filters.name.trim()) {
-          params.set("name", filters.name.trim());
-        }
-        if (filters.vehiclePlate.trim()) {
-          params.set("vehiclePlate", filters.vehiclePlate.trim());
-        }
-        if (filters.teamTypeId.trim()) {
-          params.set("teamTypeId", filters.teamTypeId.trim());
-        }
-        if (filters.foremanId.trim()) {
-          params.set("foremanId", filters.foremanId.trim());
-        }
-        params.set("page", String(targetPage));
-        params.set("pageSize", String(PAGE_SIZE));
-
-        const response = await fetch(`/api/teams?${params.toString()}`, {
+        const query = buildQuery(filters, targetPage);
+        const response = await fetch(`/api/teams?${query}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
@@ -509,6 +548,78 @@ export function TeamsPageView() {
     }
   }
 
+  async function handleExportTeams() {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para exportar equipes.",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const allTeams: TeamItem[] = [];
+      let exportPage = 1;
+      let totalItems = 0;
+
+      while (true) {
+        const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE);
+        const response = await fetch(`/api/teams?${query}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        });
+
+        const data = (await response.json().catch(() => ({}))) as TeamsListResponse;
+
+        if (!response.ok) {
+          setFeedback({
+            type: "error",
+            message: data.message ?? "Falha ao exportar equipes.",
+          });
+          return;
+        }
+
+        const pageItems = data.teams ?? [];
+        totalItems = data.pagination?.total ?? totalItems;
+        allTeams.push(...pageItems);
+
+        if (pageItems.length === 0 || allTeams.length >= totalItems) {
+          break;
+        }
+
+        exportPage += 1;
+      }
+
+      if (allTeams.length === 0) {
+        setFeedback({
+          type: "error",
+          message: "Nenhuma equipe encontrada para exportar com os filtros atuais.",
+        });
+        return;
+      }
+
+      const csv = buildTeamsCsv(allTeams);
+      const exportDate = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(csv, `equipes_${exportDate}.csv`);
+
+      setFeedback({
+        type: "success",
+        message: `${allTeams.length} equipe(s) exportada(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao exportar equipes.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -670,7 +781,14 @@ export function TeamsPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Equipes</h3>
-          <div className={styles.tableHint}>Listagem paginada no servidor ({PAGE_SIZE} por pagina).</div>
+          <button
+            type="button"
+            className={styles.ghostButton}
+            onClick={() => void handleExportTeams()}
+            disabled={isExporting || isLoadingList}
+          >
+            {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
+          </button>
         </div>
 
         <div className={styles.tableWrapper}>

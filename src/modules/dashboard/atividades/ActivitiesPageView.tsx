@@ -61,6 +61,7 @@ type ActivityHistoryResponse = {
 
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
+const EXPORT_PAGE_SIZE = 100;
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   code: "Codigo",
@@ -96,6 +97,52 @@ function normalizeText(value: string) {
 
 function normalizeCode(value: string) {
   return normalizeText(value).toUpperCase();
+}
+
+function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_SIZE) {
+  const params = new URLSearchParams();
+  if (filters.code.trim()) {
+    params.set("code", filters.code.trim());
+  }
+  if (filters.description.trim()) {
+    params.set("description", filters.description.trim());
+  }
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  return params.toString();
+}
+
+function escapeCsvValue(value: string | number | null | undefined) {
+  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
+  if (raw.includes(";") || raw.includes('"')) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function buildActivitiesCsv(activityItems: ActivityItem[]) {
+  const header = ["Codigo", "Descricao", "Valor", "Unidade", "Registrado em", "Status"];
+  const rows = activityItems.map((activity) => [
+    activity.code,
+    activity.description,
+    activity.value.toFixed(2),
+    activity.unit,
+    formatDateTime(activity.createdAt),
+    activity.isActive ? "Ativo" : "Inativo",
+  ]);
+
+  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+  return `\uFEFF${csvLines.join("\n")}`;
+}
+
+function downloadCsvFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function formatMoney(value: number) {
@@ -167,6 +214,7 @@ export function ActivitiesPageView() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [detailActivity, setDetailActivity] = useState<ActivityItem | null>(null);
   const [historyActivity, setHistoryActivity] = useState<ActivityItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<ActivityHistoryEntry[]>([]);
@@ -193,17 +241,8 @@ export function ActivitiesPageView() {
       setIsLoadingList(true);
 
       try {
-        const params = new URLSearchParams();
-        if (filters.code.trim()) {
-          params.set("code", filters.code.trim());
-        }
-        if (filters.description.trim()) {
-          params.set("description", filters.description.trim());
-        }
-        params.set("page", String(targetPage));
-        params.set("pageSize", String(PAGE_SIZE));
-
-        const response = await fetch(`/api/activities?${params.toString()}`, {
+        const query = buildQuery(filters, targetPage);
+        const response = await fetch(`/api/activities?${query}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
@@ -463,6 +502,78 @@ export function ActivitiesPageView() {
     }
   }
 
+  async function handleExportActivities() {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para exportar atividades.",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const allActivities: ActivityItem[] = [];
+      let exportPage = 1;
+      let totalItems = 0;
+
+      while (true) {
+        const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE);
+        const response = await fetch(`/api/activities?${query}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        });
+
+        const data = (await response.json().catch(() => ({}))) as ActivitiesListResponse;
+
+        if (!response.ok) {
+          setFeedback({
+            type: "error",
+            message: data.message ?? "Falha ao exportar atividades.",
+          });
+          return;
+        }
+
+        const pageItems = data.activities ?? [];
+        totalItems = data.pagination?.total ?? totalItems;
+        allActivities.push(...pageItems);
+
+        if (pageItems.length === 0 || allActivities.length >= totalItems) {
+          break;
+        }
+
+        exportPage += 1;
+      }
+
+      if (allActivities.length === 0) {
+        setFeedback({
+          type: "error",
+          message: "Nenhuma atividade encontrada para exportar com os filtros atuais.",
+        });
+        return;
+      }
+
+      const csv = buildActivitiesCsv(allActivities);
+      const exportDate = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(csv, `atividades_${exportDate}.csv`);
+
+      setFeedback({
+        type: "success",
+        message: `${allActivities.length} atividade(s) exportada(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao exportar atividades.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -578,7 +689,14 @@ export function ActivitiesPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Atividades</h3>
-          <div className={styles.tableHint}>Listagem paginada no servidor ({PAGE_SIZE} por pagina).</div>
+          <button
+            type="button"
+            className={styles.ghostButton}
+            onClick={() => void handleExportActivities()}
+            disabled={isExporting || isLoadingList}
+          >
+            {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
+          </button>
         </div>
 
         <div className={styles.tableWrapper}>

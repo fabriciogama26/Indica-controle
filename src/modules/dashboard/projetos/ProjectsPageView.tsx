@@ -293,6 +293,21 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
   return `\uFEFF${csvLines.join("\n")}`;
 }
 
+function buildForecastCsv(forecastItems: ProjectForecastItem[]) {
+  const header = ["Codigo", "Descricao", "UMB", "Tipo", "Quantidade prevista", "Atualizado em"];
+  const rows = forecastItems.map((item) => [
+    item.code,
+    item.description,
+    item.umb ?? "",
+    item.type ?? "",
+    item.qtyPlanned,
+    formatDateTime(item.updatedAt),
+  ]);
+
+  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+  return `\uFEFF${csvLines.join("\n")}`;
+}
+
 function downloadCsvFile(content: string, filename: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -428,6 +443,7 @@ export function ProjectsPageView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingForecast, setIsExportingForecast] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [detailProject, setDetailProject] = useState<ProjectItem | null>(null);
@@ -1192,6 +1208,45 @@ export function ProjectsPageView() {
     }
   }
 
+  async function handleExportForecastItems() {
+    if (!forecastProject) {
+      setFeedback({
+        type: "error",
+        message: "Selecione um projeto para exportar materiais previstos.",
+      });
+      return;
+    }
+
+    if (filteredForecastItems.length === 0) {
+      setFeedback({
+        type: "error",
+        message: "Nenhum material previsto encontrado para exportar com os filtros atuais.",
+      });
+      return;
+    }
+
+    setIsExportingForecast(true);
+
+    try {
+      const csv = buildForecastCsv(filteredForecastItems);
+      const exportDate = new Date().toISOString().slice(0, 10);
+      const sob = normalizeSob(forecastProject.sob).replace(/[^A-Z0-9_-]/g, "");
+      downloadCsvFile(csv, `materiais_previstos_${sob || "projeto"}_${exportDate}.csv`);
+
+      setFeedback({
+        type: "success",
+        message: `${filteredForecastItems.length} material(is) previsto(s) exportado(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao exportar materiais previstos.",
+      });
+    } finally {
+      setIsExportingForecast(false);
+    }
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -1601,9 +1656,6 @@ export function ProjectsPageView() {
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Projetos</h3>
           <div className={styles.tableHeaderActions}>
-            <div className={styles.tableHint}>
-              Listagem paginada no servidor ({PAGE_SIZE} por pagina) para evitar limite de retorno.
-            </div>
             <button
               type="button"
               className={styles.ghostButton}
@@ -1854,10 +1906,20 @@ export function ProjectsPageView() {
         <article className={styles.card}>
           <div className={styles.tableHeader}>
             <h3 className={styles.cardTitle}>Lista de Materiais Previstos</h3>
-            <div className={styles.tableHint}>
-              {forecastProject?.sob
-                ? `Projeto selecionado: ${forecastProject.sob}`
-                : "Selecione um projeto para visualizar a lista de materiais previstos."}
+            <div className={styles.tableHeaderActions}>
+              <div className={styles.tableHint}>
+                {forecastProject?.sob
+                  ? `Projeto selecionado: ${forecastProject.sob}`
+                  : "Selecione um projeto para visualizar a lista de materiais previstos."}
+              </div>
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={() => void handleExportForecastItems()}
+                disabled={!forecastProject || isLoadingForecast || isExportingForecast}
+              >
+                {isExportingForecast ? "Exportando..." : "Exportar Excel (CSV)"}
+              </button>
             </div>
           </div>
 

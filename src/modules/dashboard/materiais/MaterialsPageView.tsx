@@ -59,6 +59,7 @@ type MaterialHistoryResponse = {
 
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
+const EXPORT_PAGE_SIZE = 100;
 const INITIAL_FORM: FormState = {
   codigo: "",
   descricao: "",
@@ -107,6 +108,41 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
+}
+
+function escapeCsvValue(value: string | number | null | undefined) {
+  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
+  if (raw.includes(";") || raw.includes('"')) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function buildMaterialsCsv(materialItems: MaterialItem[]) {
+  const header = ["Codigo", "Descricao", "Tipo", "UMB", "Preco", "Registrado por", "Registrado em", "Status"];
+  const rows = materialItems.map((material) => [
+    material.codigo,
+    material.descricao,
+    material.tipo,
+    material.umb ?? "",
+    material.unitPrice.toFixed(2),
+    material.createdByName,
+    formatDateTime(material.createdAt),
+    material.isActive ? "Ativo" : "Inativo",
+  ]);
+
+  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+  return `\uFEFF${csvLines.join("\n")}`;
+}
+
+function downloadCsvFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function formatDateTime(value: string) {
@@ -177,6 +213,7 @@ export function MaterialsPageView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [historyMaterial, setHistoryMaterial] = useState<MaterialItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<MaterialHistoryEntry[]>([]);
@@ -462,6 +499,78 @@ export function MaterialsPageView() {
     }
   }
 
+  async function handleExportMaterials() {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para exportar materiais.",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const allMaterials: MaterialItem[] = [];
+      let exportPage = 1;
+      let totalItems = 0;
+
+      while (true) {
+        const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE);
+        const response = await fetch(`/api/materials?${query}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        });
+
+        const data = (await response.json().catch(() => ({}))) as MaterialsResponse;
+
+        if (!response.ok) {
+          setFeedback({
+            type: "error",
+            message: data.message ?? "Falha ao exportar materiais.",
+          });
+          return;
+        }
+
+        const pageItems = data.materials ?? [];
+        totalItems = data.pagination?.total ?? totalItems;
+        allMaterials.push(...pageItems);
+
+        if (pageItems.length === 0 || allMaterials.length >= totalItems) {
+          break;
+        }
+
+        exportPage += 1;
+      }
+
+      if (allMaterials.length === 0) {
+        setFeedback({
+          type: "error",
+          message: "Nenhum material encontrado para exportar com os filtros atuais.",
+        });
+        return;
+      }
+
+      const csv = buildMaterialsCsv(allMaterials);
+      const exportDate = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(csv, `materiais_${exportDate}.csv`);
+
+      setFeedback({
+        type: "success",
+        message: `${allMaterials.length} material(is) exportado(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao exportar materiais.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -606,7 +715,16 @@ export function MaterialsPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Materiais</h3>
-          <div className={styles.tableHint}>Listagem paginada no servidor ({PAGE_SIZE} por pagina).</div>
+          <div className={styles.tableHeaderActions}>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => void handleExportMaterials()}
+              disabled={isExporting || isLoadingList}
+            >
+              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
+            </button>
+          </div>
         </div>
 
         <div className={styles.tableWrapper}>
