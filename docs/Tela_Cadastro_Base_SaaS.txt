@@ -3,7 +3,7 @@ Tela: Cadastro Base SaaS
 Visao geral
 -----------
 - Conjunto de telas placeholder para os cadastros estruturantes do SaaS.
-- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
 - Todas as rotas foram conectadas a permissao por pagina.
 
 Arquitetura
@@ -12,6 +12,7 @@ Arquitetura
   - `src/app/(dashboard)/prioridade/page.tsx`
   - `src/app/(dashboard)/centro-servico/page.tsx`
   - `src/app/(dashboard)/contrato/page.tsx`
+  - `src/app/(dashboard)/atividades/page.tsx`
   - `src/app/(dashboard)/imei/page.tsx`
   - `src/app/(dashboard)/tipo-servico/page.tsx`
   - `src/app/(dashboard)/nivel-tensao/page.tsx`
@@ -22,14 +23,23 @@ Arquitetura
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
 - Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Base SQL de catalogo/permissao: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
+- Base SQL de atividades: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
 
 Cadastro
 --------
-- Nao se aplica nesta etapa (telas ainda em placeholder).
+- `Atividades` possui cadastro funcional com campos:
+  - `Codigo`
+  - `Descricao`
+  - `Grupo`
+  - `Valor`
+  - `Unidade`
+  - `Alcance`
+- Demais telas de `Cadastro Base` seguem em placeholder nesta etapa.
 
 Filtros, auto-complete e listagem
 ---------------------------------
-- Nao se aplica nesta etapa.
+- `Atividades` possui filtro por `Codigo`, `Descricao` e `Grupo`, com listagem em tabela.
+- Demais telas de `Cadastro Base` seguem sem listagem nesta etapa.
 
 Boas praticas
 -------------
@@ -47,6 +57,7 @@ Atalhos
   - `/prioridade`
   - `/centro-servico`
   - `/contrato`
+  - `/atividades`
   - `/imei`
   - `/tipo-servico`
   - `/nivel-tensao`
@@ -58,18 +69,24 @@ Atalhos
 Atualizacao 2026-03
 -------------------
 - Novas rotas placeholder criadas para cada dominio de `Cadastro Base`.
-- `AppShell` reorganizado para exibir secao dedicada `Cadastro Base` com os nove atalhos.
+- Rota `/atividades` evoluida de inexistente para cadastro funcional com API e persistencia.
+- `AppShell` reorganizado para exibir secao dedicada `Cadastro Base` com os dez atalhos.
 - `authorization.ts` atualizado com mapeamento de rota para `pageKey` correspondente.
 - `PermissionsPageView` atualizado para incluir os novos toggles de liberacao por tela.
 - Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para inserir/atualizar catalogo em `app_pages` e backfill de permissao por role/usuario.
+- Migration `049_create_service_activities_and_page_permissions.sql` criada para tabela `service_activities` e permissao da pagina `atividades`.
 - Antes: havia apenas o atalho generico `/cadastro-base`.
-- Depois: cada dominio base possui rota e permissao individual.
+- Depois: cada dominio base possui rota e permissao individual, e `Atividades` ja possui CRUD inicial.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/components/layout/AppShell.tsx`
   - Responsavel por: renderizar secao `Cadastro Base` e seus atalhos na sidebar.
+- Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - Responsavel por: cadastro, filtros, listagem e edicao de atividades.
+- Caminho: `src/app/api/activities/route.ts`
+  - Responsavel por: listar, cadastrar e editar atividades do tenant.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear cada rota base para seu `pageKey` e bloquear acessos sem permissao.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -78,6 +95,8 @@ Funcoes principais
 Constantes e configuracoes
 - Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
   - Responsavel por: catalogar as paginas de `Cadastro Base` e fazer backfill em `role_page_permissions` e `app_user_page_permissions`.
+- Caminho: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
+  - Responsavel por: criar `service_activities`, aplicar RLS/auditoria e incluir `atividades` na matriz de paginas/permissoes.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/components/ui/ModulePlaceholder.tsx`
@@ -86,7 +105,8 @@ Funcoes utilitarias relacionadas
   - Responsavel por: disponibilizar sessao usada na protecao de rota do shell.
 
 Servicos e integracoes externas
-- Nao se aplica nesta etapa (sem chamada de API nas telas placeholder).
+- Supabase Postgres com RLS para `service_activities`.
+- Next.js Route Handler (`/api/activities`) para fluxo de `Atividades`.
 
 Ajuda contextual
-- Estado atual: secao de `Cadastro Base` estruturada com rotas independentes e controle de permissao por pagina.
+- Estado atual: secao de `Cadastro Base` estruturada com rotas independentes e controle de permissao por pagina, com `Atividades` ja operacional.

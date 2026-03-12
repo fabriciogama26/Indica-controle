@@ -20,7 +20,10 @@ declare
   v_constraint record;
   v_level_data_type text;
 begin
-  -- Se a tabela veio de execucao anterior (level smallint), remove checks numericos e converte para text.
+  -- Se a tabela veio de execucao anterior (level smallint), remove checks legados e converte para text.
+  alter table public.job_levels
+    drop constraint if exists job_levels_level_check;
+
   for v_constraint in
     select c.conname
     from pg_constraint c
@@ -31,7 +34,11 @@ begin
     where n.nspname = 'public'
       and t.relname = 'job_levels'
       and c.contype = 'c'
-      and pg_get_constraintdef(c.oid) ilike '%level between 1 and 3%'
+      and (
+        pg_get_constraintdef(c.oid) ilike '%level between 1 and 3%'
+        or pg_get_constraintdef(c.oid) ilike '%level >= 1%'
+        or pg_get_constraintdef(c.oid) ilike '%level <= 3%'
+      )
   loop
     execute format('alter table public.job_levels drop constraint %I', v_constraint.conname);
   end loop;
@@ -61,10 +68,6 @@ alter table if exists public.job_levels
 alter table if exists public.job_levels
   drop constraint if exists chk_job_levels_level_allowed;
 
-alter table if exists public.job_levels
-  add constraint chk_job_levels_level_allowed
-  check (level in ('1', '2', '3'));
-
 do $$
 begin
   if not exists (
@@ -84,15 +87,6 @@ $$;
 create index if not exists idx_job_levels_tenant_active
   on public.job_levels (tenant_id, ativo, level);
 
-insert into public.job_levels (tenant_id, level, ativo)
-select t.id, v.level, true
-from public.tenants t
-cross join (values ('1'), ('2'), ('3')) as v(level)
-on conflict (tenant_id, level) do update
-set
-  ativo = excluded.ativo,
-  updated_at = now();
-
 alter table if exists public.people
   add column if not exists job_level text;
 
@@ -102,7 +96,30 @@ alter table if exists public.people
 do $$
 declare
   v_people_level_data_type text;
+  v_people_constraint record;
 begin
+  alter table public.people
+    drop constraint if exists people_job_level_check;
+
+  for v_people_constraint in
+    select c.conname
+    from pg_constraint c
+    join pg_class t
+      on t.oid = c.conrelid
+    join pg_namespace n
+      on n.oid = t.relnamespace
+    where n.nspname = 'public'
+      and t.relname = 'people'
+      and c.contype = 'c'
+      and (
+        pg_get_constraintdef(c.oid) ilike '%job_level between 1 and 3%'
+        or pg_get_constraintdef(c.oid) ilike '%job_level >= 1%'
+        or pg_get_constraintdef(c.oid) ilike '%job_level <= 3%'
+      )
+  loop
+    execute format('alter table public.people drop constraint %I', v_people_constraint.conname);
+  end loop;
+
   select c.data_type
   into v_people_level_data_type
   from information_schema.columns c
@@ -120,7 +137,7 @@ $$;
 
 alter table if exists public.people
   add constraint chk_people_job_level_range
-  check (job_level is null or job_level in ('1', '2', '3'));
+  check (job_level is null or btrim(job_level) <> '');
 
 do $$
 begin

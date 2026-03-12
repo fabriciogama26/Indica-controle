@@ -43,7 +43,7 @@ Atualizacao 2026-03
 - Migration `047_create_job_title_types_and_people_type_link.sql` criada para permitir tipos vinculados ao cargo.
 - `job_title_types` criada com isolamento por tenant, RLS e auditoria.
 - `people.job_title_type_id` adicionado com FK composta para garantir que o tipo pertence ao mesmo `job_title_id` e `tenant_id` da pessoa.
-- Migration `048_create_job_levels_and_people_level_link.sql` criada para catalogar niveis em `text` por tenant.
+- Migration `048_create_job_levels_and_people_level_link.sql` criada para catalogar niveis em `text` livre por tenant (sem lista fixa).
 - `people.job_level` adicionado com FK composta (`tenant_id`, `job_level`) para consumir a tabela de niveis.
 - Antes: `people` possuia apenas `job_title_id`, sem relacao explicita com tipo por cargo.
 - Depois: a pessoa pode armazenar tipo e nivel com integridade referencial e isolamento por tenant.
