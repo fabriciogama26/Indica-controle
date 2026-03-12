@@ -38,6 +38,7 @@ Cadastro
 - Regra de UX em edicao:
   - Botao `Editar` na coluna `Acoes` move a tela para o topo.
   - Em modo edicao, o bloco `Cadastro de Material` recebe borda amarela de destaque.
+  - A rolagem para topo usa o container interno do dashboard (`mainContent`), nao `window`.
 
 Filtros, auto-complete e listagem
 ---------------------------------

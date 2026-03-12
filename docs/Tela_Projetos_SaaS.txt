@@ -69,9 +69,10 @@ Cadastro
 - Regra de edicao no formulario:
   - Botao `Editar` carrega o projeto no bloco de cadastro e move a pagina para o topo.
   - Em modo edicao, o bloco `Cadastro de Projeto` recebe borda amarela de destaque.
+  - A rolagem para topo usa o container interno do dashboard (`mainContent`), nao `window`.
 - Aba `Materiais previstos`:
   - Recebe selecao de projeto pela lista (acao `Materiais previstos`).
-  - Permite selecionar projeto por `Projeto (SOB)` dentro da propria aba.
+  - Permite selecionar projeto por `Projeto (SOB)` em campo de texto com sugestao (datalist), no estilo de busca digitavel.
   - Permite baixar modelo XLSX oficial.
   - Permite importar planilha XLSX (somente `codigo` e `quantidade`) para adicionar materiais previstos.
   - A importacao valida via RPC e bloqueia codigo duplicado no arquivo e codigo ja importado no projeto.
@@ -231,7 +232,7 @@ Ajuda contextual
   - `supabase/migrations/041_create_project_material_forecast.sql`
   - `supabase/migrations/043_project_forecast_import_guards.sql`
 - Funcoes/hooks/constantes tocadas:
-  - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
+  - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `handleForecastProjectSearchChange`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
   - `GET` de `/api/projects/forecast`
   - `POST` de `/api/projects/forecast` bloqueado para forcar importacao via Edge Function
   - `GET` de `/api/projects/forecast/template` bloqueado para forcar download via Edge Function

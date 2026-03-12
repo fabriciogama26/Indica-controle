@@ -56,6 +56,8 @@
 - [x] Evoluir `materials` com `preco`, `status ativo`, `cancelamento/ativacao` e historico via migration `042_materials_price_status_and_history.sql`.
 - [x] Implementar tela `Materiais` no padrao de `Projetos`, com cadastro, filtros, listagem paginada e acoes `Editar`, `Historico` e `Cancelar/Ativar`.
 - [x] Destacar modo de edicao em `Projetos` e `Materiais` com borda amarela no bloco de cadastro e rolagem para o topo ao clicar em `Editar`.
+- [x] Corrigir rolagem para topo de `Editar` em `Projetos` e `Materiais` para usar o container de scroll interno do dashboard.
+- [x] Ajustar selecao de projeto em `Materiais previstos` para campo de texto com sugestao (datalist), no padrao digitavel.
 - [x] Implementar API `/api/materials` com `GET` (lista/historico), `POST`, `PUT` e `PATCH`.
 - [x] Proteger cadastro/edicao de materiais com RPC `precheck_material_code_conflict` para bloquear codigo duplicado por tenant.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.

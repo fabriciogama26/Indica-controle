@@ -435,7 +435,9 @@ export function AppShell({ children }: PropsWithChildren) {
           </div>
         </header>
 
-        <main className={styles.mainContent}>{children}</main>
+        <main className={styles.mainContent} data-main-content-scroll="true">
+          {children}
+        </main>
       </div>
     </div>
   );

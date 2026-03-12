@@ -328,6 +328,20 @@ function normalizeSob(value: string) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function scrollDashboardContentToTop() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const content = document.querySelector<HTMLElement>('[data-main-content-scroll="true"]');
+  if (content) {
+    content.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function getSobRuleError(priority: string, sob: string) {
   const normalizedPriority = normalizePriority(priority);
   const normalizedSob = normalizeSob(sob);
@@ -422,6 +436,7 @@ export function ProjectsPageView() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [forecastProject, setForecastProject] = useState<{ id: string; sob: string } | null>(null);
+  const [forecastProjectSearch, setForecastProjectSearch] = useState("");
   const [forecastItems, setForecastItems] = useState<ProjectForecastItem[]>([]);
   const [isLoadingForecast, setIsLoadingForecast] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
@@ -651,7 +666,7 @@ export function ProjectsPageView() {
     setEditingProjectId(project.id);
     setForm(toFormState(project));
     setFeedback(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollDashboardContentToTop();
   }
 
   function handleViewProject(project: ProjectItem) {
@@ -787,17 +802,19 @@ export function ProjectsPageView() {
   async function openForecastTab(project: ProjectItem) {
     setActiveTab("forecast");
     setForecastProject({ id: project.id, sob: project.sob });
+    setForecastProjectSearch(project.sob);
     setForecastItems([]);
     setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
     setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
     setFeedback(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollDashboardContentToTop();
     await loadForecast(project.id);
   }
 
   async function handleForecastProjectSelection(projectId: string) {
     if (!projectId) {
       setForecastProject(null);
+      setForecastProjectSearch("");
       setForecastItems([]);
       setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
       setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
@@ -806,10 +823,32 @@ export function ProjectsPageView() {
 
     const selectedProject = projects.find((item) => item.id === projectId);
     setForecastProject(selectedProject ? { id: selectedProject.id, sob: selectedProject.sob } : { id: projectId, sob: "" });
+    setForecastProjectSearch(selectedProject?.sob ?? "");
     setForecastItems([]);
     setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
     setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
     await loadForecast(projectId);
+  }
+
+  function handleForecastProjectSearchChange(value: string) {
+    const normalizedSob = normalizeSob(value);
+    setForecastProjectSearch(normalizedSob);
+
+    if (!normalizedSob) {
+      void handleForecastProjectSelection("");
+      return;
+    }
+
+    const matchedProject = projects.find((project) => normalizeSob(project.sob) === normalizedSob);
+    if (matchedProject) {
+      void handleForecastProjectSelection(matchedProject.id);
+      return;
+    }
+
+    if (forecastProject && normalizeSob(forecastProject.sob) !== normalizedSob) {
+      setForecastProject(null);
+      setForecastItems([]);
+    }
   }
 
   async function handleDownloadForecastTemplate() {
@@ -1439,17 +1478,13 @@ export function ProjectsPageView() {
 
             <label className={styles.field}>
               <span>Projeto (SOB)</span>
-              <select
-                value={forecastProject?.id ?? ""}
-                onChange={(event) => void handleForecastProjectSelection(event.target.value)}
-              >
-                <option value="">Selecione</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.sob}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="text"
+                list="forecast-sob-list"
+                value={forecastProjectSearch}
+                onChange={(event) => handleForecastProjectSearchChange(event.target.value)}
+                placeholder="Digite o SOB do projeto"
+              />
             </label>
 
             {forecastProject?.sob ? (
@@ -2120,6 +2155,12 @@ export function ProjectsPageView() {
       <datalist id="sob-list">
         {meta.sobCatalog.map((item) => (
           <option key={item.sob} value={item.sob} />
+        ))}
+      </datalist>
+
+      <datalist id="forecast-sob-list">
+        {projects.map((project) => (
+          <option key={project.id} value={project.sob} />
         ))}
       </datalist>
     </section>
