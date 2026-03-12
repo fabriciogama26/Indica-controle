@@ -69,6 +69,9 @@
 - [x] Criar migration `050_activity_code_precheck_and_optional_fields.sql` para tornar `grupo/alcance` opcionais em `service_activities` e bloquear codigo duplicado via RPC `precheck_activity_code_conflict`.
 - [x] Implementar paginacao server-side na lista de `Atividades` (`page`, `pageSize`, `total`) com navegacao `Anterior/Proxima` na tela.
 - [x] Padronizar botoes da tela `Atividades` conforme baseline de `Projetos` e documentar o guia em `docs/Tela_Padrao_Cadastros_SaaS.txt`.
+- [x] Adicionar acoes `Detalhes`, `Historico` e `Cancelar/Ativar` na lista de `Atividades`, com modais e motivo obrigatorio na troca de status.
+- [x] Criar migration `051_create_app_entity_history_and_activity_status.sql` com historico generico (`app_entity_history`) reutilizavel por outras telas e suporte de status em `service_activities`.
+- [x] Padronizar modais de `Historico` para paginacao de `5` registros por pagina (`Projetos`, `Materiais` e `Atividades`).
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.

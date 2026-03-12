@@ -52,6 +52,7 @@ Ordem de aplicacao
 48. 048_create_job_levels_and_people_level_link.sql
 49. 049_create_service_activities_and_page_permissions.sql
 50. 050_activity_code_precheck_and_optional_fields.sql
+51. 051_create_app_entity_history_and_activity_status.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -206,6 +207,9 @@ Resumo por arquivo
 
 050_activity_code_precheck_and_optional_fields.sql
 - Torna `service_activities.group_name` e `service_activities.scope` opcionais, mantendo validacao de nao-vazio quando informado, e cria RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant em cadastro/edicao.
+
+051_create_app_entity_history_and_activity_status.sql
+- Cria `app_entity_history` como historico generico para entidades da aplicacao (reutilizavel por telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com consistencia de status.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

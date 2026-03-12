@@ -30,12 +30,18 @@ Filtros, auto-complete e listagem
 - Estrutura obrigatoria:
   - Card de filtros com `Aplicar` e `Limpar`.
   - Card de listagem com tabela, estado vazio e paginacao.
+- Padrao de acoes na coluna `Acoes` (baseline `Projetos`):
+  - `Detalhes`
+  - `Editar`
+  - `Historico`
+  - `Cancelar/Ativar`
 - Padrao de botoes de filtro:
   - `Aplicar`: `.secondaryButton`.
   - `Limpar`: `.ghostButton`.
 - Padrao de paginacao:
   - Texto `Pagina X de Y | Total: N`.
   - Navegacao `Anterior` e `Proxima` com `.ghostButton`.
+  - Modal de `Historico`: obrigatorio paginar com `5` registros por pagina.
 
 Boas praticas
 -------------
@@ -57,6 +63,8 @@ Atualizacao 2026-03
   - `Cancelar` do formulario para `.ghostButton`
   - `Aplicar`/`Limpar` dos filtros para `.secondaryButton`/`.ghostButton`
   - `Anterior`/`Proxima` da paginacao para `.ghostButton`
+- Regra consolidada para historico:
+  - Todos os modais de `Historico` devem usar `HISTORY_PAGE_SIZE = 5`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

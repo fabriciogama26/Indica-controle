@@ -118,7 +118,7 @@ vercel --prod
   - `(dashboard)/programacao/page.tsx`: placeholder de Programacao.
   - `(dashboard)/medicao/page.tsx`: placeholder de Medicao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem.
-  - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros e listagem paginada.
+  - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
   - `(dashboard)/estoque/page.tsx`: placeholder de Estoque Atual.
   - `(dashboard)/entrada/page.tsx`: placeholder de Entrada Estoque.
@@ -141,7 +141,7 @@ vercel --prod
   - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant.
-  - `api/activities/route.ts`: cadastra, edita e lista atividades por tenant com precheck de codigo duplicado e paginacao.
+  - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
 - `src/modules/auth/login/`
@@ -160,7 +160,7 @@ vercel --prod
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
 - `src/modules/dashboard/atividades/`
-  - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade` e listagem com edicao.
+  - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - `ActivitiesPageView.module.css`: estilos da tela de atividades.
 - `src/modules/dashboard/permissoes/`
   - `PermissionsPageView.tsx`: front administrativo para pesquisar usuario por `login_name` ou `matricula`, ajustar role, status e permissoes por tela.
@@ -243,9 +243,10 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
 17. A aba `Materiais previstos` em `/projetos` permite selecionar projeto, baixar modelo XLSX via Edge Function `get_project_forecast_template`, importar previsao via Edge Function `import_project_forecast` (colunas `codigo` e `quantidade`) e filtrar/listar materiais previstos por codigo, descricao e tipo via `/api/projects/forecast`.
 18. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`.
-19. A rota `/atividades` permite cadastrar e editar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor.
+19. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor.
 20. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
-21. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
+21. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
+22. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
 22. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
 23. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
 24. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
@@ -301,6 +302,15 @@ npm run build
 - `Falha ao listar materiais.` ou `column materials.unit_price does not exist`:
   - Causa: migration de materiais ainda nao aplicada no banco remoto.
   - Solucao: aplicar `042_materials_price_status_and_history.sql` antes de usar a tela `/materiais`.
+- `Ative a atividade antes de editar.`:
+  - Causa: tentativa de editar atividade com status inativo.
+  - Solucao: usar a acao `Ativar` na lista de atividades e depois editar.
+- `Informe o motivo do cancelamento.` ou `Informe o motivo da ativacao.`:
+  - Causa: tentativa de alterar status sem preencher motivo.
+  - Solucao: informar motivo no modal de `Cancelar/Ativar`.
+- `Falha ao carregar historico da atividade.`:
+  - Causa: migration de historico generico nao aplicada no banco remoto.
+  - Solucao: aplicar `051_create_app_entity_history_and_activity_status.sql` e recarregar a tela `/atividades`.
 - `Ja existe atividade com este codigo no tenant atual.`:
   - Causa: tentativa de cadastrar/editar `codigo` ja existente no mesmo tenant.
   - Solucao: informar outro `codigo` ou editar o registro ja existente.
