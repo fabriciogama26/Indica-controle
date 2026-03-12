@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -14,8 +14,22 @@ type ActivityItem = {
   unit: string;
   scope: string;
   isActive: boolean;
+  cancellationReason: string | null;
+  canceledAt: string | null;
+  canceledByName: string | null;
+  createdByName: string;
+  updatedByName: string;
   createdAt: string;
   updatedAt: string;
+};
+
+type ActivityHistoryEntry = {
+  id: string;
+  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
+  reason: string | null;
+  createdAt: string;
+  createdByName: string;
+  changes: Record<string, { from: string | null; to: string | null }>;
 };
 
 type ActivityFormState = {
@@ -39,7 +53,27 @@ type ActivitiesListResponse = {
   message?: string;
 };
 
+type ActivityHistoryResponse = {
+  history?: ActivityHistoryEntry[];
+  pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
 const PAGE_SIZE = 20;
+const HISTORY_PAGE_SIZE = 5;
+
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  code: "Codigo",
+  description: "Descricao",
+  group: "Grupo",
+  value: "Valor",
+  unit: "Unidade",
+  scope: "Alcance",
+  isActive: "Status",
+  cancellationReason: "Motivo do cancelamento",
+  canceledAt: "Data do cancelamento",
+  activationReason: "Motivo da ativacao",
+};
 
 const INITIAL_FORM: ActivityFormState = {
   id: null,
@@ -56,6 +90,14 @@ const INITIAL_FILTERS: ActivityFilterState = {
   description: "",
 };
 
+function normalizeText(value: string) {
+  return String(value ?? "").trim();
+}
+
+function normalizeCode(value: string) {
+  return normalizeText(value).toUpperCase();
+}
+
 function formatMoney(value: number) {
   return Number(value ?? 0).toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
@@ -65,6 +107,40 @@ function formatMoney(value: number) {
 
 function toInputMoney(value: number) {
   return String(Number(value ?? 0).toFixed(2));
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString("pt-BR");
+}
+
+function formatHistoryValue(field: string, value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  if (field === "value") {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? formatMoney(numericValue) : value;
+  }
+
+  if (field === "isActive") {
+    return value === "true" ? "Ativo" : "Inativo";
+  }
+
+  if (field === "canceledAt") {
+    return formatDateTime(value);
+  }
+
+  return value;
 }
 
 function scrollDashboardContentToTop() {
@@ -89,10 +165,24 @@ export function ActivitiesPageView() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const [detailActivity, setDetailActivity] = useState<ActivityItem | null>(null);
+  const [historyActivity, setHistoryActivity] = useState<ActivityItem | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<ActivityHistoryEntry[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [statusActivity, setStatusActivity] = useState<ActivityItem | null>(null);
+  const [statusReason, setStatusReason] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
+  const isEditing = Boolean(form.id);
+  const statusAction = statusActivity?.isActive ? "cancel" : "activate";
+  const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
 
   const loadActivities = useCallback(
     async (targetPage: number, filters: ActivityFilterState) => {
@@ -148,16 +238,54 @@ export function ActivitiesPageView() {
     [session?.accessToken],
   );
 
+  const loadActivityHistory = useCallback(
+    async (activity: ActivityItem, targetPage: number) => {
+      if (!session?.accessToken) {
+        setFeedback({ type: "error", message: "Sessao invalida para carregar historico." });
+        return;
+      }
+
+      setIsLoadingHistory(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("historyActivityId", activity.id);
+        params.set("historyPage", String(targetPage));
+        params.set("historyPageSize", String(HISTORY_PAGE_SIZE));
+
+        const response = await fetch(`/api/activities?${params.toString()}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        });
+
+        const data = (await response.json().catch(() => ({}))) as ActivityHistoryResponse;
+        if (!response.ok) {
+          setFeedback({ type: "error", message: data.message ?? "Falha ao carregar historico da atividade." });
+          setHistoryEntries([]);
+          setHistoryTotal(0);
+          return;
+        }
+
+        setHistoryEntries(data.history ?? []);
+        setHistoryPage(data.pagination?.page ?? targetPage);
+        setHistoryTotal(data.pagination?.total ?? 0);
+      } catch {
+        setFeedback({ type: "error", message: "Falha ao carregar historico da atividade." });
+        setHistoryEntries([]);
+        setHistoryTotal(0);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    },
+    [session?.accessToken],
+  );
+
   useEffect(() => {
     void loadActivities(page, activeFilters);
   }, [activeFilters, loadActivities, page]);
 
-  const formTitle = useMemo(
-    () => (form.id ? "Editar Atividade" : "Cadastro de Atividades"),
-    [form.id],
-  );
-
-  const isEditing = Boolean(form.id);
+  const formTitle = useMemo(() => (isEditing ? "Editar Atividade" : "Cadastro de Atividades"), [isEditing]);
 
   function resetForm() {
     setForm(INITIAL_FORM);
@@ -194,6 +322,33 @@ export function ActivitiesPageView() {
     scrollDashboardContentToTop();
   }
 
+  function closeHistoryModal() {
+    setHistoryActivity(null);
+    setHistoryEntries([]);
+    setHistoryPage(1);
+    setHistoryTotal(0);
+    setIsLoadingHistory(false);
+  }
+
+  function openStatusModal(activity: ActivityItem) {
+    setStatusActivity(activity);
+    setStatusReason("");
+  }
+
+  function closeStatusModal() {
+    setStatusActivity(null);
+    setStatusReason("");
+    setIsChangingStatus(false);
+  }
+
+  async function openHistoryModal(activity: ActivityItem) {
+    setHistoryActivity(activity);
+    setHistoryEntries([]);
+    setHistoryPage(1);
+    setHistoryTotal(0);
+    await loadActivityHistory(activity, 1);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -211,12 +366,12 @@ export function ActivitiesPageView() {
     try {
       const payload = {
         id: form.id,
-        code: form.code,
-        description: form.description,
-        group: form.group,
+        code: normalizeCode(form.code),
+        description: normalizeText(form.description),
+        group: normalizeText(form.group) || null,
         value: form.value,
-        unit: form.unit,
-        scope: form.scope,
+        unit: normalizeText(form.unit),
+        scope: normalizeText(form.scope) || null,
       };
 
       const response = await fetch("/api/activities", {
@@ -255,8 +410,65 @@ export function ActivitiesPageView() {
     }
   }
 
+  async function confirmStatusChange() {
+    if (!session?.accessToken || !statusActivity || !statusAction || !statusReason.trim()) {
+      return;
+    }
+
+    setIsChangingStatus(true);
+
+    try {
+      const response = await fetch("/api/activities", {
+        method: "PATCH",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          id: statusActivity.id,
+          reason: statusReason.trim(),
+          action: statusAction,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string };
+
+      if (!response.ok || !data.success) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao atualizar status da atividade.",
+        });
+        return;
+      }
+
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Status da atividade atualizado com sucesso.",
+      });
+
+      if (form.id === statusActivity.id) {
+        resetForm();
+      }
+
+      closeStatusModal();
+      await loadActivities(page, activeFilters);
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao atualizar status da atividade.",
+      });
+    } finally {
+      setIsChangingStatus(false);
+    }
+  }
+
   return (
     <section className={styles.wrapper}>
+      {feedback ? (
+        <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
+      ) : null}
+
       <article className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
         <h3 className={styles.cardTitle}>{formTitle}</h3>
 
@@ -351,7 +563,6 @@ export function ActivitiesPageView() {
               placeholder="Filtrar por descricao"
             />
           </label>
-
         </div>
 
         <div className={styles.actions}>
@@ -378,46 +589,120 @@ export function ActivitiesPageView() {
                 <th>Descricao</th>
                 <th>Valor</th>
                 <th>Unidade</th>
+                <th>Registrado em</th>
                 <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
-              {!isLoadingList && activities.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className={styles.emptyRow}>
-                    Nenhuma atividade encontrada para os filtros informados.
-                  </td>
-                </tr>
-              ) : null}
+              {activities.length > 0 ? (
+                activities.map((activity) => (
+                  <tr key={activity.id} className={!activity.isActive ? styles.inactiveRow : undefined}>
+                    <td>
+                      <div className={styles.sobCell}>
+                        <span>{activity.code}</span>
+                        {!activity.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
+                      </div>
+                    </td>
+                    <td>{activity.description}</td>
+                    <td>{formatMoney(activity.value)}</td>
+                    <td>{activity.unit}</td>
+                    <td>{formatDateTime(activity.createdAt)}</td>
+                    <td className={styles.actionsCell}>
+                      <div className={styles.tableActions}>
+                        <button
+                          type="button"
+                          className={`${styles.actionButton} ${styles.actionView}`}
+                          onClick={() => setDetailActivity(activity)}
+                          title="Detalhes"
+                          aria-label="Detalhes da atividade"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path
+                              d="M2.5 12s3.8-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.8 6.5-9.5 6.5S2.5 12 2.5 12Z"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <circle cx="12" cy="12" r="2.8" stroke="currentColor" strokeWidth="1.7" />
+                          </svg>
+                        </button>
 
-              {activities.map((activity) => (
-                <tr key={activity.id}>
-                  <td>{activity.code}</td>
-                  <td>{activity.description}</td>
-                  <td>{formatMoney(activity.value)}</td>
-                  <td>{activity.unit}</td>
-                  <td className={styles.actionsCell}>
-                    <button
-                      type="button"
-                      className={`${styles.actionButton} ${styles.actionEdit}`}
-                      onClick={() => startEdit(activity)}
-                      title="Editar atividade"
-                      aria-label="Editar atividade"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path
-                          d="m4 20 4.5-1 9-9a1.75 1.75 0 0 0-2.5-2.5l-9 9L4 20Z"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                        <path d="m13.5 6.5 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                      </svg>
-                    </button>
+                        <button
+                          type="button"
+                          className={`${styles.actionButton} ${styles.actionEdit}`}
+                          onClick={() => startEdit(activity)}
+                          title="Editar"
+                          aria-label="Editar atividade"
+                          disabled={!activity.isActive}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path
+                              d="m4 20 4.5-1 9-9a1.75 1.75 0 0 0-2.5-2.5l-9 9L4 20Z"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path d="m13.5 6.5 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`${styles.actionButton} ${styles.actionHistory}`}
+                          onClick={() => void openHistoryModal(activity)}
+                          title="Historico"
+                          aria-label="Historico da atividade"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path
+                              d="M3.75 12a8.25 8.25 0 1 0 2.25-5.69M3.75 4.75v4h4"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`${styles.actionButton} ${activity.isActive ? styles.actionCancel : styles.actionActivate}`}
+                          onClick={() => openStatusModal(activity)}
+                          title={activity.isActive ? "Cancelar" : "Ativar"}
+                          aria-label={activity.isActive ? "Cancelar atividade" : "Ativar atividade"}
+                        >
+                          {activity.isActive ? (
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
+                              <path d="m9.5 9.5 5 5m0-5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
+                              <path
+                                d="m8.5 12 2.2 2.2 4.8-4.8"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className={styles.emptyRow}>
+                    {isLoadingList ? "Carregando atividades..." : "Nenhuma atividade encontrada para os filtros informados."}
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -448,8 +733,179 @@ export function ActivitiesPageView() {
         </div>
       </article>
 
-      {feedback ? (
-        <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
+      {detailActivity ? (
+        <div className={styles.modalOverlay} onClick={() => setDetailActivity(null)}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Detalhes da Atividade {detailActivity.code}</h4>
+                <p className={styles.modalSubtitle}>ID da atividade: {detailActivity.id}</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailActivity(null)}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.detailGrid}>
+                <div><strong>Status:</strong> {detailActivity.isActive ? "Ativo" : "Inativo"}</div>
+                <div><strong>Codigo:</strong> {detailActivity.code}</div>
+                <div><strong>Descricao:</strong> {detailActivity.description}</div>
+                <div><strong>Grupo:</strong> {detailActivity.group || "-"}</div>
+                <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
+                <div><strong>Unidade:</strong> {detailActivity.unit}</div>
+                <div><strong>Alcance:</strong> {detailActivity.scope || "-"}</div>
+                <div><strong>Registrado por:</strong> {detailActivity.createdByName}</div>
+                <div><strong>Criado em:</strong> {formatDateTime(detailActivity.createdAt)}</div>
+                <div><strong>Atualizado por:</strong> {detailActivity.updatedByName}</div>
+                <div><strong>Atualizado em:</strong> {formatDateTime(detailActivity.updatedAt)}</div>
+                {!detailActivity.isActive ? (
+                  <>
+                    <div><strong>Cancelado em:</strong> {formatDateTime(detailActivity.canceledAt)}</div>
+                    <div><strong>Cancelado por:</strong> {detailActivity.canceledByName ?? "-"}</div>
+                    <div className={styles.detailWide}><strong>Motivo do cancelamento:</strong> {detailActivity.cancellationReason ?? "-"}</div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {historyActivity ? (
+        <div className={styles.modalOverlay} onClick={closeHistoryModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Historico da Atividade {historyActivity.code}</h4>
+                <p className={styles.modalSubtitle}>ID da atividade: {historyActivity.id}</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeHistoryModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              {isLoadingHistory ? <p>Carregando historico...</p> : null}
+
+              {!isLoadingHistory && historyEntries.length === 0 ? <p>Nenhuma alteracao registrada.</p> : null}
+
+              {!isLoadingHistory && historyEntries.length > 0
+                ? historyEntries.map((entry) => (
+                    <article key={entry.id} className={styles.historyCard}>
+                      <header className={styles.historyCardHeader}>
+                        <strong>
+                          {entry.changeType === "CANCEL"
+                            ? "Cancelamento"
+                            : entry.changeType === "ACTIVATE"
+                              ? "Ativacao"
+                              : "Atualizacao"}
+                        </strong>
+                        <span>
+                          {formatDateTime(entry.createdAt)} | {entry.createdByName}
+                        </span>
+                      </header>
+
+                      {entry.reason ? <p className={styles.historyReason}>Motivo: {entry.reason}</p> : null}
+
+                      <div className={styles.historyChanges}>
+                        {Object.entries(entry.changes).map(([field, change]) => (
+                          <div key={field} className={styles.historyChangeItem}>
+                            <strong>{HISTORY_FIELD_LABELS[field] ?? field}</strong>
+                            <span>De: {formatHistoryValue(field, change.from)}</span>
+                            <span>Para: {formatHistoryValue(field, change.to)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))
+                : null}
+
+              {historyTotal > 0 ? (
+                <div className={styles.pagination}>
+                  <span>
+                    Pagina {Math.min(historyPage, historyTotalPages)} de {historyTotalPages} | Total: {historyTotal}
+                  </span>
+
+                  <div className={styles.paginationActions}>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => {
+                        const target = Math.max(1, historyPage - 1);
+                        void loadActivityHistory(historyActivity, target);
+                      }}
+                      disabled={historyPage <= 1 || isLoadingHistory}
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => {
+                        const target = Math.min(historyTotalPages, historyPage + 1);
+                        void loadActivityHistory(historyActivity, target);
+                      }}
+                      disabled={historyPage >= historyTotalPages || isLoadingHistory}
+                    >
+                      Proxima
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {statusActivity ? (
+        <div className={styles.modalOverlay} onClick={closeStatusModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>{statusActivity.isActive ? "Cancelar Atividade" : "Ativar Atividade"}</h4>
+                <p className={styles.modalSubtitle}>Atividade: {statusActivity.code}</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeStatusModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <label className={styles.field}>
+                <span>
+                  Motivo <span className="requiredMark">*</span>
+                </span>
+                <textarea
+                  value={statusReason}
+                  onChange={(event) => setStatusReason(event.target.value)}
+                  placeholder={statusActivity.isActive ? "Informe o motivo do cancelamento" : "Informe o motivo da ativacao"}
+                  rows={4}
+                />
+              </label>
+
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={statusActivity.isActive ? styles.dangerButton : styles.primaryButton}
+                  onClick={() => void confirmStatusChange()}
+                  disabled={!canSubmitStatusChange}
+                >
+                  {isChangingStatus
+                    ? statusActivity.isActive
+                      ? "Cancelando..."
+                      : "Ativando..."
+                    : statusActivity.isActive
+                      ? "Confirmar cancelamento"
+                      : "Confirmar ativacao"}
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={closeStatusModal} disabled={isChangingStatus}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
       ) : null}
     </section>
   );
