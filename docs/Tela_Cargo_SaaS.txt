@@ -13,6 +13,7 @@ Arquitetura
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
 - Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Dominio de dados: `public.job_titles` (cargo), `public.job_title_types` (tipos por cargo), `public.job_levels` (niveis por tenant) e `public.people` (vinculos de tipo e nivel da pessoa).
 
 Cadastro
 --------
@@ -39,6 +40,13 @@ Atalhos
 
 Atualizacao 2026-03
 -------------------
+- Migration `047_create_job_title_types_and_people_type_link.sql` criada para permitir tipos vinculados ao cargo.
+- `job_title_types` criada com isolamento por tenant, RLS e auditoria.
+- `people.job_title_type_id` adicionado com FK composta para garantir que o tipo pertence ao mesmo `job_title_id` e `tenant_id` da pessoa.
+- Migration `048_create_job_levels_and_people_level_link.sql` criada para catalogar niveis em `text` por tenant.
+- `people.job_level` adicionado com FK composta (`tenant_id`, `job_level`) para consumir a tabela de niveis.
+- Antes: `people` possuia apenas `job_title_id`, sem relacao explicita com tipo por cargo.
+- Depois: a pessoa pode armazenar tipo e nivel com integridade referencial e isolamento por tenant.
 - Arquivo `src/app/(dashboard)/cargo/page.tsx` criado.
 - `AppShell` atualizado para expor `Cargo` em `Cadastros`.
 - `authorization.ts` atualizado para mapear `/cargo` para `pageKey = cargo`.
@@ -62,6 +70,10 @@ Constantes e configuracoes
   - Responsavel por: incluir `cargo` no catalogo de permissoes por usuario.
 - Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
   - Responsavel por: garantir `cargo` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- Caminho: `supabase/migrations/047_create_job_title_types_and_people_type_link.sql`
+  - Responsavel por: criar `job_title_types`, vincular tipo ao cargo e adicionar `people.job_title_type_id` com consistencia de tenant/cargo.
+- Caminho: `supabase/migrations/048_create_job_levels_and_people_level_link.sql`
+  - Responsavel por: criar `job_levels` e adicionar `people.job_level` com consumo via FK composta por tenant.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/hooks/useAuth.ts`

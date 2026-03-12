@@ -48,6 +48,8 @@ Ordem de aplicacao
 44. 044_material_code_precheck_rpc.sql
 45. 045_create_tenants_and_user_tenant_access.sql
 46. 046_add_tenant_fk_to_all_tenant_tables.sql
+47. 047_create_job_title_types_and_people_type_link.sql
+48. 048_create_job_levels_and_people_level_link.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -190,6 +192,12 @@ Resumo por arquivo
 
 046_add_tenant_fk_to_all_tenant_tables.sql
 - Varre tabelas publicas com `tenant_id`, faz backfill de `tenants` com IDs faltantes e cria FK `tenant_id -> tenants(id)` onde ainda nao existir.
+
+047_create_job_title_types_and_people_type_link.sql
+- Cria `job_title_types` (tipos permitidos por cargo), adiciona `people.job_title_type_id` e aplica FK composta para garantir consistencia de tenant + cargo + tipo.
+
+048_create_job_levels_and_people_level_link.sql
+- Cria `job_levels` com nivel (`text`) por tenant e adiciona `people.job_level` com FK composta (`tenant_id`, `job_level`) para consumo seguro do catalogo.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
