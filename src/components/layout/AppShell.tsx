@@ -45,6 +45,7 @@ const menuSections = [
       { href: "/prioridade", label: "Prioridade", icon: "settings" },
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
+      { href: "/atividades", label: "Atividades", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
       { href: "/nivel-tensao", label: "Nivel de Tensao", icon: "settings" },
@@ -111,6 +112,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/contrato": {
     title: "Contrato",
     subtitle: "Cadastro base de contratos do tenant.",
+  },
+  "/atividades": {
+    title: "Atividades",
+    subtitle: "Cadastro de atividades de contratos e servicos.",
   },
   "/imei": {
     title: "Imei",

@@ -1,0 +1,124 @@
+Tela: Atividades SaaS
+
+Visao geral
+-----------
+- Tela de cadastro de atividades para contratos e servicos por tenant.
+- Permite registrar e editar: `codigo`, `descricao`, `grupo`, `valor`, `unidade` e `alcance`.
+- Lista atividades cadastradas com filtro por codigo, descricao e grupo.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/atividades/page.tsx`
+- View: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+- Estilo: `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+- API: `src/app/api/activities/route.ts`
+- Banco: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
+- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
+- Guard de rota por permissao: `src/lib/auth/authorization.ts`
+- Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `Codigo`
+  - `Descricao`
+  - `Grupo`
+  - `Valor`
+  - `Unidade`
+  - `Alcance`
+- Regras:
+  - `Codigo` e salvo em caixa alta.
+  - `Valor` deve ser numerico e maior ou igual a zero.
+  - `Codigo` deve ser unico por tenant.
+- Fluxo:
+  - `POST /api/activities` para cadastro.
+  - `PUT /api/activities` para edicao.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros na tela:
+  - `Codigo`
+  - `Descricao`
+  - `Grupo`
+- Listagem em tabela com colunas:
+  - `Codigo`
+  - `Descricao`
+  - `Grupo`
+  - `Valor`
+  - `Unidade`
+  - `Alcance`
+  - `Acoes` (`Editar`)
+- Filtro e listagem via `GET /api/activities`.
+
+Boas praticas
+-------------
+- Garantir escopo por tenant em todas as operacoes (`tenant_id`).
+- Manter validacao de campos obrigatorios no backend.
+- Preservar auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`) com trigger padrao.
+- Evitar valores negativos no campo `valor`.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa.
+
+Atalhos
+-------
+- Rota ativa: `/atividades`.
+- Exibida na secao `Cadastro Base` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Tela `Atividades` criada com formulario funcional e listagem.
+- Layout visual ajustado para o mesmo padrao das telas `Projetos` e `Materiais` (cards, bloco de filtros e tabela principal).
+- API `src/app/api/activities/route.ts` criada com `GET`, `POST` e `PUT`.
+- Migration `049_create_service_activities_and_page_permissions.sql` criada para:
+  - criar tabela `service_activities`;
+  - aplicar RLS/auditoria;
+  - adicionar `atividades` em `app_pages` e backfill de permissoes.
+- `AppShell`, `authorization.ts` e `PermissionsPageView` atualizados para incluir a nova rota.
+- Antes: nao existia a pagina de `Atividades`.
+- Depois: pagina ativa com cadastro e edicao por tenant.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - Responsavel por: estado da tela, cadastro/edicao, filtros e listagem de atividades.
+- Caminho: `src/app/api/activities/route.ts`
+  - Responsavel por: validar payload, listar, cadastrar e editar atividades por tenant.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - Responsavel por: `INITIAL_FORM` e funcoes de formatacao de valor.
+- Caminho: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
+  - Responsavel por: criar tabela, constraints, RLS, trigger de auditoria e permissao da pagina.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/atividades` para `pageKey = atividades`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: fornecer token da sessao para chamadas autenticadas na tela.
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver usuario autenticado e tenant ativo no backend.
+
+Servicos e integracoes externas
+- Supabase Postgres (RLS ON).
+- Next.js Route Handler (`/api/activities`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/atividades/page.tsx`
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+  - `src/app/api/activities/route.ts`
+  - `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Funcoes/hooks/constantes tocadas:
+  - `loadActivities`, `handleSubmit`, `startEdit`, `resetForm`
+  - `GET`/`POST`/`PUT` de `/api/activities`
+  - `ROUTE_PAGE_KEYS`, `resolveDefaultPageAccess`, `permissionCatalog`
+- Comportamento antes/depois:
+  - Antes: rota inexistente para atividades.
+  - Depois: rota ativa com cadastro e edicao no tenant atual.

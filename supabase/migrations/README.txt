@@ -50,6 +50,7 @@ Ordem de aplicacao
 46. 046_add_tenant_fk_to_all_tenant_tables.sql
 47. 047_create_job_title_types_and_people_type_link.sql
 48. 048_create_job_levels_and_people_level_link.sql
+49. 049_create_service_activities_and_page_permissions.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -197,7 +198,10 @@ Resumo por arquivo
 - Cria `job_title_types` (tipos permitidos por cargo), adiciona `people.job_title_type_id` e aplica FK composta para garantir consistencia de tenant + cargo + tipo.
 
 048_create_job_levels_and_people_level_link.sql
-- Cria `job_levels` com nivel (`text`) por tenant e adiciona `people.job_level` com FK composta (`tenant_id`, `job_level`) para consumo seguro do catalogo.
+- Cria `job_levels` com nivel (`text`) livre por tenant e adiciona `people.job_level` com FK composta (`tenant_id`, `job_level`) para consumo seguro do catalogo.
+
+049_create_service_activities_and_page_permissions.sql
+- Cria `service_activities` (codigo, descricao, grupo, valor, unidade, alcance) com RLS multi-tenant e adiciona a pagina `atividades` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

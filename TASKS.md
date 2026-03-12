@@ -64,6 +64,8 @@
 - [x] Garantir FK de `tenant_id` para `tenants(id)` em todas as tabelas publicas com coluna `tenant_id`.
 - [x] Criar migration `047_create_job_title_types_and_people_type_link.sql` para vincular tipos por cargo e permitir `people.job_title_type_id` com consistencia de tenant + cargo.
 - [x] Criar migration `048_create_job_levels_and_people_level_link.sql` para disponibilizar niveis (`text`) por tenant e permitir `people.job_level` consumindo esse catalogo.
+- [x] Criar migration `049_create_service_activities_and_page_permissions.sql` para tabela `service_activities` e para incluir a pagina `atividades` na matriz de permissao.
+- [x] Implementar tela `Atividades` com cadastro, filtros e listagem integrada a `/api/activities`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.

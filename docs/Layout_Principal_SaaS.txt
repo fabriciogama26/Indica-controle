@@ -45,7 +45,7 @@ Atalhos
   - `Operacao`: Projetos, Locacao, Programacao e Medicao
   - `Almoxarifado`: Estoque Atual, Entrada Estoque e Saida Estoque
   - `Cadastros`: Materiais, Pessoas e Cargo
-  - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
+  - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Atividades, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 - Botao de engrenagem no topo direito abre `/permissoes` apenas para `admin` e `master`.
 - Botao `Sair` no topo direito limpa a sessao local e chama o logout remoto quando aplicavel.
 
@@ -68,7 +68,8 @@ Atualizacao 2026-03
 - `Medicao` adicionada na secao `Operacao`.
 - `Materiais` movido para a secao `Cadastros`.
 - `Cargo` adicionado na secao `Cadastros`.
-- Secao `Cadastro Base` criada com atalhos para `Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- Secao `Cadastro Base` criada com atalhos para `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- `Atividades` adicionada em `Cadastro Base` com rota dedicada `/atividades`.
 - Ajustado o shell para scroll interno no `mainContent`, com sidebar e topbar fixos no desktop.
 - Bloco `Conectado` ajustado para priorizar somente `display` no nome do usuario.
 

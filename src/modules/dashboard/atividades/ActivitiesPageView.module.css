@@ -1,0 +1,275 @@
+.wrapper {
+  display: grid;
+  gap: 20px;
+}
+
+.card {
+  border-radius: 24px;
+  border: 1px solid rgba(20, 41, 97, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 38px rgba(15, 32, 74, 0.08);
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+}
+
+.editingCard {
+  border: 2px solid #f1c21b;
+  box-shadow: 0 0 0 3px rgba(241, 194, 27, 0.18), 0 18px 38px rgba(15, 32, 74, 0.08);
+}
+
+.cardTitle {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.42rem;
+}
+
+.formGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.filterGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  color: #17347a;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #1b294c;
+  padding: 11px 14px;
+}
+
+.field input,
+.field select {
+  min-height: 46px;
+}
+
+.field textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: #2b4fa8;
+  box-shadow: 0 0 0 3px rgba(43, 79, 168, 0.12);
+}
+
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled {
+  background: #f1f4fb;
+  color: #7382a2;
+  cursor: not-allowed;
+}
+
+.fieldWide {
+  grid-column: span 2;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.formActions {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+.primaryButton,
+.secondaryButton {
+  border: none;
+  border-radius: 14px;
+  min-height: 44px;
+  padding: 0 18px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.primaryButton {
+  background: linear-gradient(180deg, #17347a 0%, #2750a3 100%);
+  color: #f7fbff;
+  box-shadow: 0 12px 24px rgba(23, 52, 122, 0.2);
+}
+
+.secondaryButton {
+  background: rgba(37, 74, 156, 0.1);
+  color: #17347a;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.tableHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tableHint {
+  color: #5b6a85;
+  font-size: 0.88rem;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #ffffff;
+}
+
+.table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid rgba(23, 52, 122, 0.1);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 0.9rem;
+  color: #1f2f54;
+}
+
+.table th {
+  background: rgba(23, 52, 122, 0.06);
+  color: #17347a;
+  font-weight: 800;
+}
+
+.emptyRow {
+  text-align: center !important;
+  color: #5b6a85 !important;
+  padding: 18px !important;
+}
+
+.actionsCell {
+  min-width: 104px;
+}
+
+.actionButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.actionButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.actionButton:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.97);
+}
+
+.actionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.actionEdit {
+  color: #2a86bd;
+  background: #dce8f5;
+}
+
+.feedbackSuccess,
+.feedbackError {
+  border-radius: 16px;
+  padding: 12px 16px;
+  font-weight: 700;
+}
+
+.feedbackSuccess {
+  background: rgba(38, 106, 196, 0.1);
+  color: #17347a;
+  border: 1px solid rgba(38, 106, 196, 0.16);
+}
+
+.feedbackError {
+  background: #fff1f1;
+  color: #8b1e1e;
+  border: 1px solid rgba(180, 30, 30, 0.16);
+}
+
+@media (max-width: 1280px) {
+  .formGrid,
+  .filterGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .formGrid,
+  .filterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fieldWide {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .card {
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .cardTitle {
+    font-size: 1.2rem;
+  }
+
+  .formGrid,
+  .filterGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions .primaryButton,
+  .actions .secondaryButton {
+    flex: 1 1 auto;
+  }
+}
