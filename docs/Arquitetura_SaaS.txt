@@ -15,7 +15,7 @@ Arquitetura
 
 Cadastro
 --------
-- Modulos previstos: Operacao (Projetos, Locacao, Programacao, Medicao), Almoxarifado (Estoque, Entrada, Saida), Cadastros (Materiais, Pessoas, Cargo) e Cadastro Base.
+- Modulos previstos: Operacao (Projetos, Locacao, Programacao, Medicao), Almoxarifado (Estoque, Entrada, Saida), Cadastros (Materiais, Pessoas, Cargo, Equipes) e Cadastro Base.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -36,7 +36,7 @@ Cancelamento e saldo
 Atalhos
 -------
 - Rota publica: `/login`
-- Rotas protegidas: `/home`, `/projetos`, `/locacao`, `/programacao`, `/materiais`, `/estoque`, `/entrada`, `/saida`, `/pessoas`, `/cadastro-base`
+- Rotas protegidas: `/home`, `/projetos`, `/locacao`, `/programacao`, `/materiais`, `/estoque`, `/entrada`, `/saida`, `/pessoas`, `/equipes`, `/tipo-equipe`, `/cadastro-base`
 - A rota `/projetos` possui API dedicada em `src/app/api/projects/*` para cadastro e consulta.
 
 Atualizacao 2026-03

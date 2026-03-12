@@ -1,0 +1,136 @@
+﻿Tela: Equipes SaaS
+
+Visao geral
+-----------
+- Tela para cadastro e manutencao de equipes operacionais por tenant.
+- Cada equipe possui: nome, placa do veiculo, tipo e encarregado.
+- O encarregado e vinculado a `people`, filtrando somente quem tem cargo `ENCARREGADO`.
+- O tipo e vinculado ao catalogo `team_types` por tenant.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/equipes/page.tsx`
+- View: `src/modules/dashboard/equipes/TeamsPageView.tsx`
+- Estilo: `src/modules/dashboard/equipes/TeamsPageView.module.css`
+- API principal: `src/app/api/teams/route.ts`
+- API de metadados (tipos e encarregados): `src/app/api/teams/meta/route.ts`
+- Integracao de menu: `src/components/layout/AppShell.tsx`
+- Integracao de autorizacao: `src/lib/auth/authorization.ts`
+- Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Base SQL: `supabase/migrations/052_create_teams_and_page_permissions.sql`
+- Base SQL: `supabase/migrations/053_create_team_types_and_link_teams.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `Nome da equipe`
+  - `Placa do veiculo`
+  - `Tipo`
+  - `Encarregado`
+- Regras:
+  - Encarregado deve existir no tenant e estar ativo em `people`.
+  - Encarregado deve ter cargo `ENCARREGADO`.
+  - Tipo deve existir no tenant e estar ativo em `team_types`.
+  - Nome e placa sao unicos por tenant (`teams`).
+- Fluxos de acao:
+  - `Cadastrar`
+  - `Editar`
+  - `Cancelar/Ativar` com motivo obrigatorio
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Nome da equipe
+  - Placa do veiculo
+  - Tipo
+  - Encarregado
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`)
+  - Colunas: Nome da equipe, Placa, Encarregado, Registrado em, Acoes
+- Acoes por linha:
+  - `Detalhes`
+  - `Editar`
+  - `Historico`
+  - `Cancelar/Ativar`
+- Historico:
+  - Fonte: `app_entity_history`
+  - Modal com paginacao fixa de 5 registros por pagina
+
+Boas praticas
+-------------
+- Sempre validar o escopo por `tenant_id` em todas as queries de equipes.
+- Nao permitir salvar encarregado fora do cargo `ENCARREGADO`.
+- Registrar alteracoes em `app_entity_history` para update/cancel/activate.
+- Manter consistencia de permissao em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+
+Cancelamento e saldo
+--------------------
+- Tela possui cancelamento e ativacao com motivo obrigatorio.
+- Campos usados no status:
+  - `ativo`
+  - `cancellation_reason`
+  - `canceled_at`
+  - `canceled_by`
+- Regra de consistencia no banco:
+  - Ativo: sem dados de cancelamento
+  - Inativo: com data e motivo de cancelamento
+
+Atalhos
+-------
+- Rota principal: `/equipes`
+- APIs:
+  - `GET/POST/PUT/PATCH /api/teams`
+  - `GET /api/teams/meta`
+
+Atualizacao 2026-03
+-------------------
+- Tela `Equipes` criada em `Cadastros` com o padrao de cadastro/lista/modais.
+- Migration `052_create_teams_and_page_permissions.sql` criada.
+- Migration `053_create_team_types_and_link_teams.sql` criada para `team_types` e vinculo obrigatorio em `teams.team_type_id`.
+- Pagina `equipes` adicionada na matriz de permissoes com backfill por tenant.
+- Integracoes frontend adicionadas em menu, autorizacao de rota e tela de permissoes.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, detalhes, historico e cancelamento/ativacao.
+- Caminho: `src/app/api/teams/route.ts`
+  - Responsavel por: CRUD de equipes (com `team_type_id`), paginacao da listagem, historico e troca de status.
+- Caminho: `src/app/api/teams/meta/route.ts`
+  - Responsavel por: retornar encarregados e tipos validos para selecao na tela.
+
+Constantes e configuracoes
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/equipes` para `page_key = equipes` e default access.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: exibir `Equipes` no menu lateral e titulo da tela.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: incluir `equipes` na matriz visual de permissoes.
+- Caminho: `supabase/migrations/052_create_teams_and_page_permissions.sql`
+  - Responsavel por: tabela `teams`, RLS, auditoria e permissao por pagina.
+- Caminho: `supabase/migrations/053_create_team_types_and_link_teams.sql`
+  - Responsavel por: tabela `team_types`, vinculo obrigatorio em `teams` e pagina `tipo-equipe`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver usuario autenticado e tenant ativo para rotas `/api/teams*`.
+
+Servicos e integracoes externas
+- Supabase Postgres (RLS + policies + triggers)
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/equipes/page.tsx` (novo)
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx` (novo)
+  - `src/modules/dashboard/equipes/TeamsPageView.module.css` (novo)
+  - `src/app/api/teams/route.ts` (novo)
+  - `src/app/api/teams/meta/route.ts` (novo)
+  - `supabase/migrations/052_create_teams_and_page_permissions.sql` (novo)
+  - `supabase/migrations/053_create_team_types_and_link_teams.sql` (novo)
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Comportamento antes/depois:
+  - Antes: nao existia tela/API/tabela para Equipes.
+  - Depois: existe cadastro completo com filtro de encarregado por cargo, controle de status e historico paginado.

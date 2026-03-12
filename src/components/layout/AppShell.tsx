@@ -9,6 +9,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { canAccessRoute, isAdminRole, normalizeRole } from "@/lib/auth/authorization";
 import styles from "./AppShell.module.css";
 
+// Checklist obrigatorio para nova tela:
+// 1) Migration com cadastro da pagina em app_pages e backfill de permissoes por tenant.
+// 2) Atualizar permissionCatalog em PermissionsPageView.
+// 3) Incluir rota nesta estrutura e no titleMap abaixo.
 const menuSections = [
   {
     title: "Visao Geral",
@@ -37,6 +41,7 @@ const menuSections = [
       { href: "/materiais", label: "Materiais", icon: "package" },
       { href: "/pessoas", label: "Pessoas", icon: "users" },
       { href: "/cargo", label: "Cargo", icon: "settings" },
+      { href: "/equipes", label: "Equipes", icon: "users" },
     ],
   },
   {
@@ -46,6 +51,7 @@ const menuSections = [
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
       { href: "/atividades", label: "Atividades", icon: "settings" },
+      { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
       { href: "/nivel-tensao", label: "Nivel de Tensao", icon: "settings" },
@@ -101,6 +107,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Cargo",
     subtitle: "Cadastro e manutencao dos cargos operacionais.",
   },
+  "/equipes": {
+    title: "Equipes",
+    subtitle: "Cadastro e manutencao das equipes operacionais.",
+  },
   "/prioridade": {
     title: "Prioridade",
     subtitle: "Cadastro base de prioridades operacionais.",
@@ -116,6 +126,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/atividades": {
     title: "Atividades",
     subtitle: "Cadastro de atividades de contratos e servicos.",
+  },
+  "/tipo-equipe": {
+    title: "Tipo de Equipe",
+    subtitle: "Cadastro base dos tipos de equipes.",
   },
   "/imei": {
     title: "Imei",

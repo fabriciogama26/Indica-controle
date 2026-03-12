@@ -44,6 +44,10 @@ const roleOptions: RoleOption[] = [
   { value: "user", label: "User" },
 ];
 
+// Checklist obrigatorio para nova tela:
+// 1) Criar migration com app_pages + role_page_permissions + app_user_page_permissions (backfill por tenant).
+// 2) Incluir pageKey/path/section no catalogo abaixo.
+// 3) Atualizar menuSections/titleMap no AppShell para manter navegacao e titulo consistentes.
 const permissionCatalog = [
   { pageKey: "home", label: "Dashboard Estoque", path: "/home", section: "Visao Geral" },
   { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
@@ -56,10 +60,12 @@ const permissionCatalog = [
   { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },
   { pageKey: "pessoas", label: "Pessoas", path: "/pessoas", section: "Cadastros" },
   { pageKey: "cargo", label: "Cargo", path: "/cargo", section: "Cadastros" },
+  { pageKey: "equipes", label: "Equipes", path: "/equipes", section: "Cadastros" },
   { pageKey: "prioridade", label: "Prioridade", path: "/prioridade", section: "Cadastro Base" },
   { pageKey: "centro-servico", label: "Centro de Servico", path: "/centro-servico", section: "Cadastro Base" },
   { pageKey: "contrato", label: "Contrato", path: "/contrato", section: "Cadastro Base" },
   { pageKey: "atividades", label: "Atividades", path: "/atividades", section: "Cadastro Base" },
+  { pageKey: "tipo-equipe", label: "Tipo de Equipe", path: "/tipo-equipe", section: "Cadastro Base" },
   { pageKey: "imei", label: "Imei", path: "/imei", section: "Cadastro Base" },
   { pageKey: "tipo-servico", label: "Tipo de Servico", path: "/tipo-servico", section: "Cadastro Base" },
   { pageKey: "nivel-tensao", label: "Nivel de Tensao", path: "/nivel-tensao", section: "Cadastro Base" },
@@ -86,10 +92,12 @@ function createPermissionSet(role: string): PermissionCard[] {
     "materiais",
     "pessoas",
     "cargo",
+    "equipes",
     "prioridade",
     "centro-servico",
     "contrato",
     "atividades",
+    "tipo-equipe",
     "imei",
     "tipo-servico",
     "nivel-tensao",

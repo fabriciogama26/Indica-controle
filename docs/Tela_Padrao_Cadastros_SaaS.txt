@@ -14,6 +14,8 @@ Arquitetura
 - Tela ajustada para aderencia:
   - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
   - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - `src/modules/dashboard/equipes/TeamsPageView.module.css`
 
 Cadastro
 --------
@@ -49,6 +51,10 @@ Boas praticas
 - Manter consistencia de espacamento, altura de botoes e raio de borda.
 - Em listagens com acoes por linha, usar `actionButton` circular com variacoes de cor por acao.
 - Nao alterar o comportamento especifico da lista de `Materiais` sem demanda explicita.
+- Toda nova tela deve ser entregue com permissao completa no mesmo pacote:
+  - migration em `app_pages`
+  - backfill em `role_page_permissions` e `app_user_page_permissions`
+  - atualizacao do `permissionCatalog` e `AppShell` (menu/titulo)
 
 Atalhos
 -------
@@ -63,6 +69,10 @@ Atualizacao 2026-03
   - `Cancelar` do formulario para `.ghostButton`
   - `Aplicar`/`Limpar` dos filtros para `.secondaryButton`/`.ghostButton`
   - `Anterior`/`Proxima` da paginacao para `.ghostButton`
+- Tela `Equipes` criada seguindo o mesmo padrao estrutural de `Projetos` e `Atividades`:
+  - card de cadastro + card de filtros + listagem paginada
+  - acoes por linha `Detalhes`, `Editar`, `Historico` e `Cancelar/Ativar`
+  - modais com mesma hierarquia visual e botoes padrao
 - Regra consolidada para historico:
   - Todos os modais de `Historico` devem usar `HISTORY_PAGE_SIZE = 5`.
 
@@ -73,12 +83,16 @@ Funcoes principais
   - Responsavel por: baseline de UX e padrao de acoes para cadastro/listagem.
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
   - Responsavel por: aplicacao do padrao de botoes e layout de cadastro/listagem.
+- Caminho: `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - Responsavel por: aplicacao do padrao em nova tela de cadastro com listagem/modais.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.module.css`
   - Responsavel por: classes de referencia (`primaryButton`, `secondaryButton`, `ghostButton`, `actionButton`).
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
   - Responsavel por: alinhamento das classes ao padrao de `Projetos`.
+- Caminho: `src/modules/dashboard/equipes/TeamsPageView.module.css`
+  - Responsavel por: reutilizacao das classes padrao de cadastro/listagem/modais.
 
 Funcoes utilitarias relacionadas
 - Nao se aplica (padrao visual/comportamental de tela).
@@ -91,6 +105,8 @@ Ajuda contextual
   - `docs/Tela_Padrao_Cadastros_SaaS.txt` (novo)
   - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
   - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - `src/modules/dashboard/equipes/TeamsPageView.module.css`
 - Comportamento antes/depois:
   - Antes: Atividades usava hierarquia de botoes diferente de Projetos em partes do fluxo.
-  - Depois: Atividades segue o mesmo padrao de botoes da tela Projetos.
+  - Depois: Atividades e Equipes seguem o mesmo padrao de botoes da tela Projetos.

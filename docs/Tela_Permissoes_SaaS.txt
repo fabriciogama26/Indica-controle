@@ -59,8 +59,8 @@ Filtros, auto-complete e listagem
   - Visao Geral: Home
   - Operacao: Projetos, Locacao, Programacao, Medicao
   - Almoxarifado: Estoque Atual, Entrada Estoque, Saida Estoque
-  - Cadastros: Materiais, Pessoas, Cargo
-  - Cadastro Base: Prioridade, Centro de Servico, Contrato, Atividades, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
+  - Cadastros: Materiais, Pessoas, Cargo, Equipes
+  - Cadastro Base: Prioridade, Centro de Servico, Contrato, Atividades, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 
 Boas praticas
 -------------
@@ -72,6 +72,11 @@ Boas praticas
 - Nao modelar `delete`.
 - Manter a UI coerente com o conceito final: primeiro selecionar o usuario, depois definir as permissoes dele.
 - O operador da tela precisa ser administrativo; o usuario alvo pode ser qualquer `app_user` do mesmo tenant.
+- Checklist obrigatorio para toda nova tela:
+  - Criar migration versionada com insert em `app_pages` e backfill em `role_page_permissions` e `app_user_page_permissions`.
+  - Incluir a tela no `permissionCatalog` do frontend.
+  - Incluir rota no `AppShell` (`menuSections`) e no `titleMap`.
+  - Validar o save de permissoes para a nova `page_key` sem erro `nao estao cadastradas em app_pages`.
 
 Cancelamento e saldo
 --------------------
@@ -98,6 +103,8 @@ Atualizacao 2026-03
 - Migration `039_backfill_operation_page_permissions.sql` criada para garantir catalogo e backfill das telas `Projetos`, `Locacao` e `Programacao` em permissoes por role e por usuario.
 - Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para reorganizar as secoes do menu e fazer backfill das novas telas (`medicao`, `cargo` e cadastros base) em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Migration `049_create_service_activities_and_page_permissions.sql` criada para incluir `atividades` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- Migration `052_create_teams_and_page_permissions.sql` criada para incluir `equipes` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- Migration `053_create_team_types_and_link_teams.sql` criada para incluir `tipo-equipe` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Route `src/app/api/app-users/[userId]/permissions/route.ts` criada para carregar e salvar credenciais por usuario.
 - Route `src/app/api/app-users/[userId]/invite/route.ts` criada para enviar o convite de primeiro acesso a partir do pre-cadastro em `app_users`.
 - Route `src/app/api/auth/session-access/route.ts` criada para devolver as telas liberadas ao usuario autenticado.
@@ -114,7 +121,10 @@ Atualizacao 2026-03
   - `Estoque Atual`, `Entrada Estoque` e `Saida Estoque` agrupadas em `Almoxarifado`
   - `Materiais` movido para `Cadastros`
   - `Cargo` adicionado em `Cadastros`
-  - `Cadastro Base` expandido para `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`
+  - `Equipes` adicionada em `Cadastros`
+  - `Cadastro Base` expandido para `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`
+- Regra operacional consolidada:
+  - Toda nova tela deve sair com permissao completa (migration + backfill + frontend) no mesmo pacote.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
