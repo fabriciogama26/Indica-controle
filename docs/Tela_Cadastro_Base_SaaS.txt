@@ -3,7 +3,7 @@ Tela: Cadastro Base SaaS
 Visao geral
 -----------
 - Conjunto de telas placeholder para os cadastros estruturantes do SaaS.
-- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
 - Todas as rotas foram conectadas a permissao por pagina.
 
 Arquitetura
@@ -13,6 +13,7 @@ Arquitetura
   - `src/app/(dashboard)/centro-servico/page.tsx`
   - `src/app/(dashboard)/contrato/page.tsx`
   - `src/app/(dashboard)/atividades/page.tsx`
+  - `src/app/(dashboard)/tipo-equipe/page.tsx`
   - `src/app/(dashboard)/imei/page.tsx`
   - `src/app/(dashboard)/tipo-servico/page.tsx`
   - `src/app/(dashboard)/nivel-tensao/page.tsx`
@@ -24,6 +25,7 @@ Arquitetura
 - Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Base SQL de catalogo/permissao: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
 - Base SQL de atividades: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
+- Base SQL de tipos de equipe: `supabase/migrations/053_create_team_types_and_link_teams.sql`
 
 Cadastro
 --------
@@ -35,6 +37,7 @@ Cadastro
   - `Unidade`
   - `Alcance`
 - Demais telas de `Cadastro Base` seguem em placeholder nesta etapa.
+- `Tipo de Equipe` segue como placeholder de tela, com dominio ja criado em banco (`team_types`).
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -58,6 +61,7 @@ Atalhos
   - `/centro-servico`
   - `/contrato`
   - `/atividades`
+  - `/tipo-equipe`
   - `/imei`
   - `/tipo-servico`
   - `/nivel-tensao`
@@ -70,11 +74,13 @@ Atualizacao 2026-03
 -------------------
 - Novas rotas placeholder criadas para cada dominio de `Cadastro Base`.
 - Rota `/atividades` evoluida de inexistente para cadastro funcional com API e persistencia.
-- `AppShell` reorganizado para exibir secao dedicada `Cadastro Base` com os dez atalhos.
+- `AppShell` reorganizado para exibir secao dedicada `Cadastro Base` com os atalhos da base.
+- `AppShell` atualizado para incluir `/tipo-equipe` em `Cadastro Base`.
 - `authorization.ts` atualizado com mapeamento de rota para `pageKey` correspondente.
 - `PermissionsPageView` atualizado para incluir os novos toggles de liberacao por tela.
 - Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para inserir/atualizar catalogo em `app_pages` e backfill de permissao por role/usuario.
 - Migration `049_create_service_activities_and_page_permissions.sql` criada para tabela `service_activities` e permissao da pagina `atividades`.
+- Migration `053_create_team_types_and_link_teams.sql` criada para tabela `team_types`, vinculo em `teams` e permissao da pagina `tipo-equipe`.
 - Antes: havia apenas o atalho generico `/cadastro-base`.
 - Depois: cada dominio base possui rota e permissao individual, e `Atividades` ja possui CRUD inicial.
 
@@ -85,6 +91,8 @@ Funcoes principais
   - Responsavel por: renderizar secao `Cadastro Base` e seus atalhos na sidebar.
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
   - Responsavel por: cadastro, filtros, listagem e edicao de atividades.
+- Caminho: `src/app/(dashboard)/tipo-equipe/page.tsx`
+  - Responsavel por: expor o placeholder da rota `Tipo de Equipe` no Cadastro Base.
 - Caminho: `src/app/api/activities/route.ts`
   - Responsavel por: listar, cadastrar e editar atividades do tenant.
 - Caminho: `src/lib/auth/authorization.ts`
@@ -97,6 +105,8 @@ Constantes e configuracoes
   - Responsavel por: catalogar as paginas de `Cadastro Base` e fazer backfill em `role_page_permissions` e `app_user_page_permissions`.
 - Caminho: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
   - Responsavel por: criar `service_activities`, aplicar RLS/auditoria e incluir `atividades` na matriz de paginas/permissoes.
+- Caminho: `supabase/migrations/053_create_team_types_and_link_teams.sql`
+  - Responsavel por: criar `team_types`, vincular em `teams` e incluir `tipo-equipe` na matriz de paginas/permissoes.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/components/ui/ModulePlaceholder.tsx`

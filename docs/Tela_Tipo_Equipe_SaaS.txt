@@ -1,0 +1,86 @@
+﻿Tela: Tipo de Equipe SaaS
+
+Visao geral
+-----------
+- Tela placeholder em `Cadastro Base` para o dominio de tipos de equipes.
+- Nesta etapa, a tela existe para navegacao/permissao; o CRUD dedicado ainda nao foi implementado.
+- O dominio ja existe em banco na tabela `team_types` e e consumido no cadastro de `Equipes`.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/tipo-equipe/page.tsx`
+- Componente atual: `src/components/ui/ModulePlaceholder.tsx`
+- Integracao de menu: `src/components/layout/AppShell.tsx`
+- Guard de rota: `src/lib/auth/authorization.ts`
+- Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Base SQL: `supabase/migrations/053_create_team_types_and_link_teams.sql`
+
+Cadastro
+--------
+- Nao implementado nesta etapa (placeholder).
+- Dominio existente em banco:
+  - `team_types.id`
+  - `team_types.tenant_id`
+  - `team_types.name`
+  - `team_types.ativo`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao implementado nesta etapa (placeholder).
+
+Boas praticas
+-------------
+- Quando evoluir para CRUD, manter validacao de unicidade por tenant (`tenant_id`, `name`).
+- Manter RLS e escopo por tenant em todas as operacoes.
+- Reusar padrao visual/comportamental da tela `Projetos` para cadastro/lista/modais.
+- Manter pagina `tipo-equipe` integrada ao fluxo de permissoes por pagina.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica nesta etapa.
+
+Atalhos
+-------
+- Rota ativa: `/tipo-equipe`
+- Exibida na secao `Cadastro Base` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Rota placeholder `/tipo-equipe` criada em `Cadastro Base`.
+- Migration `053_create_team_types_and_link_teams.sql` criada para `team_types`.
+- Pagina `tipo-equipe` adicionada em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- Tabela `teams` passou a exigir `team_type_id`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/tipo-equipe/page.tsx`
+  - Responsavel por: expor a rota de `Tipo de Equipe` com placeholder nesta etapa.
+- Caminho: `supabase/migrations/053_create_team_types_and_link_teams.sql`
+  - Responsavel por: criar `team_types`, vincular em `teams` e incluir `tipo-equipe` na matriz de permissao.
+
+Constantes e configuracoes
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: incluir atalho de menu para `/tipo-equipe`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear rota `/tipo-equipe` para `page_key = tipo-equipe`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: incluir `tipo-equipe` no catalogo da tela de permissoes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/components/ui/ModulePlaceholder.tsx`
+  - Responsavel por: layout padrao de telas ainda nao implementadas.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS (`team_types`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/tipo-equipe/page.tsx` (novo)
+  - `supabase/migrations/053_create_team_types_and_link_teams.sql` (novo)
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Comportamento antes/depois:
+  - Antes: nao existia rota nem dominio versionado para tipo de equipe.
+  - Depois: rota existe em `Cadastro Base`, dominio esta no banco e o cadastro de equipes consome esse tipo.

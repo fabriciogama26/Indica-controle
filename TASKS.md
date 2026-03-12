@@ -72,6 +72,11 @@
 - [x] Adicionar acoes `Detalhes`, `Historico` e `Cancelar/Ativar` na lista de `Atividades`, com modais e motivo obrigatorio na troca de status.
 - [x] Criar migration `051_create_app_entity_history_and_activity_status.sql` com historico generico (`app_entity_history`) reutilizavel por outras telas e suporte de status em `service_activities`.
 - [x] Padronizar modais de `Historico` para paginacao de `5` registros por pagina (`Projetos`, `Materiais` e `Atividades`).
+- [x] Formalizar checklist obrigatorio de permissao para nova tela (migration + backfill + `permissionCatalog` + `AppShell`).
+- [x] Criar tela `Equipes` em `Cadastros` com campos `Nome da equipe`, `Placa do veiculo` e `Encarregado` (filtro por cargo `ENCARREGADO`).
+- [x] Criar migration `052_create_teams_and_page_permissions.sql` para tabela `teams` e para incluir a pagina `equipes` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- [x] Adicionar campo obrigatorio `Tipo` no cadastro de `Equipes`, com consumo de `team_types` no frontend/API.
+- [x] Criar migration `053_create_team_types_and_link_teams.sql` para tabela `team_types`, vinculo obrigatorio em `teams.team_type_id` e pagina `tipo-equipe` em `Cadastro Base`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
