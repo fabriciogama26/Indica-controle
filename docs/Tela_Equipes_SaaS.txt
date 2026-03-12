@@ -46,6 +46,7 @@ Filtros, auto-complete e listagem
   - Encarregado
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`)
+  - Botao `Exportar Excel (CSV)` para exportar equipes filtradas
   - Colunas: Nome da equipe, Placa, Encarregado, Registrado em, Acoes
 - Acoes por linha:
   - `Detalhes`

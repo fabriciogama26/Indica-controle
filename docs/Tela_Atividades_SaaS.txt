@@ -6,7 +6,7 @@ Visao geral
 - Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `valor` e `unidade`.
 - `grupo` e `alcance` permanecem opcionais para compatibilidade de dados.
 - Lista atividades cadastradas com filtro por codigo e descricao.
-- Lista atividades com paginacao no servidor (20 por pagina).
+- Lista atividades com paginacao no servidor e botao `Exportar Excel (CSV)`.
 - Lista com acoes de linha: `Detalhes`, `Editar`, `Historico` e `Cancelar/Ativar`.
 
 Arquitetura
@@ -61,6 +61,9 @@ Filtros, auto-complete e listagem
   - `pagination.page`
   - `pagination.pageSize`
   - `pagination.total`
+- Header da lista:
+  - sem texto fixo de pagina no topo;
+  - botao `Exportar Excel (CSV)` para exportar os registros filtrados.
 
 Boas praticas
 -------------
@@ -109,6 +112,7 @@ Atualizacao 2026-03
 - Depois: pagina ativa com cadastro e edicao por tenant, exigindo somente `Codigo`, `Descricao`, `Valor` e `Unidade`, com lista paginada.
 - Depois: pagina ativa com padrao visual de botoes aderente ao baseline de `Projetos`.
 - Depois: pagina ativa com detalhes, historico e cancelamento/ativacao com motivo obrigatorio.
+- Depois: lista com exportacao CSV e sem texto fixo de paginacao no cabecalho.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
