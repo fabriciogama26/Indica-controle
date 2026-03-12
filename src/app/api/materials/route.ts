@@ -65,6 +65,13 @@ type MaterialInput = {
   unitPrice: number | null;
 };
 
+type MaterialCodePrecheckResult = {
+  success?: boolean;
+  reason?: string;
+  codigo?: string;
+  existing_id?: string;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -205,6 +212,48 @@ async function fetchMaterialById(
   }
 
   return data;
+}
+
+async function precheckMaterialCodeConflict(
+  supabase: SupabaseClient,
+  tenantId: string,
+  materialId: string | null,
+  codigo: string,
+) {
+  const { data, error } = await supabase.rpc("precheck_material_code_conflict", {
+    p_tenant_id: tenantId,
+    p_material_id: materialId,
+    p_codigo: codigo,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Falha ao validar codigo do material.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as MaterialCodePrecheckResult;
+  if (result.success !== true) {
+    if (result.reason === "CODE_ALREADY_EXISTS") {
+      return {
+        ok: false,
+        status: 409,
+        message: "Ja existe material com este codigo no tenant atual.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 400,
+      message: "Codigo do material invalido para cadastro.",
+    } as const;
+  }
+
+  return {
+    ok: true,
+  } as const;
 }
 
 export async function GET(request: NextRequest) {
@@ -401,6 +450,11 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+    const precheck = await precheckMaterialCodeConflict(supabase, appUser.tenant_id, null, input.codigo);
+    if (!precheck.ok) {
+      return NextResponse.json({ message: precheck.message }, { status: precheck.status });
+    }
+
     const { error } = await supabase.from("materials").insert({
       tenant_id: appUser.tenant_id,
       codigo: input.codigo,
@@ -467,6 +521,11 @@ export async function PUT(request: NextRequest) {
 
     if (!currentMaterial.is_active) {
       return NextResponse.json({ message: "Ative o material antes de editar." }, { status: 409 });
+    }
+
+    const precheck = await precheckMaterialCodeConflict(supabase, appUser.tenant_id, materialId, input.codigo);
+    if (!precheck.ok) {
+      return NextResponse.json({ message: precheck.message }, { status: precheck.status });
     }
 
     const changes: Record<string, HistoryChange> = {};

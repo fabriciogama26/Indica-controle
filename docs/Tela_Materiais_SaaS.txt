@@ -15,6 +15,7 @@ Arquitetura
 - Banco (core de materiais): `supabase/migrations/001_create_core_tables.sql`
 - Banco (auditoria): `supabase/migrations/015_add_audit_columns.sql`
 - Banco (preco + status + historico): `supabase/migrations/042_materials_price_status_and_history.sql`
+- Banco (pre-check de codigo duplicado): `supabase/migrations/044_material_code_precheck_rpc.sql`
 
 Cadastro
 --------
@@ -31,6 +32,12 @@ Cadastro
   - Deve ser numerico e maior ou igual a zero.
 - Regra de tipo:
   - Obrigatorio e nao pode ficar vazio.
+- Regra de duplicidade de codigo:
+  - Cadastro e edicao executam pre-check via RPC (`precheck_material_code_conflict`).
+  - Se o codigo ja existir no mesmo tenant, a operacao e bloqueada.
+- Regra de UX em edicao:
+  - Botao `Editar` na coluna `Acoes` move a tela para o topo.
+  - Em modo edicao, o bloco `Cadastro de Material` recebe borda amarela de destaque.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -85,6 +92,7 @@ Atualizacao 2026-03
 -------------------
 - Antes: rota `/materiais` era placeholder sem CRUD.
 - Depois: tela completa com cadastro, filtros, lista paginada e acoes de historico/cancelamento.
+- UX: em modo edicao, o bloco de cadastro recebe destaque visual com borda amarela.
 - Criada migration `042_materials_price_status_and_history.sql` para:
   - adicionar `unit_price` em `materials`;
   - adicionar status ativo/inativo e campos de cancelamento em `materials`;
@@ -95,6 +103,7 @@ Atualizacao 2026-03
   - `POST` cadastro;
   - `PUT` edicao com diff em `material_history`;
   - `PATCH` cancelamento/ativacao com motivo obrigatorio.
+- Criada migration `044_material_code_precheck_rpc.sql` com RPC para validar duplicidade de `codigo` por tenant antes de gravar.
 - Atualizada Edge Function `get_materials` para refletir novo contrato (`unit_price`, `is_active`) sem `lp`/`serial`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -110,6 +119,8 @@ Constantes e configuracoes
   - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
 - Caminho: `supabase/migrations/042_materials_price_status_and_history.sql`
   - Responsavel por: preco, status, historico e regras de consistencia de cancelamento em materiais.
+- Caminho: `supabase/migrations/044_material_code_precheck_rpc.sql`
+  - Responsavel por: RPC de pre-check de codigo duplicado (`precheck_material_code_conflict`).
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -134,6 +145,7 @@ Ajuda contextual
 - Funcoes/hooks/constantes tocadas:
   - `MaterialsPageView`, `loadMaterials`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/materials`
+  - `precheck_material_code_conflict` (RPC de validacao antes de insert/update)
   - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`
 - Comportamento antes/depois:
   - Antes: tela de Materiais sem CRUD.

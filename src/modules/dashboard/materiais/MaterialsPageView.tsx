@@ -454,7 +454,7 @@ export function MaterialsPageView() {
         <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
       ) : null}
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
         <h3 className={styles.cardTitle}>{isEditing ? "Editar Material" : "Cadastro de Material"}</h3>
 
         <form className={styles.formGrid} onSubmit={handleSubmit}>

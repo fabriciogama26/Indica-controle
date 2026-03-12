@@ -45,6 +45,7 @@ Ordem de aplicacao
 41. 041_create_project_material_forecast.sql
 42. 042_materials_price_status_and_history.sql
 43. 043_project_forecast_import_guards.sql
+44. 044_material_code_precheck_rpc.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -178,6 +179,9 @@ Resumo por arquivo
 
 043_project_forecast_import_guards.sql
 - Adiciona RPCs para importacao protegida de `project_material_forecast`, bloqueando codigo duplicado no arquivo e codigo ja importado no projeto.
+
+044_material_code_precheck_rpc.sql
+- Adiciona RPC de pre-check (`precheck_material_code_conflict`) para bloquear cadastro/edicao de material com codigo duplicado no mesmo tenant.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

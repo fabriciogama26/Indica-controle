@@ -68,6 +68,7 @@ Cadastro
   - `Projeto (SOB)` so fica ativo depois que `Prioridade` for selecionada.
 - Regra de edicao no formulario:
   - Botao `Editar` carrega o projeto no bloco de cadastro e move a pagina para o topo.
+  - Em modo edicao, o bloco `Cadastro de Projeto` recebe borda amarela de destaque.
 - Aba `Materiais previstos`:
   - Recebe selecao de projeto pela lista (acao `Materiais previstos`).
   - Permite selecionar projeto por `Projeto (SOB)` dentro da propria aba.
@@ -166,6 +167,7 @@ Atualizacao 2026-03
 - Incluido botao `Materiais previstos` na coluna `Acoes` da lista de projetos.
 - Ajustada UX da aba `Materiais previstos` para ter filtros e lista proprios de materiais, sem exibir os blocos de filtros/lista de projetos nessa aba.
 - Ajustado o modelo XLSX de `Materiais previstos` para aceitar apenas as colunas `codigo` e `quantidade`.
+- UX: em modo edicao do projeto, o bloco de cadastro recebe destaque visual com borda amarela.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

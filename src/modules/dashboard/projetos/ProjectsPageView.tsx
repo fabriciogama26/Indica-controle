@@ -1161,7 +1161,7 @@ export function ProjectsPageView() {
 
       {isLoadingMeta ? <div className={styles.loadingHint}>Atualizando opcoes de cadastro e filtros...</div> : null}
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
         <div className={styles.tabHeader}>
           <button
             type="button"
