@@ -77,6 +77,7 @@
 - [x] Criar migration `052_create_teams_and_page_permissions.sql` para tabela `teams` e para incluir a pagina `equipes` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - [x] Adicionar campo obrigatorio `Tipo` no cadastro de `Equipes`, com consumo de `team_types` no frontend/API.
 - [x] Criar migration `053_create_team_types_and_link_teams.sql` para tabela `team_types`, vinculo obrigatorio em `teams.team_type_id` e pagina `tipo-equipe` em `Cadastro Base`.
+- [x] Proteger cadastro/edicao de `Equipes` contra duplicidade pela combinacao `Nome da equipe + Encarregado + Placa` com constraint dedicada em banco e retorno `409` na API.
 - [x] Padronizar todas as listas ativas (`Projetos`, `Materiais`, `Atividades`, `Equipes` e `Materiais previstos`) com botao `Exportar Excel (CSV)` e remover o texto fixo de paginacao no cabecalho.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
