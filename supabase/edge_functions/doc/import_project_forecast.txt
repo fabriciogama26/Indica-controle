@@ -1,0 +1,39 @@
+Edge Function: import_project_forecast
+
+Objetivo
+- Importar planilha XLSX de materiais previstos para um projeto.
+- Fluxo protegido por RPC antes da gravacao.
+
+Secrets obrigatorios
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+
+Dependencias
+- public.app_users com auth_user_id preenchido e ativo
+- public.project
+- public.materials
+- public.project_material_forecast
+- RPC `precheck_project_material_forecast_import`
+- RPC `append_project_material_forecast`
+
+Autenticacao
+- Header `apikey` com `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Header `Authorization: Bearer <access_token>`
+
+Payload
+- `multipart/form-data`
+  - `projectId`: UUID do projeto
+  - `file`: XLSX com colunas `codigo` e `quantidade`
+
+Protecoes de importacao
+- Bloqueia codigo duplicado no arquivo (`DUPLICATE_CODE_IN_FILE`).
+- Bloqueia codigo ja importado para o projeto (`CODE_ALREADY_IMPORTED`).
+- Bloqueia codigo inexistente no cadastro `materials` do tenant.
+
+Resposta de sucesso
+- `success: true`
+- `summary.projectId`
+- `summary.projectSob`
+- `summary.rowsRead`
+- `summary.materialsRegistered`
+- `summary.sourceFile`

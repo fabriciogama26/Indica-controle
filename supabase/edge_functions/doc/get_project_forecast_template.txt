@@ -1,0 +1,20 @@
+Edge Function: get_project_forecast_template
+
+Objetivo
+- Baixar o modelo XLSX oficial para importacao de materiais previstos no projeto.
+- Colunas do modelo: `codigo`, `quantidade`.
+
+Secrets obrigatorios
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+
+Dependencias
+- public.app_users com auth_user_id preenchido e ativo
+
+Autenticacao
+- Header `apikey` com `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Header `Authorization: Bearer <access_token>`
+
+Resposta
+- Arquivo XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`)
+- Nome sugerido: `modelo_materiais_previstos.xlsx`

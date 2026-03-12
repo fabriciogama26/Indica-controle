@@ -48,7 +48,7 @@ serve(async (req) => {
 
   const { data, error } = await supabase
     .from('materials')
-    .select('codigo, descricao, umb, tipo, lp, serial')
+    .select('codigo, descricao, umb, tipo, unit_price, is_active')
     .eq('tenant_id', appUser.tenant_id)
     .order('codigo', { ascending: true })
 

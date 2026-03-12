@@ -46,6 +46,16 @@
 - [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
 - [x] Paginar o modal de `Historico` de Projetos e exibir `ID do projeto` abaixo do titulo no modal de detalhes.
 - [x] Implementar reativacao de projeto pelo botao `Ativar` (no lugar de `Cancelar` quando inativo) com motivo obrigatorio e historico.
+- [x] Criar base de `Materiais previstos` por projeto com migration `041_create_project_material_forecast.sql` (RLS, auditoria e constraint unica por material no projeto).
+- [x] Implementar API `/api/projects/forecast` para listagem de previsao por projeto.
+- [x] Implementar aba `Materiais previstos` em `Projetos` com acao na lista, modal de importacao em massa e download de modelo.
+- [x] Ajustar aba `Materiais previstos` para exibir filtros e lista de materiais proprios da aba (ocultando filtros/lista de projetos quando ativa).
+- [x] Ajustar modelo de importacao de `Materiais previstos` para aceitar somente `codigo` e `quantidade`, usando descricao/umb/tipo do cadastro base `materials`.
+- [x] Implementar Edge Functions `get_project_forecast_template` e `import_project_forecast` para download/importacao de previstos no fluxo da tela.
+- [x] Criar migration `043_project_forecast_import_guards.sql` com RPC de pre-check e append para bloquear codigos duplicados e codigos ja importados.
+- [x] Evoluir `materials` com `preco`, `status ativo`, `cancelamento/ativacao` e historico via migration `042_materials_price_status_and_history.sql`.
+- [x] Implementar tela `Materiais` no padrao de `Projetos`, com cadastro, filtros, listagem paginada e acoes `Editar`, `Historico` e `Cancelar/Ativar`.
+- [x] Implementar API `/api/materials` com `GET` (lista/historico), `POST`, `PUT` e `PATCH`.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
@@ -57,11 +67,12 @@
 
 - [ ] Implementar consumo real no frontend para `get_materials`, `get_responsaveis` e `get_inventory_balance`.
 - [ ] Implementar CRUD de `Pessoas` integrado a `people` e `job_titles`.
-- [ ] Implementar CRUD de `Materiais` integrado a `materials`.
+- [x] Implementar CRUD de `Materiais` integrado a `materials`.
 - [ ] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
+- [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
 - [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
@@ -87,7 +98,8 @@
 - [ ] Mapear quais operacoes sensiveis de estoque precisam gerar auditoria adicional alem de `login_audit` e `app_error_logs`.
 - [ ] Definir backlog funcional do SaaS de engenharia eletrica alem do modulo atual de materiais/estoque.
 
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `react` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `react-dom` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `@types/node` `20.19.37 -> 25.3.5`.
-- [ ] Pendencia de dependencia registrada em 2026-03-07: `eslint` `9.39.4 -> 10.0.3`.
+- [ ] Pendencia de dependencia registrada em 2026-03-11: `@supabase/supabase-js` `2.98.0 -> 2.99.1`.
+- [ ] Pendencia de dependencia registrada em 2026-03-11: `react` `19.2.3 -> 19.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-03-11: `react-dom` `19.2.3 -> 19.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-03-11: `@types/node` `20.19.37 -> 25.4.0`.
+- [ ] Pendencia de dependencia registrada em 2026-03-11: `eslint` `9.39.4 -> 10.0.3`.
