@@ -69,6 +69,12 @@ type FilterState = {
   city: string;
 };
 
+type ForecastFilterState = {
+  code: string;
+  description: string;
+  type: string;
+};
+
 type SobBaseItem = {
   sob: string;
   serviceCenter: string;
@@ -97,6 +103,41 @@ type ProjectListResponse = {
   projects?: ProjectItem[];
   pagination?: { page: number; pageSize: number; total: number };
   message?: string;
+};
+
+type ProjectForecastItem = {
+  id: string;
+  materialId: string;
+  code: string;
+  description: string;
+  umb: string | null;
+  type: string | null;
+  qtyPlanned: number;
+  observation: string | null;
+  source: string;
+  importedAt: string;
+  updatedAt: string;
+};
+
+type ProjectForecastResponse = {
+  project?: { id: string; sob: string };
+  items?: ProjectForecastItem[];
+  message?: string;
+};
+
+type ProjectForecastImportResponse = {
+  success?: boolean;
+  message?: string;
+  errors?: string[];
+  reason?: string;
+  codes?: string[];
+  summary?: {
+    projectId: string;
+    projectSob: string;
+    rowsRead: number;
+    materialsRegistered: number;
+    sourceFile: string;
+  };
 };
 
 const PAGE_SIZE = 20;
@@ -152,6 +193,12 @@ const INITIAL_FILTERS: FilterState = {
   executionDate: "",
   priority: "",
   city: "",
+};
+
+const INITIAL_FORECAST_FILTERS: ForecastFilterState = {
+  code: "",
+  description: "",
+  type: "",
 };
 
 function formatDate(value: string) {
@@ -256,6 +303,23 @@ function downloadCsvFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadBlobFile(content: Blob, filename: string) {
+  const url = URL.createObjectURL(content);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function supabaseFunctionsBaseUrl() {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+}
+
+function supabaseAnonKey() {
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+}
+
 function normalizePriority(value: string) {
   return String(value ?? "").trim().toUpperCase();
 }
@@ -326,9 +390,12 @@ function formatHistoryValue(field: string, value: string | null) {
 }
 export function ProjectsPageView() {
   const { session } = useAuth();
+  const [activeTab, setActiveTab] = useState<"project" | "forecast">("project");
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [filterDraft, setFilterDraft] = useState<FilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS);
+  const [forecastFilterDraft, setForecastFilterDraft] = useState<ForecastFilterState>(INITIAL_FORECAST_FILTERS);
+  const [activeForecastFilters, setActiveForecastFilters] = useState<ForecastFilterState>(INITIAL_FORECAST_FILTERS);
   const [meta, setMeta] = useState<MetaResponse>({
     priorities: [],
     serviceCenters: [],
@@ -354,6 +421,13 @@ export function ProjectsPageView() {
   const [historyEntries, setHistoryEntries] = useState<ProjectHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
+  const [forecastProject, setForecastProject] = useState<{ id: string; sob: string } | null>(null);
+  const [forecastItems, setForecastItems] = useState<ProjectForecastItem[]>([]);
+  const [isLoadingForecast, setIsLoadingForecast] = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+  const [isForecastImportModalOpen, setIsForecastImportModalOpen] = useState(false);
+  const [forecastImportFile, setForecastImportFile] = useState<File | null>(null);
+  const [isImportingForecast, setIsImportingForecast] = useState(false);
   const [cancelProject, setCancelProject] = useState<ProjectItem | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [page, setPage] = useState(1);
@@ -380,6 +454,33 @@ export function ProjectsPageView() {
   const sobBaseMap = useMemo(() => {
     return new Map(meta.sobCatalog.map((item) => [item.sob.toLowerCase(), item]));
   }, [meta.sobCatalog]);
+
+  const filteredForecastItems = useMemo(() => {
+    return (forecastItems ?? []).filter((item) => {
+      if (activeForecastFilters.code.trim()) {
+        const codeFilter = activeForecastFilters.code.trim().toLowerCase();
+        if (!item.code.toLowerCase().includes(codeFilter)) {
+          return false;
+        }
+      }
+
+      if (activeForecastFilters.description.trim()) {
+        const descriptionFilter = activeForecastFilters.description.trim().toLowerCase();
+        if (!item.description.toLowerCase().includes(descriptionFilter)) {
+          return false;
+        }
+      }
+
+      if (activeForecastFilters.type.trim()) {
+        const typeFilter = activeForecastFilters.type.trim().toLowerCase();
+        if (!(item.type ?? "").toLowerCase().includes(typeFilter)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [activeForecastFilters, forecastItems]);
 
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) {
@@ -512,6 +613,16 @@ export function ProjectsPageView() {
     }));
   }
 
+  function updateForecastFilterField<Key extends keyof ForecastFilterState>(
+    field: Key,
+    value: ForecastFilterState[Key],
+  ) {
+    setForecastFilterDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
   function applyFilters() {
     setPage(1);
     setActiveFilters(filterDraft);
@@ -522,6 +633,17 @@ export function ProjectsPageView() {
     setFilterDraft(INITIAL_FILTERS);
     setActiveFilters(INITIAL_FILTERS);
     setPage(1);
+    setFeedback(null);
+  }
+
+  function applyForecastFilters() {
+    setActiveForecastFilters(forecastFilterDraft);
+    setFeedback(null);
+  }
+
+  function clearForecastFilters() {
+    setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
+    setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
     setFeedback(null);
   }
 
@@ -611,6 +733,218 @@ export function ProjectsPageView() {
     setHistoryPage(1);
     setHistoryTotal(0);
     await loadProjectHistory(project, 1);
+  }
+
+  async function loadForecast(projectId: string) {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para consultar materiais previstos.",
+      });
+      return;
+    }
+
+    setIsLoadingForecast(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("projectId", projectId);
+
+      const response = await fetch(`/api/projects/forecast?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as ProjectForecastResponse;
+      if (!response.ok) {
+        setForecastItems([]);
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao carregar materiais previstos.",
+        });
+        return;
+      }
+
+      if (data.project?.id && data.project?.sob) {
+        setForecastProject({
+          id: data.project.id,
+          sob: data.project.sob,
+        });
+      }
+      setForecastItems(data.items ?? []);
+    } catch {
+      setForecastItems([]);
+      setFeedback({
+        type: "error",
+        message: "Falha ao carregar materiais previstos.",
+      });
+    } finally {
+      setIsLoadingForecast(false);
+    }
+  }
+
+  async function openForecastTab(project: ProjectItem) {
+    setActiveTab("forecast");
+    setForecastProject({ id: project.id, sob: project.sob });
+    setForecastItems([]);
+    setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
+    setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
+    setFeedback(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    await loadForecast(project.id);
+  }
+
+  async function handleForecastProjectSelection(projectId: string) {
+    if (!projectId) {
+      setForecastProject(null);
+      setForecastItems([]);
+      setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
+      setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
+      return;
+    }
+
+    const selectedProject = projects.find((item) => item.id === projectId);
+    setForecastProject(selectedProject ? { id: selectedProject.id, sob: selectedProject.sob } : { id: projectId, sob: "" });
+    setForecastItems([]);
+    setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
+    setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
+    await loadForecast(projectId);
+  }
+
+  async function handleDownloadForecastTemplate() {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para baixar o modelo de materiais previstos.",
+      });
+      return;
+    }
+
+    const functionsBaseUrl = supabaseFunctionsBaseUrl();
+    const anonKey = supabaseAnonKey();
+    if (!functionsBaseUrl || !anonKey) {
+      setFeedback({
+        type: "error",
+        message: "Ambiente sem configuracao de Supabase para baixar o modelo.",
+      });
+      return;
+    }
+
+    setIsDownloadingTemplate(true);
+    try {
+      const response = await fetch(`${functionsBaseUrl}/functions/v1/get_project_forecast_template`, {
+        cache: "no-store",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao baixar modelo de materiais previstos.",
+        });
+        return;
+      }
+
+      const file = await response.blob();
+      downloadBlobFile(file, "modelo_materiais_previstos.xlsx");
+      setFeedback({
+        type: "success",
+        message: "Modelo XLSX baixado com sucesso.",
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao baixar modelo de materiais previstos.",
+      });
+    } finally {
+      setIsDownloadingTemplate(false);
+    }
+  }
+
+  function openForecastImportModal() {
+    if (!forecastProject) {
+      setFeedback({
+        type: "error",
+        message: "Selecione um projeto para importar materiais previstos.",
+      });
+      return;
+    }
+
+    setForecastImportFile(null);
+    setIsForecastImportModalOpen(true);
+  }
+
+  function closeForecastImportModal() {
+    setIsForecastImportModalOpen(false);
+    setForecastImportFile(null);
+    setIsImportingForecast(false);
+  }
+
+  async function submitForecastImport() {
+    if (!session?.accessToken || !forecastProject || !forecastImportFile) {
+      return;
+    }
+
+    const functionsBaseUrl = supabaseFunctionsBaseUrl();
+    const anonKey = supabaseAnonKey();
+    if (!functionsBaseUrl || !anonKey) {
+      setFeedback({
+        type: "error",
+        message: "Ambiente sem configuracao de Supabase para importar materiais previstos.",
+      });
+      return;
+    }
+
+    setIsImportingForecast(true);
+    try {
+      const payload = new FormData();
+      payload.set("projectId", forecastProject.id);
+      payload.set("file", forecastImportFile);
+
+      const response = await fetch(`${functionsBaseUrl}/functions/v1/import_project_forecast`, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: payload,
+      });
+
+      const data = (await response.json().catch(() => ({}))) as ProjectForecastImportResponse;
+      if (!response.ok) {
+        const errorList = (data.errors ?? []).slice(0, 5);
+        const blockedCodes = (data.codes ?? []).slice(0, 5);
+        const details = [...errorList, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
+        const errorDetails = details.length > 0 ? ` (${details.join(" | ")})` : "";
+        setFeedback({
+          type: "error",
+          message: `${data.message ?? "Falha ao importar materiais previstos."}${errorDetails}`,
+        });
+        return;
+      }
+
+      setFeedback({
+        type: "success",
+        message:
+          data.message ??
+          `Materiais previstos do projeto ${forecastProject.sob} importados com sucesso.`,
+      });
+      closeForecastImportModal();
+      await loadForecast(forecastProject.id);
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao importar materiais previstos.",
+      });
+    } finally {
+      setIsImportingForecast(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -828,249 +1162,345 @@ export function ProjectsPageView() {
       {isLoadingMeta ? <div className={styles.loadingHint}>Atualizando opcoes de cadastro e filtros...</div> : null}
 
       <article className={styles.card}>
-        <h3 className={styles.cardTitle}>{isEditing ? "Editar Projeto" : "Cadastro de Projeto"}</h3>
+        <div className={styles.tabHeader}>
+          <button
+            type="button"
+            className={`${styles.tabButton} ${activeTab === "project" ? styles.tabButtonActive : ""}`}
+            onClick={() => setActiveTab("project")}
+          >
+            Cadastro de Projeto
+          </button>
+          <button
+            type="button"
+            className={`${styles.tabButton} ${activeTab === "forecast" ? styles.tabButtonActive : ""}`}
+            onClick={() => setActiveTab("forecast")}
+          >
+            Materiais previstos
+          </button>
+        </div>
 
-        <form className={styles.formGrid} onSubmit={handleSubmit}>
-          <label className={styles.field}>
-            <span>
-              Prioridade <span className="requiredMark">*</span>
-            </span>
-            <select value={form.priority} onChange={(event) => updateFormField("priority", event.target.value)} required>
-              <option value="">Selecione</option>
-              {priorityOptions.map((priority) => (
-                <option key={priority} value={priority}>
-                  {priority}
-                </option>
-              ))}
-            </select>
-          </label>
+        {activeTab === "project" ? (
+          <>
+            <h3 className={styles.cardTitle}>{isEditing ? "Editar Projeto" : "Cadastro de Projeto"}</h3>
 
-          <label className={styles.field}>
-            <span>
-              Projeto (SOB) <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.sob}
-              onChange={(event) => updateFormField("sob", normalizeSob(event.target.value))}
-              onBlur={(event) => handleSobAutoFill(event.target.value)}
-              placeholder={isSobEnabled ? "Digite o SOB" : "Selecione a Prioridade primeiro"}
-              list="sob-list"
-              disabled={!isSobEnabled}
-              aria-disabled={!isSobEnabled}
-              required
-            />
-          </label>
+            <form className={styles.formGrid} onSubmit={handleSubmit}>
+              <label className={styles.field}>
+                <span>
+                  Prioridade <span className="requiredMark">*</span>
+                </span>
+                <select value={form.priority} onChange={(event) => updateFormField("priority", event.target.value)} required>
+                  <option value="">Selecione</option>
+                  {priorityOptions.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Centro de Servico <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.serviceCenter}
-              onChange={(event) => updateFormField("serviceCenter", event.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              {meta.serviceCenters.map((serviceCenter) => (
-                <option key={serviceCenter} value={serviceCenter}>
-                  {serviceCenter}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Projeto (SOB) <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  value={form.sob}
+                  onChange={(event) => updateFormField("sob", normalizeSob(event.target.value))}
+                  onBlur={(event) => handleSobAutoFill(event.target.value)}
+                  placeholder={isSobEnabled ? "Digite o SOB" : "Selecione a Prioridade primeiro"}
+                  list="sob-list"
+                  disabled={!isSobEnabled}
+                  aria-disabled={!isSobEnabled}
+                  required
+                />
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Tipo de Servico <span className="requiredMark">*</span>
-            </span>
-            <select value={form.serviceType} onChange={(event) => updateFormField("serviceType", event.target.value)} required>
-              <option value="">Selecione</option>
-              {meta.serviceTypes.map((serviceType) => (
-                <option key={serviceType} value={serviceType}>
-                  {serviceType}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Centro de Servico <span className="requiredMark">*</span>
+                </span>
+                <select
+                  value={form.serviceCenter}
+                  onChange={(event) => updateFormField("serviceCenter", event.target.value)}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  {meta.serviceCenters.map((serviceCenter) => (
+                    <option key={serviceCenter} value={serviceCenter}>
+                      {serviceCenter}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Data limite <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="date"
-              value={form.executionDeadline}
-              onChange={(event) => updateFormField("executionDeadline", event.target.value)}
-              required
-            />
-          </label>
-          <label className={styles.field}>
-            <span>
-              Valor estimado <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.estimatedValue}
-              onChange={(event) => updateFormField("estimatedValue", event.target.value)}
-              placeholder="0,00"
-              required
-            />
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Tipo de Servico <span className="requiredMark">*</span>
+                </span>
+                <select
+                  value={form.serviceType}
+                  onChange={(event) => updateFormField("serviceType", event.target.value)}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  {meta.serviceTypes.map((serviceType) => (
+                    <option key={serviceType} value={serviceType}>
+                      {serviceType}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>Nivel de Tensao</span>
-            <select value={form.voltageLevel} onChange={(event) => updateFormField("voltageLevel", event.target.value)}>
-              <option value="">Selecione</option>
-              {meta.voltageLevels.map((voltageLevel) => (
-                <option key={voltageLevel} value={voltageLevel}>
-                  {voltageLevel}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Data limite <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="date"
+                  value={form.executionDeadline}
+                  onChange={(event) => updateFormField("executionDeadline", event.target.value)}
+                  required
+                />
+              </label>
+              <label className={styles.field}>
+                <span>
+                  Valor estimado <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.estimatedValue}
+                  onChange={(event) => updateFormField("estimatedValue", event.target.value)}
+                  placeholder="0,00"
+                  required
+                />
+              </label>
 
-          <label className={styles.field}>
-            <span>Porte</span>
-            <select value={form.projectSize} onChange={(event) => updateFormField("projectSize", event.target.value)}>
-              <option value="">Selecione</option>
-              {meta.projectSizes.map((projectSize) => (
-                <option key={projectSize} value={projectSize}>
-                  {projectSize}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>Nivel de Tensao</span>
+                <select value={form.voltageLevel} onChange={(event) => updateFormField("voltageLevel", event.target.value)}>
+                  <option value="">Selecione</option>
+                  {meta.voltageLevels.map((voltageLevel) => (
+                    <option key={voltageLevel} value={voltageLevel}>
+                      {voltageLevel}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Responsavel Contratada <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.contractorResponsible}
-              onChange={(event) => updateFormField("contractorResponsible", event.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              {meta.contractorResponsibles.map((responsible) => (
-                <option key={responsible} value={responsible}>
-                  {responsible}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>Porte</span>
+                <select value={form.projectSize} onChange={(event) => updateFormField("projectSize", event.target.value)}>
+                  <option value="">Selecione</option>
+                  {meta.projectSizes.map((projectSize) => (
+                    <option key={projectSize} value={projectSize}>
+                      {projectSize}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Responsavel Distribuidora <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.utilityResponsible}
-              onChange={(event) => updateFormField("utilityResponsible", event.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              {meta.utilityResponsibles.map((responsible) => (
-                <option key={responsible} value={responsible}>
-                  {responsible}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Responsavel Contratada <span className="requiredMark">*</span>
+                </span>
+                <select
+                  value={form.contractorResponsible}
+                  onChange={(event) => updateFormField("contractorResponsible", event.target.value)}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  {meta.contractorResponsibles.map((responsible) => (
+                    <option key={responsible} value={responsible}>
+                      {responsible}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Gestor de campo Distribuidora <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.utilityFieldManager}
-              onChange={(event) => updateFormField("utilityFieldManager", event.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              {meta.utilityFieldManagers.map((responsible) => (
-                <option key={responsible} value={responsible}>
-                  {responsible}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Responsavel Distribuidora <span className="requiredMark">*</span>
+                </span>
+                <select
+                  value={form.utilityResponsible}
+                  onChange={(event) => updateFormField("utilityResponsible", event.target.value)}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  {meta.utilityResponsibles.map((responsible) => (
+                    <option key={responsible} value={responsible}>
+                      {responsible}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Municipio <span className="requiredMark">*</span>
-            </span>
-            <select value={form.city} onChange={(event) => updateFormField("city", event.target.value)} required>
-              <option value="">Selecione</option>
-              {meta.cities.map((city) => (
-                <option key={city} value={city}>
-                  {city}
-                </option>
-              ))}
-            </select>
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Gestor de campo Distribuidora <span className="requiredMark">*</span>
+                </span>
+                <select
+                  value={form.utilityFieldManager}
+                  onChange={(event) => updateFormField("utilityFieldManager", event.target.value)}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  {meta.utilityFieldManagers.map((responsible) => (
+                    <option key={responsible} value={responsible}>
+                      {responsible}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Logradouro <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.street}
-              onChange={(event) => updateFormField("street", event.target.value)}
-              placeholder="Digite o logradouro"
-              required
-            />
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Municipio <span className="requiredMark">*</span>
+                </span>
+                <select value={form.city} onChange={(event) => updateFormField("city", event.target.value)} required>
+                  <option value="">Selecione</option>
+                  {meta.cities.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className={styles.field}>
-            <span>
-              Bairro <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.neighborhood}
-              onChange={(event) => updateFormField("neighborhood", event.target.value)}
-              placeholder="Digite o bairro"
-              required
-            />
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Logradouro <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  value={form.street}
+                  onChange={(event) => updateFormField("street", event.target.value)}
+                  placeholder="Digite o logradouro"
+                  required
+                />
+              </label>
 
-          <label className={`${styles.field} ${styles.fieldWide}`}>
-            <span>Descricao do servico</span>
-            <textarea
-              value={form.serviceDescription}
-              onChange={(event) => updateFormField("serviceDescription", event.target.value)}
-              placeholder="Digite a descricao do servico"
-              rows={3}
-            />
-          </label>
+              <label className={styles.field}>
+                <span>
+                  Bairro <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  value={form.neighborhood}
+                  onChange={(event) => updateFormField("neighborhood", event.target.value)}
+                  placeholder="Digite o bairro"
+                  required
+                />
+              </label>
 
-          <label className={`${styles.field} ${styles.fieldWide}`}>
-            <span>Observacao</span>
-            <textarea
-              value={form.observation}
-              onChange={(event) => updateFormField("observation", event.target.value)}
-              placeholder="Digite observacoes complementares"
-              rows={3}
-            />
-          </label>
+              <label className={`${styles.field} ${styles.fieldWide}`}>
+                <span>Descricao do servico</span>
+                <textarea
+                  value={form.serviceDescription}
+                  onChange={(event) => updateFormField("serviceDescription", event.target.value)}
+                  placeholder="Digite a descricao do servico"
+                  rows={3}
+                />
+              </label>
 
-          <div className={`${styles.actions} ${styles.formActions}`}>
-            <button type="submit" className={styles.primaryButton} disabled={isSubmitting}>
-              {isSubmitting ? (isEditing ? "Salvando..." : "Registrando...") : isEditing ? "Salvar alteracoes" : "Registrar projeto"}
-            </button>
-            {isEditing ? (
-              <button type="button" className={styles.ghostButton} onClick={resetFormState} disabled={isSubmitting}>
-                Cancelar edicao
+              <label className={`${styles.field} ${styles.fieldWide}`}>
+                <span>Observacao</span>
+                <textarea
+                  value={form.observation}
+                  onChange={(event) => updateFormField("observation", event.target.value)}
+                  placeholder="Digite observacoes complementares"
+                  rows={3}
+                />
+              </label>
+
+              <div className={`${styles.actions} ${styles.formActions}`}>
+                <button type="submit" className={styles.primaryButton} disabled={isSubmitting}>
+                  {isSubmitting
+                    ? isEditing
+                      ? "Salvando..."
+                      : "Registrando..."
+                    : isEditing
+                      ? "Salvar alteracoes"
+                      : "Registrar projeto"}
+                </button>
+                {isEditing ? (
+                  <button type="button" className={styles.ghostButton} onClick={resetFormState} disabled={isSubmitting}>
+                    Cancelar edicao
+                  </button>
+                ) : null}
+              </div>
+            </form>
+          </>
+        ) : (
+          <div className={styles.forecastPanel}>
+            <h3 className={styles.cardTitle}>Materiais previstos</h3>
+
+            <label className={styles.field}>
+              <span>Projeto (SOB)</span>
+              <select
+                value={forecastProject?.id ?? ""}
+                onChange={(event) => void handleForecastProjectSelection(event.target.value)}
+              >
+                <option value="">Selecione</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.sob}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {forecastProject?.sob ? (
+              <p className={styles.forecastHint}>
+                Projeto selecionado: <strong>{forecastProject.sob}</strong>
+              </p>
+            ) : (
+              <p className={styles.forecastHint}>
+                Selecione um projeto para trabalhar a lista e os filtros de materiais previstos.
+              </p>
+            )}
+
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => void handleDownloadForecastTemplate()}
+                disabled={isDownloadingTemplate}
+              >
+                {isDownloadingTemplate ? "Baixando modelo..." : "Baixar modelo (.xlsx)"}
               </button>
-            ) : null}
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={openForecastImportModal}
+                disabled={!forecastProject || isLoadingForecast || isImportingForecast}
+              >
+                Importar planilha XLSX
+              </button>
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={() => (forecastProject ? void loadForecast(forecastProject.id) : undefined)}
+                disabled={!forecastProject || isLoadingForecast}
+              >
+                {isLoadingForecast ? "Atualizando..." : "Atualizar lista"}
+              </button>
+            </div>
+
+            <div className={styles.forecastRules}>
+              <strong>Regras da importacao:</strong>
+              <span>Use o modelo oficial com colunas: `codigo`, `quantidade`.</span>
+              <span>Somente arquivo XLSX e permitido.</span>
+              <span>Codigos sao validados no cadastro de materiais do tenant.</span>
+            </div>
           </div>
-        </form>
+        )}
       </article>
 
+      {activeTab === "project" ? (
+      <>
       <article className={styles.card}>
         <h3 className={styles.cardTitle}>Filtros</h3>
 
@@ -1244,6 +1674,30 @@ export function ProjectsPageView() {
 
                           <button
                             type="button"
+                            className={`${styles.actionButton} ${styles.actionForecast}`}
+                            onClick={() => void openForecastTab(project)}
+                            aria-label={`Materiais previstos do projeto ${project.sob}`}
+                            title="Materiais previstos"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path
+                                d="M4.5 7.5h15m-15 4.5h15m-15 4.5h10"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                              />
+                              <path
+                                d="M18.5 17.5h1.5v1.5"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+
+                          <button
+                            type="button"
                             className={`${styles.actionButton} ${
                               project.isActive ? styles.actionCancel : styles.actionActivate
                             }`}
@@ -1314,6 +1768,179 @@ export function ProjectsPageView() {
           </div>
         </div>
       </article>
+      </>
+      ) : (
+      <>
+        <article className={styles.card}>
+          <h3 className={styles.cardTitle}>Filtros de Materiais Previstos</h3>
+
+          <div className={styles.filterGrid}>
+            <label className={styles.field}>
+              <span>Codigo</span>
+              <input
+                type="text"
+                value={forecastFilterDraft.code}
+                onChange={(event) => updateForecastFilterField("code", event.target.value)}
+                placeholder="Filtrar por codigo"
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span>Descricao</span>
+              <input
+                type="text"
+                value={forecastFilterDraft.description}
+                onChange={(event) => updateForecastFilterField("description", event.target.value)}
+                placeholder="Filtrar por descricao"
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span>Tipo</span>
+              <input
+                type="text"
+                value={forecastFilterDraft.type}
+                onChange={(event) => updateForecastFilterField("type", event.target.value)}
+                placeholder="Filtrar por tipo"
+              />
+            </label>
+          </div>
+
+          <div className={styles.actions}>
+            <button type="button" className={styles.secondaryButton} onClick={applyForecastFilters}>
+              Aplicar
+            </button>
+            <button type="button" className={styles.ghostButton} onClick={clearForecastFilters}>
+              Limpar
+            </button>
+          </div>
+        </article>
+
+        <article className={styles.card}>
+          <div className={styles.tableHeader}>
+            <h3 className={styles.cardTitle}>Lista de Materiais Previstos</h3>
+            <div className={styles.tableHint}>
+              {forecastProject?.sob
+                ? `Projeto selecionado: ${forecastProject.sob}`
+                : "Selecione um projeto para visualizar a lista de materiais previstos."}
+            </div>
+          </div>
+
+          <div className={styles.tableWrapper}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Codigo</th>
+                  <th>Descricao</th>
+                  <th>UMB</th>
+                  <th>Tipo</th>
+                  <th>Quantidade prevista</th>
+                  <th>Atualizado em</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredForecastItems.length > 0 ? (
+                  filteredForecastItems.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.code}</td>
+                      <td>{item.description}</td>
+                      <td>{item.umb ?? "-"}</td>
+                      <td>{item.type ?? "-"}</td>
+                      <td>{item.qtyPlanned.toLocaleString("pt-BR")}</td>
+                      <td>{formatDateTime(item.updatedAt)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className={styles.emptyRow}>
+                      {isLoadingForecast
+                        ? "Carregando materiais previstos..."
+                        : "Nenhum material previsto encontrado para os filtros informados."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </>
+      )}
+
+      {isForecastImportModalOpen ? (
+        <div className={styles.modalOverlay} onClick={closeForecastImportModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Importar planilha XLSX</h4>
+                <p className={styles.modalSubtitle}>
+                  Projeto: {forecastProject?.sob ?? "-"}
+                </p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeForecastImportModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>1</span>
+                  <div>
+                    <strong>Baixe o modelo</strong>
+                    <p>Use o arquivo modelo para validar as colunas obrigatorias.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => void handleDownloadForecastTemplate()}
+                  disabled={isDownloadingTemplate}
+                >
+                  {isDownloadingTemplate ? "Baixando..." : "Baixar modelo (.xlsx)"}
+                </button>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>2</span>
+                  <div>
+                    <strong>Preencha a planilha</strong>
+                    <p>Campos obrigatorios: codigo e quantidade.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>3</span>
+                  <div>
+                    <strong>Envie o arquivo</strong>
+                    <p>Somente arquivos XLSX.</p>
+                  </div>
+                </div>
+                <label className={styles.importDropzone}>
+                  <input
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    onChange={(event) => setForecastImportFile(event.target.files?.[0] ?? null)}
+                  />
+                  <span>{forecastImportFile ? forecastImportFile.name : "Clique para selecionar o arquivo XLSX"}</span>
+                </label>
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => void submitForecastImport()}
+                    disabled={!forecastImportFile || isImportingForecast}
+                  >
+                    {isImportingForecast ? "Importando..." : "Importar planilha"}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </article>
+        </div>
+      ) : null}
 
       {detailProject ? (
         <div className={styles.modalOverlay} onClick={() => setDetailProject(null)}>

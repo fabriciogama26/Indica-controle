@@ -42,6 +42,9 @@ Ordem de aplicacao
 38. 038_project_lookup_uuid_columns.sql
 39. 039_backfill_operation_page_permissions.sql
 40. 040_reorganize_menu_sections_and_page_permissions.sql
+41. 041_create_project_material_forecast.sql
+42. 042_materials_price_status_and_history.sql
+43. 043_project_forecast_import_guards.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -166,6 +169,15 @@ Resumo por arquivo
 
 040_reorganize_menu_sections_and_page_permissions.sql
 - Reorganiza secoes do menu (`Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`) e faz backfill de permissoes para novas telas (`medicao`, `cargo` e cadastros base).
+
+041_create_project_material_forecast.sql
+- Cria `project_material_forecast` para materiais previstos por projeto, com RLS, auditoria e RPC transacional para substituir lista importada.
+
+042_materials_price_status_and_history.sql
+- Evolui `materials` com `unit_price`, status ativo, cancelamento/ativacao e historicos (`material_history` e `material_cancellation_history`), removendo `lp` e `serial` do cadastro base.
+
+043_project_forecast_import_guards.sql
+- Adiciona RPCs para importacao protegida de `project_material_forecast`, bloqueando codigo duplicado no arquivo e codigo ja importado no projeto.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

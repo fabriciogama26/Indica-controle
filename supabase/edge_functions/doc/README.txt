@@ -12,6 +12,8 @@ Arquivos implementados
 - supabase/edge_functions/get_project_material_balance/index.ts
 - supabase/edge_functions/get_materials/index.ts
 - supabase/edge_functions/get_responsaveis/index.ts
+- supabase/edge_functions/get_project_forecast_template/index.ts
+- supabase/edge_functions/import_project_forecast/index.ts
 
 Resumo
 login_matricula
@@ -46,6 +48,12 @@ get_materials
 
 get_responsaveis
 - Baixa responsaveis permitidos: ENCARREGADO e SUPERVISOR.
+
+get_project_forecast_template
+- Baixa o modelo XLSX oficial de materiais previstos por projeto.
+
+import_project_forecast
+- Importa planilha XLSX de materiais previstos com protecao RPC anti-duplicidade.
 
 Secrets obrigatorios para todas
 - SUPABASE_URL

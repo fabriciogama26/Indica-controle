@@ -6,6 +6,7 @@ Visao geral
 - Tela operacional para cadastro, filtro e listagem de projetos por tenant.
 - Implementa fluxo completo com criacao, edicao, inativacao e historico de alteracoes.
 - Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
+- Inclui aba `Materiais previstos` para importar em massa a lista inicial de materiais planejados por projeto.
 
 Arquitetura
 -----------
@@ -14,6 +15,9 @@ Arquitetura
 - Estilo: `src/modules/dashboard/projetos/ProjectsPageView.module.css`
 - API de projetos: `src/app/api/projects/route.ts`
 - API de metadados/filtros: `src/app/api/projects/meta/route.ts`
+- API de materiais previstos (listagem): `src/app/api/projects/forecast/route.ts`
+- Edge Function de template XLSX: `supabase/edge_functions/get_project_forecast_template/index.ts`
+- Edge Function de importacao XLSX: `supabase/edge_functions/import_project_forecast/index.ts`
 - Banco: `supabase/migrations/029_create_project_table.sql`
 - Banco (regras de SOB por prioridade): `supabase/migrations/030_project_sob_priority_rules.sql`
 - Banco (tabelas de dominio por tenant): `supabase/migrations/031_create_project_lookup_tables.sql`
@@ -21,6 +25,8 @@ Arquitetura
 - Banco (status ativo + historicos): `supabase/migrations/036_create_project_history_and_cancellation.sql`
 - Banco (regras de ativacao em historico): `supabase/migrations/037_project_activation_history_rules.sql`
 - Banco (colunas de dominio em UUID + view de labels): `supabase/migrations/038_project_lookup_uuid_columns.sql`
+- Banco (materiais previstos por projeto): `supabase/migrations/041_create_project_material_forecast.sql`
+- Banco (protecao de importacao por RPC): `supabase/migrations/043_project_forecast_import_guards.sql`
 
 Cadastro
 --------
@@ -62,6 +68,12 @@ Cadastro
   - `Projeto (SOB)` so fica ativo depois que `Prioridade` for selecionada.
 - Regra de edicao no formulario:
   - Botao `Editar` carrega o projeto no bloco de cadastro e move a pagina para o topo.
+- Aba `Materiais previstos`:
+  - Recebe selecao de projeto pela lista (acao `Materiais previstos`).
+  - Permite selecionar projeto por `Projeto (SOB)` dentro da propria aba.
+  - Permite baixar modelo XLSX oficial.
+  - Permite importar planilha XLSX (somente `codigo` e `quantidade`) para adicionar materiais previstos.
+  - A importacao valida via RPC e bloqueia codigo duplicado no arquivo e codigo ja importado no projeto.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -78,7 +90,7 @@ Filtros, auto-complete e listagem
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
 - Botao `Exportar Excel (CSV)` na lista para exportar os projetos filtrados.
 - Coluna `Parceira` removida da lista para reduzir redundancia visual.
-- Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico` e `Cancelar`.
+- Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico`, `Materiais previstos` e `Cancelar`.
 - Quando a obra estiver inativa, o botao `Cancelar` vira botao `Ativar`.
 - `Ver detalhes` abre modal com todos os campos da obra e mostra o `ID do projeto` abaixo do titulo.
 - `Historico` abre modal com apenas os campos alterados por evento e paginacao interna para nao crescer demais.
@@ -88,6 +100,9 @@ Filtros, auto-complete e listagem
 - Coluna `Registrado por` exibida com `app_users.login_name` do `created_by`.
 - Coluna de data na lista padronizada como `Registrado em` (com base em `created_at`).
 - Chamadas autenticadas da tela usam `cache: no-store` para evitar exibir dados de sessao antiga apos troca de usuario.
+- Quando a aba `Materiais previstos` esta ativa, os blocos de `Filtros` e `Lista de Projetos` ficam ocultos e a tela mostra:
+  - `Filtros de Materiais Previstos` (codigo, descricao, tipo).
+  - `Lista de Materiais Previstos` (somente materiais do projeto selecionado).
 
 Boas praticas
 -------------
@@ -95,6 +110,9 @@ Boas praticas
 - Usar validacao de campos obrigatorios na API antes de gravar.
 - Manter paginacao server-side para listas grandes.
 - Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
+- Tratar `Materiais previstos` como planejamento: nao movimenta saldo fisico nem saldo liquido de projeto.
+- Validar importacao XLSX por tenant (projeto e material) antes de persistir.
+- A planilha de importacao de previstos deve conter somente `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
 
 Cancelamento e saldo
 --------------------
@@ -108,7 +126,8 @@ Cancelamento e saldo
   - Exige motivo antes de validar ativacao.
   - Registra em `project_cancellation_history` com `action_type = ACTIVATE`.
   - Registra no `project_history` como evento `ACTIVATE`.
-- Saldo nao se aplica a esta tela.
+- Saldo de estoque nao e alterado por `Materiais previstos`.
+- `Materiais previstos` registra somente planejamento de consumo.
 
 Atalhos
 -------
@@ -138,6 +157,15 @@ Atualizacao 2026-03
 - Adicionado botao `Exportar Excel (CSV)` para exportar a lista filtrada de projetos.
 - Ajustada coluna da lista de `Atualizado em` para `Registrado em`.
 - Ajustado `Registrado por` para exibir sempre `app_users.login_name` de quem registrou.
+- Antes: a tela de projetos nao tinha cadastro de planejamento de materiais.
+- Depois: adicionada aba `Materiais previstos` com importacao em massa via planilha XLSX.
+- Criada migration `041_create_project_material_forecast.sql` para registrar materiais previstos por projeto com RLS e auditoria.
+- Criada migration `043_project_forecast_import_guards.sql` com RPCs `precheck_project_material_forecast_import` e `append_project_material_forecast`.
+- Importacao e download de modelo de `Materiais previstos` passaram a ser feitos por Edge Functions (`get_project_forecast_template` e `import_project_forecast`).
+- A rota Next `src/app/api/projects/forecast/route.ts` ficou dedicada a listagem; o `POST` antigo foi bloqueado para evitar bypass da protecao.
+- Incluido botao `Materiais previstos` na coluna `Acoes` da lista de projetos.
+- Ajustada UX da aba `Materiais previstos` para ter filtros e lista proprios de materiais, sem exibir os blocos de filtros/lista de projetos nessa aba.
+- Ajustado o modelo XLSX de `Materiais previstos` para aceitar apenas as colunas `codigo` e `quantidade`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -148,6 +176,12 @@ Funcoes principais
   - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
+- Caminho: `src/app/api/projects/forecast/route.ts`
+  - Responsavel por: listar materiais previstos do projeto.
+- Caminho: `supabase/edge_functions/get_project_forecast_template/index.ts`
+  - Responsavel por: autenticar usuario e entregar o modelo XLSX oficial.
+- Caminho: `supabase/edge_functions/import_project_forecast/index.ts`
+  - Responsavel por: validar planilha e importar materiais previstos via RPC de protecao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
@@ -166,28 +200,38 @@ Constantes e configuracoes
   - Responsavel por: permitir `ACTIVATE` no `project_history` e adicionar `action_type` no `project_cancellation_history`.
 - Caminho: `supabase/migrations/038_project_lookup_uuid_columns.sql`
   - Responsavel por: migrar colunas de dominio da `project` para UUID e criar a view `project_with_labels` para listas e detalhes.
+- Caminho: `supabase/migrations/041_create_project_material_forecast.sql`
+  - Responsavel por: tabela `project_material_forecast`, policies RLS, trigger de auditoria e constraint unica por material no projeto.
+- Caminho: `supabase/migrations/043_project_forecast_import_guards.sql`
+  - Responsavel por: RPC de pre-check e RPC de append para proteger importacoes contra duplicidade.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
+- Caminho: `supabase/edge_functions/import_project_forecast/index.ts`
+  - Responsavel por: validar parse do XLSX (`codigo`, `quantidade`) e preparar payload para RPC.
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS.
-- Next.js Route Handlers (`/api/projects` e `/api/projects/meta`).
+- Next.js Route Handlers (`/api/projects`, `/api/projects/meta`, `/api/projects/forecast`).
+- Supabase Edge Functions (`get_project_forecast_template`, `import_project_forecast`).
 
 Ajuda contextual
 - Arquivos alterados/criados:
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
-  - `src/app/api/projects/route.ts`
-  - `src/app/api/projects/meta/route.ts`
-  - `supabase/migrations/036_create_project_history_and_cancellation.sql`
-  - `supabase/migrations/037_project_activation_history_rules.sql`
-  - `supabase/migrations/038_project_lookup_uuid_columns.sql`
+  - `src/app/api/projects/forecast/route.ts`
+  - `src/app/api/projects/forecast/template/route.ts`
+  - `supabase/edge_functions/get_project_forecast_template/index.ts`
+  - `supabase/edge_functions/import_project_forecast/index.ts`
+  - `supabase/migrations/041_create_project_material_forecast.sql`
+  - `supabase/migrations/043_project_forecast_import_guards.sql`
 - Funcoes/hooks/constantes tocadas:
-  - `ProjectsPageView`, `loadProjects`, `loadMeta`, `handleSubmit`, `confirmCancellation`, `openHistoryModal`, `handleExportProjects`, `getSobRuleError`
-  - `GET`/`POST`/`PUT`/`PATCH` de `/api/projects`
-  - `GET` de `/api/projects/meta`
+  - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
+  - `GET` de `/api/projects/forecast`
+  - `POST` de `/api/projects/forecast` bloqueado para forcar importacao via Edge Function
+  - `GET` de `/api/projects/forecast/template` bloqueado para forcar download via Edge Function
+  - `serve` de `get_project_forecast_template` e `import_project_forecast`
   - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`

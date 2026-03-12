@@ -1,0 +1,140 @@
+﻿Tela: Materiais SaaS
+
+Visao geral
+-----------
+- Tela operacional para cadastro, filtro e listagem de materiais por tenant.
+- Implementa fluxo completo com criacao, edicao, inativacao/ativacao e historico de alteracoes.
+- Segue o mesmo padrao visual da tela de Projetos, sem acao de "Ver detalhes".
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/materiais/page.tsx`
+- View: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+- Estilo: `src/modules/dashboard/materiais/MaterialsPageView.module.css`
+- API de materiais: `src/app/api/materials/route.ts`
+- Banco (core de materiais): `supabase/migrations/001_create_core_tables.sql`
+- Banco (auditoria): `supabase/migrations/015_add_audit_columns.sql`
+- Banco (preco + status + historico): `supabase/migrations/042_materials_price_status_and_history.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `Codigo`
+  - `Descricao`
+  - `Tipo`
+  - `Preco`
+- Campo opcional:
+  - `UMB`
+- Campos `LP` e `Serial` removidos do cadastro base de `materials`.
+- `LP` e `Serial` permanecem apenas nos fluxos de movimentacao (`Entrada`, `Saida`, `Requisicao`, `Devolucao`).
+- Regra de preco:
+  - Deve ser numerico e maior ou igual a zero.
+- Regra de tipo:
+  - Obrigatorio e nao pode ficar vazio.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros implementados:
+  - `Codigo` (texto)
+  - `Descricao` (texto)
+  - `Tipo` (texto)
+  - `Status` (`Ativo` / `Inativo`)
+- Listagem em colunas com paginacao server-side (`page` + `pageSize`).
+- Colunas da lista:
+  - `Codigo`
+  - `Descricao`
+  - `Tipo`
+  - `UMB`
+  - `Preco`
+  - `Registrado por`
+  - `Registrado em`
+  - `Acoes`
+- Acoes da lista:
+  - `Editar`
+  - `Historico`
+  - `Cancelar` / `Ativar`
+- Acao `Ver detalhes` nao existe nesta tela.
+
+Boas praticas
+-------------
+- Sempre filtrar e gravar com `tenant_id` no backend.
+- Validar obrigatorios na API antes de gravar (`codigo`, `descricao`, `tipo`, `preco`).
+- Garantir auditoria com `created_by`, `updated_by`, `created_at` e `updated_at`.
+- Tratar inativacao por status (`is_active`) em vez de exclusao fisica.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento implementado para Materiais:
+  - Inativa o material (`materials.is_active = false`).
+  - Exige motivo obrigatorio.
+  - Registra em `material_cancellation_history` com `action_type = CANCEL`.
+  - Registra em `material_history` como evento `CANCEL`.
+- Ativacao implementada para Materiais:
+  - Reativa o material (`materials.is_active = true`).
+  - Exige motivo obrigatorio.
+  - Registra em `material_cancellation_history` com `action_type = ACTIVATE`.
+  - Registra em `material_history` como evento `ACTIVATE`.
+- A tela de Materiais nao movimenta saldo de estoque.
+
+Atalhos
+-------
+- Rota ativa: `/materiais`.
+- Exibida na secao `Operacao` da sidebar.
+
+Atualizacao 2026-03
+-------------------
+- Antes: rota `/materiais` era placeholder sem CRUD.
+- Depois: tela completa com cadastro, filtros, lista paginada e acoes de historico/cancelamento.
+- Criada migration `042_materials_price_status_and_history.sql` para:
+  - adicionar `unit_price` em `materials`;
+  - adicionar status ativo/inativo e campos de cancelamento em `materials`;
+  - remover `lp` e `serial` do cadastro base de `materials`;
+  - criar `material_history` e `material_cancellation_history` com RLS e auditoria.
+- Criada API `src/app/api/materials/route.ts` com:
+  - `GET` lista paginada e historico por `historyMaterialId`;
+  - `POST` cadastro;
+  - `PUT` edicao com diff em `material_history`;
+  - `PATCH` cancelamento/ativacao com motivo obrigatorio.
+- Atualizada Edge Function `get_materials` para refletir novo contrato (`unit_price`, `is_active`) sem `lp`/`serial`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+  - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao e modais de historico/cancelamento.
+- Caminho: `src/app/api/materials/route.ts`
+  - Responsavel por: validar payload, inserir, editar, cancelar, listar e retornar historico por material.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+- Caminho: `supabase/migrations/042_materials_price_status_and_history.sql`
+  - Responsavel por: preco, status, historico e regras de consistencia de cancelamento em materiais.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handler (`/api/materials`).
+- Supabase Edge Function `get_materials` para integracao externa.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/materiais/page.tsx`
+  - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+  - `src/modules/dashboard/materiais/MaterialsPageView.module.css`
+  - `src/app/api/materials/route.ts`
+  - `supabase/migrations/042_materials_price_status_and_history.sql`
+  - `supabase/edge_functions/get_materials/index.ts`
+  - `supabase/edge_functions/doc/get_materials.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `MaterialsPageView`, `loadMaterials`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`
+  - `GET`/`POST`/`PUT`/`PATCH` de `/api/materials`
+  - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`
+- Comportamento antes/depois:
+  - Antes: tela de Materiais sem CRUD.
+  - Depois: cadastro completo com historico, preco obrigatorio e inativacao/ativacao com motivo.

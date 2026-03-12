@@ -22,5 +22,5 @@ Resposta
   - descricao
   - umb
   - tipo
-  - lp
-  - serial
+  - unit_price
+  - is_active
