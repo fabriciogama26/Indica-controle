@@ -19,6 +19,7 @@ Arquitetura
 - Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Base SQL: `supabase/migrations/052_create_teams_and_page_permissions.sql`
 - Base SQL: `supabase/migrations/053_create_team_types_and_link_teams.sql`
+- Base SQL: `supabase/migrations/054_enforce_team_unique_by_name_foreman_plate.sql`
 
 Cadastro
 --------
@@ -31,7 +32,7 @@ Cadastro
   - Encarregado deve existir no tenant e estar ativo em `people`.
   - Encarregado deve ter cargo `ENCARREGADO`.
   - Tipo deve existir no tenant e estar ativo em `team_types`.
-  - Nome e placa sao unicos por tenant (`teams`).
+  - Bloqueio de duplicidade por combinacao (`tenant_id`, `foreman_person_id`, `name`, `vehicle_plate`).
 - Fluxos de acao:
   - `Cadastrar`
   - `Editar`
@@ -88,6 +89,7 @@ Atualizacao 2026-03
 - Tela `Equipes` criada em `Cadastros` com o padrao de cadastro/lista/modais.
 - Migration `052_create_teams_and_page_permissions.sql` criada.
 - Migration `053_create_team_types_and_link_teams.sql` criada para `team_types` e vinculo obrigatorio em `teams.team_type_id`.
+- Migration `054_enforce_team_unique_by_name_foreman_plate.sql` criada para regra de unicidade por combinacao de `nome + encarregado + placa` no tenant.
 - Pagina `equipes` adicionada na matriz de permissoes com backfill por tenant.
 - Integracoes frontend adicionadas em menu, autorizacao de rota e tela de permissoes.
 

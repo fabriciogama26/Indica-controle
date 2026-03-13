@@ -93,6 +93,19 @@ function normalizePlate(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
 
+function isTeamDuplicateCombinationError(rawMessage: unknown) {
+  const message = String(rawMessage ?? "").toLowerCase();
+  if (!message.includes("duplicate key")) {
+    return false;
+  }
+
+  return (
+    message.includes("teams_tenant_foreman_name_plate_key")
+    || message.includes("teams_tenant_id_name_key")
+    || message.includes("teams_tenant_id_vehicle_plate_key")
+  );
+}
+
 function formatComparableValue(value: unknown) {
   if (value === null || value === undefined) {
     return null;
@@ -523,9 +536,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      if (String(error.message ?? "").toLowerCase().includes("duplicate key")) {
+      if (isTeamDuplicateCombinationError(error.message)) {
         return NextResponse.json(
-          { message: "Ja existe equipe com o mesmo nome ou placa no tenant atual." },
+          { message: "Ja existe equipe com o mesmo nome, encarregado e placa no tenant atual." },
           { status: 409 },
         );
       }
@@ -619,9 +632,9 @@ export async function PUT(request: NextRequest) {
       .eq("id", teamId);
 
     if (error) {
-      if (String(error.message ?? "").toLowerCase().includes("duplicate key")) {
+      if (isTeamDuplicateCombinationError(error.message)) {
         return NextResponse.json(
-          { message: "Ja existe equipe com o mesmo nome ou placa no tenant atual." },
+          { message: "Ja existe equipe com o mesmo nome, encarregado e placa no tenant atual." },
           { status: 409 },
         );
       }
