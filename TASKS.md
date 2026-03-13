@@ -6,6 +6,7 @@
 - [x] Isolar o client administrativo da `auth-login-web` para impedir que o insert em `login_audit` caia no RLS depois do `signInWithPassword`.
 - [x] Endurecer RLS multi-tenant com base em `auth.uid()` e `app_users.ativo = true`.
 - [x] Restringir as policies multi-tenant ao role `authenticated`.
+- [x] Revisar RLS de cadastros/permissoes para remover `FOR ALL` e `DELETE`, padronizando escrita em `INSERT` e `UPDATE` (migration `058_enforce_rls_no_all_no_delete.sql`).
 - [x] Implementar shell principal protegido, navegacao lateral e Home inicial.
 - [x] Reorganizar o layout principal para o padrao de sidebar fixa, barra superior horizontal e bloco do usuario no topo direito.
 - [x] Ajustar o shell para scroll interno no conteudo das telas (`mainContent`), mantendo sidebar e topbar fixos no desktop.
