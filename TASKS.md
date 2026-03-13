@@ -72,6 +72,7 @@
 - [x] Adicionar acoes `Detalhes`, `Historico` e `Cancelar/Ativar` na lista de `Atividades`, com modais e motivo obrigatorio na troca de status.
 - [x] Criar migration `051_create_app_entity_history_and_activity_status.sql` com historico generico (`app_entity_history`) reutilizavel por outras telas e suporte de status em `service_activities`.
 - [x] Padronizar modais de `Historico` para paginacao de `5` registros por pagina (`Projetos`, `Materiais` e `Atividades`).
+- [x] Incluir campo obrigatorio `Tipo` na tela de `Atividades`, consumindo `team_types` (mesmo cadastro base de `Equipes`) em formulario, filtro, lista e exportacao.
 - [x] Formalizar checklist obrigatorio de permissao para nova tela (migration + backfill + `permissionCatalog` + `AppShell`).
 - [x] Criar tela `Equipes` em `Cadastros` com campos `Nome da equipe`, `Placa do veiculo` e `Encarregado` (filtro por cargo `ENCARREGADO`).
 - [x] Criar migration `052_create_teams_and_page_permissions.sql` para tabela `teams` e para incluir a pagina `equipes` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
@@ -89,7 +90,8 @@
 - [x] Documentar handoff, arquitetura, contratos de backend, login, home e layout principal em `docs/`.
 
 - [ ] Implementar consumo real no frontend para `get_materials`, `get_responsaveis` e `get_inventory_balance`.
-- [ ] Implementar CRUD de `Pessoas` integrado a `people` e `job_titles`.
+- [x] Implementar CRUD de `Pessoas` integrado a `people`, `job_titles`, `job_title_types` e `job_levels`, com historico, status e exportacao CSV.
+- [x] Proteger cadastro/edicao de `Pessoas` contra duplicidade pela combinacao `Nome + Matricula + Cargo + Tipo + Nivel` com validacao na API e trigger no banco.
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.
 - [ ] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.

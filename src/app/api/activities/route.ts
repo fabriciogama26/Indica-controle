@@ -7,6 +7,7 @@ type ActivityRow = {
   id: string;
   code: string;
   description: string;
+  team_type_id: string;
   group_name: string | null;
   unit_value: number | string;
   unit: string;
@@ -27,6 +28,11 @@ type AppUserRow = {
   login_name: string | null;
 };
 
+type TeamTypeRow = {
+  id: string;
+  name: string;
+};
+
 type ActivityHistoryRow = {
   id: string;
   change_type: "UPDATE" | "CANCEL" | "ACTIVATE";
@@ -44,6 +50,7 @@ type HistoryChange = {
 type CreateActivityPayload = {
   code: string;
   description: string;
+  teamTypeId: string;
   group?: string;
   value: string | number;
   unit: string;
@@ -100,6 +107,7 @@ function parseActivityInput(payload: Partial<CreateActivityPayload>) {
   return {
     code: normalizeCode(payload.code),
     description: normalizeText(payload.description),
+    teamTypeId: normalizeText(payload.teamTypeId),
     group: normalizeNullableText(payload.group),
     value: normalizeDecimal(payload.value),
     unit: normalizeText(payload.unit),
@@ -174,6 +182,10 @@ function buildUserLoginNameMap(users: AppUserRow[]) {
   );
 }
 
+function buildTeamTypeMap(teamTypes: TeamTypeRow[]) {
+  return new Map(teamTypes.map((teamType) => [teamType.id, String(teamType.name ?? "").trim() || "Nao identificado"]));
+}
+
 function mapCodeConflictReasonToMessage(reason: string | undefined) {
   if (reason === "CODE_ALREADY_EXISTS") {
     return { status: 409, message: "Ja existe atividade com este codigo no tenant atual." };
@@ -198,7 +210,7 @@ async function fetchActivityById(
   const { data, error } = await supabase
     .from("service_activities")
     .select(
-      "id, code, description, group_name, unit_value, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, code, description, team_type_id, group_name, unit_value, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", activityId)
@@ -209,6 +221,29 @@ async function fetchActivityById(
   }
 
   return data;
+}
+
+async function fetchTeamTypeById(
+  supabase: SupabaseClient,
+  tenantId: string,
+  teamTypeId: string,
+) {
+  const { data, error } = await supabase
+    .from("team_types")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .eq("id", teamTypeId)
+    .maybeSingle<TeamTypeRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: normalizeText(data.name),
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -296,6 +331,7 @@ export async function GET(request: NextRequest) {
 
     const code = normalizeText(params.get("code"));
     const description = normalizeText(params.get("description"));
+    const teamTypeId = normalizeText(params.get("teamTypeId"));
     const groupName = normalizeText(params.get("group"));
     const page = parsePositiveInteger(params.get("page"), 1);
     const pageSize = Math.min(parsePositiveInteger(params.get("pageSize"), 20), 100);
@@ -305,7 +341,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("service_activities")
       .select(
-        "id, code, description, group_name, unit_value, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, code, description, team_type_id, group_name, unit_value, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -316,6 +352,10 @@ export async function GET(request: NextRequest) {
 
     if (description) {
       query = query.ilike("description", `%${description}%`);
+    }
+
+    if (teamTypeId) {
+      query = query.eq("team_type_id", teamTypeId);
     }
 
     if (groupName) {
@@ -339,6 +379,9 @@ export async function GET(request: NextRequest) {
           .filter((value): value is string => Boolean(value)),
       ),
     );
+    const teamTypeIds = Array.from(
+      new Set((data ?? []).map((item) => item.team_type_id).filter((value): value is string => Boolean(value))),
+    );
 
     let users: AppUserRow[] = [];
     if (userIds.length > 0) {
@@ -354,14 +397,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let teamTypes: TeamTypeRow[] = [];
+    if (teamTypeIds.length > 0) {
+      const teamTypesResult = await supabase
+        .from("team_types")
+        .select("id, name")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("id", teamTypeIds)
+        .returns<TeamTypeRow[]>();
+
+      if (!teamTypesResult.error) {
+        teamTypes = teamTypesResult.data ?? [];
+      }
+    }
+
     const userDisplayMap = buildUserDisplayMap(users);
     const userLoginNameMap = buildUserLoginNameMap(users);
+    const teamTypeMap = buildTeamTypeMap(teamTypes);
 
     return NextResponse.json({
       activities: (data ?? []).map((row) => ({
         id: row.id,
         code: row.code,
         description: row.description,
+        teamTypeId: row.team_type_id,
+        teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
         group: row.group_name ?? "",
         value: Number(row.unit_value ?? 0),
         unit: row.unit,
@@ -401,8 +461,12 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Partial<CreateActivityPayload>;
     const input = parseActivityInput(body);
 
-    if (!input.code || !input.description || input.value === null || !input.unit) {
+    if (!input.code || !input.description || !input.teamTypeId || input.value === null || !input.unit) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
+    }
+
+    if (!(await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId))) {
+      return NextResponse.json({ message: "Tipo invalido para o tenant atual." }, { status: 422 });
     }
 
     const { data: precheck, error: precheckError } = await supabase.rpc("precheck_activity_code_conflict", {
@@ -425,6 +489,7 @@ export async function POST(request: NextRequest) {
       tenant_id: appUser.tenant_id,
       code: input.code,
       description: input.description,
+      team_type_id: input.teamTypeId,
       group_name: input.group,
       unit_value: input.value,
       unit: input.unit,
@@ -474,7 +539,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Atividade invalida para edicao." }, { status: 400 });
     }
 
-    if (!input.code || !input.description || input.value === null || !input.unit) {
+    if (!input.code || !input.description || !input.teamTypeId || input.value === null || !input.unit) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
     }
 
@@ -485,6 +550,12 @@ export async function PUT(request: NextRequest) {
 
     if (!currentActivity.ativo) {
       return NextResponse.json({ message: "Ative a atividade antes de editar." }, { status: 409 });
+    }
+
+    const currentTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, currentActivity.team_type_id);
+    const nextTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId);
+    if (!nextTeamType) {
+      return NextResponse.json({ message: "Tipo invalido para o tenant atual." }, { status: 422 });
     }
 
     const { data: precheck, error: precheckError } = await supabase.rpc("precheck_activity_code_conflict", {
@@ -506,6 +577,7 @@ export async function PUT(request: NextRequest) {
     const changes: Record<string, HistoryChange> = {};
     addChange(changes, "code", currentActivity.code, input.code);
     addChange(changes, "description", currentActivity.description, input.description);
+    addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "group", currentActivity.group_name, input.group);
     addChange(changes, "value", currentActivity.unit_value, input.value);
     addChange(changes, "unit", currentActivity.unit, input.unit);
@@ -520,6 +592,7 @@ export async function PUT(request: NextRequest) {
       .update({
         code: input.code,
         description: input.description,
+        team_type_id: input.teamTypeId,
         group_name: input.group,
         unit_value: input.value,
         unit: input.unit,

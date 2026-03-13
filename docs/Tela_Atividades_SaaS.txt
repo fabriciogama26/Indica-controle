@@ -3,9 +3,9 @@ Tela: Atividades SaaS
 Visao geral
 -----------
 - Tela de cadastro de atividades para contratos e servicos por tenant.
-- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `valor` e `unidade`.
+- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `tipo`, `valor` e `unidade`.
 - `grupo` e `alcance` permanecem opcionais para compatibilidade de dados.
-- Lista atividades cadastradas com filtro por codigo e descricao.
+- Lista atividades cadastradas com filtro por codigo, descricao e tipo.
 - Lista atividades com paginacao no servidor e botao `Exportar Excel (CSV)`.
 - Lista com acoes de linha: `Detalhes`, `Editar`, `Historico` e `Cancelar/Ativar`.
 
@@ -15,9 +15,11 @@ Arquitetura
 - View: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
 - Estilo: `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
 - API: `src/app/api/activities/route.ts`
+- API (metadados): `src/app/api/activities/meta/route.ts`
 - Banco: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
 - Banco (evolucao): `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
 - Banco (historico/status): `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- Banco (tipo de equipe em atividades): `supabase/migrations/057_add_team_type_to_service_activities.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
 - Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -27,11 +29,13 @@ Cadastro
 - Campos obrigatorios:
   - `Codigo`
   - `Descricao`
+  - `Tipo`
   - `Valor`
   - `Unidade`
 - Regras:
   - `Codigo` e salvo em caixa alta.
   - `Valor` deve ser numerico e maior ou igual a zero.
+  - `Tipo` deve existir e estar ativo em `team_types` no mesmo tenant.
   - `Grupo` e `Alcance` sao opcionais.
   - `Codigo` deve ser unico por tenant.
   - Pre-validacao de codigo via RPC `precheck_activity_code_conflict` (bloqueia duplicidade antes de inserir/editar).
@@ -45,9 +49,11 @@ Filtros, auto-complete e listagem
 - Filtros na tela:
   - `Codigo`
   - `Descricao`
+  - `Tipo`
 - Listagem em tabela com colunas:
   - `Codigo`
   - `Descricao`
+  - `Tipo`
   - `Valor`
   - `Unidade`
   - `Registrado em`
@@ -94,6 +100,7 @@ Atualizacao 2026-03
 - Layout visual ajustado para o mesmo padrao das telas `Projetos` e `Materiais` (cards, bloco de filtros e tabela principal).
 - API `src/app/api/activities/route.ts` criada com `GET`, `POST` e `PUT`.
 - API evoluida para `GET` (lista + historico), `POST`, `PUT` e `PATCH` (cancelar/ativar).
+- API evoluida com `GET /api/activities/meta` para carregar opcoes de `Tipo` a partir de `team_types`.
 - Listagem de atividades ajustada para paginacao server-side (`page/pageSize`).
 - Hierarquia de botoes alinhada ao padrao da tela `Projetos` (`primary/secondary/ghost` conforme contexto de acao).
 - Migration `049_create_service_activities_and_page_permissions.sql` criada para:
@@ -106,21 +113,28 @@ Atualizacao 2026-03
 - Migration `051_create_app_entity_history_and_activity_status.sql` criada para:
   - adicionar campos de cancelamento/ativacao em `service_activities`;
   - criar tabela generica `app_entity_history` reutilizavel para historico de outras telas.
+- Migration `057_add_team_type_to_service_activities.sql` criada para:
+  - adicionar `service_activities.team_type_id` com FK composta (`team_type_id`, `tenant_id`) para `team_types`;
+  - fazer backfill com tipo `PADRAO` por tenant para manter consistencia dos registros existentes.
 - `AppShell`, `authorization.ts` e `PermissionsPageView` atualizados para incluir a nova rota.
 - Antes: nao existia a pagina de `Atividades`.
-- Depois: pagina ativa com cadastro e edicao por tenant, exigindo somente `Codigo`, `Descricao`, `Valor` e `Unidade`.
-- Depois: pagina ativa com cadastro e edicao por tenant, exigindo somente `Codigo`, `Descricao`, `Valor` e `Unidade`, com lista paginada.
+- Depois: pagina ativa com cadastro e edicao por tenant, exigindo `Codigo`, `Descricao`, `Tipo`, `Valor` e `Unidade`.
+- Depois: pagina ativa com cadastro e edicao por tenant, exigindo `Codigo`, `Descricao`, `Tipo`, `Valor` e `Unidade`, com lista paginada.
 - Depois: pagina ativa com padrao visual de botoes aderente ao baseline de `Projetos`.
 - Depois: pagina ativa com detalhes, historico e cancelamento/ativacao com motivo obrigatorio.
 - Depois: lista com exportacao CSV e sem texto fixo de paginacao no cabecalho.
+- Antes: atividade nao tinha campo `Tipo`.
+- Depois: atividade exige `Tipo` no cadastro/edicao e permite filtrar/listar/exportar por `Tipo`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: estado da tela, cadastro/edicao, filtros, listagem paginada, detalhes, historico e cancelamento/ativacao.
+  - Responsavel por: estado da tela, metadados de tipo, cadastro/edicao, filtros, listagem paginada, detalhes, historico e cancelamento/ativacao.
 - Caminho: `src/app/api/activities/route.ts`
-  - Responsavel por: validar payload, listar com paginacao/historico, cadastrar, editar e cancelar/ativar por tenant.
+  - Responsavel por: validar payload, validar `team_type_id`, listar com paginacao/historico, cadastrar, editar e cancelar/ativar por tenant.
+- Caminho: `src/app/api/activities/meta/route.ts`
+  - Responsavel por: retornar opcoes de `Tipo` (`team_types`) ativas do tenant.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
@@ -131,6 +145,8 @@ Constantes e configuracoes
   - Responsavel por: flexibilizar campos opcionais e adicionar RPC de pre-validacao de codigo.
 - Caminho: `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
   - Responsavel por: criar historico generico da aplicacao e suporte de status em atividades.
+- Caminho: `supabase/migrations/057_add_team_type_to_service_activities.sql`
+  - Responsavel por: adicionar vinculacao obrigatoria de atividade com tipo de equipe por tenant.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear `/atividades` para `pageKey = atividades`.
 
@@ -150,16 +166,21 @@ Ajuda contextual
   - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
   - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
   - `src/app/api/activities/route.ts`
+  - `src/app/api/activities/meta/route.ts`
   - `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
   - `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
   - `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+  - `supabase/migrations/057_add_team_type_to_service_activities.sql`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Funcoes/hooks/constantes tocadas:
-  - `loadActivities`, `handleSubmit`, `startEdit`, `openHistoryModal`, `confirmStatusChange`, `setPage`
+  - `loadMeta`, `loadActivities`, `handleSubmit`, `startEdit`, `openHistoryModal`, `confirmStatusChange`, `setPage`
+  - `GET` de `/api/activities/meta`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/activities`
   - `ROUTE_PAGE_KEYS`, `resolveDefaultPageAccess`, `permissionCatalog`
 - Comportamento antes/depois:
   - Antes: rota inexistente para atividades.
-  - Depois: rota ativa com cadastro e edicao no tenant atual, com apenas 4 campos obrigatorios, precheck RPC anti-duplicidade, historico e controle de status.
+  - Depois: rota ativa com cadastro e edicao no tenant atual, com 5 campos obrigatorios, precheck RPC anti-duplicidade, historico e controle de status.
+  - Antes: atividade nao possuia tipo vinculado.
+  - Depois: atividade passa a exigir tipo de equipe valido por tenant (`team_types`).

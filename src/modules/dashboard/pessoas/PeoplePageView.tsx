@@ -1,20 +1,19 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
-import styles from "./ActivitiesPageView.module.css";
+import styles from "./PeoplePageView.module.css";
 
-type ActivityItem = {
+type PersonItem = {
   id: string;
-  code: string;
-  description: string;
-  teamTypeId: string;
-  teamTypeName: string;
-  group: string;
-  value: number;
-  unit: string;
-  scope: string;
+  name: string;
+  matriculation: string | null;
+  jobTitleId: string;
+  jobTitleName: string;
+  jobTitleTypeId: string | null;
+  jobTitleTypeName: string | null;
+  jobLevel: string | null;
   isActive: boolean;
   cancellationReason: string | null;
   canceledAt: string | null;
@@ -25,7 +24,7 @@ type ActivityItem = {
   updatedAt: string;
 };
 
-type ActivityHistoryEntry = {
+type PersonHistoryEntry = {
   id: string;
   changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
   reason: string | null;
@@ -34,42 +33,56 @@ type ActivityHistoryEntry = {
   changes: Record<string, { from: string | null; to: string | null }>;
 };
 
-type ActivityFormState = {
-  id: string | null;
-  code: string;
-  description: string;
-  teamTypeId: string;
-  group: string;
-  value: string;
-  unit: string;
-  scope: string;
-};
-
-type ActivityFilterState = {
-  code: string;
-  description: string;
-  teamTypeId: string;
-};
-
-type TeamTypeOption = {
+type JobTitleTypeOption = {
   id: string;
+  jobTitleId: string;
   name: string;
 };
 
-type ActivitiesListResponse = {
-  activities?: ActivityItem[];
+type JobTitleOption = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+type JobLevelOption = {
+  level: string;
+};
+
+type PersonFormState = {
+  id: string | null;
+  name: string;
+  matriculation: string;
+  jobTitleId: string;
+  jobTitleTypeId: string;
+  jobLevel: string;
+};
+
+type PersonFilterState = {
+  name: string;
+  matriculation: string;
+  jobTitleId: string;
+  jobTitleTypeId: string;
+  jobLevel: string;
+  status: "" | "ativo" | "inativo";
+};
+
+type PeopleListResponse = {
+  people?: PersonItem[];
   pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
 
-type ActivityHistoryResponse = {
-  history?: ActivityHistoryEntry[];
-  pagination?: { page: number; pageSize: number; total: number };
+type PeopleMetaResponse = {
+  jobTitleTypes?: JobTitleTypeOption[];
+  jobTitles?: JobTitleOption[];
+  jobLevels?: JobLevelOption[];
   message?: string;
 };
 
-type ActivitiesMetaResponse = {
-  teamTypes?: TeamTypeOption[];
+type PersonHistoryResponse = {
+  history?: PersonHistoryEntry[];
+  pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
 
@@ -78,54 +91,62 @@ const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 100;
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
-  code: "Codigo",
-  description: "Descricao",
-  teamTypeName: "Tipo",
-  group: "Grupo",
-  value: "Valor",
-  unit: "Unidade",
-  scope: "Alcance",
+  name: "Nome",
+  matriculation: "Matricula",
+  jobTitleName: "Cargo",
+  jobTitleTypeName: "Tipo",
+  jobLevel: "Nivel",
   isActive: "Status",
   cancellationReason: "Motivo do cancelamento",
   canceledAt: "Data do cancelamento",
   activationReason: "Motivo da ativacao",
 };
 
-const INITIAL_FORM: ActivityFormState = {
+const INITIAL_FORM: PersonFormState = {
   id: null,
-  code: "",
-  description: "",
-  teamTypeId: "",
-  group: "",
-  value: "",
-  unit: "",
-  scope: "",
+  name: "",
+  matriculation: "",
+  jobTitleId: "",
+  jobTitleTypeId: "",
+  jobLevel: "",
 };
 
-const INITIAL_FILTERS: ActivityFilterState = {
-  code: "",
-  description: "",
-  teamTypeId: "",
+const INITIAL_FILTERS: PersonFilterState = {
+  name: "",
+  matriculation: "",
+  jobTitleId: "",
+  jobTitleTypeId: "",
+  jobLevel: "",
+  status: "",
 };
 
 function normalizeText(value: string) {
   return String(value ?? "").trim();
 }
 
-function normalizeCode(value: string) {
+function normalizeMatriculation(value: string) {
   return normalizeText(value).toUpperCase();
 }
 
-function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_SIZE) {
+function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
-  if (filters.code.trim()) {
-    params.set("code", filters.code.trim());
+  if (filters.name.trim()) {
+    params.set("name", filters.name.trim());
   }
-  if (filters.description.trim()) {
-    params.set("description", filters.description.trim());
+  if (filters.matriculation.trim()) {
+    params.set("matriculation", filters.matriculation.trim());
   }
-  if (filters.teamTypeId.trim()) {
-    params.set("teamTypeId", filters.teamTypeId.trim());
+  if (filters.jobTitleId.trim()) {
+    params.set("jobTitleId", filters.jobTitleId.trim());
+  }
+  if (filters.jobTitleTypeId.trim()) {
+    params.set("jobTitleTypeId", filters.jobTitleTypeId.trim());
+  }
+  if (filters.jobLevel.trim()) {
+    params.set("jobLevel", filters.jobLevel.trim());
+  }
+  if (filters.status.trim()) {
+    params.set("status", filters.status.trim());
   }
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
@@ -140,16 +161,16 @@ function escapeCsvValue(value: string | number | null | undefined) {
   return raw;
 }
 
-function buildActivitiesCsv(activityItems: ActivityItem[]) {
-  const header = ["Codigo", "Descricao", "Tipo", "Valor", "Unidade", "Registrado em", "Status"];
-  const rows = activityItems.map((activity) => [
-    activity.code,
-    activity.description,
-    activity.teamTypeName,
-    activity.value.toFixed(2),
-    activity.unit,
-    formatDateTime(activity.createdAt),
-    activity.isActive ? "Ativo" : "Inativo",
+function buildPeopleCsv(personItems: PersonItem[]) {
+  const header = ["Nome", "Matricula", "Cargo", "Tipo", "Nivel", "Registrado em", "Status"];
+  const rows = personItems.map((person) => [
+    person.name,
+    person.matriculation ?? "-",
+    person.jobTitleName,
+    person.jobTitleTypeName ?? "-",
+    person.jobLevel ?? "-",
+    formatDateTime(person.createdAt),
+    person.isActive ? "Ativo" : "Inativo",
   ]);
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
@@ -164,17 +185,6 @@ function downloadCsvFile(content: string, filename: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function formatMoney(value: number) {
-  return Number(value ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function toInputMoney(value: number) {
-  return String(Number(value ?? 0).toFixed(2));
 }
 
 function formatDateTime(value: string | null) {
@@ -193,11 +203,6 @@ function formatDateTime(value: string | null) {
 function formatHistoryValue(field: string, value: string | null) {
   if (!value) {
     return "-";
-  }
-
-  if (field === "value") {
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? formatMoney(numericValue) : value;
   }
 
   if (field === "isActive") {
@@ -225,25 +230,27 @@ function scrollDashboardContentToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-export function ActivitiesPageView() {
+export function PeoplePageView() {
   const { session } = useAuth();
-  const [form, setForm] = useState<ActivityFormState>(INITIAL_FORM);
-  const [filterDraft, setFilterDraft] = useState<ActivityFilterState>(INITIAL_FILTERS);
-  const [activeFilters, setActiveFilters] = useState<ActivityFilterState>(INITIAL_FILTERS);
-  const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
+  const [form, setForm] = useState<PersonFormState>(INITIAL_FORM);
+  const [filterDraft, setFilterDraft] = useState<PersonFilterState>(INITIAL_FILTERS);
+  const [activeFilters, setActiveFilters] = useState<PersonFilterState>(INITIAL_FILTERS);
+  const [jobTitleTypes, setJobTitleTypes] = useState<JobTitleTypeOption[]>([]);
+  const [jobTitles, setJobTitles] = useState<JobTitleOption[]>([]);
+  const [jobLevels, setJobLevels] = useState<JobLevelOption[]>([]);
+  const [people, setPeople] = useState<PersonItem[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [detailActivity, setDetailActivity] = useState<ActivityItem | null>(null);
-  const [historyActivity, setHistoryActivity] = useState<ActivityItem | null>(null);
-  const [historyEntries, setHistoryEntries] = useState<ActivityHistoryEntry[]>([]);
+  const [detailPerson, setDetailPerson] = useState<PersonItem | null>(null);
+  const [historyPerson, setHistoryPerson] = useState<PersonItem | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<PersonHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
-  const [statusActivity, setStatusActivity] = useState<ActivityItem | null>(null);
+  const [statusPerson, setStatusPerson] = useState<PersonItem | null>(null);
   const [statusReason, setStatusReason] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -252,8 +259,24 @@ export function ActivitiesPageView() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
-  const statusAction = statusActivity?.isActive ? "cancel" : "activate";
+  const statusAction = statusPerson?.isActive ? "cancel" : "activate";
   const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
+
+  const getJobTitleTypesForJob = useCallback(
+    (jobTitleId: string) =>
+      jobTitleId ? jobTitleTypes.filter((item) => item.jobTitleId === jobTitleId) : [],
+    [jobTitleTypes],
+  );
+
+  const formTypeOptions = useMemo(
+    () => getJobTitleTypesForJob(form.jobTitleId),
+    [form.jobTitleId, getJobTitleTypesForJob],
+  );
+
+  const filterTypeOptions = useMemo(
+    () => getJobTitleTypesForJob(filterDraft.jobTitleId),
+    [filterDraft.jobTitleId, getJobTitleTypesForJob],
+  );
 
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) {
@@ -262,37 +285,43 @@ export function ActivitiesPageView() {
 
     setIsLoadingMeta(true);
     try {
-      const response = await fetch("/api/activities/meta", {
+      const response = await fetch("/api/people/meta", {
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
       });
 
-      const data = (await response.json().catch(() => ({}))) as ActivitiesMetaResponse;
+      const data = (await response.json().catch(() => ({}))) as PeopleMetaResponse;
       if (!response.ok) {
-        setTeamTypes([]);
+        setJobTitleTypes([]);
+        setJobTitles([]);
+        setJobLevels([]);
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao carregar metadados de atividades.",
+          message: data.message ?? "Falha ao carregar metadados de pessoas.",
         });
         return;
       }
 
-      setTeamTypes(data.teamTypes ?? []);
+      setJobTitleTypes(data.jobTitleTypes ?? []);
+      setJobTitles(data.jobTitles ?? []);
+      setJobLevels(data.jobLevels ?? []);
     } catch {
-      setTeamTypes([]);
+      setJobTitleTypes([]);
+      setJobTitles([]);
+      setJobLevels([]);
       setFeedback({
         type: "error",
-        message: "Falha ao carregar metadados de atividades.",
+        message: "Falha ao carregar metadados de pessoas.",
       });
     } finally {
       setIsLoadingMeta(false);
     }
   }, [session?.accessToken]);
 
-  const loadActivities = useCallback(
-    async (targetPage: number, filters: ActivityFilterState) => {
+  const loadPeople = useCallback(
+    async (targetPage: number, filters: PersonFilterState) => {
       if (!session?.accessToken) {
         return;
       }
@@ -301,33 +330,33 @@ export function ActivitiesPageView() {
 
       try {
         const query = buildQuery(filters, targetPage);
-        const response = await fetch(`/api/activities?${query}`, {
+        const response = await fetch(`/api/people?${query}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as ActivitiesListResponse;
+        const data = (await response.json().catch(() => ({}))) as PeopleListResponse;
 
         if (!response.ok) {
-          setActivities([]);
+          setPeople([]);
           setTotal(0);
           setFeedback({
             type: "error",
-            message: data.message ?? "Falha ao carregar atividades.",
+            message: data.message ?? "Falha ao carregar pessoas.",
           });
           return;
         }
 
-        setActivities(data.activities ?? []);
+        setPeople(data.people ?? []);
         setTotal(data.pagination?.total ?? 0);
       } catch {
-        setActivities([]);
+        setPeople([]);
         setTotal(0);
         setFeedback({
           type: "error",
-          message: "Falha ao carregar atividades.",
+          message: "Falha ao carregar pessoas.",
         });
       } finally {
         setIsLoadingList(false);
@@ -336,8 +365,8 @@ export function ActivitiesPageView() {
     [session?.accessToken],
   );
 
-  const loadActivityHistory = useCallback(
-    async (activity: ActivityItem, targetPage: number) => {
+  const loadPersonHistory = useCallback(
+    async (person: PersonItem, targetPage: number) => {
       if (!session?.accessToken) {
         setFeedback({ type: "error", message: "Sessao invalida para carregar historico." });
         return;
@@ -346,20 +375,20 @@ export function ActivitiesPageView() {
       setIsLoadingHistory(true);
       try {
         const params = new URLSearchParams();
-        params.set("historyActivityId", activity.id);
+        params.set("historyPersonId", person.id);
         params.set("historyPage", String(targetPage));
         params.set("historyPageSize", String(HISTORY_PAGE_SIZE));
 
-        const response = await fetch(`/api/activities?${params.toString()}`, {
+        const response = await fetch(`/api/people?${params.toString()}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as ActivityHistoryResponse;
+        const data = (await response.json().catch(() => ({}))) as PersonHistoryResponse;
         if (!response.ok) {
-          setFeedback({ type: "error", message: data.message ?? "Falha ao carregar historico da atividade." });
+          setFeedback({ type: "error", message: data.message ?? "Falha ao carregar historico da pessoa." });
           setHistoryEntries([]);
           setHistoryTotal(0);
           return;
@@ -369,7 +398,7 @@ export function ActivitiesPageView() {
         setHistoryPage(data.pagination?.page ?? targetPage);
         setHistoryTotal(data.pagination?.total ?? 0);
       } catch {
-        setFeedback({ type: "error", message: "Falha ao carregar historico da atividade." });
+        setFeedback({ type: "error", message: "Falha ao carregar historico da pessoa." });
         setHistoryEntries([]);
         setHistoryTotal(0);
       } finally {
@@ -384,17 +413,22 @@ export function ActivitiesPageView() {
   }, [loadMeta]);
 
   useEffect(() => {
-    void loadActivities(page, activeFilters);
-  }, [activeFilters, loadActivities, page]);
+    void loadPeople(page, activeFilters);
+  }, [activeFilters, loadPeople, page]);
 
-  const formTitle = useMemo(() => (isEditing ? "Editar Atividade" : "Cadastro de Atividades"), [isEditing]);
+  const formTitle = useMemo(() => (isEditing ? "Editar Pessoa" : "Cadastro de Pessoas"), [isEditing]);
 
   function resetForm() {
     setForm(INITIAL_FORM);
   }
 
-  function updateFilterField(field: keyof ActivityFilterState, value: string) {
-    setFilterDraft((current) => ({ ...current, [field]: value }));
+  function updateFilterField(field: keyof PersonFilterState, value: string) {
+    setFilterDraft((current) => {
+      if (field === "jobTitleId") {
+        return { ...current, jobTitleId: value, jobTitleTypeId: "" };
+      }
+      return { ...current, [field]: value };
+    });
   }
 
   function applyFilters() {
@@ -410,46 +444,44 @@ export function ActivitiesPageView() {
     setFeedback(null);
   }
 
-  function startEdit(activity: ActivityItem) {
+  function startEdit(person: PersonItem) {
     setForm({
-      id: activity.id,
-      code: activity.code,
-      description: activity.description,
-      teamTypeId: activity.teamTypeId,
-      group: activity.group,
-      value: toInputMoney(activity.value),
-      unit: activity.unit,
-      scope: activity.scope,
+      id: person.id,
+      name: person.name,
+      matriculation: person.matriculation ?? "",
+      jobTitleId: person.jobTitleId,
+      jobTitleTypeId: person.jobTitleTypeId ?? "",
+      jobLevel: person.jobLevel ?? "",
     });
     setFeedback(null);
     scrollDashboardContentToTop();
   }
 
   function closeHistoryModal() {
-    setHistoryActivity(null);
+    setHistoryPerson(null);
     setHistoryEntries([]);
     setHistoryPage(1);
     setHistoryTotal(0);
     setIsLoadingHistory(false);
   }
 
-  function openStatusModal(activity: ActivityItem) {
-    setStatusActivity(activity);
+  function openStatusModal(person: PersonItem) {
+    setStatusPerson(person);
     setStatusReason("");
   }
 
   function closeStatusModal() {
-    setStatusActivity(null);
+    setStatusPerson(null);
     setStatusReason("");
     setIsChangingStatus(false);
   }
 
-  async function openHistoryModal(activity: ActivityItem) {
-    setHistoryActivity(activity);
+  async function openHistoryModal(person: PersonItem) {
+    setHistoryPerson(person);
     setHistoryEntries([]);
     setHistoryPage(1);
     setHistoryTotal(0);
-    await loadActivityHistory(activity, 1);
+    await loadPersonHistory(person, 1);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -458,7 +490,7 @@ export function ActivitiesPageView() {
     if (!session?.accessToken) {
       setFeedback({
         type: "error",
-        message: "Sessao invalida para salvar atividade.",
+        message: "Sessao invalida para salvar pessoa.",
       });
       return;
     }
@@ -469,16 +501,14 @@ export function ActivitiesPageView() {
     try {
       const payload = {
         id: form.id,
-        code: normalizeCode(form.code),
-        description: normalizeText(form.description),
-        teamTypeId: normalizeText(form.teamTypeId),
-        group: normalizeText(form.group) || null,
-        value: form.value,
-        unit: normalizeText(form.unit),
-        scope: normalizeText(form.scope) || null,
+        name: normalizeText(form.name),
+        matriculation: normalizeMatriculation(form.matriculation) || null,
+        jobTitleId: normalizeText(form.jobTitleId),
+        jobTitleTypeId: normalizeText(form.jobTitleTypeId) || null,
+        jobLevel: normalizeText(form.jobLevel) || null,
       };
 
-      const response = await fetch("/api/activities", {
+      const response = await fetch("/api/people", {
         method: form.id ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
@@ -492,22 +522,22 @@ export function ActivitiesPageView() {
       if (!response.ok || !data.success) {
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao salvar atividade.",
+          message: data.message ?? "Falha ao salvar pessoa.",
         });
         return;
       }
 
       setFeedback({
         type: "success",
-        message: data.message ?? "Atividade salva com sucesso.",
+        message: data.message ?? "Pessoa salva com sucesso.",
       });
       resetForm();
-      await loadActivities(1, activeFilters);
+      await loadPeople(1, activeFilters);
       setPage(1);
     } catch {
       setFeedback({
         type: "error",
-        message: "Falha ao salvar atividade.",
+        message: "Falha ao salvar pessoa.",
       });
     } finally {
       setIsSaving(false);
@@ -515,14 +545,14 @@ export function ActivitiesPageView() {
   }
 
   async function confirmStatusChange() {
-    if (!session?.accessToken || !statusActivity || !statusAction || !statusReason.trim()) {
+    if (!session?.accessToken || !statusPerson || !statusAction || !statusReason.trim()) {
       return;
     }
 
     setIsChangingStatus(true);
 
     try {
-      const response = await fetch("/api/activities", {
+      const response = await fetch("/api/people", {
         method: "PATCH",
         cache: "no-store",
         headers: {
@@ -530,7 +560,7 @@ export function ActivitiesPageView() {
           Authorization: `Bearer ${session.accessToken}`,
         },
         body: JSON.stringify({
-          id: statusActivity.id,
+          id: statusPerson.id,
           reason: statusReason.trim(),
           action: statusAction,
         }),
@@ -541,37 +571,37 @@ export function ActivitiesPageView() {
       if (!response.ok || !data.success) {
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao atualizar status da atividade.",
+          message: data.message ?? "Falha ao atualizar status da pessoa.",
         });
         return;
       }
 
       setFeedback({
         type: "success",
-        message: data.message ?? "Status da atividade atualizado com sucesso.",
+        message: data.message ?? "Status da pessoa atualizado com sucesso.",
       });
 
-      if (form.id === statusActivity.id) {
+      if (form.id === statusPerson.id) {
         resetForm();
       }
 
       closeStatusModal();
-      await loadActivities(page, activeFilters);
+      await loadPeople(page, activeFilters);
     } catch {
       setFeedback({
         type: "error",
-        message: "Falha ao atualizar status da atividade.",
+        message: "Falha ao atualizar status da pessoa.",
       });
     } finally {
       setIsChangingStatus(false);
     }
   }
 
-  async function handleExportActivities() {
+  async function handleExportPeople() {
     if (!session?.accessToken) {
       setFeedback({
         type: "error",
-        message: "Sessao invalida para exportar atividades.",
+        message: "Sessao invalida para exportar pessoas.",
       });
       return;
     }
@@ -579,60 +609,60 @@ export function ActivitiesPageView() {
     setIsExporting(true);
 
     try {
-      const allActivities: ActivityItem[] = [];
+      const allPeople: PersonItem[] = [];
       let exportPage = 1;
       let totalItems = 0;
 
       while (true) {
         const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE);
-        const response = await fetch(`/api/activities?${query}`, {
+        const response = await fetch(`/api/people?${query}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as ActivitiesListResponse;
+        const data = (await response.json().catch(() => ({}))) as PeopleListResponse;
 
         if (!response.ok) {
           setFeedback({
             type: "error",
-            message: data.message ?? "Falha ao exportar atividades.",
+            message: data.message ?? "Falha ao exportar pessoas.",
           });
           return;
         }
 
-        const pageItems = data.activities ?? [];
+        const pageItems = data.people ?? [];
         totalItems = data.pagination?.total ?? totalItems;
-        allActivities.push(...pageItems);
+        allPeople.push(...pageItems);
 
-        if (pageItems.length === 0 || allActivities.length >= totalItems) {
+        if (pageItems.length === 0 || allPeople.length >= totalItems) {
           break;
         }
 
         exportPage += 1;
       }
 
-      if (allActivities.length === 0) {
+      if (allPeople.length === 0) {
         setFeedback({
           type: "error",
-          message: "Nenhuma atividade encontrada para exportar com os filtros atuais.",
+          message: "Nenhuma pessoa encontrada para exportar com os filtros atuais.",
         });
         return;
       }
 
-      const csv = buildActivitiesCsv(allActivities);
+      const csv = buildPeopleCsv(allPeople);
       const exportDate = new Date().toISOString().slice(0, 10);
-      downloadCsvFile(csv, `atividades_${exportDate}.csv`);
+      downloadCsvFile(csv, `pessoas_${exportDate}.csv`);
 
       setFeedback({
         type: "success",
-        message: `${allActivities.length} atividade(s) exportada(s) com sucesso.`,
+        message: `${allPeople.length} pessoa(s) exportada(s) com sucesso.`,
       });
     } catch {
       setFeedback({
         type: "error",
-        message: "Falha ao exportar atividades.",
+        message: "Falha ao exportar pessoas.",
       });
     } finally {
       setIsExporting(false);
@@ -651,77 +681,80 @@ export function ActivitiesPageView() {
         <form className={styles.formGrid} onSubmit={handleSubmit}>
           <label className={styles.field}>
             <span>
-              Codigo <span className="requiredMark">*</span>
+              Nome <span className="requiredMark">*</span>
             </span>
             <input
               type="text"
-              value={form.code}
-              onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-              placeholder="Ex.: ATV-001"
-              required
-            />
-          </label>
-
-          <label className={`${styles.field} ${styles.fieldWide}`}>
-            <span>
-              Descricao <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.description}
-              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-              placeholder="Descricao da atividade"
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Nome completo"
               required
             />
           </label>
 
           <label className={styles.field}>
+            <span>Matricula</span>
+            <input
+              type="text"
+              value={form.matriculation}
+              onChange={(event) => setForm((current) => ({ ...current, matriculation: event.target.value }))}
+              placeholder="Ex.: 000123"
+            />
+          </label>
+
+          <label className={styles.field}>
             <span>
-              Tipo <span className="requiredMark">*</span>
+              Cargo <span className="requiredMark">*</span>
             </span>
             <select
-              value={form.teamTypeId}
-              onChange={(event) => setForm((current) => ({ ...current, teamTypeId: event.target.value }))}
+              value={form.jobTitleId}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, jobTitleId: event.target.value, jobTitleTypeId: "" }))
+              }
               required
               disabled={isLoadingMeta}
             >
               <option value="" disabled>
                 {isLoadingMeta ? "Carregando..." : "Selecione"}
               </option>
-              {teamTypes.map((teamType) => (
-                <option key={teamType.id} value={teamType.id}>
-                  {teamType.name}
+              {jobTitles.map((jobTitle) => (
+                <option key={jobTitle.id} value={jobTitle.id}>
+                  {jobTitle.name}
                 </option>
               ))}
             </select>
           </label>
 
           <label className={styles.field}>
-            <span>
-              Valor <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.value}
-              onChange={(event) => setForm((current) => ({ ...current, value: event.target.value }))}
-              placeholder="0,00"
-              required
-            />
+            <span>Tipo</span>
+            <select
+              value={form.jobTitleTypeId}
+              onChange={(event) => setForm((current) => ({ ...current, jobTitleTypeId: event.target.value }))}
+              disabled={isLoadingMeta || !form.jobTitleId}
+            >
+              <option value="">{form.jobTitleId ? "Selecione" : "Selecione o cargo primeiro"}</option>
+              {formTypeOptions.map((jobTitleType) => (
+                <option key={jobTitleType.id} value={jobTitleType.id}>
+                  {jobTitleType.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
-            <span>
-              Unidade <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.unit}
-              onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
-              placeholder="Ex.: h, km, un"
-              required
-            />
+            <span>Nivel</span>
+            <select
+              value={form.jobLevel}
+              onChange={(event) => setForm((current) => ({ ...current, jobLevel: event.target.value }))}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Selecione</option>
+              {jobLevels.map((level) => (
+                <option key={level.level} value={level.level}>
+                  {level.level}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div className={`${styles.actions} ${styles.formActions}`}>
@@ -742,38 +775,79 @@ export function ActivitiesPageView() {
 
         <div className={styles.filterGrid}>
           <label className={styles.field}>
-            <span>Codigo</span>
+            <span>Nome</span>
             <input
               type="text"
-              value={filterDraft.code}
-              onChange={(event) => updateFilterField("code", event.target.value)}
-              placeholder="Filtrar por codigo"
+              value={filterDraft.name}
+              onChange={(event) => updateFilterField("name", event.target.value)}
+              placeholder="Filtrar por nome"
             />
           </label>
 
           <label className={styles.field}>
-            <span>Descricao</span>
+            <span>Matricula</span>
             <input
               type="text"
-              value={filterDraft.description}
-              onChange={(event) => updateFilterField("description", event.target.value)}
-              placeholder="Filtrar por descricao"
+              value={filterDraft.matriculation}
+              onChange={(event) => updateFilterField("matriculation", event.target.value)}
+              placeholder="Filtrar por matricula"
             />
+          </label>
+
+          <label className={styles.field}>
+            <span>Cargo</span>
+            <select
+              value={filterDraft.jobTitleId}
+              onChange={(event) => updateFilterField("jobTitleId", event.target.value)}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Todos</option>
+              {jobTitles.map((jobTitle) => (
+                <option key={jobTitle.id} value={jobTitle.id}>
+                  {jobTitle.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
             <span>Tipo</span>
             <select
-              value={filterDraft.teamTypeId}
-              onChange={(event) => updateFilterField("teamTypeId", event.target.value)}
+              value={filterDraft.jobTitleTypeId}
+              onChange={(event) => updateFilterField("jobTitleTypeId", event.target.value)}
+              disabled={isLoadingMeta || !filterDraft.jobTitleId}
+            >
+              <option value="">{filterDraft.jobTitleId ? "Todos" : "Selecione o cargo primeiro"}</option>
+              {filterTypeOptions.map((jobTitleType) => (
+                <option key={jobTitleType.id} value={jobTitleType.id}>
+                  {jobTitleType.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Nivel</span>
+            <select
+              value={filterDraft.jobLevel}
+              onChange={(event) => updateFilterField("jobLevel", event.target.value)}
               disabled={isLoadingMeta}
             >
               <option value="">Todos</option>
-              {teamTypes.map((teamType) => (
-                <option key={teamType.id} value={teamType.id}>
-                  {teamType.name}
+              {jobLevels.map((level) => (
+                <option key={level.level} value={level.level}>
+                  {level.level}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Status</span>
+            <select value={filterDraft.status} onChange={(event) => updateFilterField("status", event.target.value)}>
+              <option value="">Todos</option>
+              <option value="ativo">Ativo</option>
+              <option value="inativo">Inativo</option>
             </select>
           </label>
         </div>
@@ -790,11 +864,11 @@ export function ActivitiesPageView() {
 
       <article className={styles.card}>
         <div className={styles.tableHeader}>
-          <h3 className={styles.cardTitle}>Lista de Atividades</h3>
+          <h3 className={styles.cardTitle}>Lista de Pessoas</h3>
           <button
             type="button"
             className={styles.ghostButton}
-            onClick={() => void handleExportActivities()}
+            onClick={() => void handleExportPeople()}
             disabled={isExporting || isLoadingList}
           >
             {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
@@ -805,38 +879,38 @@ export function ActivitiesPageView() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Codigo</th>
-                <th>Descricao</th>
+                <th>Nome</th>
+                <th>Matricula</th>
+                <th>Cargo</th>
                 <th>Tipo</th>
-                <th>Valor</th>
-                <th>Unidade</th>
+                <th>Nivel</th>
                 <th>Registrado em</th>
                 <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
-              {activities.length > 0 ? (
-                activities.map((activity) => (
-                  <tr key={activity.id} className={!activity.isActive ? styles.inactiveRow : undefined}>
+              {people.length > 0 ? (
+                people.map((person) => (
+                  <tr key={person.id} className={!person.isActive ? styles.inactiveRow : undefined}>
                     <td>
                       <div className={styles.sobCell}>
-                        <span>{activity.code}</span>
-                        {!activity.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
+                        <span>{person.name}</span>
+                        {!person.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
-                    <td>{activity.description}</td>
-                    <td>{activity.teamTypeName}</td>
-                    <td>{formatMoney(activity.value)}</td>
-                    <td>{activity.unit}</td>
-                    <td>{formatDateTime(activity.createdAt)}</td>
+                    <td>{person.matriculation ?? "-"}</td>
+                    <td>{person.jobTitleName}</td>
+                    <td>{person.jobTitleTypeName ?? "-"}</td>
+                    <td>{person.jobLevel ?? "-"}</td>
+                    <td>{formatDateTime(person.createdAt)}</td>
                     <td className={styles.actionsCell}>
                       <div className={styles.tableActions}>
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionView}`}
-                          onClick={() => setDetailActivity(activity)}
+                          onClick={() => setDetailPerson(person)}
                           title="Detalhes"
-                          aria-label="Detalhes da atividade"
+                          aria-label="Detalhes da pessoa"
                         >
                           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path
@@ -853,10 +927,10 @@ export function ActivitiesPageView() {
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionEdit}`}
-                          onClick={() => startEdit(activity)}
+                          onClick={() => startEdit(person)}
                           title="Editar"
-                          aria-label="Editar atividade"
-                          disabled={!activity.isActive}
+                          aria-label="Editar pessoa"
+                          disabled={!person.isActive}
                         >
                           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path
@@ -873,9 +947,9 @@ export function ActivitiesPageView() {
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionHistory}`}
-                          onClick={() => void openHistoryModal(activity)}
+                          onClick={() => void openHistoryModal(person)}
                           title="Historico"
-                          aria-label="Historico da atividade"
+                          aria-label="Historico da pessoa"
                         >
                           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path
@@ -891,12 +965,12 @@ export function ActivitiesPageView() {
 
                         <button
                           type="button"
-                          className={`${styles.actionButton} ${activity.isActive ? styles.actionCancel : styles.actionActivate}`}
-                          onClick={() => openStatusModal(activity)}
-                          title={activity.isActive ? "Cancelar" : "Ativar"}
-                          aria-label={activity.isActive ? "Cancelar atividade" : "Ativar atividade"}
+                          className={`${styles.actionButton} ${person.isActive ? styles.actionCancel : styles.actionActivate}`}
+                          onClick={() => openStatusModal(person)}
+                          title={person.isActive ? "Cancelar" : "Ativar"}
+                          aria-label={person.isActive ? "Cancelar pessoa" : "Ativar pessoa"}
                         >
-                          {activity.isActive ? (
+                          {person.isActive ? (
                             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                               <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
                               <path d="m9.5 9.5 5 5m0-5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
@@ -921,7 +995,7 @@ export function ActivitiesPageView() {
               ) : (
                 <tr>
                   <td colSpan={7} className={styles.emptyRow}>
-                    {isLoadingList ? "Carregando atividades..." : "Nenhuma atividade encontrada para os filtros informados."}
+                    {isLoadingList ? "Carregando pessoas..." : "Nenhuma pessoa encontrada para os filtros informados."}
                   </td>
                 </tr>
               )}
@@ -955,38 +1029,62 @@ export function ActivitiesPageView() {
         </div>
       </article>
 
-      {detailActivity ? (
-        <div className={styles.modalOverlay} onClick={() => setDetailActivity(null)}>
+      {detailPerson ? (
+        <div className={styles.modalOverlay} onClick={() => setDetailPerson(null)}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Detalhes da Atividade {detailActivity.code}</h4>
-                <p className={styles.modalSubtitle}>ID da atividade: {detailActivity.id}</p>
+                <h4>Detalhes da Pessoa {detailPerson.name}</h4>
+                <p className={styles.modalSubtitle}>ID da pessoa: {detailPerson.id}</p>
               </div>
-              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailActivity(null)}>
+              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailPerson(null)}>
                 Fechar
               </button>
             </header>
 
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
-                <div><strong>Status:</strong> {detailActivity.isActive ? "Ativo" : "Inativo"}</div>
-                <div><strong>Codigo:</strong> {detailActivity.code}</div>
-                <div><strong>Descricao:</strong> {detailActivity.description}</div>
-                <div><strong>Tipo:</strong> {detailActivity.teamTypeName}</div>
-                <div><strong>Grupo:</strong> {detailActivity.group || "-"}</div>
-                <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
-                <div><strong>Unidade:</strong> {detailActivity.unit}</div>
-                <div><strong>Alcance:</strong> {detailActivity.scope || "-"}</div>
-                <div><strong>Registrado por:</strong> {detailActivity.createdByName}</div>
-                <div><strong>Criado em:</strong> {formatDateTime(detailActivity.createdAt)}</div>
-                <div><strong>Atualizado por:</strong> {detailActivity.updatedByName}</div>
-                <div><strong>Atualizado em:</strong> {formatDateTime(detailActivity.updatedAt)}</div>
-                {!detailActivity.isActive ? (
+                <div>
+                  <strong>Status:</strong> {detailPerson.isActive ? "Ativo" : "Inativo"}
+                </div>
+                <div>
+                  <strong>Nome:</strong> {detailPerson.name}
+                </div>
+                <div>
+                  <strong>Matricula:</strong> {detailPerson.matriculation ?? "-"}
+                </div>
+                <div>
+                  <strong>Cargo:</strong> {detailPerson.jobTitleName}
+                </div>
+                <div>
+                  <strong>Tipo:</strong> {detailPerson.jobTitleTypeName ?? "-"}
+                </div>
+                <div>
+                  <strong>Nivel:</strong> {detailPerson.jobLevel ?? "-"}
+                </div>
+                <div>
+                  <strong>Registrado por:</strong> {detailPerson.createdByName}
+                </div>
+                <div>
+                  <strong>Criado em:</strong> {formatDateTime(detailPerson.createdAt)}
+                </div>
+                <div>
+                  <strong>Atualizado por:</strong> {detailPerson.updatedByName}
+                </div>
+                <div>
+                  <strong>Atualizado em:</strong> {formatDateTime(detailPerson.updatedAt)}
+                </div>
+                {!detailPerson.isActive ? (
                   <>
-                    <div><strong>Cancelado em:</strong> {formatDateTime(detailActivity.canceledAt)}</div>
-                    <div><strong>Cancelado por:</strong> {detailActivity.canceledByName ?? "-"}</div>
-                    <div className={styles.detailWide}><strong>Motivo do cancelamento:</strong> {detailActivity.cancellationReason ?? "-"}</div>
+                    <div>
+                      <strong>Cancelado em:</strong> {formatDateTime(detailPerson.canceledAt)}
+                    </div>
+                    <div>
+                      <strong>Cancelado por:</strong> {detailPerson.canceledByName ?? "-"}
+                    </div>
+                    <div className={styles.detailWide}>
+                      <strong>Motivo do cancelamento:</strong> {detailPerson.cancellationReason ?? "-"}
+                    </div>
                   </>
                 ) : null}
               </div>
@@ -995,13 +1093,13 @@ export function ActivitiesPageView() {
         </div>
       ) : null}
 
-      {historyActivity ? (
+      {historyPerson ? (
         <div className={styles.modalOverlay} onClick={closeHistoryModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Historico da Atividade {historyActivity.code}</h4>
-                <p className={styles.modalSubtitle}>ID da atividade: {historyActivity.id}</p>
+                <h4>Historico da Pessoa {historyPerson.name}</h4>
+                <p className={styles.modalSubtitle}>ID da pessoa: {historyPerson.id}</p>
               </div>
               <button type="button" className={styles.modalCloseButton} onClick={closeHistoryModal}>
                 Fechar
@@ -1056,7 +1154,7 @@ export function ActivitiesPageView() {
                       className={styles.ghostButton}
                       onClick={() => {
                         const target = Math.max(1, historyPage - 1);
-                        void loadActivityHistory(historyActivity, target);
+                        void loadPersonHistory(historyPerson, target);
                       }}
                       disabled={historyPage <= 1 || isLoadingHistory}
                     >
@@ -1067,7 +1165,7 @@ export function ActivitiesPageView() {
                       className={styles.ghostButton}
                       onClick={() => {
                         const target = Math.min(historyTotalPages, historyPage + 1);
-                        void loadActivityHistory(historyActivity, target);
+                        void loadPersonHistory(historyPerson, target);
                       }}
                       disabled={historyPage >= historyTotalPages || isLoadingHistory}
                     >
@@ -1081,49 +1179,52 @@ export function ActivitiesPageView() {
         </div>
       ) : null}
 
-      {statusActivity ? (
+      {statusPerson ? (
         <div className={styles.modalOverlay} onClick={closeStatusModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>{statusActivity.isActive ? "Cancelar Atividade" : "Ativar Atividade"}</h4>
-                <p className={styles.modalSubtitle}>Atividade: {statusActivity.code}</p>
+                <h4>{statusAction === "cancel" ? "Cancelar Pessoa" : "Ativar Pessoa"}</h4>
+                <p className={styles.modalSubtitle}>
+                  {statusAction === "cancel"
+                    ? `Pessoa ${statusPerson.name} sera cancelada.`
+                    : `Pessoa ${statusPerson.name} sera ativada.`}
+                </p>
               </div>
-              <button type="button" className={styles.modalCloseButton} onClick={closeStatusModal}>
-                Fechar
-              </button>
             </header>
 
             <div className={styles.modalBody}>
               <label className={styles.field}>
                 <span>
-                  Motivo <span className="requiredMark">*</span>
+                  {statusAction === "cancel" ? "Motivo do cancelamento" : "Motivo da ativacao"}{" "}
+                  <span className="requiredMark">*</span>
                 </span>
                 <textarea
                   value={statusReason}
                   onChange={(event) => setStatusReason(event.target.value)}
-                  placeholder={statusActivity.isActive ? "Informe o motivo do cancelamento" : "Informe o motivo da ativacao"}
+                  placeholder={statusAction === "cancel" ? "Descreva o motivo do cancelamento" : "Descreva o motivo da ativacao"}
                   rows={4}
+                  required
                 />
               </label>
 
               <div className={styles.actions}>
+                <button type="button" className={styles.ghostButton} onClick={closeStatusModal} disabled={isChangingStatus}>
+                  Voltar
+                </button>
                 <button
                   type="button"
-                  className={statusActivity.isActive ? styles.dangerButton : styles.primaryButton}
+                  className={statusAction === "cancel" ? styles.dangerButton : styles.primaryButton}
                   onClick={() => void confirmStatusChange()}
                   disabled={!canSubmitStatusChange}
                 >
                   {isChangingStatus
-                    ? statusActivity.isActive
+                    ? statusAction === "cancel"
                       ? "Cancelando..."
                       : "Ativando..."
-                    : statusActivity.isActive
+                    : statusAction === "cancel"
                       ? "Confirmar cancelamento"
                       : "Confirmar ativacao"}
-                </button>
-                <button type="button" className={styles.ghostButton} onClick={closeStatusModal} disabled={isChangingStatus}>
-                  Fechar
                 </button>
               </div>
             </div>
@@ -1133,3 +1234,6 @@ export function ActivitiesPageView() {
     </section>
   );
 }
+
+
+

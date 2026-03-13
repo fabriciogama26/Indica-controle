@@ -1,0 +1,144 @@
+Tela: Pessoas SaaS
+
+Visao geral
+-----------
+- Tela para cadastro e manutencao de pessoas operacionais por tenant.
+- Permite cadastrar, editar, consultar, cancelar/ativar e auditar alteracoes.
+- Consome catalogos de `Cargo`, `Tipo por Cargo` e `Nivel`.
+- Segue o mesmo padrao visual de `Projetos`, `Atividades` e `Equipes`.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/pessoas/page.tsx`
+- View: `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+- Estilo: `src/modules/dashboard/pessoas/PeoplePageView.module.css`
+- API principal: `src/app/api/people/route.ts`
+- API de metadados: `src/app/api/people/meta/route.ts`
+- Banco (base people/job_titles): `supabase/migrations/014_create_people_job_titles.sql`
+- Banco (matricula): `supabase/migrations/035_add_matriculation_to_people.sql`
+- Banco (tipos por cargo): `supabase/migrations/047_create_job_title_types_and_people_type_link.sql`
+- Banco (niveis): `supabase/migrations/048_create_job_levels_and_people_level_link.sql`
+- Banco (historico generico): `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- Banco (status/cancelamento people): `supabase/migrations/055_add_people_status_and_cancellation_fields.sql`
+- Banco (bloqueio de duplicidade people): `supabase/migrations/056_prevent_people_duplicate_identity.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `Nome`
+  - `Cargo`
+- Campos opcionais:
+  - `Matricula`
+  - `Tipo` (dependente do cargo selecionado)
+  - `Nivel`
+- Regras:
+  - `Tipo` so lista opcoes vinculadas ao `Cargo` selecionado.
+  - `Nivel` precisa existir em `job_levels` ativo no tenant.
+  - `Tipo` precisa existir em `job_title_types` ativo no tenant e no mesmo cargo.
+  - Bloqueio de duplicidade por combinacao: `Nome + Matricula + Cargo + Tipo + Nivel` no mesmo tenant.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+- Fluxos:
+  - `POST /api/people` para cadastro.
+  - `PUT /api/people` para edicao.
+  - `PATCH /api/people` para cancelamento/ativacao com motivo obrigatorio.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Nome`
+  - `Matricula`
+  - `Cargo`
+  - `Tipo` (dependente de cargo no filtro)
+  - `Nivel`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`)
+  - Colunas: Nome, Matricula, Cargo, Tipo, Nivel, Registrado em, Acoes
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`
+  - Botao `Exportar Excel (CSV)` no cabecalho
+- Historico:
+  - Fonte: `app_entity_history`
+  - Modal com paginacao fixa de `5` registros por pagina
+
+Boas praticas
+-------------
+- Sempre validar `tenant_id` em todas as operacoes.
+- Nao aceitar `Tipo` fora do `Cargo` escolhido.
+- Nao aceitar `Nivel` inexistente/inativo no tenant.
+- Registrar alteracoes em `app_entity_history` para `UPDATE`, `CANCEL`, `ACTIVATE`.
+- Manter motivo obrigatorio em cancelamento/ativacao.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento/ativacao implementado em `people`.
+- Campos de status:
+  - `ativo`
+  - `cancellation_reason`
+  - `canceled_at`
+  - `canceled_by`
+- Regra de consistencia:
+  - Ativo: sem dados de cancelamento.
+  - Inativo: com data e motivo.
+- Saldo:
+  - Nao se aplica ao modulo de pessoas.
+
+Atalhos
+-------
+- Rota principal: `/pessoas`
+- APIs:
+  - `GET/POST/PUT/PATCH /api/people`
+  - `GET /api/people/meta`
+
+Atualizacao 2026-03
+-------------------
+- Tela `Pessoas` saiu de placeholder para implementacao completa.
+- Criadas APIs de listagem/cadastro/edicao/status/historico e metadados.
+- Criada migration `055_add_people_status_and_cancellation_fields.sql` para status com motivo.
+- Criada migration `056_prevent_people_duplicate_identity.sql` para bloquear duplicidade no cadastro/edicao.
+- Implementada exportacao CSV na listagem.
+- Integracao com catalogos `job_titles`, `job_title_types` e `job_levels`.
+- Antes: tela apenas informativa (placeholder).
+- Depois: CRUD completo com filtros, paginacao, exportacao, historico e controle de status.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/app/api/people/route.ts`
+  - Responsavel por: `GET`, `POST`, `PUT`, `PATCH` de pessoas com validacao de tenant/cargo/tipo/nivel.
+- Caminho: `src/app/api/people/meta/route.ts`
+  - Responsavel por: carregar metadados de cargos, tipos por cargo e niveis.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`.
+- Caminho: `supabase/migrations/055_add_people_status_and_cancellation_fields.sql`
+  - Responsavel por: campos de cancelamento em `people` e regra de consistencia ativo/inativo.
+- Caminho: `supabase/migrations/056_prevent_people_duplicate_identity.sql`
+  - Responsavel por: bloqueio de duplicidade por nome + matricula + cargo + tipo + nivel no tenant.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: validar sessao e resolver tenant nas rotas `/api/people*`.
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: token da sessao para chamadas autenticadas do frontend.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handlers (`/api/people`, `/api/people/meta`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/pessoas/page.tsx`
+  - `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+  - `src/modules/dashboard/pessoas/PeoplePageView.module.css`
+  - `src/app/api/people/route.ts`
+  - `src/app/api/people/meta/route.ts`
+  - `supabase/migrations/055_add_people_status_and_cancellation_fields.sql`
+  - `supabase/migrations/056_prevent_people_duplicate_identity.sql`
+- Funcoes/hooks/constantes tocadas:
+  - `loadMeta`, `loadPeople`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`, `handleExportPeople`
+- Comportamento antes/depois:
+  - Antes: tela de Pessoas em placeholder.
+  - Depois: tela operacional completa no padrao SaaS de cadastros.
