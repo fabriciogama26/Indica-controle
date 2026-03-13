@@ -9,6 +9,8 @@ type ActivityItem = {
   id: string;
   code: string;
   description: string;
+  teamTypeId: string;
+  teamTypeName: string;
   group: string;
   value: number;
   unit: string;
@@ -36,6 +38,7 @@ type ActivityFormState = {
   id: string | null;
   code: string;
   description: string;
+  teamTypeId: string;
   group: string;
   value: string;
   unit: string;
@@ -45,6 +48,12 @@ type ActivityFormState = {
 type ActivityFilterState = {
   code: string;
   description: string;
+  teamTypeId: string;
+};
+
+type TeamTypeOption = {
+  id: string;
+  name: string;
 };
 
 type ActivitiesListResponse = {
@@ -59,6 +68,11 @@ type ActivityHistoryResponse = {
   message?: string;
 };
 
+type ActivitiesMetaResponse = {
+  teamTypes?: TeamTypeOption[];
+  message?: string;
+};
+
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 100;
@@ -66,6 +80,7 @@ const EXPORT_PAGE_SIZE = 100;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   code: "Codigo",
   description: "Descricao",
+  teamTypeName: "Tipo",
   group: "Grupo",
   value: "Valor",
   unit: "Unidade",
@@ -80,6 +95,7 @@ const INITIAL_FORM: ActivityFormState = {
   id: null,
   code: "",
   description: "",
+  teamTypeId: "",
   group: "",
   value: "",
   unit: "",
@@ -89,6 +105,7 @@ const INITIAL_FORM: ActivityFormState = {
 const INITIAL_FILTERS: ActivityFilterState = {
   code: "",
   description: "",
+  teamTypeId: "",
 };
 
 function normalizeText(value: string) {
@@ -107,6 +124,9 @@ function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_
   if (filters.description.trim()) {
     params.set("description", filters.description.trim());
   }
+  if (filters.teamTypeId.trim()) {
+    params.set("teamTypeId", filters.teamTypeId.trim());
+  }
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
@@ -121,10 +141,11 @@ function escapeCsvValue(value: string | number | null | undefined) {
 }
 
 function buildActivitiesCsv(activityItems: ActivityItem[]) {
-  const header = ["Codigo", "Descricao", "Valor", "Unidade", "Registrado em", "Status"];
+  const header = ["Codigo", "Descricao", "Tipo", "Valor", "Unidade", "Registrado em", "Status"];
   const rows = activityItems.map((activity) => [
     activity.code,
     activity.description,
+    activity.teamTypeName,
     activity.value.toFixed(2),
     activity.unit,
     formatDateTime(activity.createdAt),
@@ -209,6 +230,8 @@ export function ActivitiesPageView() {
   const [form, setForm] = useState<ActivityFormState>(INITIAL_FORM);
   const [filterDraft, setFilterDraft] = useState<ActivityFilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<ActivityFilterState>(INITIAL_FILTERS);
+  const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
+  const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -231,6 +254,42 @@ export function ActivitiesPageView() {
   const isEditing = Boolean(form.id);
   const statusAction = statusActivity?.isActive ? "cancel" : "activate";
   const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
+
+  const loadMeta = useCallback(async () => {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    setIsLoadingMeta(true);
+    try {
+      const response = await fetch("/api/activities/meta", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as ActivitiesMetaResponse;
+      if (!response.ok) {
+        setTeamTypes([]);
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao carregar metadados de atividades.",
+        });
+        return;
+      }
+
+      setTeamTypes(data.teamTypes ?? []);
+    } catch {
+      setTeamTypes([]);
+      setFeedback({
+        type: "error",
+        message: "Falha ao carregar metadados de atividades.",
+      });
+    } finally {
+      setIsLoadingMeta(false);
+    }
+  }, [session?.accessToken]);
 
   const loadActivities = useCallback(
     async (targetPage: number, filters: ActivityFilterState) => {
@@ -321,6 +380,10 @@ export function ActivitiesPageView() {
   );
 
   useEffect(() => {
+    void loadMeta();
+  }, [loadMeta]);
+
+  useEffect(() => {
     void loadActivities(page, activeFilters);
   }, [activeFilters, loadActivities, page]);
 
@@ -352,6 +415,7 @@ export function ActivitiesPageView() {
       id: activity.id,
       code: activity.code,
       description: activity.description,
+      teamTypeId: activity.teamTypeId,
       group: activity.group,
       value: toInputMoney(activity.value),
       unit: activity.unit,
@@ -407,6 +471,7 @@ export function ActivitiesPageView() {
         id: form.id,
         code: normalizeCode(form.code),
         description: normalizeText(form.description),
+        teamTypeId: normalizeText(form.teamTypeId),
         group: normalizeText(form.group) || null,
         value: form.value,
         unit: normalizeText(form.unit),
@@ -612,6 +677,27 @@ export function ActivitiesPageView() {
 
           <label className={styles.field}>
             <span>
+              Tipo <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={form.teamTypeId}
+              onChange={(event) => setForm((current) => ({ ...current, teamTypeId: event.target.value }))}
+              required
+              disabled={isLoadingMeta}
+            >
+              <option value="" disabled>
+                {isLoadingMeta ? "Carregando..." : "Selecione"}
+              </option>
+              {teamTypes.map((teamType) => (
+                <option key={teamType.id} value={teamType.id}>
+                  {teamType.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
               Valor <span className="requiredMark">*</span>
             </span>
             <input
@@ -674,6 +760,22 @@ export function ActivitiesPageView() {
               placeholder="Filtrar por descricao"
             />
           </label>
+
+          <label className={styles.field}>
+            <span>Tipo</span>
+            <select
+              value={filterDraft.teamTypeId}
+              onChange={(event) => updateFilterField("teamTypeId", event.target.value)}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Todos</option>
+              {teamTypes.map((teamType) => (
+                <option key={teamType.id} value={teamType.id}>
+                  {teamType.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className={styles.actions}>
@@ -705,6 +807,7 @@ export function ActivitiesPageView() {
               <tr>
                 <th>Codigo</th>
                 <th>Descricao</th>
+                <th>Tipo</th>
                 <th>Valor</th>
                 <th>Unidade</th>
                 <th>Registrado em</th>
@@ -722,6 +825,7 @@ export function ActivitiesPageView() {
                       </div>
                     </td>
                     <td>{activity.description}</td>
+                    <td>{activity.teamTypeName}</td>
                     <td>{formatMoney(activity.value)}</td>
                     <td>{activity.unit}</td>
                     <td>{formatDateTime(activity.createdAt)}</td>
@@ -816,7 +920,7 @@ export function ActivitiesPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className={styles.emptyRow}>
+                  <td colSpan={7} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando atividades..." : "Nenhuma atividade encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -869,6 +973,7 @@ export function ActivitiesPageView() {
                 <div><strong>Status:</strong> {detailActivity.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Codigo:</strong> {detailActivity.code}</div>
                 <div><strong>Descricao:</strong> {detailActivity.description}</div>
+                <div><strong>Tipo:</strong> {detailActivity.teamTypeName}</div>
                 <div><strong>Grupo:</strong> {detailActivity.group || "-"}</div>
                 <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
                 <div><strong>Unidade:</strong> {detailActivity.unit}</div>
