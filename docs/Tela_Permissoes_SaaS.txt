@@ -105,6 +105,7 @@ Atualizacao 2026-03
 - Migration `049_create_service_activities_and_page_permissions.sql` criada para incluir `atividades` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Migration `052_create_teams_and_page_permissions.sql` criada para incluir `equipes` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Migration `053_create_team_types_and_link_teams.sql` criada para incluir `tipo-equipe` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- Migration `058_enforce_rls_no_all_no_delete.sql` criada para revisar policies RLS de cadastros/permissoes e remover `FOR ALL`/`DELETE`, mantendo escrita apenas com `INSERT` e `UPDATE`.
 - Route `src/app/api/app-users/[userId]/permissions/route.ts` criada para carregar e salvar credenciais por usuario.
 - Route `src/app/api/app-users/[userId]/invite/route.ts` criada para enviar o convite de primeiro acesso a partir do pre-cadastro em `app_users`.
 - Route `src/app/api/auth/session-access/route.ts` criada para devolver as telas liberadas ao usuario autenticado.
@@ -161,6 +162,8 @@ Constantes e configuracoes
   - Responsavel por: criar `app_user_permission_history` para auditoria de alteracoes administrativas.
 - Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
   - Responsavel por: atualizar secoes em `app_pages` e garantir backfill de permissoes para o novo menu.
+- Caminho: `supabase/migrations/058_enforce_rls_no_all_no_delete.sql`
+  - Responsavel por: padronizar policies RLS de escrita em cadastros/permissoes para `INSERT` e `UPDATE`, sem `FOR ALL` e sem `DELETE`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
@@ -176,5 +179,7 @@ Ajuda contextual
 - Estado atual: o save usa apenas `can_access`, sem matriz individual de `select/insert/update`.
 - Estado atual: toda alteracao de role, status, telas liberadas e envio de convite passa a gerar historico em `app_user_permission_history`.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.
+- Antes: parte das tabelas de cadastro/permissao ainda usava policy `FOR ALL`, que tambem permitia caminho de `DELETE`.
+- Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.
 - Antes: o `next build` nao conseguia inferir com seguranca que o operador admin tinha `role_id` obrigatorio.
 - Depois: `src/lib/server/appUsersAdmin.ts` aplica uma guarda explicita para manter o contrato tipado das rotas administrativas e liberar o build do Vercel.
