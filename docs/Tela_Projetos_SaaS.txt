@@ -39,6 +39,7 @@ Arquitetura
 - Banco (flag operacional de locacao): `supabase/migrations/060_add_project_has_locacao.sql`
 - Banco (atividades previstas por projeto + seed da locacao): `supabase/migrations/064_create_project_activity_forecast.sql`
 - Banco (materiais manuais + importacao protegida de atividades): `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
+- Banco (concorrencia e limites dos previstos): `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
 
 Cadastro
 --------
@@ -91,6 +92,8 @@ Cadastro
   - Permite baixar modelo XLSX oficial.
   - Permite importar planilha XLSX (somente `codigo` e `quantidade`) para adicionar materiais previstos.
   - A inclusao manual e a edicao em linha passam pela RPC `save_project_material_forecast`.
+  - A inclusao manual e a edicao em linha limitam quantidade a `100000` no frontend e na RPC.
+  - A edicao em linha envia `expectedUpdatedAt` para bloquear sobrescrita silenciosa por concorrencia.
   - A importacao valida via RPC e bloqueia codigo duplicado no arquivo e codigo ja importado no projeto.
 - Aba `Atividades previstas`:
   - Recebe selecao de projeto pela lista (acao `Atividades previstas`).
@@ -102,6 +105,8 @@ Cadastro
   - Permite importar planilha XLSX (somente `codigo` e `quantidade`) para adicionar atividades previstas.
   - Permite editar `quantidade` e `observacao` diretamente na linha.
   - Bloqueia quantidade `<= 0` no backend via RPC `save_project_activity_forecast`.
+  - A inclusao manual e a edicao em linha limitam quantidade a `100000` no frontend e na RPC.
+  - A edicao em linha envia `expectedUpdatedAt` para bloquear sobrescrita silenciosa por concorrencia.
   - A importacao valida via RPC e bloqueia codigo duplicado no arquivo e codigo ja importado no projeto.
 
 Filtros, auto-complete e listagem
@@ -150,6 +155,8 @@ Boas praticas
 - A planilha de importacao de previstos deve conter somente `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
 - A planilha de importacao de atividades previstas deve conter somente `codigo` e `quantidade`; descricao/unidade/tipo/valor unitario vem do cadastro base `service_activities`.
 - `Atividades previstas` do projeto devem ser mantidas com quantidade maior que zero e servem de base para bootstrap inicial da aba `Atividades previstas` na `Locacao`.
+- Exigir controle de concorrencia por `updated_at` na edicao em linha de `Materiais previstos` e `Atividades previstas`.
+- Aplicar limite superior `<= 100000` para quantidades manuais e para edicao em linha dos previstos do projeto.
 
 Cancelamento e saldo
 --------------------
@@ -207,11 +214,13 @@ Atualizacao 2026-03
   - adicionar a RPC `save_project_material_forecast`
   - proteger a importacao de `Atividades previstas` por RPC
   - permitir inclusao manual e edicao de `Materiais previstos` no projeto
+- Criada migration `066_harden_location_and_project_forecast_rpcs.sql` para adicionar controle de concorrencia por `updated_at` e limite maximo de quantidade nas RPCs de `Materiais previstos` e `Atividades previstas` do projeto.
 - Antes: nao havia marcador simples para saber se o projeto passou pela tela de `Locacao`.
 - Depois: o projeto passa a registrar `has_locacao = true` quando existe salvamento real na `Locacao`.
 - Importacao e download de modelo de `Materiais previstos` passaram a ser feitos por Edge Functions (`get_project_forecast_template` e `import_project_forecast`).
 - Importacao e download de modelo de `Atividades previstas` passam a ser feitos por Edge Functions (`get_project_activity_forecast_template` e `import_project_activity_forecast`).
 - A rota Next `src/app/api/projects/forecast/route.ts` deixa de ser apenas listagem e passa a aceitar inclusao/edicao manual via RPC.
+- As rotas de previstos do projeto passam a enviar `expectedUpdatedAt` na edicao em linha para bloquear sobrescrita concorrente.
 - Incluido botao `Materiais previstos` na coluna `Acoes` da lista de projetos.
 - Ajustada UX da aba `Materiais previstos` para ter filtros e lista proprios de materiais, sem exibir os blocos de filtros/lista de projetos nessa aba.
 - Ajustado o modelo XLSX de `Materiais previstos` para aceitar apenas as colunas `codigo` e `quantidade`.
@@ -229,11 +238,11 @@ Funcoes principais
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
-  - Responsavel por: listar, incluir e editar materiais previstos do projeto.
+  - Responsavel por: listar, incluir e editar materiais previstos do projeto, enviando `expectedUpdatedAt` para a RPC na edicao em linha.
 - Caminho: `src/app/api/projects/forecast/catalog/route.ts`
   - Responsavel por: pesquisar materiais ativos do tenant para incluir no previsto do projeto.
 - Caminho: `src/app/api/projects/activity-forecast/route.ts`
-  - Responsavel por: listar, incluir e editar atividades previstas do projeto.
+  - Responsavel por: listar, incluir e editar atividades previstas do projeto, enviando `expectedUpdatedAt` para a RPC na edicao em linha.
 - Caminho: `src/app/api/projects/activity-forecast/catalog/route.ts`
   - Responsavel por: pesquisar atividades ativas do tenant para incluir no previsto do projeto.
 - Caminho: `supabase/edge_functions/get_project_forecast_template/index.ts`
@@ -270,6 +279,8 @@ Constantes e configuracoes
   - Responsavel por: RPC de pre-check e RPC de append para proteger importacoes contra duplicidade.
 - Caminho: `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
   - Responsavel por: RPC `save_project_material_forecast` e RPCs de pre-check/importacao de `Atividades previstas`.
+- Caminho: `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
+  - Responsavel por: endurecer as RPCs de previstos do projeto com concorrencia por `updated_at` e limite maximo de quantidade.
 - Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
 - Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
@@ -310,11 +321,14 @@ Ajuda contextual
   - `supabase/migrations/064_create_project_activity_forecast.sql`
   - `supabase/migrations/043_project_forecast_import_guards.sql`
   - `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
+  - `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
   - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
   - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `handleForecastProjectSearchChange`, `addProjectForecast`, `saveProjectForecastRow`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
   - `openActivityForecastTab`, `loadActivityForecast`, `handleActivityForecastProjectSelection`, `handleActivityForecastProjectSearchChange`, `addProjectActivityForecast`, `saveProjectActivityForecastRow`, `handleDownloadActivityForecastTemplate`, `submitActivityForecastImport`, `handleExportActivityForecastItems`
+  - `save_project_material_forecast`
+  - `save_project_activity_forecast`
   - Mapeamento de `hasLocacao` no retorno de `/api/projects`
   - `GET`, `POST` e `PUT` de `/api/projects/forecast`
   - `GET` de `/api/projects/forecast/catalog`

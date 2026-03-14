@@ -376,6 +376,7 @@ export async function saveLocationPlanViaRpc(params: {
   notes: string;
   questionnaireAnswers: Record<string, unknown>;
   risks: Array<{ id?: string; isActive?: boolean }>;
+  expectedUpdatedAt?: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_project_location_plan", {
     p_tenant_id: params.tenantId,
@@ -384,6 +385,7 @@ export async function saveLocationPlanViaRpc(params: {
     p_notes: params.notes,
     p_questionnaire_answers: params.questionnaireAnswers,
     p_risks: params.risks,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
 
   if (error) {
@@ -420,6 +422,7 @@ export async function saveLocationMaterialViaRpc(params: {
   itemId?: string | null;
   materialId?: string | null;
   observation?: string | null;
+  expectedUpdatedAt?: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_project_location_material", {
     p_tenant_id: params.tenantId,
@@ -429,6 +432,7 @@ export async function saveLocationMaterialViaRpc(params: {
     p_item_id: params.itemId ?? null,
     p_material_id: params.materialId ?? null,
     p_observation: params.observation ?? null,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
 
   if (error) {
@@ -467,6 +471,7 @@ export async function saveLocationActivityViaRpc(params: {
   itemId?: string | null;
   activityId?: string | null;
   observation?: string | null;
+  expectedUpdatedAt?: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_project_location_activity", {
     p_tenant_id: params.tenantId,
@@ -476,6 +481,7 @@ export async function saveLocationActivityViaRpc(params: {
     p_item_id: params.itemId ?? null,
     p_activity_id: params.activityId ?? null,
     p_observation: params.observation ?? null,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
 
   if (error) {

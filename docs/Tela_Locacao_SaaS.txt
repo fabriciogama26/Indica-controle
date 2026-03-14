@@ -27,8 +27,10 @@ Arquitetura
   - `supabase/migrations/059_create_location_planning.sql`
   - `supabase/migrations/061_create_location_risks.sql`
   - `supabase/migrations/062_create_location_execution_support_items.sql`
+  - `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
   - `supabase/migrations/063_create_location_save_rpcs.sql`
   - `supabase/migrations/064_create_project_activity_forecast.sql`
+  - `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
 
 Cadastro
 --------
@@ -37,8 +39,9 @@ Cadastro
   - `Observacoes` (opcional)
   - `Necessario revisao de projeto?` (obrigatorio)
   - `Com desligamento?` (obrigatorio)
-  - Quantidades de equipes de execucao (`CESTO`, `LINHA MORTA`, `LINHA VIVA`, `PODA LINHA MORTA`, `PODA LINHA VIVA`) obrigatorias, sem aceitar negativo, iniciadas com `0` e exigindo pelo menos um valor maior que `0`
-  - `ETAPAS PREVISTAS` obrigatorio, sem aceitar negativo, iniciado com `0` e exigindo valor maior que `0`
+  - `Observacoes` passa a ser obrigatoria quando `Necessario revisao de projeto? = Sim` ou `Com desligamento? = Sim`
+  - Quantidades de equipes de execucao (`CESTO`, `LINHA MORTA`, `LINHA VIVA`, `PODA LINHA MORTA`, `PODA LINHA VIVA`) obrigatorias, sem aceitar negativo, iniciadas com `0`, somente inteiras, exigindo pelo menos um valor maior que `0` e limitadas a `50`
+  - `ETAPAS PREVISTAS` obrigatorio, sem aceitar negativo, iniciado com `0`, somente inteiro, exigindo valor maior que `0` e limitado a `1000`
   - `Observacao` da previsao de execucao
   - `Observacao` do `Pre APR`
 - Estrutura futura ja preparada:
@@ -110,9 +113,13 @@ Boas praticas
 - Validar no frontend e no backend os campos obrigatorios da aba principal da `Locacao` antes do `PUT`.
 - Bloquear o salvar da locacao quando todas as equipes de execucao estiverem em `0`.
 - Bloquear o salvar da locacao quando `ETAPAS PREVISTAS` estiver em `0`.
+- Bloquear o salvar da locacao quando existir revisao de projeto ou desligamento sem `Observacoes`.
+- Manter `CESTO`, `LINHA MORTA`, `LINHA VIVA`, `PODA LINHA MORTA`, `PODA LINHA VIVA` e `ETAPAS PREVISTAS` como inteiros no frontend e na RPC.
+- Aplicar limite superior nas RPCs: equipes `<= 50`, etapas `<= 1000` e quantidades de materiais/atividades `<= 100000`.
 - Tratar listas de apoio de execucao e riscos como incluidas por padrao; so os itens removidos/inativos entram na persistencia do salvar.
 - Centralizar a regra final de persistencia da Locacao em RPC, mantendo o frontend apenas como camada de UX.
 - Manter os `check constraints` de `project_location_materials.planned_qty > 0` e `project_location_activities.planned_qty > 0` como defesa adicional no banco.
+- Exigir controle de concorrencia por `updated_at` na edicao da aba principal, de materiais e de atividades para evitar sobrescrita silenciosa entre usuarios.
 
 Cancelamento e saldo
 --------------------
@@ -141,6 +148,7 @@ Atualizacao 2026-03
 - Criada migration `063_create_location_save_rpcs.sql` para centralizar em RPC o salvamento validado da aba principal, dos materiais previstos e das atividades previstas da locacao.
 - Criada migration `064_create_project_activity_forecast.sql` para fazer a `Locacao` seedar `Atividades previstas` a partir do previsto do projeto quando a lista da locacao ainda estiver vazia.
 - Criada migration `065_project_forecast_manual_and_activity_import.sql` para permitir que as bases de `Materiais previstos` e `Atividades previstas` em `Projetos` cheguem a `Locacao` tanto por importacao em massa quanto por cadastro manual.
+- Criada migration `066_harden_location_and_project_forecast_rpcs.sql` para adicionar controle de concorrencia por `updated_at`, obrigatoriedade condicional de `Observacoes`, limites maximos e validacao estrita de inteiros nas RPCs da `Locacao`.
 - A inicializacao da locacao passa a copiar os materiais de `project_material_forecast` para a base propria da locacao apenas na primeira carga do projeto.
 - Antes: alterar materiais previstos da locacao exigiria mexer no previsto original do projeto.
 - Depois: a locacao passa a manter `original_qty` e `planned_qty` separados para comparacao.
@@ -166,6 +174,8 @@ Atualizacao 2026-03
 - O salvar da aba principal passou a exigir pelo menos uma equipe com quantidade maior que `0` e `ETAPAS PREVISTAS` maior que `0`.
 - O backend da locacao deixou de depender de `insert/update` direto e passou a usar RPCs para aplicar as regras de bloqueio no banco.
 - `Materiais previstos` e `Atividades previstas` ja tinham protecao estrutural no schema com `planned_qty > 0`; agora tambem passam por RPC antes de persistir.
+- As RPCs da `Locacao` passam a rejeitar sobrescrita quando o `updated_at` enviado pela tela nao bate com o registro atual do banco.
+- `Materiais previstos` e `Atividades previstas` da `Locacao` passam a limitar quantidade em `100000`, alem da regra `> 0`.
 - `Atividades previstas` e `Materiais previstos` continuam com salvamento explicito por acao: `Adicionar ...` para inclusao e `Salvar` por linha para edicao.
 - Adicionada declaracao local `src/types/xlsx.d.ts` e ajuste em `src/lib/server/projectForecastXlsx.ts` para destravar o `build` atual do projeto.
 
@@ -173,13 +183,13 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
-  - Responsavel por: filtro por municipio, busca de projeto por SOB, carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e persistencia geral da locacao.
+  - Responsavel por: filtro por municipio, busca de projeto por SOB, carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e envio de `expectedUpdatedAt` nas acoes de salvar.
 - Caminho: `src/app/api/locacao/route.ts`
-  - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, chamando a RPC `save_project_location_plan` e registrando historico.
+  - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, chamando a RPC `save_project_location_plan`, enviando `expectedUpdatedAt` e registrando historico.
 - Caminho: `src/app/api/locacao/materials/route.ts`
-  - Responsavel por: adicionar materiais manuais e editar quantidade/observacao dos materiais da locacao via RPC `save_project_location_material`.
+  - Responsavel por: adicionar materiais manuais e editar quantidade/observacao dos materiais da locacao via RPC `save_project_location_material`, com controle de concorrencia por `updated_at`.
 - Caminho: `src/app/api/locacao/activities/route.ts`
-  - Responsavel por: adicionar atividades e editar quantidade/observacao das atividades da locacao via RPC `save_project_location_activity`.
+  - Responsavel por: adicionar atividades e editar quantidade/observacao das atividades da locacao via RPC `save_project_location_activity`, com controle de concorrencia por `updated_at`.
 - Caminho: `src/lib/server/locationPlanning.ts`
   - Responsavel por: garantir a criacao da locacao, carregar snapshot consolidado com apoio de execucao e riscos, encapsular as RPCs de salvamento e registrar historico no `app_entity_history`.
 
@@ -236,7 +246,6 @@ Ajuda contextual
   - `saveRow`
   - `validateLocationBeforeSave`
   - `normalizeLocationIntegerFields`
-  - `validateAndNormalizeLocationQuestionnaire`
   - `saveLocationPlanViaRpc`
   - `saveLocationMaterialViaRpc`
   - `saveLocationActivityViaRpc`
@@ -260,3 +269,5 @@ Ajuda contextual
   - Depois: o salvar da aba principal exibe feedback local e valida campos obrigatorios antes de persistir.
   - Antes: as rotas da locacao gravavam diretamente nas tabelas do modulo.
   - Depois: as rotas passam a chamar RPCs do banco, deixando as regras de bloqueio centralizadas no schema.
+  - Antes: a RPC da locacao bloqueava negativo e zero, mas ainda permitia sobrescrita concorrente e nao exigia observacao quando havia revisao/desligamento.
+  - Depois: a RPC da locacao valida `updated_at`, exige observacao condicional, limita valores maximos e rejeita decimais nas equipes e em `ETAPAS PREVISTAS`.
