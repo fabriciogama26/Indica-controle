@@ -43,6 +43,7 @@ type ServiceCenterRow = {
 type SupportOptionRow = {
   id: string;
   description: string;
+  location_support_item_id: string | null;
   is_active: boolean;
 };
 
@@ -230,13 +231,6 @@ function normalizeStringArray(value: unknown) {
   return value.map((item) => normalizeText(item)).filter(Boolean);
 }
 
-function normalizeDescriptionKey(value: string) {
-  return normalizeText(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase();
-}
-
 function startOfWeekMonday(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(year, month - 1, day);
@@ -387,8 +381,8 @@ async function fetchSupportOptions(
   tenantId: string,
 ) {
   const { data, error } = await supabase
-    .from("location_execution_support_items")
-    .select("id, description, is_active")
+    .from("programming_support_items")
+    .select("id, description, location_support_item_id, is_active")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("description", { ascending: true })
@@ -411,10 +405,10 @@ async function fetchProjectSupportDefaults(params: {
     return new Map<string, { supportItemId: string; supportLabel: string }>();
   }
 
-  const guardaMunicipalOption =
-    params.supportOptions.find((item) => normalizeDescriptionKey(item.description) === "GUARDA MUNICIPAL") ?? null;
+  const linkedTransitOption =
+    params.supportOptions.find((item) => item.location_support_item_id === "90e570df-732f-43dd-9851-8fd8178ce1fc") ?? null;
 
-  if (!guardaMunicipalOption) {
+  if (!linkedTransitOption) {
     return new Map<string, { supportItemId: string; supportLabel: string }>();
   }
 
@@ -437,8 +431,8 @@ async function fetchProjectSupportDefaults(params: {
 
     if (!removedSupportItemIds.has("90e570df-732f-43dd-9851-8fd8178ce1fc")) {
       defaults.set(plan.project_id, {
-        supportItemId: guardaMunicipalOption.id,
-        supportLabel: normalizeText(guardaMunicipalOption.description),
+        supportItemId: linkedTransitOption.id,
+        supportLabel: normalizeText(linkedTransitOption.description),
       });
     }
   }

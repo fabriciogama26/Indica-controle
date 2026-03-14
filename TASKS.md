@@ -130,7 +130,7 @@
 - [x] Exigir motivo minimo na reprogramacao/cancelamento da `Programacao` e avisar ao fechar a tela com alteracao pendente.
 - [x] Tornar `/api/projects` tolerante a schema legado de `project_with_labels` sem `has_locacao`.
 - [x] Mover a carga semanal da `Programacao` para RPC de resumo no backend e trocar `Apoio` para catalogo com sugestao automatica baseada na `Locacao`.
-- [ ] Fixar o ID oficial do apoio `Guarda Municipal` na `Programacao` para substituir o match temporario por descricao no auto-preenchimento.
+- [x] Criar catalogo proprio de `Apoio` da `Programacao` com vinculacao ao catalogo da `Locacao`.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

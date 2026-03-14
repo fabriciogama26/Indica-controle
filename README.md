@@ -153,7 +153,7 @@ vercel --prod
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico.
   - `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
-  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, resume a carga semanal por equipe, sugere apoio a partir da locacao, salva a agenda real da tela de Programacao, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
+  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
@@ -174,7 +174,7 @@ vercel --prod
   - `LocationPageView.tsx`: tela de locacao com filtro por municipio, busca por SOB, 4 blocos operacionais, feedback local de salvamento, atividades previstas e materiais previstos.
   - `LocationPageView.module.css`: estilos da tela de locacao.
 - `src/modules/dashboard/programacao/`
-  - `ProgrammingPageView.tsx`: tela de programacao com painel de projetos pendentes, indicador de locacao no card da obra, timeline por equipe, carga semanal real do backend, cards agendados, drag and drop, validacao de reprogramacao, adiamento/cancelamento por motivo, apoio por selectbox e integracao autenticada com `/api/programacao`.
+  - `ProgrammingPageView.tsx`: tela de programacao com painel de projetos pendentes, indicador de locacao no card da obra, timeline por equipe, carga semanal real do backend, cards agendados, drag and drop, validacao de reprogramacao, adiamento/cancelamento por motivo, apoio por selectbox do catalogo proprio e integracao autenticada com `/api/programacao`.
   - `ProgrammingPageView.module.css`: estilos da tela de programacao.
 - `src/modules/dashboard/equipes/`
   - `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, historico e cancelamento/ativacao.
@@ -236,7 +236,7 @@ vercel --prod
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
   - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, historico e troca de status.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
-  - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
+  - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
   - `Tela_Medicao_SaaS.txt`: placeholder do modulo de medicao.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.

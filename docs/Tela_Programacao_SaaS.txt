@@ -17,6 +17,7 @@ Arquitetura
   - `supabase/migrations/067_create_project_programming.sql`
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
+  - `supabase/migrations/072_create_programming_support_items.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
 Cadastro
@@ -36,8 +37,9 @@ Cadastro
   - Apoio por selectbox de catalogo
   - Anotacao
 - Regra de apoio:
-  - O campo `Apoio` deixa de ser texto livre e passa a consumir o catalogo `location_execution_support_items`.
-  - Quando a obra possui `Locacao` e o item de apoio de transito `90e570df-732f-43dd-9851-8fd8178ce1fc` estiver incluido na locacao, a Programacao preseleciona automaticamente `Guarda Municipal`.
+  - O campo `Apoio` deixa de ser texto livre e passa a consumir o catalogo `programming_support_items`.
+  - Cada item de `programming_support_items` pode apontar para um item da locacao em `location_execution_support_items`.
+  - Quando a obra possui `Locacao` e o item de apoio de transito `90e570df-732f-43dd-9851-8fd8178ce1fc` estiver incluido na locacao, a Programacao preseleciona automaticamente o item de `programming_support_items` vinculado a esse apoio da locacao.
   - O valor salvo na programacao guarda tanto o `support_item_id` quanto o texto snapshot do apoio.
 - Regra dos documentos:
   - `Data inclusao` nao e digitada manualmente.
@@ -96,7 +98,7 @@ Boas praticas
 - Manter `programacao` como `pageKey` oficial no controle de permissao.
 - Toda operacao continua restrita ao tenant autenticado via `resolveAuthenticatedAppUser`, `tenant_id` e RLS.
 - As migrations `067` e `068` formalizam a base multi-tenant da programacao, o vinculo de base da equipe e a RPC transacional de salvamento.
-- A migration `071` move o resumo semanal de carga para o banco e vincula o apoio da programacao ao catalogo da locacao.
+- As migrations `071` e `072` movem o resumo semanal de carga para o banco e formalizam o catalogo proprio de apoio da Programacao com vinculacao ao catalogo da Locacao.
 - A API registra historico em `app_entity_history` com `module_key = programacao`.
 - O salvamento da programacao agora usa RPC com:
   - validacao de concorrencia por `expected_updated_at`
@@ -160,7 +162,13 @@ Atualizacao 2026-03
   - RPC `get_programming_week_summary`
   - resumo semanal persistido no backend com capacidade padrao de 5 dias
   - classificacao visual de carga `FREE`, `NORMAL`, `WARNING` e `OVERLOAD`
-  - vinculacao da programacao com o catalogo `location_execution_support_items`
+  - primeira vinculacao da programacao com apoio por catalogo
+- Arquivo `supabase/migrations/072_create_programming_support_items.sql` criado com:
+  - tabela `programming_support_items`
+  - vinculacao opcional de cada apoio da programacao a um item da locacao em `location_execution_support_items`
+  - backfill inicial do catalogo da locacao para o catalogo da programacao
+  - ajuste da FK de `project_programming.support_item_id` para a nova tabela
+  - revalidacao da RPC `save_project_programming` sobre o catalogo proprio da Programacao
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
@@ -197,6 +205,8 @@ Funcoes principais
   - Responsavel por: separar adiamento de cancelamento e bloquear inativacao de projeto com agenda pendente.
 - Caminho: `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - Responsavel por: calcular carga semanal no banco e ligar apoio da programacao ao catalogo da locacao.
+- Caminho: `supabase/migrations/072_create_programming_support_items.sql`
+  - Responsavel por: criar a tabela propria de apoio da Programacao e mapear seus itens para os apoios da Locacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -216,6 +226,8 @@ Servicos e integracoes externas
 - `project_with_labels`: backlog real de projetos ativos.
 - `teams`, `project_service_centers`, `team_types`, `people`: dados reais da equipe exibida na grade.
 - `service_activities`: catalogo real e snapshot de atividades salvas na programacao.
+- `programming_support_items`: catalogo proprio de apoio da Programacao.
+- `location_execution_support_items`: origem de mapeamento para auto-preenchimento do apoio pela Locacao.
 - `app_entity_history`: auditoria funcional da programacao.
 
 Ajuda contextual
@@ -228,6 +240,7 @@ Ajuda contextual
   - `supabase/migrations/069_add_programming_cancellation.sql`
   - `supabase/migrations/070_add_programming_status_and_project_guard.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
+  - `supabase/migrations/072_create_programming_support_items.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -237,4 +250,4 @@ Ajuda contextual
   - `INITIAL_PERIOD_START`
 - Comportamento antes/depois:
   - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional; nao havia cancelamento persistente nem diferenca entre cancelamento e adiamento.
-  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, resumo semanal de carga vindo do banco, apoio por catalogo com sugestao automatica da locacao, RPC transacional com concorrencia/sobreposicao, cancelamento persistente por motivo e adiamento separado por status.
+  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, resumo semanal de carga vindo do banco, apoio por catalogo proprio da Programacao com sugestao automatica pela Locacao, RPC transacional com concorrencia/sobreposicao, cancelamento persistente por motivo e adiamento separado por status.
