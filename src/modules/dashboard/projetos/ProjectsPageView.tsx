@@ -26,6 +26,7 @@ type ProjectItem = {
   serviceDescription: string | null;
   observation: string | null;
   isActive: boolean;
+  hasLocacao: boolean;
   cancellationReason: string | null;
   canceledAt: string | null;
   canceledByName: string | null;

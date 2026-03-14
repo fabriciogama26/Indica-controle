@@ -1,0 +1,1265 @@
+"use client";
+
+import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react";
+
+import { useAuth } from "@/hooks/useAuth";
+import styles from "./LocationPageView.module.css";
+
+type ProjectOption = {
+  id: string;
+  sob: string;
+  city: string;
+};
+
+type LocationState = {
+  project?: { id: string; sob: string; city: string };
+  plan?: {
+    notes: string;
+    questionnaireAnswers?: QuestionnaireAnswers;
+  } | null;
+  supportItems?: Array<{
+    id: string;
+    description: string;
+    isIncluded: boolean;
+  }>;
+  risks?: Array<{
+    id: string;
+    description: string;
+    isActive: boolean;
+  }>;
+  materials?: Array<{
+    id: string;
+    code: string;
+    description: string;
+    type: string | null;
+    originalQty: number;
+    plannedQty: number;
+    observation: string | null;
+  }>;
+  activities?: Array<{
+    id: string;
+    code: string;
+    description: string;
+    teamTypeName: string;
+    unit: string;
+    unitValue: number;
+    plannedQty: number;
+    observation: string | null;
+  }>;
+  summary?: {
+    materialsPlannedTotal: number;
+    activitiesPlannedTotal: number;
+  };
+  message?: string;
+  initialization?: {
+    seededMaterials: number;
+  };
+};
+
+type Draft = {
+  quantity: string;
+  observation: string;
+};
+
+type ListFilterState = {
+  code: string;
+  description: string;
+  type: string;
+};
+
+type QuestionnaireAnswers = {
+  planning?: {
+    needsProjectReview?: boolean | null;
+    withShutdown?: boolean | null;
+  };
+  executionTeams?: {
+    cestoQty?: number;
+    linhaMortaQty?: number;
+    linhaVivaQty?: number;
+    podaLinhaMortaQty?: number;
+    podaLinhaVivaQty?: number;
+  };
+  executionForecast?: {
+    stepsPlannedQty?: number;
+    observation?: string;
+    removedSupportItemIds?: string[];
+  };
+  preApr?: {
+    observation?: string;
+  };
+};
+
+type CatalogItem = {
+  id: string;
+  code: string;
+  description: string;
+  unit?: string;
+};
+
+type FeedbackScope = "page" | "location" | "activities" | "materials";
+
+type FeedbackState = {
+  type: "success" | "error";
+  message: string;
+  scope: FeedbackScope;
+};
+
+type LocationValidationState = {
+  needsProjectReview: boolean;
+  withShutdown: boolean;
+};
+
+function formatQuantity(value: number) {
+  return Number(value ?? 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+  }).format(value ?? 0);
+}
+
+function optionLabel(item: CatalogItem) {
+  return `${item.code} - ${item.description}`;
+}
+
+function getObjectRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function getNonNegativeIntegerInput(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "0";
+  }
+
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return "0";
+  }
+
+  return String(Math.trunc(numeric));
+}
+
+function parseNonNegativeInteger(value: string) {
+  const numeric = Number(String(value ?? "").trim());
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+
+  return Math.trunc(numeric);
+}
+
+function scrollDashboardContentToTop() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const content = document.querySelector<HTMLElement>('[data-main-content-scroll="true"]');
+  if (content) {
+    content.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+const INITIAL_LIST_FILTERS: ListFilterState = {
+  code: "",
+  description: "",
+  type: "",
+};
+
+const INITIAL_LOCATION_VALIDATION: LocationValidationState = {
+  needsProjectReview: false,
+  withShutdown: false,
+};
+
+export function LocationPageView() {
+  const { session } = useAuth();
+  const [cities, setCities] = useState<string[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [selectedCity, setSelectedCity] = useState("");
+  const [sobSearch, setSobSearch] = useState("");
+  const [state, setState] = useState<LocationState | null>(null);
+  const [notes, setNotes] = useState("");
+  const [needsProjectReview, setNeedsProjectReview] = useState<boolean | null>(null);
+  const [withShutdown, setWithShutdown] = useState<boolean | null>(null);
+  const [teamCestoQty, setTeamCestoQty] = useState("0");
+  const [teamLinhaMortaQty, setTeamLinhaMortaQty] = useState("0");
+  const [teamLinhaVivaQty, setTeamLinhaVivaQty] = useState("0");
+  const [teamPodaLinhaMortaQty, setTeamPodaLinhaMortaQty] = useState("0");
+  const [teamPodaLinhaVivaQty, setTeamPodaLinhaVivaQty] = useState("0");
+  const [executionStepsQty, setExecutionStepsQty] = useState("0");
+  const [executionObservation, setExecutionObservation] = useState("");
+  const [preAprObservation, setPreAprObservation] = useState("");
+  const [supportItemsDraft, setSupportItemsDraft] = useState<Array<{ id: string; description: string; isIncluded: boolean }>>([]);
+  const [riskDraft, setRiskDraft] = useState<Array<{ id: string; description: string; isActive: boolean }>>([]);
+  const [materialFilterDraft, setMaterialFilterDraft] = useState<ListFilterState>(INITIAL_LIST_FILTERS);
+  const [activityFilterDraft, setActivityFilterDraft] = useState<ListFilterState>(INITIAL_LIST_FILTERS);
+  const [activeMaterialFilter, setActiveMaterialFilter] = useState<ListFilterState>(INITIAL_LIST_FILTERS);
+  const [activeActivityFilter, setActiveActivityFilter] = useState<ListFilterState>(INITIAL_LIST_FILTERS);
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [activitySearch, setActivitySearch] = useState("");
+  const [materialQty, setMaterialQty] = useState("");
+  const [activityQty, setActivityQty] = useState("");
+  const [materialOptions, setMaterialOptions] = useState<CatalogItem[]>([]);
+  const [activityOptions, setActivityOptions] = useState<CatalogItem[]>([]);
+  const [materialDrafts, setMaterialDrafts] = useState<Record<string, Draft>>({});
+  const [activityDrafts, setActivityDrafts] = useState<Record<string, Draft>>({});
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"location" | "activities" | "materials">("location");
+  const [locationValidation, setLocationValidation] = useState<LocationValidationState>(INITIAL_LOCATION_VALIDATION);
+
+  const deferredMaterialSearch = useDeferredValue(materialSearch);
+  const deferredActivitySearch = useDeferredValue(activitySearch);
+  const selectedProject = state?.project ?? null;
+
+  const filteredProjects = useMemo(
+    () => projects.filter((item) => !selectedCity || item.city === selectedCity),
+    [projects, selectedCity],
+  );
+
+  const filteredMaterials = useMemo(() => {
+    return (state?.materials ?? []).filter((item) => {
+      const codeFilter = activeMaterialFilter.code.trim().toLowerCase();
+      if (codeFilter && !item.code.toLowerCase().includes(codeFilter)) {
+        return false;
+      }
+
+      const descriptionFilter = activeMaterialFilter.description.trim().toLowerCase();
+      if (descriptionFilter && !item.description.toLowerCase().includes(descriptionFilter)) {
+        return false;
+      }
+
+      const typeFilter = activeMaterialFilter.type.trim().toLowerCase();
+      if (typeFilter && !(item.type ?? "").toLowerCase().includes(typeFilter)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [activeMaterialFilter, state?.materials]);
+
+  const filteredActivities = useMemo(() => {
+    return (state?.activities ?? []).filter((item) => {
+      const codeFilter = activeActivityFilter.code.trim().toLowerCase();
+      if (codeFilter && !item.code.toLowerCase().includes(codeFilter)) {
+        return false;
+      }
+
+      const descriptionFilter = activeActivityFilter.description.trim().toLowerCase();
+      if (descriptionFilter && !item.description.toLowerCase().includes(descriptionFilter)) {
+        return false;
+      }
+
+      const typeFilter = activeActivityFilter.type.trim().toLowerCase();
+      if (typeFilter && !item.teamTypeName.toLowerCase().includes(typeFilter)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [activeActivityFilter, state?.activities]);
+
+  useEffect(() => {
+    const questionnaireAnswers = getObjectRecord(state?.plan?.questionnaireAnswers) as QuestionnaireAnswers;
+    const planning = getObjectRecord(questionnaireAnswers.planning) as QuestionnaireAnswers["planning"];
+    const executionTeams = getObjectRecord(questionnaireAnswers.executionTeams) as QuestionnaireAnswers["executionTeams"];
+    const executionForecast = getObjectRecord(questionnaireAnswers.executionForecast) as QuestionnaireAnswers["executionForecast"];
+    const preApr = getObjectRecord(questionnaireAnswers.preApr) as QuestionnaireAnswers["preApr"];
+
+    setNotes(state?.plan?.notes ?? "");
+    setNeedsProjectReview(typeof planning?.needsProjectReview === "boolean" ? planning.needsProjectReview : null);
+    setWithShutdown(typeof planning?.withShutdown === "boolean" ? planning.withShutdown : null);
+    setTeamCestoQty(getNonNegativeIntegerInput(executionTeams?.cestoQty));
+    setTeamLinhaMortaQty(getNonNegativeIntegerInput(executionTeams?.linhaMortaQty));
+    setTeamLinhaVivaQty(getNonNegativeIntegerInput(executionTeams?.linhaVivaQty));
+    setTeamPodaLinhaMortaQty(getNonNegativeIntegerInput(executionTeams?.podaLinhaMortaQty));
+    setTeamPodaLinhaVivaQty(getNonNegativeIntegerInput(executionTeams?.podaLinhaVivaQty));
+    setExecutionStepsQty(getNonNegativeIntegerInput(executionForecast?.stepsPlannedQty));
+    setExecutionObservation(String(executionForecast?.observation ?? ""));
+    setPreAprObservation(String(preApr?.observation ?? ""));
+    setSupportItemsDraft(state?.supportItems ?? []);
+    setRiskDraft(state?.risks ?? []);
+    setLocationValidation(INITIAL_LOCATION_VALIDATION);
+    setMaterialDrafts(
+      Object.fromEntries(
+        (state?.materials ?? []).map((item) => [item.id, { quantity: String(item.plannedQty), observation: item.observation ?? "" }]),
+      ),
+    );
+    setActivityDrafts(
+      Object.fromEntries(
+        (state?.activities ?? []).map((item) => [item.id, { quantity: String(item.plannedQty), observation: item.observation ?? "" }]),
+      ),
+    );
+  }, [state]);
+
+  useEffect(() => {
+    if (selectedProject?.id) {
+      setActiveTab("location");
+    }
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    setMaterialFilterDraft(INITIAL_LIST_FILTERS);
+    setActivityFilterDraft(INITIAL_LIST_FILTERS);
+    setActiveMaterialFilter(INITIAL_LIST_FILTERS);
+    setActiveActivityFilter(INITIAL_LIST_FILTERS);
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    fetch("/api/locacao/meta", {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      cache: "no-store",
+    })
+      .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          throw new Error(data?.message ?? "Falha ao carregar metadados de locacao.");
+        }
+        setCities(data?.cities ?? []);
+        setProjects(data?.projects ?? []);
+      })
+      .catch((error) => {
+        setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar locacao.", scope: "page" });
+      });
+  }, [session?.accessToken]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !selectedProject || deferredMaterialSearch.trim().length < 2) {
+      setMaterialOptions([]);
+      return;
+    }
+
+    fetch(`/api/locacao/materials/catalog?q=${encodeURIComponent(deferredMaterialSearch.trim())}`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      cache: "no-store",
+    })
+      .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          throw new Error(data?.message ?? "Falha ao pesquisar materiais.");
+        }
+        setMaterialOptions(data?.items ?? []);
+      })
+      .catch(() => setMaterialOptions([]));
+  }, [deferredMaterialSearch, selectedProject, session?.accessToken]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !selectedProject || deferredActivitySearch.trim().length < 2) {
+      setActivityOptions([]);
+      return;
+    }
+
+    fetch(`/api/locacao/activities/catalog?q=${encodeURIComponent(deferredActivitySearch.trim())}`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      cache: "no-store",
+    })
+      .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          throw new Error(data?.message ?? "Falha ao pesquisar atividades.");
+        }
+        setActivityOptions(data?.items ?? []);
+      })
+      .catch(() => setActivityOptions([]));
+  }, [deferredActivitySearch, selectedProject, session?.accessToken]);
+
+  async function requestLocation(url: string, init: RequestInit, successMessage: string, feedbackScope: FeedbackScope = "page") {
+    if (!session?.accessToken) {
+      return null;
+    }
+
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        "Content-Type": "application/json",
+        ...(init.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+
+    const data = (await response.json().catch(() => null)) as LocationState | null;
+    if (!response.ok) {
+      throw new Error(data?.message ?? "Falha ao processar locacao.");
+    }
+
+    setState(data);
+    setFeedback({ type: "success", message: data?.message ?? successMessage, scope: feedbackScope });
+    return data;
+  }
+
+  async function openLocation(projectId: string) {
+    setBusy("open");
+    setFeedback(null);
+    try {
+      const data = await requestLocation("/api/locacao", {
+        method: "POST",
+        body: JSON.stringify({ projectId }),
+      }, "Locacao carregada com sucesso.", "page");
+
+      if (data?.project?.sob) {
+        setSobSearch(data.project.sob);
+      }
+      const seeded = Number(data?.initialization?.seededMaterials ?? 0);
+      if (seeded > 0) {
+        setFeedback({ type: "success", message: `${seeded} material(is) iniciais carregados do previsto do projeto.`, scope: "page" });
+      }
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao abrir locacao.", scope: "page" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const project = filteredProjects.find((item) => item.sob === sobSearch);
+    if (!project) {
+      setFeedback({ type: "error", message: "Selecione um SOB valido da lista filtrada pelo municipio.", scope: "page" });
+      return;
+    }
+    void openLocation(project.id);
+  }
+
+  function handleNonNegativeIntegerChange(setter: (value: string) => void, value: string) {
+    if (!value.trim()) {
+      setter("");
+      return;
+    }
+
+    setter(getNonNegativeIntegerInput(value));
+  }
+
+  function normalizeLocationIntegerFields() {
+    const normalized = {
+      cestoQty: getNonNegativeIntegerInput(teamCestoQty),
+      linhaMortaQty: getNonNegativeIntegerInput(teamLinhaMortaQty),
+      linhaVivaQty: getNonNegativeIntegerInput(teamLinhaVivaQty),
+      podaLinhaMortaQty: getNonNegativeIntegerInput(teamPodaLinhaMortaQty),
+      podaLinhaVivaQty: getNonNegativeIntegerInput(teamPodaLinhaVivaQty),
+      stepsPlannedQty: getNonNegativeIntegerInput(executionStepsQty),
+    };
+
+    setTeamCestoQty(normalized.cestoQty);
+    setTeamLinhaMortaQty(normalized.linhaMortaQty);
+    setTeamLinhaVivaQty(normalized.linhaVivaQty);
+    setTeamPodaLinhaMortaQty(normalized.podaLinhaMortaQty);
+    setTeamPodaLinhaVivaQty(normalized.podaLinhaVivaQty);
+    setExecutionStepsQty(normalized.stepsPlannedQty);
+
+    return normalized;
+  }
+
+  function validateLocationBeforeSave() {
+    const nextValidation: LocationValidationState = {
+      needsProjectReview: typeof needsProjectReview !== "boolean",
+      withShutdown: typeof withShutdown !== "boolean",
+    };
+
+    setLocationValidation(nextValidation);
+
+    if (nextValidation.needsProjectReview || nextValidation.withShutdown) {
+      setFeedback({
+        type: "error",
+        message: "Preencha os campos obrigatorios de Locacao antes de salvar.",
+        scope: "location",
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  async function saveLocation() {
+    if (!selectedProject) {
+      return;
+    }
+
+    const normalizedIntegers = normalizeLocationIntegerFields();
+    if (!validateLocationBeforeSave()) {
+      return;
+    }
+
+    const questionnaireAnswers: QuestionnaireAnswers = {
+      planning: {
+        needsProjectReview,
+        withShutdown,
+      },
+      executionTeams: {
+        cestoQty: parseNonNegativeInteger(normalizedIntegers.cestoQty),
+        linhaMortaQty: parseNonNegativeInteger(normalizedIntegers.linhaMortaQty),
+        linhaVivaQty: parseNonNegativeInteger(normalizedIntegers.linhaVivaQty),
+        podaLinhaMortaQty: parseNonNegativeInteger(normalizedIntegers.podaLinhaMortaQty),
+        podaLinhaVivaQty: parseNonNegativeInteger(normalizedIntegers.podaLinhaVivaQty),
+      },
+      executionForecast: {
+        stepsPlannedQty: parseNonNegativeInteger(normalizedIntegers.stepsPlannedQty),
+        observation: executionObservation.trim(),
+        removedSupportItemIds: supportItemsDraft.filter((item) => !item.isIncluded).map((item) => item.id),
+      },
+      preApr: {
+        observation: preAprObservation.trim(),
+      },
+    };
+
+    setBusy("notes");
+    setFeedback(null);
+    try {
+      await requestLocation(
+        "/api/locacao",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            projectId: selectedProject.id,
+            notes,
+            questionnaireAnswers,
+            risks: riskDraft.map((item) => ({ id: item.id, isActive: item.isActive })),
+          }),
+        },
+        "Locacao atualizada com sucesso.",
+        "location",
+      );
+      scrollDashboardContentToTop();
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao salvar locacao.", scope: "location" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addCatalogItem(kind: "materials" | "activities") {
+    if (!selectedProject) {
+      return;
+    }
+
+    const isMaterial = kind === "materials";
+    const selectedLabel = isMaterial ? materialSearch : activitySearch;
+    const quantity = isMaterial ? materialQty : activityQty;
+    const options = isMaterial ? materialOptions : activityOptions;
+    const item = options.find((entry) => optionLabel(entry) === selectedLabel);
+
+    if (!item || !quantity.trim()) {
+      setFeedback({
+        type: "error",
+        message: isMaterial ? "Selecione um material valido e informe a quantidade." : "Selecione uma atividade valida e informe a quantidade.",
+        scope: isMaterial ? "materials" : "activities",
+      });
+      return;
+    }
+
+    setBusy(kind);
+    setFeedback(null);
+    try {
+      await requestLocation(
+        `/api/locacao/${kind}`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            isMaterial
+              ? { projectId: selectedProject.id, materialId: item.id, quantity }
+              : { projectId: selectedProject.id, activityId: item.id, quantity },
+          ),
+        },
+        isMaterial ? "Material adicionado com sucesso." : "Atividade adicionada com sucesso.",
+        isMaterial ? "materials" : "activities",
+      );
+      if (isMaterial) {
+        setMaterialSearch("");
+        setMaterialQty("");
+        setMaterialOptions([]);
+      } else {
+        setActivitySearch("");
+        setActivityQty("");
+        setActivityOptions([]);
+      }
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : isMaterial ? "Falha ao adicionar material." : "Falha ao adicionar atividade.",
+        scope: isMaterial ? "materials" : "activities",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveRow(kind: "materials" | "activities", id: string) {
+    if (!selectedProject) {
+      return;
+    }
+
+    const draft = kind === "materials" ? materialDrafts[id] : activityDrafts[id];
+    if (!draft?.quantity.trim()) {
+      setFeedback({ type: "error", message: "Informe a quantidade antes de salvar.", scope: kind });
+      return;
+    }
+
+    setBusy(`${kind}-${id}`);
+    setFeedback(null);
+    try {
+      await requestLocation(
+        `/api/locacao/${kind}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            projectId: selectedProject.id,
+            id,
+            quantity: draft.quantity,
+            observation: draft.observation,
+          }),
+        },
+        kind === "materials" ? "Material atualizado com sucesso." : "Atividade atualizada com sucesso.",
+        kind,
+      );
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : kind === "materials" ? "Falha ao salvar material." : "Falha ao salvar atividade.",
+        scope: kind,
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const selectedActivityOption = activityOptions.find((entry) => optionLabel(entry) === activitySearch) ?? null;
+
+  function updateActivityFilterField(field: keyof ListFilterState, value: string) {
+    setActivityFilterDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateMaterialFilterField(field: keyof ListFilterState, value: string) {
+    setMaterialFilterDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function toggleSupportItem(itemId: string) {
+    setSupportItemsDraft((current) =>
+      current.map((item) =>
+        item.id === itemId
+          ? { ...item, isIncluded: !item.isIncluded }
+          : item,
+      ),
+    );
+  }
+
+  function toggleRisk(itemId: string) {
+    setRiskDraft((current) =>
+      current.map((item) =>
+        item.id === itemId
+          ? { ...item, isActive: !item.isActive }
+          : item,
+      ),
+    );
+  }
+
+  function renderFeedback(scope: FeedbackScope) {
+    if (!feedback || feedback.scope !== scope) {
+      return null;
+    }
+
+    return (
+      <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
+    );
+  }
+
+  return (
+    <section className={styles.wrapper}>
+      <article className={styles.card}>
+        <div className={styles.tableHeader}>
+          <div>
+            <h3 className={styles.cardTitle}>Locacao</h3>
+            <p className={styles.tableHint}>
+              Filtre o municipio, selecione o projeto por SOB e monte as previsoes sem sobrescrever o previsto original
+              do projeto.
+            </p>
+          </div>
+          <div className={styles.tableHeaderActions}>
+            <div className={styles.tableHint}>
+              {selectedProject
+                ? `Projeto selecionado: ${selectedProject.sob} ${selectedProject.city ? `- ${selectedProject.city}` : ""}`
+                : "Nenhum projeto selecionado."}
+            </div>
+          </div>
+        </div>
+
+        <form className={styles.filterGrid} onSubmit={handleSubmit}>
+          <label className={styles.field}>
+            <span>Municipio</span>
+            <select
+              value={selectedCity}
+              onChange={(event) => {
+                setSelectedCity(event.target.value);
+                setSobSearch("");
+                setState(null);
+              }}
+            >
+              <option value="">Todos</option>
+              {cities.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>SOB</span>
+            <input list="location-project-list" value={sobSearch} onChange={(event) => setSobSearch(event.target.value)} placeholder="Digite o SOB do projeto" />
+            <datalist id="location-project-list">
+              {filteredProjects.map((item) => (
+                <option key={item.id} value={item.sob}>
+                  {item.city}
+                </option>
+              ))}
+            </datalist>
+          </label>
+
+          <div className={`${styles.actions} ${styles.formActions}`}>
+            <div className={styles.tableHint}>{filteredProjects.length} projeto(s) disponivel(is) com o filtro atual.</div>
+            <button type="submit" className={styles.primaryButton} disabled={busy === "open" || !sobSearch.trim() || !session?.accessToken}>
+              {busy === "open" ? "Carregando..." : "Abrir locacao"}
+            </button>
+          </div>
+        </form>
+      </article>
+
+      {renderFeedback("page")}
+
+      {selectedProject ? (
+        <>
+          <article className={styles.card}>
+            <div className={styles.tabHeader}>
+              <button
+                type="button"
+                className={`${styles.tabButton} ${activeTab === "location" ? styles.tabButtonActive : ""}`}
+                onClick={() => setActiveTab("location")}
+              >
+                {"Loca\u00E7\u00E3o"}
+              </button>
+              <button
+                type="button"
+                className={`${styles.tabButton} ${activeTab === "activities" ? styles.tabButtonActive : ""}`}
+                onClick={() => setActiveTab("activities")}
+              >
+                Atividades previstas
+              </button>
+              <button
+                type="button"
+                className={`${styles.tabButton} ${activeTab === "materials" ? styles.tabButtonActive : ""}`}
+                onClick={() => setActiveTab("materials")}
+              >
+                Materiais previstos
+              </button>
+            </div>
+          </article>
+
+          {activeTab === "location" ? (
+            <>
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <div>
+                    <h3 className={styles.cardTitle}>Planejamento / Vistoria</h3>
+                    <p className={styles.tableHint}>Registre as observacoes gerais e defina as validacoes iniciais da locacao.</p>
+                  </div>
+                </div>
+
+                <label className={styles.field}>
+                  <span>Observacoes</span>
+                  <textarea
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder="Registre observacoes operacionais."
+                    disabled={!selectedProject}
+                  />
+                </label>
+
+                <div className={styles.formGrid}>
+                  <div className={styles.field}>
+                    <span>Necessario revisao de projeto? <strong className={styles.requiredMark}>*</strong></span>
+                    <div className={`${styles.radioGroup} ${locationValidation.needsProjectReview ? styles.fieldInvalid : ""}`}>
+                      <label className={styles.radioOption}>
+                        <input type="radio" name="needsProjectReview" checked={needsProjectReview === true} onChange={() => {
+                          setNeedsProjectReview(true);
+                          setLocationValidation((current) => ({ ...current, needsProjectReview: false }));
+                        }} />
+                        <span>Sim</span>
+                      </label>
+                      <label className={styles.radioOption}>
+                        <input type="radio" name="needsProjectReview" checked={needsProjectReview === false} onChange={() => {
+                          setNeedsProjectReview(false);
+                          setLocationValidation((current) => ({ ...current, needsProjectReview: false }));
+                        }} />
+                        <span>Nao</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className={styles.field}>
+                    <span>Com desligamento? <strong className={styles.requiredMark}>*</strong></span>
+                    <div className={`${styles.radioGroup} ${locationValidation.withShutdown ? styles.fieldInvalid : ""}`}>
+                      <label className={styles.radioOption}>
+                        <input type="radio" name="withShutdown" checked={withShutdown === true} onChange={() => {
+                          setWithShutdown(true);
+                          setLocationValidation((current) => ({ ...current, withShutdown: false }));
+                        }} />
+                        <span>Sim</span>
+                      </label>
+                      <label className={styles.radioOption}>
+                        <input type="radio" name="withShutdown" checked={withShutdown === false} onChange={() => {
+                          setWithShutdown(false);
+                          setLocationValidation((current) => ({ ...current, withShutdown: false }));
+                        }} />
+                        <span>Nao</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <h3 className={styles.cardTitle}>Equipes para execucao</h3>
+                </div>
+
+                <div className={styles.formGrid}>
+                  <label className={styles.field}>
+                    <span>CESTO <strong className={styles.requiredMark}>*</strong></span>
+                    <input type="number" min="0" step="1" value={teamCestoQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamCestoQty, event.target.value)} onBlur={() => setTeamCestoQty(getNonNegativeIntegerInput(teamCestoQty))} />
+                  </label>
+                  <label className={styles.field}>
+                    <span>LINHA MORTA <strong className={styles.requiredMark}>*</strong></span>
+                    <input type="number" min="0" step="1" value={teamLinhaMortaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamLinhaMortaQty, event.target.value)} onBlur={() => setTeamLinhaMortaQty(getNonNegativeIntegerInput(teamLinhaMortaQty))} />
+                  </label>
+                  <label className={styles.field}>
+                    <span>LINHA VIVA <strong className={styles.requiredMark}>*</strong></span>
+                    <input type="number" min="0" step="1" value={teamLinhaVivaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamLinhaVivaQty, event.target.value)} onBlur={() => setTeamLinhaVivaQty(getNonNegativeIntegerInput(teamLinhaVivaQty))} />
+                  </label>
+                  <label className={styles.field}>
+                    <span>PODA LINHA MORTA <strong className={styles.requiredMark}>*</strong></span>
+                    <input type="number" min="0" step="1" value={teamPodaLinhaMortaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamPodaLinhaMortaQty, event.target.value)} onBlur={() => setTeamPodaLinhaMortaQty(getNonNegativeIntegerInput(teamPodaLinhaMortaQty))} />
+                  </label>
+                  <label className={styles.field}>
+                    <span>PODA LINHA VIVA <strong className={styles.requiredMark}>*</strong></span>
+                    <input type="number" min="0" step="1" value={teamPodaLinhaVivaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamPodaLinhaVivaQty, event.target.value)} onBlur={() => setTeamPodaLinhaVivaQty(getNonNegativeIntegerInput(teamPodaLinhaVivaQty))} />
+                  </label>
+                </div>
+              </article>
+
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <h3 className={styles.cardTitle}>Previsao de execucao</h3>
+                </div>
+
+                <div className={styles.formGrid}>
+                  <label className={styles.field}>
+                    <span>ETAPAS PREVISTAS <strong className={styles.requiredMark}>*</strong></span>
+                    <input type="number" min="0" step="1" value={executionStepsQty} onChange={(event) => handleNonNegativeIntegerChange(setExecutionStepsQty, event.target.value)} onBlur={() => setExecutionStepsQty(getNonNegativeIntegerInput(executionStepsQty))} />
+                  </label>
+                </div>
+
+                <div className={styles.toggleList}>
+                  {supportItemsDraft.length > 0 ? (
+                    supportItemsDraft.map((item) => (
+                      <div key={item.id} className={styles.toggleRow}>
+                        <span className={styles.toggleRowText}>{item.description}</span>
+                        <button
+                          type="button"
+                          className={item.isIncluded ? styles.dangerButton : styles.successButton}
+                          onClick={() => toggleSupportItem(item.id)}
+                        >
+                          {item.isIncluded ? "Remover" : "Incluir"}
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className={styles.infoBox}>
+                      <strong>Nenhum apoio de execucao cadastrado</strong>
+                      <span>Cadastre itens em `location_execution_support_items` para exibir nesta lista.</span>
+                    </div>
+                  )}
+                </div>
+
+                <label className={styles.field}>
+                  <span>Observacao</span>
+                  <textarea
+                    value={executionObservation}
+                    onChange={(event) => setExecutionObservation(event.target.value)}
+                    placeholder="Registre observacoes da previsao de execucao."
+                  />
+                </label>
+              </article>
+
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <h3 className={styles.cardTitle}>Pre APR</h3>
+                </div>
+
+                <div className={styles.toggleList}>
+                  {riskDraft.length > 0 ? (
+                    riskDraft.map((item) => (
+                      <div key={item.id} className={styles.toggleRow}>
+                        <span className={styles.toggleRowText}>{item.description}</span>
+                        <button
+                          type="button"
+                          className={item.isActive ? styles.dangerButton : styles.successButton}
+                          onClick={() => toggleRisk(item.id)}
+                        >
+                          {item.isActive ? "Remover" : "Incluir"}
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className={styles.infoBox}>
+                      <strong>Nenhum risco cadastrado</strong>
+                      <span>Cadastre riscos em `project_location_risks` para exibir nesta lista.</span>
+                    </div>
+                  )}
+                </div>
+
+                <label className={styles.field}>
+                  <span>Observacao</span>
+                  <textarea
+                    value={preAprObservation}
+                    onChange={(event) => setPreAprObservation(event.target.value)}
+                    placeholder="Registre observacoes do pre APR."
+                  />
+                </label>
+
+                {renderFeedback("location")}
+
+                <div className={styles.actions}>
+                  <div className={styles.tableHint}>
+                    Materiais atuais: {formatQuantity(state?.summary?.materialsPlannedTotal ?? 0)} | Atividades atuais:{" "}
+                    {formatCurrency(state?.summary?.activitiesPlannedTotal ?? 0)}
+                  </div>
+                  <button type="button" className={styles.secondaryButton} onClick={() => void saveLocation()} disabled={!selectedProject || busy === "notes"}>
+                    {busy === "notes" ? "Salvando..." : "Salvar loca\u00E7\u00E3o"}
+                  </button>
+                </div>
+              </article>
+            </>
+          ) : null}
+
+          {activeTab === "activities" ? (
+            <>
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <div>
+                    <h3 className={styles.cardTitle}>Cadastro de Atividades Previstas</h3>
+                    <p className={styles.tableHint}>Use a tabela base de atividades, informe a quantidade e acompanhe o total monetario. A inclusao salva ao adicionar e a edicao salva no botao da linha.</p>
+                  </div>
+                  <div className={styles.tableHeaderActions}>
+                    <div className={styles.totalHighlight}>
+                      <span>Total previsto</span>
+                      <strong>{formatCurrency(state?.summary?.activitiesPlannedTotal ?? 0)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.formGrid}>
+                  <label className={`${styles.field} ${styles.fieldWide}`}>
+                    <span>Atividade</span>
+                    <input list="location-activity-list" value={activitySearch} onChange={(event) => setActivitySearch(event.target.value)} placeholder="Digite codigo ou descricao" disabled={!selectedProject} />
+                    <datalist id="location-activity-list">
+                      {activityOptions.map((item) => (
+                        <option key={item.id} value={optionLabel(item)} />
+                      ))}
+                    </datalist>
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Quantidade</span>
+                    <input type="number" min="0.01" step="0.01" value={activityQty} onChange={(event) => setActivityQty(event.target.value)} placeholder="0,00" disabled={!selectedProject} />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Unidade</span>
+                    <input value={selectedActivityOption?.unit ?? ""} placeholder="Selecione a atividade" disabled />
+                  </label>
+
+                  <div className={`${styles.actions} ${styles.formActions}`}>
+                    <button type="button" className={styles.primaryButton} onClick={() => void addCatalogItem("activities")} disabled={!selectedProject || busy === "activities"}>
+                      {busy === "activities" ? "Adicionando..." : "Adicionar atividade"}
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              {renderFeedback("activities")}
+
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <h3 className={styles.cardTitle}>Filtros</h3>
+                </div>
+
+                <div className={styles.filterGrid}>
+                  <label className={styles.field}>
+                    <span>Codigo</span>
+                    <input
+                      value={activityFilterDraft.code}
+                      onChange={(event) => updateActivityFilterField("code", event.target.value)}
+                      placeholder="Filtrar por codigo"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Descricao</span>
+                    <input
+                      value={activityFilterDraft.description}
+                      onChange={(event) => updateActivityFilterField("description", event.target.value)}
+                      placeholder="Filtrar por descricao"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Tipo</span>
+                    <input
+                      value={activityFilterDraft.type}
+                      onChange={(event) => updateActivityFilterField("type", event.target.value)}
+                      placeholder="Filtrar por tipo"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+                </div>
+
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setActiveActivityFilter({ ...activityFilterDraft })}
+                    disabled={!selectedProject}
+                  >
+                    Aplicar
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={() => {
+                      setActivityFilterDraft(INITIAL_LIST_FILTERS);
+                      setActiveActivityFilter(INITIAL_LIST_FILTERS);
+                    }}
+                    disabled={!selectedProject}
+                  >
+                    Limpar
+                  </button>
+                </div>
+              </article>
+
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <h3 className={styles.cardTitle}>Lista de Atividades Previstas</h3>
+                </div>
+
+                <div className={styles.tableWrapper}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Codigo</th>
+                        <th>Descricao</th>
+                        <th>Tipo</th>
+                        <th>Unidade</th>
+                        <th>Valor unitario</th>
+                        <th>Quantidade</th>
+                        <th>Observacao</th>
+                        <th>Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredActivities.length === 0 ? <tr><td colSpan={8} className={styles.emptyRow}>Nenhuma atividade prevista para o filtro informado.</td></tr> : null}
+                      {filteredActivities.map((item) => {
+                        const draft = activityDrafts[item.id] ?? { quantity: String(item.plannedQty), observation: item.observation ?? "" };
+                        return (
+                          <tr key={item.id}>
+                            <td>{item.code}</td>
+                            <td>{item.description}</td>
+                            <td>{item.teamTypeName || "-"}</td>
+                            <td>{item.unit}</td>
+                            <td>{formatCurrency(item.unitValue)}</td>
+                            <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => setActivityDrafts((current) => ({ ...current, [item.id]: { ...draft, quantity: event.target.value } }))} /></td>
+                            <td><input className={styles.tableInput} value={draft.observation} onChange={(event) => setActivityDrafts((current) => ({ ...current, [item.id]: { ...draft, observation: event.target.value } }))} placeholder="Opcional" /></td>
+                            <td className={styles.actionsCell}><div className={styles.tableActions}><button type="button" className={styles.ghostButton} onClick={() => void saveRow("activities", item.id)} disabled={busy === `activities-${item.id}`}>{busy === `activities-${item.id}` ? "Salvando..." : "Salvar"}</button></div></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            </>
+          ) : null}
+
+          {activeTab === "materials" ? (
+            <>
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <div>
+                    <h3 className={styles.cardTitle}>Cadastro de Materiais Previstos</h3>
+                    <p className={styles.tableHint}>Compare o previsto original do projeto com a previsao atual da locacao e adicione materiais extras. A inclusao salva ao adicionar e a edicao salva no botao da linha.</p>
+                  </div>
+                  <div className={styles.tableHeaderActions}>
+                    <div className={styles.totalHighlight}>
+                      <span>Total previsto</span>
+                      <strong>{formatQuantity(state?.summary?.materialsPlannedTotal ?? 0)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.formGrid}>
+                  <label className={`${styles.field} ${styles.fieldWide}`}>
+                    <span>Material</span>
+                    <input list="location-material-list" value={materialSearch} onChange={(event) => setMaterialSearch(event.target.value)} placeholder="Digite codigo ou descricao" disabled={!selectedProject} />
+                    <datalist id="location-material-list">
+                      {materialOptions.map((item) => (
+                        <option key={item.id} value={optionLabel(item)} />
+                      ))}
+                    </datalist>
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Quantidade</span>
+                    <input type="number" min="0.01" step="0.01" value={materialQty} onChange={(event) => setMaterialQty(event.target.value)} placeholder="0,00" disabled={!selectedProject} />
+                  </label>
+
+                  <div className={`${styles.actions} ${styles.formActions}`}>
+                    <button type="button" className={styles.primaryButton} onClick={() => void addCatalogItem("materials")} disabled={!selectedProject || busy === "materials"}>
+                      {busy === "materials" ? "Adicionando..." : "Adicionar material"}
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              {renderFeedback("materials")}
+
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <h3 className={styles.cardTitle}>Filtros</h3>
+                </div>
+
+                <div className={styles.filterGrid}>
+                  <label className={styles.field}>
+                    <span>Codigo</span>
+                    <input
+                      value={materialFilterDraft.code}
+                      onChange={(event) => updateMaterialFilterField("code", event.target.value)}
+                      placeholder="Filtrar por codigo"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Descricao</span>
+                    <input
+                      value={materialFilterDraft.description}
+                      onChange={(event) => updateMaterialFilterField("description", event.target.value)}
+                      placeholder="Filtrar por descricao"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Tipo</span>
+                    <input
+                      value={materialFilterDraft.type}
+                      onChange={(event) => updateMaterialFilterField("type", event.target.value)}
+                      placeholder="Filtrar por tipo"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+                </div>
+
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setActiveMaterialFilter({ ...materialFilterDraft })}
+                    disabled={!selectedProject}
+                  >
+                    Aplicar
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={() => {
+                      setMaterialFilterDraft(INITIAL_LIST_FILTERS);
+                      setActiveMaterialFilter(INITIAL_LIST_FILTERS);
+                    }}
+                    disabled={!selectedProject}
+                  >
+                    Limpar
+                  </button>
+                </div>
+              </article>
+
+              <article className={styles.card}>
+                <div className={styles.tableHeader}>
+                  <h3 className={styles.cardTitle}>Lista de Materiais Previstos</h3>
+                </div>
+
+                <div className={styles.tableWrapper}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Codigo</th>
+                        <th>Descricao</th>
+                        <th>Tipo</th>
+                        <th>Previsto projeto</th>
+                        <th>Previsto locacao</th>
+                        <th>Diferenca</th>
+                        <th>Observacao</th>
+                        <th>Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMaterials.length === 0 ? <tr><td colSpan={8} className={styles.emptyRow}>Nenhum material previsto para o filtro informado.</td></tr> : null}
+                      {filteredMaterials.map((item) => {
+                        const draft = materialDrafts[item.id] ?? { quantity: String(item.plannedQty), observation: item.observation ?? "" };
+                        const currentQty = Number(draft.quantity || item.plannedQty || 0);
+                        return (
+                          <tr key={item.id}>
+                            <td>{item.code}</td>
+                            <td>{item.description}</td>
+                            <td>{item.type || "-"}</td>
+                            <td>{formatQuantity(item.originalQty)}</td>
+                            <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => setMaterialDrafts((current) => ({ ...current, [item.id]: { ...draft, quantity: event.target.value } }))} /></td>
+                            <td>{formatQuantity(currentQty - item.originalQty)}</td>
+                            <td><input className={styles.tableInput} value={draft.observation} onChange={(event) => setMaterialDrafts((current) => ({ ...current, [item.id]: { ...draft, observation: event.target.value } }))} placeholder="Opcional" /></td>
+                            <td className={styles.actionsCell}><div className={styles.tableActions}><button type="button" className={styles.ghostButton} onClick={() => void saveRow("materials", item.id)} disabled={busy === `materials-${item.id}`}>{busy === `materials-${item.id}` ? "Salvando..." : "Salvar"}</button></div></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            </>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}

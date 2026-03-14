@@ -55,6 +55,15 @@ Ordem de aplicacao
 51. 051_create_app_entity_history_and_activity_status.sql
 52. 052_create_teams_and_page_permissions.sql
 53. 053_create_team_types_and_link_teams.sql
+54. 054_enforce_team_unique_by_name_foreman_plate.sql
+55. 055_add_people_status_and_cancellation_fields.sql
+56. 056_prevent_people_duplicate_identity.sql
+57. 057_add_team_type_to_service_activities.sql
+58. 058_enforce_rls_no_all_no_delete.sql
+59. 059_create_location_planning.sql
+60. 060_add_project_has_locacao.sql
+61. 061_create_location_risks.sql
+62. 062_create_location_execution_support_items.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -218,6 +227,33 @@ Resumo por arquivo
 
 053_create_team_types_and_link_teams.sql
 - Cria `team_types`, faz backfill de tipo padrao por tenant, adiciona `teams.team_type_id` obrigatorio e inclui a pagina `tipo-equipe` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+
+054_enforce_team_unique_by_name_foreman_plate.sql
+- Remove unicidades isoladas de nome/placa em `teams` e passa a exigir unicidade pela combinacao `tenant_id + foreman_person_id + name + vehicle_plate`.
+
+055_add_people_status_and_cancellation_fields.sql
+- Adiciona status ativo/inativo e campos de cancelamento/ativacao em `people`, com consistencia para o fluxo de bloqueio e reativacao.
+
+056_prevent_people_duplicate_identity.sql
+- Adiciona protecao extra contra duplicidade de identidade em `people` por tenant.
+
+057_add_team_type_to_service_activities.sql
+- Vincula `service_activities` ao catalogo `team_types` por tenant com backfill e FK composta.
+
+058_enforce_rls_no_all_no_delete.sql
+- Revisa policies RLS das tabelas tenantizadas para remover `FOR ALL` e `DELETE`, padronizando `SELECT`, `INSERT` e `UPDATE`.
+
+059_create_location_planning.sql
+- Cria a base da `Locacao` por projeto (`project_location_plans`, `project_location_materials`, `project_location_activities`) e a RPC `initialize_project_location_plan`.
+
+060_add_project_has_locacao.sql
+- Adiciona o flag operacional `project.has_locacao`, faz backfill e atualiza a view `project_with_labels`.
+
+061_create_location_risks.sql
+- Cria `project_location_risks` para registrar riscos da `Locacao` por projeto, com `description`, `is_active`, RLS e auditoria.
+
+062_create_location_execution_support_items.sql
+- Cria `location_execution_support_items` para registrar o catalogo de apoio de execucao da `Locacao` por tenant, com `description`, `is_active`, RLS e auditoria.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

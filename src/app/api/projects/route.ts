@@ -34,6 +34,7 @@ type ProjectRow = {
   service_description: string | null;
   observation: string | null;
   is_active: boolean;
+  has_locacao: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
   canceled_by: string | null;
@@ -548,7 +549,7 @@ async function fetchProjectById(supabase: SupabaseClient, tenantId: string, proj
   const { data, error } = await supabase
     .from("project_with_labels")
     .select(
-      "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", projectId)
@@ -647,7 +648,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("project_with_labels")
       .select(
-        "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -717,6 +718,7 @@ export async function GET(request: NextRequest) {
         serviceDescription: item.service_description,
         observation: item.observation,
         isActive: Boolean(item.is_active),
+        hasLocacao: Boolean(item.has_locacao),
         cancellationReason: item.cancellation_reason,
         canceledAt: item.canceled_at,
         canceledByName: item.canceled_by ? userMap.get(item.canceled_by) ?? "Nao identificado" : null,
