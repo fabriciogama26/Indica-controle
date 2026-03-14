@@ -135,6 +135,13 @@
   background: rgba(198, 40, 40, 0.04);
 }
 
+.groupInvalid {
+  border-radius: 16px;
+  border: 1px solid rgba(198, 40, 40, 0.72);
+  background: rgba(198, 40, 40, 0.04);
+  padding: 12px;
+}
+
 .radioOption {
   display: inline-flex;
   align-items: center;

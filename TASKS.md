@@ -109,6 +109,7 @@
 - [x] Ajustar a aba `Locacao` removendo prefixos `Bloco x` dos titulos e adicionando `Observacao` no `Pre APR`.
 - [x] Validar a aba principal da `Locacao` com radios obrigatorios, campos numericos iniciando em `0`, bloqueio de negativos e feedback local no `Salvar locacao`.
 - [x] Fazer o `Salvar locacao` retornar ao topo do container principal apos sucesso para recolocar as abas em evidência.
+- [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
 - [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.

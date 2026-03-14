@@ -107,6 +107,8 @@ type FeedbackState = {
 type LocationValidationState = {
   needsProjectReview: boolean;
   withShutdown: boolean;
+  executionTeams: boolean;
+  executionSteps: boolean;
 };
 
 function formatQuantity(value: number) {
@@ -182,6 +184,8 @@ const INITIAL_LIST_FILTERS: ListFilterState = {
 const INITIAL_LOCATION_VALIDATION: LocationValidationState = {
   needsProjectReview: false,
   withShutdown: false,
+  executionTeams: false,
+  executionSteps: false,
 };
 
 export function LocationPageView() {
@@ -468,9 +472,27 @@ export function LocationPageView() {
   }
 
   function validateLocationBeforeSave() {
+    const normalizedIntegers = {
+      cestoQty: parseNonNegativeInteger(getNonNegativeIntegerInput(teamCestoQty)),
+      linhaMortaQty: parseNonNegativeInteger(getNonNegativeIntegerInput(teamLinhaMortaQty)),
+      linhaVivaQty: parseNonNegativeInteger(getNonNegativeIntegerInput(teamLinhaVivaQty)),
+      podaLinhaMortaQty: parseNonNegativeInteger(getNonNegativeIntegerInput(teamPodaLinhaMortaQty)),
+      podaLinhaVivaQty: parseNonNegativeInteger(getNonNegativeIntegerInput(teamPodaLinhaVivaQty)),
+      stepsPlannedQty: parseNonNegativeInteger(getNonNegativeIntegerInput(executionStepsQty)),
+    };
+
+    const hasExecutionTeam =
+      normalizedIntegers.cestoQty > 0 ||
+      normalizedIntegers.linhaMortaQty > 0 ||
+      normalizedIntegers.linhaVivaQty > 0 ||
+      normalizedIntegers.podaLinhaMortaQty > 0 ||
+      normalizedIntegers.podaLinhaVivaQty > 0;
+
     const nextValidation: LocationValidationState = {
       needsProjectReview: typeof needsProjectReview !== "boolean",
       withShutdown: typeof withShutdown !== "boolean",
+      executionTeams: !hasExecutionTeam,
+      executionSteps: normalizedIntegers.stepsPlannedQty <= 0,
     };
 
     setLocationValidation(nextValidation);
@@ -479,6 +501,24 @@ export function LocationPageView() {
       setFeedback({
         type: "error",
         message: "Preencha os campos obrigatorios de Locacao antes de salvar.",
+        scope: "location",
+      });
+      return false;
+    }
+
+    if (nextValidation.executionTeams) {
+      setFeedback({
+        type: "error",
+        message: "Informe pelo menos uma equipe com quantidade maior que zero antes de salvar a locacao.",
+        scope: "location",
+      });
+      return false;
+    }
+
+    if (nextValidation.executionSteps) {
+      setFeedback({
+        type: "error",
+        message: "ETAPAS PREVISTAS deve ser maior que zero antes de salvar a locacao.",
         scope: "location",
       });
       return false;
@@ -844,7 +884,7 @@ export function LocationPageView() {
                   <h3 className={styles.cardTitle}>Equipes para execucao</h3>
                 </div>
 
-                <div className={styles.formGrid}>
+                <div className={`${styles.formGrid} ${locationValidation.executionTeams ? styles.groupInvalid : ""}`}>
                   <label className={styles.field}>
                     <span>CESTO <strong className={styles.requiredMark}>*</strong></span>
                     <input type="number" min="0" step="1" value={teamCestoQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamCestoQty, event.target.value)} onBlur={() => setTeamCestoQty(getNonNegativeIntegerInput(teamCestoQty))} />
@@ -873,7 +913,7 @@ export function LocationPageView() {
                   <h3 className={styles.cardTitle}>Previsao de execucao</h3>
                 </div>
 
-                <div className={styles.formGrid}>
+                <div className={`${styles.formGrid} ${locationValidation.executionSteps ? styles.groupInvalid : ""}`}>
                   <label className={styles.field}>
                     <span>ETAPAS PREVISTAS <strong className={styles.requiredMark}>*</strong></span>
                     <input type="number" min="0" step="1" value={executionStepsQty} onChange={(event) => handleNonNegativeIntegerChange(setExecutionStepsQty, event.target.value)} onBlur={() => setExecutionStepsQty(getNonNegativeIntegerInput(executionStepsQty))} />

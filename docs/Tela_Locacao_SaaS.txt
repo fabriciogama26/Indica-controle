@@ -34,8 +34,8 @@ Cadastro
   - `Observacoes` (opcional)
   - `Necessario revisao de projeto?` (obrigatorio)
   - `Com desligamento?` (obrigatorio)
-  - Quantidades de equipes de execucao (`CESTO`, `LINHA MORTA`, `LINHA VIVA`, `PODA LINHA MORTA`, `PODA LINHA VIVA`) obrigatorias, sem aceitar negativo e iniciadas com `0`
-  - `ETAPAS PREVISTAS` obrigatorio, sem aceitar negativo e iniciado com `0`
+  - Quantidades de equipes de execucao (`CESTO`, `LINHA MORTA`, `LINHA VIVA`, `PODA LINHA MORTA`, `PODA LINHA VIVA`) obrigatorias, sem aceitar negativo, iniciadas com `0` e exigindo pelo menos um valor maior que `0`
+  - `ETAPAS PREVISTAS` obrigatorio, sem aceitar negativo, iniciado com `0` e exigindo valor maior que `0`
   - `Observacao` da previsao de execucao
   - `Observacao` do `Pre APR`
 - Estrutura futura ja preparada:
@@ -100,6 +100,8 @@ Boas praticas
 - Assumir `RLS ON` nas tabelas da locacao.
 - Atualizar `project.has_locacao` somente pelo fluxo real da locacao, nunca por checkbox manual no cadastro do projeto.
 - Validar no frontend e no backend os campos obrigatorios da aba principal da `Locacao` antes do `PUT`.
+- Bloquear o salvar da locacao quando todas as equipes de execucao estiverem em `0`.
+- Bloquear o salvar da locacao quando `ETAPAS PREVISTAS` estiver em `0`.
 - Tratar listas de apoio de execucao e riscos como incluidas por padrao; so os itens removidos/inativos entram na persistencia do salvar.
 
 Cancelamento e saldo
@@ -146,6 +148,7 @@ Atualizacao 2026-03
 - Ao salvar a aba principal com sucesso, o container principal do dashboard volta para o topo para recolocar em evidência as abas operacionais da locacao.
 - A aba principal da `Locacao` passou a exigir os radios `Necessario revisao de projeto?` e `Com desligamento?` antes de salvar.
 - As quantidades de equipes e `ETAPAS PREVISTAS` passaram a iniciar com `0`, nao aceitar valor negativo e serem normalizadas no frontend e no backend.
+- O salvar da aba principal passou a exigir pelo menos uma equipe com quantidade maior que `0` e `ETAPAS PREVISTAS` maior que `0`.
 - `Atividades previstas` e `Materiais previstos` continuam com salvamento explicito por acao: `Adicionar ...` para inclusao e `Salvar` por linha para edicao.
 - Adicionada declaracao local `src/types/xlsx.d.ts` e ajuste em `src/lib/server/projectForecastXlsx.ts` para destravar o `build` atual do projeto.
 
