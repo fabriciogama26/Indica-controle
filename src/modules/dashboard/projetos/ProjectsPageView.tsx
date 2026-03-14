@@ -126,6 +126,19 @@ type ProjectForecastResponse = {
   message?: string;
 };
 
+type ProjectForecastCatalogItem = {
+  id: string;
+  code: string;
+  description: string;
+  umb: string | null;
+  type: string | null;
+};
+
+type ProjectForecastDraft = {
+  quantity: string;
+  observation: string;
+};
+
 type ProjectForecastImportResponse = {
   success?: boolean;
   message?: string;
@@ -395,6 +408,10 @@ function normalizeSob(value: string) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function forecastOptionLabel(item: ProjectForecastCatalogItem) {
+  return `${item.code} - ${item.description}`;
+}
+
 function activityForecastOptionLabel(item: ProjectActivityForecastCatalogItem) {
   return `${item.code} - ${item.description}`;
 }
@@ -512,7 +529,12 @@ export function ProjectsPageView() {
   const [forecastProject, setForecastProject] = useState<{ id: string; sob: string } | null>(null);
   const [forecastProjectSearch, setForecastProjectSearch] = useState("");
   const [forecastItems, setForecastItems] = useState<ProjectForecastItem[]>([]);
+  const [forecastSearch, setForecastSearch] = useState("");
+  const [forecastQty, setForecastQty] = useState("");
+  const [forecastCatalogItems, setForecastCatalogItems] = useState<ProjectForecastCatalogItem[]>([]);
+  const [forecastDrafts, setForecastDrafts] = useState<Record<string, ProjectForecastDraft>>({});
   const [isLoadingForecast, setIsLoadingForecast] = useState(false);
+  const [isSavingProjectForecast, setIsSavingProjectForecast] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const [isForecastImportModalOpen, setIsForecastImportModalOpen] = useState(false);
   const [forecastImportFile, setForecastImportFile] = useState<File | null>(null);
@@ -521,6 +543,10 @@ export function ProjectsPageView() {
   const [activityForecastProjectSearch, setActivityForecastProjectSearch] = useState("");
   const [activityForecastItems, setActivityForecastItems] = useState<ProjectActivityForecastItem[]>([]);
   const [isLoadingActivityForecast, setIsLoadingActivityForecast] = useState(false);
+  const [isDownloadingActivityForecastTemplate, setIsDownloadingActivityForecastTemplate] = useState(false);
+  const [isActivityForecastImportModalOpen, setIsActivityForecastImportModalOpen] = useState(false);
+  const [activityForecastImportFile, setActivityForecastImportFile] = useState<File | null>(null);
+  const [isImportingActivityForecast, setIsImportingActivityForecast] = useState(false);
   const [isExportingActivityForecast, setIsExportingActivityForecast] = useState(false);
   const [activityForecastSearch, setActivityForecastSearch] = useState("");
   const [activityForecastQty, setActivityForecastQty] = useState("");
@@ -533,6 +559,7 @@ export function ProjectsPageView() {
   const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  const deferredForecastSearch = useDeferredValue(forecastSearch);
   const deferredActivityForecastSearch = useDeferredValue(activityForecastSearch);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -613,6 +640,11 @@ export function ProjectsPageView() {
   const selectedProjectActivityForecastOption = useMemo(
     () => activityForecastCatalogItems.find((item) => activityForecastOptionLabel(item) === activityForecastSearch) ?? null,
     [activityForecastCatalogItems, activityForecastSearch],
+  );
+
+  const selectedProjectForecastOption = useMemo(
+    () => forecastCatalogItems.find((item) => forecastOptionLabel(item) === forecastSearch) ?? null,
+    [forecastCatalogItems, forecastSearch],
   );
 
   const loadMeta = useCallback(async () => {
@@ -714,6 +746,30 @@ export function ProjectsPageView() {
   useEffect(() => {
     void loadProjects(page, activeFilters);
   }, [activeFilters, loadProjects, page]);
+
+  useEffect(() => {
+    if (!session?.accessToken || !forecastProject || deferredForecastSearch.trim().length < 2) {
+      setForecastCatalogItems([]);
+      return;
+    }
+
+    fetch(`/api/projects/forecast/catalog?q=${encodeURIComponent(deferredForecastSearch.trim())}`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+    })
+      .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          throw new Error(data?.message ?? "Falha ao pesquisar materiais previstos.");
+        }
+        setForecastCatalogItems(data?.items ?? []);
+      })
+      .catch(() => {
+        setForecastCatalogItems([]);
+      });
+  }, [deferredForecastSearch, forecastProject, session?.accessToken]);
 
   useEffect(() => {
     if (!session?.accessToken || !activityForecastProject || deferredActivityForecastSearch.trim().length < 2) {
@@ -927,6 +983,7 @@ export function ProjectsPageView() {
       const data = (await response.json().catch(() => ({}))) as ProjectForecastResponse;
       if (!response.ok) {
         setForecastItems([]);
+        setForecastDrafts({});
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao carregar materiais previstos.",
@@ -941,8 +998,14 @@ export function ProjectsPageView() {
         });
       }
       setForecastItems(data.items ?? []);
+      setForecastDrafts(
+        Object.fromEntries(
+          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+        ),
+      );
     } catch {
       setForecastItems([]);
+      setForecastDrafts({});
       setFeedback({
         type: "error",
         message: "Falha ao carregar materiais previstos.",
@@ -957,6 +1020,10 @@ export function ProjectsPageView() {
     setForecastProject({ id: project.id, sob: project.sob });
     setForecastProjectSearch(project.sob);
     setForecastItems([]);
+    setForecastCatalogItems([]);
+    setForecastDrafts({});
+    setForecastSearch("");
+    setForecastQty("");
     setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
     setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
     setFeedback(null);
@@ -969,6 +1036,10 @@ export function ProjectsPageView() {
       setForecastProject(null);
       setForecastProjectSearch("");
       setForecastItems([]);
+      setForecastCatalogItems([]);
+      setForecastDrafts({});
+      setForecastSearch("");
+      setForecastQty("");
       setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
       setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
       return;
@@ -978,6 +1049,10 @@ export function ProjectsPageView() {
     setForecastProject(selectedProject ? { id: selectedProject.id, sob: selectedProject.sob } : { id: projectId, sob: "" });
     setForecastProjectSearch(selectedProject?.sob ?? "");
     setForecastItems([]);
+    setForecastCatalogItems([]);
+    setForecastDrafts({});
+    setForecastSearch("");
+    setForecastQty("");
     setForecastFilterDraft(INITIAL_FORECAST_FILTERS);
     setActiveForecastFilters(INITIAL_FORECAST_FILTERS);
     await loadForecast(projectId);
@@ -1001,6 +1076,126 @@ export function ProjectsPageView() {
     if (forecastProject && normalizeSob(forecastProject.sob) !== normalizedSob) {
       setForecastProject(null);
       setForecastItems([]);
+      setForecastDrafts({});
+    }
+  }
+
+  async function addProjectForecast() {
+    if (!session?.accessToken || !forecastProject || !selectedProjectForecastOption || !forecastQty.trim()) {
+      setFeedback({
+        type: "error",
+        message: "Selecione um material valido e informe a quantidade para adicionar ao projeto.",
+      });
+      return;
+    }
+
+    setIsSavingProjectForecast(true);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/projects/forecast", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          projectId: forecastProject.id,
+          materialId: selectedProjectForecastOption.id,
+          quantity: forecastQty,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as ProjectForecastResponse;
+      if (!response.ok) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao adicionar material previsto ao projeto.",
+        });
+        return;
+      }
+
+      setForecastItems(data.items ?? []);
+      setForecastDrafts(
+        Object.fromEntries(
+          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+        ),
+      );
+      setForecastSearch("");
+      setForecastQty("");
+      setForecastCatalogItems([]);
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Material previsto adicionado ao projeto com sucesso.",
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao adicionar material previsto ao projeto.",
+      });
+    } finally {
+      setIsSavingProjectForecast(false);
+    }
+  }
+
+  async function saveProjectForecastRow(itemId: string) {
+    if (!session?.accessToken || !forecastProject) {
+      return;
+    }
+
+    const draft = forecastDrafts[itemId];
+    if (!draft?.quantity.trim()) {
+      setFeedback({
+        type: "error",
+        message: "Informe a quantidade prevista antes de salvar o material.",
+      });
+      return;
+    }
+
+    setIsSavingProjectForecast(true);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/projects/forecast", {
+        method: "PUT",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          projectId: forecastProject.id,
+          id: itemId,
+          quantity: draft.quantity,
+          observation: draft.observation,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as ProjectForecastResponse;
+      if (!response.ok) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao salvar material previsto do projeto.",
+        });
+        return;
+      }
+
+      setForecastItems(data.items ?? []);
+      setForecastDrafts(
+        Object.fromEntries(
+          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+        ),
+      );
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Material previsto do projeto atualizado com sucesso.",
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao salvar material previsto do projeto.",
+      });
+    } finally {
+      setIsSavingProjectForecast(false);
     }
   }
 
@@ -1308,6 +1503,60 @@ export function ProjectsPageView() {
     }
   }
 
+  async function handleDownloadActivityForecastTemplate() {
+    if (!session?.accessToken) {
+      setFeedback({
+        type: "error",
+        message: "Sessao invalida para baixar o modelo de atividades previstas.",
+      });
+      return;
+    }
+
+    const functionsBaseUrl = supabaseFunctionsBaseUrl();
+    const anonKey = supabaseAnonKey();
+    if (!functionsBaseUrl || !anonKey) {
+      setFeedback({
+        type: "error",
+        message: "Ambiente sem configuracao de Supabase para baixar o modelo.",
+      });
+      return;
+    }
+
+    setIsDownloadingActivityForecastTemplate(true);
+    try {
+      const response = await fetch(`${functionsBaseUrl}/functions/v1/get_project_activity_forecast_template`, {
+        cache: "no-store",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao baixar modelo de atividades previstas.",
+        });
+        return;
+      }
+
+      const file = await response.blob();
+      downloadBlobFile(file, "modelo_atividades_previstas.xlsx");
+      setFeedback({
+        type: "success",
+        message: "Modelo XLSX de atividades baixado com sucesso.",
+      });
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao baixar modelo de atividades previstas.",
+      });
+    } finally {
+      setIsDownloadingActivityForecastTemplate(false);
+    }
+  }
+
   function openForecastImportModal() {
     if (!forecastProject) {
       setFeedback({
@@ -1325,6 +1574,25 @@ export function ProjectsPageView() {
     setIsForecastImportModalOpen(false);
     setForecastImportFile(null);
     setIsImportingForecast(false);
+  }
+
+  function openActivityForecastImportModal() {
+    if (!activityForecastProject) {
+      setFeedback({
+        type: "error",
+        message: "Selecione um projeto para importar atividades previstas.",
+      });
+      return;
+    }
+
+    setActivityForecastImportFile(null);
+    setIsActivityForecastImportModalOpen(true);
+  }
+
+  function closeActivityForecastImportModal() {
+    setIsActivityForecastImportModalOpen(false);
+    setActivityForecastImportFile(null);
+    setIsImportingActivityForecast(false);
   }
 
   async function submitForecastImport() {
@@ -1386,6 +1654,68 @@ export function ProjectsPageView() {
       });
     } finally {
       setIsImportingForecast(false);
+    }
+  }
+
+  async function submitActivityForecastImport() {
+    if (!session?.accessToken || !activityForecastProject || !activityForecastImportFile) {
+      return;
+    }
+
+    const functionsBaseUrl = supabaseFunctionsBaseUrl();
+    const anonKey = supabaseAnonKey();
+    if (!functionsBaseUrl || !anonKey) {
+      setFeedback({
+        type: "error",
+        message: "Ambiente sem configuracao de Supabase para importar atividades previstas.",
+      });
+      return;
+    }
+
+    setIsImportingActivityForecast(true);
+    try {
+      const payload = new FormData();
+      payload.set("projectId", activityForecastProject.id);
+      payload.set("file", activityForecastImportFile);
+
+      const response = await fetch(`${functionsBaseUrl}/functions/v1/import_project_activity_forecast`, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: payload,
+      });
+
+      const data = (await response.json().catch(() => ({}))) as ProjectForecastImportResponse;
+      if (!response.ok) {
+        const errorList = (data.errors ?? []).slice(0, 5);
+        const blockedCodes = (data.codes ?? []).slice(0, 5);
+        const details = [...errorList, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
+        const errorDetails = details.length > 0 ? ` (${details.join(" | ")})` : "";
+        setFeedback({
+          type: "error",
+          message: `${data.message ?? "Falha ao importar atividades previstas."}${errorDetails}`,
+        });
+        return;
+      }
+
+      setFeedback({
+        type: "success",
+        message:
+          data.message ??
+          `Atividades previstas do projeto ${activityForecastProject.sob} importadas com sucesso.`,
+      });
+      closeActivityForecastImportModal();
+      await loadActivityForecast(activityForecastProject.id);
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Falha ao importar atividades previstas.",
+      });
+    } finally {
+      setIsImportingActivityForecast(false);
     }
   }
 
@@ -1985,6 +2315,49 @@ export function ProjectsPageView() {
               </p>
             )}
 
+            <div className={styles.formGrid}>
+              <label className={`${styles.field} ${styles.fieldWide}`}>
+                <span>Material</span>
+                <input
+                  type="text"
+                  list="project-forecast-list"
+                  value={forecastSearch}
+                  onChange={(event) => setForecastSearch(event.target.value)}
+                  placeholder="Digite codigo ou descricao"
+                  disabled={!forecastProject}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Quantidade prevista</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={forecastQty}
+                  onChange={(event) => setForecastQty(event.target.value)}
+                  placeholder="0,00"
+                  disabled={!forecastProject}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>UMB</span>
+                <input value={selectedProjectForecastOption?.umb ?? ""} placeholder="Selecione o material" disabled />
+              </label>
+
+              <div className={`${styles.actions} ${styles.formActions}`}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void addProjectForecast()}
+                  disabled={!forecastProject || isSavingProjectForecast}
+                >
+                  {isSavingProjectForecast ? "Salvando..." : "Adicionar material"}
+                </button>
+              </div>
+            </div>
+
             <div className={styles.actions}>
               <button
                 type="button"
@@ -2017,6 +2390,7 @@ export function ProjectsPageView() {
               <span>Use o modelo oficial com colunas: `codigo`, `quantidade`.</span>
               <span>Somente arquivo XLSX e permitido.</span>
               <span>Codigos sao validados no cadastro de materiais do tenant.</span>
+              <span>A inclusao manual usa o mesmo cadastro base e tambem exige quantidade maior que zero.</span>
             </div>
           </div>
         ) : (
@@ -2074,30 +2448,50 @@ export function ProjectsPageView() {
                 <span>Unidade</span>
                 <input value={selectedProjectActivityForecastOption?.unit ?? ""} placeholder="Selecione a atividade" disabled />
               </label>
+            </div>
 
-              <div className={`${styles.actions} ${styles.formActions}`}>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  onClick={() => void addProjectActivityForecast()}
-                  disabled={!activityForecastProject || isSavingProjectActivityForecast}
-                >
-                  {isSavingProjectActivityForecast ? "Salvando..." : "Adicionar atividade"}
-                </button>
-                <button
-                  type="button"
-                  className={styles.ghostButton}
-                  onClick={() => (activityForecastProject ? void loadActivityForecast(activityForecastProject.id) : undefined)}
-                  disabled={!activityForecastProject || isLoadingActivityForecast}
-                >
-                  {isLoadingActivityForecast ? "Atualizando..." : "Atualizar lista"}
-                </button>
-              </div>
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void addProjectActivityForecast()}
+                disabled={!activityForecastProject || isSavingProjectActivityForecast}
+              >
+                {isSavingProjectActivityForecast ? "Salvando..." : "Adicionar atividade"}
+              </button>
+            </div>
+
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => void handleDownloadActivityForecastTemplate()}
+                disabled={isDownloadingActivityForecastTemplate}
+              >
+                {isDownloadingActivityForecastTemplate ? "Baixando modelo..." : "Baixar modelo (.xlsx)"}
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={openActivityForecastImportModal}
+                disabled={!activityForecastProject || isLoadingActivityForecast || isImportingActivityForecast}
+              >
+                Importar planilha XLSX
+              </button>
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={() => (activityForecastProject ? void loadActivityForecast(activityForecastProject.id) : undefined)}
+                disabled={!activityForecastProject || isLoadingActivityForecast}
+              >
+                {isLoadingActivityForecast ? "Atualizando..." : "Atualizar lista"}
+              </button>
             </div>
 
             <div className={styles.forecastRules}>
               <strong>Regras das atividades previstas:</strong>
               <span>Selecione uma atividade ativa do cadastro base do tenant.</span>
+              <span>O modelo XLSX tambem usa apenas as colunas: `codigo`, `quantidade`.</span>
               <span>A quantidade prevista deve ser maior que zero.</span>
               <span>A lista da Locacao passa a consumir essa base quando o projeto for aberto.</span>
             </div>
@@ -2466,24 +2860,77 @@ export function ProjectsPageView() {
                   <th>UMB</th>
                   <th>Tipo</th>
                   <th>Quantidade prevista</th>
+                  <th>Observacao</th>
                   <th>Atualizado em</th>
+                  <th>Acoes</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredForecastItems.length > 0 ? (
-                  filteredForecastItems.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.code}</td>
-                      <td>{item.description}</td>
-                      <td>{item.umb ?? "-"}</td>
-                      <td>{item.type ?? "-"}</td>
-                      <td>{item.qtyPlanned.toLocaleString("pt-BR")}</td>
-                      <td>{formatDateTime(item.updatedAt)}</td>
-                    </tr>
-                  ))
+                  filteredForecastItems.map((item) => {
+                    const draft = forecastDrafts[item.id] ?? {
+                      quantity: String(item.qtyPlanned),
+                      observation: item.observation ?? "",
+                    };
+
+                    return (
+                      <tr key={item.id}>
+                        <td>{item.code}</td>
+                        <td>{item.description}</td>
+                        <td>{item.umb ?? "-"}</td>
+                        <td>{item.type ?? "-"}</td>
+                        <td>
+                          <input
+                            className={styles.tableInput}
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={draft.quantity}
+                            onChange={(event) =>
+                              setForecastDrafts((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  ...draft,
+                                  quantity: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className={styles.tableInput}
+                            type="text"
+                            value={draft.observation}
+                            onChange={(event) =>
+                              setForecastDrafts((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  ...draft,
+                                  observation: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Observacao opcional"
+                          />
+                        </td>
+                        <td>{formatDateTime(item.updatedAt)}</td>
+                        <td className={styles.actionsCell}>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => void saveProjectForecastRow(item.id)}
+                            disabled={isSavingProjectForecast}
+                          >
+                            {isSavingProjectForecast ? "Salvando..." : "Salvar"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={6} className={styles.emptyRow}>
+                    <td colSpan={8} className={styles.emptyRow}>
                       {isLoadingForecast
                         ? "Carregando materiais previstos..."
                         : "Nenhum material previsto encontrado para os filtros informados."}
@@ -2728,6 +3175,82 @@ export function ProjectsPageView() {
         </div>
       ) : null}
 
+      {isActivityForecastImportModalOpen ? (
+        <div className={styles.modalOverlay} onClick={closeActivityForecastImportModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Importar atividades previstas</h4>
+                <p className={styles.modalSubtitle}>
+                  Projeto: {activityForecastProject?.sob ?? "-"}
+                </p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeActivityForecastImportModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>1</span>
+                  <div>
+                    <strong>Baixe o modelo</strong>
+                    <p>Use o arquivo modelo para validar as colunas obrigatorias.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => void handleDownloadActivityForecastTemplate()}
+                  disabled={isDownloadingActivityForecastTemplate}
+                >
+                  {isDownloadingActivityForecastTemplate ? "Baixando..." : "Baixar modelo (.xlsx)"}
+                </button>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>2</span>
+                  <div>
+                    <strong>Preencha a planilha</strong>
+                    <p>Campos obrigatorios: codigo e quantidade.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>3</span>
+                  <div>
+                    <strong>Envie o arquivo</strong>
+                    <p>Somente arquivos XLSX.</p>
+                  </div>
+                </div>
+                <label className={styles.importDropzone}>
+                  <input
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    onChange={(event) => setActivityForecastImportFile(event.target.files?.[0] ?? null)}
+                  />
+                  <span>{activityForecastImportFile ? activityForecastImportFile.name : "Clique para selecionar o arquivo XLSX"}</span>
+                </label>
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => void submitActivityForecastImport()}
+                    disabled={!activityForecastImportFile || isImportingActivityForecast}
+                  >
+                    {isImportingActivityForecast ? "Importando..." : "Importar planilha"}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
       {detailProject ? (
         <div className={styles.modalOverlay} onClick={() => setDetailProject(null)}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -2912,6 +3435,12 @@ export function ProjectsPageView() {
       <datalist id="forecast-sob-list">
         {projects.map((project) => (
           <option key={project.id} value={project.sob} />
+        ))}
+      </datalist>
+
+      <datalist id="project-forecast-list">
+        {forecastCatalogItems.map((item) => (
+          <option key={item.id} value={forecastOptionLabel(item)} />
         ))}
       </datalist>
 

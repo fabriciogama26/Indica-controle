@@ -112,6 +112,8 @@
 - [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [x] Centralizar no banco via RPC as regras de bloqueio da `Locacao`, `Materiais previstos` e `Atividades previstas`.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.
+- [x] Evoluir `Materiais previstos` e `Atividades previstas` em `Projetos` para suportar importacao em massa e inclusao manual, com edicao em linha e protecao via RPC.
+- [x] Padronizar o posicionamento do botao `Adicionar atividade` em `Projetos` para seguir o mesmo layout de `Adicionar material`.
 - [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
 - [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.

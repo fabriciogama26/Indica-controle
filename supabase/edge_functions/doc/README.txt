@@ -14,6 +14,8 @@ Arquivos implementados
 - supabase/edge_functions/get_responsaveis/index.ts
 - supabase/edge_functions/get_project_forecast_template/index.ts
 - supabase/edge_functions/import_project_forecast/index.ts
+- supabase/edge_functions/get_project_activity_forecast_template/index.ts
+- supabase/edge_functions/import_project_activity_forecast/index.ts
 
 Resumo
 login_matricula
@@ -54,6 +56,12 @@ get_project_forecast_template
 
 import_project_forecast
 - Importa planilha XLSX de materiais previstos com protecao RPC anti-duplicidade.
+
+get_project_activity_forecast_template
+- Baixa o modelo XLSX oficial de atividades previstas por projeto.
+
+import_project_activity_forecast
+- Importa planilha XLSX de atividades previstas com protecao RPC anti-duplicidade.
 
 Secrets obrigatorios para todas
 - SUPABASE_URL
