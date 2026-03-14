@@ -106,6 +106,29 @@ type CancelModalState = {
   action: StatusAction;
 };
 
+type SaveRequestPayload = {
+  id?: string;
+  projectId: string;
+  teamId: string;
+  date: string;
+  period: PeriodMode;
+  startTime: string;
+  endTime: string;
+  expectedMinutes: number;
+  feeder: string;
+  support: string;
+  note: string;
+  expectedUpdatedAt?: string;
+  changeReason?: string;
+  documents: Record<DocumentKey, { number: string; deliveredAt: string }>;
+  activities: Array<{ catalogId: string; quantity: number }>;
+};
+
+type ReprogramModalState = {
+  projectCode: string;
+  payload: SaveRequestPayload;
+};
+
 type FeedbackState = {
   type: "success" | "error";
   message: string;
@@ -150,6 +173,7 @@ type SaveProgrammingResponse = {
 };
 
 const WEEKDAY_LABELS = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
+const CHANGE_REASON_MIN_LENGTH = 10;
 const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
   { key: "sgd", label: "SGD" },
   { key: "pi", label: "PI" },
@@ -463,7 +487,9 @@ export function ProgrammingPageView() {
   const [activeDropSlot, setActiveDropSlot] = useState<string | null>(null);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [cancelModalState, setCancelModalState] = useState<CancelModalState | null>(null);
+  const [reprogramModalState, setReprogramModalState] = useState<ReprogramModalState | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [reprogramReason, setReprogramReason] = useState("");
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [isBoardLoading, setIsBoardLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -534,7 +560,8 @@ export function ProgrammingPageView() {
   const expectedDuration = modalState
     ? formatDuration(calculateExpectedMinutes(modalState.form.startTime, modalState.form.endTime, modalState.form.period))
     : "0h";
-  const canSubmitCancellation = Boolean(cancelReason.trim()) && !isCancelling;
+  const canSubmitCancellation = cancelReason.trim().length >= CHANGE_REASON_MIN_LENGTH && !isCancelling;
+  const canSubmitReprogram = reprogramReason.trim().length >= CHANGE_REASON_MIN_LENGTH && !isSaving;
 
   useEffect(() => {
     if (!accessToken) {
@@ -639,6 +666,20 @@ export function ProgrammingPageView() {
     };
   }, [accessToken, deferredActivitySearch, modalState]);
 
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!modalState && !cancelModalState && !reprogramModalState) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [cancelModalState, modalState, reprogramModalState]);
+
   function shiftPeriod(direction: "previous" | "next") {
     const step = viewMode === "week" ? 7 : 1;
     setPeriodStart((current) => addDays(current, direction === "previous" ? -step : step));
@@ -721,6 +762,15 @@ export function ProgrammingPageView() {
 
     setCancelModalState(null);
     setCancelReason("");
+  }
+
+  function closeReprogramModal() {
+    if (isSaving) {
+      return;
+    }
+
+    setReprogramModalState(null);
+    setReprogramReason("");
   }
 
   function updateModalField<Key extends keyof ScheduleFormState>(field: Key, value: ScheduleFormState[Key]) {
@@ -874,6 +924,60 @@ export function ProgrammingPageView() {
     });
   }
 
+  async function persistSchedule(payload: SaveRequestPayload) {
+    if (!accessToken) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const method = payload.id ? "PUT" : "POST";
+      const response = await fetch("/api/programacao", {
+        method,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = (await response.json().catch(() => null)) as SaveProgrammingResponse | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Falha ao salvar programacao.");
+      }
+
+      const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
+      if (!reloadResponse.ok) {
+        throw new Error(reloadData?.message ?? "Programacao salva, mas falhou ao recarregar a grade.");
+      }
+
+      setProjects(reloadData?.projects ?? []);
+      setTeams(reloadData?.teams ?? []);
+      setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
+      setModalState(null);
+      setCancelModalState(null);
+      setReprogramModalState(null);
+      setCancelReason("");
+      setReprogramReason("");
+      setFeedback({
+        type: "success",
+        message: data?.message ?? "Programacao salva com sucesso.",
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao salvar programacao.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleSaveSchedule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -895,7 +999,7 @@ export function ProgrammingPageView() {
       return;
     }
 
-    const payload = {
+    const payload: SaveRequestPayload = {
       id: modalState.scheduleId ?? undefined,
       projectId: modalState.projectId,
       teamId: modalState.teamId,
@@ -927,51 +1031,37 @@ export function ProgrammingPageView() {
         })),
     };
 
-    setIsSaving(true);
+    const currentSchedule = editingSchedule;
+    const isReschedule = currentSchedule
+      ? (
+          currentSchedule.date !== payload.date ||
+          currentSchedule.teamId !== payload.teamId ||
+          currentSchedule.startTime !== payload.startTime ||
+          currentSchedule.endTime !== payload.endTime
+        )
+      : false;
 
-    try {
-      const method = modalState.scheduleId ? "PUT" : "POST";
-      const response = await fetch("/api/programacao", {
-        method,
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+    if (isReschedule && activeProject) {
+      setReprogramModalState({
+        projectCode: activeProject.code,
+        payload,
       });
-
-      const data = (await response.json().catch(() => null)) as SaveProgrammingResponse | null;
-      if (!response.ok) {
-        throw new Error(data?.message ?? "Falha ao salvar programacao.");
-      }
-
-      const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
-      const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
-      if (!reloadResponse.ok) {
-        throw new Error(reloadData?.message ?? "Programacao salva, mas falhou ao recarregar a grade.");
-      }
-
-      setProjects(reloadData?.projects ?? []);
-      setTeams(reloadData?.teams ?? []);
-      setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
-      setModalState(null);
-      setCancelModalState(null);
-      setCancelReason("");
-      setFeedback({
-        type: "success",
-        message: data?.message ?? "Programacao salva com sucesso.",
-      });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Falha ao salvar programacao.",
-      });
-    } finally {
-      setIsSaving(false);
+      setReprogramReason("");
+      return;
     }
+
+    await persistSchedule(payload);
+  }
+
+  async function handleConfirmReprogram() {
+    if (!reprogramModalState || reprogramReason.trim().length < CHANGE_REASON_MIN_LENGTH) {
+      return;
+    }
+
+    await persistSchedule({
+      ...reprogramModalState.payload,
+      changeReason: reprogramReason.trim(),
+    });
   }
 
   async function handleCancelSchedule() {
@@ -998,7 +1088,7 @@ export function ProgrammingPageView() {
 
       const data = (await response.json().catch(() => null)) as SaveProgrammingResponse | null;
       if (!response.ok) {
-        throw new Error(data?.message ?? "Falha ao cancelar programacao.");
+        throw new Error(data?.message ?? "Falha ao alterar status da programacao.");
       }
 
       const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
@@ -1007,7 +1097,7 @@ export function ProgrammingPageView() {
       });
       const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
       if (!reloadResponse.ok) {
-        throw new Error(reloadData?.message ?? "Programacao cancelada, mas falhou ao recarregar a grade.");
+        throw new Error(reloadData?.message ?? "Alteracao registrada, mas falhou ao recarregar a grade.");
       }
 
       setProjects(reloadData?.projects ?? []);
@@ -1027,7 +1117,7 @@ export function ProgrammingPageView() {
     } catch (error) {
       setFeedback({
         type: "error",
-        message: error instanceof Error ? error.message : "Falha ao cancelar programacao.",
+        message: error instanceof Error ? error.message : "Falha ao alterar status da programacao.",
       });
     } finally {
       setIsCancelling(false);
@@ -1372,7 +1462,7 @@ export function ProgrammingPageView() {
       </datalist>
 
       {modalState ? (
-        <div className={styles.modalOverlay} onClick={() => !isSaving && setModalState(null)}>
+        <div className={styles.modalOverlay} onClick={() => !isSaving && !reprogramModalState && setModalState(null)}>
           <div className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
@@ -1625,6 +1715,61 @@ export function ProgrammingPageView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {reprogramModalState ? (
+        <div className={styles.modalOverlay} onClick={closeReprogramModal}>
+          <div className={styles.confirmationCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <p className={styles.eyebrow}>Programacao</p>
+                <h3>Validar Reprogramacao</h3>
+              </div>
+              <button
+                type="button"
+                className={styles.modalCloseButton}
+                onClick={closeReprogramModal}
+                disabled={isSaving}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <p className={styles.modalText}>
+                Informe o motivo da reprogramacao do projeto {reprogramModalState.projectCode}. A alteracao so sera gravada
+                apos esta validacao.
+              </p>
+
+              <label className={styles.field}>
+                <span>
+                  Motivo da reprogramacao <span className="requiredMark">*</span>
+                </span>
+                <textarea
+                  value={reprogramReason}
+                  onChange={(event) => setReprogramReason(event.target.value)}
+                  rows={4}
+                  placeholder={`Descreva o motivo com no minimo ${CHANGE_REASON_MIN_LENGTH} caracteres`}
+                  disabled={isSaving}
+                />
+              </label>
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void handleConfirmReprogram()}
+                  disabled={!canSubmitReprogram}
+                >
+                  {isSaving ? "Validando..." : "Validar reprogramacao"}
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={closeReprogramModal} disabled={isSaving}>
+                  Voltar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
