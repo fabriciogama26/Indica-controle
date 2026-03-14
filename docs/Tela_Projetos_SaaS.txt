@@ -7,6 +7,7 @@ Visao geral
 - Implementa fluxo completo com criacao, edicao, inativacao e historico de alteracoes.
 - Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
 - Inclui aba `Materiais previstos` para importar em massa a lista inicial de materiais planejados por projeto.
+- Inclui aba `Atividades previstas` para manter a base operacional de atividades planejadas por projeto, com inclusao e edicao em linha.
 - Mantem indicador operacional `has_locacao` no projeto para consumo futuro em visoes gerais e cruzamentos com `Locacao`.
 
 Arquitetura
@@ -17,6 +18,8 @@ Arquitetura
 - API de projetos: `src/app/api/projects/route.ts`
 - API de metadados/filtros: `src/app/api/projects/meta/route.ts`
 - API de materiais previstos (listagem): `src/app/api/projects/forecast/route.ts`
+- API de atividades previstas (listagem e salvamento): `src/app/api/projects/activity-forecast/route.ts`
+- API de busca de atividades previstas por projeto: `src/app/api/projects/activity-forecast/catalog/route.ts`
 - Edge Function de template XLSX: `supabase/edge_functions/get_project_forecast_template/index.ts`
 - Edge Function de importacao XLSX: `supabase/edge_functions/import_project_forecast/index.ts`
 - Banco: `supabase/migrations/029_create_project_table.sql`
@@ -31,6 +34,7 @@ Arquitetura
 - Banco (tenants + vinculo de acesso por usuario): `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
 - Banco (FK tenant global em tabelas com tenant_id): `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
 - Banco (flag operacional de locacao): `supabase/migrations/060_add_project_has_locacao.sql`
+- Banco (atividades previstas por projeto + seed da locacao): `supabase/migrations/064_create_project_activity_forecast.sql`
 
 Cadastro
 --------
@@ -80,6 +84,13 @@ Cadastro
   - Permite baixar modelo XLSX oficial.
   - Permite importar planilha XLSX (somente `codigo` e `quantidade`) para adicionar materiais previstos.
   - A importacao valida via RPC e bloqueia codigo duplicado no arquivo e codigo ja importado no projeto.
+- Aba `Atividades previstas`:
+  - Recebe selecao de projeto pela lista (acao `Atividades previstas`).
+  - Permite selecionar projeto por `Projeto (SOB)` em campo de texto com sugestao (datalist).
+  - Permite pesquisar atividade ativa por `codigo` ou `descricao`.
+  - Permite incluir atividade prevista com `quantidade`.
+  - Permite editar `quantidade` e `observacao` diretamente na linha.
+  - Bloqueia quantidade `<= 0` no backend via RPC `save_project_activity_forecast`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -111,6 +122,10 @@ Filtros, auto-complete e listagem
   - `Filtros de Materiais Previstos` (codigo, descricao, tipo).
   - `Lista de Materiais Previstos` (somente materiais do projeto selecionado).
   - Botao `Exportar Excel (CSV)` para exportar os materiais previstos filtrados.
+- Quando a aba `Atividades previstas` esta ativa, os blocos de `Filtros` e `Lista de Projetos` ficam ocultos e a tela mostra:
+  - `Filtros de Atividades Previstas` (codigo, descricao, tipo).
+  - `Lista de Atividades Previstas` (somente atividades do projeto selecionado).
+  - Botao `Exportar Excel (CSV)` para exportar as atividades previstas filtradas.
 
 Boas praticas
 -------------
@@ -121,6 +136,7 @@ Boas praticas
 - Tratar `Materiais previstos` como planejamento: nao movimenta saldo fisico nem saldo liquido de projeto.
 - Validar importacao XLSX por tenant (projeto e material) antes de persistir.
 - A planilha de importacao de previstos deve conter somente `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
+- `Atividades previstas` do projeto devem ser mantidas com quantidade maior que zero e servem de base para bootstrap inicial da aba `Atividades previstas` na `Locacao`.
 
 Cancelamento e saldo
 --------------------
@@ -168,9 +184,12 @@ Atualizacao 2026-03
 - Ajustado `Registrado por` para exibir sempre `app_users.login_name` de quem registrou.
 - Antes: a tela de projetos nao tinha cadastro de planejamento de materiais.
 - Depois: adicionada aba `Materiais previstos` com importacao em massa via planilha XLSX.
+- Antes: a tela de projetos nao tinha base propria para atividades previstas do projeto.
+- Depois: adicionada aba `Atividades previstas` com inclusao/edicao em linha e persistencia dedicada.
 - Criada migration `041_create_project_material_forecast.sql` para registrar materiais previstos por projeto com RLS e auditoria.
 - Criada migration `043_project_forecast_import_guards.sql` com RPCs `precheck_project_material_forecast_import` e `append_project_material_forecast`.
 - Criada migration `060_add_project_has_locacao.sql` para adicionar o flag operacional `project.has_locacao` e expor o campo na view `project_with_labels`.
+- Criada migration `064_create_project_activity_forecast.sql` para registrar atividades previstas por projeto, criar a RPC `save_project_activity_forecast` e seedar a `Locacao` a partir dessa base.
 - Antes: nao havia marcador simples para saber se o projeto passou pela tela de `Locacao`.
 - Depois: o projeto passa a registrar `has_locacao = true` quando existe salvamento real na `Locacao`.
 - Importacao e download de modelo de `Materiais previstos` passaram a ser feitos por Edge Functions (`get_project_forecast_template` e `import_project_forecast`).
@@ -191,6 +210,10 @@ Funcoes principais
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
   - Responsavel por: listar materiais previstos do projeto.
+- Caminho: `src/app/api/projects/activity-forecast/route.ts`
+  - Responsavel por: listar, incluir e editar atividades previstas do projeto.
+- Caminho: `src/app/api/projects/activity-forecast/catalog/route.ts`
+  - Responsavel por: pesquisar atividades ativas do tenant para incluir no previsto do projeto.
 - Caminho: `supabase/edge_functions/get_project_forecast_template/index.ts`
   - Responsavel por: autenticar usuario e entregar o modelo XLSX oficial.
 - Caminho: `supabase/edge_functions/import_project_forecast/index.ts`
@@ -215,6 +238,8 @@ Constantes e configuracoes
   - Responsavel por: migrar colunas de dominio da `project` para UUID e criar a view `project_with_labels` para listas e detalhes.
 - Caminho: `supabase/migrations/041_create_project_material_forecast.sql`
   - Responsavel por: tabela `project_material_forecast`, policies RLS, trigger de auditoria e constraint unica por material no projeto.
+- Caminho: `supabase/migrations/064_create_project_activity_forecast.sql`
+  - Responsavel por: tabela `project_activity_forecast`, RPC `save_project_activity_forecast` e alteracao do bootstrap da `Locacao` para seed de atividades.
 - Caminho: `supabase/migrations/043_project_forecast_import_guards.sql`
   - Responsavel por: RPC de pre-check e RPC de append para proteger importacoes contra duplicidade.
 - Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
@@ -243,17 +268,23 @@ Ajuda contextual
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
   - `src/app/api/projects/forecast/route.ts`
+  - `src/app/api/projects/activity-forecast/route.ts`
+  - `src/app/api/projects/activity-forecast/catalog/route.ts`
   - `src/app/api/projects/forecast/template/route.ts`
   - `supabase/edge_functions/get_project_forecast_template/index.ts`
   - `supabase/edge_functions/import_project_forecast/index.ts`
   - `supabase/migrations/041_create_project_material_forecast.sql`
+  - `supabase/migrations/064_create_project_activity_forecast.sql`
   - `supabase/migrations/043_project_forecast_import_guards.sql`
   - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
   - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `handleForecastProjectSearchChange`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
+  - `openActivityForecastTab`, `loadActivityForecast`, `handleActivityForecastProjectSelection`, `handleActivityForecastProjectSearchChange`, `addProjectActivityForecast`, `saveProjectActivityForecastRow`, `handleExportActivityForecastItems`
   - Mapeamento de `hasLocacao` no retorno de `/api/projects`
   - `GET` de `/api/projects/forecast`
+  - `GET`, `POST` e `PUT` de `/api/projects/activity-forecast`
+  - `GET` de `/api/projects/activity-forecast/catalog`
   - `POST` de `/api/projects/forecast` bloqueado para forcar importacao via Edge Function
   - `GET` de `/api/projects/forecast/template` bloqueado para forcar download via Edge Function
   - `serve` de `get_project_forecast_template` e `import_project_forecast`

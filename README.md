@@ -113,7 +113,7 @@ vercel --prod
   - `(public)/recuperar-senha/page.tsx`: wrapper fino da rota publica de recuperacao de senha.
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
-  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros e listagem.
+  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, 4 blocos operacionais, validacao obrigatoria na aba principal, atividades previstas e materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: placeholder de Programacao.
   - `(dashboard)/medicao/page.tsx`: placeholder de Medicao.
@@ -140,6 +140,9 @@ vercel --prod
   - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users`.
   - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
+  - `api/projects/forecast/route.ts`: lista materiais previstos por projeto.
+  - `api/projects/activity-forecast/route.ts`: lista, adiciona e edita atividades previstas por projeto.
+  - `api/projects/activity-forecast/catalog/route.ts`: pesquisa atividades ativas para inclusao no previsto do projeto.
   - `api/locacao/route.ts`: inicializa, carrega e atualiza a Locacao por projeto, delegando a persistencia validada para RPC no banco.
   - `api/locacao/meta/route.ts`: carrega municipios e catalogo de projetos por SOB para a tela de locacao.
   - `api/locacao/materials/route.ts`: adiciona e edita materiais previstos da locacao via RPC com bloqueio de quantidade invalida.
@@ -160,7 +163,7 @@ vercel --prod
   - `HomePageView.tsx`: implementacao visual da home.
   - `HomePageView.module.css`: estilo da home.
 - `src/modules/dashboard/projetos/`
-  - `ProjectsPageView.tsx`: tela de projetos com cadastro, filtros e listagem em colunas.
+  - `ProjectsPageView.tsx`: tela de projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas em abas.
   - `ProjectsPageView.module.css`: estilos da tela de projetos.
 - `src/modules/dashboard/locacao/`
   - `LocationPageView.tsx`: tela de locacao com filtro por municipio, busca por SOB, 4 blocos operacionais, feedback local de salvamento, atividades previstas e materiais previstos.
@@ -256,44 +259,47 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 15. O shell principal libera navegacao para as secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
 16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
 17. A aba `Materiais previstos` em `/projetos` permite selecionar projeto, baixar modelo XLSX via Edge Function `get_project_forecast_template`, importar previsao via Edge Function `import_project_forecast` (colunas `codigo` e `quantidade`) e filtrar/listar materiais previstos por codigo, descricao e tipo via `/api/projects/forecast`.
-18. A rota `/locacao` permite filtrar projetos por `Municipio`, selecionar projeto por `SOB`, inicializar a base da locacao por `/api/locacao` e preencher a aba principal em 4 blocos: planejamento/vistoria, equipes para execucao, previsao de execucao e pre APR.
-19. A aba principal da `Locacao` exige os radios obrigatorios, normaliza os campos numericos com `0` por padrao, bloqueia salvar com todas as equipes zeradas ou com `ETAPAS PREVISTAS = 0` e salva observacoes, radios, quantidades, observacao da previsao, selecao de apoio de execucao e status dos riscos em um unico `Salvar locacao`.
-20. Ao salvar a aba principal da `Locacao` com sucesso, o dashboard volta ao topo do conteudo para recolocar em destaque as abas operacionais da tela.
-21. Na `Locacao`, as listas de apoio de execucao e riscos partem de todos os itens incluidos; o usuario so alterna `Remover`/`Incluir` e a persistencia acontece ao clicar em `Salvar locacao`.
-22. As abas `Atividades previstas` e `Materiais previstos` nao usam auto-save: a inclusao persiste em `Adicionar ...` e a edicao persiste no botao `Salvar` de cada linha.
-23. As quantidades de `Materiais previstos` e `Atividades previstas` ja contam com protecao estrutural no banco (`planned_qty > 0`) e agora passam tambem por RPC antes de inserir/editar.
-24. A migration `059_create_location_planning.sql` cria `project_location_plans`, `project_location_materials`, `project_location_activities` e o RPC `initialize_project_location_plan` para bootstrap do projeto na locacao.
-25. A migration `060_add_project_has_locacao.sql` adiciona `project.has_locacao` para marcar projetos que ja passaram por salvamento real na tela `/locacao`.
-26. As migrations `061_create_location_risks.sql` e `062_create_location_execution_support_items.sql` preparam as tabelas de riscos e de apoio de execucao consumidas pela aba principal da `Locacao`.
-27. A migration `063_create_location_save_rpcs.sql` centraliza as regras finais de bloqueio e persistencia da `Locacao`, `Materiais previstos` e `Atividades previstas` no banco.
-28. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`.
-29. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor.
-30. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
-31. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
-32. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
-33. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
-34. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
-35. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
-36. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
-37. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
-38. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
-39. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
-40. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
-41. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
-42. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
-43. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
-44. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
-45. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
-46. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
-47. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
-48. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
-49. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
-50. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
-51. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
-52. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
-53. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
-54. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
-55. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
+18. A aba `Atividades previstas` em `/projetos` permite selecionar projeto, pesquisar atividades ativas, incluir quantidade prevista, editar quantidade/observacao na linha e exportar CSV via `/api/projects/activity-forecast`.
+19. A rota `/locacao` permite filtrar projetos por `Municipio`, selecionar projeto por `SOB`, inicializar a base da locacao por `/api/locacao` e preencher a aba principal em 4 blocos: planejamento/vistoria, equipes para execucao, previsao de execucao e pre APR.
+20. A aba principal da `Locacao` exige os radios obrigatorios, normaliza os campos numericos com `0` por padrao, bloqueia salvar com todas as equipes zeradas ou com `ETAPAS PREVISTAS = 0` e salva observacoes, radios, quantidades, observacao da previsao, selecao de apoio de execucao e status dos riscos em um unico `Salvar locacao`.
+21. Ao salvar a aba principal da `Locacao` com sucesso, o dashboard volta ao topo do conteudo para recolocar em destaque as abas operacionais da tela.
+22. Na `Locacao`, as listas de apoio de execucao e riscos partem de todos os itens incluidos; o usuario so alterna `Remover`/`Incluir` e a persistencia acontece ao clicar em `Salvar locacao`.
+23. As abas `Atividades previstas` e `Materiais previstos` nao usam auto-save: a inclusao persiste em `Adicionar ...` e a edicao persiste no botao `Salvar` de cada linha.
+24. A base inicial de `Atividades previstas` da `Locacao` passa a ser seedada de `project_activity_forecast` quando existir previsao cadastrada no projeto e a lista da locacao ainda estiver vazia.
+25. As quantidades de `Materiais previstos` e `Atividades previstas` ja contam com protecao estrutural no banco (`planned_qty > 0`) e agora passam tambem por RPC antes de inserir/editar.
+26. A migration `059_create_location_planning.sql` cria `project_location_plans`, `project_location_materials`, `project_location_activities` e o RPC `initialize_project_location_plan` para bootstrap do projeto na locacao.
+27. A migration `060_add_project_has_locacao.sql` adiciona `project.has_locacao` para marcar projetos que ja passaram por salvamento real na tela `/locacao`.
+28. As migrations `061_create_location_risks.sql` e `062_create_location_execution_support_items.sql` preparam as tabelas de riscos e de apoio de execucao consumidas pela aba principal da `Locacao`.
+29. A migration `063_create_location_save_rpcs.sql` centraliza as regras finais de bloqueio e persistencia da `Locacao`, `Materiais previstos` e `Atividades previstas` no banco.
+30. A migration `064_create_project_activity_forecast.sql` cria `project_activity_forecast`, a RPC `save_project_activity_forecast` e integra o bootstrap da `Locacao` com essa nova base.
+31. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`.
+32. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor.
+33. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
+34. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
+35. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
+36. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
+37. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
+38. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
+39. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
+40. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
+41. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
+42. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
+43. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
+44. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
+45. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
+46. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
+47. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
+48. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
+49. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
+50. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+51. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
+52. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
+53. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
+54. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
+55. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
+56. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
+57. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
+58. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
 
 ---
 
@@ -326,6 +332,12 @@ npm run build
 - `Projeto nao encontrado para inicializar a locacao.` ou `Locacao nao encontrada para o projeto.`:
   - Causa: projeto inexistente no tenant ativo ou migration da locacao nao aplicada.
   - Solucao: aplicar `059_create_location_planning.sql`, confirmar o tenant selecionado e recarregar a rota `/locacao`.
+- `Atividade ja adicionada no previsto deste projeto.`:
+  - Causa: tentativa de incluir a mesma atividade duas vezes no previsto do projeto.
+  - Solucao: editar a quantidade da linha existente em `Atividades previstas` em vez de inserir duplicado.
+- `A quantidade da atividade prevista do projeto deve ser maior que zero.`:
+  - Causa: tentativa de incluir ou editar atividade prevista do projeto com quantidade `0`, negativa ou invalida.
+  - Solucao: informar quantidade maior que `0`; a validacao final e feita pela RPC `save_project_activity_forecast`.
 - `Preencha os campos obrigatorios de Locacao antes de salvar.`:
   - Causa: os radios `Necessario revisao de projeto?` e/ou `Com desligamento?` nao foram definidos na aba principal da locacao.
   - Solucao: selecionar `Sim` ou `Nao` para os dois campos e salvar novamente.
