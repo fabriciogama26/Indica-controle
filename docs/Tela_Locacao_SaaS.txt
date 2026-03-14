@@ -67,6 +67,8 @@ Filtros, auto-complete e listagem
   - `Municipio` (`select`)
   - `SOB` (`input` com `datalist` / auto-complete)
 - O `Municipio` reduz a lista de projetos disponiveis para o `SOB`.
+- O header da tela destaca visualmente tanto o estado vazio (`Nenhum projeto selecionado.`) quanto o estado com projeto aberto (`Projeto selecionado: ...`).
+- Quando existe projeto aberto, o header empilha em destaque `Projeto selecionado: ...` e, logo abaixo, o resumo `Materiais atuais` e `Atividades atuais`.
 - Depois de abrir a locacao, a navegacao operacional e exibida em um card com abas no topo:
   - `Locacao`
   - `Atividades previstas`

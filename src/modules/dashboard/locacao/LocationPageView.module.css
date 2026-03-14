@@ -255,9 +255,51 @@
   justify-content: flex-end;
 }
 
+.headerSelectionGroup {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
 .tableHint {
   color: #5b6a85;
   font-size: 0.88rem;
+}
+
+.selectedProjectHint,
+.emptySelectionHint {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.selectedProjectHint {
+  border: 1px solid rgba(23, 52, 122, 0.16);
+  background: rgba(37, 74, 156, 0.08);
+  color: #17347a;
+}
+
+.emptySelectionHint {
+  border: 1px solid rgba(198, 40, 40, 0.2);
+  background: #fff3f3;
+  color: #a12f2f;
+}
+
+.summaryHighlight {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 52, 122, 0.16);
+  background: rgba(37, 74, 156, 0.08);
+  color: #17347a;
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .totalHighlight {
