@@ -12,6 +12,7 @@ type BoardProjectRow = {
   priority_text: string | null;
   service_description: string | null;
   observation: string | null;
+  has_locacao: boolean | null;
   is_active: boolean;
 };
 
@@ -43,6 +44,7 @@ type ProgrammingRow = {
   id: string;
   project_id: string;
   team_id: string;
+  status: "PROGRAMADA" | "ADIADA" | "CANCELADA";
   execution_date: string;
   period: "INTEGRAL" | "PARCIAL";
   start_time: string;
@@ -106,6 +108,7 @@ type SaveProgrammingPayload = {
 
 type CancelProgrammingPayload = {
   id?: string;
+  action?: string;
   reason?: string;
   expectedUpdatedAt?: string;
 };
@@ -129,6 +132,7 @@ type CancelProgrammingRpcResult = {
   programming_id?: string;
   project_code?: string;
   updated_at?: string;
+  programming_status?: "ADIADA" | "CANCELADA";
 };
 
 function normalizeText(value: unknown) {
@@ -244,7 +248,7 @@ async function fetchProjects(
 ) {
   const { data, error } = await supabase
     .from("project_with_labels")
-    .select("id, sob, service_center_text, service_type_text, city_text, priority_text, service_description, observation, is_active")
+    .select("id, sob, service_center_text, service_type_text, city_text, priority_text, service_description, observation, has_locacao, is_active")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("execution_deadline", { ascending: true })
@@ -327,7 +331,7 @@ async function fetchProgrammingRows(
   const { data, error } = await supabase
     .from("project_programming")
     .select(
-      "id, project_id, team_id, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
+      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
@@ -384,7 +388,7 @@ async function fetchProgrammingById(
   const { data, error } = await supabase
     .from("project_programming")
     .select(
-      "id, project_id, team_id, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
+      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
@@ -472,13 +476,15 @@ async function cancelProgrammingViaRpc(params: {
   tenantId: string;
   actorUserId: string;
   programmingId: string;
+  action: "ADIADA" | "CANCELADA";
   reason: string;
   expectedUpdatedAt?: string | null;
 }) {
-  const { data, error } = await params.supabase.rpc("cancel_project_programming", {
+  const { data, error } = await params.supabase.rpc("set_project_programming_status", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_programming_id: params.programmingId,
+    p_status: params.action,
     p_reason: params.reason,
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
@@ -506,7 +512,8 @@ async function cancelProgrammingViaRpc(params: {
     programmingId: result.programming_id,
     projectCode: normalizeText(result.project_code),
     updatedAt: normalizeText(result.updated_at),
-    message: result.message ?? "Programacao cancelada com sucesso.",
+    programmingStatus: result.programming_status ?? params.action,
+    message: result.message ?? (params.action === "ADIADA" ? "Programacao adiada com sucesso." : "Programacao cancelada com sucesso."),
   } as const;
 }
 
@@ -581,6 +588,7 @@ export async function GET(request: NextRequest) {
           serviceType: normalizeText(item.service_type_text) || "Sem tipo",
           priority: normalizeText(item.priority_text) || "Sem prioridade",
           note: normalizeText(item.observation) || normalizeText(item.service_description),
+          hasLocacao: Boolean(item.has_locacao),
         })),
       teams,
       schedules: programmingRows.map((item) => {
@@ -834,11 +842,12 @@ export async function PATCH(request: NextRequest) {
 
   const payload = (await request.json().catch(() => null)) as CancelProgrammingPayload | null;
   const programmingId = normalizeText(payload?.id);
+  const action = normalizeText(payload?.action).toUpperCase() === "ADIAR" ? "ADIADA" : "CANCELADA";
   const reason = normalizeNullableText(payload?.reason);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
 
   if (!programmingId || !reason) {
-    return NextResponse.json({ message: "Informe a programacao e o motivo do cancelamento." }, { status: 400 });
+    return NextResponse.json({ message: "Informe a programacao e o motivo da alteracao." }, { status: 400 });
   }
 
   const currentProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId);
@@ -858,6 +867,7 @@ export async function PATCH(request: NextRequest) {
     tenantId: resolution.appUser.tenant_id,
     actorUserId: resolution.appUser.id,
     programmingId,
+    action,
     reason,
     expectedUpdatedAt,
   });
@@ -875,11 +885,12 @@ export async function PATCH(request: NextRequest) {
     reason,
     force: true,
     changes: {
+      status: { from: currentProgramming.status, to: action },
       isActive: { from: "true", to: "false" },
       cancellationReason: { from: null, to: reason },
     },
     metadata: {
-      action: "CANCEL",
+      action,
       projectId: currentProgramming.project_id,
       teamId: currentProgramming.team_id,
       executionDate: currentProgramming.execution_date,
