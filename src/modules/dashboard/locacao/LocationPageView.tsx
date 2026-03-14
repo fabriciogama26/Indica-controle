@@ -737,11 +737,19 @@ export function LocationPageView() {
             </p>
           </div>
           <div className={styles.tableHeaderActions}>
-            <div className={styles.tableHint}>
-              {selectedProject
-                ? `Projeto selecionado: ${selectedProject.sob} ${selectedProject.city ? `- ${selectedProject.city}` : ""}`
-                : "Nenhum projeto selecionado."}
-            </div>
+            {selectedProject ? (
+              <div className={styles.headerSelectionGroup}>
+                <div className={styles.selectedProjectHint}>
+                  {`Projeto selecionado: ${selectedProject.sob} ${selectedProject.city ? `- ${selectedProject.city}` : ""}`}
+                </div>
+                <div className={styles.summaryHighlight}>
+                  Materiais atuais: {formatQuantity(state?.summary?.materialsPlannedTotal ?? 0)} | Atividades atuais:{" "}
+                  {formatCurrency(state?.summary?.activitiesPlannedTotal ?? 0)}
+                </div>
+              </div>
+            ) : (
+              <div className={styles.emptySelectionHint}>Nenhum projeto selecionado.</div>
+            )}
           </div>
         </div>
 
@@ -991,10 +999,6 @@ export function LocationPageView() {
                 {renderFeedback("location")}
 
                 <div className={styles.actions}>
-                  <div className={styles.tableHint}>
-                    Materiais atuais: {formatQuantity(state?.summary?.materialsPlannedTotal ?? 0)} | Atividades atuais:{" "}
-                    {formatCurrency(state?.summary?.activitiesPlannedTotal ?? 0)}
-                  </div>
                   <button type="button" className={styles.secondaryButton} onClick={() => void saveLocation()} disabled={!selectedProject || busy === "notes"}>
                     {busy === "notes" ? "Salvando..." : "Salvar loca\u00E7\u00E3o"}
                   </button>
