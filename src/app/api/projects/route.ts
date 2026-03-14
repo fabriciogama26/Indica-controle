@@ -44,6 +44,10 @@ type ProjectRow = {
   updated_at: string;
 };
 
+type ProjectBaseRow = Omit<ProjectRow, "has_locacao"> & {
+  has_locacao?: boolean | null;
+};
+
 type ProjectUserRow = {
   id: string;
   display: string | null;
@@ -305,6 +309,116 @@ function buildUserLoginNameMap(users: ProjectUserRow[]) {
     users.map((user) => [user.id, String(user.login_name ?? "").trim() || "Nao identificado"]),
   );
 }
+
+const PROJECT_SELECT_WITH_LOCATION =
+  "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
+
+const PROJECT_SELECT_LEGACY =
+  "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
+
+function isMissingHasLocacaoColumn(message: string) {
+  const normalized = normalizeText(message).toLowerCase();
+  return normalized.includes("has_locacao");
+}
+
+async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string, projectId: string) {
+  const primary = await supabase
+    .from("project_with_labels")
+    .select(PROJECT_SELECT_WITH_LOCATION)
+    .eq("tenant_id", tenantId)
+    .eq("id", projectId)
+    .maybeSingle<ProjectBaseRow>();
+
+  if (!primary.error && primary.data) {
+    return { data: { ...primary.data, has_locacao: Boolean(primary.data.has_locacao) } as ProjectRow, error: null };
+  }
+
+  if (!isMissingHasLocacaoColumn(String(primary.error?.message ?? ""))) {
+    return { data: null, error: primary.error };
+  }
+
+  const fallback = await supabase
+    .from("project_with_labels")
+    .select(PROJECT_SELECT_LEGACY)
+    .eq("tenant_id", tenantId)
+    .eq("id", projectId)
+    .maybeSingle<ProjectBaseRow>();
+
+  if (fallback.error || !fallback.data) {
+    return { data: null, error: fallback.error };
+  }
+
+  return {
+    data: {
+      ...fallback.data,
+      has_locacao: false,
+    } as ProjectRow,
+    error: null,
+  };
+}
+
+async function fetchProjectsPageCompat(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  sob: string;
+  executionDate: string;
+  priority: string;
+  city: string;
+  from: number;
+  to: number;
+}) {
+  const runQuery = async (selectClause: string) => {
+    let query = params.supabase
+      .from("project_with_labels")
+      .select(selectClause, { count: "exact" })
+      .eq("tenant_id", params.tenantId);
+
+    if (params.sob) {
+      query = query.ilike("sob", `%${params.sob}%`);
+    }
+    if (params.executionDate && isIsoDate(params.executionDate)) {
+      query = query.eq("execution_deadline", params.executionDate);
+    }
+    if (params.priority) {
+      query = query.eq("priority_text", params.priority);
+    }
+    if (params.city) {
+      query = query.eq("city_text", params.city);
+    }
+
+    return query
+      .order("is_active", { ascending: false })
+      .order("execution_deadline", { ascending: true })
+      .order("created_at", { ascending: false })
+      .range(params.from, params.to);
+  };
+
+  const primary = await runQuery(PROJECT_SELECT_WITH_LOCATION);
+  if (!primary.error) {
+    const primaryRows = (primary.data ?? []) as unknown as ProjectBaseRow[];
+    return {
+      data: primaryRows.map((item) => ({ ...item, has_locacao: Boolean(item.has_locacao) })) as ProjectRow[],
+      count: primary.count ?? 0,
+      error: null,
+    };
+  }
+
+  if (!isMissingHasLocacaoColumn(String(primary.error.message ?? ""))) {
+    return { data: [] as ProjectRow[], count: 0, error: primary.error };
+  }
+
+  const fallback = await runQuery(PROJECT_SELECT_LEGACY);
+  if (fallback.error) {
+    return { data: [] as ProjectRow[], count: 0, error: fallback.error };
+  }
+
+  const fallbackRows = (fallback.data ?? []) as unknown as ProjectBaseRow[];
+  return {
+    data: fallbackRows.map((item) => ({ ...item, has_locacao: false })) as ProjectRow[],
+    count: fallback.count ?? 0,
+    error: null,
+  };
+}
 async function resolveLookupByName(
   supabase: SupabaseClient,
   table: string,
@@ -546,14 +660,7 @@ function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, loo
 }
 
 async function fetchProjectById(supabase: SupabaseClient, tenantId: string, projectId: string) {
-  const { data, error } = await supabase
-    .from("project_with_labels")
-    .select(
-      "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("id", projectId)
-    .maybeSingle<ProjectRow>();
+  const { data, error } = await fetchProjectByIdCompat(supabase, tenantId, projectId);
 
   if (error || !data) {
     return null;
@@ -645,33 +752,16 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase
-      .from("project_with_labels")
-      .select(
-        "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
-        { count: "exact" },
-      )
-      .eq("tenant_id", appUser.tenant_id);
-
-    if (sob) {
-      query = query.ilike("sob", `%${sob}%`);
-    }
-    if (executionDate && isIsoDate(executionDate)) {
-      query = query.eq("execution_deadline", executionDate);
-    }
-    if (priority) {
-      query = query.eq("priority_text", priority);
-    }
-    if (city) {
-      query = query.eq("city_text", city);
-    }
-
-    const { data, error, count } = await query
-      .order("is_active", { ascending: false })
-      .order("execution_deadline", { ascending: true })
-      .order("created_at", { ascending: false })
-      .range(from, to)
-      .returns<ProjectRow[]>();
+    const { data, error, count } = await fetchProjectsPageCompat({
+      supabase,
+      tenantId: appUser.tenant_id,
+      sob,
+      executionDate,
+      priority,
+      city,
+      from,
+      to,
+    });
 
     if (error) {
       return NextResponse.json({ message: "Falha ao listar projetos." }, { status: 500 });
