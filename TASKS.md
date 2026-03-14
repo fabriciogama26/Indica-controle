@@ -119,7 +119,10 @@
 - [x] Padronizar o posicionamento do botao `Adicionar atividade` em `Projetos` para seguir o mesmo layout de `Adicionar material`.
 - [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
-- [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.
+- [x] Implementar primeira versao visual de `Programacao` com painel de pendencias, timeline por equipe, drag and drop local e modal de programacao.
+- [x] Ajustar a tela de `Programacao` para semana completa de segunda a domingo, melhor encaixe visual em 100% e padronizacao documental `PEP`.
+- [x] Integrar `Programacao` com dados reais de projetos, equipes, atividades e persistencia da agenda por tenant.
+- [ ] Evoluir `Programacao` com validacao de conflitos operacionais alem da duplicidade `projeto + equipe + data`.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
