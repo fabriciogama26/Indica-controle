@@ -111,6 +111,7 @@
 - [x] Fazer o `Salvar locacao` retornar ao topo do container principal apos sucesso para recolocar as abas em evidência.
 - [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [x] Centralizar no banco via RPC as regras de bloqueio da `Locacao`, `Materiais previstos` e `Atividades previstas`.
+- [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.
 - [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
 - [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.

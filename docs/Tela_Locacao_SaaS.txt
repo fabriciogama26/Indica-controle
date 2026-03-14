@@ -6,6 +6,7 @@ Visao geral
 - Permite filtrar projetos por `Municipio`, buscar por `SOB` e carregar uma base propria de locacao.
 - Mantem separado o previsto original do projeto e o previsto atual da locacao para materiais.
 - Permite adicionar atividades previstas a partir da tabela `service_activities`, com quantidade e total monetario.
+- Quando existir base em `project_activity_forecast`, a locacao inicializa `Atividades previstas` a partir dessa previsao do projeto na primeira carga.
 - Mantem observacoes gerais da locacao e estrutura pronta para receber o questionario em etapa posterior.
 - Ao salvar dados reais da locacao, marca o projeto com `has_locacao = true`.
 - A interface visual segue o mesmo baseline de `Projetos` e `Atividades` (`card`, grids de formulario/filtro, tabela principal e botoes `primary/secondary/ghost`).
@@ -27,6 +28,7 @@ Arquitetura
   - `supabase/migrations/061_create_location_risks.sql`
   - `supabase/migrations/062_create_location_execution_support_items.sql`
   - `supabase/migrations/063_create_location_save_rpcs.sql`
+  - `supabase/migrations/064_create_project_activity_forecast.sql`
 
 Cadastro
 --------
@@ -134,11 +136,14 @@ Atualizacao 2026-03
 - Criada migration `061_create_location_risks.sql` para preparar a tabela de riscos da locacao vinculada ao `project_location_plans`.
 - Criada migration `062_create_location_execution_support_items.sql` para preparar o catalogo de apoio de execucao da locacao por tenant.
 - Criada migration `063_create_location_save_rpcs.sql` para centralizar em RPC o salvamento validado da aba principal, dos materiais previstos e das atividades previstas da locacao.
+- Criada migration `064_create_project_activity_forecast.sql` para fazer a `Locacao` seedar `Atividades previstas` a partir do previsto do projeto quando a lista da locacao ainda estiver vazia.
 - A inicializacao da locacao passa a copiar os materiais de `project_material_forecast` para a base propria da locacao apenas na primeira carga do projeto.
 - Antes: alterar materiais previstos da locacao exigiria mexer no previsto original do projeto.
 - Depois: a locacao passa a manter `original_qty` e `planned_qty` separados para comparacao.
 - Antes: nao existia persistencia de atividades previstas por projeto na locacao.
 - Depois: a locacao persiste atividades com snapshot de `codigo`, `descricao`, `tipo`, `unidade` e `valor unitario`.
+- Antes: a locacao so recebia atividades quando o usuario adicionava manualmente na propria tela.
+- Depois: a locacao passa a herdar a base de `Atividades previstas` cadastrada em `Projetos` na primeira inicializacao do projeto.
 - Antes: nao existia marcador simples no projeto para saber se a locacao ja tinha sido feita.
 - Depois: qualquer salvamento real da locacao passa a marcar `project.has_locacao = true`.
 - Layout visual ajustado para o mesmo padrao estrutural das telas `Projetos` e `Atividades`, removendo o visual customizado anterior.
