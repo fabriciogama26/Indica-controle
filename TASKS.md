@@ -80,6 +80,7 @@
 - [x] Adicionar campo obrigatorio `Tipo` no cadastro de `Equipes`, com consumo de `team_types` no frontend/API.
 - [x] Criar migration `053_create_team_types_and_link_teams.sql` para tabela `team_types`, vinculo obrigatorio em `teams.team_type_id` e pagina `tipo-equipe` em `Cadastro Base`.
 - [x] Proteger cadastro/edicao de `Equipes` contra duplicidade pela combinacao `Nome da equipe + Encarregado + Placa` com constraint dedicada em banco e retorno `409` na API.
+- [x] Vincular `Equipes` ao `Centro de Servico` e expor a base real em cadastro, filtros, listagem e detalhe.
 - [x] Padronizar todas as listas ativas (`Projetos`, `Materiais`, `Atividades`, `Equipes` e `Materiais previstos`) com botao `Exportar Excel (CSV)` e remover o texto fixo de paginacao no cabecalho.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
@@ -122,7 +123,8 @@
 - [x] Implementar primeira versao visual de `Programacao` com painel de pendencias, timeline por equipe, drag and drop local e modal de programacao.
 - [x] Ajustar a tela de `Programacao` para semana completa de segunda a domingo, melhor encaixe visual em 100% e padronizacao documental `PEP`.
 - [x] Integrar `Programacao` com dados reais de projetos, equipes, atividades e persistencia da agenda por tenant.
-- [ ] Evoluir `Programacao` com validacao de conflitos operacionais alem da duplicidade `projeto + equipe + data`.
+- [x] Endurecer `Programacao` com RPC transacional, controle de concorrencia por `updated_at`, bloqueio de sobreposicao de horario e validacao de base da equipe.
+- [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).

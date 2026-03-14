@@ -3,9 +3,10 @@
 Visao geral
 -----------
 - Tela para cadastro e manutencao de equipes operacionais por tenant.
-- Cada equipe possui: nome, placa do veiculo, tipo e encarregado.
+- Cada equipe possui: nome, placa do veiculo, base, tipo e encarregado.
 - O encarregado e vinculado a `people`, filtrando somente quem tem cargo `ENCARREGADO`.
 - O tipo e vinculado ao catalogo `team_types` por tenant.
+- A base corresponde ao catalogo `project_service_centers` do tenant.
 
 Arquitetura
 -----------
@@ -20,15 +21,18 @@ Arquitetura
 - Base SQL: `supabase/migrations/052_create_teams_and_page_permissions.sql`
 - Base SQL: `supabase/migrations/053_create_team_types_and_link_teams.sql`
 - Base SQL: `supabase/migrations/054_enforce_team_unique_by_name_foreman_plate.sql`
+- Base SQL: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
 
 Cadastro
 --------
 - Campos obrigatorios:
   - `Nome da equipe`
   - `Placa do veiculo`
+  - `Base`
   - `Tipo`
   - `Encarregado`
 - Regras:
+  - Base deve existir no tenant e estar ativa em `project_service_centers`.
   - Encarregado deve existir no tenant e estar ativo em `people`.
   - Encarregado deve ter cargo `ENCARREGADO`.
   - Tipo deve existir no tenant e estar ativo em `team_types`.
@@ -43,12 +47,13 @@ Filtros, auto-complete e listagem
 - Filtros:
   - Nome da equipe
   - Placa do veiculo
+  - Base
   - Tipo
   - Encarregado
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`)
   - Botao `Exportar Excel (CSV)` para exportar equipes filtradas
-  - Colunas: Nome da equipe, Placa, Encarregado, Registrado em, Acoes
+  - Colunas: Nome da equipe, Placa, Base, Tipo, Encarregado, Registrado em, Acoes
 - Acoes por linha:
   - `Detalhes`
   - `Editar`
@@ -61,6 +66,7 @@ Filtros, auto-complete e listagem
 Boas praticas
 -------------
 - Sempre validar o escopo por `tenant_id` em todas as queries de equipes.
+- Manter o vinculo de base da equipe preenchido para permitir programacao consistente da obra.
 - Nao permitir salvar encarregado fora do cargo `ENCARREGADO`.
 - Registrar alteracoes em `app_entity_history` para update/cancel/activate.
 - Manter consistencia de permissao em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
@@ -90,18 +96,20 @@ Atualizacao 2026-03
 - Migration `052_create_teams_and_page_permissions.sql` criada.
 - Migration `053_create_team_types_and_link_teams.sql` criada para `team_types` e vinculo obrigatorio em `teams.team_type_id`.
 - Migration `054_enforce_team_unique_by_name_foreman_plate.sql` criada para regra de unicidade por combinacao de `nome + encarregado + placa` no tenant.
+- Migration `068_link_teams_service_center_and_harden_programming_rpc.sql` criada para vincular `teams.service_center_id`.
 - Pagina `equipes` adicionada na matriz de permissoes com backfill por tenant.
 - Integracoes frontend adicionadas em menu, autorizacao de rota e tela de permissoes.
+- Tela e API passaram a carregar, filtrar, listar e detalhar a `Base` da equipe.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/equipes/TeamsPageView.tsx`
-  - Responsavel por: formulario, filtros, listagem, detalhes, historico e cancelamento/ativacao.
+  - Responsavel por: formulario, filtros, listagem, detalhes, historico e cancelamento/ativacao, incluindo a base da equipe.
 - Caminho: `src/app/api/teams/route.ts`
-  - Responsavel por: CRUD de equipes (com `team_type_id`), paginacao da listagem, historico e troca de status.
+  - Responsavel por: CRUD de equipes (com `service_center_id` e `team_type_id`), paginacao da listagem, historico e troca de status.
 - Caminho: `src/app/api/teams/meta/route.ts`
-  - Responsavel por: retornar encarregados e tipos validos para selecao na tela.
+  - Responsavel por: retornar encarregados, bases e tipos validos para selecao na tela.
 
 Constantes e configuracoes
 - Caminho: `src/lib/auth/authorization.ts`
@@ -114,6 +122,8 @@ Constantes e configuracoes
   - Responsavel por: tabela `teams`, RLS, auditoria e permissao por pagina.
 - Caminho: `supabase/migrations/053_create_team_types_and_link_teams.sql`
   - Responsavel por: tabela `team_types`, vinculo obrigatorio em `teams` e pagina `tipo-equipe`.
+- Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
+  - Responsavel por: adicionar `service_center_id` em `teams` e alinhar a base da equipe com a programacao.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -131,9 +141,10 @@ Ajuda contextual
   - `src/app/api/teams/meta/route.ts` (novo)
   - `supabase/migrations/052_create_teams_and_page_permissions.sql` (novo)
   - `supabase/migrations/053_create_team_types_and_link_teams.sql` (novo)
+  - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Comportamento antes/depois:
-  - Antes: nao existia tela/API/tabela para Equipes.
-  - Depois: existe cadastro completo com filtro de encarregado por cargo, controle de status e historico paginado.
+  - Antes: equipes nao possuíam base vinculada.
+  - Depois: o cadastro/listagem de equipes inclui base real por `Centro de servico`, o que alimenta a programacao operacional.

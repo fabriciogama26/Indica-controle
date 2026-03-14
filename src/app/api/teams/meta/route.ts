@@ -17,6 +17,11 @@ type TeamTypeRow = {
   name: string;
 };
 
+type ServiceCenterRow = {
+  id: string;
+  name: string;
+};
+
 function normalizeName(value: string | null | undefined) {
   return String(value ?? "").trim();
 }
@@ -75,6 +80,24 @@ async function fetchTeamTypes(supabase: SupabaseClient, tenantId: string) {
     .filter((item) => Boolean(item.id) && Boolean(item.name));
 }
 
+async function fetchServiceCenters(supabase: SupabaseClient, tenantId: string) {
+  const { data, error } = await supabase
+    .from("project_service_centers")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .order("name", { ascending: true })
+    .returns<ServiceCenterRow[]>();
+
+  if (error) {
+    return [] as Array<{ id: string; name: string }>;
+  }
+
+  return (data ?? [])
+    .map((item) => ({ id: item.id, name: normalizeName(item.name) }))
+    .filter((item) => Boolean(item.id) && Boolean(item.name));
+}
+
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -87,14 +110,16 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const [foremen, teamTypes] = await Promise.all([
+    const [foremen, teamTypes, serviceCenters] = await Promise.all([
       fetchForemen(supabase, appUser.tenant_id),
       fetchTeamTypes(supabase, appUser.tenant_id),
+      fetchServiceCenters(supabase, appUser.tenant_id),
     ]);
 
     return NextResponse.json({
       foremen,
       teamTypes,
+      serviceCenters,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao carregar metadados de equipes." }, { status: 500 });

@@ -18,6 +18,7 @@ type BoardProjectRow = {
 type TeamRow = {
   id: string;
   name: string;
+  service_center_id: string | null;
   team_type_id: string;
   foreman_person_id: string;
   ativo: boolean;
@@ -31,6 +32,11 @@ type TeamTypeRow = {
 type PersonRow = {
   id: string;
   nome: string;
+};
+
+type ServiceCenterRow = {
+  id: string;
+  name: string;
 };
 
 type ProgrammingRow = {
@@ -69,14 +75,6 @@ type ProgrammingActivityRow = {
   is_active: boolean;
 };
 
-type ActivityCatalogRow = {
-  id: string;
-  code: string;
-  description: string;
-  unit: string;
-  ativo: boolean;
-};
-
 type HistoryChange = {
   from: string | null;
   to: string | null;
@@ -94,6 +92,7 @@ type SaveProgrammingPayload = {
   feeder?: string;
   support?: string;
   note?: string;
+  expectedUpdatedAt?: string;
   documents?: {
     sgd?: { number?: string; deliveredAt?: string };
     pi?: { number?: string; deliveredAt?: string };
@@ -103,6 +102,17 @@ type SaveProgrammingPayload = {
     catalogId?: string;
     quantity?: number | string;
   }>;
+};
+
+type SaveProgrammingRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  action?: "INSERT" | "UPDATE";
+  programming_id?: string;
+  project_code?: string;
+  updated_at?: string;
 };
 
 function normalizeText(value: unknown) {
@@ -237,7 +247,7 @@ async function fetchTeams(
 ) {
   const { data: teams, error } = await supabase
     .from("teams")
-    .select("id, name, team_type_id, foreman_person_id, ativo")
+    .select("id, name, service_center_id, team_type_id, foreman_person_id, ativo")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .order("name", { ascending: true })
@@ -249,8 +259,9 @@ async function fetchTeams(
 
   const teamTypeIds = Array.from(new Set(teams.map((item) => item.team_type_id).filter(Boolean)));
   const foremanIds = Array.from(new Set(teams.map((item) => item.foreman_person_id).filter(Boolean)));
+  const serviceCenterIds = Array.from(new Set(teams.map((item) => item.service_center_id).filter(Boolean)));
 
-  const [{ data: teamTypes }, { data: people }] = await Promise.all([
+  const [{ data: teamTypes }, { data: people }, { data: serviceCenters }] = await Promise.all([
     teamTypeIds.length
       ? supabase
           .from("team_types")
@@ -267,14 +278,25 @@ async function fetchTeams(
           .in("id", foremanIds)
           .returns<PersonRow[]>()
       : Promise.resolve({ data: [] as PersonRow[] }),
+    serviceCenterIds.length
+      ? supabase
+          .from("project_service_centers")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .in("id", serviceCenterIds)
+          .returns<ServiceCenterRow[]>()
+      : Promise.resolve({ data: [] as ServiceCenterRow[] }),
   ]);
 
   const teamTypeMap = new Map((teamTypes ?? []).map((item) => [item.id, normalizeText(item.name)]));
   const foremanMap = new Map((people ?? []).map((item) => [item.id, normalizeText(item.nome)]));
+  const serviceCenterMap = new Map((serviceCenters ?? []).map((item) => [item.id, normalizeText(item.name)]));
 
   return teams.map((team) => ({
     id: team.id,
     name: normalizeText(team.name),
+    serviceCenterId: team.service_center_id,
+    serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
     teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
     foremanName: foremanMap.get(team.foreman_person_id) ?? "Sem encarregado",
   }));
@@ -358,132 +380,73 @@ async function fetchProgrammingById(
   return data;
 }
 
-function buildDocumentFields(
-  key: "sgd" | "pi" | "pep",
-  payload: SaveProgrammingPayload["documents"],
-  currentProgramming?: ProgrammingRow | null,
-) {
-  const rawNumber = normalizeNullableText(payload?.[key]?.number);
-  const deliveredAt = normalizeIsoDate(payload?.[key]?.deliveredAt);
-  const today = new Date().toISOString().slice(0, 10);
-  const currentNumber = currentProgramming ? normalizeNullableText(currentProgramming[`${key}_number`]) : null;
-  const currentIncludedAt = currentProgramming ? normalizeIsoDate(currentProgramming[`${key}_included_at`]) : null;
+async function saveProgrammingViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId?: string | null;
+  projectId: string;
+  teamId: string;
+  executionDate: string;
+  period: "INTEGRAL" | "PARCIAL";
+  startTime: string;
+  endTime: string;
+  expectedMinutes: number;
+  feeder?: string | null;
+  support?: string | null;
+  note?: string | null;
+  documents: NonNullable<SaveProgrammingPayload["documents"]>;
+  activities: Array<{ catalogId: string; quantity: number }>;
+  expectedUpdatedAt?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("save_project_programming", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_project_id: params.projectId,
+    p_team_id: params.teamId,
+    p_execution_date: params.executionDate,
+    p_period: params.period,
+    p_start_time: params.startTime,
+    p_end_time: params.endTime,
+    p_expected_minutes: params.expectedMinutes,
+    p_feeder: params.feeder ?? null,
+    p_support: params.support ?? null,
+    p_note: params.note ?? null,
+    p_documents: params.documents,
+    p_activities: params.activities.map((item) => ({
+      catalogId: item.catalogId,
+      quantity: item.quantity,
+    })),
+    p_programming_id: params.programmingId ?? null,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
 
-  if (!rawNumber) {
+  if (error) {
     return {
-      [`${key}_number`]: null,
-      [`${key}_included_at`]: null,
-      [`${key}_delivered_at`]: null,
-    };
+      ok: false,
+      status: 500,
+      message: "Falha ao salvar programacao via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as SaveProgrammingRpcResult;
+  if (result.success !== true || !result.programming_id) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar programacao.",
+      reason: result.reason ?? null,
+    } as const;
   }
 
   return {
-    [`${key}_number`]: rawNumber,
-    [`${key}_included_at`]: currentNumber === rawNumber && currentIncludedAt ? currentIncludedAt : today,
-    [`${key}_delivered_at`]: deliveredAt,
-  };
-}
-
-async function syncProgrammingActivities(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  programmingId: string;
-  actorUserId: string;
-  activities: Array<{ catalogId: string; quantity: number }>;
-}) {
-  const { data: existingRows } = await params.supabase
-    .from("project_programming_activities")
-    .select("id, service_activity_id, quantity, is_active")
-    .eq("tenant_id", params.tenantId)
-    .eq("programming_id", params.programmingId);
-
-  const existingMap = new Map(
-    (existingRows ?? []).map((item) => [item.service_activity_id, item]),
-  );
-
-  const activityIds = Array.from(new Set(params.activities.map((item) => item.catalogId)));
-  const { data: activityRows, error: activitiesError } = await params.supabase
-    .from("service_activities")
-    .select("id, code, description, unit, ativo")
-    .eq("tenant_id", params.tenantId)
-    .in("id", activityIds)
-    .returns<ActivityCatalogRow[]>();
-
-  if (activitiesError) {
-    return { ok: false, status: 500, message: "Falha ao validar atividades da programacao." } as const;
-  }
-
-  const activityMap = new Map(
-    (activityRows ?? [])
-      .filter((item) => item.ativo)
-      .map((item) => [item.id, item]),
-  );
-
-  for (const item of params.activities) {
-    const activity = activityMap.get(item.catalogId);
-    if (!activity) {
-      return { ok: false, status: 422, message: "Atividade invalida para o tenant atual." } as const;
-    }
-
-    const existing = existingMap.get(item.catalogId);
-    if (existing) {
-      const { error } = await params.supabase
-        .from("project_programming_activities")
-        .update({
-          activity_code: activity.code,
-          activity_description: activity.description,
-          activity_unit: activity.unit,
-          quantity: item.quantity,
-          is_active: true,
-          updated_by: params.actorUserId,
-        })
-        .eq("tenant_id", params.tenantId)
-        .eq("id", existing.id);
-
-      if (error) {
-        return { ok: false, status: 500, message: "Falha ao atualizar atividades da programacao." } as const;
-      }
-
-      continue;
-    }
-
-    const { error } = await params.supabase.from("project_programming_activities").insert({
-      tenant_id: params.tenantId,
-      programming_id: params.programmingId,
-      service_activity_id: activity.id,
-      activity_code: activity.code,
-      activity_description: activity.description,
-      activity_unit: activity.unit,
-      quantity: item.quantity,
-      is_active: true,
-      created_by: params.actorUserId,
-      updated_by: params.actorUserId,
-    });
-
-    if (error) {
-      return { ok: false, status: 500, message: "Falha ao registrar atividades da programacao." } as const;
-    }
-  }
-
-  const nextIds = new Set(params.activities.map((item) => item.catalogId));
-  const inactiveRows = (existingRows ?? []).filter((item) => item.is_active && !nextIds.has(item.service_activity_id));
-
-  for (const item of inactiveRows) {
-    const { error } = await params.supabase
-      .from("project_programming_activities")
-      .update({
-        is_active: false,
-        updated_by: params.actorUserId,
-      })
-      .eq("tenant_id", params.tenantId)
-      .eq("id", item.id);
-
-    if (error) {
-      return { ok: false, status: 500, message: "Falha ao inativar atividades removidas da programacao." } as const;
-    }
-  }
-
-  return { ok: true } as const;
+    ok: true,
+    action: result.action ?? null,
+    programmingId: result.programming_id,
+    projectCode: normalizeText(result.project_code),
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Programacao salva com sucesso.",
+  } as const;
 }
 
 async function registerProgrammingHistory(params: {
@@ -569,6 +532,7 @@ export async function GET(request: NextRequest) {
           period: item.period === "INTEGRAL" ? "integral" : "partial",
           startTime: formatTime(item.start_time),
           endTime: formatTime(item.end_time),
+          updatedAt: item.updated_at,
           expectedMinutes: Number(item.expected_minutes ?? 0),
           feeder: normalizeText(item.feeder),
           support: normalizeText(item.support),
@@ -628,6 +592,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const feeder = normalizeNullableText(payload?.feeder);
   const support = normalizeNullableText(payload?.support);
   const note = normalizeNullableText(payload?.note);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
   const activities = activitiesInput
     .map((item) => ({
@@ -635,6 +600,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       quantity: normalizePositiveNumber(item.quantity),
     }))
     .filter((item): item is { catalogId: string; quantity: number } => Boolean(item.catalogId) && item.quantity !== null);
+  const documents = payload?.documents ?? {};
 
   if (method === "PUT" && !programmingId) {
     return NextResponse.json({ message: "Programacao invalida para edicao." }, { status: 400 });
@@ -652,7 +618,16 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
   }
 
-  const [{ data: project }, { data: team }] = await Promise.all([
+  const currentTeamNamePromise = currentProgramming?.team_id
+    ? resolution.supabase
+        .from("teams")
+        .select("name")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("id", currentProgramming.team_id)
+        .maybeSingle<{ name: string }>()
+    : Promise.resolve({ data: null as { name: string } | null });
+
+  const [{ data: project }, { data: team }, { data: currentTeamLabel }] = await Promise.all([
     resolution.supabase
       .from("project_with_labels")
       .select("id, sob, is_active")
@@ -667,106 +642,34 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       .eq("id", teamId)
       .eq("ativo", true)
       .maybeSingle<{ id: string; name: string; ativo: boolean }>(),
+    currentTeamNamePromise,
   ]);
 
-  if (!project) {
-    return NextResponse.json({ message: "Projeto invalido para o tenant atual." }, { status: 422 });
-  }
-
-  if (!team) {
-    return NextResponse.json({ message: "Equipe invalida para o tenant atual." }, { status: 422 });
-  }
-
-  let previousTeamName: string | null = null;
-  if (currentProgramming?.team_id) {
-    if (currentProgramming.team_id === team.id) {
-      previousTeamName = team.name;
-    } else {
-      const { data: previousTeam } = await resolution.supabase
-        .from("teams")
-        .select("name")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("id", currentProgramming.team_id)
-        .maybeSingle<{ name: string }>();
-
-      previousTeamName = normalizeText(previousTeam?.name) || currentProgramming.team_id;
-    }
-  }
-
-  const documentFields = {
-    ...buildDocumentFields("sgd", payload?.documents, currentProgramming),
-    ...buildDocumentFields("pi", payload?.documents, currentProgramming),
-    ...buildDocumentFields("pep", payload?.documents, currentProgramming),
-  };
-
-  const basePayload = {
-    tenant_id: resolution.appUser.tenant_id,
-    project_id: projectId,
-    team_id: teamId,
-    execution_date: executionDate,
+  const saveResult = await saveProgrammingViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId: programmingId || null,
+    projectId,
+    teamId,
+    executionDate,
     period,
-    start_time: startTime,
-    end_time: endTime,
-    expected_minutes: expectedMinutes,
+    startTime,
+    endTime,
+    expectedMinutes,
     feeder,
     support,
     note,
-    ...documentFields,
-    updated_by: resolution.appUser.id,
-  };
-
-  let persistedProgrammingId: string | null = programmingId || null;
-  if (method === "POST") {
-    const { data, error } = await resolution.supabase
-      .from("project_programming")
-      .insert({
-        ...basePayload,
-        created_by: resolution.appUser.id,
-      })
-      .select("id")
-      .maybeSingle<{ id: string }>();
-
-    if (error) {
-      if (String(error.message ?? "").toLowerCase().includes("duplicate key")) {
-        return NextResponse.json({ message: "Ja existe programacao para este projeto, equipe e data." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao registrar programacao." }, { status: 500 });
-    }
-
-    persistedProgrammingId = data?.id ?? null;
-  } else {
-    const { error } = await resolution.supabase
-      .from("project_programming")
-      .update(basePayload)
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("id", programmingId);
-
-    if (error) {
-      if (String(error.message ?? "").toLowerCase().includes("duplicate key")) {
-        return NextResponse.json({ message: "Ja existe programacao para este projeto, equipe e data." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao editar programacao." }, { status: 500 });
-    }
-  }
-
-  if (!persistedProgrammingId) {
-    return NextResponse.json({ message: "Falha ao persistir a programacao." }, { status: 500 });
-  }
-
-  const syncActivitiesResult = await syncProgrammingActivities({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    programmingId: persistedProgrammingId,
-    actorUserId: resolution.appUser.id,
+    documents,
     activities,
+    expectedUpdatedAt,
   });
 
-  if (!syncActivitiesResult.ok) {
-    return NextResponse.json({ message: syncActivitiesResult.message }, { status: syncActivitiesResult.status });
+  if (!saveResult.ok) {
+    return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
   }
 
+  const persistedProgrammingId = saveResult.programmingId;
   const nextProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, persistedProgrammingId);
   if (!nextProgramming) {
     return NextResponse.json({ message: "Falha ao recarregar programacao salva." }, { status: 500 });
@@ -793,8 +696,13 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     : [];
 
   const changes: Record<string, HistoryChange> = {};
-  addChange(changes, "project", currentProgramming ? project.sob : null, project.sob);
-  addChange(changes, "team", previousTeamName, team.name);
+  addChange(changes, "project", currentProgramming ? project?.sob ?? null : null, project?.sob ?? null);
+  addChange(
+    changes,
+    "team",
+    currentProgramming ? normalizeText(currentTeamLabel?.name) || currentProgramming.team_id : null,
+    team?.name ?? teamId,
+  );
   addChange(changes, "executionDate", currentProgramming?.execution_date ?? null, nextProgramming.execution_date);
   addChange(changes, "period", currentProgramming?.period ?? null, nextProgramming.period);
   addChange(changes, "startTime", currentProgramming ? formatTime(currentProgramming.start_time) : null, formatTime(nextProgramming.start_time));
@@ -813,10 +721,10 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     tenantId: resolution.appUser.tenant_id,
     actorUserId: resolution.appUser.id,
     programmingId: persistedProgrammingId,
-    projectCode: project.sob,
+    projectCode: project?.sob ?? saveResult.projectCode ?? projectId,
     changes,
     metadata: {
-      action: method === "POST" ? "CREATE" : "UPDATE",
+      action: saveResult.action === "INSERT" ? "CREATE" : "UPDATE",
       projectId,
       teamId,
       executionDate,
@@ -826,10 +734,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   return NextResponse.json({
     success: true,
     id: persistedProgrammingId,
-    message:
-      method === "POST"
-        ? `Programacao do projeto ${project.sob} registrada com sucesso.`
-        : `Programacao do projeto ${project.sob} atualizada com sucesso.`,
+    message: saveResult.message,
   });
 }
 

@@ -7,6 +7,7 @@ type TeamRow = {
   id: string;
   name: string;
   vehicle_plate: string;
+  service_center_id: string | null;
   team_type_id: string;
   foreman_person_id: string;
   ativo: boolean;
@@ -45,6 +46,11 @@ type TeamTypeRow = {
   name: string;
 };
 
+type ServiceCenterRow = {
+  id: string;
+  name: string;
+};
+
 type TeamHistoryRow = {
   id: string;
   change_type: "UPDATE" | "CANCEL" | "ACTIVATE";
@@ -62,6 +68,7 @@ type HistoryChange = {
 type CreateTeamPayload = {
   name: string;
   vehiclePlate: string;
+  serviceCenterId: string;
   teamTypeId: string;
   foremanId: string;
 };
@@ -249,6 +256,29 @@ async function fetchTeamTypeById(
   };
 }
 
+async function fetchServiceCenterById(
+  supabase: SupabaseClient,
+  tenantId: string,
+  serviceCenterId: string,
+) {
+  const { data, error } = await supabase
+    .from("project_service_centers")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .eq("id", serviceCenterId)
+    .maybeSingle<ServiceCenterRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: normalizeText(data.name),
+  };
+}
+
 async function fetchTeamById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -257,7 +287,7 @@ async function fetchTeamById(
   const { data, error } = await supabase
     .from("teams")
     .select(
-      "id, name, vehicle_plate, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, name, vehicle_plate, service_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", teamId)
@@ -355,6 +385,7 @@ export async function GET(request: NextRequest) {
 
     const name = normalizeText(params.get("name"));
     const vehiclePlate = normalizePlate(params.get("vehiclePlate"));
+    const serviceCenterId = normalizeText(params.get("serviceCenterId"));
     const teamTypeId = normalizeText(params.get("teamTypeId"));
     const foremanId = normalizeText(params.get("foremanId"));
     const page = parsePositiveInteger(params.get("page"), 1);
@@ -365,7 +396,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("teams")
       .select(
-        "id, name, vehicle_plate, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, name, vehicle_plate, service_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -376,6 +407,10 @@ export async function GET(request: NextRequest) {
 
     if (vehiclePlate) {
       query = query.ilike("vehicle_plate", `%${vehiclePlate}%`);
+    }
+
+    if (serviceCenterId) {
+      query = query.eq("service_center_id", serviceCenterId);
     }
 
     if (teamTypeId) {
@@ -409,6 +444,9 @@ export async function GET(request: NextRequest) {
     );
     const teamTypeIds = Array.from(
       new Set((data ?? []).map((item) => item.team_type_id).filter((value): value is string => Boolean(value))),
+    );
+    const serviceCenterIds = Array.from(
+      new Set((data ?? []).map((item) => item.service_center_id).filter((value): value is string => Boolean(value))),
     );
 
     let users: AppUserRow[] = [];
@@ -453,16 +491,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let serviceCenters: ServiceCenterRow[] = [];
+    if (serviceCenterIds.length > 0) {
+      const serviceCentersResult = await supabase
+        .from("project_service_centers")
+        .select("id, name")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("id", serviceCenterIds)
+        .returns<ServiceCenterRow[]>();
+
+      if (!serviceCentersResult.error) {
+        serviceCenters = serviceCentersResult.data ?? [];
+      }
+    }
+
     const userDisplayMap = buildUserDisplayMap(users);
     const userLoginNameMap = buildUserLoginNameMap(users);
     const foremanMap = buildForemanMap(foremen);
     const teamTypeMap = buildTeamTypeMap(teamTypes);
+    const serviceCenterMap = new Map(serviceCenters.map((item) => [item.id, normalizeText(item.name)]));
 
     return NextResponse.json({
       teams: (data ?? []).map((row) => ({
         id: row.id,
         name: row.name,
         vehiclePlate: row.vehicle_plate,
+        serviceCenterId: row.service_center_id,
+        serviceCenterName: row.service_center_id ? serviceCenterMap.get(row.service_center_id) ?? "Nao identificado" : "Sem base",
         teamTypeId: row.team_type_id,
         teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
         foremanId: row.foreman_person_id,
@@ -503,12 +558,18 @@ export async function POST(request: NextRequest) {
     const input = {
       name: normalizeText(body.name),
       vehiclePlate: normalizePlate(body.vehiclePlate),
+      serviceCenterId: normalizeText(body.serviceCenterId),
       teamTypeId: normalizeText(body.teamTypeId),
       foremanId: normalizeText(body.foremanId),
     };
 
-    if (!input.name || !input.vehiclePlate || !input.teamTypeId || !input.foremanId) {
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
+    }
+
+    const serviceCenter = await fetchServiceCenterById(supabase, appUser.tenant_id, input.serviceCenterId);
+    if (!serviceCenter) {
+      return NextResponse.json({ message: "Base invalida para o tenant atual." }, { status: 422 });
     }
 
     const teamType = await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId);
@@ -525,6 +586,7 @@ export async function POST(request: NextRequest) {
       tenant_id: appUser.tenant_id,
       name: input.name,
       vehicle_plate: input.vehiclePlate,
+      service_center_id: input.serviceCenterId,
       team_type_id: input.teamTypeId,
       foreman_person_id: input.foremanId,
       ativo: true,
@@ -572,6 +634,7 @@ export async function PUT(request: NextRequest) {
     const input = {
       name: normalizeText(body.name),
       vehiclePlate: normalizePlate(body.vehiclePlate),
+      serviceCenterId: normalizeText(body.serviceCenterId),
       teamTypeId: normalizeText(body.teamTypeId),
       foremanId: normalizeText(body.foremanId),
     };
@@ -580,7 +643,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Equipe invalida para edicao." }, { status: 400 });
     }
 
-    if (!input.name || !input.vehiclePlate || !input.teamTypeId || !input.foremanId) {
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
 
@@ -594,6 +657,13 @@ export async function PUT(request: NextRequest) {
     }
 
     const currentTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, currentTeam.team_type_id);
+    const currentServiceCenter = currentTeam.service_center_id
+      ? await fetchServiceCenterById(supabase, appUser.tenant_id, currentTeam.service_center_id)
+      : null;
+    const nextServiceCenter = await fetchServiceCenterById(supabase, appUser.tenant_id, input.serviceCenterId);
+    if (!nextServiceCenter) {
+      return NextResponse.json({ message: "Base invalida para o tenant atual." }, { status: 422 });
+    }
     const nextTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId);
     if (!nextTeamType) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
@@ -609,6 +679,7 @@ export async function PUT(request: NextRequest) {
     const changes: Record<string, HistoryChange> = {};
     addChange(changes, "name", currentTeam.name, input.name);
     addChange(changes, "vehiclePlate", currentTeam.vehicle_plate, input.vehiclePlate);
+    addChange(changes, "serviceCenterName", currentServiceCenter?.name ?? null, nextServiceCenter.name);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "foremanName", currentForeman?.name ?? null, nextForeman.name);
 
@@ -624,6 +695,7 @@ export async function PUT(request: NextRequest) {
       .update({
         name: input.name,
         vehicle_plate: input.vehiclePlate,
+        service_center_id: input.serviceCenterId,
         team_type_id: input.teamTypeId,
         foreman_person_id: input.foremanId,
         updated_by: appUser.id,
