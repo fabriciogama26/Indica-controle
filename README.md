@@ -114,7 +114,7 @@ vercel --prod
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
   - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros e listagem.
-  - `(dashboard)/locacao/page.tsx`: placeholder de Locacao.
+  - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, 4 blocos operacionais, validacao obrigatoria na aba principal, atividades previstas e materiais previstos.
   - `(dashboard)/programacao/page.tsx`: placeholder de Programacao.
   - `(dashboard)/medicao/page.tsx`: placeholder de Medicao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem.
@@ -140,6 +140,12 @@ vercel --prod
   - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users`.
   - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
+  - `api/locacao/route.ts`: inicializa, carrega e atualiza a Locacao por projeto, incluindo validacao do questionario, apoio de execucao e riscos.
+  - `api/locacao/meta/route.ts`: carrega municipios e catalogo de projetos por SOB para a tela de locacao.
+  - `api/locacao/materials/route.ts`: adiciona e edita materiais previstos da locacao.
+  - `api/locacao/materials/catalog/route.ts`: pesquisa materiais ativos por codigo/descricao para inclusao na locacao.
+  - `api/locacao/activities/route.ts`: adiciona e edita atividades previstas da locacao.
+  - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
@@ -156,6 +162,9 @@ vercel --prod
 - `src/modules/dashboard/projetos/`
   - `ProjectsPageView.tsx`: tela de projetos com cadastro, filtros e listagem em colunas.
   - `ProjectsPageView.module.css`: estilos da tela de projetos.
+- `src/modules/dashboard/locacao/`
+  - `LocationPageView.tsx`: tela de locacao com filtro por municipio, busca por SOB, 4 blocos operacionais, feedback local de salvamento, atividades previstas e materiais previstos.
+  - `LocationPageView.module.css`: estilos da tela de locacao.
 - `src/modules/dashboard/materiais/`
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
@@ -181,6 +190,10 @@ vercel --prod
   - `client.ts`: cliente Supabase do frontend.
 - `src/lib/auth/`
   - `authorization.ts`: helper de role, fallback de telas por perfil e bloqueio/liberacao de rotas conforme `pageAccess`.
+- `src/lib/server/`
+  - `appUsersAdmin.ts`: resolve sessao autenticada, usuario e tenant ativo nas rotas server-side.
+  - `locationPlanning.ts`: consolida bootstrap, leitura, apoio de execucao, riscos e historico tecnico da locacao.
+  - `projectForecastXlsx.ts`: parse e template XLSX de materiais previstos do projeto.
 - `src/services/auth/`
   - `auth.service.ts`: login remoto/local e logout.
 - `supabase/edge_functions/`
@@ -188,6 +201,7 @@ vercel --prod
   - `auth-recover/index.ts`: recuperacao de senha por `login_name`.
 - `src/types/`
   - `auth.ts`: tipos de usuario e sessao.
+  - `xlsx.d.ts`: declaracao local para destravar type-check do pacote `xlsx`.
 - `public/`
   - `indica.png`: logo da tela de login.
   - demais `.svg`: assets padrao do scaffold.
@@ -202,7 +216,7 @@ vercel --prod
   - `Tela_Projetos_SaaS.txt`: tela de projetos com cadastro, filtros e listagem.
   - `Tela_Materiais_SaaS.txt`: tela de materiais com cadastro, filtros, historico e cancelamento/ativacao.
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
-  - `Tela_Locacao_SaaS.txt`: placeholder do modulo de locacao.
+  - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
   - `Tela_Programacao_SaaS.txt`: placeholder do modulo de programacao.
   - `Tela_Medicao_SaaS.txt`: placeholder do modulo de medicao.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
@@ -242,34 +256,42 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 15. O shell principal libera navegacao para as secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
 16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
 17. A aba `Materiais previstos` em `/projetos` permite selecionar projeto, baixar modelo XLSX via Edge Function `get_project_forecast_template`, importar previsao via Edge Function `import_project_forecast` (colunas `codigo` e `quantidade`) e filtrar/listar materiais previstos por codigo, descricao e tipo via `/api/projects/forecast`.
-18. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`.
-19. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor.
-20. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
-21. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
-22. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
-22. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
-23. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
-24. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
-25. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
-26. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
-27. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
-28. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
-29. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
-30. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
-31. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
-32. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
-33. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
-34. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
-35. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
-36. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
-37. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
-38. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
-39. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
-40. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
-41. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
-42. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
-43. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
-44. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
+18. A rota `/locacao` permite filtrar projetos por `Municipio`, selecionar projeto por `SOB`, inicializar a base da locacao por `/api/locacao` e preencher a aba principal em 4 blocos: planejamento/vistoria, equipes para execucao, previsao de execucao e pre APR.
+19. A aba principal da `Locacao` exige os radios obrigatorios, normaliza os campos numericos com `0` por padrao e salva observacoes, radios, quantidades, observacao da previsao, selecao de apoio de execucao e status dos riscos em um unico `Salvar locacao`.
+20. Ao salvar a aba principal da `Locacao` com sucesso, o dashboard volta ao topo do conteudo para recolocar em destaque as abas operacionais da tela.
+21. Na `Locacao`, as listas de apoio de execucao e riscos partem de todos os itens incluidos; o usuario so alterna `Remover`/`Incluir` e a persistencia acontece ao clicar em `Salvar locacao`.
+22. As abas `Atividades previstas` e `Materiais previstos` nao usam auto-save: a inclusao persiste em `Adicionar ...` e a edicao persiste no botao `Salvar` de cada linha.
+23. A migration `059_create_location_planning.sql` cria `project_location_plans`, `project_location_materials`, `project_location_activities` e o RPC `initialize_project_location_plan` para bootstrap do projeto na locacao.
+24. A migration `060_add_project_has_locacao.sql` adiciona `project.has_locacao` para marcar projetos que ja passaram por salvamento real na tela `/locacao`.
+25. As migrations `061_create_location_risks.sql` e `062_create_location_execution_support_items.sql` preparam as tabelas de riscos e de apoio de execucao consumidas pela aba principal da `Locacao`.
+26. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`.
+27. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor.
+28. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
+29. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
+30. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
+31. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
+32. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
+33. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
+34. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
+35. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
+36. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
+37. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
+38. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
+39. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
+40. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
+41. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
+42. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
+43. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
+44. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
+45. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+46. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
+47. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
+48. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
+49. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
+50. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
+51. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
+52. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
+53. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
 
 ---
 
@@ -299,6 +321,21 @@ npm run build
 - `Falha ao carregar opcoes de projetos.`:
   - Causa: tabelas de dominio da tela `Projetos` nao existem no banco.
   - Solucao: aplicar a migration `031_create_project_lookup_tables.sql` e recarregar a pagina.
+- `Projeto nao encontrado para inicializar a locacao.` ou `Locacao nao encontrada para o projeto.`:
+  - Causa: projeto inexistente no tenant ativo ou migration da locacao nao aplicada.
+  - Solucao: aplicar `059_create_location_planning.sql`, confirmar o tenant selecionado e recarregar a rota `/locacao`.
+- `Preencha os campos obrigatorios de Locacao antes de salvar.`:
+  - Causa: os radios `Necessario revisao de projeto?` e/ou `Com desligamento?` nao foram definidos na aba principal da locacao.
+  - Solucao: selecionar `Sim` ou `Nao` para os dois campos e salvar novamente.
+- `As quantidades da locacao devem ser numericas e nao podem ser negativas.`:
+  - Causa: envio manual de valor invalido ou negativo nos campos numericos da aba principal da locacao.
+  - Solucao: usar apenas inteiros maiores ou iguais a `0`; a tela ja normaliza vazio para `0`.
+- A aba principal de `/locacao` nao exibe riscos ou apoio de execucao:
+  - Causa: migrations auxiliares nao aplicadas no banco ou tabelas sem registros.
+  - Solucao: aplicar `061_create_location_risks.sql` e `062_create_location_execution_support_items.sql` e cadastrar os itens necessarios.
+- `Material ja adicionado na locacao deste projeto.` ou `Atividade ja adicionada na locacao deste projeto.`:
+  - Causa: tentativa de incluir novamente o mesmo item na mesma locacao.
+  - Solucao: editar a quantidade do item existente em vez de inserir duplicado.
 - `Falha ao listar materiais.` ou `column materials.unit_price does not exist`:
   - Causa: migration de materiais ainda nao aplicada no banco remoto.
   - Solucao: aplicar `042_materials_price_status_and_history.sql` antes de usar a tela `/materiais`.

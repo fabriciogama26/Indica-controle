@@ -88,10 +88,10 @@ export function parseProjectForecastWorkbook(content: ArrayBuffer): ParsedProjec
   }
 
   const worksheet = workbook.Sheets[firstSheetName];
-  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+  const rawRows = XLSX.utils.sheet_to_json(worksheet, {
     defval: "",
     raw: false,
-  });
+  }) as Array<Record<string, unknown>>;
 
   if (rawRows.length === 0) {
     return { rows: [], errors: ["Planilha vazia. Preencha ao menos uma linha."] };

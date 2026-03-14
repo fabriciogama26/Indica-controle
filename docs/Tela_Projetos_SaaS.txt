@@ -7,6 +7,7 @@ Visao geral
 - Implementa fluxo completo com criacao, edicao, inativacao e historico de alteracoes.
 - Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
 - Inclui aba `Materiais previstos` para importar em massa a lista inicial de materiais planejados por projeto.
+- Mantem indicador operacional `has_locacao` no projeto para consumo futuro em visoes gerais e cruzamentos com `Locacao`.
 
 Arquitetura
 -----------
@@ -29,6 +30,7 @@ Arquitetura
 - Banco (protecao de importacao por RPC): `supabase/migrations/043_project_forecast_import_guards.sql`
 - Banco (tenants + vinculo de acesso por usuario): `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
 - Banco (FK tenant global em tabelas com tenant_id): `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
+- Banco (flag operacional de locacao): `supabase/migrations/060_add_project_has_locacao.sql`
 
 Cadastro
 --------
@@ -134,6 +136,7 @@ Cancelamento e saldo
   - Registra no `project_history` como evento `ACTIVATE`.
 - Saldo de estoque nao e alterado por `Materiais previstos`.
 - `Materiais previstos` registra somente planejamento de consumo.
+- `has_locacao` passa a indicar se o projeto ja teve algum salvamento real no fluxo de `Locacao`.
 
 Atalhos
 -------
@@ -167,6 +170,9 @@ Atualizacao 2026-03
 - Depois: adicionada aba `Materiais previstos` com importacao em massa via planilha XLSX.
 - Criada migration `041_create_project_material_forecast.sql` para registrar materiais previstos por projeto com RLS e auditoria.
 - Criada migration `043_project_forecast_import_guards.sql` com RPCs `precheck_project_material_forecast_import` e `append_project_material_forecast`.
+- Criada migration `060_add_project_has_locacao.sql` para adicionar o flag operacional `project.has_locacao` e expor o campo na view `project_with_labels`.
+- Antes: nao havia marcador simples para saber se o projeto passou pela tela de `Locacao`.
+- Depois: o projeto passa a registrar `has_locacao = true` quando existe salvamento real na `Locacao`.
 - Importacao e download de modelo de `Materiais previstos` passaram a ser feitos por Edge Functions (`get_project_forecast_template` e `import_project_forecast`).
 - A rota Next `src/app/api/projects/forecast/route.ts` ficou dedicada a listagem; o `POST` antigo foi bloqueado para evitar bypass da protecao.
 - Incluido botao `Materiais previstos` na coluna `Acoes` da lista de projetos.
@@ -215,6 +221,8 @@ Constantes e configuracoes
   - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
 - Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
   - Responsavel por: aplicar integridade referencial de `tenant_id` para `tenants(id)` em todas as tabelas de negocio com coluna `tenant_id`.
+- Caminho: `supabase/migrations/060_add_project_has_locacao.sql`
+  - Responsavel por: adicionar `has_locacao` em `project`, backfill a partir de `project_location_plans` e republicar `project_with_labels`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -244,6 +252,7 @@ Ajuda contextual
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
   - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `handleForecastProjectSearchChange`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
+  - Mapeamento de `hasLocacao` no retorno de `/api/projects`
   - `GET` de `/api/projects/forecast`
   - `POST` de `/api/projects/forecast` bloqueado para forcar importacao via Edge Function
   - `GET` de `/api/projects/forecast/template` bloqueado para forcar download via Edge Function

@@ -2,34 +2,112 @@ Tela: Locacao SaaS
 
 Visao geral
 -----------
-- Tela placeholder para o modulo de locacao no dashboard.
-- Disponibiliza o atalho de navegacao da secao `Operacao`.
-- Ainda nao possui formulario funcional nem persistencia.
+- Tela operacional de locacao vinculada a um projeto do tenant.
+- Permite filtrar projetos por `Municipio`, buscar por `SOB` e carregar uma base propria de locacao.
+- Mantem separado o previsto original do projeto e o previsto atual da locacao para materiais.
+- Permite adicionar atividades previstas a partir da tabela `service_activities`, com quantidade e total monetario.
+- Mantem observacoes gerais da locacao e estrutura pronta para receber o questionario em etapa posterior.
+- Ao salvar dados reais da locacao, marca o projeto com `has_locacao = true`.
+- A interface visual segue o mesmo baseline de `Projetos` e `Atividades` (`card`, grids de formulario/filtro, tabela principal e botoes `primary/secondary/ghost`).
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/locacao/page.tsx`
-- Componente de base visual: `src/components/ui/ModulePlaceholder.tsx`
-- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
-- Guard de rota por permissao: `src/lib/auth/authorization.ts`
+- View: `src/modules/dashboard/locacao/LocationPageView.tsx`
+- Estilo: `src/modules/dashboard/locacao/LocationPageView.module.css`
+- API de metadados: `src/app/api/locacao/meta/route.ts`
+- API da locacao: `src/app/api/locacao/route.ts`
+- API de materiais da locacao: `src/app/api/locacao/materials/route.ts`
+- API de busca de materiais: `src/app/api/locacao/materials/catalog/route.ts`
+- API de atividades da locacao: `src/app/api/locacao/activities/route.ts`
+- API de busca de atividades: `src/app/api/locacao/activities/catalog/route.ts`
+- Helper server-side: `src/lib/server/locationPlanning.ts`
+- Banco:
+  - `supabase/migrations/059_create_location_planning.sql`
+  - `supabase/migrations/061_create_location_risks.sql`
+  - `supabase/migrations/062_create_location_execution_support_items.sql`
 
 Cadastro
 --------
-- Nao se aplica nesta etapa.
+- O cadastro base da locacao e inicializado por projeto.
+- Campos atuais da area `Locacao`:
+  - `Observacoes` (opcional)
+  - `Necessario revisao de projeto?` (obrigatorio)
+  - `Com desligamento?` (obrigatorio)
+  - Quantidades de equipes de execucao (`CESTO`, `LINHA MORTA`, `LINHA VIVA`, `PODA LINHA MORTA`, `PODA LINHA VIVA`) obrigatorias, sem aceitar negativo e iniciadas com `0`
+  - `ETAPAS PREVISTAS` obrigatorio, sem aceitar negativo e iniciado com `0`
+  - `Observacao` da previsao de execucao
+  - `Observacao` do `Pre APR`
+- Estrutura futura ja preparada:
+  - `questionnaire_answers` em `project_location_plans` para receber o questionario.
+  - `project_location_risks` para registrar riscos da locacao por projeto, com `description` e `is_active`.
+  - `location_execution_support_items` para manter o catalogo de apoio de execucao da locacao por tenant, com `description` e `is_active`.
+- Inclusao de materiais:
+  - Busca por codigo/descricao no catalogo de `materials`.
+  - Quantidade obrigatoria.
+  - Material manual entra com `original_qty = 0`.
+  - A inclusao so persiste ao clicar em `Adicionar material`.
+  - A edicao da lista so persiste ao clicar em `Salvar` na linha.
+- Inclusao de atividades:
+  - Busca por codigo/descricao no catalogo de `service_activities`.
+  - Quantidade obrigatoria.
+  - `Unidade` exibida em campo proprio a partir do cadastro base da atividade selecionada.
+  - Valor unitario e snapshot do cadastro base ficam gravados na locacao.
+  - A inclusao so persiste ao clicar em `Adicionar atividade`.
+  - A edicao da lista so persiste ao clicar em `Salvar` na linha.
 
 Filtros, auto-complete e listagem
 ---------------------------------
-- Nao se aplica nesta etapa.
+- Filtro superior:
+  - `Municipio` (`select`)
+  - `SOB` (`input` com `datalist` / auto-complete)
+- O `Municipio` reduz a lista de projetos disponiveis para o `SOB`.
+- Depois de abrir a locacao, a navegacao operacional e exibida em um card com abas no topo:
+  - `Locacao`
+  - `Atividades previstas`
+  - `Materiais previstos`
+- Abaixo das abas, cada tela abre seus blocos em cards separados no padrao da tela `Projetos`.
+- Estrutura atual por aba:
+  - `Locacao`: quatro blocos de conteudo.
+  - `Atividades previstas`: um card de cadastro, um card de filtros e um card de listagem.
+  - `Materiais previstos`: um card de cadastro, um card de filtros e um card de listagem.
+- Blocos atuais da aba `Locacao`:
+  - `Planejamento / Vistoria`
+  - `Equipes para execucao`
+  - `Previsao de execucao`
+  - `Pre APR`
+- Listas internas:
+  - `Atividades previstas`: filtro por codigo, descricao e tipo.
+  - `Materiais previstos`: filtro por codigo, descricao e tipo.
+- Listas operacionais da aba `Locacao`:
+  - `Previsao de execucao`: exibe toda a lista ativa de `location_execution_support_items` com toggle local `Remover`/`Incluir`, persistido no `questionnaire_answers` ao salvar.
+  - `Pre APR`: exibe a lista de `project_location_risks` do plano com toggle local `Remover`/`Incluir`, persistido no banco ao salvar.
+- Os filtros das listas internas seguem o padrao das outras telas:
+  - titulo `Filtros`
+  - campos separados `Codigo`, `Descricao` e `Tipo`
+  - botao `Aplicar`
+  - botao `Limpar`
+- Busca de catalogo:
+  - Materiais e atividades usam rotas de busca dedicadas, limitadas, acionadas a partir do texto digitado.
 
 Boas praticas
 -------------
-- Manter `locacao` como `pageKey` explicito na matriz de permissao.
-- Evitar regra de negocio local antes da definicao do contrato backend.
-- Conservar a rota protegida no shell por sessao + permissao.
+- Sempre inicializar a locacao a partir de `tenant_id + project_id`.
+- Nunca sobrescrever `project_material_forecast`; a locacao trabalha em tabelas proprias.
+- Manter snapshot de materiais e atividades para preservar comparacao historica.
+- Registrar alteracoes em `app_entity_history` com `module_key = locacao`.
+- Filtrar todas as consultas por `tenant_id`, mesmo usando client administrativo.
+- Assumir `RLS ON` nas tabelas da locacao.
+- Atualizar `project.has_locacao` somente pelo fluxo real da locacao, nunca por checkbox manual no cadastro do projeto.
+- Validar no frontend e no backend os campos obrigatorios da aba principal da `Locacao` antes do `PUT`.
+- Tratar listas de apoio de execucao e riscos como incluidas por padrao; so os itens removidos/inativos entram na persistencia do salvar.
 
 Cancelamento e saldo
 --------------------
-- Nao se aplica nesta etapa.
+- Nao existe cancelamento/status operacional da locacao nesta etapa.
+- Nao existe aprovacao de lista de materiais nesta etapa.
+- Nao existe movimentacao de estoque nesta etapa.
+- `Materiais previstos` da locacao representam planejamento operacional, nao saldo.
 
 Atalhos
 -------
@@ -38,35 +116,122 @@ Atalhos
 
 Atualizacao 2026-03
 -------------------
-- Arquivo `src/app/(dashboard)/locacao/page.tsx` criado.
-- `AppShell` atualizado para expor o item `Locacao` na navegacao lateral.
-- `authorization.ts` atualizado para mapear `/locacao` para `pageKey = locacao`.
-- `PermissionsPageView` atualizado para incluir o toggle de acesso da tela `Locacao`.
-- Antes: a rota nao existia.
-- Depois: rota placeholder existente e protegida por permissao de pagina.
+- Antes: rota `/locacao` era placeholder sem formulario nem persistencia.
+- Depois: rota funcional com filtro por `Municipio`, auto-complete por `SOB`, painel de `Locacao`, painel de `Atividades previstas` e painel de `Materiais previstos`.
+- Criada migration `059_create_location_planning.sql` com:
+  - `project_location_plans`
+  - `project_location_materials`
+  - `project_location_activities`
+  - RPC `initialize_project_location_plan`
+- Criada migration `060_add_project_has_locacao.sql` para adicionar o indicador operacional no projeto.
+- Criada migration `061_create_location_risks.sql` para preparar a tabela de riscos da locacao vinculada ao `project_location_plans`.
+- Criada migration `062_create_location_execution_support_items.sql` para preparar o catalogo de apoio de execucao da locacao por tenant.
+- A inicializacao da locacao passa a copiar os materiais de `project_material_forecast` para a base propria da locacao apenas na primeira carga do projeto.
+- Antes: alterar materiais previstos da locacao exigiria mexer no previsto original do projeto.
+- Depois: a locacao passa a manter `original_qty` e `planned_qty` separados para comparacao.
+- Antes: nao existia persistencia de atividades previstas por projeto na locacao.
+- Depois: a locacao persiste atividades com snapshot de `codigo`, `descricao`, `tipo`, `unidade` e `valor unitario`.
+- Antes: nao existia marcador simples no projeto para saber se a locacao ja tinha sido feita.
+- Depois: qualquer salvamento real da locacao passa a marcar `project.has_locacao = true`.
+- Layout visual ajustado para o mesmo padrao estrutural das telas `Projetos` e `Atividades`, removendo o visual customizado anterior.
+- Estrutura da tela ajustada para manter o seletor de projeto no topo, abrir abaixo um card de navegacao com botoes/abas e separar os blocos internos em cards distintos no mesmo padrao da tela `Projetos`.
+- A aba `Locacao` deixou de ser apenas um bloco de observacoes e passou a exibir os 4 blocos operacionais de planejamento, equipes, previsao de execucao e pre APR.
+- O bloco `Pre APR` passou a ter um campo proprio de `Observacao`, salvo junto do `questionnaire_answers`.
+- Os filtros de `Atividades previstas` e `Materiais previstos` passaram a seguir o padrao visual de `Projetos`, em card proprio com titulo `Filtros` e botoes `Aplicar`/`Limpar`.
+- Os filtros de `Atividades previstas` e `Materiais previstos` passaram a usar campos separados por `Codigo`, `Descricao` e `Tipo`, em vez de um filtro textual unico.
+- A aba `Atividades previstas` passou a exibir o campo `Unidade` no formulario e a coluna `Unidade` na lista.
+- Os totais de `Atividades previstas` e `Materiais previstos` passaram a usar destaque visual proprio no header.
+- O texto redundante `Projeto selecionado: ...` foi removido dos headers internos das listas.
+- O `Salvar locacao` passou a exibir feedback local na propria aba, evitando deslocamento da tela para o topo.
+- Ao salvar a aba principal com sucesso, o container principal do dashboard volta para o topo para recolocar em evidência as abas operacionais da locacao.
+- A aba principal da `Locacao` passou a exigir os radios `Necessario revisao de projeto?` e `Com desligamento?` antes de salvar.
+- As quantidades de equipes e `ETAPAS PREVISTAS` passaram a iniciar com `0`, nao aceitar valor negativo e serem normalizadas no frontend e no backend.
+- `Atividades previstas` e `Materiais previstos` continuam com salvamento explicito por acao: `Adicionar ...` para inclusao e `Salvar` por linha para edicao.
+- Adicionada declaracao local `src/types/xlsx.d.ts` e ajuste em `src/lib/server/projectForecastXlsx.ts` para destravar o `build` atual do projeto.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
-- Caminho: `src/app/(dashboard)/locacao/page.tsx`
-  - Responsavel por: montar o placeholder da rota `Locacao`.
-- Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: renderizar o atalho lateral de `Locacao`.
+- Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
+  - Responsavel por: filtro por municipio, busca de projeto por SOB, carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e persistencia geral da locacao.
+- Caminho: `src/app/api/locacao/route.ts`
+  - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, incluindo validacao server-side de `questionnaire_answers` e status dos riscos.
+- Caminho: `src/app/api/locacao/materials/route.ts`
+  - Responsavel por: adicionar materiais manuais e editar quantidade/observacao dos materiais da locacao.
+- Caminho: `src/app/api/locacao/activities/route.ts`
+  - Responsavel por: adicionar atividades e editar quantidade/observacao das atividades da locacao.
+- Caminho: `src/lib/server/locationPlanning.ts`
+  - Responsavel por: garantir a criacao da locacao, carregar snapshot consolidado com apoio de execucao e riscos, marcar `has_locacao` no projeto e registrar historico no `app_entity_history`.
 
 Constantes e configuracoes
-- Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: entrada da rota em `menuSections` e titulo em `titleMap`.
-- Caminho: `src/lib/auth/authorization.ts`
-  - Responsavel por: mapeamento de rota em `ROUTE_PAGE_KEYS` e fallback de acesso por role.
-- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: `permissionCatalog` para liberar/bloquear a rota por usuario.
+- Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
+  - Responsavel por: estado de filtros, drafts de edicao e labels de busca.
+- Caminho: `supabase/migrations/059_create_location_planning.sql`
+  - Responsavel por: schema, indices, RLS, auditoria e RPC de bootstrap da locacao.
+- Caminho: `supabase/migrations/061_create_location_risks.sql`
+  - Responsavel por: tabela `project_location_risks`, RLS, auditoria e indice principal dos riscos da locacao.
+- Caminho: `supabase/migrations/062_create_location_execution_support_items.sql`
+  - Responsavel por: catalogo `location_execution_support_items`, RLS, auditoria e indice principal do apoio de execucao da locacao.
 
 Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver sessao autenticada e tenant ativo usado nas rotas da locacao.
 - Caminho: `src/hooks/useAuth.ts`
-  - Responsavel por: sessao autenticada consumida no shell.
+  - Responsavel por: fornecer `accessToken` para as chamadas autenticadas do frontend.
 
 Servicos e integracoes externas
-- Nao se aplica nesta etapa (sem chamada de API nesta tela).
+- Supabase Postgres com RLS.
+- Next.js Route Handlers em `/api/locacao/*`.
+- Tabelas base reaproveitadas:
+  - `project_with_labels`
+  - `project_material_forecast`
+  - `materials`
+  - `service_activities`
+  - `app_entity_history`
 
 Ajuda contextual
-- Estado atual: tela em placeholder com proximo passo de detalhar regras de locacao.
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/locacao/page.tsx`
+  - `src/modules/dashboard/locacao/LocationPageView.tsx`
+  - `src/modules/dashboard/locacao/LocationPageView.module.css`
+  - `src/app/api/locacao/route.ts`
+  - `src/app/api/locacao/meta/route.ts`
+  - `src/app/api/locacao/materials/route.ts`
+  - `src/app/api/locacao/materials/catalog/route.ts`
+  - `src/app/api/locacao/activities/route.ts`
+  - `src/app/api/locacao/activities/catalog/route.ts`
+  - `src/lib/server/locationPlanning.ts`
+  - `src/lib/server/projectForecastXlsx.ts`
+  - `src/types/xlsx.d.ts`
+  - `supabase/migrations/059_create_location_planning.sql`
+  - `supabase/migrations/061_create_location_risks.sql`
+  - `supabase/migrations/062_create_location_execution_support_items.sql`
+- Funcoes/hooks/constantes tocadas:
+  - `LocationPageView`
+  - `requestLocation`
+  - `openLocation`
+  - `saveNotes`
+  - `saveLocation`
+  - `addCatalogItem`
+  - `saveRow`
+  - `validateLocationBeforeSave`
+  - `normalizeLocationIntegerFields`
+  - `validateAndNormalizeLocationQuestionnaire`
+  - `ensureLocationPlan`
+  - `fetchLocationPlanData`
+  - `registerLocationHistory`
+- Comportamento antes/depois:
+  - Antes: locacao nao tinha persistencia nem fluxo operacional.
+  - Depois: locacao possui bootstrap por projeto, materiais e atividades previstos editaveis, historico tecnico e comparacao contra o previsto original do projeto.
+  - Antes: as abas de atividades e materiais concentravam cadastro, filtro e lista em um unico card.
+  - Depois: `Atividades previstas` e `Materiais previstos` passam a separar cadastro e listagem em cards distintos.
+  - Antes: os filtros internos de atividades e materiais usavam um unico campo textual.
+  - Depois: os filtros internos usam campos separados para `Codigo`, `Descricao` e `Tipo`.
+  - Antes: a locacao nao tinha tabela dedicada para riscos operacionais.
+  - Depois: a modelagem passa a contar com `project_location_risks`, vinculada ao plano da locacao e pronta para consumo futuro em tela/API.
+  - Antes: a locacao nao tinha catalogo para apoio de execucao.
+  - Depois: a modelagem passa a contar com `location_execution_support_items`, pronta para uso futuro na tela/API da locacao.
+  - Antes: a aba `Locacao` exibia apenas observacoes gerais.
+  - Depois: a aba `Locacao` passou a salvar 4 blocos operacionais com radios, quantidades, observacao da previsao, apoio de execucao e pre APR.
+  - Antes: o `Salvar locacao` usava o mesmo feedback global das outras acoes.
+  - Depois: o salvar da aba principal exibe feedback local e valida campos obrigatorios antes de persistir.

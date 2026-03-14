@@ -98,6 +98,17 @@
 - [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
+- [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.
+- [x] Adicionar flag operacional `project.has_locacao` para marcar projetos com salvamento real na tela de `Locacao`.
+- [x] Ajustar a tela de `Locacao` para separar `Atividades previstas` e `Materiais previstos` em cards distintos de cadastro e listagem, seguindo o padrao visual de `Projetos`.
+- [x] Padronizar os blocos de filtro de `Atividades previstas` e `Materiais previstos` na `Locacao` com card `Filtros` e acoes `Aplicar`/`Limpar`.
+- [x] Separar os filtros internos de `Atividades previstas` e `Materiais previstos` na `Locacao` em campos `Codigo`, `Descricao` e `Tipo`.
+- [x] Criar a tabela `project_location_risks` para armazenar riscos da `Locacao` por projeto com `description`, `is_active`, RLS e auditoria.
+- [x] Criar o catalogo `location_execution_support_items` para apoio de execucao da `Locacao` por tenant com `description`, `is_active`, RLS e auditoria.
+- [x] Reestruturar a aba `Locacao` em 4 blocos operacionais com questionario, quantidades de equipes, previsao de execucao, apoio de execucao e pre APR.
+- [x] Ajustar a aba `Locacao` removendo prefixos `Bloco x` dos titulos e adicionando `Observacao` no `Pre APR`.
+- [x] Validar a aba principal da `Locacao` com radios obrigatorios, campos numericos iniciando em `0`, bloqueio de negativos e feedback local no `Salvar locacao`.
+- [x] Fazer o `Salvar locacao` retornar ao topo do container principal apos sucesso para recolocar as abas em evidência.
 - [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
 - [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.
@@ -117,7 +128,7 @@
 - [ ] Integrar `log_error` no frontend para registrar falhas por modulo.
 - [ ] Adicionar testes automatizados para auth e fluxo base de navegacao.
 - [ ] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
-- [ ] Corrigir o `build` atual do Next para nao type-checkar imports Deno de `SaaS (Web)/supabase/edge_functions`, ou remover essa copia do app web.
+- [x] Corrigir o `build` atual do Next destravando o type-check de `xlsx` usado em `src/lib/server/projectForecastXlsx.ts`.
 
 - [ ] Definir uma fonte unica de verdade para `supabase/`, porque hoje existe copia na raiz do repositorio e outra em `SaaS (Web)/supabase`.
 - [ ] Revisar README e docs que ainda assumem backend somente externo em `d:\\RQM\\supabase`, enquanto este repositorio ja contem artefatos Supabase versionados.
