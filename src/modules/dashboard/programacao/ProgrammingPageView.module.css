@@ -398,6 +398,7 @@
 .viewButtonActive,
 .primaryButton,
 .secondaryButton,
+.dangerButton,
 .ghostButton,
 .modalCloseButton {
   min-height: 42px;
@@ -415,6 +416,7 @@
 .viewButtonActive:hover,
 .primaryButton:hover,
 .secondaryButton:hover,
+.dangerButton:hover,
 .ghostButton:hover,
 .modalCloseButton:hover {
   transform: translateY(-1px);
@@ -464,6 +466,13 @@
   background: rgba(33, 80, 177, 0.1);
   border-color: rgba(33, 80, 177, 0.18);
   color: #173f93;
+}
+
+.dangerButton {
+  background: linear-gradient(180deg, #d84141 0%, #b92c2c 100%);
+  border-color: rgba(185, 44, 44, 0.4);
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(185, 44, 44, 0.2);
 }
 
 .timelineShell {
@@ -711,12 +720,31 @@
   box-shadow: 0 30px 60px rgba(15, 32, 74, 0.22);
 }
 
+.confirmationCard {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding: 22px;
+  border-radius: 28px;
+  border: 1px solid rgba(23, 52, 122, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(246, 249, 255, 0.98) 100%);
+  box-shadow: 0 30px 60px rgba(15, 32, 74, 0.22);
+  display: grid;
+  gap: 18px;
+}
+
 .modalHeader {
   align-items: flex-start;
 }
 
 .modalBody {
   gap: 16px;
+}
+
+.modalText {
+  margin: 0;
+  color: #4f638a;
+  line-height: 1.6;
 }
 
 .modalSection {
@@ -854,7 +882,8 @@
 @media (max-width: 720px) {
   .pendingPanel,
   .boardPanel,
-  .modalCard {
+  .modalCard,
+  .confirmationCard {
     padding: 16px;
     border-radius: 22px;
   }

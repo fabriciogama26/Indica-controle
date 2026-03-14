@@ -46,6 +46,10 @@ Cadastro
   - A `Base` da programacao corresponde ao `Centro de servico`.
   - A equipe precisa ter `Centro de servico` vinculado para ser programada.
   - A RPC bloqueia salvar quando a base da equipe nao corresponde ao centro de servico da obra.
+- Regra de cancelamento:
+  - Programacoes existentes podem ser canceladas por modal proprio com motivo obrigatorio.
+  - O cancelamento nao apaga o registro; ele faz `soft cancel` no backend e retira a programacao da grade ativa.
+  - O reagendamento continua sendo feito ao mover/editar a mesma programacao na grade; quando data, equipe ou horario mudam, o historico registra a acao como `RESCHEDULE`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -80,8 +84,11 @@ Boas praticas
 
 Cancelamento e saldo
 --------------------
-- Nao se aplica nesta etapa.
-- Ainda nao existe fluxo de cancelamento/reagendamento persistido nem impacto em saldo de estoque.
+- Cancelamento de programacao agora existe com persistencia real.
+- O backend marca a programacao como inativa, grava motivo, data/hora e usuario do cancelamento.
+- A programacao cancelada sai da grade operacional ativa, mas permanece em historico.
+- Reagendamento nao cria um status novo na grade: ele atualiza a mesma programacao e fica auditado no historico como remanejamento.
+- Nao existe impacto em saldo de estoque nesta tela.
 
 Atalhos
 -------
@@ -113,14 +120,21 @@ Atualizacao 2026-03
   - RPC `save_project_programming`
   - protecao de concorrencia e sobreposicao de horario
   - validacao de compatibilidade entre base da equipe e base da obra
+- Arquivo `supabase/migrations/069_add_programming_cancellation.sql` criado com:
+  - campos de cancelamento em `project_programming`
+  - troca da unicidade para considerar apenas programacoes ativas
+  - RPC `cancel_project_programming`
+  - ajuste da RPC `save_project_programming` para ignorar registros cancelados
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
   - salvar criacao/edicao por `POST` e `PUT` com `expectedUpdatedAt`
+  - cancelar programacao por `PATCH` com motivo obrigatorio
   - recalcular backlog pendente e carga por equipe com os dados reais do periodo
   - manter semana completa de segunda a domingo
   - manter nomenclatura documental `PEP`
   - exibir a base real da equipe na grade e no filtro do painel direito
+  - exibir o feedback de sucesso/erro no topo da tela, no mesmo padrao dos demais modulos
 - Antes:
   - `/programacao` era local no frontend, com projetos, equipes e programacoes mockadas.
 - Depois:
@@ -132,11 +146,13 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: carregar dados autenticados, controlar filtros, periodo, timeline, drag and drop, modal e salvamento.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar a RPC de salvamento e registrar historico.
+  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/cancelamento e registrar historico.
 - Caminho: `supabase/migrations/067_create_project_programming.sql`
   - Responsavel por: formalizar a base multi-tenant de programacao e suas atividades.
 - Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - Responsavel por: vincular equipes a base e endurecer o salvamento da programacao.
+- Caminho: `supabase/migrations/069_add_programming_cancellation.sql`
+  - Responsavel por: persistir cancelamento de programacao e retirar registros cancelados da grade ativa.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -165,6 +181,7 @@ Ajuda contextual
   - `src/modules/dashboard/programacao/ProgrammingPageView.module.css`
   - `supabase/migrations/067_create_project_programming.sql`
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
+  - `supabase/migrations/069_add_programming_cancellation.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -173,5 +190,5 @@ Ajuda contextual
   - `DOCUMENT_KEYS`
   - `INITIAL_PERIOD_START`
 - Comportamento antes/depois:
-  - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional.
-  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe e RPC transacional com concorrencia/sobreposicao.
+  - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional; nao havia cancelamento persistente.
+  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, RPC transacional com concorrencia/sobreposicao e cancelamento persistente por motivo.

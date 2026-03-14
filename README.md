@@ -115,7 +115,7 @@ vercel --prod
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
   - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstos/materiais previstos com regras finais centralizadas em RPC.
-  - `(dashboard)/programacao/page.tsx`: rota da tela de Programacao com painel de pendencias, grade semanal/diaria de equipes, drag and drop e persistencia real via API.
+  - `(dashboard)/programacao/page.tsx`: rota da tela de Programacao com painel de pendencias, grade semanal/diaria de equipes, drag and drop, cancelamento com motivo e persistencia real via API.
   - `(dashboard)/medicao/page.tsx`: placeholder de Medicao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
@@ -153,7 +153,7 @@ vercel --prod
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico.
   - `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
-  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo e salva a agenda real da tela de Programacao com documentos, atividades e historico.
+  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, salva a agenda real da tela de Programacao e cancela programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
@@ -174,7 +174,7 @@ vercel --prod
   - `LocationPageView.tsx`: tela de locacao com filtro por municipio, busca por SOB, 4 blocos operacionais, feedback local de salvamento, atividades previstas e materiais previstos.
   - `LocationPageView.module.css`: estilos da tela de locacao.
 - `src/modules/dashboard/programacao/`
-  - `ProgrammingPageView.tsx`: tela de programacao com painel de projetos pendentes, timeline por equipe, cards agendados, drag and drop, base real da equipe e integracao autenticada com `/api/programacao`.
+  - `ProgrammingPageView.tsx`: tela de programacao com painel de projetos pendentes, timeline por equipe, cards agendados, drag and drop, cancelamento por motivo, base real da equipe e integracao autenticada com `/api/programacao`.
   - `ProgrammingPageView.module.css`: estilos da tela de programacao.
 - `src/modules/dashboard/equipes/`
   - `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, historico e cancelamento/ativacao.
@@ -236,7 +236,7 @@ vercel --prod
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
   - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, historico e troca de status.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
-  - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, validacao por RPC e modal de programacao.
+  - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, validacao por RPC, cancelamento persistente e modal de programacao.
   - `Tela_Medicao_SaaS.txt`: placeholder do modulo de medicao.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
