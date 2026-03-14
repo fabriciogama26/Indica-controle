@@ -79,6 +79,20 @@ function validateAndNormalizeLocationQuestionnaire(value: unknown) {
     } as const;
   }
 
+  if (cestoQty <= 0 && linhaMortaQty <= 0 && linhaVivaQty <= 0 && podaLinhaMortaQty <= 0 && podaLinhaVivaQty <= 0) {
+    return {
+      ok: false,
+      message: "Pelo menos uma equipe para execucao deve ter quantidade maior que zero.",
+    } as const;
+  }
+
+  if (stepsPlannedQty <= 0) {
+    return {
+      ok: false,
+      message: "ETAPAS PREVISTAS deve ser maior que zero para salvar a locacao.",
+    } as const;
+  }
+
   return {
     ok: true,
     questionnaire: {

@@ -257,7 +257,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
 17. A aba `Materiais previstos` em `/projetos` permite selecionar projeto, baixar modelo XLSX via Edge Function `get_project_forecast_template`, importar previsao via Edge Function `import_project_forecast` (colunas `codigo` e `quantidade`) e filtrar/listar materiais previstos por codigo, descricao e tipo via `/api/projects/forecast`.
 18. A rota `/locacao` permite filtrar projetos por `Municipio`, selecionar projeto por `SOB`, inicializar a base da locacao por `/api/locacao` e preencher a aba principal em 4 blocos: planejamento/vistoria, equipes para execucao, previsao de execucao e pre APR.
-19. A aba principal da `Locacao` exige os radios obrigatorios, normaliza os campos numericos com `0` por padrao e salva observacoes, radios, quantidades, observacao da previsao, selecao de apoio de execucao e status dos riscos em um unico `Salvar locacao`.
+19. A aba principal da `Locacao` exige os radios obrigatorios, normaliza os campos numericos com `0` por padrao, bloqueia salvar com todas as equipes zeradas ou com `ETAPAS PREVISTAS = 0` e salva observacoes, radios, quantidades, observacao da previsao, selecao de apoio de execucao e status dos riscos em um unico `Salvar locacao`.
 20. Ao salvar a aba principal da `Locacao` com sucesso, o dashboard volta ao topo do conteudo para recolocar em destaque as abas operacionais da tela.
 21. Na `Locacao`, as listas de apoio de execucao e riscos partem de todos os itens incluidos; o usuario so alterna `Remover`/`Incluir` e a persistencia acontece ao clicar em `Salvar locacao`.
 22. As abas `Atividades previstas` e `Materiais previstos` nao usam auto-save: a inclusao persiste em `Adicionar ...` e a edicao persiste no botao `Salvar` de cada linha.
@@ -330,6 +330,12 @@ npm run build
 - `As quantidades da locacao devem ser numericas e nao podem ser negativas.`:
   - Causa: envio manual de valor invalido ou negativo nos campos numericos da aba principal da locacao.
   - Solucao: usar apenas inteiros maiores ou iguais a `0`; a tela ja normaliza vazio para `0`.
+- `Informe pelo menos uma equipe com quantidade maior que zero antes de salvar a locacao.`:
+  - Causa: todos os campos de `Equipes para execucao` foram mantidos em `0`.
+  - Solucao: informar valor maior que `0` em pelo menos uma equipe antes de salvar.
+- `ETAPAS PREVISTAS deve ser maior que zero antes de salvar a locacao.`:
+  - Causa: o campo `ETAPAS PREVISTAS` permaneceu em `0`.
+  - Solucao: informar quantidade maior que `0` antes de salvar.
 - A aba principal de `/locacao` nao exibe riscos ou apoio de execucao:
   - Causa: migrations auxiliares nao aplicadas no banco ou tabelas sem registros.
   - Solucao: aplicar `061_create_location_risks.sql` e `062_create_location_execution_support_items.sql` e cadastrar os itens necessarios.
