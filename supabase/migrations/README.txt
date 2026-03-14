@@ -66,6 +66,7 @@ Ordem de aplicacao
 62. 062_create_location_execution_support_items.sql
 63. 063_create_location_save_rpcs.sql
 64. 064_create_project_activity_forecast.sql
+65. 065_project_forecast_manual_and_activity_import.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -262,6 +263,9 @@ Resumo por arquivo
 
 064_create_project_activity_forecast.sql
 - Cria `project_activity_forecast`, a RPC `save_project_activity_forecast` e ajusta o bootstrap da `Locacao` para seedar atividades previstas a partir do projeto.
+
+065_project_forecast_manual_and_activity_import.sql
+- Cria a RPC `save_project_material_forecast` para inclusao/edicao manual de `project_material_forecast` e adiciona RPCs protegidas para importacao em massa de `project_activity_forecast`.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

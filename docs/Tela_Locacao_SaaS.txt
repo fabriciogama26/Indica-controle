@@ -6,7 +6,7 @@ Visao geral
 - Permite filtrar projetos por `Municipio`, buscar por `SOB` e carregar uma base propria de locacao.
 - Mantem separado o previsto original do projeto e o previsto atual da locacao para materiais.
 - Permite adicionar atividades previstas a partir da tabela `service_activities`, com quantidade e total monetario.
-- Quando existir base em `project_activity_forecast`, a locacao inicializa `Atividades previstas` a partir dessa previsao do projeto na primeira carga.
+- Quando existir base em `project_activity_forecast`, a locacao inicializa `Atividades previstas` a partir dessa previsao do projeto na primeira carga, independentemente de ela ter vindo de importacao XLSX ou inclusao manual em `Projetos`.
 - Mantem observacoes gerais da locacao e estrutura pronta para receber o questionario em etapa posterior.
 - Ao salvar dados reais da locacao, marca o projeto com `has_locacao = true`.
 - A interface visual segue o mesmo baseline de `Projetos` e `Atividades` (`card`, grids de formulario/filtro, tabela principal e botoes `primary/secondary/ghost`).
@@ -99,6 +99,7 @@ Boas praticas
 -------------
 - Sempre inicializar a locacao a partir de `tenant_id + project_id`.
 - Nunca sobrescrever `project_material_forecast`; a locacao trabalha em tabelas proprias.
+- Consumir `project_material_forecast` e `project_activity_forecast` como bases de planejamento do projeto, sem depender da origem (`MANUAL` ou `IMPORT_XLSX_EDGE`).
 - Manter snapshot de materiais e atividades para preservar comparacao historica.
 - Registrar alteracoes em `app_entity_history` com `module_key = locacao`.
 - Filtrar todas as consultas por `tenant_id`, mesmo usando client administrativo.
@@ -137,6 +138,7 @@ Atualizacao 2026-03
 - Criada migration `062_create_location_execution_support_items.sql` para preparar o catalogo de apoio de execucao da locacao por tenant.
 - Criada migration `063_create_location_save_rpcs.sql` para centralizar em RPC o salvamento validado da aba principal, dos materiais previstos e das atividades previstas da locacao.
 - Criada migration `064_create_project_activity_forecast.sql` para fazer a `Locacao` seedar `Atividades previstas` a partir do previsto do projeto quando a lista da locacao ainda estiver vazia.
+- Criada migration `065_project_forecast_manual_and_activity_import.sql` para permitir que as bases de `Materiais previstos` e `Atividades previstas` em `Projetos` cheguem a `Locacao` tanto por importacao em massa quanto por cadastro manual.
 - A inicializacao da locacao passa a copiar os materiais de `project_material_forecast` para a base propria da locacao apenas na primeira carga do projeto.
 - Antes: alterar materiais previstos da locacao exigiria mexer no previsto original do projeto.
 - Depois: a locacao passa a manter `original_qty` e `planned_qty` separados para comparacao.
