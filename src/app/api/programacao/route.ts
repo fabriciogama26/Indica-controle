@@ -94,6 +94,7 @@ type SaveProgrammingPayload = {
   feeder?: string;
   support?: string;
   note?: string;
+  changeReason?: string;
   expectedUpdatedAt?: string;
   documents?: {
     sgd?: { number?: string; deliveredAt?: string };
@@ -663,6 +664,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const feeder = normalizeNullableText(payload?.feeder);
   const support = normalizeNullableText(payload?.support);
   const note = normalizeNullableText(payload?.note);
+  const changeReason = normalizeNullableText(payload?.changeReason);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
   const activities = activitiesInput
@@ -794,6 +796,10 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       formatTime(currentProgramming?.start_time ?? null) !== formatTime(nextProgramming.start_time) ||
       formatTime(currentProgramming?.end_time ?? null) !== formatTime(nextProgramming.end_time)
     );
+
+  if (isReschedule && (!changeReason || changeReason.length < 10)) {
+    return NextResponse.json({ message: "Informe um motivo de reprogramacao com no minimo 10 caracteres." }, { status: 400 });
+  }
   const responseMessage = currentProgramming
     ? isReschedule
       ? `Programacao do projeto ${project?.sob ?? saveResult.projectCode ?? projectId} reagendada com sucesso.`
@@ -806,6 +812,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     actorUserId: resolution.appUser.id,
     programmingId: persistedProgrammingId,
     projectCode: project?.sob ?? saveResult.projectCode ?? projectId,
+    reason: isReschedule ? changeReason : null,
     changes,
     metadata: {
       action: !currentProgramming ? "CREATE" : isReschedule ? "RESCHEDULE" : "UPDATE",
@@ -848,6 +855,10 @@ export async function PATCH(request: NextRequest) {
 
   if (!programmingId || !reason) {
     return NextResponse.json({ message: "Informe a programacao e o motivo da alteracao." }, { status: 400 });
+  }
+
+  if (reason.length < 10) {
+    return NextResponse.json({ message: "Informe um motivo com no minimo 10 caracteres." }, { status: 400 });
   }
 
   const currentProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId);

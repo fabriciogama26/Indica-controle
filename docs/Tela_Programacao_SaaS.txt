@@ -48,12 +48,18 @@ Cadastro
   - A RPC bloqueia salvar quando a base da equipe nao corresponde ao centro de servico da obra.
 - Regra de cancelamento:
   - Programacoes existentes podem ser canceladas por modal proprio com motivo obrigatorio.
+  - O botao de validacao so fica habilitado quando o motivo tiver no minimo 10 caracteres.
   - O cancelamento nao apaga o registro; ele faz `soft cancel` no backend e retira a programacao da grade ativa.
   - O reagendamento continua sendo feito ao mover/editar a mesma programacao na grade; quando data, equipe ou horario mudam, o historico registra a acao como `RESCHEDULE`.
 - Regra de adiamento:
   - Programacoes existentes podem ser adiadas com motivo obrigatorio.
+  - O botao de validacao so fica habilitado quando o motivo tiver no minimo 10 caracteres.
   - O adiamento nao cancela a etapa; ele retira a programacao da grade ativa e preserva a etapa como pendente de nova data operacional.
   - O adiamento fica persistido com status proprio e continua contando para historico da obra.
+- Regra de reprogramacao:
+  - Quando uma programacao existente muda data, equipe ou horario, o frontend abre um modal proprio de validacao da reprogramacao antes de persistir.
+  - O botao `Validar reprogramacao` so fica habilitado com motivo de no minimo 10 caracteres.
+  - Se a tela for fechada antes da validacao final, a alteracao nao e salva; a programacao anterior continua valendo.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -95,6 +101,7 @@ Cancelamento e saldo
 - No adiamento, o backend tambem retira a programacao da grade ativa, grava motivo, data/hora e usuario, mas preserva a etapa como `ADIADA`.
 - A programacao cancelada sai da grade operacional ativa, mas permanece em historico.
 - Reagendamento nao cria um status novo na grade: ele atualiza a mesma programacao e fica auditado no historico como remanejamento.
+- Ao sair da pagina com modal de programacao/status/reprogramacao aberto, o navegador recebe aviso de alteracao pendente.
 - Nao existe impacto em saldo de estoque nesta tela.
 
 Atalhos
@@ -142,6 +149,7 @@ Atualizacao 2026-03
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
   - salvar criacao/edicao por `POST` e `PUT` com `expectedUpdatedAt`
   - cancelar ou adiar programacao por `PATCH` com motivo obrigatorio
+  - validar reprogramacao por modal proprio com motivo obrigatorio de no minimo 10 caracteres
   - recalcular backlog pendente e carga por equipe com os dados reais do periodo
   - manter semana completa de segunda a domingo
   - manter nomenclatura documental `PEP`
