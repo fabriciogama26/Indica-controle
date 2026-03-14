@@ -108,6 +108,7 @@ export async function PUT(request: NextRequest) {
       notes?: string;
       questionnaireAnswers?: Record<string, unknown>;
       risks?: Array<{ id?: string; isActive?: boolean }>;
+      expectedUpdatedAt?: string;
     } | null;
 
     const projectId = normalizeText(payload?.projectId);
@@ -154,6 +155,7 @@ export async function PUT(request: NextRequest) {
       notes: nextNotes,
       questionnaireAnswers: nextQuestionnaire,
       risks: requestedRisks,
+      expectedUpdatedAt: normalizeText(payload?.expectedUpdatedAt) || null,
     });
 
     if (!saveResult.ok) {

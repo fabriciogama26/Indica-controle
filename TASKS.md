@@ -111,6 +111,7 @@
 - [x] Fazer o `Salvar locacao` retornar ao topo do container principal apos sucesso para recolocar as abas em evidência.
 - [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [x] Centralizar no banco via RPC as regras de bloqueio da `Locacao`, `Materiais previstos` e `Atividades previstas`.
+- [x] Endurecer as RPCs de `Locacao` e dos previstos de `Projetos` com controle de concorrencia por `updated_at`, limites maximos e observacao obrigatoria quando houver revisao/desligamento.
 - [x] Destacar visualmente no header da tela de `Locacao` tanto o estado vazio quanto o projeto selecionado.
 - [x] Destacar visualmente no header da `Locacao`, abaixo do projeto selecionado, o resumo `Materiais atuais` e `Atividades atuais`.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.
@@ -118,7 +119,10 @@
 - [x] Padronizar o posicionamento do botao `Adicionar atividade` em `Projetos` para seguir o mesmo layout de `Adicionar material`.
 - [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
 - [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
-- [ ] Implementar modulo de `Programacao` com agenda operacional e controle de conflitos.
+- [x] Implementar primeira versao visual de `Programacao` com painel de pendencias, timeline por equipe, drag and drop local e modal de programacao.
+- [x] Ajustar a tela de `Programacao` para semana completa de segunda a domingo, melhor encaixe visual em 100% e padronizacao documental `PEP`.
+- [x] Integrar `Programacao` com dados reais de projetos, equipes, atividades e persistencia da agenda por tenant.
+- [ ] Evoluir `Programacao` com validacao de conflitos operacionais alem da duplicidade `projeto + equipe + data`.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).

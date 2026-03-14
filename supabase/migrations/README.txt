@@ -267,6 +267,9 @@ Resumo por arquivo
 065_project_forecast_manual_and_activity_import.sql
 - Cria a RPC `save_project_material_forecast` para inclusao/edicao manual de `project_material_forecast` e adiciona RPCs protegidas para importacao em massa de `project_activity_forecast`.
 
+066_harden_location_and_project_forecast_rpcs.sql
+- Endurece as RPCs de `Locacao` e dos previstos de `Projetos` com controle de concorrencia por `updated_at`, limites maximos de quantidade e obrigatoriedade condicional de observacoes.
+
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
 

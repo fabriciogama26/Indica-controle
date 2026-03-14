@@ -14,8 +14,11 @@ type ProjectOption = {
 type LocationState = {
   project?: { id: string; sob: string; city: string };
   plan?: {
+    id: string;
     notes: string;
     questionnaireAnswers?: QuestionnaireAnswers;
+    createdAt: string;
+    updatedAt: string;
   } | null;
   supportItems?: Array<{
     id: string;
@@ -35,6 +38,7 @@ type LocationState = {
     originalQty: number;
     plannedQty: number;
     observation: string | null;
+    updatedAt: string;
   }>;
   activities?: Array<{
     id: string;
@@ -45,6 +49,7 @@ type LocationState = {
     unitValue: number;
     plannedQty: number;
     observation: string | null;
+    updatedAt: string;
   }>;
   summary?: {
     materialsPlannedTotal: number;
@@ -59,6 +64,7 @@ type LocationState = {
 type Draft = {
   quantity: string;
   observation: string;
+  updatedAt?: string;
 };
 
 type ListFilterState = {
@@ -107,6 +113,7 @@ type FeedbackState = {
 type LocationValidationState = {
   needsProjectReview: boolean;
   withShutdown: boolean;
+  notes: boolean;
   executionTeams: boolean;
   executionSteps: boolean;
 };
@@ -184,9 +191,14 @@ const INITIAL_LIST_FILTERS: ListFilterState = {
 const INITIAL_LOCATION_VALIDATION: LocationValidationState = {
   needsProjectReview: false,
   withShutdown: false,
+  notes: false,
   executionTeams: false,
   executionSteps: false,
 };
+
+const LOCATION_TEAM_QTY_LIMIT = 50;
+const LOCATION_STEPS_LIMIT = 1000;
+const LOCATION_ITEM_QTY_LIMIT = 100000;
 
 export function LocationPageView() {
   const { session } = useAuth();
@@ -299,12 +311,18 @@ export function LocationPageView() {
     setLocationValidation(INITIAL_LOCATION_VALIDATION);
     setMaterialDrafts(
       Object.fromEntries(
-        (state?.materials ?? []).map((item) => [item.id, { quantity: String(item.plannedQty), observation: item.observation ?? "" }]),
+        (state?.materials ?? []).map((item) => [
+          item.id,
+          { quantity: String(item.plannedQty), observation: item.observation ?? "", updatedAt: item.updatedAt },
+        ]),
       ),
     );
     setActivityDrafts(
       Object.fromEntries(
-        (state?.activities ?? []).map((item) => [item.id, { quantity: String(item.plannedQty), observation: item.observation ?? "" }]),
+        (state?.activities ?? []).map((item) => [
+          item.id,
+          { quantity: String(item.plannedQty), observation: item.observation ?? "", updatedAt: item.updatedAt },
+        ]),
       ),
     );
   }, [state]);
@@ -488,9 +506,20 @@ export function LocationPageView() {
       normalizedIntegers.podaLinhaMortaQty > 0 ||
       normalizedIntegers.podaLinhaVivaQty > 0;
 
+    const requiresNotes = needsProjectReview === true || withShutdown === true;
+    const notesMissing = requiresNotes && !notes.trim();
+    const teamsAboveLimit =
+      normalizedIntegers.cestoQty > LOCATION_TEAM_QTY_LIMIT ||
+      normalizedIntegers.linhaMortaQty > LOCATION_TEAM_QTY_LIMIT ||
+      normalizedIntegers.linhaVivaQty > LOCATION_TEAM_QTY_LIMIT ||
+      normalizedIntegers.podaLinhaMortaQty > LOCATION_TEAM_QTY_LIMIT ||
+      normalizedIntegers.podaLinhaVivaQty > LOCATION_TEAM_QTY_LIMIT;
+    const stepsAboveLimit = normalizedIntegers.stepsPlannedQty > LOCATION_STEPS_LIMIT;
+
     const nextValidation: LocationValidationState = {
       needsProjectReview: typeof needsProjectReview !== "boolean",
       withShutdown: typeof withShutdown !== "boolean",
+      notes: notesMissing,
       executionTeams: !hasExecutionTeam,
       executionSteps: normalizedIntegers.stepsPlannedQty <= 0,
     };
@@ -501,6 +530,24 @@ export function LocationPageView() {
       setFeedback({
         type: "error",
         message: "Preencha os campos obrigatorios de Locacao antes de salvar.",
+        scope: "location",
+      });
+      return false;
+    }
+
+    if (nextValidation.notes) {
+      setFeedback({
+        type: "error",
+        message: "Informe observacoes da locacao quando houver revisao de projeto ou desligamento.",
+        scope: "location",
+      });
+      return false;
+    }
+
+    if (teamsAboveLimit) {
+      setFeedback({
+        type: "error",
+        message: `As equipes da locacao nao podem ultrapassar ${LOCATION_TEAM_QTY_LIMIT}.`,
         scope: "location",
       });
       return false;
@@ -519,6 +566,15 @@ export function LocationPageView() {
       setFeedback({
         type: "error",
         message: "ETAPAS PREVISTAS deve ser maior que zero antes de salvar a locacao.",
+        scope: "location",
+      });
+      return false;
+    }
+
+    if (stepsAboveLimit) {
+      setFeedback({
+        type: "error",
+        message: `ETAPAS PREVISTAS nao pode ultrapassar ${LOCATION_STEPS_LIMIT}.`,
         scope: "location",
       });
       return false;
@@ -571,6 +627,7 @@ export function LocationPageView() {
             notes,
             questionnaireAnswers,
             risks: riskDraft.map((item) => ({ id: item.id, isActive: item.isActive })),
+            expectedUpdatedAt: state?.plan?.updatedAt ?? null,
           }),
         },
         "Locacao atualizada com sucesso.",
@@ -599,6 +656,18 @@ export function LocationPageView() {
       setFeedback({
         type: "error",
         message: isMaterial ? "Selecione um material valido e informe a quantidade." : "Selecione uma atividade valida e informe a quantidade.",
+        scope: isMaterial ? "materials" : "activities",
+      });
+      return;
+    }
+
+    const numericQuantity = Number(String(quantity).replace(",", "."));
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0 || numericQuantity > LOCATION_ITEM_QTY_LIMIT) {
+      setFeedback({
+        type: "error",
+        message: isMaterial
+          ? `A quantidade do material deve ser maior que zero e nao pode ultrapassar ${LOCATION_ITEM_QTY_LIMIT}.`
+          : `A quantidade da atividade deve ser maior que zero e nao pode ultrapassar ${LOCATION_ITEM_QTY_LIMIT}.`,
         scope: isMaterial ? "materials" : "activities",
       });
       return;
@@ -651,6 +720,19 @@ export function LocationPageView() {
       return;
     }
 
+    const numericQuantity = Number(String(draft.quantity).replace(",", "."));
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0 || numericQuantity > LOCATION_ITEM_QTY_LIMIT) {
+      setFeedback({
+        type: "error",
+        message:
+          kind === "materials"
+            ? `A quantidade do material deve ser maior que zero e nao pode ultrapassar ${LOCATION_ITEM_QTY_LIMIT}.`
+            : `A quantidade da atividade deve ser maior que zero e nao pode ultrapassar ${LOCATION_ITEM_QTY_LIMIT}.`,
+        scope: kind,
+      });
+      return;
+    }
+
     setBusy(`${kind}-${id}`);
     setFeedback(null);
     try {
@@ -663,6 +745,7 @@ export function LocationPageView() {
             id,
             quantity: draft.quantity,
             observation: draft.observation,
+            expectedUpdatedAt: draft.updatedAt ?? null,
           }),
         },
         kind === "materials" ? "Material atualizado com sucesso." : "Atividade atualizada com sucesso.",
@@ -834,11 +917,16 @@ export function LocationPageView() {
                   </div>
                 </div>
 
-                <label className={styles.field}>
+                <label className={`${styles.field} ${locationValidation.notes ? styles.fieldInvalid : ""}`}>
                   <span>Observacoes</span>
                   <textarea
                     value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
+                    onChange={(event) => {
+                      setNotes(event.target.value);
+                      if (locationValidation.notes && event.target.value.trim()) {
+                        setLocationValidation((current) => ({ ...current, notes: false }));
+                      }
+                    }}
                     placeholder="Registre observacoes operacionais."
                     disabled={!selectedProject}
                   />
@@ -895,23 +983,23 @@ export function LocationPageView() {
                 <div className={`${styles.formGrid} ${locationValidation.executionTeams ? styles.groupInvalid : ""}`}>
                   <label className={styles.field}>
                     <span>CESTO <strong className={styles.requiredMark}>*</strong></span>
-                    <input type="number" min="0" step="1" value={teamCestoQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamCestoQty, event.target.value)} onBlur={() => setTeamCestoQty(getNonNegativeIntegerInput(teamCestoQty))} />
+                    <input type="number" min="0" max={LOCATION_TEAM_QTY_LIMIT} step="1" value={teamCestoQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamCestoQty, event.target.value)} onBlur={() => setTeamCestoQty(getNonNegativeIntegerInput(teamCestoQty))} />
                   </label>
                   <label className={styles.field}>
                     <span>LINHA MORTA <strong className={styles.requiredMark}>*</strong></span>
-                    <input type="number" min="0" step="1" value={teamLinhaMortaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamLinhaMortaQty, event.target.value)} onBlur={() => setTeamLinhaMortaQty(getNonNegativeIntegerInput(teamLinhaMortaQty))} />
+                    <input type="number" min="0" max={LOCATION_TEAM_QTY_LIMIT} step="1" value={teamLinhaMortaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamLinhaMortaQty, event.target.value)} onBlur={() => setTeamLinhaMortaQty(getNonNegativeIntegerInput(teamLinhaMortaQty))} />
                   </label>
                   <label className={styles.field}>
                     <span>LINHA VIVA <strong className={styles.requiredMark}>*</strong></span>
-                    <input type="number" min="0" step="1" value={teamLinhaVivaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamLinhaVivaQty, event.target.value)} onBlur={() => setTeamLinhaVivaQty(getNonNegativeIntegerInput(teamLinhaVivaQty))} />
+                    <input type="number" min="0" max={LOCATION_TEAM_QTY_LIMIT} step="1" value={teamLinhaVivaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamLinhaVivaQty, event.target.value)} onBlur={() => setTeamLinhaVivaQty(getNonNegativeIntegerInput(teamLinhaVivaQty))} />
                   </label>
                   <label className={styles.field}>
                     <span>PODA LINHA MORTA <strong className={styles.requiredMark}>*</strong></span>
-                    <input type="number" min="0" step="1" value={teamPodaLinhaMortaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamPodaLinhaMortaQty, event.target.value)} onBlur={() => setTeamPodaLinhaMortaQty(getNonNegativeIntegerInput(teamPodaLinhaMortaQty))} />
+                    <input type="number" min="0" max={LOCATION_TEAM_QTY_LIMIT} step="1" value={teamPodaLinhaMortaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamPodaLinhaMortaQty, event.target.value)} onBlur={() => setTeamPodaLinhaMortaQty(getNonNegativeIntegerInput(teamPodaLinhaMortaQty))} />
                   </label>
                   <label className={styles.field}>
                     <span>PODA LINHA VIVA <strong className={styles.requiredMark}>*</strong></span>
-                    <input type="number" min="0" step="1" value={teamPodaLinhaVivaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamPodaLinhaVivaQty, event.target.value)} onBlur={() => setTeamPodaLinhaVivaQty(getNonNegativeIntegerInput(teamPodaLinhaVivaQty))} />
+                    <input type="number" min="0" max={LOCATION_TEAM_QTY_LIMIT} step="1" value={teamPodaLinhaVivaQty} onChange={(event) => handleNonNegativeIntegerChange(setTeamPodaLinhaVivaQty, event.target.value)} onBlur={() => setTeamPodaLinhaVivaQty(getNonNegativeIntegerInput(teamPodaLinhaVivaQty))} />
                   </label>
                 </div>
               </article>
@@ -924,7 +1012,7 @@ export function LocationPageView() {
                 <div className={`${styles.formGrid} ${locationValidation.executionSteps ? styles.groupInvalid : ""}`}>
                   <label className={styles.field}>
                     <span>ETAPAS PREVISTAS <strong className={styles.requiredMark}>*</strong></span>
-                    <input type="number" min="0" step="1" value={executionStepsQty} onChange={(event) => handleNonNegativeIntegerChange(setExecutionStepsQty, event.target.value)} onBlur={() => setExecutionStepsQty(getNonNegativeIntegerInput(executionStepsQty))} />
+                    <input type="number" min="0" max={LOCATION_STEPS_LIMIT} step="1" value={executionStepsQty} onChange={(event) => handleNonNegativeIntegerChange(setExecutionStepsQty, event.target.value)} onBlur={() => setExecutionStepsQty(getNonNegativeIntegerInput(executionStepsQty))} />
                   </label>
                 </div>
 
@@ -1036,7 +1124,7 @@ export function LocationPageView() {
 
                   <label className={styles.field}>
                     <span>Quantidade</span>
-                    <input type="number" min="0.01" step="0.01" value={activityQty} onChange={(event) => setActivityQty(event.target.value)} placeholder="0,00" disabled={!selectedProject} />
+                    <input type="number" min="0.01" max={LOCATION_ITEM_QTY_LIMIT} step="0.01" value={activityQty} onChange={(event) => setActivityQty(event.target.value)} placeholder="0,00" disabled={!selectedProject} />
                   </label>
 
                   <label className={styles.field}>
@@ -1136,7 +1224,7 @@ export function LocationPageView() {
                     <tbody>
                       {filteredActivities.length === 0 ? <tr><td colSpan={8} className={styles.emptyRow}>Nenhuma atividade prevista para o filtro informado.</td></tr> : null}
                       {filteredActivities.map((item) => {
-                        const draft = activityDrafts[item.id] ?? { quantity: String(item.plannedQty), observation: item.observation ?? "" };
+                        const draft = activityDrafts[item.id] ?? { quantity: String(item.plannedQty), observation: item.observation ?? "", updatedAt: item.updatedAt };
                         return (
                           <tr key={item.id}>
                             <td>{item.code}</td>
@@ -1144,7 +1232,7 @@ export function LocationPageView() {
                             <td>{item.teamTypeName || "-"}</td>
                             <td>{item.unit}</td>
                             <td>{formatCurrency(item.unitValue)}</td>
-                            <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => setActivityDrafts((current) => ({ ...current, [item.id]: { ...draft, quantity: event.target.value } }))} /></td>
+                            <td><input className={styles.tableInput} type="number" min="0.01" max={LOCATION_ITEM_QTY_LIMIT} step="0.01" value={draft.quantity} onChange={(event) => setActivityDrafts((current) => ({ ...current, [item.id]: { ...draft, quantity: event.target.value } }))} /></td>
                             <td><input className={styles.tableInput} value={draft.observation} onChange={(event) => setActivityDrafts((current) => ({ ...current, [item.id]: { ...draft, observation: event.target.value } }))} placeholder="Opcional" /></td>
                             <td className={styles.actionsCell}><div className={styles.tableActions}><button type="button" className={styles.ghostButton} onClick={() => void saveRow("activities", item.id)} disabled={busy === `activities-${item.id}`}>{busy === `activities-${item.id}` ? "Salvando..." : "Salvar"}</button></div></td>
                           </tr>
@@ -1186,7 +1274,7 @@ export function LocationPageView() {
 
                   <label className={styles.field}>
                     <span>Quantidade</span>
-                    <input type="number" min="0.01" step="0.01" value={materialQty} onChange={(event) => setMaterialQty(event.target.value)} placeholder="0,00" disabled={!selectedProject} />
+                    <input type="number" min="0.01" max={LOCATION_ITEM_QTY_LIMIT} step="0.01" value={materialQty} onChange={(event) => setMaterialQty(event.target.value)} placeholder="0,00" disabled={!selectedProject} />
                   </label>
 
                   <div className={`${styles.actions} ${styles.formActions}`}>
@@ -1281,7 +1369,7 @@ export function LocationPageView() {
                     <tbody>
                       {filteredMaterials.length === 0 ? <tr><td colSpan={8} className={styles.emptyRow}>Nenhum material previsto para o filtro informado.</td></tr> : null}
                       {filteredMaterials.map((item) => {
-                        const draft = materialDrafts[item.id] ?? { quantity: String(item.plannedQty), observation: item.observation ?? "" };
+                        const draft = materialDrafts[item.id] ?? { quantity: String(item.plannedQty), observation: item.observation ?? "", updatedAt: item.updatedAt };
                         const currentQty = Number(draft.quantity || item.plannedQty || 0);
                         return (
                           <tr key={item.id}>
@@ -1289,7 +1377,7 @@ export function LocationPageView() {
                             <td>{item.description}</td>
                             <td>{item.type || "-"}</td>
                             <td>{formatQuantity(item.originalQty)}</td>
-                            <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={draft.quantity} onChange={(event) => setMaterialDrafts((current) => ({ ...current, [item.id]: { ...draft, quantity: event.target.value } }))} /></td>
+                            <td><input className={styles.tableInput} type="number" min="0.01" max={LOCATION_ITEM_QTY_LIMIT} step="0.01" value={draft.quantity} onChange={(event) => setMaterialDrafts((current) => ({ ...current, [item.id]: { ...draft, quantity: event.target.value } }))} /></td>
                             <td>{formatQuantity(currentQty - item.originalQty)}</td>
                             <td><input className={styles.tableInput} value={draft.observation} onChange={(event) => setMaterialDrafts((current) => ({ ...current, [item.id]: { ...draft, observation: event.target.value } }))} placeholder="Opcional" /></td>
                             <td className={styles.actionsCell}><div className={styles.tableActions}><button type="button" className={styles.ghostButton} onClick={() => void saveRow("materials", item.id)} disabled={busy === `materials-${item.id}`}>{busy === `materials-${item.id}` ? "Salvando..." : "Salvar"}</button></div></td>

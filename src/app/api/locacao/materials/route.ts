@@ -128,6 +128,7 @@ export async function PUT(request: NextRequest) {
       id?: string;
       quantity?: string | number;
       observation?: string;
+      expectedUpdatedAt?: string;
     } | null;
 
     const projectId = normalizeText(payload?.projectId);
@@ -170,6 +171,7 @@ export async function PUT(request: NextRequest) {
       itemId,
       quantity,
       observation,
+      expectedUpdatedAt: normalizeText(payload?.expectedUpdatedAt) || null,
     });
 
     if (!saveResult.ok) {

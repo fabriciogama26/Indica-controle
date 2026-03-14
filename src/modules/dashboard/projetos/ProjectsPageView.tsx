@@ -137,6 +137,7 @@ type ProjectForecastCatalogItem = {
 type ProjectForecastDraft = {
   quantity: string;
   observation: string;
+  updatedAt: string;
 };
 
 type ProjectForecastImportResponse = {
@@ -187,11 +188,13 @@ type ProjectActivityForecastCatalogItem = {
 type ProjectActivityForecastDraft = {
   quantity: string;
   observation: string;
+  updatedAt: string;
 };
 
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 100;
+const PROJECT_FORECAST_QTY_LIMIT = 100000;
 const PRIORITY_OPTIONS = ["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO", "FUSESAVER"] as const;
 const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO"]);
 const HISTORY_FIELD_LABELS: Record<string, string> = {
@@ -1000,7 +1003,10 @@ export function ProjectsPageView() {
       setForecastItems(data.items ?? []);
       setForecastDrafts(
         Object.fromEntries(
-          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+          (data.items ?? []).map((item) => [
+            item.id,
+            { quantity: String(item.qtyPlanned), observation: item.observation ?? "", updatedAt: item.updatedAt },
+          ]),
         ),
       );
     } catch {
@@ -1089,6 +1095,15 @@ export function ProjectsPageView() {
       return;
     }
 
+    const numericQuantity = Number(String(forecastQty).replace(",", "."));
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0 || numericQuantity > PROJECT_FORECAST_QTY_LIMIT) {
+      setFeedback({
+        type: "error",
+        message: `A quantidade prevista do material deve ser maior que zero e nao pode ultrapassar ${PROJECT_FORECAST_QTY_LIMIT}.`,
+      });
+      return;
+    }
+
     setIsSavingProjectForecast(true);
     setFeedback(null);
     try {
@@ -1118,7 +1133,10 @@ export function ProjectsPageView() {
       setForecastItems(data.items ?? []);
       setForecastDrafts(
         Object.fromEntries(
-          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+          (data.items ?? []).map((item) => [
+            item.id,
+            { quantity: String(item.qtyPlanned), observation: item.observation ?? "", updatedAt: item.updatedAt },
+          ]),
         ),
       );
       setForecastSearch("");
@@ -1152,6 +1170,15 @@ export function ProjectsPageView() {
       return;
     }
 
+    const numericQuantity = Number(String(draft.quantity).replace(",", "."));
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0 || numericQuantity > PROJECT_FORECAST_QTY_LIMIT) {
+      setFeedback({
+        type: "error",
+        message: `A quantidade prevista do material deve ser maior que zero e nao pode ultrapassar ${PROJECT_FORECAST_QTY_LIMIT}.`,
+      });
+      return;
+    }
+
     setIsSavingProjectForecast(true);
     setFeedback(null);
     try {
@@ -1167,6 +1194,7 @@ export function ProjectsPageView() {
           id: itemId,
           quantity: draft.quantity,
           observation: draft.observation,
+          expectedUpdatedAt: draft.updatedAt,
         }),
       });
 
@@ -1182,7 +1210,10 @@ export function ProjectsPageView() {
       setForecastItems(data.items ?? []);
       setForecastDrafts(
         Object.fromEntries(
-          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+          (data.items ?? []).map((item) => [
+            item.id,
+            { quantity: String(item.qtyPlanned), observation: item.observation ?? "", updatedAt: item.updatedAt },
+          ]),
         ),
       );
       setFeedback({
@@ -1240,7 +1271,10 @@ export function ProjectsPageView() {
       setActivityForecastItems(data.items ?? []);
       setActivityForecastDrafts(
         Object.fromEntries(
-          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+          (data.items ?? []).map((item) => [
+            item.id,
+            { quantity: String(item.qtyPlanned), observation: item.observation ?? "", updatedAt: item.updatedAt },
+          ]),
         ),
       );
     } catch {
@@ -1339,6 +1373,15 @@ export function ProjectsPageView() {
       return;
     }
 
+    const numericQuantity = Number(String(activityForecastQty).replace(",", "."));
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0 || numericQuantity > PROJECT_FORECAST_QTY_LIMIT) {
+      setFeedback({
+        type: "error",
+        message: `A quantidade prevista da atividade deve ser maior que zero e nao pode ultrapassar ${PROJECT_FORECAST_QTY_LIMIT}.`,
+      });
+      return;
+    }
+
     setIsSavingProjectActivityForecast(true);
     setFeedback(null);
     try {
@@ -1368,7 +1411,10 @@ export function ProjectsPageView() {
       setActivityForecastItems(data.items ?? []);
       setActivityForecastDrafts(
         Object.fromEntries(
-          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+          (data.items ?? []).map((item) => [
+            item.id,
+            { quantity: String(item.qtyPlanned), observation: item.observation ?? "", updatedAt: item.updatedAt },
+          ]),
         ),
       );
       setActivityForecastSearch("");
@@ -1402,6 +1448,15 @@ export function ProjectsPageView() {
       return;
     }
 
+    const numericQuantity = Number(String(draft.quantity).replace(",", "."));
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0 || numericQuantity > PROJECT_FORECAST_QTY_LIMIT) {
+      setFeedback({
+        type: "error",
+        message: `A quantidade prevista da atividade deve ser maior que zero e nao pode ultrapassar ${PROJECT_FORECAST_QTY_LIMIT}.`,
+      });
+      return;
+    }
+
     setIsSavingProjectActivityForecast(true);
     setFeedback(null);
     try {
@@ -1417,6 +1472,7 @@ export function ProjectsPageView() {
           id: itemId,
           quantity: draft.quantity,
           observation: draft.observation,
+          expectedUpdatedAt: draft.updatedAt,
         }),
       });
 
@@ -1432,7 +1488,10 @@ export function ProjectsPageView() {
       setActivityForecastItems(data.items ?? []);
       setActivityForecastDrafts(
         Object.fromEntries(
-          (data.items ?? []).map((item) => [item.id, { quantity: String(item.qtyPlanned), observation: item.observation ?? "" }]),
+          (data.items ?? []).map((item) => [
+            item.id,
+            { quantity: String(item.qtyPlanned), observation: item.observation ?? "", updatedAt: item.updatedAt },
+          ]),
         ),
       );
       setFeedback({
@@ -2333,6 +2392,7 @@ export function ProjectsPageView() {
                 <input
                   type="number"
                   min="0.01"
+                  max={PROJECT_FORECAST_QTY_LIMIT}
                   step="0.01"
                   value={forecastQty}
                   onChange={(event) => setForecastQty(event.target.value)}
@@ -2436,6 +2496,7 @@ export function ProjectsPageView() {
                 <input
                   type="number"
                   min="0.01"
+                  max={PROJECT_FORECAST_QTY_LIMIT}
                   step="0.01"
                   value={activityForecastQty}
                   onChange={(event) => setActivityForecastQty(event.target.value)}
@@ -2871,6 +2932,7 @@ export function ProjectsPageView() {
                     const draft = forecastDrafts[item.id] ?? {
                       quantity: String(item.qtyPlanned),
                       observation: item.observation ?? "",
+                      updatedAt: item.updatedAt,
                     };
 
                     return (
@@ -2884,6 +2946,7 @@ export function ProjectsPageView() {
                             className={styles.tableInput}
                             type="number"
                             min="0.01"
+                            max={PROJECT_FORECAST_QTY_LIMIT}
                             step="0.01"
                             value={draft.quantity}
                             onChange={(event) =>
@@ -3030,6 +3093,7 @@ export function ProjectsPageView() {
                     const draft = activityForecastDrafts[item.id] ?? {
                       quantity: String(item.qtyPlanned),
                       observation: item.observation ?? "",
+                      updatedAt: item.updatedAt,
                     };
 
                     return (
@@ -3044,6 +3108,7 @@ export function ProjectsPageView() {
                             className={styles.tableInput}
                             type="number"
                             min="0.01"
+                            max={PROJECT_FORECAST_QTY_LIMIT}
                             step="0.01"
                             value={draft.quantity}
                             onChange={(event) =>

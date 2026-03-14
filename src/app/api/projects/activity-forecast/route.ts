@@ -75,6 +75,7 @@ async function saveProjectActivityForecast(params: {
   itemId?: string | null;
   activityId?: string | null;
   observation?: string | null;
+  expectedUpdatedAt?: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_project_activity_forecast", {
     p_tenant_id: params.tenantId,
@@ -84,6 +85,7 @@ async function saveProjectActivityForecast(params: {
     p_item_id: params.itemId ?? null,
     p_activity_id: params.activityId ?? null,
     p_observation: params.observation ?? null,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
 
   if (error) {
@@ -238,6 +240,7 @@ export async function PUT(request: NextRequest) {
       id?: string;
       quantity?: string | number;
       observation?: string;
+      expectedUpdatedAt?: string;
     } | null;
 
     const projectId = normalizeText(payload?.projectId);
@@ -257,6 +260,7 @@ export async function PUT(request: NextRequest) {
       itemId,
       quantity,
       observation,
+      expectedUpdatedAt: normalizeText(payload?.expectedUpdatedAt) || null,
     });
 
     if (!result.ok) {
