@@ -273,10 +273,10 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 13. O frontend persiste a sessao e redireciona para `/home`.
 14. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
 15. O shell principal libera navegacao para as secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
-16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`.
+16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`, com `FOB` obrigatorio e validacao de exatamente `10` caracteres.
 17. A aba `Materiais previstos` em `/projetos` permite selecionar projeto, pesquisar material ativo, incluir manualmente, editar quantidade/observacao na linha, baixar modelo XLSX via Edge Function `get_project_forecast_template`, importar previsao via Edge Function `import_project_forecast` (colunas `codigo` e `quantidade`) e filtrar/listar materiais previstos por codigo, descricao e tipo via `/api/projects/forecast`.
 18. A aba `Atividades previstas` em `/projetos` permite selecionar projeto, pesquisar atividades ativas, incluir manualmente, editar quantidade/observacao na linha, baixar modelo XLSX via Edge Function `get_project_activity_forecast_template`, importar previsao via Edge Function `import_project_activity_forecast` (colunas `codigo` e `quantidade`) e exportar CSV via `/api/projects/activity-forecast`.
-19. A rota `/locacao` permite filtrar projetos por `Municipio`, selecionar projeto por `SOB`, inicializar a base da locacao por `/api/locacao` e preencher a aba principal em 4 blocos: planejamento/vistoria, equipes para execucao, previsao de execucao e pre APR.
+19. A rota `/locacao` permite filtrar apenas projetos ativos por `Municipio`, selecionar projeto por `SOB`, inicializar a base da locacao por `/api/locacao` e preencher a aba principal em 4 blocos: planejamento/vistoria, equipes para execucao, previsao de execucao e pre APR.
 20. A aba principal da `Locacao` exige os radios obrigatorios, normaliza os campos numericos com `0` por padrao, exige `Observacoes` quando houver revisao de projeto ou desligamento, bloqueia salvar com todas as equipes zeradas ou com `ETAPAS PREVISTAS = 0` e salva observacoes, radios, quantidades, observacao da previsao, selecao de apoio de execucao e status dos riscos em um unico `Salvar locacao`.
 21. Ao salvar a aba principal da `Locacao` com sucesso, o dashboard volta ao topo do conteudo para recolocar em destaque as abas operacionais da tela.
 22. Na `Locacao`, as listas de apoio de execucao e riscos partem de todos os itens incluidos; o usuario so alterna `Remover`/`Incluir` e a persistencia acontece ao clicar em `Salvar locacao`.
@@ -296,7 +296,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 36. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
 37. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
 38. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
-39. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro.
+39. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro, e a migration `073_add_project_fob.sql` adiciona o campo `FOB` com validacao de exatamente `10` caracteres quando preenchido.
 40. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
 41. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
 42. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
@@ -338,6 +338,9 @@ npm run build
 - `Projeto inativo nao pode ser editado.`:
   - Causa: tentativa de editar obra ja cancelada/inativada.
   - Solucao: editar somente projetos ativos ou criar novo projeto conforme processo operacional.
+- `O FOB do projeto deve ter exatamente 10 caracteres.`:
+  - Causa: `FOB` informado com menos ou mais de `10` caracteres no cadastro/edicao de projetos.
+  - Solucao: informar exatamente `10` caracteres no campo `FOB` antes de salvar.
 - `Projeto cancelado/ativado, mas falhou ao registrar historico...`:
   - Causa: migrations de historico de status nao aplicadas no banco remoto.
   - Solucao: aplicar `036_create_project_history_and_cancellation.sql` e `037_project_activation_history_rules.sql` e repetir a operacao.
@@ -350,6 +353,9 @@ npm run build
 - `Projeto nao encontrado para inicializar a locacao.` ou `Locacao nao encontrada para o projeto.`:
   - Causa: projeto inexistente no tenant ativo ou migration da locacao nao aplicada.
   - Solucao: aplicar `059_create_location_planning.sql`, confirmar o tenant selecionado e recarregar a rota `/locacao`.
+- `Projeto inativo nao pode ser carregado na locacao.` ou `Projeto inativo nao pode ser alterado na locacao.`:
+  - Causa: a obra foi inativada em `Projetos` depois de ja existir locacao.
+  - Solucao: reativar a obra em `/projetos` antes de voltar a operar a locacao, ou manter a locacao antiga apenas como historico.
 - `Atividade ja adicionada no previsto deste projeto.`:
   - Causa: tentativa de incluir a mesma atividade duas vezes no previsto do projeto.
   - Solucao: editar a quantidade da linha existente em `Atividades previstas` em vez de inserir duplicado.

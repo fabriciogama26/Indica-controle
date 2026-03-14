@@ -45,6 +45,7 @@
 - [x] Implementar acoes da lista de Projetos (`Editar`, `Detalhes`, `Historico`, `Cancelar`) com modais e fluxo completo no frontend.
 - [x] Implementar `PUT` e `PATCH` em `/api/projects` para edicao e troca de status (cancelamento/ativacao) com motivo obrigatorio.
 - [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
+- [x] Adicionar o campo `FOB` em `Projetos` com validacao de exatamente `10` caracteres no frontend, API e banco.
 - [x] Paginar o modal de `Historico` de Projetos e exibir `ID do projeto` abaixo do titulo no modal de detalhes.
 - [x] Implementar reativacao de projeto pelo botao `Ativar` (no lugar de `Cancelar` quando inativo) com motivo obrigatorio e historico.
 - [x] Criar base de `Materiais previstos` por projeto com migration `041_create_project_material_forecast.sql` (RLS, auditoria e constraint unica por material no projeto).
@@ -113,6 +114,7 @@
 - [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [x] Centralizar no banco via RPC as regras de bloqueio da `Locacao`, `Materiais previstos` e `Atividades previstas`.
 - [x] Endurecer as RPCs de `Locacao` e dos previstos de `Projetos` com controle de concorrencia por `updated_at`, limites maximos e observacao obrigatoria quando houver revisao/desligamento.
+- [x] Bloquear a `Locacao` para obras inativas em todas as rotas operacionais, inclusive quando o plano ja existia antes da inativacao.
 - [x] Destacar visualmente no header da tela de `Locacao` tanto o estado vazio quanto o projeto selecionado.
 - [x] Destacar visualmente no header da `Locacao`, abaixo do projeto selecionado, o resumo `Materiais atuais` e `Atividades atuais`.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.

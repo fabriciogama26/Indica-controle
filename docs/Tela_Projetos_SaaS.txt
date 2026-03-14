@@ -5,6 +5,7 @@ Visao geral
 -----------
 - Tela operacional para cadastro, filtro e listagem de projetos por tenant.
 - Implementa fluxo completo com criacao, edicao, inativacao e historico de alteracoes.
+- Exige `FOB` no cadastro/edicao do projeto, com validacao de exatamente 10 caracteres.
 - Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
 - Inclui aba `Materiais previstos` para manter a lista inicial de materiais planejados por projeto, com importacao em massa e inclusao manual.
 - Inclui aba `Atividades previstas` para manter a base operacional de atividades planejadas por projeto, com importacao em massa, inclusao manual e edicao em linha.
@@ -40,12 +41,14 @@ Arquitetura
 - Banco (atividades previstas por projeto + seed da locacao): `supabase/migrations/064_create_project_activity_forecast.sql`
 - Banco (materiais manuais + importacao protegida de atividades): `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
 - Banco (concorrencia e limites dos previstos): `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
+- Banco (campo `FOB`): `supabase/migrations/073_add_project_fob.sql`
 
 Cadastro
 --------
 - Campos obrigatorios:
   - `Prioridade`
   - `Projeto (SOB)`
+  - `FOB`
   - `Centro de Servico`
   - `Tipo de Servico`
   - `Data limite`
@@ -77,6 +80,9 @@ Cadastro
   - Se prioridade for `GRUPO B - FLUXO`, `DRP / DRC` ou `GRUPO A - FLUXO`, o `SOB` deve ser `A` + 9 numeros.
   - Se prioridade for `FUSESAVER`, o `SOB` deve iniciar com `ZX` ou `FS` + 8 numeros.
   - `SOB` duplicado no mesmo tenant nao pode ser cadastrado.
+- Regra de validacao do `FOB` antes do banco:
+  - O `FOB` e obrigatorio no cadastro e na edicao.
+  - O valor deve ter exatamente `10` caracteres.
 - Regra de habilitacao no formulario:
   - `Projeto (SOB)` so fica ativo depois que `Prioridade` for selecionada.
 - Regra de edicao no formulario:
@@ -128,6 +134,7 @@ Filtros, auto-complete e listagem
 - Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico`, `Materiais previstos` e `Cancelar`.
 - Quando a obra estiver inativa, o botao `Cancelar` vira botao `Ativar`.
 - `Ver detalhes` abre modal com todos os campos da obra e mostra o `ID do projeto` abaixo do titulo.
+- O modal de detalhes tambem exibe o `FOB` do projeto.
 - `Historico` abre modal com apenas os campos alterados por evento e paginacao interna para nao crescer demais.
 - `Cancelar` abre modal com motivo obrigatorio e valida a inativacao da obra.
 - `Ativar` abre modal com motivo obrigatorio e valida a reativacao da obra.
@@ -148,6 +155,7 @@ Boas praticas
 -------------
 - Sempre filtrar e gravar com `tenant_id` no backend.
 - Usar validacao de campos obrigatorios na API antes de gravar.
+- Validar `FOB` com exatamente `10` caracteres no frontend, na API e no banco.
 - Manter paginacao server-side para listas grandes.
 - Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
 - Tratar `Materiais previstos` como planejamento: nao movimenta saldo fisico nem saldo liquido de projeto.
@@ -218,6 +226,8 @@ Atualizacao 2026-03
   - proteger a importacao de `Atividades previstas` por RPC
   - permitir inclusao manual e edicao de `Materiais previstos` no projeto
 - Criada migration `066_harden_location_and_project_forecast_rpcs.sql` para adicionar controle de concorrencia por `updated_at` e limite maximo de quantidade nas RPCs de `Materiais previstos` e `Atividades previstas` do projeto.
+- Criada migration `073_add_project_fob.sql` para adicionar o campo `FOB` em `project`, validar comprimento exato e republicar `project_with_labels`.
+- O formulario de `Projetos`, a API `/api/projects` e o modal de detalhes passam a trabalhar com `FOB` obrigatorio e com exatamente `10` caracteres.
 - Antes: nao havia marcador simples para saber se o projeto passou pela tela de `Locacao`.
 - Depois: o projeto passa a registrar `has_locacao = true` quando existe salvamento real na `Locacao`.
 - Importacao e download de modelo de `Materiais previstos` passaram a ser feitos por Edge Functions (`get_project_forecast_template` e `import_project_forecast`).
@@ -237,7 +247,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto.
+  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, incluindo o `FOB`.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
@@ -259,7 +269,7 @@ Funcoes principais
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
-  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS` e validacao de `FOB`.
 - Caminho: `supabase/migrations/029_create_project_table.sql`
   - Responsavel por: tabela `project`, indices, policies RLS e trigger de auditoria.
 - Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
@@ -284,6 +294,8 @@ Constantes e configuracoes
   - Responsavel por: RPC `save_project_material_forecast` e RPCs de pre-check/importacao de `Atividades previstas`.
 - Caminho: `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
   - Responsavel por: endurecer as RPCs de previstos do projeto com concorrencia por `updated_at` e limite maximo de quantidade.
+- Caminho: `supabase/migrations/073_add_project_fob.sql`
+  - Responsavel por: adicionar `project.fob`, aplicar `check` de comprimento e republicar `project_with_labels`.
 - Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
 - Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
@@ -309,7 +321,12 @@ Servicos e integracoes externas
 
 Ajuda contextual
 - Arquivos alterados/criados:
+  - `src/app/api/projects/route.ts`
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `supabase/migrations/073_add_project_fob.sql`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
   - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
   - `src/app/api/projects/forecast/route.ts`
   - `src/app/api/projects/forecast/catalog/route.ts`
@@ -328,10 +345,15 @@ Ajuda contextual
   - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
+  - `getFobRuleError`
   - `ProjectsPageView`, `openForecastTab`, `loadForecast`, `handleForecastProjectSelection`, `handleForecastProjectSearchChange`, `addProjectForecast`, `saveProjectForecastRow`, `applyForecastFilters`, `clearForecastFilters`, `handleDownloadForecastTemplate`, `submitForecastImport`
   - `openActivityForecastTab`, `loadActivityForecast`, `handleActivityForecastProjectSelection`, `handleActivityForecastProjectSearchChange`, `addProjectActivityForecast`, `saveProjectActivityForecastRow`, `handleDownloadActivityForecastTemplate`, `submitActivityForecastImport`, `handleExportActivityForecastItems`
   - `save_project_material_forecast`
   - `save_project_activity_forecast`
+  - `parseProjectInput`
+  - `validateRequiredProjectFields`
+  - `buildProjectWritePayload`
+  - `buildProjectUpdateChanges`
   - Mapeamento de `hasLocacao` no retorno de `/api/projects`
   - `GET`, `POST` e `PUT` de `/api/projects/forecast`
   - `GET` de `/api/projects/forecast/catalog`

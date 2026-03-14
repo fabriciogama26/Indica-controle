@@ -148,6 +148,36 @@ export async function resolveLocationProject(
   return data;
 }
 
+export async function ensureActiveLocationProject(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+  inactiveMessage: string;
+  notFoundMessage?: string;
+}) {
+  const project = await resolveLocationProject(params.supabase, params.tenantId, params.projectId);
+  if (!project) {
+    return {
+      ok: false,
+      status: 404,
+      message: params.notFoundMessage ?? "Projeto nao encontrado para locacao.",
+    } as const;
+  }
+
+  if (!project.is_active) {
+    return {
+      ok: false,
+      status: 409,
+      message: params.inactiveMessage,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    project,
+  } as const;
+}
+
 export async function ensureLocationPlan(
   supabase: SupabaseClient,
   tenantId: string,

@@ -9,6 +9,7 @@ import styles from "./ProjectsPageView.module.css";
 type ProjectItem = {
   id: string;
   sob: string;
+  fob: string | null;
   serviceCenter: string;
   partner: string;
   serviceType: string;
@@ -46,6 +47,7 @@ type ProjectHistoryEntry = {
 
 type FormState = {
   sob: string;
+  fob: string;
   serviceCenter: string;
   serviceType: string;
   executionDeadline: string;
@@ -200,6 +202,7 @@ const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FL
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   priority: "Prioridade",
   sob: "Projeto (SOB)",
+  fob: "FOB",
   serviceCenter: "Centro de Servico",
   serviceType: "Tipo de Servico",
   executionDeadline: "Data limite",
@@ -223,6 +226,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 
 const INITIAL_FORM: FormState = {
   sob: "",
+  fob: "",
   serviceCenter: "",
   serviceType: "",
   executionDeadline: "",
@@ -319,6 +323,7 @@ function escapeCsvValue(value: string | number | null | undefined) {
 function buildProjectsCsv(projectItems: ProjectItem[]) {
   const header = [
     "Projeto (SOB)",
+    "FOB",
     "Centro de Servico",
     "Tipo de Servico",
     "Data limite",
@@ -331,6 +336,7 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
 
   const rows = projectItems.map((project) => [
     project.sob,
+    project.fob ?? "",
     project.serviceCenter,
     project.serviceType,
     formatDate(project.executionDeadline),
@@ -411,6 +417,10 @@ function normalizeSob(value: string) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function normalizeFob(value: string) {
+  return String(value ?? "").trim();
+}
+
 function forecastOptionLabel(item: ProjectForecastCatalogItem) {
   return `${item.code} - ${item.description}`;
 }
@@ -448,9 +458,18 @@ function getSobRuleError(priority: string, sob: string) {
   return null;
 }
 
+function getFobRuleError(fob: string) {
+  if (normalizeFob(fob).length !== 10) {
+    return "O FOB do projeto deve ter exatamente 10 caracteres.";
+  }
+
+  return null;
+}
+
 function toFormState(project: ProjectItem): FormState {
   return {
     sob: project.sob,
+    fob: project.fob ?? "",
     serviceCenter: project.serviceCenter,
     serviceType: project.serviceType,
     executionDeadline: project.executionDeadline,
@@ -1798,6 +1817,15 @@ export function ProjectsPageView() {
       return;
     }
 
+    const fobRuleError = getFobRuleError(form.fob);
+    if (fobRuleError) {
+      setFeedback({
+        type: "error",
+        message: fobRuleError,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setFeedback(null);
 
@@ -1813,6 +1841,7 @@ export function ProjectsPageView() {
           ...(isEditing ? { id: editingProjectId } : {}),
           ...form,
           sob: normalizeSob(form.sob),
+          fob: normalizeFob(form.fob),
           priority: normalizePriority(form.priority),
         }),
       });
@@ -2127,6 +2156,22 @@ export function ProjectsPageView() {
                   list="sob-list"
                   disabled={!isSobEnabled}
                   aria-disabled={!isSobEnabled}
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  FOB <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  value={form.fob}
+                  onChange={(event) => updateFormField("fob", event.target.value)}
+                  onBlur={(event) => updateFormField("fob", normalizeFob(event.target.value))}
+                  placeholder="Informe os 10 caracteres do FOB"
+                  minLength={10}
+                  maxLength={10}
                   required
                 />
               </label>
@@ -3333,6 +3378,7 @@ export function ProjectsPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Status:</strong> {detailProject.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Prioridade:</strong> {detailProject.priority}</div>
+                <div><strong>FOB:</strong> {detailProject.fob ?? "-"}</div>
                 <div><strong>Centro de Servico:</strong> {detailProject.serviceCenter}</div>
                 <div><strong>Parceira:</strong> {detailProject.partner}</div>
                 <div><strong>Tipo de Servico:</strong> {detailProject.serviceType}</div>
