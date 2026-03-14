@@ -27,13 +27,13 @@
 .formGrid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .filterGrid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .field {
@@ -166,7 +166,7 @@
 
 .table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1240px;
   border-collapse: collapse;
 }
 
@@ -434,7 +434,7 @@
   font-size: 0.88rem;
 }
 
-@media (max-width: 1260px) {
+@media (max-width: 1380px) {
   .formGrid,
   .filterGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -25,6 +25,8 @@ type ProjectItem = {
 type TeamItem = {
   id: string;
   name: string;
+  serviceCenterId?: string | null;
+  serviceCenterName: string;
   teamTypeName: string;
   foremanName: string;
 };
@@ -58,6 +60,7 @@ type ScheduleItem = {
   period: PeriodMode;
   startTime: string;
   endTime: string;
+  updatedAt: string;
   expectedMinutes: number;
   activities: ScheduleActivityItem[];
   documents: Record<DocumentKey, DocumentEntry>;
@@ -109,6 +112,7 @@ type ProgrammingResponse = {
     period: PeriodMode;
     startTime: string;
     endTime: string;
+    updatedAt: string;
     expectedMinutes: number;
     feeder: string;
     support: string;
@@ -378,6 +382,7 @@ function normalizeSchedule(
     startTime: item.startTime,
     endTime: item.endTime,
     expectedMinutes: Number(item.expectedMinutes ?? 0),
+    updatedAt: item.updatedAt,
     activities: (item.activities ?? []).map((activity) => ({
       catalogId: activity.catalogId,
       code: activity.code,
@@ -458,13 +463,18 @@ export function ProgrammingPageView() {
   const periodLabel = formatPeriodLabel(visibleDates);
   const deferredActivitySearch = useDeferredValue(modalState?.form.activitySearch ?? "");
 
-  const baseOptions = ["Todas", ...Array.from(new Set(projects.map((item) => item.base)))];
+  const pendingBaseOptions = ["Todas", ...Array.from(new Set(projects.map((item) => item.base)))];
+  const boardBaseOptions = ["Todas", ...Array.from(new Set(teams.map((item) => item.serviceCenterName || "Sem base")))];
   const cityOptions = ["Todas", ...Array.from(new Set(projects.map((item) => item.city)))];
   const serviceTypeOptions = ["Todas", ...Array.from(new Set(projects.map((item) => item.serviceType)))];
   const scheduledProjectIds = new Set(
     schedules.filter((item) => visibleDates.includes(item.date)).map((item) => item.projectId),
   );
-  const filteredBoardSchedules = schedules.filter((item) => boardBaseFilter === "Todas" || item.projectBase === boardBaseFilter);
+  const visibleTeams = teams.filter(
+    (team) => boardBaseFilter === "Todas" || (team.serviceCenterName || "Sem base") === boardBaseFilter,
+  );
+  const visibleTeamIds = new Set(visibleTeams.map((team) => team.id));
+  const filteredBoardSchedules = schedules.filter((item) => visibleTeamIds.has(item.teamId));
   const pendingProjects = projects.filter((project) => {
     if (scheduledProjectIds.has(project.id)) {
       return false;
@@ -497,9 +507,9 @@ export function ProgrammingPageView() {
     return true;
   });
   const scheduledInPeriod = filteredBoardSchedules.filter((item) => visibleDates.includes(item.date));
-  const totalWorkload = teams.reduce((total, team) => total + getLoadPercentage(team.id, visibleDates, filteredBoardSchedules), 0);
-  const averageWorkload = teams.length ? Math.round(totalWorkload / teams.length) : 0;
-  const freeTeams = teams.filter((team) => getLoadPercentage(team.id, visibleDates, filteredBoardSchedules) === 0).length;
+  const totalWorkload = visibleTeams.reduce((total, team) => total + getLoadPercentage(team.id, visibleDates, filteredBoardSchedules), 0);
+  const averageWorkload = visibleTeams.length ? Math.round(totalWorkload / visibleTeams.length) : 0;
+  const freeTeams = visibleTeams.filter((team) => getLoadPercentage(team.id, visibleDates, filteredBoardSchedules) === 0).length;
   const timelineStyle = {
     gridTemplateColumns: `repeat(${visibleDates.length}, minmax(${viewMode === "week" ? 96 : 180}px, 1fr))`,
   } satisfies CSSProperties;
@@ -851,6 +861,7 @@ export function ProgrammingPageView() {
       feeder: modalState.form.feeder.trim(),
       support: modalState.form.support.trim(),
       note: modalState.form.note.trim(),
+      expectedUpdatedAt: editingSchedule?.updatedAt ?? undefined,
       documents: DOCUMENT_KEYS.reduce(
         (accumulator, documentItem) => {
           const currentDocument = modalState.form.documents[documentItem.key];
@@ -948,7 +959,7 @@ export function ProgrammingPageView() {
               <label className={styles.field}>
                 <span>Base</span>
                 <select value={pendingBaseFilter} onChange={(event) => setPendingBaseFilter(event.target.value)}>
-                  {baseOptions.map((option) => (
+                  {pendingBaseOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -1071,7 +1082,7 @@ export function ProgrammingPageView() {
               <label className={styles.inlineField}>
                 <span>Base</span>
                 <select value={boardBaseFilter} onChange={(event) => setBoardBaseFilter(event.target.value)}>
-                  {baseOptions.map((option) => (
+                  {boardBaseOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
@@ -1115,7 +1126,7 @@ export function ProgrammingPageView() {
                 <div className={styles.emptyState}>Nenhuma equipe ativa encontrada para o tenant atual.</div>
               ) : null}
 
-              {teams.map((team) => {
+              {visibleTeams.map((team) => {
                 const load = getLoadPercentage(team.id, visibleDates, filteredBoardSchedules);
 
                 return (
@@ -1126,7 +1137,7 @@ export function ProgrammingPageView() {
                           <h3>{team.name}</h3>
                           <p>{team.foremanName}</p>
                         </div>
-                        <span className={styles.teamBaseTag}>{team.teamTypeName}</span>
+                        <span className={styles.teamBaseTag}>{team.serviceCenterName}</span>
                       </div>
 
                       <div className={styles.workloadBlock}>

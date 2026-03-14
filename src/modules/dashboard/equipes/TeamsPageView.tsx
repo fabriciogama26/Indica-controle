@@ -9,6 +9,8 @@ type TeamItem = {
   id: string;
   name: string;
   vehiclePlate: string;
+  serviceCenterId: string | null;
+  serviceCenterName: string;
   teamTypeId: string;
   teamTypeName: string;
   foremanId: string;
@@ -42,10 +44,16 @@ type TeamTypeOption = {
   name: string;
 };
 
+type ServiceCenterOption = {
+  id: string;
+  name: string;
+};
+
 type TeamFormState = {
   id: string | null;
   name: string;
   vehiclePlate: string;
+  serviceCenterId: string;
   teamTypeId: string;
   foremanId: string;
 };
@@ -53,6 +61,7 @@ type TeamFormState = {
 type TeamFilterState = {
   name: string;
   vehiclePlate: string;
+  serviceCenterId: string;
   teamTypeId: string;
   foremanId: string;
 };
@@ -66,6 +75,7 @@ type TeamsListResponse = {
 type TeamsMetaResponse = {
   foremen?: ForemanOption[];
   teamTypes?: TeamTypeOption[];
+  serviceCenters?: ServiceCenterOption[];
   message?: string;
 };
 
@@ -82,6 +92,7 @@ const EXPORT_PAGE_SIZE = 100;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome da equipe",
   vehiclePlate: "Placa do veiculo",
+  serviceCenterName: "Base",
   teamTypeName: "Tipo",
   foremanName: "Encarregado",
   isActive: "Status",
@@ -94,6 +105,7 @@ const INITIAL_FORM: TeamFormState = {
   id: null,
   name: "",
   vehiclePlate: "",
+  serviceCenterId: "",
   teamTypeId: "",
   foremanId: "",
 };
@@ -101,6 +113,7 @@ const INITIAL_FORM: TeamFormState = {
 const INITIAL_FILTERS: TeamFilterState = {
   name: "",
   vehiclePlate: "",
+  serviceCenterId: "",
   teamTypeId: "",
   foremanId: "",
 };
@@ -120,6 +133,9 @@ function buildQuery(filters: TeamFilterState, page: number, pageSize = PAGE_SIZE
   }
   if (filters.vehiclePlate.trim()) {
     params.set("vehiclePlate", filters.vehiclePlate.trim());
+  }
+  if (filters.serviceCenterId.trim()) {
+    params.set("serviceCenterId", filters.serviceCenterId.trim());
   }
   if (filters.teamTypeId.trim()) {
     params.set("teamTypeId", filters.teamTypeId.trim());
@@ -141,10 +157,11 @@ function escapeCsvValue(value: string | number | null | undefined) {
 }
 
 function buildTeamsCsv(teamItems: TeamItem[]) {
-  const header = ["Nome da equipe", "Placa do veiculo", "Tipo", "Encarregado", "Registrado em", "Status"];
+  const header = ["Nome da equipe", "Placa do veiculo", "Base", "Tipo", "Encarregado", "Registrado em", "Status"];
   const rows = teamItems.map((team) => [
     team.name,
     team.vehiclePlate,
+    team.serviceCenterName,
     team.teamTypeName,
     team.foremanName,
     formatDateTime(team.createdAt),
@@ -215,6 +232,7 @@ export function TeamsPageView() {
   const [activeFilters, setActiveFilters] = useState<TeamFilterState>(INITIAL_FILTERS);
   const [foremen, setForemen] = useState<ForemanOption[]>([]);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
+  const [serviceCenters, setServiceCenters] = useState<ServiceCenterOption[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -257,6 +275,7 @@ export function TeamsPageView() {
       if (!response.ok) {
         setForemen([]);
         setTeamTypes([]);
+        setServiceCenters([]);
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao carregar metadados de equipes.",
@@ -266,9 +285,11 @@ export function TeamsPageView() {
 
       setForemen(data.foremen ?? []);
       setTeamTypes(data.teamTypes ?? []);
+      setServiceCenters(data.serviceCenters ?? []);
     } catch {
       setForemen([]);
       setTeamTypes([]);
+      setServiceCenters([]);
       setFeedback({
         type: "error",
         message: "Falha ao carregar metadados de equipes.",
@@ -402,6 +423,7 @@ export function TeamsPageView() {
       id: team.id,
       name: team.name,
       vehiclePlate: team.vehiclePlate,
+      serviceCenterId: team.serviceCenterId ?? "",
       teamTypeId: team.teamTypeId,
       foremanId: team.foremanId,
     });
@@ -455,6 +477,7 @@ export function TeamsPageView() {
         id: form.id,
         name: normalizeText(form.name),
         vehiclePlate: normalizePlate(form.vehiclePlate),
+        serviceCenterId: normalizeText(form.serviceCenterId),
         teamTypeId: normalizeText(form.teamTypeId),
         foremanId: normalizeText(form.foremanId),
       };
@@ -658,6 +681,27 @@ export function TeamsPageView() {
 
           <label className={styles.field}>
             <span>
+              Base <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={form.serviceCenterId}
+              onChange={(event) => setForm((current) => ({ ...current, serviceCenterId: event.target.value }))}
+              required
+              disabled={isLoadingMeta}
+            >
+              <option value="" disabled>
+                {isLoadingMeta ? "Carregando..." : "Selecione a base"}
+              </option>
+              {serviceCenters.map((serviceCenter) => (
+                <option key={serviceCenter.id} value={serviceCenter.id}>
+                  {serviceCenter.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
               Tipo <span className="requiredMark">*</span>
             </span>
             <select
@@ -752,6 +796,22 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
+            <span>Base</span>
+            <select
+              value={filterDraft.serviceCenterId}
+              onChange={(event) => updateFilterField("serviceCenterId", event.target.value)}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Todas</option>
+              {serviceCenters.map((serviceCenter) => (
+                <option key={serviceCenter.id} value={serviceCenter.id}>
+                  {serviceCenter.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
             <span>Tipo</span>
             <select
               value={filterDraft.teamTypeId}
@@ -797,6 +857,7 @@ export function TeamsPageView() {
               <tr>
                 <th>Nome da equipe</th>
                 <th>Placa do veiculo</th>
+                <th>Base</th>
                 <th>Tipo</th>
                 <th>Encarregado</th>
                 <th>Registrado em</th>
@@ -814,6 +875,7 @@ export function TeamsPageView() {
                       </div>
                     </td>
                     <td>{team.vehiclePlate}</td>
+                    <td>{team.serviceCenterName}</td>
                     <td>{team.teamTypeName}</td>
                     <td>{team.foremanName}</td>
                     <td>{formatDateTime(team.createdAt)}</td>
@@ -908,7 +970,7 @@ export function TeamsPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className={styles.emptyRow}>
+                  <td colSpan={7} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando equipes..." : "Nenhuma equipe encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -966,6 +1028,9 @@ export function TeamsPageView() {
                 </div>
                 <div>
                   <strong>Placa do veiculo:</strong> {detailTeam.vehiclePlate}
+                </div>
+                <div>
+                  <strong>Base:</strong> {detailTeam.serviceCenterName}
                 </div>
                 <div>
                   <strong>Tipo:</strong> {detailTeam.teamTypeName}

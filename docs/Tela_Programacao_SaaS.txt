@@ -13,7 +13,9 @@ Arquitetura
 - Estilo dedicado: `src/modules/dashboard/programacao/ProgrammingPageView.module.css`
 - API principal: `src/app/api/programacao/route.ts`
 - Catalogo de atividades reutilizado: `src/app/api/projects/activity-forecast/catalog/route.ts`
-- Migration principal: `supabase/migrations/067_create_project_programming.sql`
+- Migrations principais:
+  - `supabase/migrations/067_create_project_programming.sql`
+  - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
 Cadastro
@@ -40,6 +42,10 @@ Cadastro
   - `Projeto`, `Equipe` e `Data de execucao` sao exibidos no modal apenas para conferencia.
   - `Equipe` e `Data de execucao` nao podem ser alterados pelo modal.
   - A mudanca de data/equipe deve acontecer pela interacao na grade de programacao.
+- Regra de base:
+  - A `Base` da programacao corresponde ao `Centro de servico`.
+  - A equipe precisa ter `Centro de servico` vinculado para ser programada.
+  - A RPC bloqueia salvar quando a base da equipe nao corresponde ao centro de servico da obra.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -49,7 +55,7 @@ Filtros, auto-complete e listagem
   - Filtro por `Cidade`
   - Filtro por `Servico`
 - Painel direito:
-  - Filtro por `Base` aplicado sobre a base do projeto/programacao
+  - Filtro por `Base` aplicado sobre a base real da equipe
   - Alternancia `Semana` / `Dia`
   - Navegacao do periodo por setas
   - Na visualizacao `Semana`, a grade sempre mostra `segunda a domingo`
@@ -58,15 +64,19 @@ Filtros, auto-complete e listagem
 - Listagens:
   - Cards de projetos pendentes no painel esquerdo
   - Timeline com colunas por data e linhas por equipe no painel direito
-  - Badge da equipe usa `teamTypeName` real; subtitulo da linha usa `foremanName`
+  - Badge da equipe usa a `Base` real (`Centro de servico`); subtitulo da linha usa `foremanName`
 
 Boas praticas
 -------------
 - Manter `programacao` como `pageKey` oficial no controle de permissao.
 - Toda operacao continua restrita ao tenant autenticado via `resolveAuthenticatedAppUser`, `tenant_id` e RLS.
-- A migration `067_create_project_programming.sql` criou RLS, indices, auditoria e tabela filha de atividades para a programacao.
+- As migrations `067` e `068` formalizam a base multi-tenant da programacao, o vinculo de base da equipe e a RPC transacional de salvamento.
 - A API registra historico em `app_entity_history` com `module_key = programacao`.
-- Validacao de conflito ainda esta limitada a duplicidade `projeto + equipe + data`; conflito operacional mais rico continua pendente.
+- O salvamento da programacao agora usa RPC com:
+  - validacao de concorrencia por `expected_updated_at`
+  - bloqueio de sobreposicao de horario por `equipe + data`
+  - bloqueio quando a equipe nao possui base vinculada
+  - bloqueio quando a base da equipe diverge da base da obra
 
 Cancelamento e saldo
 --------------------
@@ -97,13 +107,20 @@ Atualizacao 2026-03
   - indices operacionais
   - auditoria por trigger
   - constraints de documentos e unicidade
+- Arquivo `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql` criado com:
+  - vinculo `teams.service_center_id`
+  - backfill automatico quando o tenant possui uma unica base ativa
+  - RPC `save_project_programming`
+  - protecao de concorrencia e sobreposicao de horario
+  - validacao de compatibilidade entre base da equipe e base da obra
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
-  - salvar criacao/edicao por `POST` e `PUT`
+  - salvar criacao/edicao por `POST` e `PUT` com `expectedUpdatedAt`
   - recalcular backlog pendente e carga por equipe com os dados reais do periodo
   - manter semana completa de segunda a domingo
   - manter nomenclatura documental `PEP`
+  - exibir a base real da equipe na grade e no filtro do painel direito
 - Antes:
   - `/programacao` era local no frontend, com projetos, equipes e programacoes mockadas.
 - Depois:
@@ -115,9 +132,11 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: carregar dados autenticados, controlar filtros, periodo, timeline, drag and drop, modal e salvamento.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: listar projetos/equipes/programacoes do periodo e persistir criacao/edicao da agenda.
+  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar a RPC de salvamento e registrar historico.
 - Caminho: `supabase/migrations/067_create_project_programming.sql`
   - Responsavel por: formalizar a base multi-tenant de programacao e suas atividades.
+- Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
+  - Responsavel por: vincular equipes a base e endurecer o salvamento da programacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -131,11 +150,11 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: `createVisibleDates`, `formatBoardDate`, `formatPeriodLabel`, `calculateExpectedMinutes`, `getScheduleTone`, `getLoadPercentage`, `normalizeSchedule` e `buildIncludedAtLabel`.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `syncProgrammingActivities`, `buildDocumentFields` e `registerProgrammingHistory`.
+  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `saveProgrammingViaRpc` e `registerProgrammingHistory`.
 
 Servicos e integracoes externas
 - `project_with_labels`: backlog real de projetos ativos.
-- `teams`, `team_types`, `people`: dados reais da equipe exibida na grade.
+- `teams`, `project_service_centers`, `team_types`, `people`: dados reais da equipe exibida na grade.
 - `service_activities`: catalogo real e snapshot de atividades salvas na programacao.
 - `app_entity_history`: auditoria funcional da programacao.
 
@@ -145,6 +164,7 @@ Ajuda contextual
   - `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - `src/modules/dashboard/programacao/ProgrammingPageView.module.css`
   - `supabase/migrations/067_create_project_programming.sql`
+  - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -153,5 +173,5 @@ Ajuda contextual
   - `DOCUMENT_KEYS`
   - `INITIAL_PERIOD_START`
 - Comportamento antes/depois:
-  - Antes: tela local, sem API e sem persistencia.
-  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos e catalogo real de atividades.
+  - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional.
+  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe e RPC transacional com concorrencia/sobreposicao.
