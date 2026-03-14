@@ -64,6 +64,7 @@ Ordem de aplicacao
 60. 060_add_project_has_locacao.sql
 61. 061_create_location_risks.sql
 62. 062_create_location_execution_support_items.sql
+63. 063_create_location_save_rpcs.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -254,6 +255,9 @@ Resumo por arquivo
 
 062_create_location_execution_support_items.sql
 - Cria `location_execution_support_items` para registrar o catalogo de apoio de execucao da `Locacao` por tenant, com `description`, `is_active`, RLS e auditoria.
+
+063_create_location_save_rpcs.sql
+- Cria RPCs para centralizar o salvamento validado da `Locacao`, `Materiais previstos` e `Atividades previstas`, mantendo as regras de bloqueio no banco.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

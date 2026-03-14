@@ -4,25 +4,10 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
   ensureLocationPlan,
   fetchLocationPlanData,
-  fetchLocationPlanRow,
-  markProjectHasLocacao,
   normalizePositiveNumber,
   registerLocationHistory,
+  saveLocationActivityViaRpc,
 } from "@/lib/server/locationPlanning";
-
-type ActivityCatalogRow = {
-  id: string;
-  code: string;
-  description: string;
-  unit: string;
-  unit_value: number | string;
-  group_name: string | null;
-  scope: string | null;
-  ativo: boolean;
-  team_types: {
-    name: string | null;
-  } | null;
-};
 
 type LocationActivityCurrentRow = {
   id: string;
@@ -73,65 +58,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: ensured.message }, { status: ensured.status });
     }
 
-    const plan = await fetchLocationPlanRow(resolution.supabase, resolution.appUser.tenant_id, projectId);
-    if (!plan) {
-      return NextResponse.json({ message: "Locacao nao encontrada para o projeto." }, { status: 404 });
-    }
-
-    const { data: activity, error: activityError } = await resolution.supabase
-      .from("service_activities")
-      .select("id, code, description, unit, unit_value, group_name, scope, ativo, team_types(name)")
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("id", activityId)
-      .maybeSingle<ActivityCatalogRow>();
-
-    if (activityError || !activity || !activity.ativo) {
-      return NextResponse.json({ message: "Atividade nao encontrada ou inativa." }, { status: 404 });
-    }
-
-    const { error } = await resolution.supabase.from("project_location_activities").insert({
-      tenant_id: resolution.appUser.tenant_id,
-      location_plan_id: plan.id,
-      service_activity_id: activity.id,
-      source_type: "CATALOG",
-      activity_code: normalizeText(activity.code),
-      activity_description: normalizeText(activity.description),
-      team_type_name: normalizeText(activity.team_types?.name),
-      activity_group: activity.group_name ? normalizeText(activity.group_name) : null,
-      activity_unit: normalizeText(activity.unit),
-      activity_scope: activity.scope ? normalizeText(activity.scope) : null,
-      unit_value_snapshot: Number(activity.unit_value ?? 0),
-      planned_qty: quantity,
-      observation: observation || null,
-      created_by: resolution.appUser.id,
-      updated_by: resolution.appUser.id,
+    const saveResult = await saveLocationActivityViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      actorUserId: resolution.appUser.id,
+      activityId,
+      quantity,
+      observation,
     });
 
-    if (error) {
-      const rawError = String(error.message ?? "").toLowerCase();
-      if (rawError.includes("duplicate") || rawError.includes("unique")) {
-        return NextResponse.json({ message: "Atividade ja adicionada na locacao deste projeto." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao adicionar atividade na locacao." }, { status: 500 });
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
     }
 
     const { data: current } = await resolution.supabase
       .from("project_location_activities")
       .select("id, activity_code, planned_qty, observation")
       .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("location_plan_id", plan.id)
-      .eq("service_activity_id", activity.id)
+      .eq("id", saveResult.itemId)
       .maybeSingle<LocationActivityCurrentRow>();
 
     if (current) {
-      await markProjectHasLocacao(
-        resolution.supabase,
-        resolution.appUser.tenant_id,
-        projectId,
-        resolution.appUser.id,
-      );
-
       await registerLocationHistory({
         supabase: resolution.supabase,
         tenantId: resolution.appUser.tenant_id,
@@ -146,7 +94,7 @@ export async function POST(request: NextRequest) {
         metadata: {
           action: "ADD_ACTIVITY",
           projectId,
-          activityId: activity.id,
+          activityId,
         },
       });
     }
@@ -154,7 +102,7 @@ export async function POST(request: NextRequest) {
     const data = await fetchLocationPlanData(resolution.supabase, resolution.appUser.tenant_id, projectId);
     return NextResponse.json({
       ...data,
-      message: "Atividade adicionada na locacao com sucesso.",
+      message: saveResult.message,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao adicionar atividade na locacao." }, { status: 500 });
@@ -188,16 +136,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Projeto, item e quantidade sao obrigatorios." }, { status: 400 });
     }
 
-    const plan = await fetchLocationPlanRow(resolution.supabase, resolution.appUser.tenant_id, projectId);
-    if (!plan) {
-      return NextResponse.json({ message: "Locacao nao encontrada para o projeto." }, { status: 404 });
-    }
-
     const { data: current, error: currentError } = await resolution.supabase
       .from("project_location_activities")
       .select("id, activity_code, planned_qty, observation")
       .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("location_plan_id", plan.id)
       .eq("id", itemId)
       .maybeSingle<LocationActivityCurrentRow>();
 
@@ -217,27 +159,19 @@ export async function PUT(request: NextRequest) {
       changes.observation = { from: previousObservation || null, to: observation || null };
     }
 
-    const { error } = await resolution.supabase
-      .from("project_location_activities")
-      .update({
-        planned_qty: quantity,
-        observation: observation || null,
-        updated_by: resolution.appUser.id,
-      })
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("location_plan_id", plan.id)
-      .eq("id", itemId);
-
-    if (error) {
-      return NextResponse.json({ message: "Falha ao editar atividade da locacao." }, { status: 500 });
-    }
-
-    await markProjectHasLocacao(
-      resolution.supabase,
-      resolution.appUser.tenant_id,
+    const saveResult = await saveLocationActivityViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
       projectId,
-      resolution.appUser.id,
-    );
+      actorUserId: resolution.appUser.id,
+      itemId,
+      quantity,
+      observation,
+    });
+
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
+    }
 
     await registerLocationHistory({
       supabase: resolution.supabase,
@@ -256,7 +190,7 @@ export async function PUT(request: NextRequest) {
     const data = await fetchLocationPlanData(resolution.supabase, resolution.appUser.tenant_id, projectId);
     return NextResponse.json({
       ...data,
-      message: "Atividade da locacao atualizada com sucesso.",
+      message: saveResult.message,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao editar atividade da locacao." }, { status: 500 });

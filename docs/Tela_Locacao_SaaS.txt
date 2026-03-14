@@ -26,6 +26,7 @@ Arquitetura
   - `supabase/migrations/059_create_location_planning.sql`
   - `supabase/migrations/061_create_location_risks.sql`
   - `supabase/migrations/062_create_location_execution_support_items.sql`
+  - `supabase/migrations/063_create_location_save_rpcs.sql`
 
 Cadastro
 --------
@@ -48,6 +49,7 @@ Cadastro
   - Material manual entra com `original_qty = 0`.
   - A inclusao so persiste ao clicar em `Adicionar material`.
   - A edicao da lista so persiste ao clicar em `Salvar` na linha.
+  - A persistencia final e feita por RPC no banco (`save_project_location_material`).
 - Inclusao de atividades:
   - Busca por codigo/descricao no catalogo de `service_activities`.
   - Quantidade obrigatoria.
@@ -55,6 +57,7 @@ Cadastro
   - Valor unitario e snapshot do cadastro base ficam gravados na locacao.
   - A inclusao so persiste ao clicar em `Adicionar atividade`.
   - A edicao da lista so persiste ao clicar em `Salvar` na linha.
+  - A persistencia final e feita por RPC no banco (`save_project_location_activity`).
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -103,6 +106,8 @@ Boas praticas
 - Bloquear o salvar da locacao quando todas as equipes de execucao estiverem em `0`.
 - Bloquear o salvar da locacao quando `ETAPAS PREVISTAS` estiver em `0`.
 - Tratar listas de apoio de execucao e riscos como incluidas por padrao; so os itens removidos/inativos entram na persistencia do salvar.
+- Centralizar a regra final de persistencia da Locacao em RPC, mantendo o frontend apenas como camada de UX.
+- Manter os `check constraints` de `project_location_materials.planned_qty > 0` e `project_location_activities.planned_qty > 0` como defesa adicional no banco.
 
 Cancelamento e saldo
 --------------------
@@ -128,6 +133,7 @@ Atualizacao 2026-03
 - Criada migration `060_add_project_has_locacao.sql` para adicionar o indicador operacional no projeto.
 - Criada migration `061_create_location_risks.sql` para preparar a tabela de riscos da locacao vinculada ao `project_location_plans`.
 - Criada migration `062_create_location_execution_support_items.sql` para preparar o catalogo de apoio de execucao da locacao por tenant.
+- Criada migration `063_create_location_save_rpcs.sql` para centralizar em RPC o salvamento validado da aba principal, dos materiais previstos e das atividades previstas da locacao.
 - A inicializacao da locacao passa a copiar os materiais de `project_material_forecast` para a base propria da locacao apenas na primeira carga do projeto.
 - Antes: alterar materiais previstos da locacao exigiria mexer no previsto original do projeto.
 - Depois: a locacao passa a manter `original_qty` e `planned_qty` separados para comparacao.
@@ -149,6 +155,8 @@ Atualizacao 2026-03
 - A aba principal da `Locacao` passou a exigir os radios `Necessario revisao de projeto?` e `Com desligamento?` antes de salvar.
 - As quantidades de equipes e `ETAPAS PREVISTAS` passaram a iniciar com `0`, nao aceitar valor negativo e serem normalizadas no frontend e no backend.
 - O salvar da aba principal passou a exigir pelo menos uma equipe com quantidade maior que `0` e `ETAPAS PREVISTAS` maior que `0`.
+- O backend da locacao deixou de depender de `insert/update` direto e passou a usar RPCs para aplicar as regras de bloqueio no banco.
+- `Materiais previstos` e `Atividades previstas` ja tinham protecao estrutural no schema com `planned_qty > 0`; agora tambem passam por RPC antes de persistir.
 - `Atividades previstas` e `Materiais previstos` continuam com salvamento explicito por acao: `Adicionar ...` para inclusao e `Salvar` por linha para edicao.
 - Adicionada declaracao local `src/types/xlsx.d.ts` e ajuste em `src/lib/server/projectForecastXlsx.ts` para destravar o `build` atual do projeto.
 
@@ -158,13 +166,13 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
   - Responsavel por: filtro por municipio, busca de projeto por SOB, carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e persistencia geral da locacao.
 - Caminho: `src/app/api/locacao/route.ts`
-  - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, incluindo validacao server-side de `questionnaire_answers` e status dos riscos.
+  - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, chamando a RPC `save_project_location_plan` e registrando historico.
 - Caminho: `src/app/api/locacao/materials/route.ts`
-  - Responsavel por: adicionar materiais manuais e editar quantidade/observacao dos materiais da locacao.
+  - Responsavel por: adicionar materiais manuais e editar quantidade/observacao dos materiais da locacao via RPC `save_project_location_material`.
 - Caminho: `src/app/api/locacao/activities/route.ts`
-  - Responsavel por: adicionar atividades e editar quantidade/observacao das atividades da locacao.
+  - Responsavel por: adicionar atividades e editar quantidade/observacao das atividades da locacao via RPC `save_project_location_activity`.
 - Caminho: `src/lib/server/locationPlanning.ts`
-  - Responsavel por: garantir a criacao da locacao, carregar snapshot consolidado com apoio de execucao e riscos, marcar `has_locacao` no projeto e registrar historico no `app_entity_history`.
+  - Responsavel por: garantir a criacao da locacao, carregar snapshot consolidado com apoio de execucao e riscos, encapsular as RPCs de salvamento e registrar historico no `app_entity_history`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
@@ -220,6 +228,9 @@ Ajuda contextual
   - `validateLocationBeforeSave`
   - `normalizeLocationIntegerFields`
   - `validateAndNormalizeLocationQuestionnaire`
+  - `saveLocationPlanViaRpc`
+  - `saveLocationMaterialViaRpc`
+  - `saveLocationActivityViaRpc`
   - `ensureLocationPlan`
   - `fetchLocationPlanData`
   - `registerLocationHistory`
@@ -238,3 +249,5 @@ Ajuda contextual
   - Depois: a aba `Locacao` passou a salvar 4 blocos operacionais com radios, quantidades, observacao da previsao, apoio de execucao e pre APR.
   - Antes: o `Salvar locacao` usava o mesmo feedback global das outras acoes.
   - Depois: o salvar da aba principal exibe feedback local e valida campos obrigatorios antes de persistir.
+  - Antes: as rotas da locacao gravavam diretamente nas tabelas do modulo.
+  - Depois: as rotas passam a chamar RPCs do banco, deixando as regras de bloqueio centralizadas no schema.

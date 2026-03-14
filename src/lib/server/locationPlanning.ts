@@ -68,6 +68,24 @@ type InitializeLocationPlanResult = {
   seeded_materials?: number;
 };
 
+type SaveLocationPlanRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  plan_id?: string;
+};
+
+type SaveLocationItemRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  action?: "INSERT" | "UPDATE";
+  item_id?: string;
+  entity_code?: string;
+};
+
 type LocationHistoryChange = {
   from: string | null;
   to: string | null;
@@ -348,6 +366,143 @@ export async function fetchLocationPlanData(
       activitiesPlannedTotal: Number(activitiesPlannedTotal.toFixed(2)),
     },
   };
+}
+
+export async function saveLocationPlanViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+  actorUserId: string;
+  notes: string;
+  questionnaireAnswers: Record<string, unknown>;
+  risks: Array<{ id?: string; isActive?: boolean }>;
+}) {
+  const { data, error } = await params.supabase.rpc("save_project_location_plan", {
+    p_tenant_id: params.tenantId,
+    p_project_id: params.projectId,
+    p_actor_user_id: params.actorUserId,
+    p_notes: params.notes,
+    p_questionnaire_answers: params.questionnaireAnswers,
+    p_risks: params.risks,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Falha ao salvar locacao via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as SaveLocationPlanRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar locacao.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    planId: result.plan_id ?? null,
+    message: result.message ?? "Locacao atualizada com sucesso.",
+  } as const;
+}
+
+export async function saveLocationMaterialViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+  actorUserId: string;
+  quantity: number;
+  itemId?: string | null;
+  materialId?: string | null;
+  observation?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("save_project_location_material", {
+    p_tenant_id: params.tenantId,
+    p_project_id: params.projectId,
+    p_actor_user_id: params.actorUserId,
+    p_quantity: params.quantity,
+    p_item_id: params.itemId ?? null,
+    p_material_id: params.materialId ?? null,
+    p_observation: params.observation ?? null,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Falha ao salvar material da locacao via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as SaveLocationItemRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar material da locacao.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    itemId: result.item_id ?? null,
+    entityCode: result.entity_code ?? null,
+    action: result.action ?? null,
+    message: result.message ?? "Material da locacao atualizado com sucesso.",
+  } as const;
+}
+
+export async function saveLocationActivityViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+  actorUserId: string;
+  quantity: number;
+  itemId?: string | null;
+  activityId?: string | null;
+  observation?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("save_project_location_activity", {
+    p_tenant_id: params.tenantId,
+    p_project_id: params.projectId,
+    p_actor_user_id: params.actorUserId,
+    p_quantity: params.quantity,
+    p_item_id: params.itemId ?? null,
+    p_activity_id: params.activityId ?? null,
+    p_observation: params.observation ?? null,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Falha ao salvar atividade da locacao via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as SaveLocationItemRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar atividade da locacao.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    itemId: result.item_id ?? null,
+    entityCode: result.entity_code ?? null,
+    action: result.action ?? null,
+    message: result.message ?? "Atividade da locacao atualizada com sucesso.",
+  } as const;
 }
 
 export async function registerLocationHistory(params: {

@@ -4,8 +4,8 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
   ensureLocationPlan,
   fetchLocationPlanData,
-  markProjectHasLocacao,
   registerLocationHistory,
+  saveLocationPlanViaRpc,
 } from "@/lib/server/locationPlanning";
 
 function normalizeText(value: unknown) {
@@ -18,105 +18,6 @@ function normalizeQuestionnaireAnswers(value: unknown) {
   }
 
   return value as Record<string, unknown>;
-}
-
-function normalizeStringArray(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.map((item) => normalizeText(item)).filter(Boolean);
-}
-
-function normalizeNonNegativeInteger(value: unknown) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return null;
-  }
-
-  return Math.trunc(numeric);
-}
-
-function validateAndNormalizeLocationQuestionnaire(value: unknown) {
-  const questionnaire = normalizeQuestionnaireAnswers(value);
-  const planning = normalizeQuestionnaireAnswers(questionnaire.planning);
-  const executionTeams = normalizeQuestionnaireAnswers(questionnaire.executionTeams);
-  const executionForecast = normalizeQuestionnaireAnswers(questionnaire.executionForecast);
-  const preApr = normalizeQuestionnaireAnswers(questionnaire.preApr);
-
-  if (typeof planning.needsProjectReview !== "boolean") {
-    return {
-      ok: false,
-      message: "Necessario informar se ha revisao de projeto antes de salvar a locacao.",
-    } as const;
-  }
-
-  if (typeof planning.withShutdown !== "boolean") {
-    return {
-      ok: false,
-      message: "Necessario informar se ha desligamento antes de salvar a locacao.",
-    } as const;
-  }
-
-  const cestoQty = normalizeNonNegativeInteger(executionTeams.cestoQty);
-  const linhaMortaQty = normalizeNonNegativeInteger(executionTeams.linhaMortaQty);
-  const linhaVivaQty = normalizeNonNegativeInteger(executionTeams.linhaVivaQty);
-  const podaLinhaMortaQty = normalizeNonNegativeInteger(executionTeams.podaLinhaMortaQty);
-  const podaLinhaVivaQty = normalizeNonNegativeInteger(executionTeams.podaLinhaVivaQty);
-  const stepsPlannedQty = normalizeNonNegativeInteger(executionForecast.stepsPlannedQty);
-
-  if (
-    cestoQty === null ||
-    linhaMortaQty === null ||
-    linhaVivaQty === null ||
-    podaLinhaMortaQty === null ||
-    podaLinhaVivaQty === null ||
-    stepsPlannedQty === null
-  ) {
-    return {
-      ok: false,
-      message: "As quantidades da locacao devem ser numericas e nao podem ser negativas.",
-    } as const;
-  }
-
-  if (cestoQty <= 0 && linhaMortaQty <= 0 && linhaVivaQty <= 0 && podaLinhaMortaQty <= 0 && podaLinhaVivaQty <= 0) {
-    return {
-      ok: false,
-      message: "Pelo menos uma equipe para execucao deve ter quantidade maior que zero.",
-    } as const;
-  }
-
-  if (stepsPlannedQty <= 0) {
-    return {
-      ok: false,
-      message: "ETAPAS PREVISTAS deve ser maior que zero para salvar a locacao.",
-    } as const;
-  }
-
-  return {
-    ok: true,
-    questionnaire: {
-      planning: {
-        needsProjectReview: planning.needsProjectReview,
-        withShutdown: planning.withShutdown,
-      },
-      executionTeams: {
-        cestoQty,
-        linhaMortaQty,
-        linhaVivaQty,
-        podaLinhaMortaQty,
-        podaLinhaVivaQty,
-      },
-      executionForecast: {
-        stepsPlannedQty,
-        observation: normalizeText(executionForecast.observation),
-        removedSupportItemIds: normalizeStringArray(executionForecast.removedSupportItemIds),
-      },
-      preApr: {
-        observation: normalizeText(preApr.observation),
-      },
-    },
-  } as const;
 }
 
 export async function GET(request: NextRequest) {
@@ -231,12 +132,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const nextNotes = normalizeText(payload?.notes);
-    const questionnaireValidation = validateAndNormalizeLocationQuestionnaire(payload?.questionnaireAnswers);
-    if (!questionnaireValidation.ok) {
-      return NextResponse.json({ message: questionnaireValidation.message }, { status: 400 });
-    }
-
-    const nextQuestionnaire = questionnaireValidation.questionnaire;
+    const nextQuestionnaire = normalizeQuestionnaireAnswers(payload?.questionnaireAnswers);
 
     const changes: Record<string, { from: string | null; to: string | null }> = {};
     if ((currentData.plan.notes ?? "") !== nextNotes) {
@@ -249,75 +145,20 @@ export async function PUT(request: NextRequest) {
       changes.questionnaireAnswers = { from: previousQuestionnaire, to: nextQuestionnaireRaw };
     }
 
-    const { error } = await resolution.supabase
-      .from("project_location_plans")
-      .update({
-        notes: nextNotes || null,
-        questionnaire_answers: nextQuestionnaire,
-        updated_by: resolution.appUser.id,
-      })
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("project_id", projectId);
-
-    if (error) {
-      return NextResponse.json({ message: "Falha ao atualizar locacao." }, { status: 500 });
-    }
-
     const requestedRisks = Array.isArray(payload?.risks) ? payload.risks : [];
-    const currentRisks = currentData.risks ?? [];
-
-    for (const currentRisk of currentRisks) {
-      const nextRisk = requestedRisks.find((item) => normalizeText(item?.id) === currentRisk.id);
-      if (!nextRisk) {
-        continue;
-      }
-
-      const nextIsActive = Boolean(nextRisk.isActive);
-      if (currentRisk.isActive === nextIsActive) {
-        continue;
-      }
-
-      const { error: riskUpdateError } = await resolution.supabase
-        .from("project_location_risks")
-        .update({
-          is_active: nextIsActive,
-          updated_by: resolution.appUser.id,
-        })
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("id", currentRisk.id)
-        .eq("location_plan_id", currentData.plan.id);
-
-      if (riskUpdateError) {
-        return NextResponse.json({ message: "Falha ao atualizar riscos da locacao." }, { status: 500 });
-      }
-
-      await registerLocationHistory({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        entityTable: "project_location_risks",
-        entityId: currentRisk.id,
-        entityCode: currentData.project.sob,
-        changes: {
-          isActive: {
-            from: currentRisk.isActive ? "true" : "false",
-            to: nextIsActive ? "true" : "false",
-          },
-        },
-        metadata: {
-          projectId,
-          locationPlanId: currentData.plan.id,
-          description: currentRisk.description,
-        },
-      });
-    }
-
-    await markProjectHasLocacao(
-      resolution.supabase,
-      resolution.appUser.tenant_id,
+    const saveResult = await saveLocationPlanViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
       projectId,
-      resolution.appUser.id,
-    );
+      actorUserId: resolution.appUser.id,
+      notes: nextNotes,
+      questionnaireAnswers: nextQuestionnaire,
+      risks: requestedRisks,
+    });
+
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
+    }
 
     await registerLocationHistory({
       supabase: resolution.supabase,
@@ -333,9 +174,39 @@ export async function PUT(request: NextRequest) {
     });
 
     const data = await fetchLocationPlanData(resolution.supabase, resolution.appUser.tenant_id, projectId);
+    const currentRisks = currentData.risks ?? [];
+    const nextRisks = data?.risks ?? [];
+
+    for (const currentRisk of currentRisks) {
+      const nextRisk = nextRisks.find((item) => item.id === currentRisk.id);
+      if (!nextRisk || currentRisk.isActive === nextRisk.isActive) {
+        continue;
+      }
+
+      await registerLocationHistory({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        entityTable: "project_location_risks",
+        entityId: currentRisk.id,
+        entityCode: currentData.project.sob,
+        changes: {
+          isActive: {
+            from: currentRisk.isActive ? "true" : "false",
+            to: nextRisk.isActive ? "true" : "false",
+          },
+        },
+        metadata: {
+          projectId,
+          locationPlanId: currentData.plan.id,
+          description: currentRisk.description,
+        },
+      });
+    }
+
     return NextResponse.json({
       ...data,
-      message: "Locacao atualizada com sucesso.",
+      message: saveResult.message,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao atualizar locacao." }, { status: 500 });

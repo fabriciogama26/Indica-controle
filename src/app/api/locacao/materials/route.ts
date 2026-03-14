@@ -4,20 +4,10 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
   ensureLocationPlan,
   fetchLocationPlanData,
-  fetchLocationPlanRow,
-  markProjectHasLocacao,
   normalizePositiveNumber,
   registerLocationHistory,
+  saveLocationMaterialViaRpc,
 } from "@/lib/server/locationPlanning";
-
-type MaterialCatalogRow = {
-  id: string;
-  codigo: string;
-  descricao: string;
-  umb: string | null;
-  tipo: string | null;
-  is_active: boolean;
-};
 
 type LocationMaterialCurrentRow = {
   id: string;
@@ -69,63 +59,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: ensured.message }, { status: ensured.status });
     }
 
-    const plan = await fetchLocationPlanRow(resolution.supabase, resolution.appUser.tenant_id, projectId);
-    if (!plan) {
-      return NextResponse.json({ message: "Locacao nao encontrada para o projeto." }, { status: 404 });
-    }
-
-    const { data: material, error: materialError } = await resolution.supabase
-      .from("materials")
-      .select("id, codigo, descricao, umb, tipo, is_active")
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("id", materialId)
-      .maybeSingle<MaterialCatalogRow>();
-
-    if (materialError || !material || !material.is_active) {
-      return NextResponse.json({ message: "Material nao encontrado ou inativo." }, { status: 404 });
-    }
-
-    const { error } = await resolution.supabase.from("project_location_materials").insert({
-      tenant_id: resolution.appUser.tenant_id,
-      location_plan_id: plan.id,
-      material_id: material.id,
-      source_type: "MANUAL",
-      material_code: normalizeText(material.codigo),
-      material_description: normalizeText(material.descricao),
-      material_umb: material.umb ? normalizeText(material.umb) : null,
-      material_type: material.tipo ? normalizeText(material.tipo) : null,
-      original_qty: 0,
-      planned_qty: quantity,
-      observation: observation || null,
-      created_by: resolution.appUser.id,
-      updated_by: resolution.appUser.id,
+    const saveResult = await saveLocationMaterialViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      actorUserId: resolution.appUser.id,
+      materialId,
+      quantity,
+      observation,
     });
 
-    if (error) {
-      const rawError = String(error.message ?? "").toLowerCase();
-      if (rawError.includes("duplicate") || rawError.includes("unique")) {
-        return NextResponse.json({ message: "Material ja adicionado na locacao deste projeto." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao adicionar material na locacao." }, { status: 500 });
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
     }
 
     const { data: current } = await resolution.supabase
       .from("project_location_materials")
       .select("id, material_code, original_qty, planned_qty, observation")
       .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("location_plan_id", plan.id)
-      .eq("material_id", material.id)
+      .eq("id", saveResult.itemId)
       .maybeSingle<LocationMaterialCurrentRow>();
 
     if (current) {
-      await markProjectHasLocacao(
-        resolution.supabase,
-        resolution.appUser.tenant_id,
-        projectId,
-        resolution.appUser.id,
-      );
-
       await registerLocationHistory({
         supabase: resolution.supabase,
         tenantId: resolution.appUser.tenant_id,
@@ -141,7 +96,7 @@ export async function POST(request: NextRequest) {
         metadata: {
           action: "ADD_MATERIAL",
           projectId,
-          materialId: material.id,
+          materialId,
           sourceType: "MANUAL",
         },
       });
@@ -150,7 +105,7 @@ export async function POST(request: NextRequest) {
     const data = await fetchLocationPlanData(resolution.supabase, resolution.appUser.tenant_id, projectId);
     return NextResponse.json({
       ...data,
-      message: "Material adicionado na locacao com sucesso.",
+      message: saveResult.message,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao adicionar material na locacao." }, { status: 500 });
@@ -184,16 +139,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Projeto, item e quantidade sao obrigatorios." }, { status: 400 });
     }
 
-    const plan = await fetchLocationPlanRow(resolution.supabase, resolution.appUser.tenant_id, projectId);
-    if (!plan) {
-      return NextResponse.json({ message: "Locacao nao encontrada para o projeto." }, { status: 404 });
-    }
-
     const { data: current, error: currentError } = await resolution.supabase
       .from("project_location_materials")
       .select("id, material_code, original_qty, planned_qty, observation")
       .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("location_plan_id", plan.id)
       .eq("id", itemId)
       .maybeSingle<LocationMaterialCurrentRow>();
 
@@ -213,27 +162,19 @@ export async function PUT(request: NextRequest) {
       changes.observation = { from: previousObservation || null, to: observation || null };
     }
 
-    const { error } = await resolution.supabase
-      .from("project_location_materials")
-      .update({
-        planned_qty: quantity,
-        observation: observation || null,
-        updated_by: resolution.appUser.id,
-      })
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("location_plan_id", plan.id)
-      .eq("id", itemId);
-
-    if (error) {
-      return NextResponse.json({ message: "Falha ao editar material da locacao." }, { status: 500 });
-    }
-
-    await markProjectHasLocacao(
-      resolution.supabase,
-      resolution.appUser.tenant_id,
+    const saveResult = await saveLocationMaterialViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
       projectId,
-      resolution.appUser.id,
-    );
+      actorUserId: resolution.appUser.id,
+      itemId,
+      quantity,
+      observation,
+    });
+
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
+    }
 
     await registerLocationHistory({
       supabase: resolution.supabase,
@@ -252,7 +193,7 @@ export async function PUT(request: NextRequest) {
     const data = await fetchLocationPlanData(resolution.supabase, resolution.appUser.tenant_id, projectId);
     return NextResponse.json({
       ...data,
-      message: "Material da locacao atualizado com sucesso.",
+      message: saveResult.message,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao editar material da locacao." }, { status: 500 });
