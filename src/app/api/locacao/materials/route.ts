@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
+  ensureActiveLocationProject,
   ensureLocationPlan,
   fetchLocationPlanData,
   normalizePositiveNumber,
@@ -46,6 +47,18 @@ export async function POST(request: NextRequest) {
 
     if (!projectId || !materialId || quantity === null) {
       return NextResponse.json({ message: "Projeto, material e quantidade sao obrigatorios." }, { status: 400 });
+    }
+
+    const projectGuard = await ensureActiveLocationProject({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      inactiveMessage: "Projeto inativo nao pode ser alterado na locacao.",
+      notFoundMessage: "Projeto nao encontrado para locacao.",
+    });
+
+    if (!projectGuard.ok) {
+      return NextResponse.json({ message: projectGuard.message }, { status: projectGuard.status });
     }
 
     const ensured = await ensureLocationPlan(
@@ -138,6 +151,18 @@ export async function PUT(request: NextRequest) {
 
     if (!projectId || !itemId || quantity === null) {
       return NextResponse.json({ message: "Projeto, item e quantidade sao obrigatorios." }, { status: 400 });
+    }
+
+    const projectGuard = await ensureActiveLocationProject({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      inactiveMessage: "Projeto inativo nao pode ser alterado na locacao.",
+      notFoundMessage: "Projeto nao encontrado para locacao.",
+    });
+
+    if (!projectGuard.ok) {
+      return NextResponse.json({ message: projectGuard.message }, { status: projectGuard.status });
     }
 
     const { data: current, error: currentError } = await resolution.supabase

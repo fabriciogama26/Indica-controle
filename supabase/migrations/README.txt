@@ -67,6 +67,14 @@ Ordem de aplicacao
 63. 063_create_location_save_rpcs.sql
 64. 064_create_project_activity_forecast.sql
 65. 065_project_forecast_manual_and_activity_import.sql
+66. 066_harden_location_and_project_forecast_rpcs.sql
+67. 067_create_project_programming.sql
+68. 068_link_teams_service_center_and_harden_programming_rpc.sql
+69. 069_add_programming_cancellation.sql
+70. 070_add_programming_status_and_project_guard.sql
+71. 071_programming_week_summary_and_support_catalog.sql
+72. 072_create_programming_support_items.sql
+73. 073_add_project_fob.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -269,6 +277,27 @@ Resumo por arquivo
 
 066_harden_location_and_project_forecast_rpcs.sql
 - Endurece as RPCs de `Locacao` e dos previstos de `Projetos` com controle de concorrencia por `updated_at`, limites maximos de quantidade e obrigatoriedade condicional de observacoes.
+
+067_create_project_programming.sql
+- Cria a base multi-tenant da `Programacao` com agenda, atividades, RLS, indices e auditoria.
+
+068_link_teams_service_center_and_harden_programming_rpc.sql
+- Vincula `teams` a `project_service_centers` e cria a RPC transacional `save_project_programming` com protecoes operacionais.
+
+069_add_programming_cancellation.sql
+- Adiciona cancelamento persistente na `Programacao`, com soft cancel, motivo e auditoria.
+
+070_add_programming_status_and_project_guard.sql
+- Separa `ADIADA` de `CANCELADA` na `Programacao` e bloqueia inativacao de projeto com agenda pendente.
+
+071_programming_week_summary_and_support_catalog.sql
+- Cria resumo semanal por equipe e conecta a `Programacao` ao apoio derivado da `Locacao`.
+
+072_create_programming_support_items.sql
+- Cria o catalogo proprio de apoio da `Programacao` e ajusta a agenda para consumir esse catalogo.
+
+073_add_project_fob.sql
+- Adiciona `project.fob`, aplica `check` de exatamente `10` caracteres quando preenchido e republica `project_with_labels`.
 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

@@ -70,6 +70,8 @@ Filtros, auto-complete e listagem
   - `Municipio` (`select`)
   - `SOB` (`input` com `datalist` / auto-complete)
 - O `Municipio` reduz a lista de projetos disponiveis para o `SOB`.
+- A selecao de `SOB` considera apenas obras ativas do tenant.
+- Se a obra ja tinha locacao e depois for inativada em `Projetos`, ela deixa de aparecer na selecao e as rotas da `Locacao` passam a bloquear consulta e edicao.
 - O header da tela destaca visualmente tanto o estado vazio (`Nenhum projeto selecionado.`) quanto o estado com projeto aberto (`Projeto selecionado: ...`).
 - Quando existe projeto aberto, o header empilha em destaque `Projeto selecionado: ...` e, logo abaixo, o resumo `Materiais atuais` e `Atividades atuais`.
 - Depois de abrir a locacao, a navegacao operacional e exibida em um card com abas no topo:
@@ -110,6 +112,7 @@ Boas praticas
 - Filtrar todas as consultas por `tenant_id`, mesmo usando client administrativo.
 - Assumir `RLS ON` nas tabelas da locacao.
 - Atualizar `project.has_locacao` somente pelo fluxo real da locacao, nunca por checkbox manual no cadastro do projeto.
+- Bloquear `GET`, `POST` e `PUT` das rotas de `Locacao` quando o projeto estiver inativo, preservando a locacao existente apenas como historico tecnico.
 - Validar no frontend e no backend os campos obrigatorios da aba principal da `Locacao` antes do `PUT`.
 - Bloquear o salvar da locacao quando todas as equipes de execucao estiverem em `0`.
 - Bloquear o salvar da locacao quando `ETAPAS PREVISTAS` estiver em `0`.
@@ -127,6 +130,7 @@ Cancelamento e saldo
 - Nao existe aprovacao de lista de materiais nesta etapa.
 - Nao existe movimentacao de estoque nesta etapa.
 - `Materiais previstos` da locacao representam planejamento operacional, nao saldo.
+- Quando a obra for inativada em `Projetos`, a locacao existente nao e apagada, mas tambem nao pode mais ser carregada/alterada pelas rotas operacionais.
 
 Atalhos
 -------
@@ -170,6 +174,7 @@ Atualizacao 2026-03
 - O `Salvar locacao` passou a exibir feedback local na propria aba, evitando deslocamento da tela para o topo.
 - Ao salvar a aba principal com sucesso, o container principal do dashboard volta para o topo para recolocar em evidência as abas operacionais da locacao.
 - A aba principal da `Locacao` passou a exigir os radios `Necessario revisao de projeto?` e `Com desligamento?` antes de salvar.
+- As rotas da `Locacao` passam a rejeitar projetos inativos, inclusive quando o plano de locacao ja existia antes da inativacao da obra.
 - As quantidades de equipes e `ETAPAS PREVISTAS` passaram a iniciar com `0`, nao aceitar valor negativo e serem normalizadas no frontend e no backend.
 - O salvar da aba principal passou a exigir pelo menos uma equipe com quantidade maior que `0` e `ETAPAS PREVISTAS` maior que `0`.
 - O backend da locacao deixou de depender de `insert/update` direto e passou a usar RPCs para aplicar as regras de bloqueio no banco.
@@ -225,12 +230,15 @@ Ajuda contextual
   - `src/modules/dashboard/locacao/LocationPageView.tsx`
   - `src/modules/dashboard/locacao/LocationPageView.module.css`
   - `src/app/api/locacao/route.ts`
-  - `src/app/api/locacao/meta/route.ts`
   - `src/app/api/locacao/materials/route.ts`
-  - `src/app/api/locacao/materials/catalog/route.ts`
   - `src/app/api/locacao/activities/route.ts`
+  - `src/app/api/locacao/meta/route.ts`
+  - `src/app/api/locacao/materials/catalog/route.ts`
   - `src/app/api/locacao/activities/catalog/route.ts`
   - `src/lib/server/locationPlanning.ts`
+  - `docs/Tela_Locacao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
   - `src/lib/server/projectForecastXlsx.ts`
   - `src/types/xlsx.d.ts`
   - `supabase/migrations/059_create_location_planning.sql`
@@ -249,12 +257,15 @@ Ajuda contextual
   - `saveLocationPlanViaRpc`
   - `saveLocationMaterialViaRpc`
   - `saveLocationActivityViaRpc`
+  - `ensureActiveLocationProject`
   - `ensureLocationPlan`
   - `fetchLocationPlanData`
   - `registerLocationHistory`
 - Comportamento antes/depois:
   - Antes: locacao nao tinha persistencia nem fluxo operacional.
   - Depois: locacao possui bootstrap por projeto, materiais e atividades previstos editaveis, historico tecnico e comparacao contra o previsto original do projeto.
+  - Antes: uma locacao ja existente ainda podia ser acessada por `projectId` direto mesmo depois da obra ser inativada.
+  - Depois: a locacao de obra inativa sai da selecao e as rotas operacionais passam a bloquear nova carga/edicao.
   - Antes: as abas de atividades e materiais concentravam cadastro, filtro e lista em um unico card.
   - Depois: `Atividades previstas` e `Materiais previstos` passam a separar cadastro e listagem em cards distintos.
   - Antes: os filtros internos de atividades e materiais usavam um unico campo textual.

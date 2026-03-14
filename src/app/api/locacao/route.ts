@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
+  ensureActiveLocationProject,
   ensureLocationPlan,
   fetchLocationPlanData,
   registerLocationHistory,
@@ -36,6 +37,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "projectId obrigatorio." }, { status: 400 });
     }
 
+    const projectGuard = await ensureActiveLocationProject({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      inactiveMessage: "Projeto inativo nao pode ser carregado na locacao.",
+      notFoundMessage: "Projeto nao encontrado para locacao.",
+    });
+
+    if (!projectGuard.ok) {
+      return NextResponse.json({ message: projectGuard.message }, { status: projectGuard.status });
+    }
+
     const data = await fetchLocationPlanData(resolution.supabase, resolution.appUser.tenant_id, projectId);
     if (!data) {
       return NextResponse.json({ message: "Projeto nao encontrado para locacao." }, { status: 404 });
@@ -62,6 +75,18 @@ export async function POST(request: NextRequest) {
     const projectId = normalizeText(payload?.projectId);
     if (!projectId) {
       return NextResponse.json({ message: "Projeto obrigatorio para inicializar a locacao." }, { status: 400 });
+    }
+
+    const projectGuard = await ensureActiveLocationProject({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      inactiveMessage: "Projeto inativo nao pode ser alocado na locacao.",
+      notFoundMessage: "Projeto nao encontrado para locacao.",
+    });
+
+    if (!projectGuard.ok) {
+      return NextResponse.json({ message: projectGuard.message }, { status: projectGuard.status });
     }
 
     const ensured = await ensureLocationPlan(
@@ -114,6 +139,18 @@ export async function PUT(request: NextRequest) {
     const projectId = normalizeText(payload?.projectId);
     if (!projectId) {
       return NextResponse.json({ message: "Projeto obrigatorio para atualizar a locacao." }, { status: 400 });
+    }
+
+    const projectGuard = await ensureActiveLocationProject({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      inactiveMessage: "Projeto inativo nao pode ser editado na locacao.",
+      notFoundMessage: "Projeto nao encontrado para locacao.",
+    });
+
+    if (!projectGuard.ok) {
+      return NextResponse.json({ message: projectGuard.message }, { status: projectGuard.status });
     }
 
     const ensured = await ensureLocationPlan(

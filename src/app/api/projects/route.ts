@@ -7,6 +7,7 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 type ProjectRow = {
   id: string;
   sob: string;
+  fob: string | null;
   service_center: string;
   service_center_text: string | null;
   partner: string;
@@ -44,8 +45,9 @@ type ProjectRow = {
   updated_at: string;
 };
 
-type ProjectBaseRow = Omit<ProjectRow, "has_locacao"> & {
+type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob"> & {
   has_locacao?: boolean | null;
+  fob?: string | null;
 };
 
 type ProjectUserRow = {
@@ -77,6 +79,7 @@ type ContractRow = {
 
 type CreateProjectPayload = {
   sob: string;
+  fob: string;
   serviceCenter: string;
   serviceType: string;
   executionDeadline: string;
@@ -119,6 +122,7 @@ type HistoryChange = {
 
 type ProjectInput = {
   sob: string;
+  fob: string;
   serviceCenter: string;
   serviceType: string;
   executionDeadline: string;
@@ -168,6 +172,10 @@ function normalizePriority(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
 
+function normalizeFob(value: unknown) {
+  return normalizeText(value);
+}
+
 function normalizeEstimatedValue(value: unknown) {
   const raw = String(value ?? "")
     .trim()
@@ -200,6 +208,7 @@ function getSobRuleError(priority: string, sob: string) {
 function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput {
   return {
     sob: normalizeSob(payload.sob),
+    fob: normalizeFob(payload.fob),
     serviceCenter: normalizeText(payload.serviceCenter),
     serviceType: normalizeText(payload.serviceType),
     executionDeadline: normalizeText(payload.executionDeadline),
@@ -221,6 +230,7 @@ function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput
 function validateRequiredProjectFields(input: ProjectInput) {
   if (
     !input.sob ||
+    !input.fob ||
     !input.serviceCenter ||
     !input.serviceType ||
     !input.executionDeadline ||
@@ -238,6 +248,10 @@ function validateRequiredProjectFields(input: ProjectInput) {
 
   if (!isIsoDate(input.executionDeadline)) {
     return "Data limite invalida.";
+  }
+
+  if (input.fob.length !== 10) {
+    return "O FOB do projeto deve ter exatamente 10 caracteres.";
   }
 
   return null;
@@ -311,14 +325,14 @@ function buildUserLoginNameMap(users: ProjectUserRow[]) {
 }
 
 const PROJECT_SELECT_WITH_LOCATION =
-  "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
+  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
 const PROJECT_SELECT_LEGACY =
   "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
-function isMissingHasLocacaoColumn(message: string) {
+function isMissingOptionalProjectColumns(message: string) {
   const normalized = normalizeText(message).toLowerCase();
-  return normalized.includes("has_locacao");
+  return normalized.includes("has_locacao") || normalized.includes("fob");
 }
 
 async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string, projectId: string) {
@@ -330,10 +344,17 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
     .maybeSingle<ProjectBaseRow>();
 
   if (!primary.error && primary.data) {
-    return { data: { ...primary.data, has_locacao: Boolean(primary.data.has_locacao) } as ProjectRow, error: null };
+    return {
+      data: {
+        ...primary.data,
+        fob: normalizeNullableText(primary.data.fob),
+        has_locacao: Boolean(primary.data.has_locacao),
+      } as ProjectRow,
+      error: null,
+    };
   }
 
-  if (!isMissingHasLocacaoColumn(String(primary.error?.message ?? ""))) {
+  if (!isMissingOptionalProjectColumns(String(primary.error?.message ?? ""))) {
     return { data: null, error: primary.error };
   }
 
@@ -351,6 +372,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
   return {
     data: {
       ...fallback.data,
+      fob: null,
       has_locacao: false,
     } as ProjectRow,
     error: null,
@@ -397,13 +419,17 @@ async function fetchProjectsPageCompat(params: {
   if (!primary.error) {
     const primaryRows = (primary.data ?? []) as unknown as ProjectBaseRow[];
     return {
-      data: primaryRows.map((item) => ({ ...item, has_locacao: Boolean(item.has_locacao) })) as ProjectRow[],
+      data: primaryRows.map((item) => ({
+        ...item,
+        fob: normalizeNullableText(item.fob),
+        has_locacao: Boolean(item.has_locacao),
+      })) as ProjectRow[],
       count: primary.count ?? 0,
       error: null,
     };
   }
 
-  if (!isMissingHasLocacaoColumn(String(primary.error.message ?? ""))) {
+  if (!isMissingOptionalProjectColumns(String(primary.error.message ?? ""))) {
     return { data: [] as ProjectRow[], count: 0, error: primary.error };
   }
 
@@ -414,7 +440,7 @@ async function fetchProjectsPageCompat(params: {
 
   const fallbackRows = (fallback.data ?? []) as unknown as ProjectBaseRow[];
   return {
-    data: fallbackRows.map((item) => ({ ...item, has_locacao: false })) as ProjectRow[],
+    data: fallbackRows.map((item) => ({ ...item, fob: null, has_locacao: false })) as ProjectRow[],
     count: fallback.count ?? 0,
     error: null,
   };
@@ -616,6 +642,7 @@ function buildProjectWritePayload(
 ) {
   return {
     sob: input.sob,
+    fob: input.fob,
     priority: lookups.priority.id,
     service_center: lookups.serviceCenter.id,
     partner: lookups.partner.id,
@@ -640,6 +667,7 @@ function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, loo
 
   addChange(changes, "priority", current.priority_text, lookups.priority.name);
   addChange(changes, "sob", current.sob, input.sob);
+  addChange(changes, "fob", current.fob, input.fob);
   addChange(changes, "serviceCenter", current.service_center_text, lookups.serviceCenter.name);
   addChange(changes, "serviceType", current.service_type_text, lookups.serviceType.name);
   addChange(changes, "executionDeadline", current.execution_deadline, input.executionDeadline);
@@ -791,6 +819,7 @@ export async function GET(request: NextRequest) {
       projects: (data ?? []).map((item) => ({
         id: item.id,
         sob: item.sob,
+        fob: item.fob,
         serviceCenter: item.service_center_text ?? "Nao identificado",
         partner: item.partner_text ?? "Nao identificado",
         serviceType: item.service_type_text ?? "Nao identificado",
