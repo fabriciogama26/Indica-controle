@@ -125,6 +125,8 @@
 - [x] Integrar `Programacao` com dados reais de projetos, equipes, atividades e persistencia da agenda por tenant.
 - [x] Endurecer `Programacao` com RPC transacional, controle de concorrencia por `updated_at`, bloqueio de sobreposicao de horario e validacao de base da equipe.
 - [x] Implementar cancelamento persistente de `Programacao` com motivo obrigatorio, soft cancel e auditoria de reagendamento.
+- [x] Separar `Adiamento` de `Cancelamento` na `Programacao` e bloquear inativacao de projeto com agenda operacional pendente.
+- [x] Exibir no card de projeto pendente da `Programacao` se a `Locacao` ja foi feita.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

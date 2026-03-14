@@ -50,6 +50,10 @@ Cadastro
   - Programacoes existentes podem ser canceladas por modal proprio com motivo obrigatorio.
   - O cancelamento nao apaga o registro; ele faz `soft cancel` no backend e retira a programacao da grade ativa.
   - O reagendamento continua sendo feito ao mover/editar a mesma programacao na grade; quando data, equipe ou horario mudam, o historico registra a acao como `RESCHEDULE`.
+- Regra de adiamento:
+  - Programacoes existentes podem ser adiadas com motivo obrigatorio.
+  - O adiamento nao cancela a etapa; ele retira a programacao da grade ativa e preserva a etapa como pendente de nova data operacional.
+  - O adiamento fica persistido com status proprio e continua contando para historico da obra.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -58,6 +62,7 @@ Filtros, auto-complete e listagem
   - Filtro por `Base`
   - Filtro por `Cidade`
   - Filtro por `Servico`
+  - Cada card de projeto pendente tambem exibe se a `Locacao` ja foi feita ou nao
 - Painel direito:
   - Filtro por `Base` aplicado sobre a base real da equipe
   - Alternancia `Semana` / `Dia`
@@ -85,7 +90,9 @@ Boas praticas
 Cancelamento e saldo
 --------------------
 - Cancelamento de programacao agora existe com persistencia real.
+- Adiamento de programacao agora existe com persistencia real e status proprio.
 - O backend marca a programacao como inativa, grava motivo, data/hora e usuario do cancelamento.
+- No adiamento, o backend tambem retira a programacao da grade ativa, grava motivo, data/hora e usuario, mas preserva a etapa como `ADIADA`.
 - A programacao cancelada sai da grade operacional ativa, mas permanece em historico.
 - Reagendamento nao cria um status novo na grade: ele atualiza a mesma programacao e fica auditado no historico como remanejamento.
 - Nao existe impacto em saldo de estoque nesta tela.
@@ -125,15 +132,21 @@ Atualizacao 2026-03
   - troca da unicidade para considerar apenas programacoes ativas
   - RPC `cancel_project_programming`
   - ajuste da RPC `save_project_programming` para ignorar registros cancelados
+- Arquivo `supabase/migrations/070_add_programming_status_and_project_guard.sql` criado com:
+  - status operacional `PROGRAMADA`, `ADIADA` e `CANCELADA` em `project_programming`
+  - RPC `set_project_programming_status`
+  - separacao entre adiamento e cancelamento sem perda de historico
+  - bloqueio de inativacao de projeto quando ainda existir programacao `PROGRAMADA` ou `ADIADA`
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
   - salvar criacao/edicao por `POST` e `PUT` com `expectedUpdatedAt`
-  - cancelar programacao por `PATCH` com motivo obrigatorio
+  - cancelar ou adiar programacao por `PATCH` com motivo obrigatorio
   - recalcular backlog pendente e carga por equipe com os dados reais do periodo
   - manter semana completa de segunda a domingo
   - manter nomenclatura documental `PEP`
   - exibir a base real da equipe na grade e no filtro do painel direito
+  - exibir o status de `Locacao` no card do projeto pendente
   - exibir o feedback de sucesso/erro no topo da tela, no mesmo padrao dos demais modulos
 - Antes:
   - `/programacao` era local no frontend, com projetos, equipes e programacoes mockadas.
@@ -146,13 +159,15 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: carregar dados autenticados, controlar filtros, periodo, timeline, drag and drop, modal e salvamento.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/cancelamento e registrar historico.
+  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/status e registrar historico.
 - Caminho: `supabase/migrations/067_create_project_programming.sql`
   - Responsavel por: formalizar a base multi-tenant de programacao e suas atividades.
 - Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - Responsavel por: vincular equipes a base e endurecer o salvamento da programacao.
 - Caminho: `supabase/migrations/069_add_programming_cancellation.sql`
   - Responsavel por: persistir cancelamento de programacao e retirar registros cancelados da grade ativa.
+- Caminho: `supabase/migrations/070_add_programming_status_and_project_guard.sql`
+  - Responsavel por: separar adiamento de cancelamento e bloquear inativacao de projeto com agenda pendente.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -182,6 +197,7 @@ Ajuda contextual
   - `supabase/migrations/067_create_project_programming.sql`
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `supabase/migrations/069_add_programming_cancellation.sql`
+  - `supabase/migrations/070_add_programming_status_and_project_guard.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -190,5 +206,5 @@ Ajuda contextual
   - `DOCUMENT_KEYS`
   - `INITIAL_PERIOD_START`
 - Comportamento antes/depois:
-  - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional; nao havia cancelamento persistente.
-  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, RPC transacional com concorrencia/sobreposicao e cancelamento persistente por motivo.
+  - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional; nao havia cancelamento persistente nem diferenca entre cancelamento e adiamento.
+  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, RPC transacional com concorrencia/sobreposicao, cancelamento persistente por motivo e adiamento separado por status.

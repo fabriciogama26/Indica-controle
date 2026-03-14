@@ -157,12 +157,14 @@ Boas praticas
 - `Atividades previstas` do projeto devem ser mantidas com quantidade maior que zero e servem de base para bootstrap inicial da aba `Atividades previstas` na `Locacao`.
 - Exigir controle de concorrencia por `updated_at` na edicao em linha de `Materiais previstos` e `Atividades previstas`.
 - Aplicar limite superior `<= 100000` para quantidades manuais e para edicao em linha dos previstos do projeto.
+- Bloquear a inativacao da obra quando ainda existir programacao operacional com status `PROGRAMADA` ou `ADIADA`.
 
 Cancelamento e saldo
 --------------------
 - Cancelamento implementado para Projetos:
   - Inativa a obra (`project.is_active = false`).
   - Exige motivo antes de validar cancelamento.
+  - E bloqueado quando a obra ainda possui programacao `PROGRAMADA` ou `ADIADA`.
   - Registra em `project_cancellation_history` com `action_type = CANCEL`.
   - Registra no `project_history` como evento `CANCEL`.
 - Ativacao implementada para Projetos:
@@ -195,7 +197,7 @@ Atualizacao 2026-03
   - `GET` agora le dados em `public.project_with_labels` para exibir textos de lookup sem redundancia na tabela base.
   - `POST` cadastro.
   - `PUT` edicao com diff em `project_history`.
-  - `PATCH` cancelamento/ativacao com motivo obrigatorio.
+  - `PATCH` cancelamento/ativacao com motivo obrigatorio e bloqueio de inativacao quando houver agenda operacional pendente.
 - API `src/app/api/projects/meta/route.ts` ajustada para ler `project_with_labels` nos fallbacks de filtros e auto-complete.
 - Campo `Parceira` removido do formulario; valor preenchido automaticamente no backend por `contract.name`.
 - Botoes da coluna `Acoes` implementados de ponta a ponta na tela.

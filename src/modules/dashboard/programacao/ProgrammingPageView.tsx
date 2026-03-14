@@ -20,6 +20,7 @@ type ProjectItem = {
   serviceType: string;
   priority: string;
   note: string;
+  hasLocacao: boolean;
 };
 
 type TeamItem = {
@@ -96,10 +97,13 @@ type ModalState = {
   form: ScheduleFormState;
 };
 
+type StatusAction = "cancel" | "postpone";
+
 type CancelModalState = {
   scheduleId: string;
   projectCode: string;
   expectedUpdatedAt: string;
+  action: StatusAction;
 };
 
 type FeedbackState = {
@@ -688,6 +692,14 @@ export function ProgrammingPageView() {
   }
 
   function openCancellationModal() {
+    openStatusModal("cancel");
+  }
+
+  function openPostponeModal() {
+    openStatusModal("postpone");
+  }
+
+  function openStatusModal(action: StatusAction) {
     if (!editingSchedule || !activeProject) {
       return;
     }
@@ -696,6 +708,7 @@ export function ProgrammingPageView() {
       scheduleId: editingSchedule.id,
       projectCode: activeProject.code,
       expectedUpdatedAt: editingSchedule.updatedAt,
+      action,
     });
     setCancelReason("");
     setFeedback(null);
@@ -977,6 +990,7 @@ export function ProgrammingPageView() {
         },
         body: JSON.stringify({
           id: cancelModalState.scheduleId,
+          action: cancelModalState.action === "postpone" ? "ADIAR" : "CANCELAR",
           reason: cancelReason.trim(),
           expectedUpdatedAt: cancelModalState.expectedUpdatedAt,
         }),
@@ -1004,7 +1018,11 @@ export function ProgrammingPageView() {
       setCancelReason("");
       setFeedback({
         type: "success",
-        message: data?.message ?? `Programacao do projeto ${cancelModalState.projectCode} cancelada com sucesso.`,
+        message:
+          data?.message ??
+          (cancelModalState.action === "postpone"
+            ? `Programacao do projeto ${cancelModalState.projectCode} adiada com sucesso.`
+            : `Programacao do projeto ${cancelModalState.projectCode} cancelada com sucesso.`),
       });
     } catch (error) {
       setFeedback({
@@ -1124,6 +1142,9 @@ export function ProgrammingPageView() {
 
                 <div className={styles.projectFooter}>
                   <span>{project.serviceType}</span>
+                  <span className={project.hasLocacao ? styles.locationReadyTag : styles.locationPendingTag}>
+                    {project.hasLocacao ? "Locacao OK" : "Sem locacao"}
+                  </span>
                 </div>
               </article>
             ))}
@@ -1587,6 +1608,11 @@ export function ProgrammingPageView() {
 
               <div className={styles.modalActions}>
                 {modalState.scheduleId ? (
+                  <button type="button" className={styles.secondaryButton} onClick={openPostponeModal} disabled={isSaving}>
+                    Adiar programacao
+                  </button>
+                ) : null}
+                {modalState.scheduleId ? (
                   <button type="button" className={styles.dangerButton} onClick={openCancellationModal} disabled={isSaving}>
                     Cancelar programacao
                   </button>
@@ -1623,19 +1649,25 @@ export function ProgrammingPageView() {
 
             <div className={styles.modalBody}>
               <p className={styles.modalText}>
-                Informe o motivo do cancelamento da programacao do projeto {cancelModalState.projectCode}. O registro sera
-                retirado da grade ativa, mas continuara no historico.
+                {cancelModalState.action === "postpone"
+                  ? `Informe o motivo do adiamento da programacao do projeto ${cancelModalState.projectCode}. O registro saira da grade ativa, continuara no historico e podera ser reprogramado depois.`
+                  : `Informe o motivo do cancelamento da programacao do projeto ${cancelModalState.projectCode}. O registro sera retirado da grade ativa, mas continuara no historico.`}
               </p>
 
               <label className={styles.field}>
                 <span>
-                  Motivo do cancelamento <span className="requiredMark">*</span>
+                  {cancelModalState.action === "postpone" ? "Motivo do adiamento" : "Motivo do cancelamento"}{" "}
+                  <span className="requiredMark">*</span>
                 </span>
                 <textarea
                   value={cancelReason}
                   onChange={(event) => setCancelReason(event.target.value)}
                   rows={4}
-                  placeholder="Descreva o motivo do cancelamento"
+                  placeholder={
+                    cancelModalState.action === "postpone"
+                      ? "Descreva o motivo do adiamento"
+                      : "Descreva o motivo do cancelamento"
+                  }
                   disabled={isCancelling}
                 />
               </label>
@@ -1643,11 +1675,15 @@ export function ProgrammingPageView() {
               <div className={styles.modalActions}>
                 <button
                   type="button"
-                  className={styles.dangerButton}
+                  className={cancelModalState.action === "postpone" ? styles.secondaryButton : styles.dangerButton}
                   onClick={() => void handleCancelSchedule()}
                   disabled={!canSubmitCancellation}
                 >
-                  {isCancelling ? "Cancelando..." : "Validar cancelamento"}
+                  {isCancelling
+                    ? cancelModalState.action === "postpone"
+                      ? "Adiando..."
+                      : "Cancelando..."
+                    : `Validar ${cancelModalState.action === "postpone" ? "adiamento" : "cancelamento"}`}
                 </button>
                 <button type="button" className={styles.ghostButton} onClick={closeCancellationModal} disabled={isCancelling}>
                   Voltar

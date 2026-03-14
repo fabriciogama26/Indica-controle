@@ -286,7 +286,9 @@
 }
 
 .priorityTag,
-.teamBaseTag {
+.teamBaseTag,
+.locationReadyTag,
+.locationPendingTag {
   border-radius: 999px;
   padding: 6px 10px;
   font-size: 0.72rem;
@@ -312,6 +314,16 @@
 .projectFooter {
   color: #6a7ea5;
   font-size: 0.8rem;
+}
+
+.locationReadyTag {
+  color: #1f6a35;
+  background: #dbf3e1;
+}
+
+.locationPendingTag {
+  color: #8a6700;
+  background: #fff2c7;
 }
 
 .emptyState {

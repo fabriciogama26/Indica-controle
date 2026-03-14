@@ -930,6 +930,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: `Projeto ${currentProject.sob} ja esta ativo.` }, { status: 409 });
     }
 
+    if (action === "CANCEL") {
+      const { count: programmingCount, error: programmingGuardError } = await supabase
+        .from("project_programming")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("project_id", projectId)
+        .in("status", ["PROGRAMADA", "ADIADA"]);
+
+      if (programmingGuardError) {
+        return NextResponse.json({ message: "Falha ao validar programacoes vinculadas ao projeto." }, { status: 500 });
+      }
+
+      if ((programmingCount ?? 0) > 0) {
+        return NextResponse.json(
+          {
+            message: `Projeto ${currentProject.sob} possui programacoes programadas ou adiadas. Resolva essas etapas antes de inativar o projeto.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const eventTimestamp = new Date().toISOString();
 
     const { error: statusError } = await supabase
