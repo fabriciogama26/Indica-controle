@@ -104,12 +104,28 @@ type SaveProgrammingPayload = {
   }>;
 };
 
+type CancelProgrammingPayload = {
+  id?: string;
+  reason?: string;
+  expectedUpdatedAt?: string;
+};
+
 type SaveProgrammingRpcResult = {
   success?: boolean;
   status?: number;
   reason?: string;
   message?: string;
   action?: "INSERT" | "UPDATE";
+  programming_id?: string;
+  project_code?: string;
+  updated_at?: string;
+};
+
+type CancelProgrammingRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
   programming_id?: string;
   project_code?: string;
   updated_at?: string;
@@ -314,6 +330,7 @@ async function fetchProgrammingRows(
       "id, project_id, team_id, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
+    .eq("is_active", true)
     .gte("execution_date", startDate)
     .lte("execution_date", endDate)
     .order("execution_date", { ascending: true })
@@ -370,6 +387,7 @@ async function fetchProgrammingById(
       "id, project_id, team_id, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
+    .eq("is_active", true)
     .eq("id", programmingId)
     .maybeSingle<ProgrammingRow>();
 
@@ -449,6 +467,49 @@ async function saveProgrammingViaRpc(params: {
   } as const;
 }
 
+async function cancelProgrammingViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  reason: string;
+  expectedUpdatedAt?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("cancel_project_programming", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Falha ao cancelar programacao via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as CancelProgrammingRpcResult;
+  if (result.success !== true || !result.programming_id) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao cancelar programacao.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    programmingId: result.programming_id,
+    projectCode: normalizeText(result.project_code),
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Programacao cancelada com sucesso.",
+  } as const;
+}
+
 async function registerProgrammingHistory(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -457,8 +518,10 @@ async function registerProgrammingHistory(params: {
   projectCode: string;
   changes: Record<string, HistoryChange>;
   metadata: Record<string, unknown>;
+  reason?: string | null;
+  force?: boolean;
 }) {
-  if (Object.keys(params.changes).length === 0) {
+  if (!params.force && Object.keys(params.changes).length === 0) {
     return;
   }
 
@@ -469,7 +532,7 @@ async function registerProgrammingHistory(params: {
     entity_id: params.programmingId,
     entity_code: params.projectCode,
     change_type: "UPDATE",
-    reason: null,
+    reason: params.reason ?? null,
     changes: params.changes,
     metadata: params.metadata,
     created_by: params.actorUserId,
@@ -715,6 +778,19 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   addChange(changes, "piNumber", currentProgramming?.pi_number ?? null, nextProgramming.pi_number);
   addChange(changes, "pepNumber", currentProgramming?.pep_number ?? null, nextProgramming.pep_number);
   addChange(changes, "activities", toActivitySnapshot(previousActivities), toActivitySnapshot(nextActivities));
+  const isReschedule =
+    Boolean(currentProgramming) &&
+    (
+      currentProgramming?.execution_date !== nextProgramming.execution_date ||
+      currentProgramming?.team_id !== nextProgramming.team_id ||
+      formatTime(currentProgramming?.start_time ?? null) !== formatTime(nextProgramming.start_time) ||
+      formatTime(currentProgramming?.end_time ?? null) !== formatTime(nextProgramming.end_time)
+    );
+  const responseMessage = currentProgramming
+    ? isReschedule
+      ? `Programacao do projeto ${project?.sob ?? saveResult.projectCode ?? projectId} reagendada com sucesso.`
+      : saveResult.message
+    : saveResult.message;
 
   await registerProgrammingHistory({
     supabase: resolution.supabase,
@@ -724,7 +800,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     projectCode: project?.sob ?? saveResult.projectCode ?? projectId,
     changes,
     metadata: {
-      action: saveResult.action === "INSERT" ? "CREATE" : "UPDATE",
+      action: !currentProgramming ? "CREATE" : isReschedule ? "RESCHEDULE" : "UPDATE",
       projectId,
       teamId,
       executionDate,
@@ -734,7 +810,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   return NextResponse.json({
     success: true,
     id: persistedProgrammingId,
-    message: saveResult.message,
+    message: responseMessage,
   });
 }
 
@@ -744,4 +820,75 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   return saveProgramming(request, "PUT");
+}
+
+export async function PATCH(request: NextRequest) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para cancelar programacao.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const payload = (await request.json().catch(() => null)) as CancelProgrammingPayload | null;
+  const programmingId = normalizeText(payload?.id);
+  const reason = normalizeNullableText(payload?.reason);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
+
+  if (!programmingId || !reason) {
+    return NextResponse.json({ message: "Informe a programacao e o motivo do cancelamento." }, { status: 400 });
+  }
+
+  const currentProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId);
+  if (!currentProgramming) {
+    return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
+  }
+
+  const { data: project } = await resolution.supabase
+    .from("project_with_labels")
+    .select("id, sob")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("id", currentProgramming.project_id)
+    .maybeSingle<{ id: string; sob: string }>();
+
+  const cancelResult = await cancelProgrammingViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId,
+    reason,
+    expectedUpdatedAt,
+  });
+
+  if (!cancelResult.ok) {
+    return NextResponse.json({ message: cancelResult.message }, { status: cancelResult.status });
+  }
+
+  await registerProgrammingHistory({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId,
+    projectCode: project?.sob ?? cancelResult.projectCode ?? currentProgramming.project_id,
+    reason,
+    force: true,
+    changes: {
+      isActive: { from: "true", to: "false" },
+      cancellationReason: { from: null, to: reason },
+    },
+    metadata: {
+      action: "CANCEL",
+      projectId: currentProgramming.project_id,
+      teamId: currentProgramming.team_id,
+      executionDate: currentProgramming.execution_date,
+    },
+  });
+
+  return NextResponse.json({
+    success: true,
+    id: programmingId,
+    message: cancelResult.message,
+  });
 }

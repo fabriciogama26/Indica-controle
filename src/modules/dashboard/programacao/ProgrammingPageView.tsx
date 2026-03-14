@@ -96,6 +96,12 @@ type ModalState = {
   form: ScheduleFormState;
 };
 
+type CancelModalState = {
+  scheduleId: string;
+  projectCode: string;
+  expectedUpdatedAt: string;
+};
+
 type FeedbackState = {
   type: "success" | "error";
   message: string;
@@ -452,9 +458,12 @@ export function ProgrammingPageView() {
   const [draggingItem, setDraggingItem] = useState<DragPayload | null>(null);
   const [activeDropSlot, setActiveDropSlot] = useState<string | null>(null);
   const [modalState, setModalState] = useState<ModalState | null>(null);
+  const [cancelModalState, setCancelModalState] = useState<CancelModalState | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [isBoardLoading, setIsBoardLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
 
   const visibleDates = createVisibleDates(periodStart, viewMode);
@@ -521,6 +530,7 @@ export function ProgrammingPageView() {
   const expectedDuration = modalState
     ? formatDuration(calculateExpectedMinutes(modalState.form.startTime, modalState.form.endTime, modalState.form.period))
     : "0h";
+  const canSubmitCancellation = Boolean(cancelReason.trim()) && !isCancelling;
 
   useEffect(() => {
     if (!accessToken) {
@@ -675,6 +685,29 @@ export function ProgrammingPageView() {
 
     setModalState(buildDefaultForm(project, schedule));
     setFeedback(null);
+  }
+
+  function openCancellationModal() {
+    if (!editingSchedule || !activeProject) {
+      return;
+    }
+
+    setCancelModalState({
+      scheduleId: editingSchedule.id,
+      projectCode: activeProject.code,
+      expectedUpdatedAt: editingSchedule.updatedAt,
+    });
+    setCancelReason("");
+    setFeedback(null);
+  }
+
+  function closeCancellationModal() {
+    if (isCancelling) {
+      return;
+    }
+
+    setCancelModalState(null);
+    setCancelReason("");
   }
 
   function updateModalField<Key extends keyof ScheduleFormState>(field: Key, value: ScheduleFormState[Key]) {
@@ -912,6 +945,8 @@ export function ProgrammingPageView() {
       setTeams(reloadData?.teams ?? []);
       setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
       setModalState(null);
+      setCancelModalState(null);
+      setCancelReason("");
       setFeedback({
         type: "success",
         message: data?.message ?? "Programacao salva com sucesso.",
@@ -926,6 +961,61 @@ export function ProgrammingPageView() {
     }
   }
 
+  async function handleCancelSchedule() {
+    if (!accessToken || !cancelModalState || !cancelReason.trim()) {
+      return;
+    }
+
+    setIsCancelling(true);
+
+    try {
+      const response = await fetch("/api/programacao", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: cancelModalState.scheduleId,
+          reason: cancelReason.trim(),
+          expectedUpdatedAt: cancelModalState.expectedUpdatedAt,
+        }),
+      });
+
+      const data = (await response.json().catch(() => null)) as SaveProgrammingResponse | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Falha ao cancelar programacao.");
+      }
+
+      const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
+      if (!reloadResponse.ok) {
+        throw new Error(reloadData?.message ?? "Programacao cancelada, mas falhou ao recarregar a grade.");
+      }
+
+      setProjects(reloadData?.projects ?? []);
+      setTeams(reloadData?.teams ?? []);
+      setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
+      setModalState(null);
+      setCancelModalState(null);
+      setCancelReason("");
+      setFeedback({
+        type: "success",
+        message: data?.message ?? `Programacao do projeto ${cancelModalState.projectCode} cancelada com sucesso.`,
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao cancelar programacao.",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
+  }
+
   function handleDrop(event: DragEvent<HTMLDivElement>, teamId: string, date: string) {
     event.preventDefault();
     openScheduleModalFromDrop(teamId, date);
@@ -934,6 +1024,10 @@ export function ProgrammingPageView() {
 
   return (
     <section className={styles.page}>
+      {feedback ? (
+        <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
+      ) : null}
+
       <div className={styles.surface}>
         <aside className={styles.pendingPanel}>
           <header className={styles.panelHeader}>
@@ -990,12 +1084,6 @@ export function ProgrammingPageView() {
               </label>
             </div>
           </div>
-
-          {feedback ? (
-            <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>
-              {feedback.message}
-            </div>
-          ) : null}
 
           <div className={styles.pendingList}>
             {isBoardLoading && !projects.length ? (
@@ -1497,21 +1585,75 @@ export function ProgrammingPageView() {
                 </div>
               </section>
 
-              {feedback ? (
-                <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>
-                  {feedback.message}
-                </div>
-              ) : null}
-
               <div className={styles.modalActions}>
+                {modalState.scheduleId ? (
+                  <button type="button" className={styles.dangerButton} onClick={openCancellationModal} disabled={isSaving}>
+                    Cancelar programacao
+                  </button>
+                ) : null}
                 <button type="submit" className={styles.primaryButton} disabled={isSaving}>
                   {isSaving ? "Salvando..." : "Salvar programacao"}
                 </button>
                 <button type="button" className={styles.ghostButton} onClick={() => setModalState(null)} disabled={isSaving}>
-                  Cancelar
+                  Fechar
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {cancelModalState ? (
+        <div className={styles.modalOverlay} onClick={closeCancellationModal}>
+          <div className={styles.confirmationCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <p className={styles.eyebrow}>Programacao</p>
+                <h3>Cancelar Programacao</h3>
+              </div>
+              <button
+                type="button"
+                className={styles.modalCloseButton}
+                onClick={closeCancellationModal}
+                disabled={isCancelling}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <p className={styles.modalText}>
+                Informe o motivo do cancelamento da programacao do projeto {cancelModalState.projectCode}. O registro sera
+                retirado da grade ativa, mas continuara no historico.
+              </p>
+
+              <label className={styles.field}>
+                <span>
+                  Motivo do cancelamento <span className="requiredMark">*</span>
+                </span>
+                <textarea
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  rows={4}
+                  placeholder="Descreva o motivo do cancelamento"
+                  disabled={isCancelling}
+                />
+              </label>
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={() => void handleCancelSchedule()}
+                  disabled={!canSubmitCancellation}
+                >
+                  {isCancelling ? "Cancelando..." : "Validar cancelamento"}
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={closeCancellationModal} disabled={isCancelling}>
+                  Voltar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
