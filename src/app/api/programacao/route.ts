@@ -40,6 +40,28 @@ type ServiceCenterRow = {
   name: string;
 };
 
+type SupportOptionRow = {
+  id: string;
+  description: string;
+  is_active: boolean;
+};
+
+type LocationPlanSupportRow = {
+  project_id: string;
+  questionnaire_answers: Record<string, unknown> | null;
+};
+
+type TeamWeekSummaryRow = {
+  team_id: string;
+  week_start: string;
+  week_end: string;
+  worked_days: number | string;
+  capacity_days: number | string;
+  free_days: number | string;
+  load_percent: number | string;
+  load_status: "FREE" | "NORMAL" | "WARNING" | "OVERLOAD";
+};
+
 type ProgrammingRow = {
   id: string;
   project_id: string;
@@ -52,6 +74,7 @@ type ProgrammingRow = {
   expected_minutes: number;
   feeder: string | null;
   support: string | null;
+  support_item_id: string | null;
   note: string | null;
   sgd_number: string | null;
   sgd_included_at: string | null;
@@ -93,6 +116,7 @@ type SaveProgrammingPayload = {
   expectedMinutes?: number | string;
   feeder?: string;
   support?: string;
+  supportItemId?: string;
   note?: string;
   changeReason?: string;
   expectedUpdatedAt?: string;
@@ -188,6 +212,41 @@ function normalizePositiveNumber(value: unknown) {
   }
 
   return Number(parsed.toFixed(2));
+}
+
+function normalizeQuestionnaireAnswers(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function normalizeStringArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => normalizeText(item)).filter(Boolean);
+}
+
+function normalizeDescriptionKey(value: string) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+function startOfWeekMonday(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+  const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  date.setDate(date.getDate() + offset);
+  const nextYear = date.getFullYear();
+  const nextMonth = String(date.getMonth() + 1).padStart(2, "0");
+  const nextDay = String(date.getDate()).padStart(2, "0");
+  return `${nextYear}-${nextMonth}-${nextDay}`;
 }
 
 function normalizePeriod(value: unknown) {
@@ -323,6 +382,70 @@ async function fetchTeams(
   }));
 }
 
+async function fetchSupportOptions(
+  supabase: SupabaseClient,
+  tenantId: string,
+) {
+  const { data, error } = await supabase
+    .from("location_execution_support_items")
+    .select("id, description, is_active")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("description", { ascending: true })
+    .returns<SupportOptionRow[]>();
+
+  if (error) {
+    return [] as SupportOptionRow[];
+  }
+
+  return data ?? [];
+}
+
+async function fetchProjectSupportDefaults(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds: string[];
+  supportOptions: SupportOptionRow[];
+}) {
+  if (!params.projectIds.length || !params.supportOptions.length) {
+    return new Map<string, { supportItemId: string; supportLabel: string }>();
+  }
+
+  const guardaMunicipalOption =
+    params.supportOptions.find((item) => normalizeDescriptionKey(item.description) === "GUARDA MUNICIPAL") ?? null;
+
+  if (!guardaMunicipalOption) {
+    return new Map<string, { supportItemId: string; supportLabel: string }>();
+  }
+
+  const { data, error } = await params.supabase
+    .from("project_location_plans")
+    .select("project_id, questionnaire_answers")
+    .eq("tenant_id", params.tenantId)
+    .in("project_id", params.projectIds)
+    .returns<LocationPlanSupportRow[]>();
+
+  if (error) {
+    return new Map<string, { supportItemId: string; supportLabel: string }>();
+  }
+
+  const defaults = new Map<string, { supportItemId: string; supportLabel: string }>();
+  for (const plan of data ?? []) {
+    const questionnaireAnswers = normalizeQuestionnaireAnswers(plan.questionnaire_answers);
+    const executionForecast = normalizeQuestionnaireAnswers(questionnaireAnswers.executionForecast);
+    const removedSupportItemIds = new Set(normalizeStringArray(executionForecast.removedSupportItemIds));
+
+    if (!removedSupportItemIds.has("90e570df-732f-43dd-9851-8fd8178ce1fc")) {
+      defaults.set(plan.project_id, {
+        supportItemId: guardaMunicipalOption.id,
+        supportLabel: normalizeText(guardaMunicipalOption.description),
+      });
+    }
+  }
+
+  return defaults;
+}
+
 async function fetchProgrammingRows(
   supabase: SupabaseClient,
   tenantId: string,
@@ -332,7 +455,7 @@ async function fetchProgrammingRows(
   const { data, error } = await supabase
     .from("project_programming")
     .select(
-      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
+      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
@@ -347,6 +470,23 @@ async function fetchProgrammingRows(
   }
 
   return data ?? [];
+}
+
+async function fetchProgrammingWeekSummary(
+  supabase: SupabaseClient,
+  tenantId: string,
+  weekStart: string,
+) {
+  const { data, error } = await supabase.rpc("get_programming_week_summary", {
+    p_tenant_id: tenantId,
+    p_week_start: weekStart,
+  });
+
+  if (error) {
+    return [] as TeamWeekSummaryRow[];
+  }
+
+  return (data ?? []) as TeamWeekSummaryRow[];
 }
 
 async function fetchProgrammingActivities(
@@ -389,7 +529,7 @@ async function fetchProgrammingById(
   const { data, error } = await supabase
     .from("project_programming")
     .select(
-      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
+      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
@@ -417,6 +557,7 @@ async function saveProgrammingViaRpc(params: {
   expectedMinutes: number;
   feeder?: string | null;
   support?: string | null;
+  supportItemId?: string | null;
   note?: string | null;
   documents: NonNullable<SaveProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
@@ -442,6 +583,7 @@ async function saveProgrammingViaRpc(params: {
     })),
     p_programming_id: params.programmingId ?? null,
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
+    p_support_item_id: params.supportItemId ?? null,
   });
 
   if (error) {
@@ -566,13 +708,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "startDate e endDate sao obrigatorios." }, { status: 400 });
     }
 
-    const [projects, teams, programmingRows] = await Promise.all([
+    const weekStart = startOfWeekMonday(startDate);
+    const [projects, teams, programmingRows, supportOptions, teamSummaries] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, startDate, endDate),
+      fetchSupportOptions(resolution.supabase, resolution.appUser.tenant_id),
+      fetchProgrammingWeekSummary(resolution.supabase, resolution.appUser.tenant_id, weekStart),
     ]);
 
     const projectMap = new Map(projects.map((item) => [item.id, item]));
+    const supportDefaults = await fetchProjectSupportDefaults({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectIds: projects.map((item) => item.id),
+      supportOptions,
+    });
     const activitiesMap = await fetchProgrammingActivities(
       resolution.supabase,
       resolution.appUser.tenant_id,
@@ -590,8 +741,24 @@ export async function GET(request: NextRequest) {
           priority: normalizeText(item.priority_text) || "Sem prioridade",
           note: normalizeText(item.observation) || normalizeText(item.service_description),
           hasLocacao: Boolean(item.has_locacao),
+          defaultSupportItemId: supportDefaults.get(item.id)?.supportItemId ?? null,
+          defaultSupportLabel: supportDefaults.get(item.id)?.supportLabel ?? null,
         })),
       teams,
+      supportOptions: supportOptions.map((item) => ({
+        id: item.id,
+        description: normalizeText(item.description),
+      })),
+      teamSummaries: teamSummaries.map((item) => ({
+        teamId: item.team_id,
+        weekStart: item.week_start,
+        weekEnd: item.week_end,
+        workedDays: Number(item.worked_days ?? 0),
+        capacityDays: Number(item.capacity_days ?? 5),
+        freeDays: Number(item.free_days ?? 0),
+        loadPercent: Number(item.load_percent ?? 0),
+        loadStatus: item.load_status ?? "FREE",
+      })),
       schedules: programmingRows.map((item) => {
         const project = projectMap.get(item.project_id);
         const scheduleActivities = activitiesMap.get(item.id) ?? [];
@@ -608,6 +775,7 @@ export async function GET(request: NextRequest) {
           expectedMinutes: Number(item.expected_minutes ?? 0),
           feeder: normalizeText(item.feeder),
           support: normalizeText(item.support),
+          supportItemId: item.support_item_id,
           note: normalizeText(item.note),
           projectBase: normalizeText(project?.service_center_text) || "Sem base",
           activities: scheduleActivities.map((activity) => ({
@@ -663,6 +831,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const expectedMinutes = normalizePositiveInteger(payload?.expectedMinutes);
   const feeder = normalizeNullableText(payload?.feeder);
   const support = normalizeNullableText(payload?.support);
+  const supportItemId = normalizeNullableText(payload?.supportItemId);
   const note = normalizeNullableText(payload?.note);
   const changeReason = normalizeNullableText(payload?.changeReason);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
@@ -732,6 +901,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     expectedMinutes,
     feeder,
     support,
+    supportItemId,
     note,
     documents,
     activities,

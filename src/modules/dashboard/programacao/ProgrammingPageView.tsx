@@ -21,6 +21,8 @@ type ProjectItem = {
   priority: string;
   note: string;
   hasLocacao: boolean;
+  defaultSupportItemId?: string | null;
+  defaultSupportLabel?: string | null;
 };
 
 type TeamItem = {
@@ -67,9 +69,26 @@ type ScheduleItem = {
   documents: Record<DocumentKey, DocumentEntry>;
   feeder: string;
   support: string;
+  supportItemId: string | null;
   note: string;
   projectBase: string;
   hasIssue: boolean;
+};
+
+type SupportOptionItem = {
+  id: string;
+  description: string;
+};
+
+type TeamSummaryItem = {
+  teamId: string;
+  weekStart: string;
+  weekEnd: string;
+  workedDays: number;
+  capacityDays: number;
+  freeDays: number;
+  loadPercent: number;
+  loadStatus: "FREE" | "NORMAL" | "WARNING" | "OVERLOAD";
 };
 
 type DragPayload =
@@ -85,7 +104,7 @@ type ScheduleFormState = {
   activityQuantity: string;
   documents: Record<DocumentKey, DocumentEntry>;
   feeder: string;
-  support: string;
+  supportItemId: string;
   note: string;
 };
 
@@ -116,8 +135,8 @@ type SaveRequestPayload = {
   endTime: string;
   expectedMinutes: number;
   feeder: string;
-  support: string;
   note: string;
+  supportItemId?: string;
   expectedUpdatedAt?: string;
   changeReason?: string;
   documents: Record<DocumentKey, { number: string; deliveredAt: string }>;
@@ -137,6 +156,8 @@ type FeedbackState = {
 type ProgrammingResponse = {
   projects?: ProjectItem[];
   teams?: TeamItem[];
+  supportOptions?: SupportOptionItem[];
+  teamSummaries?: TeamSummaryItem[];
   schedules?: Array<{
     id: string;
     projectId: string;
@@ -149,6 +170,7 @@ type ProgrammingResponse = {
     expectedMinutes: number;
     feeder: string;
     support: string;
+    supportItemId?: string | null;
     note: string;
     projectBase: string;
     activities?: ScheduleActivityItem[];
@@ -309,7 +331,7 @@ function buildDefaultForm(project: ProjectItem, schedule?: ScheduleItem, nextDat
       activityQuantity: "1",
       documents: schedule ? createDocuments(schedule.documents) : createEmptyDocuments(),
       feeder: schedule?.feeder ?? "",
-      support: schedule?.support ?? "",
+      supportItemId: schedule?.supportItemId ?? project.defaultSupportItemId ?? "",
       note: schedule?.note ?? project.note,
     },
   };
@@ -353,17 +375,6 @@ function getScheduleTone(schedule: ScheduleItem): ScheduleTone {
   return "planned";
 }
 
-function getLoadPercentage(teamId: string, dates: string[], schedules: ScheduleItem[]) {
-  const visibleDates = new Set(dates);
-
-  return Math.min(
-    100,
-    schedules
-      .filter((schedule) => schedule.teamId === teamId && visibleDates.has(schedule.date))
-      .reduce((total, schedule) => total + (schedule.period === "integral" ? 40 : 20), 0),
-  );
-}
-
 function sortSchedules(items: ScheduleItem[]) {
   return [...items].sort((left, right) => {
     if (left.date === right.date) {
@@ -404,6 +415,42 @@ function toneClassName(tone: ScheduleTone) {
   return styles.scheduleCardPlanned;
 }
 
+function workloadBarClassName(loadStatus: TeamSummaryItem["loadStatus"]) {
+  if (loadStatus === "WARNING") {
+    return `${styles.workloadBar} ${styles.workloadBarWarning}`;
+  }
+
+  if (loadStatus === "OVERLOAD") {
+    return `${styles.workloadBar} ${styles.workloadBarOverload}`;
+  }
+
+  return `${styles.workloadBar} ${styles.workloadBarNormal}`;
+}
+
+function workloadStatusLabel(summary?: TeamSummaryItem) {
+  if (!summary || summary.workedDays <= 0) {
+    return "Folga";
+  }
+
+  if (summary.loadStatus === "WARNING") {
+    return "Alerta";
+  }
+
+  if (summary.loadStatus === "OVERLOAD") {
+    return "Sobrecarga";
+  }
+
+  return "Normal";
+}
+
+function workloadPrimaryLabel(summary?: TeamSummaryItem) {
+  if (!summary || summary.workedDays <= 0) {
+    return "Carga livre";
+  }
+
+  return `Carga: ${summary.workedDays}/${summary.capacityDays} dias`;
+}
+
 function normalizeSchedule(
   item: NonNullable<ProgrammingResponse["schedules"]>[number],
 ): ScheduleItem {
@@ -427,6 +474,7 @@ function normalizeSchedule(
     documents: createDocuments(item.documents),
     feeder: item.feeder ?? "",
     support: item.support ?? "",
+    supportItemId: item.supportItemId ?? null,
     note: item.note ?? "",
     projectBase: item.projectBase ?? "Sem base",
     hasIssue: detectScheduleIssue(item.note ?? ""),
@@ -495,6 +543,8 @@ export function ProgrammingPageView() {
   const [isSaving, setIsSaving] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
+  const [supportOptions, setSupportOptions] = useState<SupportOptionItem[]>([]);
+  const [teamSummaries, setTeamSummaries] = useState<TeamSummaryItem[]>([]);
 
   const visibleDates = createVisibleDates(periodStart, viewMode);
   const rangeStart = visibleDates[0] ?? INITIAL_PERIOD_START;
@@ -514,6 +564,7 @@ export function ProgrammingPageView() {
   );
   const visibleTeamIds = new Set(visibleTeams.map((team) => team.id));
   const filteredBoardSchedules = schedules.filter((item) => visibleTeamIds.has(item.teamId));
+  const teamSummaryMap = new Map(teamSummaries.map((item) => [item.teamId, item]));
   const pendingProjects = projects.filter((project) => {
     if (scheduledProjectIds.has(project.id)) {
       return false;
@@ -546,9 +597,12 @@ export function ProgrammingPageView() {
     return true;
   });
   const scheduledInPeriod = filteredBoardSchedules.filter((item) => visibleDates.includes(item.date));
-  const totalWorkload = visibleTeams.reduce((total, team) => total + getLoadPercentage(team.id, visibleDates, filteredBoardSchedules), 0);
+  const totalWorkload = visibleTeams.reduce(
+    (total, team) => total + (teamSummaryMap.get(team.id)?.loadPercent ?? 0),
+    0,
+  );
   const averageWorkload = visibleTeams.length ? Math.round(totalWorkload / visibleTeams.length) : 0;
-  const freeTeams = visibleTeams.filter((team) => getLoadPercentage(team.id, visibleDates, filteredBoardSchedules) === 0).length;
+  const freeTeams = visibleTeams.filter((team) => (teamSummaryMap.get(team.id)?.workedDays ?? 0) === 0).length;
   const timelineStyle = {
     gridTemplateColumns: `repeat(${visibleDates.length}, minmax(${viewMode === "week" ? 96 : 180}px, 1fr))`,
   } satisfies CSSProperties;
@@ -568,6 +622,8 @@ export function ProgrammingPageView() {
       setProjects([]);
       setTeams([]);
       setSchedules([]);
+      setSupportOptions([]);
+      setTeamSummaries([]);
       return;
     }
 
@@ -593,6 +649,8 @@ export function ProgrammingPageView() {
 
         setProjects(data?.projects ?? []);
         setTeams(data?.teams ?? []);
+        setSupportOptions(data?.supportOptions ?? []);
+        setTeamSummaries(data?.teamSummaries ?? []);
         setSchedules(sortSchedules((data?.schedules ?? []).map(normalizeSchedule)));
       } catch (error) {
         if (ignore) {
@@ -958,6 +1016,8 @@ export function ProgrammingPageView() {
 
       setProjects(reloadData?.projects ?? []);
       setTeams(reloadData?.teams ?? []);
+      setSupportOptions(reloadData?.supportOptions ?? []);
+      setTeamSummaries(reloadData?.teamSummaries ?? []);
       setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
       setModalState(null);
       setCancelModalState(null);
@@ -1009,7 +1069,7 @@ export function ProgrammingPageView() {
       endTime: modalState.form.endTime,
       expectedMinutes,
       feeder: modalState.form.feeder.trim(),
-      support: modalState.form.support.trim(),
+      supportItemId: modalState.form.supportItemId || undefined,
       note: modalState.form.note.trim(),
       expectedUpdatedAt: editingSchedule?.updatedAt ?? undefined,
       documents: DOCUMENT_KEYS.reduce(
@@ -1102,6 +1162,8 @@ export function ProgrammingPageView() {
 
       setProjects(reloadData?.projects ?? []);
       setTeams(reloadData?.teams ?? []);
+      setSupportOptions(reloadData?.supportOptions ?? []);
+      setTeamSummaries(reloadData?.teamSummaries ?? []);
       setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
       setModalState(null);
       setCancelModalState(null);
@@ -1326,7 +1388,8 @@ export function ProgrammingPageView() {
               ) : null}
 
               {visibleTeams.map((team) => {
-                const load = getLoadPercentage(team.id, visibleDates, filteredBoardSchedules);
+                const loadSummary = teamSummaryMap.get(team.id);
+                const loadPercent = Math.max(loadSummary?.loadPercent ?? 0, 8);
 
                 return (
                   <div key={team.id} className={styles.teamRow}>
@@ -1341,11 +1404,11 @@ export function ProgrammingPageView() {
 
                       <div className={styles.workloadBlock}>
                         <div className={styles.workloadLabel}>
-                          <span>{load === 0 ? "Carga livre" : `Carga: ${load}%`}</span>
-                          <span>{load < 60 ? "Folga" : load < 90 ? "Equilibrada" : "Alta"}</span>
+                          <span>{workloadPrimaryLabel(loadSummary)}</span>
+                          <span>{workloadStatusLabel(loadSummary)}</span>
                         </div>
-                        <div className={styles.workloadBar}>
-                          <span style={{ width: `${Math.max(load, 8)}%` }} />
+                        <div className={workloadBarClassName(loadSummary?.loadStatus ?? "FREE")}>
+                          <span style={{ width: `${loadPercent}%` }} />
                         </div>
                       </div>
                     </aside>
@@ -1678,11 +1741,17 @@ export function ProgrammingPageView() {
                   </label>
                   <label className={styles.field}>
                     <span>Apoio</span>
-                    <input
-                      value={modalState.form.support}
-                      onChange={(event) => updateModalField("support", event.target.value)}
-                      placeholder="Ex.: guindauto"
-                    />
+                    <select
+                      value={modalState.form.supportItemId}
+                      onChange={(event) => updateModalField("supportItemId", event.target.value)}
+                    >
+                      <option value="">Selecione o apoio</option>
+                      {supportOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.description}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className={`${styles.field} ${styles.fieldWide}`}>
                     <span>Anotacao</span>
@@ -1694,6 +1763,11 @@ export function ProgrammingPageView() {
                     />
                   </label>
                 </div>
+                {activeProject?.defaultSupportItemId ? (
+                  <p className={styles.helperText}>
+                    Apoio sugerido automaticamente pela locacao: {activeProject.defaultSupportLabel ?? "Guarda Municipal"}.
+                  </p>
+                ) : null}
               </section>
 
               <div className={styles.modalActions}>

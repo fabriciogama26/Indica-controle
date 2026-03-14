@@ -195,6 +195,7 @@ Atualizacao 2026-03
 - API `src/app/api/projects/route.ts` evoluida para:
   - `GET` lista e historico por `historyProjectId` com paginacao (`historyPage`, `historyPageSize`).
   - `GET` agora le dados em `public.project_with_labels` para exibir textos de lookup sem redundancia na tabela base.
+  - `GET` possui fallback de compatibilidade para banco/view ainda sem `has_locacao` exposto em `project_with_labels`.
   - `POST` cadastro.
   - `PUT` edicao com diff em `project_history`.
   - `PATCH` cancelamento/ativacao com motivo obrigatorio e bloqueio de inativacao quando houver agenda operacional pendente.

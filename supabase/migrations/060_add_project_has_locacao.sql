@@ -16,7 +16,8 @@ where exists (
 create index if not exists idx_project_tenant_has_locacao
   on public.project (tenant_id, has_locacao);
 
-create or replace view public.project_with_labels with (security_invoker = true) as
+drop view if exists public.project_with_labels;
+create view public.project_with_labels with (security_invoker = true) as
 select
   p.id,
   p.tenant_id,

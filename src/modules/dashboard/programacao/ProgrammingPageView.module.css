@@ -569,7 +569,18 @@
   display: block;
   height: 100%;
   border-radius: inherit;
+}
+
+.workloadBarNormal span {
   background: linear-gradient(90deg, #4c84ff 0%, #2149a6 100%);
+}
+
+.workloadBarWarning span {
+  background: linear-gradient(90deg, #f8cf57 0%, #e4a500 100%);
+}
+
+.workloadBarOverload span {
+  background: linear-gradient(90deg, #ff8b7d 0%, #d73a31 100%);
 }
 
 .teamTimeline {
@@ -757,6 +768,13 @@
   margin: 0;
   color: #4f638a;
   line-height: 1.6;
+}
+
+.helperText {
+  margin: 0;
+  color: #46608e;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .modalSection {

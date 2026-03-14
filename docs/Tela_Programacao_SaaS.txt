@@ -16,6 +16,7 @@ Arquitetura
 - Migrations principais:
   - `supabase/migrations/067_create_project_programming.sql`
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
+  - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
 Cadastro
@@ -32,8 +33,12 @@ Cadastro
   - Atividades por codigo + quantidade
   - Documentos `SGD`, `PI`, `PEP`
   - Alimentador
-  - Apoio
+  - Apoio por selectbox de catalogo
   - Anotacao
+- Regra de apoio:
+  - O campo `Apoio` deixa de ser texto livre e passa a consumir o catalogo `location_execution_support_items`.
+  - Quando a obra possui `Locacao` e o item de apoio de transito `90e570df-732f-43dd-9851-8fd8178ce1fc` estiver incluido na locacao, a Programacao preseleciona automaticamente `Guarda Municipal`.
+  - O valor salvo na programacao guarda tanto o `support_item_id` quanto o texto snapshot do apoio.
 - Regra dos documentos:
   - `Data inclusao` nao e digitada manualmente.
   - Ao salvar a programacao com numero preenchido em `SGD`, `PI` ou `PEP`, a `Data inclusao` recebe automaticamente a data atual do sistema no backend.
@@ -74,18 +79,24 @@ Filtros, auto-complete e listagem
   - Alternancia `Semana` / `Dia`
   - Navegacao do periodo por setas
   - Na visualizacao `Semana`, a grade sempre mostra `segunda a domingo`
+  - A carga da equipe passa a ser semanal, sempre calculada de `segunda a domingo`, mesmo quando a tela estiver em visualizacao diaria
 - Auto-complete:
   - Campo de atividades do modal pesquisa atividades reais por codigo/descricao no catalogo do tenant.
 - Listagens:
   - Cards de projetos pendentes no painel esquerdo
   - Timeline com colunas por data e linhas por equipe no painel direito
   - Badge da equipe usa a `Base` real (`Centro de servico`); subtitulo da linha usa `foremanName`
+  - Barra de carga da equipe usa resumo semanal vindo do backend:
+    - `0 a 5 dias` programados: azul
+    - `6 dias`: amarelo
+    - `7 dias ou mais`: vermelho
 
 Boas praticas
 -------------
 - Manter `programacao` como `pageKey` oficial no controle de permissao.
 - Toda operacao continua restrita ao tenant autenticado via `resolveAuthenticatedAppUser`, `tenant_id` e RLS.
 - As migrations `067` e `068` formalizam a base multi-tenant da programacao, o vinculo de base da equipe e a RPC transacional de salvamento.
+- A migration `071` move o resumo semanal de carga para o banco e vincula o apoio da programacao ao catalogo da locacao.
 - A API registra historico em `app_entity_history` com `module_key = programacao`.
 - O salvamento da programacao agora usa RPC com:
   - validacao de concorrencia por `expected_updated_at`
@@ -144,17 +155,25 @@ Atualizacao 2026-03
   - RPC `set_project_programming_status`
   - separacao entre adiamento e cancelamento sem perda de historico
   - bloqueio de inativacao de projeto quando ainda existir programacao `PROGRAMADA` ou `ADIADA`
+- Arquivo `supabase/migrations/071_programming_week_summary_and_support_catalog.sql` criado com:
+  - coluna `support_item_id` em `project_programming`
+  - RPC `get_programming_week_summary`
+  - resumo semanal persistido no backend com capacidade padrao de 5 dias
+  - classificacao visual de carga `FREE`, `NORMAL`, `WARNING` e `OVERLOAD`
+  - vinculacao da programacao com o catalogo `location_execution_support_items`
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
   - salvar criacao/edicao por `POST` e `PUT` com `expectedUpdatedAt`
   - cancelar ou adiar programacao por `PATCH` com motivo obrigatorio
   - validar reprogramacao por modal proprio com motivo obrigatorio de no minimo 10 caracteres
-  - recalcular backlog pendente e carga por equipe com os dados reais do periodo
+  - recalcular backlog pendente com dados reais do periodo
+  - consumir a carga semanal real da equipe pela API em vez de calcular localmente no frontend
   - manter semana completa de segunda a domingo
   - manter nomenclatura documental `PEP`
   - exibir a base real da equipe na grade e no filtro do painel direito
   - exibir o status de `Locacao` no card do projeto pendente
+  - usar `Apoio` por selectbox com sugestao automatica quando a locacao exigir apoio de transito
   - exibir o feedback de sucesso/erro no topo da tela, no mesmo padrao dos demais modulos
 - Antes:
   - `/programacao` era local no frontend, com projetos, equipes e programacoes mockadas.
@@ -176,6 +195,8 @@ Funcoes principais
   - Responsavel por: persistir cancelamento de programacao e retirar registros cancelados da grade ativa.
 - Caminho: `supabase/migrations/070_add_programming_status_and_project_guard.sql`
   - Responsavel por: separar adiamento de cancelamento e bloquear inativacao de projeto com agenda pendente.
+- Caminho: `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
+  - Responsavel por: calcular carga semanal no banco e ligar apoio da programacao ao catalogo da locacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -187,9 +208,9 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
-  - Responsavel por: `createVisibleDates`, `formatBoardDate`, `formatPeriodLabel`, `calculateExpectedMinutes`, `getScheduleTone`, `getLoadPercentage`, `normalizeSchedule` e `buildIncludedAtLabel`.
+  - Responsavel por: `createVisibleDates`, `formatBoardDate`, `formatPeriodLabel`, `calculateExpectedMinutes`, `getScheduleTone`, `workloadBarClassName`, `workloadPrimaryLabel`, `normalizeSchedule` e `buildIncludedAtLabel`.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `saveProgrammingViaRpc` e `registerProgrammingHistory`.
+  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingViaRpc` e `registerProgrammingHistory`.
 
 Servicos e integracoes externas
 - `project_with_labels`: backlog real de projetos ativos.
@@ -206,6 +227,7 @@ Ajuda contextual
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `supabase/migrations/069_add_programming_cancellation.sql`
   - `supabase/migrations/070_add_programming_status_and_project_guard.sql`
+  - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -215,4 +237,4 @@ Ajuda contextual
   - `INITIAL_PERIOD_START`
 - Comportamento antes/depois:
   - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional; nao havia cancelamento persistente nem diferenca entre cancelamento e adiamento.
-  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, RPC transacional com concorrencia/sobreposicao, cancelamento persistente por motivo e adiamento separado por status.
+  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, resumo semanal de carga vindo do banco, apoio por catalogo com sugestao automatica da locacao, RPC transacional com concorrencia/sobreposicao, cancelamento persistente por motivo e adiamento separado por status.
