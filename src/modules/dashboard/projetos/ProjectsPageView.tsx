@@ -524,6 +524,7 @@ export function ProjectsPageView() {
   const [isExportingForecast, setIsExportingForecast] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectUpdatedAt, setEditingProjectUpdatedAt] = useState<string | null>(null);
   const [detailProject, setDetailProject] = useState<ProjectItem | null>(null);
   const [historyProject, setHistoryProject] = useState<ProjectItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<ProjectHistoryEntry[]>([]);
@@ -723,11 +724,13 @@ export function ProjectsPageView() {
             type: "error",
             message: data.message ?? "Falha ao carregar projetos.",
           });
-          return;
+          return [] as ProjectItem[];
         }
 
-        setProjects(data.projects ?? []);
+        const nextProjects = data.projects ?? [];
+        setProjects(nextProjects);
         setTotal(data.pagination?.total ?? 0);
+        return nextProjects;
       } catch {
         setProjects([]);
         setTotal(0);
@@ -735,6 +738,7 @@ export function ProjectsPageView() {
           type: "error",
           message: "Falha ao carregar projetos.",
         });
+        return [] as ProjectItem[];
       } finally {
         setIsLoadingList(false);
       }
@@ -801,6 +805,7 @@ export function ProjectsPageView() {
   function resetFormState() {
     setForm(INITIAL_FORM);
     setEditingProjectId(null);
+    setEditingProjectUpdatedAt(null);
   }
 
   function handleSobAutoFill(sobValue: string) {
@@ -876,6 +881,7 @@ export function ProjectsPageView() {
 
   function handleEditProject(project: ProjectItem) {
     setEditingProjectId(project.id);
+    setEditingProjectUpdatedAt(project.updatedAt);
     setForm(toFormState(project));
     setFeedback(null);
     scrollDashboardContentToTop();
@@ -1811,15 +1817,21 @@ export function ProjectsPageView() {
         },
         body: JSON.stringify({
           ...(isEditing ? { id: editingProjectId } : {}),
+          ...(isEditing ? { expectedUpdatedAt: editingProjectUpdatedAt } : {}),
           ...form,
           sob: normalizeSob(form.sob),
           priority: normalizePriority(form.priority),
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; code?: string };
 
       if (!response.ok) {
+        if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
+          resetFormState();
+          await loadProjects(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message:
@@ -1874,12 +1886,25 @@ export function ProjectsPageView() {
           id: cancelProject.id,
           reason: cancelReason.trim(),
           action,
+          expectedUpdatedAt: cancelProject.updatedAt,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; code?: string };
 
       if (!response.ok) {
+        if (
+          data.code === "CONCURRENT_MODIFICATION"
+          || data.code === "RECORD_INACTIVE"
+          || data.code === "STATUS_ALREADY_CHANGED"
+        ) {
+          if (editingProjectId === cancelProject.id) {
+            resetFormState();
+          }
+          closeCancelModal();
+          await loadProjects(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? `Falha ao ${actionLabel} projeto ${cancelProject.sob}.`,

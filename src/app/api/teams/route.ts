@@ -2,6 +2,11 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import {
+  buildConcurrencyConflictResponse,
+  hasUpdatedAtConflict,
+  normalizeExpectedUpdatedAt,
+} from "@/lib/server/concurrency";
 
 type TeamRow = {
   id: string;
@@ -75,12 +80,23 @@ type CreateTeamPayload = {
 
 type UpdateTeamPayload = CreateTeamPayload & {
   id: string;
+  expectedUpdatedAt?: string | null;
 };
 
 type UpdateTeamStatusPayload = {
   id: string;
   reason: string;
   action?: "cancel" | "activate";
+  expectedUpdatedAt?: string | null;
+};
+
+type TeamSaveRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  team_id?: string;
+  updated_at?: string;
 };
 
 function parsePositiveInteger(value: string | null, fallback: number) {
@@ -298,6 +314,84 @@ async function fetchTeamById(
   }
 
   return data;
+}
+
+async function saveTeamViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  teamId: string | null;
+  name: string;
+  vehiclePlate: string;
+  serviceCenterId: string;
+  teamTypeId: string;
+  foremanId: string;
+  changes?: Record<string, HistoryChange>;
+  expectedUpdatedAt?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("save_team_record", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_team_id: params.teamId,
+    p_name: params.name,
+    p_vehicle_plate: params.vehiclePlate,
+    p_service_center_id: params.serviceCenterId,
+    p_team_type_id: params.teamTypeId,
+    p_foreman_person_id: params.foremanId,
+    p_changes: params.changes ?? {},
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    return { ok: false, status: 500, message: "Falha ao salvar equipe." } as const;
+  }
+
+  const result = (data ?? {}) as TeamSaveRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      message: result.message ?? "Falha ao salvar equipe.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return { ok: true, updatedAt: result.updated_at ?? null } as const;
+}
+
+async function setTeamStatusViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  teamId: string;
+  action: "ACTIVATE" | "CANCEL";
+  reason: string;
+  expectedUpdatedAt: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("set_team_record_status", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_team_id: params.teamId,
+    p_action: params.action,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt,
+  });
+
+  if (error) {
+    return { ok: false, status: 500, message: "Falha ao atualizar status da equipe." } as const;
+  }
+
+  const result = (data ?? {}) as TeamSaveRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      message: result.message ?? "Falha ao atualizar status da equipe.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
 export async function GET(request: NextRequest) {
@@ -582,30 +676,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
     }
 
-    const { error } = await supabase.from("teams").insert({
-      tenant_id: appUser.tenant_id,
+    const saveResult = await saveTeamViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      teamId: null,
       name: input.name,
-      vehicle_plate: input.vehiclePlate,
-      service_center_id: input.serviceCenterId,
-      team_type_id: input.teamTypeId,
-      foreman_person_id: input.foremanId,
-      ativo: true,
-      cancellation_reason: null,
-      canceled_at: null,
-      canceled_by: null,
-      created_by: appUser.id,
-      updated_by: appUser.id,
+      vehiclePlate: input.vehiclePlate,
+      serviceCenterId: input.serviceCenterId,
+      teamTypeId: input.teamTypeId,
+      foremanId: input.foremanId,
     });
 
-    if (error) {
-      if (isTeamDuplicateCombinationError(error.message)) {
-        return NextResponse.json(
-          { message: "Ja existe equipe com o mesmo nome, encarregado e placa no tenant atual." },
-          { status: 409 },
-        );
-      }
-
-      return NextResponse.json({ message: "Falha ao cadastrar equipe." }, { status: 500 });
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message, code: saveResult.reason ?? undefined }, { status: saveResult.status });
     }
 
     return NextResponse.json({
@@ -631,6 +715,7 @@ export async function PUT(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as Partial<UpdateTeamPayload>;
     const teamId = normalizeText(body.id);
+    const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const input = {
       name: normalizeText(body.name),
       vehiclePlate: normalizePlate(body.vehiclePlate),
@@ -643,6 +728,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Equipe invalida para edicao." }, { status: 400 });
     }
 
+    if (!expectedUpdatedAt) {
+      return NextResponse.json({ message: "Atualize a lista antes de editar a equipe." }, { status: 400 });
+    }
+
     if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
@@ -652,8 +741,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Equipe nao encontrada." }, { status: 404 });
     }
 
+    if (hasUpdatedAtConflict(expectedUpdatedAt, currentTeam.updated_at)) {
+      return buildConcurrencyConflictResponse(
+        `A equipe ${currentTeam.name} foi alterada por outro usuario. Recarregue os dados antes de salvar novamente.`,
+      );
+    }
+
     if (!currentTeam.ativo) {
-      return NextResponse.json({ message: "Ative a equipe antes de editar." }, { status: 409 });
+      return buildConcurrencyConflictResponse("Ative a equipe antes de editar.", "RECORD_INACTIVE");
     }
 
     const currentTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, currentTeam.team_type_id);
@@ -690,53 +785,22 @@ export async function PUT(request: NextRequest) {
       });
     }
 
-    const { error } = await supabase
-      .from("teams")
-      .update({
-        name: input.name,
-        vehicle_plate: input.vehiclePlate,
-        service_center_id: input.serviceCenterId,
-        team_type_id: input.teamTypeId,
-        foreman_person_id: input.foremanId,
-        updated_by: appUser.id,
-      })
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", teamId);
-
-    if (error) {
-      if (isTeamDuplicateCombinationError(error.message)) {
-        return NextResponse.json(
-          { message: "Ja existe equipe com o mesmo nome, encarregado e placa no tenant atual." },
-          { status: 409 },
-        );
-      }
-
-      return NextResponse.json({ message: "Falha ao editar equipe." }, { status: 500 });
-    }
-
-    const { error: historyError } = await supabase.from("app_entity_history").insert({
-      tenant_id: appUser.tenant_id,
-      module_key: "equipes",
-      entity_table: "teams",
-      entity_id: teamId,
-      entity_code: input.name,
-      change_type: "UPDATE",
-      reason: null,
+    const saveResult = await saveTeamViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      teamId,
+      name: input.name,
+      vehiclePlate: input.vehiclePlate,
+      serviceCenterId: input.serviceCenterId,
+      teamTypeId: input.teamTypeId,
+      foremanId: input.foremanId,
       changes,
-      metadata: {},
-      created_by: appUser.id,
-      updated_by: appUser.id,
+      expectedUpdatedAt,
     });
 
-    if (historyError) {
-      return NextResponse.json(
-        {
-          success: true,
-          warning: true,
-          message: `Equipe ${input.name} atualizada, mas falhou ao registrar historico.`,
-        },
-        { status: 200 },
-      );
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message, code: saveResult.reason ?? undefined }, { status: saveResult.status });
     }
 
     return NextResponse.json({
@@ -764,9 +828,14 @@ export async function PATCH(request: NextRequest) {
     const teamId = normalizeText(body.id);
     const reason = normalizeText(body.reason);
     const action = normalizeText(body.action).toLowerCase() === "activate" ? "ACTIVATE" : "CANCEL";
+    const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
     if (!teamId) {
       return NextResponse.json({ message: "Equipe invalida para atualizar status." }, { status: 400 });
+    }
+
+    if (!expectedUpdatedAt) {
+      return NextResponse.json({ message: "Atualize a lista antes de alterar o status da equipe." }, { status: 400 });
     }
 
     if (!reason) {
@@ -781,84 +850,32 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Equipe nao encontrada." }, { status: 404 });
     }
 
+    if (hasUpdatedAtConflict(expectedUpdatedAt, currentTeam.updated_at)) {
+      return buildConcurrencyConflictResponse(
+        `A equipe ${currentTeam.name} foi alterada por outro usuario. Recarregue os dados antes de alterar o status.`,
+      );
+    }
+
     if (action === "CANCEL" && !currentTeam.ativo) {
-      return NextResponse.json({ message: `Equipe ${currentTeam.name} ja esta inativa.` }, { status: 409 });
+      return buildConcurrencyConflictResponse(`Equipe ${currentTeam.name} ja esta inativa.`, "STATUS_ALREADY_CHANGED");
     }
 
     if (action === "ACTIVATE" && currentTeam.ativo) {
-      return NextResponse.json({ message: `Equipe ${currentTeam.name} ja esta ativa.` }, { status: 409 });
+      return buildConcurrencyConflictResponse(`Equipe ${currentTeam.name} ja esta ativa.`, "STATUS_ALREADY_CHANGED");
     }
 
-    const nowIso = new Date().toISOString();
-    const { error: updateError } = await supabase
-      .from("teams")
-      .update(
-        action === "ACTIVATE"
-          ? {
-              ativo: true,
-              cancellation_reason: null,
-              canceled_at: null,
-              canceled_by: null,
-              updated_by: appUser.id,
-            }
-          : {
-              ativo: false,
-              cancellation_reason: reason,
-              canceled_at: nowIso,
-              canceled_by: appUser.id,
-              updated_by: appUser.id,
-            },
-      )
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", teamId);
-
-    if (updateError) {
-      return NextResponse.json(
-        { message: action === "ACTIVATE" ? "Falha ao ativar equipe." : "Falha ao cancelar equipe." },
-        { status: 500 },
-      );
-    }
-
-    const changePayload: Record<string, HistoryChange> =
-      action === "ACTIVATE"
-        ? {
-            isActive: { from: "false", to: "true" },
-            cancellationReason: { from: currentTeam.cancellation_reason, to: null },
-            canceledAt: { from: currentTeam.canceled_at, to: null },
-            activationReason: { from: null, to: reason },
-          }
-        : {
-            isActive: { from: "true", to: "false" },
-            cancellationReason: { from: currentTeam.cancellation_reason, to: reason },
-            canceledAt: { from: currentTeam.canceled_at, to: nowIso },
-          };
-
-    const { error: historyError } = await supabase.from("app_entity_history").insert({
-      tenant_id: appUser.tenant_id,
-      module_key: "equipes",
-      entity_table: "teams",
-      entity_id: teamId,
-      entity_code: currentTeam.name,
-      change_type: action,
+    const statusResult = await setTeamStatusViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      teamId,
+      action,
       reason,
-      changes: changePayload,
-      metadata: {},
-      created_by: appUser.id,
-      updated_by: appUser.id,
+      expectedUpdatedAt,
     });
 
-    if (historyError) {
-      return NextResponse.json(
-        {
-          success: true,
-          warning: true,
-          message:
-            action === "ACTIVATE"
-              ? `Equipe ${currentTeam.name} ativada, mas falhou ao registrar historico.`
-              : `Equipe ${currentTeam.name} cancelada, mas falhou ao registrar historico.`,
-        },
-        { status: 200 },
-      );
+    if (!statusResult.ok) {
+      return NextResponse.json({ message: statusResult.message, code: statusResult.reason ?? undefined }, { status: statusResult.status });
     }
 
     return NextResponse.json({

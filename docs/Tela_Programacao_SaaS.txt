@@ -18,6 +18,7 @@ Arquitetura
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - `supabase/migrations/072_create_programming_support_items.sql`
+  - `supabase/migrations/078_create_programming_history_append_rpc.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
 Cadastro
@@ -125,7 +126,7 @@ Boas praticas
 - As migrations `067` e `068` formalizam a base multi-tenant da programacao, o vinculo de base da equipe e a RPC transacional de salvamento.
 - As migrations `071` e `072` movem o resumo semanal de carga para o banco e formalizam o catalogo proprio de apoio da Programacao com vinculacao ao catalogo da Locacao.
 - As migrations `074`, `075` e `076` formalizam os lotes de copia da Programacao, adaptam o schema ao modo simplificado `team_period` e movem a copia em lote para uma RPC transacional.
-- A API registra historico em `app_entity_history` com `module_key = programacao`.
+- O historico complementar da `Programacao` agora tambem e registrado por RPC (`append_programming_history`), sem `insert` direto na route.
 - O salvamento da programacao agora usa RPC com:
   - validacao de concorrencia por `expected_updated_at`
   - bloqueio de sobreposicao de horario por `equipe + data`
@@ -210,6 +211,10 @@ Atualizacao 2026-03
   - copia transacional da linha inteira da equipe no periodo visivel
   - rollback automatico quando qualquer item do lote falha
   - historico de copia persistido no proprio banco, sem depender da API iterar item por item
+- Arquivo `supabase/migrations/078_create_programming_history_append_rpc.sql` criado com:
+  - RPC `append_programming_history`
+  - registro do historico complementar da `Programacao` no banco
+  - remocao do `insert` direto em `app_entity_history` da route
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
@@ -243,7 +248,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: carregar dados autenticados, controlar filtros, periodo, timeline, drag and drop, modal e salvamento.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/status e registrar historico.
+  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/status/copia e delegar o historico complementar para `append_programming_history`.
 - Caminho: `supabase/migrations/067_create_project_programming.sql`
   - Responsavel por: formalizar a base multi-tenant de programacao e suas atividades.
 - Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
@@ -262,6 +267,8 @@ Funcoes principais
   - Responsavel por: adaptar o lote de copia para o modo simplificado de copiar a linha da equipe no periodo visivel.
 - Caminho: `supabase/migrations/076_create_copy_team_programming_period_rpc.sql`
   - Responsavel por: executar a copia transacional da linha da equipe, registrar os itens do lote e evitar lote parcial.
+- Caminho: `supabase/migrations/078_create_programming_history_append_rpc.sql`
+  - Responsavel por: registrar via RPC o historico complementar de criacao, atualizacao, reagendamento, adiamento e cancelamento da Programacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -275,7 +282,7 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: `createVisibleDates`, `formatBoardDate`, `formatPeriodLabel`, `calculateExpectedMinutes`, `getScheduleTone`, `workloadBarClassName`, `workloadPrimaryLabel`, `normalizeSchedule` e `buildIncludedAtLabel`.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingViaRpc` e `registerProgrammingHistory`.
+  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingViaRpc`, `cancelProgrammingViaRpc` e `registerProgrammingHistory`.
 
 Servicos e integracoes externas
 - `project_with_labels`: backlog real de projetos ativos.
@@ -296,6 +303,7 @@ Ajuda contextual
   - `supabase/migrations/070_add_programming_status_and_project_guard.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - `supabase/migrations/072_create_programming_support_items.sql`
+  - `supabase/migrations/078_create_programming_history_append_rpc.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -303,6 +311,8 @@ Ajuda contextual
   - `useDeferredValue`
   - `DOCUMENT_KEYS`
   - `INITIAL_PERIOD_START`
+  - `registerProgrammingHistory`
 - Comportamento antes/depois:
   - Antes: a obra sumia da lateral assim que era programada no periodo, o card lateral exibia informacao demais e a grade nao destacava diferenca entre programacao original e reprogramacao.
   - Depois: a obra continua visivel na lateral mesmo ja programada, o card lateral ficou mais enxuto, a lateral mostra no maximo 5 cards filtrados, a grade pode ser filtrada por subconjunto explicito de equipes e a reprogramacao recebe cor propria na agenda.
+  - Depois: o historico complementar da agenda deixa de depender de `insert` direto na route e passa a ser gravado por RPC.

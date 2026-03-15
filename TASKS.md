@@ -44,6 +44,8 @@
 - [x] Remover campo `Parceira` do front de Projetos e preencher `partner` automaticamente no backend por `contract.name`.
 - [x] Implementar acoes da lista de Projetos (`Editar`, `Detalhes`, `Historico`, `Cancelar`) com modais e fluxo completo no frontend.
 - [x] Implementar `PUT` e `PATCH` em `/api/projects` para edicao e troca de status (cancelamento/ativacao) com motivo obrigatorio.
+- [x] Endurecer `Projetos` com controle de concorrencia por `expectedUpdatedAt` no `PUT` e no `PATCH`, bloqueando sobrescrita silenciosa e troca de status com registro stale.
+- [x] Migrar as escritas de `Projetos` para RPC transacional (`save_project_record` e `set_project_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
 - [x] Remover `FOB` do fluxo operacional de `Projetos` e limitar `Projeto (SOB)` a `10` caracteres no frontend e na API.
 - [x] Paginar o modal de `Historico` de Projetos e exibir `ID do projeto` abaixo do titulo no modal de detalhes.
@@ -62,6 +64,8 @@
 - [x] Ajustar selecao de projeto em `Materiais previstos` para campo de texto com sugestao (datalist), no padrao digitavel.
 - [x] Implementar API `/api/materials` com `GET` (lista/historico), `POST`, `PUT` e `PATCH`.
 - [x] Proteger cadastro/edicao de materiais com RPC `precheck_material_code_conflict` para bloquear codigo duplicado por tenant.
+- [x] Endurecer `Materiais` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com recarga do estado atual no frontend.
+- [x] Migrar as escritas de `Materiais` para RPC transacional (`save_material_record` e `set_material_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Formalizar `tenant` como entidade (`tenants`) e vinculo de acesso multi-tenant por usuario (`app_user_tenants`) com backfill e ajuste de `user_can_access_tenant`.
 - [x] Garantir FK de `tenant_id` para `tenants(id)` em todas as tabelas publicas com coluna `tenant_id`.
 - [x] Criar migration `047_create_job_title_types_and_people_type_link.sql` para vincular tipos por cargo e permitir `people.job_title_type_id` com consistencia de tenant + cargo.
@@ -73,6 +77,8 @@
 - [x] Padronizar botoes da tela `Atividades` conforme baseline de `Projetos` e documentar o guia em `docs/Tela_Padrao_Cadastros_SaaS.txt`.
 - [x] Adicionar acoes `Detalhes`, `Historico` e `Cancelar/Ativar` na lista de `Atividades`, com modais e motivo obrigatorio na troca de status.
 - [x] Criar migration `051_create_app_entity_history_and_activity_status.sql` com historico generico (`app_entity_history`) reutilizavel por outras telas e suporte de status em `service_activities`.
+- [x] Endurecer `Atividades` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, bloqueando `last-write-wins`.
+- [x] Migrar as escritas de `Atividades` para RPC transacional (`save_service_activity_record` e `set_service_activity_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Padronizar modais de `Historico` para paginacao de `5` registros por pagina (`Projetos`, `Materiais` e `Atividades`).
 - [x] Incluir campo obrigatorio `Tipo` na tela de `Atividades`, consumindo `team_types` (mesmo cadastro base de `Equipes`) em formulario, filtro, lista e exportacao.
 - [x] Formalizar checklist obrigatorio de permissao para nova tela (migration + backfill + `permissionCatalog` + `AppShell`).
@@ -82,6 +88,8 @@
 - [x] Criar migration `053_create_team_types_and_link_teams.sql` para tabela `team_types`, vinculo obrigatorio em `teams.team_type_id` e pagina `tipo-equipe` em `Cadastro Base`.
 - [x] Proteger cadastro/edicao de `Equipes` contra duplicidade pela combinacao `Nome da equipe + Encarregado + Placa` com constraint dedicada em banco e retorno `409` na API.
 - [x] Vincular `Equipes` ao `Centro de Servico` e expor a base real em cadastro, filtros, listagem e detalhe.
+- [x] Endurecer `Equipes` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
+- [x] Migrar as escritas de `Equipes` para RPC transacional (`save_team_record` e `set_team_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Padronizar todas as listas ativas (`Projetos`, `Materiais`, `Atividades`, `Equipes` e `Materiais previstos`) com botao `Exportar Excel (CSV)` e remover o texto fixo de paginacao no cabecalho.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
@@ -95,6 +103,8 @@
 - [ ] Implementar consumo real no frontend para `get_materials`, `get_responsaveis` e `get_inventory_balance`.
 - [x] Implementar CRUD de `Pessoas` integrado a `people`, `job_titles`, `job_title_types` e `job_levels`, com historico, status e exportacao CSV.
 - [x] Proteger cadastro/edicao de `Pessoas` contra duplicidade pela combinacao `Nome + Matricula + Cargo + Tipo + Nivel` com validacao na API e trigger no banco.
+- [x] Endurecer `Pessoas` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
+- [x] Migrar as escritas de `Pessoas` para RPC transacional (`save_person_record` e `set_person_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.
 - [ ] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque.
 - [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.
@@ -145,6 +155,7 @@
 - [x] Simplificar a copia da `Programacao` para uma acao manual no toolbar, copiando a linha inteira da equipe no periodo visivel para outras equipes.
 - [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
 - [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
+- [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.
 - [x] Trocar o `dev` local para `webpack` e documentar o workaround do panic do Turbopack no Windows.
 - [x] Implementar primeira versao frontend de `Medicao` com origem por projeto/programacao, carga de atividades previstas, calculo local e fator ajustavel sem backend proprio.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
@@ -152,6 +163,10 @@
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
+- [x] Endurecer `Permissoes` com controle de concorrencia por `app_users.updated_at`, bloqueando salvamento concorrente de role/status/telas para o mesmo usuario.
+- [x] Migrar o save de `Permissoes` para RPC transacional (`save_user_permissions`) para consolidar `app_users`, `app_user_page_permissions` e historico em uma unica operacao.
+- [x] Migrar a auditoria do `Invite` em `Permissoes` para RPC (`append_user_invite_history`), removendo `insert` direto de historico da route.
+- [ ] Aplicar a regra de escrita via RPC transacional sempre que possivel nos modulos futuros (`Entrada`, `Saida`, `Medicao`, `Cargo` e `Cadastro Base`) conforme cada fluxo sair do placeholder.
 - [ ] Implementar seletor de tenant/contrato no frontend e enviar `x-tenant-id` nas chamadas autenticadas para troca de contexto.
 - [ ] Implementar gestao de sessao web com expiracao por inatividade, touch/revoke e tratamento de token expirado.
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.

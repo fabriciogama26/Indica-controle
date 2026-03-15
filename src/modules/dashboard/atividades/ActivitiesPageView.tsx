@@ -43,6 +43,7 @@ type ActivityFormState = {
   value: string;
   unit: string;
   scope: string;
+  updatedAt: string;
 };
 
 type ActivityFilterState = {
@@ -100,6 +101,7 @@ const INITIAL_FORM: ActivityFormState = {
   value: "",
   unit: "",
   scope: "",
+  updatedAt: "",
 };
 
 const INITIAL_FILTERS: ActivityFilterState = {
@@ -317,11 +319,13 @@ export function ActivitiesPageView() {
             type: "error",
             message: data.message ?? "Falha ao carregar atividades.",
           });
-          return;
+          return [] as ActivityItem[];
         }
 
-        setActivities(data.activities ?? []);
+        const nextActivities = data.activities ?? [];
+        setActivities(nextActivities);
         setTotal(data.pagination?.total ?? 0);
+        return nextActivities;
       } catch {
         setActivities([]);
         setTotal(0);
@@ -329,6 +333,7 @@ export function ActivitiesPageView() {
           type: "error",
           message: "Falha ao carregar atividades.",
         });
+        return [] as ActivityItem[];
       } finally {
         setIsLoadingList(false);
       }
@@ -420,6 +425,7 @@ export function ActivitiesPageView() {
       value: toInputMoney(activity.value),
       unit: activity.unit,
       scope: activity.scope,
+      updatedAt: activity.updatedAt,
     });
     setFeedback(null);
     scrollDashboardContentToTop();
@@ -476,6 +482,7 @@ export function ActivitiesPageView() {
         value: form.value,
         unit: normalizeText(form.unit),
         scope: normalizeText(form.scope) || null,
+        ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
 
       const response = await fetch("/api/activities", {
@@ -487,9 +494,14 @@ export function ActivitiesPageView() {
         body: JSON.stringify(payload),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
 
       if (!response.ok || !data.success) {
+        if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
+          resetForm();
+          await loadActivities(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao salvar atividade.",
@@ -533,12 +545,25 @@ export function ActivitiesPageView() {
           id: statusActivity.id,
           reason: statusReason.trim(),
           action: statusAction,
+          expectedUpdatedAt: statusActivity.updatedAt,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
 
       if (!response.ok || !data.success) {
+        if (
+          data.code === "CONCURRENT_MODIFICATION"
+          || data.code === "RECORD_INACTIVE"
+          || data.code === "STATUS_ALREADY_CHANGED"
+        ) {
+          if (form.id === statusActivity.id) {
+            resetForm();
+          }
+          closeStatusModal();
+          await loadActivities(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao atualizar status da atividade.",

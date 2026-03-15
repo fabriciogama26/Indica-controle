@@ -36,6 +36,7 @@ type FormState = {
   tipo: string;
   umb: string;
   unitPrice: string;
+  updatedAt: string;
 };
 
 type FilterState = {
@@ -66,6 +67,7 @@ const INITIAL_FORM: FormState = {
   tipo: "",
   umb: "",
   unitPrice: "0",
+  updatedAt: "",
 };
 
 const INITIAL_FILTERS: FilterState = {
@@ -186,6 +188,7 @@ function toFormState(material: MaterialItem): FormState {
     tipo: material.tipo,
     umb: material.umb ?? "",
     unitPrice: String(material.unitPrice ?? 0),
+    updatedAt: material.updatedAt,
   };
 }
 
@@ -250,15 +253,18 @@ export function MaterialsPageView() {
           setMaterials([]);
           setTotal(0);
           setFeedback({ type: "error", message: data.message ?? "Falha ao carregar materiais." });
-          return;
+          return [] as MaterialItem[];
         }
 
-        setMaterials(data.materials ?? []);
+        const nextMaterials = data.materials ?? [];
+        setMaterials(nextMaterials);
         setTotal(data.pagination?.total ?? 0);
+        return nextMaterials;
       } catch {
         setMaterials([]);
         setTotal(0);
         setFeedback({ type: "error", message: "Falha ao carregar materiais." });
+        return [] as MaterialItem[];
       } finally {
         setIsLoadingList(false);
       }
@@ -392,6 +398,7 @@ export function MaterialsPageView() {
         tipo: normalizeType(form.tipo),
         umb: normalizeText(form.umb) || null,
         unitPrice: form.unitPrice,
+        ...(isEditing ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
 
       const response = await fetch("/api/materials", {
@@ -404,9 +411,14 @@ export function MaterialsPageView() {
         body: JSON.stringify(payload),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; code?: string };
 
       if (!response.ok) {
+        if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
+          resetFormState();
+          await loadMaterials(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message:
@@ -462,11 +474,24 @@ export function MaterialsPageView() {
           id: statusMaterial.id,
           reason: statusReason.trim(),
           action: statusAction,
+          expectedUpdatedAt: statusMaterial.updatedAt,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; code?: string };
       if (!response.ok) {
+        if (
+          data.code === "CONCURRENT_MODIFICATION"
+          || data.code === "RECORD_INACTIVE"
+          || data.code === "STATUS_ALREADY_CHANGED"
+        ) {
+          if (editingMaterialId === statusMaterial.id) {
+            resetFormState();
+          }
+          closeStatusModal();
+          await loadMaterials(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? `Falha ao ${actionLabel} material ${statusMaterial.codigo}.`,

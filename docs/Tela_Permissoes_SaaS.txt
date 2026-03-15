@@ -21,6 +21,8 @@ Arquitetura
 - Navegacao: `src/components/layout/AppShell.tsx`
 - Base SQL: `supabase/migrations/022_create_page_permissions.sql`
 - Matriz futura por usuario: `supabase/migrations/024_create_user_page_permissions.sql`
+- Base SQL: `supabase/migrations/077_create_admin_write_rpcs.sql`
+- Base SQL: `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
 
 Cadastro
 --------
@@ -43,16 +45,16 @@ Filtros, auto-complete e listagem
 - A route usa `SUPABASE_SERVICE_ROLE_KEY` no servidor, mas aplica checagem explicita de operador admin/master e filtro obrigatorio por `tenant_id`.
 - Ao selecionar o usuario, a tela chama `src/app/api/app-users/[userId]/permissions/route.ts` para carregar os dados salvos.
 - Ao salvar, a route:
-  - atualiza `app_users.role_id`
-  - atualiza `app_users.ativo`
-  - faz `upsert` em `app_user_page_permissions` usando apenas `can_access`
-  - registra historico imutavel em `app_user_permission_history`
+  - valida `expectedUpdatedAt` de `app_users` para bloquear salvamento concorrente do mesmo usuario
+  - valida `role` e `page_key` no backend
+  - chama a RPC `save_user_permissions`
+  - deixa a transacao no banco atualizar `app_users`, `app_user_page_permissions` e `app_user_permission_history`
 - Ao clicar em `Enviar convite`, a route:
   - valida se o operador atual e admin/master do tenant
   - valida se o usuario alvo possui `email`, `matricula` e `login_name`
   - envia `inviteUserByEmail` para o email do pre-cadastro em `app_users`
   - usa a metadata minima para sincronizar `auth.users` com `app_users`
-  - registra historico com `change_type = 'INVITE_SENT'`
+  - registra historico com `change_type = 'INVITE_SENT'` via RPC `append_user_invite_history`
 - No login e na reidratacao da sessao, o frontend consulta `src/app/api/auth/session-access/route.ts` para aplicar no shell as telas realmente liberadas para o usuario.
 - Ao selecionar o resultado da busca, a tela aplica `role`, `status` e a matriz visual do usuario escolhido.
 - A listagem atual considera as telas do SaaS web:
@@ -72,6 +74,8 @@ Boas praticas
 - Nao modelar `delete`.
 - Manter a UI coerente com o conceito final: primeiro selecionar o usuario, depois definir as permissoes dele.
 - O operador da tela precisa ser administrativo; o usuario alvo pode ser qualquer `app_user` do mesmo tenant.
+- Exigir `app_users.updated_at` como token de concorrencia para role, status e matriz de paginas do usuario.
+- Preferir RPC transacional para o save, concentrando role, status, matriz e historico no banco.
 - Checklist obrigatorio para toda nova tela:
   - Criar migration versionada com insert em `app_pages` e backfill em `role_page_permissions` e `app_user_page_permissions`.
   - Incluir a tela no `permissionCatalog` do frontend.
@@ -113,6 +117,11 @@ Atualizacao 2026-03
 - Helper `authorization.ts` criado para normalizar `role`, identificar admin e bloquear rotas administrativas.
 - Shell principal passou a expor `Permissoes` apenas pela engrenagem do topo para perfis administrativos.
 - Route de save de permissoes passou a validar telas inexistentes em `app_pages` e retornar erro explicito em vez de ignorar silenciosamente.
+- Route de save de permissoes passa a bloquear `last-write-wins` quando dois administradores editam o mesmo usuario ao mesmo tempo.
+- Migration `077_create_admin_write_rpcs.sql` criada para adicionar a RPC `save_user_permissions`.
+- Route de save de permissoes passa a delegar a transacao de escrita e historico para `save_user_permissions`.
+- Migration `079_create_people_and_invite_write_rpcs.sql` criada para adicionar a RPC `append_user_invite_history`.
+- Route de invite passa a delegar a auditoria do envio para `append_user_invite_history`.
 - Tela frontend evoluida para o formato final de credenciais e permissoes:
   - bloco superior curto com busca de usuario, role e status
   - grade por secao/tela com um unico toggle `Liberado/Bloqueado`
@@ -133,13 +142,13 @@ Funcoes principais
 - Caminho: `src/app/(dashboard)/permissoes/page.tsx`
   - Responsavel por: expor a rota autenticada `/permissoes`.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: apresentar a UI de credenciais e permissoes, com busca de usuario, role, status, resumo do tenant e matriz local de liberacao por tela com o novo catalogo de operacao.
+  - Responsavel por: apresentar a UI de credenciais e permissoes, com busca de usuario, role, status, resumo do tenant, matriz local de liberacao por tela e envio de `expectedUpdatedAt` no save.
 - Caminho: `src/app/api/app-users/search/route.ts`
   - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado e buscar `app_users` do mesmo tenant por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin/master.
 - Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
-  - Responsavel por: carregar e salvar `role`, `ativo/inativo`, a matriz de telas do usuario selecionado e registrar historico em `app_user_permission_history`.
+  - Responsavel por: carregar `role` e matriz do usuario, validar `expectedUpdatedAt`, validar `role/page_key` e delegar o save transacional para `save_user_permissions`.
 - Caminho: `src/app/api/app-users/[userId]/invite/route.ts`
-  - Responsavel por: enviar convite de primeiro acesso com base no pre-cadastro existente em `app_users`.
+  - Responsavel por: enviar convite de primeiro acesso com base no pre-cadastro existente em `app_users` e delegar a auditoria do invite para `append_user_invite_history`.
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: validar a sessao, resolver o operador admin do tenant e garantir `role_id` antes do uso nas rotas administrativas.
 - Caminho: `src/lib/auth/authorization.ts`
@@ -164,6 +173,10 @@ Constantes e configuracoes
   - Responsavel por: atualizar secoes em `app_pages` e garantir backfill de permissoes para o novo menu.
 - Caminho: `supabase/migrations/058_enforce_rls_no_all_no_delete.sql`
   - Responsavel por: padronizar policies RLS de escrita em cadastros/permissoes para `INSERT` e `UPDATE`, sem `FOR ALL` e sem `DELETE`.
+- Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
+  - Responsavel por: criar `save_user_permissions` para consolidar `app_users`, `app_user_page_permissions` e `app_user_permission_history`.
+- Caminho: `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
+  - Responsavel por: criar `append_user_invite_history` para registrar o historico de `INVITE_SENT` sem `insert` direto na route.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
@@ -173,11 +186,29 @@ Servicos e integracoes externas
 - Supabase Postgres com RLS
 
 Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `src/app/api/app-users/[userId]/permissions/route.ts`
+  - `src/app/api/app-users/[userId]/invite/route.ts`
+  - `src/lib/server/concurrency.ts`
+  - `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
+  - `docs/Tela_Permissoes_SaaS.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `applyUser`
+  - `handleSave`
+  - `handleInvite`
+  - `resolveTargetUser`
+  - `save_user_permissions`
+  - `append_user_invite_history`
+  - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
 - Antes: a rota existia, mas ainda estava no formato de base visual inicial.
 - Depois: a rota `/permissoes` representa o fluxo real esperado para selecionar usuario e liberar ou bloquear cada tela.
 - Estado atual: a tela ja consome e grava `app_user_page_permissions`, e o shell ja passa a esconder as telas desabilitadas quando o usuario faz login ou reabre a sessao.
 - Estado atual: o save usa apenas `can_access`, sem matriz individual de `select/insert/update`.
 - Estado atual: toda alteracao de role, status, telas liberadas e envio de convite passa a gerar historico em `app_user_permission_history`.
+- Estado atual: o save passa a ser serializado por `app_users.updated_at`, recusando sobrescrita concorrente e recarregando os dados atuais do usuario no frontend.
+- Estado atual: o save de `role`, `status` e matriz de paginas passa a ser executado por RPC transacional no banco.
+- Estado atual: a auditoria do `Invite` tambem passa a ser executada por RPC, mesmo com o envio do email permanecendo no backend do Next.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.
 - Antes: parte das tabelas de cadastro/permissao ainda usava policy `FOR ALL`, que tambem permitia caminho de `DELETE`.
 - Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.

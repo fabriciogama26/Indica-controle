@@ -186,6 +186,14 @@ type CancelProgrammingRpcResult = {
   programming_status?: "ADIADA" | "CANCELADA";
 };
 
+type AppendProgrammingHistoryRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  skipped?: boolean;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -765,23 +773,26 @@ async function registerProgrammingHistory(params: {
   reason?: string | null;
   force?: boolean;
 }) {
-  if (!params.force && Object.keys(params.changes).length === 0) {
+  const { data, error } = await params.supabase.rpc("append_programming_history", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_project_code: params.projectCode,
+    p_reason: params.reason ?? null,
+    p_changes: params.changes,
+    p_metadata: params.metadata,
+    p_change_type: "UPDATE",
+    p_force: params.force ?? false,
+  });
+
+  if (error) {
     return;
   }
 
-  await params.supabase.from("app_entity_history").insert({
-    tenant_id: params.tenantId,
-    module_key: "programacao",
-    entity_table: "project_programming",
-    entity_id: params.programmingId,
-    entity_code: params.projectCode,
-    change_type: "UPDATE",
-    reason: params.reason ?? null,
-    changes: params.changes,
-    metadata: params.metadata,
-    created_by: params.actorUserId,
-    updated_by: params.actorUserId,
-  });
+  const result = (data ?? {}) as AppendProgrammingHistoryRpcResult;
+  if (result.success !== true) {
+    return;
+  }
 }
 
 async function copyProgramming(request: NextRequest) {

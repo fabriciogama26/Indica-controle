@@ -22,6 +22,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/053_create_team_types_and_link_teams.sql`
 - Base SQL: `supabase/migrations/054_enforce_team_unique_by_name_foreman_plate.sql`
 - Base SQL: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
+- Base SQL: `supabase/migrations/077_create_admin_write_rpcs.sql`
 
 Cadastro
 --------
@@ -37,6 +38,7 @@ Cadastro
   - Encarregado deve ter cargo `ENCARREGADO`.
   - Tipo deve existir no tenant e estar ativo em `team_types`.
   - Bloqueio de duplicidade por combinacao (`tenant_id`, `foreman_person_id`, `name`, `vehicle_plate`).
+  - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear escrita concorrente.
 - Fluxos de acao:
   - `Cadastrar`
   - `Editar`
@@ -70,6 +72,8 @@ Boas praticas
 - Nao permitir salvar encarregado fora do cargo `ENCARREGADO`.
 - Registrar alteracoes em `app_entity_history` para update/cancel/activate.
 - Manter consistencia de permissao em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- Recarregar a lista e limpar o formulario stale quando houver conflito de concorrencia.
+- Preferir RPC transacional para `POST`, `PUT` e `PATCH`, concentrando escrita, historico e concorrencia no banco.
 
 Cancelamento e saldo
 --------------------
@@ -97,17 +101,20 @@ Atualizacao 2026-03
 - Migration `053_create_team_types_and_link_teams.sql` criada para `team_types` e vinculo obrigatorio em `teams.team_type_id`.
 - Migration `054_enforce_team_unique_by_name_foreman_plate.sql` criada para regra de unicidade por combinacao de `nome + encarregado + placa` no tenant.
 - Migration `068_link_teams_service_center_and_harden_programming_rpc.sql` criada para vincular `teams.service_center_id`.
+- Migration `077_create_admin_write_rpcs.sql` criada para adicionar `save_team_record` e `set_team_record_status`.
 - Pagina `equipes` adicionada na matriz de permissoes com backfill por tenant.
 - Integracoes frontend adicionadas em menu, autorizacao de rota e tela de permissoes.
 - Tela e API passaram a carregar, filtrar, listar e detalhar a `Base` da equipe.
+- Tela e API passam a bloquear sobrescrita silenciosa na edicao e no cancelamento/ativacao por `expectedUpdatedAt`.
+- Tela e API passam a delegar cadastro, edicao e status para RPC transacional com historico no banco.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/equipes/TeamsPageView.tsx`
-  - Responsavel por: formulario, filtros, listagem, detalhes, historico e cancelamento/ativacao, incluindo a base da equipe.
+  - Responsavel por: formulario, filtros, listagem, detalhes, historico e cancelamento/ativacao, incluindo a base da equipe, envio de `expectedUpdatedAt` e refresh quando houver conflito.
 - Caminho: `src/app/api/teams/route.ts`
-  - Responsavel por: CRUD de equipes (com `service_center_id` e `team_type_id`), paginacao da listagem, historico e troca de status.
+  - Responsavel por: validar payload, paginar listagem/historico e delegar cadastro, edicao e status para as RPCs `save_team_record` e `set_team_record_status`.
 - Caminho: `src/app/api/teams/meta/route.ts`
   - Responsavel por: retornar encarregados, bases e tipos validos para selecao na tela.
 
@@ -124,6 +131,8 @@ Constantes e configuracoes
   - Responsavel por: tabela `team_types`, vinculo obrigatorio em `teams` e pagina `tipo-equipe`.
 - Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - Responsavel por: adicionar `service_center_id` em `teams` e alinhar a base da equipe com a programacao.
+- Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
+  - Responsavel por: criar `save_team_record` e `set_team_record_status` para escrita transacional da tela de equipes.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -139,6 +148,7 @@ Ajuda contextual
   - `src/modules/dashboard/equipes/TeamsPageView.module.css` (novo)
   - `src/app/api/teams/route.ts` (novo)
   - `src/app/api/teams/meta/route.ts` (novo)
+  - `src/lib/server/concurrency.ts`
   - `supabase/migrations/052_create_teams_and_page_permissions.sql` (novo)
   - `supabase/migrations/053_create_team_types_and_link_teams.sql` (novo)
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
@@ -148,3 +158,10 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: equipes nao possuíam base vinculada.
   - Depois: o cadastro/listagem de equipes inclui base real por `Centro de servico`, o que alimenta a programacao operacional.
+  - Depois: a edicao e a troca de status tambem passam a recusar dados stale em vez de aplicar `last-write-wins`.
+- Funcoes/hooks/constantes tocadas:
+  - `TeamsPageView`, `loadTeams`, `handleSubmit`, `startEdit`, `confirmStatusChange`
+  - `GET`/`POST`/`PUT`/`PATCH` de `/api/teams`
+  - `saveTeamViaRpc`, `setTeamStatusViaRpc`
+  - `save_team_record`, `set_team_record_status`
+  - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`

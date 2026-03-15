@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import {
+  buildConcurrencyConflictResponse,
+  hasUpdatedAtConflict,
+  normalizeExpectedUpdatedAt,
+} from "@/lib/server/concurrency";
 
 type ProjectRow = {
   id: string;
@@ -98,12 +103,14 @@ type CreateProjectPayload = {
 
 type UpdateProjectPayload = CreateProjectPayload & {
   id: string;
+  expectedUpdatedAt?: string | null;
 };
 
 type CancelProjectPayload = {
   id: string;
   reason: string;
   action?: "cancel" | "activate";
+  expectedUpdatedAt?: string | null;
 };
 
 type ProjectHistoryRow = {
@@ -149,6 +156,15 @@ type ResolvedProjectLookups = {
   contractorResponsible: PersonNameRow;
   utilityResponsible: ProjectLookupRow;
   utilityFieldManager: ProjectLookupRow;
+};
+
+type ProjectSaveRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  project_id?: string;
+  updated_at?: string;
 };
 
 const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO"]);
@@ -687,6 +703,93 @@ async function fetchProjectById(supabase: SupabaseClient, tenantId: string, proj
 
   return data;
 }
+
+async function saveProjectViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  projectId: string | null;
+  payload: ReturnType<typeof buildProjectWritePayload>;
+  changes?: Record<string, HistoryChange>;
+  expectedUpdatedAt?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("save_project_record", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_project_id: params.projectId,
+    p_sob: params.payload.sob,
+    p_fob: params.payload.fob,
+    p_service_center: params.payload.service_center,
+    p_partner: params.payload.partner,
+    p_service_type: params.payload.service_type,
+    p_execution_deadline: params.payload.execution_deadline,
+    p_priority: params.payload.priority,
+    p_estimated_value: params.payload.estimated_value,
+    p_voltage_level: params.payload.voltage_level,
+    p_project_size: params.payload.project_size,
+    p_contractor_responsible: params.payload.contractor_responsible,
+    p_utility_responsible: params.payload.utility_responsible,
+    p_utility_field_manager: params.payload.utility_field_manager,
+    p_street: params.payload.street,
+    p_neighborhood: params.payload.neighborhood,
+    p_city: params.payload.city,
+    p_service_description: params.payload.service_description,
+    p_observation: params.payload.observation,
+    p_changes: params.changes ?? {},
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    return { ok: false, status: 500, message: "Falha ao salvar projeto." } as const;
+  }
+
+  const result = (data ?? {}) as ProjectSaveRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      message: result.message ?? "Falha ao salvar projeto.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return { ok: true, updatedAt: result.updated_at ?? null } as const;
+}
+
+async function setProjectStatusViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  projectId: string;
+  action: "ACTIVATE" | "CANCEL";
+  reason: string;
+  expectedUpdatedAt: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("set_project_record_status", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_project_id: params.projectId,
+    p_action: params.action,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt,
+  });
+
+  if (error) {
+    return { ok: false, status: 500, message: "Falha ao atualizar status do projeto." } as const;
+  }
+
+  const result = (data ?? {}) as ProjectSaveRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      message: result.message ?? "Falha ao atualizar status do projeto.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return { ok: true, updatedAt: result.updated_at ?? null } as const;
+}
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -882,23 +985,16 @@ export async function POST(request: NextRequest) {
 
     const insertPayload = buildProjectWritePayload(input, lookupResolution.data);
 
-    const { error } = await supabase.from("project").insert({
-      tenant_id: appUser.tenant_id,
-      ...insertPayload,
-      is_active: true,
-      cancellation_reason: null,
-      canceled_at: null,
-      canceled_by: null,
-      created_by: appUser.id,
-      updated_by: appUser.id,
+    const saveResult = await saveProjectViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      projectId: null,
+      payload: insertPayload,
     });
 
-    if (error) {
-      if (String(error.message ?? "").toLowerCase().includes("duplicate key")) {
-        return NextResponse.json({ message: "Ja existe projeto com este SOB no tenant atual." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao registrar projeto." }, { status: 500 });
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message, code: saveResult.reason ?? undefined }, { status: saveResult.status });
     }
 
     return NextResponse.json({
@@ -923,9 +1019,14 @@ export async function PUT(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as Partial<UpdateProjectPayload>;
     const projectId = normalizeText(body.id);
+    const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
     if (!projectId) {
       return NextResponse.json({ message: "Projeto invalido para edicao." }, { status: 400 });
+    }
+
+    if (!expectedUpdatedAt) {
+      return NextResponse.json({ message: "Atualize a lista antes de editar o projeto." }, { status: 400 });
     }
 
     const currentProject = await fetchProjectById(supabase, appUser.tenant_id, projectId);
@@ -934,7 +1035,13 @@ export async function PUT(request: NextRequest) {
     }
 
     if (!currentProject.is_active) {
-      return NextResponse.json({ message: "Projeto inativo nao pode ser editado." }, { status: 409 });
+      return buildConcurrencyConflictResponse("Projeto inativo nao pode ser editado.", "RECORD_INACTIVE");
+    }
+
+    if (hasUpdatedAtConflict(expectedUpdatedAt, currentProject.updated_at)) {
+      return buildConcurrencyConflictResponse(
+        `O projeto ${currentProject.sob} foi alterado por outro usuario. Recarregue os dados antes de salvar novamente.`,
+      );
     }
 
     const input = parseProjectInput(body);
@@ -960,34 +1067,18 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: true, message: `Nenhuma alteracao detectada no projeto ${currentProject.sob}.` });
     }
 
-    const { error: updateError } = await supabase
-      .from("project")
-      .update({
-        ...updatePayload,
-        updated_by: appUser.id,
-      })
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", projectId);
-
-    if (updateError) {
-      if (String(updateError.message ?? "").toLowerCase().includes("duplicate key")) {
-        return NextResponse.json({ message: "Ja existe projeto com este SOB no tenant atual." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao editar projeto." }, { status: 500 });
-    }
-
-    const { error: historyError } = await supabase.from("project_history").insert({
-      tenant_id: appUser.tenant_id,
-      project_id: projectId,
-      change_type: "UPDATE",
+    const saveResult = await saveProjectViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      projectId,
+      payload: updatePayload,
       changes,
-      created_by: appUser.id,
-      updated_by: appUser.id,
+      expectedUpdatedAt,
     });
 
-    if (historyError) {
-      return NextResponse.json({ message: "Projeto atualizado, mas falhou ao registrar historico." }, { status: 500 });
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message, code: saveResult.reason ?? undefined }, { status: saveResult.status });
     }
 
     return NextResponse.json({
@@ -1015,9 +1106,14 @@ export async function PATCH(request: NextRequest) {
     const projectId = normalizeText(body.id);
     const reason = normalizeText(body.reason);
     const action = normalizeText(body.action).toUpperCase() === "ACTIVATE" ? "ACTIVATE" : "CANCEL";
+    const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
     if (!projectId) {
       return NextResponse.json({ message: "Projeto invalido para atualizar status." }, { status: 400 });
+    }
+
+    if (!expectedUpdatedAt) {
+      return NextResponse.json({ message: "Atualize a lista antes de alterar o status do projeto." }, { status: 400 });
     }
 
     if (!reason) {
@@ -1033,11 +1129,17 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === "CANCEL" && !currentProject.is_active) {
-      return NextResponse.json({ message: `Projeto ${currentProject.sob} ja esta inativo.` }, { status: 409 });
+      return buildConcurrencyConflictResponse(`Projeto ${currentProject.sob} ja esta inativo.`, "STATUS_ALREADY_CHANGED");
     }
 
     if (action === "ACTIVATE" && currentProject.is_active) {
-      return NextResponse.json({ message: `Projeto ${currentProject.sob} ja esta ativo.` }, { status: 409 });
+      return buildConcurrencyConflictResponse(`Projeto ${currentProject.sob} ja esta ativo.`, "STATUS_ALREADY_CHANGED");
+    }
+
+    if (hasUpdatedAtConflict(expectedUpdatedAt, currentProject.updated_at)) {
+      return buildConcurrencyConflictResponse(
+        `O projeto ${currentProject.sob} foi alterado por outro usuario. Recarregue os dados antes de alterar o status.`,
+      );
     }
 
     if (action === "CANCEL") {
@@ -1062,112 +1164,18 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const eventTimestamp = new Date().toISOString();
-
-    const { error: statusError } = await supabase
-      .from("project")
-      .update(
-        action === "ACTIVATE"
-          ? {
-              is_active: true,
-              cancellation_reason: null,
-              canceled_at: null,
-              canceled_by: null,
-              updated_by: appUser.id,
-            }
-          : {
-              is_active: false,
-              cancellation_reason: reason,
-              canceled_at: eventTimestamp,
-              canceled_by: appUser.id,
-              updated_by: appUser.id,
-            },
-      )
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", projectId);
-
-    if (statusError) {
-      return NextResponse.json(
-        { message: action === "ACTIVATE" ? "Falha ao ativar projeto." : "Falha ao cancelar projeto." },
-        { status: 500 },
-      );
-    }
-
-    const { error: cancellationHistoryError } = await supabase.from("project_cancellation_history").insert({
-      tenant_id: appUser.tenant_id,
-      project_id: projectId,
-      action_type: action,
+    const statusResult = await setProjectStatusViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      projectId,
+      action,
       reason,
-      created_by: appUser.id,
-      updated_by: appUser.id,
+      expectedUpdatedAt,
     });
 
-    if (cancellationHistoryError) {
-      return NextResponse.json(
-        {
-          message:
-            action === "ACTIVATE"
-              ? `Projeto ${currentProject.sob} ativado, mas falhou ao registrar historico de ativacao.`
-              : `Projeto ${currentProject.sob} cancelado, mas falhou ao registrar historico de cancelamento.`,
-        },
-        { status: 500 },
-      );
-    }
-
-    const statusChanges: Record<string, HistoryChange> =
-      action === "ACTIVATE"
-        ? {
-            isActive: {
-              from: "false",
-              to: "true",
-            },
-            activationReason: {
-              from: null,
-              to: reason,
-            },
-            canceledAt: {
-              from: currentProject.canceled_at,
-              to: null,
-            },
-            cancellationReason: {
-              from: currentProject.cancellation_reason,
-              to: null,
-            },
-          }
-        : {
-            isActive: {
-              from: "true",
-              to: "false",
-            },
-            cancellationReason: {
-              from: null,
-              to: reason,
-            },
-            canceledAt: {
-              from: null,
-              to: eventTimestamp,
-            },
-          };
-
-    const { error: historyError } = await supabase.from("project_history").insert({
-      tenant_id: appUser.tenant_id,
-      project_id: projectId,
-      change_type: action,
-      changes: statusChanges,
-      created_by: appUser.id,
-      updated_by: appUser.id,
-    });
-
-    if (historyError) {
-      return NextResponse.json(
-        {
-          message:
-            action === "ACTIVATE"
-              ? `Projeto ${currentProject.sob} ativado, mas falhou ao registrar historico do projeto.`
-              : `Projeto ${currentProject.sob} cancelado, mas falhou ao registrar historico do projeto.`,
-        },
-        { status: 500 },
-      );
+    if (!statusResult.ok) {
+      return NextResponse.json({ message: statusResult.message, code: statusResult.reason ?? undefined }, { status: statusResult.status });
     }
 
     return NextResponse.json({

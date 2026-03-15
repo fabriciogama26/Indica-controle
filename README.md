@@ -137,12 +137,12 @@ vercel --prod
   - `(dashboard)/porte/page.tsx`: placeholder de Porte.
   - `(dashboard)/responsavel-distribuidora/page.tsx`: placeholder de Responsavel Distribuidora.
   - `(dashboard)/municipio/page.tsx`: placeholder de Municipio.
-  - `(dashboard)/pessoas/page.tsx`: placeholder de Pessoas.
+  - `(dashboard)/pessoas/page.tsx`: rota da tela de Pessoas com cadastro, filtros, listagem, historico, exportacao e troca de status.
   - `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, filtros, historico e troca de status.
   - `(dashboard)/permissoes/page.tsx`: tela administrativa base para permissoes por pagina.
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
-  - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users`.
+  - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users` e registra auditoria do invite via RPC.
   - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, bloqueando inativacao quando houver agenda operacional pendente.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
   - `api/projects/forecast/route.ts`: lista, adiciona e edita materiais previstos por projeto com controle de concorrencia por `updated_at` na edicao.
@@ -213,6 +213,7 @@ vercel --prod
   - `authorization.ts`: helper de role, fallback de telas por perfil e bloqueio/liberacao de rotas conforme `pageAccess`.
 - `src/lib/server/`
   - `appUsersAdmin.ts`: resolve sessao autenticada, usuario e tenant ativo nas rotas server-side.
+  - `concurrency.ts`: normaliza `expectedUpdatedAt` e padroniza respostas `409` para conflitos de concorrencia.
   - `locationPlanning.ts`: consolida bootstrap, leitura, apoio de execucao, riscos, wrappers das RPCs e historico tecnico da locacao.
   - `projectForecastXlsx.ts`: parse e template XLSX de materiais previstos do projeto.
 - `src/services/auth/`
@@ -257,6 +258,9 @@ vercel --prod
 - `package.json`: scripts, dependencias e versao minima de Node.js.
 - `tsconfig.json`: configuracao TypeScript.
 - `eslint.config.mjs`: configuracao do lint.
+- `supabase/migrations/077_create_admin_write_rpcs.sql`: RPCs transacionais para escrita de `Projetos`, `Materiais`, `Atividades`, `Equipes` e `Permissoes`.
+- `supabase/migrations/078_create_programming_history_append_rpc.sql`: RPC para registrar o historico complementar da `Programacao` sem `insert` direto na route.
+- `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`: RPCs transacionais para escrita/status de `Pessoas` e para auditoria de `Invite`.
 
 ---
 
@@ -280,8 +284,10 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 13. O frontend persiste a sessao e redireciona para `/home`.
 14. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
 15. O shell principal libera navegacao para as secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
-16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`, limitando `Projeto (SOB)` a `10` caracteres e mantendo a regra de formato por prioridade.
-17. A aba `Materiais previstos` em `/projetos` permite selecionar projeto, pesquisar material ativo, incluir manualmente, editar quantidade/observacao na linha, baixar modelo XLSX via Edge Function `get_project_forecast_template`, importar previsao via Edge Function `import_project_forecast` (colunas `codigo` e `quantidade`) e filtrar/listar materiais previstos por codigo, descricao e tipo via `/api/projects/forecast`.
+  16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`, limitando `Projeto (SOB)` a `10` caracteres e mantendo a regra de formato por prioridade.
+  - Em `Projetos`, `Materiais`, `Atividades`, `Equipes`, `Pessoas` e `Permissoes`, a escrita agora envia `expectedUpdatedAt`; se outro usuario salvar antes, o frontend recusa a sobrescrita e recarrega o estado atual.
+  - A migration `077_create_admin_write_rpcs.sql` centraliza no banco as escritas administrativas desses modulos por meio das RPCs `save_project_record`, `set_project_record_status`, `save_material_record`, `set_material_record_status`, `save_service_activity_record`, `set_service_activity_record_status`, `save_team_record`, `set_team_record_status` e `save_user_permissions`.
+ 17. A aba `Materiais previstos` em `/projetos` permite selecionar projeto, pesquisar material ativo, incluir manualmente, editar quantidade/observacao na linha, baixar modelo XLSX via Edge Function `get_project_forecast_template`, importar previsao via Edge Function `import_project_forecast` (colunas `codigo` e `quantidade`) e filtrar/listar materiais previstos por codigo, descricao e tipo via `/api/projects/forecast`.
 18. A aba `Atividades previstas` em `/projetos` permite selecionar projeto, pesquisar atividades ativas, incluir manualmente, editar quantidade/observacao na linha, baixar modelo XLSX via Edge Function `get_project_activity_forecast_template`, importar previsao via Edge Function `import_project_activity_forecast` (colunas `codigo` e `quantidade`) e exportar CSV via `/api/projects/activity-forecast`.
 19. A rota `/locacao` exibe, antes da abertura, um bloco de filtros e uma lista resumida com status da locacao, responsavel, data de registro e acoes `Editar` e `Ver detalhes`.
 20. Ao clicar em `Editar` ou em `Abrir locacao`, os blocos de filtro/lista previa ficam ocultos e a tela passa a trabalhar o projeto selecionado.
@@ -298,15 +304,18 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 31. A migration `064_create_project_activity_forecast.sql` cria `project_activity_forecast`, a RPC `save_project_activity_forecast` e integra o bootstrap da `Locacao` com essa nova base.
 32. A migration `065_project_forecast_manual_and_activity_import.sql` cria a RPC `save_project_material_forecast` e protege a importacao em massa de `Atividades previstas` por RPC.
 33. A migration `066_harden_location_and_project_forecast_rpcs.sql` adiciona controle de concorrencia por `updated_at`, limites maximos e obrigatoriedade condicional de observacao nas RPCs de `Locacao` e dos previstos do projeto.
-34. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`.
+34. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`, com persistencia e historico delegados para as RPCs `save_material_record` e `set_material_record_status`.
 35. A rota `/medicao` ja possui frontend funcional para montar a OS/medicao por `Projeto` ou `Programacao`, carregar atividades previstas por `/api/projects/activity-forecast`, calcular o total local com fator `1,00`, `1,20`, `1,25` ou `2,85` e preparar a futura integracao com backend proprio.
-36. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor.
-37. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
-38. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
-39. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
-40. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
-41. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro; o fluxo operacional atual da tela usa apenas `Projeto (SOB)` e limita esse campo a `10` caracteres.
-42. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
+36. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor e escrita delegada para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
+37. A rota `/programacao` passa a delegar tambem o historico complementar da agenda para a RPC `append_programming_history`, removendo `insert` direto em `app_entity_history` da route.
+38. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`.
+39. A rota `/permissoes` continua enviando convite pelo backend, mas a auditoria do invite passa a ser gravada pela RPC `append_user_invite_history`.
+40. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
+41. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
+42. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
+43. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
+44. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro; o fluxo operacional atual da tela usa apenas `Projeto (SOB)` e limita esse campo a `10` caracteres.
+45. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
 43. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
 44. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
 45. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
@@ -314,7 +323,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 47. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
 48. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
 49. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
-50. Ao salvar, o backend atualiza `app_users.role_id`, `app_users.ativo`, faz `upsert` da matriz por tela sem `delete` e registra historico em `app_user_permission_history`.
+50. Ao salvar, o backend valida o payload, chama a RPC `save_user_permissions` e deixa a transacao no banco atualizar `app_users.role_id`, `app_users.ativo`, `app_user_page_permissions` e `app_user_permission_history`.
 51. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
 52. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
 53. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
@@ -347,6 +356,12 @@ npm run build
 - `Projeto inativo nao pode ser editado.`:
   - Causa: tentativa de editar obra ja cancelada/inativada.
   - Solucao: editar somente projetos ativos ou criar novo projeto conforme processo operacional.
+- `foi alterado por outro usuario. Recarregue os dados...`:
+  - Causa: outro usuario salvou o mesmo registro antes do envio atual em `Projetos`, `Materiais`, `Atividades`, `Equipes`, `Pessoas` ou `Permissoes`.
+  - Solucao: revisar os dados recarregados na tela e repetir a alteracao a partir da versao mais recente.
+- `function public.save_person_record(...) does not exist`, `set_person_record_status` ou `append_user_invite_history`:
+  - Causa: migration `079_create_people_and_invite_write_rpcs.sql` ainda nao aplicada no banco remoto.
+  - Solucao: aplicar a migration `079_create_people_and_invite_write_rpcs.sql` e repetir a operacao.
 - `Projeto (SOB) deve ter no maximo 10 caracteres.`:
   - Causa: digitacao de mais de `10` caracteres no `SOB` no cadastro/edicao de projetos.
   - Solucao: manter o `SOB` em ate `10` caracteres e respeitar tambem a mascara exigida pela prioridade.
@@ -413,6 +428,9 @@ npm run build
 - `Falha ao listar materiais.` ou `column materials.unit_price does not exist`:
   - Causa: migration de materiais ainda nao aplicada no banco remoto.
   - Solucao: aplicar `042_materials_price_status_and_history.sql` antes de usar a tela `/materiais`.
+- `function public.save_project_record(...) does not exist`, `save_material_record`, `save_service_activity_record`, `save_team_record` ou `save_user_permissions`:
+  - Causa: migration `077_create_admin_write_rpcs.sql` ainda nao aplicada no banco remoto.
+  - Solucao: aplicar a migration `077_create_admin_write_rpcs.sql` e repetir a operacao.
 - `Ative a atividade antes de editar.`:
   - Causa: tentativa de editar atividade com status inativo.
   - Solucao: usar a acao `Ativar` na lista de atividades e depois editar.
@@ -476,6 +494,9 @@ npm run build
 - `Usuario logou, mas continua vendo telas bloqueadas na configuracao de permissoes`:
   - Causa: a sessao local foi criada antes da leitura de `app_user_page_permissions` ou o frontend ainda nao reidratou `pageAccess`.
   - Solucao: entrar novamente apos salvar as permissoes e confirmar que `/api/auth/session-access` retorna `pageAccess` com as telas liberadas.
+- `As credenciais do usuario ... foram alteradas por outro administrador.`:
+  - Causa: dois administradores editaram `role`, `status` ou a matriz de paginas do mesmo usuario ao mesmo tempo.
+  - Solucao: aguardar a tela recarregar os dados atuais do usuario e repetir a alteracao desejada.
 - `Falha ao enviar convite do usuario.`:
   - Causa: usuario sem email, sem `matricula`, sem `login_name` ou ja vinculado ao Auth do Supabase.
   - Solucao: revisar o pre-cadastro em `app_users` antes de usar o botao `Enviar convite` na tela `/permissoes`.

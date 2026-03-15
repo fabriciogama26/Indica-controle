@@ -42,6 +42,7 @@ Arquitetura
 - Banco (atividades previstas por projeto + seed da locacao): `supabase/migrations/064_create_project_activity_forecast.sql`
 - Banco (materiais manuais + importacao protegida de atividades): `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
 - Banco (concorrencia e limites dos previstos): `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
+- Banco (RPC transacional da tela principal): `supabase/migrations/077_create_admin_write_rpcs.sql`
 
 Cadastro
 --------
@@ -86,6 +87,7 @@ Cadastro
   - Botao `Editar` carrega o projeto no bloco de cadastro e move a pagina para o topo.
   - Em modo edicao, o bloco `Cadastro de Projeto` recebe borda amarela de destaque.
   - A rolagem para topo usa o container interno do dashboard (`mainContent`), nao `window`.
+  - A edicao envia `expectedUpdatedAt` e bloqueia o save quando outro usuario salva ou altera o status do projeto antes.
 - Aba `Materiais previstos`:
   - Recebe selecao de projeto pela lista (acao `Materiais previstos`).
   - Permite selecionar projeto por `Projeto (SOB)` em campo de texto com sugestao (datalist), no estilo de busca digitavel.
@@ -154,6 +156,8 @@ Boas praticas
 - Limitar `Projeto (SOB)` a `10` caracteres no frontend e na API, mantendo tambem a regra de formato por prioridade.
 - Manter paginacao server-side para listas grandes.
 - Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
+- Exigir `expectedUpdatedAt` na edicao e no cancelamento/ativacao para evitar `last-write-wins`.
+- Preferir RPC transacional para escrita da tela principal, concentrando update, status e historico no banco.
 - Tratar `Materiais previstos` como planejamento: nao movimenta saldo fisico nem saldo liquido de projeto.
 - Validar importacao XLSX por tenant (projeto/material e projeto/atividade) antes de persistir.
 - A planilha de importacao de previstos deve conter somente `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
@@ -201,8 +205,8 @@ Atualizacao 2026-03
   - `GET` agora le dados em `public.project_with_labels` para exibir textos de lookup sem redundancia na tabela base.
   - `GET` possui fallback de compatibilidade para banco/view ainda sem `has_locacao` exposto em `project_with_labels`.
   - `POST` cadastro.
-  - `PUT` edicao com diff em `project_history`.
-  - `PATCH` cancelamento/ativacao com motivo obrigatorio e bloqueio de inativacao quando houver agenda operacional pendente.
+  - `PUT` edicao com diff em `project_history` e controle de concorrencia por `expectedUpdatedAt`.
+  - `PATCH` cancelamento/ativacao com motivo obrigatorio, bloqueio de inativacao quando houver agenda operacional pendente e controle de concorrencia por `expectedUpdatedAt`.
 - API `src/app/api/projects/meta/route.ts` ajustada para ler `project_with_labels` nos fallbacks de filtros e auto-complete.
 - Campo `Parceira` removido do formulario; valor preenchido automaticamente no backend por `contract.name`.
 - Botoes da coluna `Acoes` implementados de ponta a ponta na tela.
@@ -229,6 +233,8 @@ Atualizacao 2026-03
 - Importacao e download de modelo de `Atividades previstas` passam a ser feitos por Edge Functions (`get_project_activity_forecast_template` e `import_project_activity_forecast`).
 - A rota Next `src/app/api/projects/forecast/route.ts` deixa de ser apenas listagem e passa a aceitar inclusao/edicao manual via RPC.
 - As rotas de previstos do projeto passam a enviar `expectedUpdatedAt` na edicao em linha para bloquear sobrescrita concorrente.
+- A tela principal de `Projetos` passa a enviar `expectedUpdatedAt` na edicao e na troca de status para bloquear sobrescrita silenciosa e cancelamento/ativacao com dados stale.
+- A tela principal de `Projetos` passa a delegar escrita para as RPCs `save_project_record` e `set_project_record_status`.
 - Incluido botao `Materiais previstos` na coluna `Acoes` da lista de projetos.
 - Ajustada UX da aba `Materiais previstos` para ter filtros e lista proprios de materiais, sem exibir os blocos de filtros/lista de projetos nessa aba.
 - Ajustado o modelo XLSX de `Materiais previstos` para aceitar apenas as colunas `codigo` e `quantidade`.
@@ -240,9 +246,9 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
-  - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento.
+  - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento, incluindo envio de `expectedUpdatedAt` no save e no status.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, limitando `SOB` e ignorando `FOB` no fluxo operacional atual.
+  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, limitando `SOB`, ignorando `FOB` no fluxo operacional atual e delegando update/status para RPCs transacionais.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
@@ -289,6 +295,8 @@ Constantes e configuracoes
   - Responsavel por: RPC `save_project_material_forecast` e RPCs de pre-check/importacao de `Atividades previstas`.
 - Caminho: `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
   - Responsavel por: endurecer as RPCs de previstos do projeto com concorrencia por `updated_at` e limite maximo de quantidade.
+- Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
+  - Responsavel por: criar `save_project_record` e `set_project_record_status` para escrita transacional da tela principal de projetos.
 - Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
 - Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
@@ -324,6 +332,7 @@ Ajuda contextual
   - `src/app/api/projects/forecast/catalog/route.ts`
   - `src/app/api/projects/activity-forecast/route.ts`
   - `src/app/api/projects/activity-forecast/catalog/route.ts`
+  - `src/lib/server/concurrency.ts`
   - `src/app/api/projects/forecast/template/route.ts`
   - `supabase/edge_functions/get_project_forecast_template/index.ts`
   - `supabase/edge_functions/import_project_forecast/index.ts`
@@ -334,6 +343,7 @@ Ajuda contextual
   - `supabase/migrations/043_project_forecast_import_guards.sql`
   - `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
   - `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
+  - `supabase/migrations/077_create_admin_write_rpcs.sql`
   - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
@@ -346,6 +356,10 @@ Ajuda contextual
   - `validateRequiredProjectFields`
   - `buildProjectWritePayload`
   - `buildProjectUpdateChanges`
+  - `editingProjectUpdatedAt`
+  - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
+  - `saveProjectViaRpc`
+  - `setProjectStatusViaRpc`
   - Mapeamento de `hasLocacao` no retorno de `/api/projects`
   - `GET`, `POST` e `PUT` de `/api/projects/forecast`
   - `GET` de `/api/projects/forecast/catalog`

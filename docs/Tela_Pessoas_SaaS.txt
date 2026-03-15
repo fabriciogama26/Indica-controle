@@ -21,6 +21,7 @@ Arquitetura
 - Banco (historico generico): `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
 - Banco (status/cancelamento people): `supabase/migrations/055_add_people_status_and_cancellation_fields.sql`
 - Banco (bloqueio de duplicidade people): `supabase/migrations/056_prevent_people_duplicate_identity.sql`
+- Banco (RPC transacional de escrita/status): `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
 
 Cadastro
 --------
@@ -37,6 +38,7 @@ Cadastro
   - `Tipo` precisa existir em `job_title_types` ativo no tenant e no mesmo cargo.
   - Bloqueio de duplicidade por combinacao: `Nome + Matricula + Cargo + Tipo + Nivel` no mesmo tenant.
   - Edicao de registro inativo e bloqueada ate reativacao.
+  - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear sobrescrita silenciosa.
 - Fluxos:
   - `POST /api/people` para cadastro.
   - `PUT /api/people` para edicao.
@@ -67,6 +69,8 @@ Boas praticas
 - Nao aceitar `Nivel` inexistente/inativo no tenant.
 - Registrar alteracoes em `app_entity_history` para `UPDATE`, `CANCEL`, `ACTIVATE`.
 - Manter motivo obrigatorio em cancelamento/ativacao.
+- Recarregar a lista e limpar o formulario stale quando houver conflito de concorrencia.
+- Preferir RPC transacional para `POST`, `PUT` e `PATCH`, concentrando escrita, historico e concorrencia no banco.
 
 Cancelamento e saldo
 --------------------
@@ -95,18 +99,20 @@ Atualizacao 2026-03
 - Criadas APIs de listagem/cadastro/edicao/status/historico e metadados.
 - Criada migration `055_add_people_status_and_cancellation_fields.sql` para status com motivo.
 - Criada migration `056_prevent_people_duplicate_identity.sql` para bloquear duplicidade no cadastro/edicao.
+- Criada migration `079_create_people_and_invite_write_rpcs.sql` para adicionar `save_person_record` e `set_person_record_status`.
 - Implementada exportacao CSV na listagem.
 - Integracao com catalogos `job_titles`, `job_title_types` e `job_levels`.
 - Antes: tela apenas informativa (placeholder).
-- Depois: CRUD completo com filtros, paginacao, exportacao, historico e controle de status.
+- Depois: CRUD completo com filtros, paginacao, exportacao, historico, controle de status e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
+- Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/pessoas/PeoplePageView.tsx`
-  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status, incluindo envio de `expectedUpdatedAt` e refresh quando houver conflito.
 - Caminho: `src/app/api/people/route.ts`
-  - Responsavel por: `GET`, `POST`, `PUT`, `PATCH` de pessoas com validacao de tenant/cargo/tipo/nivel.
+  - Responsavel por: validar tenant/cargo/tipo/nivel, listar/historico e delegar insert/update/status para as RPCs `save_person_record` e `set_person_record_status`.
 - Caminho: `src/app/api/people/meta/route.ts`
   - Responsavel por: carregar metadados de cargos, tipos por cargo e niveis.
 
@@ -117,6 +123,8 @@ Constantes e configuracoes
   - Responsavel por: campos de cancelamento em `people` e regra de consistencia ativo/inativo.
 - Caminho: `supabase/migrations/056_prevent_people_duplicate_identity.sql`
   - Responsavel por: bloqueio de duplicidade por nome + matricula + cargo + tipo + nivel no tenant.
+- Caminho: `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
+  - Responsavel por: criar `save_person_record` e `set_person_record_status` para escrita transacional da tela de pessoas.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -137,8 +145,14 @@ Ajuda contextual
   - `src/app/api/people/meta/route.ts`
   - `supabase/migrations/055_add_people_status_and_cancellation_fields.sql`
   - `supabase/migrations/056_prevent_people_duplicate_identity.sql`
+  - `src/lib/server/concurrency.ts`
+  - `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
 - Funcoes/hooks/constantes tocadas:
   - `loadMeta`, `loadPeople`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`, `handleExportPeople`
+  - `savePersonViaRpc`, `setPersonStatusViaRpc`
+  - `save_person_record`, `set_person_record_status`
+  - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
 - Comportamento antes/depois:
   - Antes: tela de Pessoas em placeholder.
   - Depois: tela operacional completa no padrao SaaS de cadastros.
+  - Depois: a edicao e a troca de status passam a recusar dados stale em vez de aplicar `last-write-wins`.

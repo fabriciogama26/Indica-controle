@@ -34,6 +34,7 @@ type TenantUser = {
   status: UserStatus;
   tenantId: string;
   canInvite?: boolean;
+  updatedAt?: string | null;
 };
 
 const roleOptions: RoleOption[] = [
@@ -332,6 +333,7 @@ export function PermissionsPageView() {
         body: JSON.stringify({
           role: selectedRole,
           status,
+          expectedUpdatedAt: selectedUser.updatedAt ?? null,
           permissions: permissions.map((permission) => ({
             pageKey: permission.pageKey,
             enabled: permission.enabled,
@@ -342,9 +344,15 @@ export function PermissionsPageView() {
       const data = (await response.json().catch(() => ({}))) as {
         success?: boolean;
         message?: string;
+        code?: string;
+        updatedAt?: string;
       };
 
       if (!response.ok || !data.success) {
+        if (data.code === "CONCURRENT_MODIFICATION") {
+          await applyUser(selectedUser);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao salvar as credenciais do usuario.",
@@ -358,6 +366,7 @@ export function PermissionsPageView() {
               ...current,
               role: selectedRole,
               status,
+              updatedAt: data.updatedAt ?? current.updatedAt ?? null,
             }
           : current,
       );

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAdminOperator } from "@/lib/server/appUsersAdmin";
+import {
+  buildConcurrencyConflictResponse,
+  hasUpdatedAtConflict,
+  normalizeExpectedUpdatedAt,
+} from "@/lib/server/concurrency";
 
 type PermissionPayload = {
   pageKey: string;
@@ -17,6 +22,7 @@ type TargetUserRow = {
   auth_user_id: string | null;
   ativo: boolean;
   role_id: string | null;
+  updated_at: string;
 };
 
 type RoleRow = {
@@ -43,6 +49,14 @@ type HistoryInsertRow = {
   new_ativo?: boolean | null;
   metadata?: Record<string, unknown>;
   created_by: string;
+};
+
+type PermissionsSaveRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  updated_at?: string;
 };
 
 function normalizeRoleKey(value: unknown) {
@@ -81,7 +95,7 @@ function normalizePermissions(value: unknown): PermissionPayload[] {
 async function resolveTargetUser(userId: string, tenantId: string, supabase: SupabaseClient) {
   const { data: targetUser, error: targetUserError } = await supabase
     .from("app_users")
-    .select("id, tenant_id, matricula, login_name, email, auth_user_id, ativo, role_id")
+    .select("id, tenant_id, matricula, login_name, email, auth_user_id, ativo, role_id, updated_at")
     .eq("id", userId)
     .eq("tenant_id", tenantId)
     .maybeSingle<TargetUserRow>();
@@ -91,31 +105,6 @@ async function resolveTargetUser(userId: string, tenantId: string, supabase: Sup
   }
 
   return targetUser;
-}
-
-async function insertPermissionHistory(supabase: SupabaseClient, rows: HistoryInsertRow[]) {
-  if (rows.length === 0) {
-    return null;
-  }
-
-  const { error } = await supabase.from("app_user_permission_history").insert(
-    rows.map((row) => ({
-      tenant_id: row.tenant_id,
-      target_user_id: row.target_user_id,
-      page_key: row.page_key ?? null,
-      change_type: row.change_type,
-      previous_can_access: row.previous_can_access ?? null,
-      new_can_access: row.new_can_access ?? null,
-      previous_role_id: row.previous_role_id ?? null,
-      new_role_id: row.new_role_id ?? null,
-      previous_ativo: row.previous_ativo ?? null,
-      new_ativo: row.new_ativo ?? null,
-      metadata: row.metadata ?? {},
-      created_by: row.created_by,
-    })),
-  );
-
-  return error;
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ userId: string }> }) {
@@ -162,6 +151,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ use
         role: String(role?.role_key ?? "user"),
         roleLabel: String(role?.name ?? "User"),
         canInvite: Boolean(targetUser.email && !targetUser.auth_user_id),
+        updatedAt: targetUser.updated_at,
       },
       permissions: (permissions ?? []).map((item) => ({
         pageKey: item.page_key,
@@ -187,14 +177,25 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ use
     const roleKey = normalizeRoleKey(body.role);
     const status = normalizeStatus(body.status);
     const permissions = normalizePermissions(body.permissions);
+    const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
     if (!roleKey) {
       return NextResponse.json({ message: "Informe o role do usuario." }, { status: 400 });
     }
 
+    if (!expectedUpdatedAt) {
+      return NextResponse.json({ message: "Recarregue as credenciais do usuario antes de salvar." }, { status: 400 });
+    }
+
     const targetUser = await resolveTargetUser(userId, operator.tenantId, supabase);
     if (!targetUser) {
       return NextResponse.json({ message: "Usuario nao encontrado no tenant atual." }, { status: 404 });
+    }
+
+    if (hasUpdatedAtConflict(expectedUpdatedAt, targetUser.updated_at)) {
+      return buildConcurrencyConflictResponse(
+        `As credenciais do usuario ${targetUser.login_name} foram alteradas por outro administrador. Recarregue os dados antes de salvar novamente.`,
+      );
     }
 
     const { data: role, error: roleError } = await supabase
@@ -206,17 +207,6 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ use
 
     if (roleError || !role?.id) {
       return NextResponse.json({ message: "Role invalido para o usuario selecionado." }, { status: 422 });
-    }
-
-    const { data: currentPermissions, error: currentPermissionsError } = await supabase
-      .from("app_user_page_permissions")
-      .select("page_key, can_access")
-      .eq("tenant_id", operator.tenantId)
-      .eq("user_id", targetUser.id)
-      .returns<SavedPermissionRow[]>();
-
-    if (currentPermissionsError) {
-      return NextResponse.json({ message: "Falha ao carregar permissoes atuais do usuario." }, { status: 500 });
     }
 
     const pageKeys = Array.from(new Set(permissions.map((item) => item.pageKey)));
@@ -240,96 +230,35 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ use
     }
 
     const normalizedPermissions = permissions.filter((item) => validPageKeys.has(item.pageKey));
-    const currentPermissionsMap = new Map((currentPermissions ?? []).map((item) => [item.page_key, item.can_access]));
-
-    const { error: updateUserError } = await supabase
-      .from("app_users")
-      .update({
-        role_id: role.id,
-        ativo: status === "Ativo",
-        updated_by: operator.appUserId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", targetUser.id)
-      .eq("tenant_id", operator.tenantId);
-
-    if (updateUserError) {
-      return NextResponse.json({ message: "Falha ao atualizar o usuario selecionado." }, { status: 500 });
-    }
-
-    const permissionRows = normalizedPermissions.map((item) => ({
-      tenant_id: operator.tenantId,
-      user_id: targetUser.id,
-      page_key: item.pageKey,
-      can_access: item.enabled,
-      created_by: operator.appUserId,
-      updated_by: operator.appUserId,
-    }));
-
-    const { error: upsertPermissionsError } = await supabase
-      .from("app_user_page_permissions")
-      .upsert(permissionRows, {
-        onConflict: "tenant_id,user_id,page_key",
-      });
-
-    if (upsertPermissionsError) {
-      return NextResponse.json({ message: "Falha ao salvar as permissoes do usuario." }, { status: 500 });
-    }
-
-    const historyRows: HistoryInsertRow[] = [];
-
-    if (targetUser.role_id !== role.id) {
-      historyRows.push({
-        tenant_id: operator.tenantId,
-        target_user_id: targetUser.id,
-        change_type: "ROLE_CHANGED",
-        previous_role_id: targetUser.role_id,
-        new_role_id: String(role.id),
-        metadata: {
-          previousRoleId: targetUser.role_id ?? null,
-          newRoleKey: String(role.role_key ?? roleKey),
-        },
-        created_by: operator.appUserId,
-      });
-    }
-
-    const nextAtivo = status === "Ativo";
-    if (targetUser.ativo !== nextAtivo) {
-      historyRows.push({
-        tenant_id: operator.tenantId,
-        target_user_id: targetUser.id,
-        change_type: "STATUS_CHANGED",
-        previous_ativo: targetUser.ativo,
-        new_ativo: nextAtivo,
-        created_by: operator.appUserId,
-      });
-    }
-
-    normalizedPermissions.forEach((permission) => {
-      const previousValue = currentPermissionsMap.get(permission.pageKey) ?? null;
-      if (previousValue === permission.enabled) {
-        return;
-      }
-
-      historyRows.push({
-        tenant_id: operator.tenantId,
-        target_user_id: targetUser.id,
-        page_key: permission.pageKey,
-        change_type: "PAGE_ACCESS_CHANGED",
-        previous_can_access: previousValue,
-        new_can_access: permission.enabled,
-        created_by: operator.appUserId,
-      });
+    const { data, error } = await supabase.rpc("save_user_permissions", {
+      p_tenant_id: operator.tenantId,
+      p_actor_user_id: operator.appUserId,
+      p_target_user_id: targetUser.id,
+      p_role_id: role.id,
+      p_ativo: status === "Ativo",
+      p_permissions: normalizedPermissions.map((item) => ({
+        pageKey: item.pageKey,
+        enabled: item.enabled,
+      })),
+      p_expected_updated_at: expectedUpdatedAt,
     });
 
-    const historyError = await insertPermissionHistory(supabase, historyRows);
-    if (historyError) {
-      return NextResponse.json({ message: "Falha ao registrar o historico de permissoes." }, { status: 500 });
+    if (error) {
+      return NextResponse.json({ message: "Falha ao salvar as credenciais do usuario." }, { status: 500 });
+    }
+
+    const result = (data ?? {}) as PermissionsSaveRpcResult;
+    if (result.success !== true) {
+      return NextResponse.json(
+        { message: result.message ?? "Falha ao salvar as credenciais do usuario.", code: result.reason ?? undefined },
+        { status: Number(result.status ?? 500) },
+      );
     }
 
     return NextResponse.json({
       success: true,
       message: "Credencial atualizada com sucesso.",
+      updatedAt: result.updated_at ?? null,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao salvar as credenciais do usuario." }, { status: 500 });
