@@ -51,6 +51,7 @@ type JobLevelOption = {
 
 type PersonFormState = {
   id: string | null;
+  updatedAt: string | null;
   name: string;
   matriculation: string;
   jobTitleId: string;
@@ -104,6 +105,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 
 const INITIAL_FORM: PersonFormState = {
   id: null,
+  updatedAt: null,
   name: "",
   matriculation: "",
   jobTitleId: "",
@@ -447,6 +449,7 @@ export function PeoplePageView() {
   function startEdit(person: PersonItem) {
     setForm({
       id: person.id,
+      updatedAt: person.updatedAt,
       name: person.name,
       matriculation: person.matriculation ?? "",
       jobTitleId: person.jobTitleId,
@@ -506,6 +509,7 @@ export function PeoplePageView() {
         jobTitleId: normalizeText(form.jobTitleId),
         jobTitleTypeId: normalizeText(form.jobTitleTypeId) || null,
         jobLevel: normalizeText(form.jobLevel) || null,
+        ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
 
       const response = await fetch("/api/people", {
@@ -517,9 +521,18 @@ export function PeoplePageView() {
         body: JSON.stringify(payload),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+        code?: string;
+      };
 
       if (!response.ok || !data.success) {
+        if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
+          resetForm();
+          await loadPeople(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao salvar pessoa.",
@@ -563,12 +576,29 @@ export function PeoplePageView() {
           id: statusPerson.id,
           reason: statusReason.trim(),
           action: statusAction,
+          expectedUpdatedAt: statusPerson.updatedAt,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+        code?: string;
+      };
 
       if (!response.ok || !data.success) {
+        if (
+          data.code === "CONCURRENT_MODIFICATION"
+          || data.code === "RECORD_INACTIVE"
+          || data.code === "STATUS_ALREADY_CHANGED"
+        ) {
+          if (form.id === statusPerson.id) {
+            resetForm();
+          }
+          closeStatusModal();
+          await loadPeople(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao atualizar status da pessoa.",

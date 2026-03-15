@@ -56,6 +56,7 @@ type TeamFormState = {
   serviceCenterId: string;
   teamTypeId: string;
   foremanId: string;
+  updatedAt: string;
 };
 
 type TeamFilterState = {
@@ -108,6 +109,7 @@ const INITIAL_FORM: TeamFormState = {
   serviceCenterId: "",
   teamTypeId: "",
   foremanId: "",
+  updatedAt: "",
 };
 
 const INITIAL_FILTERS: TeamFilterState = {
@@ -325,11 +327,13 @@ export function TeamsPageView() {
             type: "error",
             message: data.message ?? "Falha ao carregar equipes.",
           });
-          return;
+          return [] as TeamItem[];
         }
 
-        setTeams(data.teams ?? []);
+        const nextTeams = data.teams ?? [];
+        setTeams(nextTeams);
         setTotal(data.pagination?.total ?? 0);
+        return nextTeams;
       } catch {
         setTeams([]);
         setTotal(0);
@@ -337,6 +341,7 @@ export function TeamsPageView() {
           type: "error",
           message: "Falha ao carregar equipes.",
         });
+        return [] as TeamItem[];
       } finally {
         setIsLoadingList(false);
       }
@@ -426,6 +431,7 @@ export function TeamsPageView() {
       serviceCenterId: team.serviceCenterId ?? "",
       teamTypeId: team.teamTypeId,
       foremanId: team.foremanId,
+      updatedAt: team.updatedAt,
     });
     setFeedback(null);
     scrollDashboardContentToTop();
@@ -480,6 +486,7 @@ export function TeamsPageView() {
         serviceCenterId: normalizeText(form.serviceCenterId),
         teamTypeId: normalizeText(form.teamTypeId),
         foremanId: normalizeText(form.foremanId),
+        ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
 
       const response = await fetch("/api/teams", {
@@ -491,9 +498,14 @@ export function TeamsPageView() {
         body: JSON.stringify(payload),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
 
       if (!response.ok || !data.success) {
+        if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
+          resetForm();
+          await loadTeams(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao salvar equipe.",
@@ -537,12 +549,25 @@ export function TeamsPageView() {
           id: statusTeam.id,
           reason: statusReason.trim(),
           action: statusAction,
+          expectedUpdatedAt: statusTeam.updatedAt,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string };
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
 
       if (!response.ok || !data.success) {
+        if (
+          data.code === "CONCURRENT_MODIFICATION"
+          || data.code === "RECORD_INACTIVE"
+          || data.code === "STATUS_ALREADY_CHANGED"
+        ) {
+          if (form.id === statusTeam.id) {
+            resetForm();
+          }
+          closeStatusModal();
+          await loadTeams(page, activeFilters);
+        }
+
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao atualizar status da equipe.",

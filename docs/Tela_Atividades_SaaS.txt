@@ -20,6 +20,7 @@ Arquitetura
 - Banco (evolucao): `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
 - Banco (historico/status): `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
 - Banco (tipo de equipe em atividades): `supabase/migrations/057_add_team_type_to_service_activities.sql`
+- Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
 - Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -39,6 +40,7 @@ Cadastro
   - `Grupo` e `Alcance` sao opcionais.
   - `Codigo` deve ser unico por tenant.
   - Pre-validacao de codigo via RPC `precheck_activity_code_conflict` (bloqueia duplicidade antes de inserir/editar).
+  - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear `last-write-wins`.
 - Fluxo:
   - `POST /api/activities` para cadastro.
   - `PUT /api/activities` para edicao.
@@ -79,6 +81,8 @@ Boas praticas
 - Evitar valores negativos no campo `valor`.
 - Bloquear edicao de atividade inativa.
 - Exigir motivo no cancelamento/ativacao.
+- Recarregar a lista quando houver conflito de concorrencia antes de permitir nova tentativa de edicao.
+- Preferir RPC transacional para `POST`, `PUT` e `PATCH`, concentrando escrita, historico e concorrencia no banco.
 
 Cancelamento e saldo
 --------------------
@@ -99,7 +103,7 @@ Atualizacao 2026-03
 - Tela `Atividades` criada com formulario funcional e listagem.
 - Layout visual ajustado para o mesmo padrao das telas `Projetos` e `Materiais` (cards, bloco de filtros e tabela principal).
 - API `src/app/api/activities/route.ts` criada com `GET`, `POST` e `PUT`.
-- API evoluida para `GET` (lista + historico), `POST`, `PUT` e `PATCH` (cancelar/ativar).
+- API evoluida para `GET` (lista + historico), `POST`, `PUT` e `PATCH` (cancelar/ativar), com controle de concorrencia por `expectedUpdatedAt` e escrita delegada para RPC.
 - API evoluida com `GET /api/activities/meta` para carregar opcoes de `Tipo` a partir de `team_types`.
 - Listagem de atividades ajustada para paginacao server-side (`page/pageSize`).
 - Hierarquia de botoes alinhada ao padrao da tela `Projetos` (`primary/secondary/ghost` conforme contexto de acao).
@@ -116,6 +120,9 @@ Atualizacao 2026-03
 - Migration `057_add_team_type_to_service_activities.sql` criada para:
   - adicionar `service_activities.team_type_id` com FK composta (`team_type_id`, `tenant_id`) para `team_types`;
   - fazer backfill com tipo `PADRAO` por tenant para manter consistencia dos registros existentes.
+- Migration `077_create_admin_write_rpcs.sql` criada para:
+  - adicionar `save_service_activity_record` para cadastro/edicao transacional;
+  - adicionar `set_service_activity_record_status` para cancelamento/ativacao com historico e concorrencia no banco.
 - `AppShell`, `authorization.ts` e `PermissionsPageView` atualizados para incluir a nova rota.
 - Antes: nao existia a pagina de `Atividades`.
 - Depois: pagina ativa com cadastro e edicao por tenant, exigindo `Codigo`, `Descricao`, `Tipo`, `Valor` e `Unidade`.
@@ -130,9 +137,9 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: estado da tela, metadados de tipo, cadastro/edicao, filtros, listagem paginada, detalhes, historico e cancelamento/ativacao.
+  - Responsavel por: estado da tela, metadados de tipo, cadastro/edicao, filtros, listagem paginada, detalhes, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
 - Caminho: `src/app/api/activities/route.ts`
-  - Responsavel por: validar payload, validar `team_type_id`, listar com paginacao/historico, cadastrar, editar e cancelar/ativar por tenant.
+  - Responsavel por: validar payload, validar `team_type_id`, listar com paginacao/historico, executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 - Caminho: `src/app/api/activities/meta/route.ts`
   - Responsavel por: retornar opcoes de `Tipo` (`team_types`) ativas do tenant.
 
@@ -147,6 +154,8 @@ Constantes e configuracoes
   - Responsavel por: criar historico generico da aplicacao e suporte de status em atividades.
 - Caminho: `supabase/migrations/057_add_team_type_to_service_activities.sql`
   - Responsavel por: adicionar vinculacao obrigatoria de atividade com tipo de equipe por tenant.
+- Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
+  - Responsavel por: criar `save_service_activity_record` e `set_service_activity_record_status` para escrita transacional da tela de atividades.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear `/atividades` para `pageKey = atividades`.
 
@@ -167,6 +176,7 @@ Ajuda contextual
   - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
   - `src/app/api/activities/route.ts`
   - `src/app/api/activities/meta/route.ts`
+  - `src/lib/server/concurrency.ts`
   - `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
   - `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
   - `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
@@ -178,9 +188,13 @@ Ajuda contextual
   - `loadMeta`, `loadActivities`, `handleSubmit`, `startEdit`, `openHistoryModal`, `confirmStatusChange`, `setPage`
   - `GET` de `/api/activities/meta`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/activities`
+  - `saveActivityViaRpc`, `setActivityStatusViaRpc`
+  - `save_service_activity_record`, `set_service_activity_record_status`
+  - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
   - `ROUTE_PAGE_KEYS`, `resolveDefaultPageAccess`, `permissionCatalog`
 - Comportamento antes/depois:
   - Antes: rota inexistente para atividades.
-  - Depois: rota ativa com cadastro e edicao no tenant atual, com 5 campos obrigatorios, precheck RPC anti-duplicidade, historico e controle de status.
+  - Depois: rota ativa com cadastro e edicao no tenant atual, com 5 campos obrigatorios, precheck RPC anti-duplicidade, historico, controle de status e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
   - Antes: atividade nao possuia tipo vinculado.
   - Depois: atividade passa a exigir tipo de equipe valido por tenant (`team_types`).
+  - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.

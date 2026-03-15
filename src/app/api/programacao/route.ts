@@ -86,6 +86,8 @@ type ProgrammingRow = {
   pep_number: string | null;
   pep_included_at: string | null;
   pep_delivered_at: string | null;
+  cancellation_reason: string | null;
+  canceled_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -99,6 +101,15 @@ type ProgrammingActivityRow = {
   activity_unit: string;
   quantity: number | string;
   is_active: boolean;
+};
+
+type ProgrammingHistoryRow = {
+  id: string;
+  entity_id: string;
+  reason: string | null;
+  changes: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
 };
 
 type HistoryChange = {
@@ -132,6 +143,14 @@ type SaveProgrammingPayload = {
   }>;
 };
 
+type CopyProgrammingPayload = {
+  action?: "COPY";
+  sourceTeamId?: string;
+  targetTeamIds?: string[];
+  startDate?: string;
+  endDate?: string;
+};
+
 type CancelProgrammingPayload = {
   id?: string;
   action?: string;
@@ -150,6 +169,12 @@ type SaveProgrammingRpcResult = {
   updated_at?: string;
 };
 
+type CopyProgrammingResponse = {
+  success?: boolean;
+  copiedCount?: number;
+  message?: string;
+};
+
 type CancelProgrammingRpcResult = {
   success?: boolean;
   status?: number;
@@ -159,6 +184,14 @@ type CancelProgrammingRpcResult = {
   project_code?: string;
   updated_at?: string;
   programming_status?: "ADIADA" | "CANCELADA";
+};
+
+type AppendProgrammingHistoryRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  skipped?: boolean;
 };
 
 function normalizeText(value: unknown) {
@@ -449,10 +482,9 @@ async function fetchProgrammingRows(
   const { data, error } = await supabase
     .from("project_programming")
     .select(
-      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
+      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
-    .eq("is_active", true)
     .gte("execution_date", startDate)
     .lte("execution_date", endDate)
     .order("execution_date", { ascending: true })
@@ -515,6 +547,83 @@ async function fetchProgrammingActivities(
   return activityMap;
 }
 
+async function fetchRescheduledProgrammingIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  programmingIds: string[],
+) {
+  if (!programmingIds.length) {
+    return new Map<
+      string,
+      {
+        historyId: string;
+        changedAt: string;
+        reason: string;
+        fromDate: string;
+        toDate: string;
+      }
+    >();
+  }
+
+  const { data, error } = await supabase
+    .from("app_entity_history")
+    .select("id, entity_id, reason, changes, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("module_key", "programacao")
+    .eq("entity_table", "project_programming")
+    .in("entity_id", programmingIds)
+    .order("created_at", { ascending: false })
+    .returns<ProgrammingHistoryRow[]>();
+
+  if (error) {
+    return new Map<
+      string,
+      {
+        historyId: string;
+        changedAt: string;
+        reason: string;
+        fromDate: string;
+        toDate: string;
+      }
+    >();
+  }
+
+  const latestReschedules = new Map<
+    string,
+    {
+      historyId: string;
+      changedAt: string;
+      reason: string;
+      fromDate: string;
+      toDate: string;
+    }
+  >();
+
+  for (const item of data ?? []) {
+    if (latestReschedules.has(item.entity_id)) {
+      continue;
+    }
+
+    if (normalizeText(item.metadata?.action).toUpperCase() !== "RESCHEDULE") {
+      continue;
+    }
+
+    const executionDateChange = item.changes?.executionDate as
+      | { from?: string | null; to?: string | null }
+      | undefined;
+
+    latestReschedules.set(item.entity_id, {
+      historyId: item.id,
+      changedAt: item.created_at,
+      reason: normalizeText(item.reason),
+      fromDate: normalizeText(executionDateChange?.from),
+      toDate: normalizeText(executionDateChange?.to),
+    });
+  }
+
+  return latestReschedules;
+}
+
 async function fetchProgrammingById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -523,10 +632,9 @@ async function fetchProgrammingById(
   const { data, error } = await supabase
     .from("project_programming")
     .select(
-      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, created_at, updated_at",
+      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
-    .eq("is_active", true)
     .eq("id", programmingId)
     .maybeSingle<ProgrammingRow>();
 
@@ -665,23 +773,80 @@ async function registerProgrammingHistory(params: {
   reason?: string | null;
   force?: boolean;
 }) {
-  if (!params.force && Object.keys(params.changes).length === 0) {
+  const { data, error } = await params.supabase.rpc("append_programming_history", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_project_code: params.projectCode,
+    p_reason: params.reason ?? null,
+    p_changes: params.changes,
+    p_metadata: params.metadata,
+    p_change_type: "UPDATE",
+    p_force: params.force ?? false,
+  });
+
+  if (error) {
     return;
   }
 
-  await params.supabase.from("app_entity_history").insert({
-    tenant_id: params.tenantId,
-    module_key: "programacao",
-    entity_table: "project_programming",
-    entity_id: params.programmingId,
-    entity_code: params.projectCode,
-    change_type: "UPDATE",
-    reason: params.reason ?? null,
-    changes: params.changes,
-    metadata: params.metadata,
-    created_by: params.actorUserId,
-    updated_by: params.actorUserId,
+  const result = (data ?? {}) as AppendProgrammingHistoryRpcResult;
+  if (result.success !== true) {
+    return;
+  }
+}
+
+async function copyProgramming(request: NextRequest) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para copiar programacao.",
+    inactiveMessage: "Usuario inativo.",
   });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const payload = (await request.json().catch(() => null)) as CopyProgrammingPayload | null;
+  const sourceTeamId = normalizeText(payload?.sourceTeamId);
+  const startDate = normalizeIsoDate(payload?.startDate);
+  const endDate = normalizeIsoDate(payload?.endDate);
+  const targetTeamIds = Array.from(
+    new Set((Array.isArray(payload?.targetTeamIds) ? payload?.targetTeamIds : []).map((item) => normalizeText(item)).filter(Boolean)),
+  );
+
+  if (!sourceTeamId || !targetTeamIds.length) {
+    return NextResponse.json({ message: "Informe a equipe de origem e ao menos uma equipe de destino." }, { status: 400 });
+  }
+
+  if (!startDate || !endDate) {
+    return NextResponse.json({ message: "Informe o periodo visivel para copiar a linha da equipe." }, { status: 400 });
+  }
+
+  const { data, error } = await resolution.supabase.rpc("copy_team_programming_period", {
+    p_tenant_id: resolution.appUser.tenant_id,
+    p_actor_user_id: resolution.appUser.id,
+    p_source_team_id: sourceTeamId,
+    p_target_team_ids: targetTeamIds,
+    p_visible_start_date: startDate,
+    p_visible_end_date: endDate,
+  });
+
+  if (error) {
+    return NextResponse.json({ message: "Falha ao copiar a linha da equipe no periodo visivel." }, { status: 500 });
+  }
+
+  const result = (data ?? {}) as CopyProgrammingResponse & { success?: boolean; status?: number };
+  if (result.success !== true) {
+    return NextResponse.json(
+      { message: result.message ?? "Falha ao copiar a linha da equipe no periodo visivel." },
+      { status: Number(result.status ?? 400) },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    copiedCount: result.copiedCount ?? 0,
+    message: result.message ?? "Programacao copiada com sucesso.",
+  } satisfies CopyProgrammingResponse);
 }
 
 export async function GET(request: NextRequest) {
@@ -719,6 +884,11 @@ export async function GET(request: NextRequest) {
       supportOptions,
     });
     const activitiesMap = await fetchProgrammingActivities(
+      resolution.supabase,
+      resolution.appUser.tenant_id,
+      programmingRows.map((item) => item.id),
+    );
+    const rescheduleHistoryMap = await fetchRescheduledProgrammingIds(
       resolution.supabase,
       resolution.appUser.tenant_id,
       programmingRows.map((item) => item.id),
@@ -761,6 +931,7 @@ export async function GET(request: NextRequest) {
           id: item.id,
           projectId: item.project_id,
           teamId: item.team_id,
+          status: item.status,
           date: item.execution_date,
           period: item.period === "INTEGRAL" ? "integral" : "partial",
           startTime: formatTime(item.start_time),
@@ -772,6 +943,18 @@ export async function GET(request: NextRequest) {
           supportItemId: item.support_item_id,
           note: normalizeText(item.note),
           projectBase: normalizeText(project?.service_center_text) || "Sem base",
+          statusReason: normalizeText(item.cancellation_reason),
+          statusChangedAt: item.canceled_at ?? "",
+          wasRescheduled: rescheduleHistoryMap.has(item.id),
+          lastReschedule: rescheduleHistoryMap.get(item.id)
+            ? {
+                id: rescheduleHistoryMap.get(item.id)?.historyId ?? "",
+                changedAt: rescheduleHistoryMap.get(item.id)?.changedAt ?? "",
+                reason: rescheduleHistoryMap.get(item.id)?.reason ?? "",
+                fromDate: rescheduleHistoryMap.get(item.id)?.fromDate ?? "",
+                toDate: rescheduleHistoryMap.get(item.id)?.toDate ?? "",
+              }
+            : null,
           activities: scheduleActivities.map((activity) => ({
             catalogId: activity.service_activity_id,
             code: normalizeText(activity.activity_code),
@@ -994,7 +1177,25 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 }
 
 export async function POST(request: NextRequest) {
-  return saveProgramming(request, "POST");
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+
+  if (normalizeText(body?.action).toUpperCase() === "COPY") {
+    const clonedRequest = new NextRequest(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(body),
+    });
+
+    return copyProgramming(clonedRequest);
+  }
+
+  const clonedRequest = new NextRequest(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: JSON.stringify(body),
+  });
+
+  return saveProgramming(clonedRequest, "POST");
 }
 
 export async function PUT(request: NextRequest) {

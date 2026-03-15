@@ -18,6 +18,13 @@ type RoleRow = {
   role_key?: string | null;
 } | null;
 
+type InviteHistoryRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+};
+
 export async function POST(request: NextRequest, context: { params: Promise<{ userId: string }> }) {
   try {
     const resolution = await resolveAdminOperator(request);
@@ -78,16 +85,30 @@ export async function POST(request: NextRequest, context: { params: Promise<{ us
       return NextResponse.json({ message: inviteError.message || "Falha ao enviar convite do usuario." }, { status: 500 });
     }
 
-    await supabase.from("app_user_permission_history").insert({
-      tenant_id: operator.tenantId,
-      target_user_id: targetUser.id,
-      change_type: "INVITE_SENT",
-      metadata: {
-        email: targetUser.email,
-        redirectTo: redirectTo ?? null,
-      },
-      created_by: operator.appUserId,
+    const { data: historyData, error: historyError } = await supabase.rpc("append_user_invite_history", {
+      p_tenant_id: operator.tenantId,
+      p_actor_user_id: operator.appUserId,
+      p_target_user_id: targetUser.id,
+      p_email: targetUser.email,
+      p_redirect_to: redirectTo ?? null,
     });
+
+    if (historyError) {
+      return NextResponse.json({
+        success: true,
+        warning: true,
+        message: "Convite enviado, mas falhou ao registrar historico.",
+      });
+    }
+
+    const historyResult = (historyData ?? {}) as InviteHistoryRpcResult;
+    if (historyResult.success !== true) {
+      return NextResponse.json({
+        success: true,
+        warning: true,
+        message: historyResult.message ?? "Convite enviado, mas falhou ao registrar historico.",
+      });
+    }
 
     return NextResponse.json({
       success: true,

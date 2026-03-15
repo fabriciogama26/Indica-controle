@@ -2,73 +2,134 @@ Tela: Medicao SaaS
 
 Visao geral
 -----------
-- Tela placeholder para o modulo de medicao no dashboard.
-- Disponibiliza o atalho de navegacao na secao `Operacao`.
-- Ja integrada a matriz de permissao por pagina.
+- Tela frontend para montar OS e medicao por projeto.
+- Permite iniciar a medicao a partir de uma `Programacao` existente ou direto do `Projeto`.
+- Reaproveita as atividades previstas do projeto e o snapshot de atividades da programacao para compor a medicao.
+- Nesta etapa, a tela ainda nao possui backend proprio de persistencia; o fechamento atual e apenas local no frontend.
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/medicao/page.tsx`
-- Componente de base visual: `src/components/ui/ModulePlaceholder.tsx`
-- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
-- Guard de rota por permissao: `src/lib/auth/authorization.ts`
-- Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- View principal: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+- Fontes de leitura reutilizadas:
+  - `src/app/api/programacao/route.ts`
+  - `src/app/api/projects/activity-forecast/route.ts`
+- Guard de rota e shell:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
 
 Cadastro
 --------
-- Nao se aplica nesta etapa.
+- Abertura da medicao:
+  - `Gerar da Programacao`
+  - `Criar do Projeto`
+- Campos principais:
+  - Codigo da medicao
+  - Codigo da OS
+  - Data da medicao
+  - Origem
+  - Titulo
+  - Observacoes
+- Regras desta etapa:
+  - A tela abre com fator `Normal = 1,00`.
+  - O usuario pode trocar manualmente para:
+    - `Emergencial = 1,20`
+    - `Municipio com modificador = 1,25`
+    - `Ilha = 2,85`
+  - O calculo atual e local:
+    - `quantidade executada x valor unitario x fator`
+  - A tela permite incluir linha manual para atividade fora da base carregada.
 
 Filtros, auto-complete e listagem
 ---------------------------------
-- Nao se aplica nesta etapa.
+- Busca de origem:
+  - Periodo inicial e final para consultar `Programacao`
+  - Projeto
+  - Programacao
+- Base carregada:
+  - Se origem for `Programacao`, a tela usa as atividades da agenda e complementa o `valor unitario` a partir do previsto do projeto.
+  - Se origem for `Projeto`, a tela usa as atividades previstas em `project_activity_forecast`.
+- Listagens:
+  - Contexto do projeto selecionado
+  - Contexto da equipe/programacao selecionada
+  - Tabela editavel dos itens da medicao
+  - Resumo total previsto, executado e valor final
 
 Boas praticas
 -------------
-- Manter `medicao` como `pageKey` explicito em `app_pages`.
-- Evitar regra de negocio local antes da definicao do backend.
-- Garantir visibilidade da rota apenas quando `can_access = true`.
+- Manter `medicao` como `pageKey` oficial no controle de permissao.
+- Tratar esta entrega como frontend de preparacao; nao simular persistencia definitiva no banco.
+- Centralizar o calculo oficial de fator e fechamento da medicao no backend na proxima etapa.
+- Evitar duplicar regra final de `ilha` entre `Projeto` e `Locacao` sem fonte de verdade no backend.
 
 Cancelamento e saldo
 --------------------
-- Nao se aplica nesta etapa.
+- Nao existe cancelamento persistente nesta etapa.
+- Nao existe aprovacao persistente nesta etapa.
+- Nao existe impacto em saldo de estoque nesta etapa.
 
 Atalhos
 -------
-- Rota ativa: `/medicao`.
-- Exibida na secao `Operacao` da sidebar.
+- Rota ativa: `/medicao`
+- Interacoes principais:
+  - Selecionar origem por `Programacao` ou `Projeto`
+  - Carregar atividades previstas
+  - Ajustar quantidades e valor unitario
+  - Trocar regra de fator
+  - Gerar previa local da medicao
 
 Atualizacao 2026-03
 -------------------
-- Arquivo `src/app/(dashboard)/medicao/page.tsx` criado.
-- `AppShell` atualizado para expor `Medicao` em `Operacao`.
-- `authorization.ts` atualizado para mapear `/medicao` para `pageKey = medicao`.
-- `PermissionsPageView` atualizado para incluir a liberacao da tela `Medicao`.
-- Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para inserir `medicao` em `app_pages` e backfill de permissoes.
-- Antes: a rota nao existia na navegacao e na matriz de permissao.
-- Depois: rota placeholder criada e protegida por permissao de pagina.
+- Arquivo `src/modules/dashboard/medicao/MeasurementPageView.tsx` criado.
+- Arquivo `src/modules/dashboard/medicao/MeasurementPageView.module.css` criado.
+- Arquivo `src/app/(dashboard)/medicao/page.tsx` deixou de usar placeholder e passou a montar a tela real do frontend.
+- A tela agora consulta:
+  - `/api/programacao` para projetos, equipes e programacoes do periodo
+  - `/api/projects/activity-forecast` para atividades previstas por projeto
+- Antes:
+  - `/medicao` era apenas placeholder visual sem fluxo funcional.
+- Depois:
+  - `/medicao` possui fluxo frontend para montar a medicao, calcular valor final e preparar a futura integracao com backend proprio.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
+- Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - Responsavel por: carregar projeto/programacao, montar itens da medicao, calcular total local e controlar a regra de fator no frontend.
 - Caminho: `src/app/(dashboard)/medicao/page.tsx`
-  - Responsavel por: montar o placeholder da rota `Medicao`.
-- Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: renderizar o item de menu lateral de `Medicao`.
+  - Responsavel por: expor a view principal da tela `Medicao`.
 
 Constantes e configuracoes
+- Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - Responsavel por: definir `FACTOR_RULES` com `1,00`, `1,20`, `1,25` e `2,85`.
 - Caminho: `src/lib/auth/authorization.ts`
-  - Responsavel por: mapear rota para `pageKey` e aplicar fallback de permissao.
-- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: incluir `medicao` no catalogo de permissoes por usuario.
-- Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
-  - Responsavel por: garantir `medicao` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+  - Responsavel por: manter a rota `/medicao` vinculada ao `pageKey = medicao`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: expor `Medicao` na secao `Operacao` e mostrar o subtitulo da tela.
 
 Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - Responsavel por: `toIsoDate`, `addDays`, `formatDate`, `formatCurrency`, `formatFactor`, `parseDecimal`, `mapForecastRows` e `mapScheduleRows`.
 - Caminho: `src/hooks/useAuth.ts`
-  - Responsavel por: disponibilizar sessao usada na protecao de rota no shell.
+  - Responsavel por: disponibilizar sessao autenticada para chamadas das APIs reaproveitadas.
 
 Servicos e integracoes externas
-- Nao se aplica nesta etapa (sem chamada de API nesta tela).
+- `/api/programacao`: fonte de projetos, equipes e programacoes ativas do periodo.
+- `/api/projects/activity-forecast`: fonte de atividades previstas, quantidade prevista e valor unitario.
+- Nao existe `/api/medicao` nesta etapa.
 
 Ajuda contextual
-- Estado atual: tela em placeholder com permissao por pagina ativa.
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/medicao/page.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+- Hooks/constantes tocadas:
+  - `useAuth`
+  - `useState`
+  - `useEffect`
+  - `useMemo`
+  - `FACTOR_RULES`
+- Comportamento antes/depois:
+  - Antes: tela sem formulario, sem leitura de projeto/programacao e sem calculo.
+  - Depois: tela frontend funcional para preparar medicao/OS, com base de atividades, fator ajustavel e conferencia local antes da futura API.

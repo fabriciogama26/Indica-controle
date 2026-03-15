@@ -18,12 +18,14 @@ Arquitetura
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - `supabase/migrations/072_create_programming_support_items.sql`
+  - `supabase/migrations/078_create_programming_history_append_rpc.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
 Cadastro
 --------
 - Cadastro ocorre pelo modal `Programar Obra`.
 - Campos da programacao:
+  - ID da programacao exibido em modo somente leitura quando o registro ja existe
   - Projeto
   - Equipe
   - Data de execucao exibida em modo somente leitura
@@ -36,6 +38,18 @@ Cadastro
   - Alimentador
   - Apoio por selectbox de catalogo
   - Anotacao
+- Quando a programacao ja tiver historico `RESCHEDULE`, o modal tambem exibe:
+  - Data anterior da ultima reprogramacao
+  - Nova data da ultima reprogramacao
+  - Data/hora em que a reprogramacao foi registrada
+  - ID do evento de reprogramacao
+  - Motivo informado na reprogramacao
+- Quando a programacao estiver `ADIADA`, o modal tambem exibe o motivo do adiamento e a data/hora em que ele foi registrado.
+- A tela possui um botao `Copiar Programacao` no toolbar:
+  - selecao explicita da equipe de origem (`Copiar de`)
+  - selecao explicita das equipes de destino (`Para`)
+  - a copia considera toda a linha programada da equipe de origem no periodo visivel
+  - a copia reaproveita horario, periodo, atividades, documentos e campos adicionais
 - Regra de apoio:
   - O campo `Apoio` deixa de ser texto livre e passa a consumir o catalogo `programming_support_items`.
   - Cada item de `programming_support_items` pode apontar para um item da locacao em `location_execution_support_items`.
@@ -67,6 +81,13 @@ Cadastro
   - Quando uma programacao existente muda data, equipe ou horario, o frontend abre um modal proprio de validacao da reprogramacao antes de persistir.
   - O botao `Validar reprogramacao` so fica habilitado com motivo de no minimo 10 caracteres.
   - Se a tela for fechada antes da validacao final, a alteracao nao e salva; a programacao anterior continua valendo.
+- Regra de copia:
+  - A copia e uma acao manual e independente do salvamento da programacao.
+  - O modal de copia trabalha sempre com a linha inteira da equipe no periodo visivel.
+  - `Adiamento` e `Cancelamento` nao sao propagados automaticamente para outras equipes.
+  - Antes de copiar, o backend valida conflito de horario, equipe de destino inativa, copia para a mesma equipe e incompatibilidade de base.
+  - A copia em lote agora acontece por RPC transacional; se qualquer item falhar, o lote inteiro e revertido.
+  - As tabelas `project_programming_copy_batches` e `project_programming_copy_batch_items` continuam sendo a base oficial do rastreamento da copia; nao foi necessario criar outra tabela para esta mudanca.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -75,9 +96,14 @@ Filtros, auto-complete e listagem
   - Filtro por `Base`
   - Filtro por `Cidade`
   - Filtro por `Servico`
-  - Cada card de projeto pendente tambem exibe se a `Locacao` ja foi feita ou nao
+  - O contador `Projetos Pendentes` considera apenas os projetos filtrados que ainda nao possuem programacao no periodo visivel
+  - Cada card de projeto pendente exibe somente `SOB`, `Prioridade`, `Municipio`, `Tipo de servico` e status de `Locacao`
+  - Obras ja programadas no periodo continuam visiveis na lateral e recebem destaque visual em tom vinho
+  - A lateral passa a exibir no maximo 5 cards por vez apos aplicar os filtros
 - Painel direito:
   - Filtro por `Base` aplicado sobre a base real da equipe
+  - Seletor de `Equipes` para mostrar todas ou somente um subconjunto no calendario
+  - Cards de resumo no topo com `Programadas`, `Carga media` e um card de `Equipes` contendo barras internas para `Total`, `Livres` e `Selecionadas`
   - Alternancia `Semana` / `Dia`
   - Navegacao do periodo por setas
   - Na visualizacao `Semana`, a grade sempre mostra `segunda a domingo`
@@ -99,7 +125,8 @@ Boas praticas
 - Toda operacao continua restrita ao tenant autenticado via `resolveAuthenticatedAppUser`, `tenant_id` e RLS.
 - As migrations `067` e `068` formalizam a base multi-tenant da programacao, o vinculo de base da equipe e a RPC transacional de salvamento.
 - As migrations `071` e `072` movem o resumo semanal de carga para o banco e formalizam o catalogo proprio de apoio da Programacao com vinculacao ao catalogo da Locacao.
-- A API registra historico em `app_entity_history` com `module_key = programacao`.
+- As migrations `074`, `075` e `076` formalizam os lotes de copia da Programacao, adaptam o schema ao modo simplificado `team_period` e movem a copia em lote para uma RPC transacional.
+- O historico complementar da `Programacao` agora tambem e registrado por RPC (`append_programming_history`), sem `insert` direto na route.
 - O salvamento da programacao agora usa RPC com:
   - validacao de concorrencia por `expected_updated_at`
   - bloqueio de sobreposicao de horario por `equipe + data`
@@ -111,8 +138,9 @@ Cancelamento e saldo
 - Cancelamento de programacao agora existe com persistencia real.
 - Adiamento de programacao agora existe com persistencia real e status proprio.
 - O backend marca a programacao como inativa, grava motivo, data/hora e usuario do cancelamento.
-- No adiamento, o backend tambem retira a programacao da grade ativa, grava motivo, data/hora e usuario, mas preserva a etapa como `ADIADA`.
-- A programacao cancelada sai da grade operacional ativa, mas permanece em historico.
+- No adiamento, o backend grava motivo, data/hora e usuario e preserva a etapa como `ADIADA`.
+- A programacao cancelada permanece visivel na grade com estado proprio para consulta e reativacao operacional.
+- A programacao adiada permanece visivel na grade com estado proprio para consulta e reativacao operacional.
 - Reagendamento nao cria um status novo na grade: ele atualiza a mesma programacao e fica auditado no historico como remanejamento.
 - Ao sair da pagina com modal de programacao/status/reprogramacao aberto, o navegador recebe aviso de alteracao pendente.
 - Nao existe impacto em saldo de estoque nesta tela.
@@ -169,6 +197,24 @@ Atualizacao 2026-03
   - backfill inicial do catalogo da locacao para o catalogo da programacao
   - ajuste da FK de `project_programming.support_item_id` para a nova tabela
   - revalidacao da RPC `save_project_programming` sobre o catalogo proprio da Programacao
+- Arquivo `supabase/migrations/074_create_programming_copy_batches.sql` criado com:
+  - tabela `project_programming_copy_batches`
+  - tabela `project_programming_copy_batch_items`
+  - colunas `copied_from_programming_id` e `copy_batch_id` em `project_programming`
+  - indices, RLS e auditoria para o rastreamento de copias entre equipes
+- Arquivo `supabase/migrations/075_allow_team_period_copy_batches.sql` criado com:
+  - adaptacao do lote de copia para aceitar `team_period`
+  - liberacao de `project_id` e `source_programming_id` nulos no cabecalho do lote
+  - preservacao do rastreamento do lote quando a copia parte da linha inteira da equipe
+- Arquivo `supabase/migrations/076_create_copy_team_programming_period_rpc.sql` criado com:
+  - RPC `copy_team_programming_period`
+  - copia transacional da linha inteira da equipe no periodo visivel
+  - rollback automatico quando qualquer item do lote falha
+  - historico de copia persistido no proprio banco, sem depender da API iterar item por item
+- Arquivo `supabase/migrations/078_create_programming_history_append_rpc.sql` criado com:
+  - RPC `append_programming_history`
+  - registro do historico complementar da `Programacao` no banco
+  - remocao do `insert` direto em `app_entity_history` da route
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
@@ -180,7 +226,15 @@ Atualizacao 2026-03
   - manter semana completa de segunda a domingo
   - manter nomenclatura documental `PEP`
   - exibir a base real da equipe na grade e no filtro do painel direito
+  - permitir filtrar explicitamente quais equipes aparecem na grade
+  - simplificar o card do projeto pendente para mostrar apenas os dados operacionais essenciais
   - exibir o status de `Locacao` no card do projeto pendente
+  - manter a obra visivel na lateral mesmo quando ja estiver programada no periodo, para permitir novas programacoes em outros dias
+  - marcar visualmente o card da grade como `Reprogramada` quando houver historico `RESCHEDULE`, usando cor propria em roxo diferente de `Planejado`
+  - manter `Cancelada` e `Adiada` visiveis na grade com cores proprias
+  - manter os cards da grade sem texto extra de status; a diferenciacao operacional continua pela cor do card e pela legenda
+  - exibir no modal o resumo da ultima reprogramacao a partir do historico `app_entity_history`
+  - abrir modal manual `Copiar programacao` no toolbar para copiar a linha inteira da equipe origem no periodo visivel
   - usar `Apoio` por selectbox com sugestao automatica quando a locacao exigir apoio de transito
   - exibir o feedback de sucesso/erro no topo da tela, no mesmo padrao dos demais modulos
 - Antes:
@@ -194,7 +248,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: carregar dados autenticados, controlar filtros, periodo, timeline, drag and drop, modal e salvamento.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/status e registrar historico.
+  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/status/copia e delegar o historico complementar para `append_programming_history`.
 - Caminho: `supabase/migrations/067_create_project_programming.sql`
   - Responsavel por: formalizar a base multi-tenant de programacao e suas atividades.
 - Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
@@ -207,6 +261,14 @@ Funcoes principais
   - Responsavel por: calcular carga semanal no banco e ligar apoio da programacao ao catalogo da locacao.
 - Caminho: `supabase/migrations/072_create_programming_support_items.sql`
   - Responsavel por: criar a tabela propria de apoio da Programacao e mapear seus itens para os apoios da Locacao.
+- Caminho: `supabase/migrations/074_create_programming_copy_batches.sql`
+  - Responsavel por: persistir o lote de copia da Programacao e os vinculos entre origem e destino das programacoes copiadas.
+- Caminho: `supabase/migrations/075_allow_team_period_copy_batches.sql`
+  - Responsavel por: adaptar o lote de copia para o modo simplificado de copiar a linha da equipe no periodo visivel.
+- Caminho: `supabase/migrations/076_create_copy_team_programming_period_rpc.sql`
+  - Responsavel por: executar a copia transacional da linha da equipe, registrar os itens do lote e evitar lote parcial.
+- Caminho: `supabase/migrations/078_create_programming_history_append_rpc.sql`
+  - Responsavel por: registrar via RPC o historico complementar de criacao, atualizacao, reagendamento, adiamento e cancelamento da Programacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -220,7 +282,7 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: `createVisibleDates`, `formatBoardDate`, `formatPeriodLabel`, `calculateExpectedMinutes`, `getScheduleTone`, `workloadBarClassName`, `workloadPrimaryLabel`, `normalizeSchedule` e `buildIncludedAtLabel`.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingViaRpc` e `registerProgrammingHistory`.
+  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingViaRpc`, `cancelProgrammingViaRpc` e `registerProgrammingHistory`.
 
 Servicos e integracoes externas
 - `project_with_labels`: backlog real de projetos ativos.
@@ -241,6 +303,7 @@ Ajuda contextual
   - `supabase/migrations/070_add_programming_status_and_project_guard.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - `supabase/migrations/072_create_programming_support_items.sql`
+  - `supabase/migrations/078_create_programming_history_append_rpc.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -248,6 +311,8 @@ Ajuda contextual
   - `useDeferredValue`
   - `DOCUMENT_KEYS`
   - `INITIAL_PERIOD_START`
+  - `registerProgrammingHistory`
 - Comportamento antes/depois:
-  - Antes: tela local, sem API, sem persistencia e sem validacao forte de conflito operacional; nao havia cancelamento persistente nem diferenca entre cancelamento e adiamento.
-  - Depois: tela integrada com leitura e escrita reais por tenant, historico, data automatica de inclusao de documentos, catalogo real de atividades, base real da equipe, resumo semanal de carga vindo do banco, apoio por catalogo proprio da Programacao com sugestao automatica pela Locacao, RPC transacional com concorrencia/sobreposicao, cancelamento persistente por motivo e adiamento separado por status.
+  - Antes: a obra sumia da lateral assim que era programada no periodo, o card lateral exibia informacao demais e a grade nao destacava diferenca entre programacao original e reprogramacao.
+  - Depois: a obra continua visivel na lateral mesmo ja programada, o card lateral ficou mais enxuto, a lateral mostra no maximo 5 cards filtrados, a grade pode ser filtrada por subconjunto explicito de equipes e a reprogramacao recebe cor propria na agenda.
+  - Depois: o historico complementar da agenda deixa de depender de `insert` direto na route e passa a ser gravado por RPC.

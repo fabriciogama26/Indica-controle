@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import {
+  buildConcurrencyConflictResponse,
+  hasUpdatedAtConflict,
+  normalizeExpectedUpdatedAt,
+} from "@/lib/server/concurrency";
 
 type ActivityRow = {
   id: string;
@@ -59,17 +64,28 @@ type CreateActivityPayload = {
 
 type UpdateActivityPayload = CreateActivityPayload & {
   id: string;
+  expectedUpdatedAt?: string | null;
 };
 
 type UpdateActivityStatusPayload = {
   id: string;
   reason: string;
   action?: "cancel" | "activate";
+  expectedUpdatedAt?: string | null;
 };
 
 type ActivityCodePrecheckResult = {
   success?: boolean;
   reason?: string;
+};
+
+type ActivitySaveRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  activity_id?: string;
+  updated_at?: string;
 };
 
 function parsePositiveInteger(value: string | null, fallback: number) {
@@ -244,6 +260,88 @@ async function fetchTeamTypeById(
     id: data.id,
     name: normalizeText(data.name),
   };
+}
+
+async function saveActivityViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  activityId: string | null;
+  code: string;
+  description: string;
+  teamTypeId: string;
+  group: string | null;
+  value: number;
+  unit: string;
+  scope: string | null;
+  changes?: Record<string, HistoryChange>;
+  expectedUpdatedAt?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("save_service_activity_record", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_activity_id: params.activityId,
+    p_code: params.code,
+    p_description: params.description,
+    p_team_type_id: params.teamTypeId,
+    p_group_name: params.group,
+    p_unit_value: params.value,
+    p_unit: params.unit,
+    p_scope: params.scope,
+    p_changes: params.changes ?? {},
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    return { ok: false, status: 500, message: "Falha ao salvar atividade." } as const;
+  }
+
+  const result = (data ?? {}) as ActivitySaveRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      message: result.message ?? "Falha ao salvar atividade.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return { ok: true, updatedAt: result.updated_at ?? null } as const;
+}
+
+async function setActivityStatusViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  activityId: string;
+  action: "ACTIVATE" | "CANCEL";
+  reason: string;
+  expectedUpdatedAt: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("set_service_activity_record_status", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_activity_id: params.activityId,
+    p_action: params.action,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt,
+  });
+
+  if (error) {
+    return { ok: false, status: 500, message: "Falha ao atualizar status da atividade." } as const;
+  }
+
+  const result = (data ?? {}) as ActivitySaveRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      message: result.message ?? "Falha ao atualizar status da atividade.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
 export async function GET(request: NextRequest) {
@@ -465,6 +563,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
     }
 
+    const unitValue = input.value as number;
+
     if (!(await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId))) {
       return NextResponse.json({ message: "Tipo invalido para o tenant atual." }, { status: 422 });
     }
@@ -485,29 +585,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: mapped.message }, { status: mapped.status });
     }
 
-    const { error } = await supabase.from("service_activities").insert({
-      tenant_id: appUser.tenant_id,
+    const saveResult = await saveActivityViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      activityId: null,
       code: input.code,
       description: input.description,
-      team_type_id: input.teamTypeId,
-      group_name: input.group,
-      unit_value: input.value,
+      teamTypeId: input.teamTypeId,
+      group: input.group,
+      value: unitValue,
       unit: input.unit,
       scope: input.scope,
-      ativo: true,
-      cancellation_reason: null,
-      canceled_at: null,
-      canceled_by: null,
-      created_by: appUser.id,
-      updated_by: appUser.id,
     });
 
-    if (error) {
-      if (String(error.message ?? "").toLowerCase().includes("duplicate key")) {
-        return NextResponse.json({ message: "Ja existe atividade com este codigo no tenant atual." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao cadastrar atividade." }, { status: 500 });
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message, code: saveResult.reason ?? undefined }, { status: saveResult.status });
     }
 
     return NextResponse.json({
@@ -533,23 +626,36 @@ export async function PUT(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as Partial<UpdateActivityPayload>;
     const activityId = normalizeText(body.id);
+    const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const input = parseActivityInput(body);
 
     if (!activityId) {
       return NextResponse.json({ message: "Atividade invalida para edicao." }, { status: 400 });
     }
 
+    if (!expectedUpdatedAt) {
+      return NextResponse.json({ message: "Atualize a lista antes de editar a atividade." }, { status: 400 });
+    }
+
     if (!input.code || !input.description || !input.teamTypeId || input.value === null || !input.unit) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
     }
+
+    const unitValue = input.value as number;
 
     const currentActivity = await fetchActivityById(supabase, appUser.tenant_id, activityId);
     if (!currentActivity) {
       return NextResponse.json({ message: "Atividade nao encontrada." }, { status: 404 });
     }
 
+    if (hasUpdatedAtConflict(expectedUpdatedAt, currentActivity.updated_at)) {
+      return buildConcurrencyConflictResponse(
+        `A atividade ${currentActivity.code} foi alterada por outro usuario. Recarregue os dados antes de salvar novamente.`,
+      );
+    }
+
     if (!currentActivity.ativo) {
-      return NextResponse.json({ message: "Ative a atividade antes de editar." }, { status: 409 });
+      return buildConcurrencyConflictResponse("Ative a atividade antes de editar.", "RECORD_INACTIVE");
     }
 
     const currentTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, currentActivity.team_type_id);
@@ -579,7 +685,7 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "description", currentActivity.description, input.description);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "group", currentActivity.group_name, input.group);
-    addChange(changes, "value", currentActivity.unit_value, input.value);
+    addChange(changes, "value", currentActivity.unit_value, unitValue);
     addChange(changes, "unit", currentActivity.unit, input.unit);
     addChange(changes, "scope", currentActivity.scope, input.scope);
 
@@ -587,52 +693,24 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: true, message: `Nenhuma alteracao detectada na atividade ${currentActivity.code}.` });
     }
 
-    const { error } = await supabase
-      .from("service_activities")
-      .update({
-        code: input.code,
-        description: input.description,
-        team_type_id: input.teamTypeId,
-        group_name: input.group,
-        unit_value: input.value,
-        unit: input.unit,
-        scope: input.scope,
-        updated_by: appUser.id,
-      })
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", activityId);
-
-    if (error) {
-      if (String(error.message ?? "").toLowerCase().includes("duplicate key")) {
-        return NextResponse.json({ message: "Ja existe atividade com este codigo no tenant atual." }, { status: 409 });
-      }
-
-      return NextResponse.json({ message: "Falha ao editar atividade." }, { status: 500 });
-    }
-
-    const { error: historyError } = await supabase.from("app_entity_history").insert({
-      tenant_id: appUser.tenant_id,
-      module_key: "atividades",
-      entity_table: "service_activities",
-      entity_id: activityId,
-      entity_code: input.code,
-      change_type: "UPDATE",
-      reason: null,
+    const saveResult = await saveActivityViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      activityId,
+      code: input.code,
+      description: input.description,
+      teamTypeId: input.teamTypeId,
+      group: input.group,
+      value: unitValue,
+      unit: input.unit,
+      scope: input.scope,
       changes,
-      metadata: {},
-      created_by: appUser.id,
-      updated_by: appUser.id,
+      expectedUpdatedAt,
     });
 
-    if (historyError) {
-      return NextResponse.json(
-        {
-          success: true,
-          warning: true,
-          message: `Atividade ${input.code} atualizada, mas falhou ao registrar historico.`,
-        },
-        { status: 200 },
-      );
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message, code: saveResult.reason ?? undefined }, { status: saveResult.status });
     }
 
     return NextResponse.json({
@@ -660,9 +738,14 @@ export async function PATCH(request: NextRequest) {
     const activityId = normalizeText(body.id);
     const reason = normalizeText(body.reason);
     const action = normalizeText(body.action).toLowerCase() === "activate" ? "ACTIVATE" : "CANCEL";
+    const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
     if (!activityId) {
       return NextResponse.json({ message: "Atividade invalida para atualizar status." }, { status: 400 });
+    }
+
+    if (!expectedUpdatedAt) {
+      return NextResponse.json({ message: "Atualize a lista antes de alterar o status da atividade." }, { status: 400 });
     }
 
     if (!reason) {
@@ -677,84 +760,32 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "Atividade nao encontrada." }, { status: 404 });
     }
 
+    if (hasUpdatedAtConflict(expectedUpdatedAt, currentActivity.updated_at)) {
+      return buildConcurrencyConflictResponse(
+        `A atividade ${currentActivity.code} foi alterada por outro usuario. Recarregue os dados antes de alterar o status.`,
+      );
+    }
+
     if (action === "CANCEL" && !currentActivity.ativo) {
-      return NextResponse.json({ message: `Atividade ${currentActivity.code} ja esta inativa.` }, { status: 409 });
+      return buildConcurrencyConflictResponse(`Atividade ${currentActivity.code} ja esta inativa.`, "STATUS_ALREADY_CHANGED");
     }
 
     if (action === "ACTIVATE" && currentActivity.ativo) {
-      return NextResponse.json({ message: `Atividade ${currentActivity.code} ja esta ativa.` }, { status: 409 });
+      return buildConcurrencyConflictResponse(`Atividade ${currentActivity.code} ja esta ativa.`, "STATUS_ALREADY_CHANGED");
     }
 
-    const nowIso = new Date().toISOString();
-    const { error: updateError } = await supabase
-      .from("service_activities")
-      .update(
-        action === "ACTIVATE"
-          ? {
-              ativo: true,
-              cancellation_reason: null,
-              canceled_at: null,
-              canceled_by: null,
-              updated_by: appUser.id,
-            }
-          : {
-              ativo: false,
-              cancellation_reason: reason,
-              canceled_at: nowIso,
-              canceled_by: appUser.id,
-              updated_by: appUser.id,
-            },
-      )
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", activityId);
-
-    if (updateError) {
-      return NextResponse.json(
-        { message: action === "ACTIVATE" ? "Falha ao ativar atividade." : "Falha ao cancelar atividade." },
-        { status: 500 },
-      );
-    }
-
-    const changePayload: Record<string, HistoryChange> =
-      action === "ACTIVATE"
-        ? {
-            isActive: { from: "false", to: "true" },
-            cancellationReason: { from: currentActivity.cancellation_reason, to: null },
-            canceledAt: { from: currentActivity.canceled_at, to: null },
-            activationReason: { from: null, to: reason },
-          }
-        : {
-            isActive: { from: "true", to: "false" },
-            cancellationReason: { from: currentActivity.cancellation_reason, to: reason },
-            canceledAt: { from: currentActivity.canceled_at, to: nowIso },
-          };
-
-    const { error: historyError } = await supabase.from("app_entity_history").insert({
-      tenant_id: appUser.tenant_id,
-      module_key: "atividades",
-      entity_table: "service_activities",
-      entity_id: activityId,
-      entity_code: currentActivity.code,
-      change_type: action,
+    const statusResult = await setActivityStatusViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      activityId,
+      action,
       reason,
-      changes: changePayload,
-      metadata: {},
-      created_by: appUser.id,
-      updated_by: appUser.id,
+      expectedUpdatedAt,
     });
 
-    if (historyError) {
-      return NextResponse.json(
-        {
-          success: true,
-          warning: true,
-          message:
-            action === "ACTIVATE"
-              ? `Atividade ${currentActivity.code} ativada, mas falhou ao registrar historico.`
-              : `Atividade ${currentActivity.code} cancelada, mas falhou ao registrar historico.`,
-        },
-        { status: 200 },
-      );
+    if (!statusResult.ok) {
+      return NextResponse.json({ message: statusResult.message, code: statusResult.reason ?? undefined }, { status: statusResult.status });
     }
 
     return NextResponse.json({

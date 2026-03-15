@@ -7,9 +7,17 @@ import { useAuth } from "@/hooks/useAuth";
 import styles from "./ProgrammingPageView.module.css";
 
 type ViewMode = "week" | "day";
-type ScheduleTone = "planned" | "partial" | "complete" | "issue";
+type ScheduleTone =
+  | "planned"
+  | "partial"
+  | "complete"
+  | "issue"
+  | "rescheduled"
+  | "postponed"
+  | "cancelled";
 type PeriodMode = "integral" | "partial";
 type DocumentKey = "sgd" | "pi" | "pep";
+type ProgrammingStatus = "PROGRAMADA" | "ADIADA" | "CANCELADA";
 
 type ProjectItem = {
   id: string;
@@ -59,6 +67,7 @@ type ScheduleItem = {
   id: string;
   projectId: string;
   teamId: string;
+  status: ProgrammingStatus;
   date: string;
   period: PeriodMode;
   startTime: string;
@@ -72,7 +81,17 @@ type ScheduleItem = {
   supportItemId: string | null;
   note: string;
   projectBase: string;
+  statusReason: string;
+  statusChangedAt: string;
   hasIssue: boolean;
+  wasRescheduled: boolean;
+  lastReschedule: {
+    id: string;
+    changedAt: string;
+    reason: string;
+    fromDate: string;
+    toDate: string;
+  } | null;
 };
 
 type SupportOptionItem = {
@@ -148,6 +167,11 @@ type ReprogramModalState = {
   payload: SaveRequestPayload;
 };
 
+type CopyModalState = {
+  sourceTeamId: string;
+  targetTeamIds: string[];
+};
+
 type FeedbackState = {
   type: "success" | "error";
   message: string;
@@ -162,6 +186,7 @@ type ProgrammingResponse = {
     id: string;
     projectId: string;
     teamId: string;
+    status: ProgrammingStatus;
     date: string;
     period: PeriodMode;
     startTime: string;
@@ -173,6 +198,16 @@ type ProgrammingResponse = {
     supportItemId?: string | null;
     note: string;
     projectBase: string;
+    statusReason?: string;
+    statusChangedAt?: string;
+    wasRescheduled?: boolean;
+    lastReschedule?: {
+      id: string;
+      changedAt: string;
+      reason: string;
+      fromDate: string;
+      toDate: string;
+    } | null;
     activities?: ScheduleActivityItem[];
     documents?: Partial<Record<DocumentKey, Partial<DocumentEntry>>>;
   }>;
@@ -191,6 +226,11 @@ type ActivityCatalogResponse = {
 
 type SaveProgrammingResponse = {
   id?: string;
+  message?: string;
+};
+
+type CopyProgrammingResponse = {
+  copiedCount?: number;
   message?: string;
 };
 
@@ -287,6 +327,19 @@ function formatDisplayDate(value: string) {
   return parseIsoDate(value).toLocaleDateString("pt-BR");
 }
 
+function formatDisplayDateTime(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  return parsedDate.toLocaleString("pt-BR");
+}
+
 function createEmptyDocuments(): Record<DocumentKey, DocumentEntry> {
   return {
     sgd: { number: "", includedAt: "", deliveredAt: "" },
@@ -359,8 +412,20 @@ function detectScheduleIssue(note: string) {
 }
 
 function getScheduleTone(schedule: ScheduleItem): ScheduleTone {
+  if (schedule.status === "CANCELADA") {
+    return "cancelled";
+  }
+
+  if (schedule.status === "ADIADA") {
+    return "postponed";
+  }
+
   if (schedule.hasIssue) {
     return "issue";
+  }
+
+  if (schedule.wasRescheduled) {
+    return "rescheduled";
   }
 
   const states = DOCUMENT_KEYS.map((item) => getDocumentState(schedule.documents[item.key]));
@@ -385,7 +450,7 @@ function sortSchedules(items: ScheduleItem[]) {
   });
 }
 
-function priorityClassName(priority: string) {
+export function priorityClassName(priority: string) {
   const normalizedPriority = priority.trim().toLowerCase();
 
   if (normalizedPriority.includes("alta")) {
@@ -400,6 +465,18 @@ function priorityClassName(priority: string) {
 }
 
 function toneClassName(tone: ScheduleTone) {
+  if (tone === "cancelled") {
+    return styles.scheduleCardCancelled;
+  }
+
+  if (tone === "postponed") {
+    return styles.scheduleCardPostponed;
+  }
+
+  if (tone === "rescheduled") {
+    return styles.scheduleCardRescheduled;
+  }
+
   if (tone === "complete") {
     return styles.scheduleCardComplete;
   }
@@ -458,6 +535,7 @@ function normalizeSchedule(
     id: item.id,
     projectId: item.projectId,
     teamId: item.teamId,
+    status: item.status,
     date: item.date,
     period: item.period,
     startTime: item.startTime,
@@ -477,7 +555,19 @@ function normalizeSchedule(
     supportItemId: item.supportItemId ?? null,
     note: item.note ?? "",
     projectBase: item.projectBase ?? "Sem base",
+    statusReason: item.statusReason ?? "",
+    statusChangedAt: item.statusChangedAt ?? "",
     hasIssue: detectScheduleIssue(item.note ?? ""),
+    wasRescheduled: Boolean(item.wasRescheduled),
+    lastReschedule: item.lastReschedule
+      ? {
+          id: item.lastReschedule.id ?? "",
+          changedAt: item.lastReschedule.changedAt ?? "",
+          reason: item.lastReschedule.reason ?? "",
+          fromDate: item.lastReschedule.fromDate ?? "",
+          toDate: item.lastReschedule.toDate ?? "",
+        }
+      : null,
   };
 }
 
@@ -528,6 +618,7 @@ export function ProgrammingPageView() {
   const [pendingCityFilter, setPendingCityFilter] = useState("Todas");
   const [pendingTypeFilter, setPendingTypeFilter] = useState("Todas");
   const [boardBaseFilter, setBoardBaseFilter] = useState("Todas");
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
@@ -536,12 +627,14 @@ export function ProgrammingPageView() {
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [cancelModalState, setCancelModalState] = useState<CancelModalState | null>(null);
   const [reprogramModalState, setReprogramModalState] = useState<ReprogramModalState | null>(null);
+  const [copyModalState, setCopyModalState] = useState<CopyModalState | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [reprogramReason, setReprogramReason] = useState("");
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [isBoardLoading, setIsBoardLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [supportOptions, setSupportOptions] = useState<SupportOptionItem[]>([]);
   const [teamSummaries, setTeamSummaries] = useState<TeamSummaryItem[]>([]);
@@ -556,25 +649,40 @@ export function ProgrammingPageView() {
   const boardBaseOptions = ["Todas", ...Array.from(new Set(teams.map((item) => item.serviceCenterName || "Sem base")))];
   const cityOptions = ["Todas", ...Array.from(new Set(projects.map((item) => item.city)))];
   const serviceTypeOptions = ["Todas", ...Array.from(new Set(projects.map((item) => item.serviceType)))];
-  const scheduledProjectIds = new Set(
-    schedules.filter((item) => visibleDates.includes(item.date)).map((item) => item.projectId),
-  );
-  const visibleTeams = teams.filter(
+  const teamSelectionOptions = teams.filter(
     (team) => boardBaseFilter === "Todas" || (team.serviceCenterName || "Sem base") === boardBaseFilter,
+  );
+  const activeSelectedTeamIds = selectedTeamIds.filter((teamId) => teamSelectionOptions.some((team) => team.id === teamId));
+  const visibleTeams = teams.filter(
+    (team) =>
+      teamSelectionOptions.some((option) => option.id === team.id) &&
+      (activeSelectedTeamIds.length === 0 || activeSelectedTeamIds.includes(team.id)),
   );
   const visibleTeamIds = new Set(visibleTeams.map((team) => team.id));
   const filteredBoardSchedules = schedules.filter((item) => visibleTeamIds.has(item.teamId));
   const teamSummaryMap = new Map(teamSummaries.map((item) => [item.teamId, item]));
-  const pendingProjects = projects.filter((project) => {
-    if (scheduledProjectIds.has(project.id)) {
-      return false;
+  const projectOccurrencesInPeriod = schedules.reduce((accumulator, schedule) => {
+    if (!visibleDates.includes(schedule.date)) {
+      return accumulator;
     }
 
+    accumulator.set(schedule.projectId, (accumulator.get(schedule.projectId) ?? 0) + 1);
+    return accumulator;
+  }, new Map<string, number>());
+  const programmedProjectOccurrences = schedules.reduce((accumulator, schedule) => {
+    if (!visibleDates.includes(schedule.date) || schedule.status !== "PROGRAMADA") {
+      return accumulator;
+    }
+
+    accumulator.set(schedule.projectId, (accumulator.get(schedule.projectId) ?? 0) + 1);
+    return accumulator;
+  }, new Map<string, number>());
+  const filteredPendingProjects = projects.filter((project) => {
     if (pendingSearch.trim()) {
       const query = pendingSearch.trim().toLowerCase();
       const matchesText =
         project.code.toLowerCase().includes(query) ||
-        project.serviceName.toLowerCase().includes(query) ||
+        project.serviceType.toLowerCase().includes(query) ||
         project.city.toLowerCase().includes(query);
 
       if (!matchesText) {
@@ -596,7 +704,13 @@ export function ProgrammingPageView() {
 
     return true;
   });
-  const scheduledInPeriod = filteredBoardSchedules.filter((item) => visibleDates.includes(item.date));
+  const pendingProjectsCount = filteredPendingProjects.filter((project) => !programmedProjectOccurrences.has(project.id)).length;
+  const pendingProjects = filteredPendingProjects.slice(0, 5);
+  const totalTeams = teamSelectionOptions.length;
+  const selectedTeamsCount = visibleTeams.length;
+  const scheduledInPeriod = filteredBoardSchedules.filter(
+    (item) => visibleDates.includes(item.date) && item.status === "PROGRAMADA",
+  );
   const totalWorkload = visibleTeams.reduce(
     (total, team) => total + (teamSummaryMap.get(team.id)?.loadPercent ?? 0),
     0,
@@ -616,6 +730,60 @@ export function ProgrammingPageView() {
     : "0h";
   const canSubmitCancellation = cancelReason.trim().length >= CHANGE_REASON_MIN_LENGTH && !isCancelling;
   const canSubmitReprogram = reprogramReason.trim().length >= CHANGE_REASON_MIN_LENGTH && !isSaving;
+  const selectedTeamSummaryLabel =
+    activeSelectedTeamIds.length === 0 || activeSelectedTeamIds.length === teamSelectionOptions.length
+      ? "Todas"
+      : `${activeSelectedTeamIds.length} selecionada(s)`;
+  const copySourceTeams = teamSelectionOptions.filter((team) =>
+    schedules.some(
+      (schedule) =>
+        schedule.teamId === team.id &&
+        schedule.status === "PROGRAMADA" &&
+        visibleDates.includes(schedule.date),
+    ),
+  );
+  const copyTargetTeams = copyModalState
+    ? teamSelectionOptions.filter((team) => team.id !== copyModalState.sourceTeamId)
+    : [];
+
+  useEffect(() => {
+    setSelectedTeamIds((current) => current.filter((teamId) => teams.some((team) => team.id === teamId)));
+  }, [teams]);
+
+  useEffect(() => {
+    setCopyModalState((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const sourceExists = copySourceTeams.some((team) => team.id === current.sourceTeamId);
+      if (!sourceExists) {
+        if (!copySourceTeams.length) {
+          return null;
+        }
+
+        const nextSourceTeamId = copySourceTeams[0].id;
+        const nextTargetTeamIds = current.targetTeamIds.filter((teamId) => teamId !== nextSourceTeamId);
+        return {
+          sourceTeamId: nextSourceTeamId,
+          targetTeamIds: nextTargetTeamIds,
+        };
+      }
+
+      const allowedTargetIds = new Set(
+        teamSelectionOptions.filter((team) => team.id !== current.sourceTeamId).map((team) => team.id),
+      );
+      const nextTargetTeamIds = current.targetTeamIds.filter((teamId) => allowedTargetIds.has(teamId));
+      if (nextTargetTeamIds.length === current.targetTeamIds.length) {
+        return current;
+      }
+
+      return {
+        ...current,
+        targetTeamIds: nextTargetTeamIds,
+      };
+    });
+  }, [copySourceTeams, teamSelectionOptions]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -726,7 +894,7 @@ export function ProgrammingPageView() {
 
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
-      if (!modalState && !cancelModalState && !reprogramModalState) {
+      if (!modalState && !cancelModalState && !reprogramModalState && !copyModalState) {
         return;
       }
 
@@ -736,11 +904,21 @@ export function ProgrammingPageView() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [cancelModalState, modalState, reprogramModalState]);
+  }, [cancelModalState, copyModalState, modalState, reprogramModalState]);
 
   function shiftPeriod(direction: "previous" | "next") {
     const step = viewMode === "week" ? 7 : 1;
     setPeriodStart((current) => addDays(current, direction === "previous" ? -step : step));
+  }
+
+  function toggleTeamSelection(teamId: string) {
+    setSelectedTeamIds((current) =>
+      current.includes(teamId) ? current.filter((item) => item !== teamId) : [...current, teamId],
+    );
+  }
+
+  function clearTeamSelection() {
+    setSelectedTeamIds([]);
   }
 
   function openScheduleModalFromDrop(teamId: string, date: string) {
@@ -829,6 +1007,52 @@ export function ProgrammingPageView() {
 
     setReprogramModalState(null);
     setReprogramReason("");
+  }
+
+  function toggleCopyTargetTeam(teamId: string) {
+    setCopyModalState((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        targetTeamIds: current.targetTeamIds.includes(teamId)
+          ? current.targetTeamIds.filter((item) => item !== teamId)
+          : [...current.targetTeamIds, teamId],
+      };
+    });
+  }
+
+  function updateCopySourceTeam(teamId: string) {
+    setCopyModalState((current) =>
+      current
+        ? {
+            sourceTeamId: teamId,
+            targetTeamIds: current.targetTeamIds.filter((item) => item !== teamId),
+          }
+        : current,
+    );
+  }
+
+  function openCopyModal() {
+    if (!copySourceTeams.length) {
+      setFeedback({
+        type: "error",
+        message: "Nenhuma equipe possui programacoes ativas no periodo visivel para copiar.",
+      });
+      return;
+    }
+
+    setFeedback(null);
+    setCopyModalState({
+      sourceTeamId: copySourceTeams[0].id,
+      targetTeamIds: [],
+    });
+  }
+
+  function closeCopyModal() {
+    setCopyModalState(null);
   }
 
   function updateModalField<Key extends keyof ScheduleFormState>(field: Key, value: ScheduleFormState[Key]) {
@@ -1092,7 +1316,7 @@ export function ProgrammingPageView() {
     };
 
     const currentSchedule = editingSchedule;
-    const isReschedule = currentSchedule
+    const isReschedule = currentSchedule?.status === "PROGRAMADA"
       ? (
           currentSchedule.date !== payload.date ||
           currentSchedule.teamId !== payload.teamId ||
@@ -1186,6 +1410,63 @@ export function ProgrammingPageView() {
     }
   }
 
+  async function handleCopyProgramming() {
+    if (!accessToken || !copyModalState || !copyModalState.targetTeamIds.length) {
+      return;
+    }
+
+    setIsCopying(true);
+
+    try {
+      const response = await fetch("/api/programacao", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "COPY",
+          sourceTeamId: copyModalState.sourceTeamId,
+          targetTeamIds: copyModalState.targetTeamIds,
+          startDate: rangeStart,
+          endDate: rangeEnd,
+        }),
+      });
+
+      const data = (await response.json().catch(() => null)) as CopyProgrammingResponse | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Falha ao copiar programacao para as equipes selecionadas.");
+      }
+
+      const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
+      if (!reloadResponse.ok) {
+        throw new Error(reloadData?.message ?? "Copia registrada, mas falhou ao recarregar a grade.");
+      }
+
+      setProjects(reloadData?.projects ?? []);
+      setTeams(reloadData?.teams ?? []);
+      setSupportOptions(reloadData?.supportOptions ?? []);
+      setTeamSummaries(reloadData?.teamSummaries ?? []);
+      setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
+      setFeedback({
+        type: "success",
+        message: data?.message ?? "Programacao copiada com sucesso.",
+      });
+      setCopyModalState(null);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao copiar programacao.",
+      });
+    } finally {
+      setIsCopying(false);
+    }
+  }
+
   function handleDrop(event: DragEvent<HTMLDivElement>, teamId: string, date: string) {
     event.preventDefault();
     openScheduleModalFromDrop(teamId, date);
@@ -1205,7 +1486,7 @@ export function ProgrammingPageView() {
               <p className={styles.eyebrow}>Operacao</p>
               <h2>Projetos Pendentes</h2>
             </div>
-            <span className={styles.counter}>{pendingProjects.length}</span>
+            <span className={styles.counter}>{pendingProjectsCount}</span>
           </header>
 
           <div className={styles.pendingFilters}>
@@ -1260,16 +1541,26 @@ export function ProgrammingPageView() {
               <div className={styles.emptyState}>Carregando backlog de programacao...</div>
             ) : null}
 
-            {!isBoardLoading && !pendingProjects.length ? (
+            {!isBoardLoading && !filteredPendingProjects.length ? (
               <div className={styles.emptyState}>
                 Nenhum projeto pendente para os filtros atuais.
+              </div>
+            ) : null}
+
+            {!isBoardLoading && filteredPendingProjects.length > pendingProjects.length ? (
+              <div className={styles.listHelper}>
+                Exibindo os 5 primeiros projetos filtrados para facilitar a leitura.
               </div>
             ) : null}
 
             {pendingProjects.map((project) => (
               <article
                 key={project.id}
-                className={styles.projectCard}
+                className={
+                  projectOccurrencesInPeriod.has(project.id)
+                    ? `${styles.projectCard} ${styles.projectCardScheduled}`
+                    : styles.projectCard
+                }
                 draggable
                 onDragStart={() => {
                   setDraggingItem({ kind: "project", projectId: project.id });
@@ -1285,18 +1576,17 @@ export function ProgrammingPageView() {
                   <span className={`${styles.priorityTag} ${priorityClassName(project.priority)}`}>{project.priority}</span>
                 </div>
 
-                <p className={styles.projectService}>{project.serviceName}</p>
-
                 <div className={styles.projectMeta}>
                   <span>{project.city}</span>
-                  <span>{project.base}</span>
                 </div>
 
                 <div className={styles.projectFooter}>
-                  <span>{project.serviceType}</span>
-                  <span className={project.hasLocacao ? styles.locationReadyTag : styles.locationPendingTag}>
-                    {project.hasLocacao ? "Locacao OK" : "Sem locacao"}
-                  </span>
+                  <div className={styles.projectBadges}>
+                    <span className={styles.serviceTypeTag}>{project.serviceType}</span>
+                    <span className={project.hasLocacao ? styles.locationReadyTag : styles.locationPendingTag}>
+                      {project.hasLocacao ? "Locacao OK" : "Sem locacao"}
+                    </span>
+                  </div>
                 </div>
               </article>
             ))}
@@ -1320,9 +1610,39 @@ export function ProgrammingPageView() {
                   <span>Carga media</span>
                   <strong>{averageWorkload}%</strong>
                 </div>
-                <div className={styles.statCard}>
-                  <span>Equipes livres</span>
-                  <strong>{freeTeams}</strong>
+                <div className={`${styles.statCard} ${styles.statCardWide}`}>
+                  <span>Equipes</span>
+                  <div className={styles.teamStatRows}>
+                    <div className={styles.teamStatRow}>
+                      <div className={styles.teamStatInfo}>
+                        <small>Total</small>
+                        <strong>{totalTeams}</strong>
+                      </div>
+                      <div className={`${styles.teamStatBar} ${styles.teamStatBarTotal}`}>
+                        <span style={{ width: totalTeams > 0 ? "100%" : "0%" }} />
+                      </div>
+                    </div>
+                    <div className={styles.teamStatRow}>
+                      <div className={styles.teamStatInfo}>
+                        <small>Livres</small>
+                        <strong>{freeTeams}</strong>
+                      </div>
+                      <div className={`${styles.teamStatBar} ${styles.teamStatBarFree}`}>
+                        <span style={{ width: totalTeams > 0 ? `${(freeTeams / totalTeams) * 100}%` : "0%" }} />
+                      </div>
+                    </div>
+                    <div className={styles.teamStatRow}>
+                      <div className={styles.teamStatInfo}>
+                        <small>Selecionadas</small>
+                        <strong>{selectedTeamsCount}</strong>
+                      </div>
+                      <div className={`${styles.teamStatBar} ${styles.teamStatBarSelected}`}>
+                        <span
+                          style={{ width: totalTeams > 0 ? `${(selectedTeamsCount / totalTeams) * 100}%` : "0%" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1350,6 +1670,40 @@ export function ProgrammingPageView() {
                   ))}
                 </select>
               </label>
+
+              <details className={styles.teamFilterMenu}>
+                <summary className={styles.teamFilterTrigger}>
+                  Equipes: {selectedTeamSummaryLabel}
+                </summary>
+
+                <div className={styles.teamFilterPopover}>
+                  <button type="button" className={styles.ghostButton} onClick={clearTeamSelection}>
+                    Mostrar todas
+                  </button>
+
+                  <div className={styles.teamFilterList}>
+                    {teamSelectionOptions.map((team) => (
+                      <label key={team.id} className={styles.teamFilterOption}>
+                        <input
+                          type="checkbox"
+                          checked={activeSelectedTeamIds.includes(team.id)}
+                          onChange={() => toggleTeamSelection(team.id)}
+                        />
+                        <span>{team.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </details>
+
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={openCopyModal}
+                disabled={!copySourceTeams.length || isBoardLoading}
+              >
+                Copiar programacao
+              </button>
 
               <div className={styles.viewSwitcher}>
                 <button
@@ -1503,6 +1857,18 @@ export function ProgrammingPageView() {
               Planejado
             </span>
             <span className={styles.legendItem}>
+              <i className={styles.legendRescheduled} />
+              Reprogramada
+            </span>
+            <span className={styles.legendItem}>
+              <i className={styles.legendPostponed} />
+              Adiada
+            </span>
+            <span className={styles.legendItem}>
+              <i className={styles.legendCancelled} />
+              Cancelada
+            </span>
+            <span className={styles.legendItem}>
               <i className={styles.legendPartial} />
               Documentacao parcial
             </span>
@@ -1551,6 +1917,10 @@ export function ProgrammingPageView() {
 
                 <div className={styles.modalGrid}>
                   <div className={styles.field}>
+                    <span>ID da programacao</span>
+                    <div className={styles.infoValue}>{modalState.scheduleId ?? "Nova programacao"}</div>
+                  </div>
+                  <div className={styles.field}>
                     <span>Projeto</span>
                     <div className={styles.infoValue}>
                       {activeProject ? `${activeProject.code} - ${activeProject.serviceName}` : ""}
@@ -1575,6 +1945,43 @@ export function ProgrammingPageView() {
                     </select>
                   </label>
                 </div>
+
+                {editingSchedule?.lastReschedule ? (
+                  <div className={styles.basicInfoMeta}>
+                    <div className={styles.basicInfoMetaItem}>
+                      <span>Ultima reprogramacao</span>
+                      <strong>
+                        {formatDisplayDate(editingSchedule.lastReschedule.fromDate)}
+                        {" -> "}
+                        {formatDisplayDate(editingSchedule.lastReschedule.toDate)}
+                      </strong>
+                      <small>Registrada em {formatDisplayDateTime(editingSchedule.lastReschedule.changedAt)}</small>
+                    </div>
+                    <div className={styles.basicInfoMetaItem}>
+                      <span>ID da reprogramacao</span>
+                      <strong>{editingSchedule.lastReschedule.id}</strong>
+                      <small>
+                        {editingSchedule.lastReschedule.reason
+                          ? `Motivo: ${editingSchedule.lastReschedule.reason}`
+                          : "Motivo nao informado"}
+                      </small>
+                    </div>
+                  </div>
+                ) : null}
+
+                {editingSchedule?.status === "ADIADA" && editingSchedule.statusReason ? (
+                  <div className={styles.basicInfoMeta}>
+                    <div className={styles.basicInfoMetaItem}>
+                      <span>Motivo do adiamento</span>
+                      <strong>{editingSchedule.statusReason}</strong>
+                      <small>
+                        {editingSchedule.statusChangedAt
+                          ? `Registrado em ${formatDisplayDateTime(editingSchedule.statusChangedAt)}`
+                          : "Registrado no historico da programacao"}
+                      </small>
+                    </div>
+                  </div>
+                ) : null}
               </section>
 
               <section className={styles.modalSection}>
@@ -1771,24 +2178,132 @@ export function ProgrammingPageView() {
               </section>
 
               <div className={styles.modalActions}>
-                {modalState.scheduleId ? (
+                {modalState.scheduleId && editingSchedule?.status === "PROGRAMADA" ? (
                   <button type="button" className={styles.secondaryButton} onClick={openPostponeModal} disabled={isSaving}>
                     Adiar programacao
                   </button>
                 ) : null}
-                {modalState.scheduleId ? (
+                {modalState.scheduleId && editingSchedule?.status === "PROGRAMADA" ? (
                   <button type="button" className={styles.dangerButton} onClick={openCancellationModal} disabled={isSaving}>
                     Cancelar programacao
                   </button>
                 ) : null}
                 <button type="submit" className={styles.primaryButton} disabled={isSaving}>
-                  {isSaving ? "Salvando..." : "Salvar programacao"}
+                  {isSaving
+                    ? "Salvando..."
+                    : editingSchedule?.status === "PROGRAMADA"
+                      ? "Salvar programacao"
+                      : "Programar novamente"}
                 </button>
                 <button type="button" className={styles.ghostButton} onClick={() => setModalState(null)} disabled={isSaving}>
                   Fechar
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {copyModalState ? (
+        <div className={styles.modalOverlay} onClick={() => !isCopying && closeCopyModal()}>
+          <div className={styles.confirmationCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <p className={styles.eyebrow}>Programacao</p>
+                <h3>Copiar Programacao</h3>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={() => closeCopyModal()} disabled={isCopying}>
+                Fechar
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <p className={styles.modalText}>
+                Copia toda a linha programada da equipe de origem no periodo visivel para as equipes selecionadas.
+              </p>
+
+              <label className={styles.inlineField}>
+                <span>Copiar de</span>
+                <select
+                  value={copyModalState.sourceTeamId}
+                  onChange={(event) => updateCopySourceTeam(event.target.value)}
+                  disabled={isCopying}
+                >
+                  {copySourceTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <p className={styles.helperText}>
+                Periodo visivel: {periodLabel}. Somente programacoes em status PROGRAMADA da equipe de origem entram na copia.
+              </p>
+
+              <div className={styles.copyTeamHeader}>
+                <span>Para</span>
+                <div className={styles.copyTeamActions}>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={() =>
+                      setCopyModalState((current) =>
+                        current ? { ...current, targetTeamIds: copyTargetTeams.map((team) => team.id) } : current,
+                      )
+                    }
+                    disabled={isCopying || !copyTargetTeams.length}
+                  >
+                    Marcar todas
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.ghostButton}
+                    onClick={() =>
+                      setCopyModalState((current) => (current ? { ...current, targetTeamIds: [] } : current))
+                    }
+                    disabled={isCopying || !copyModalState.targetTeamIds.length}
+                  >
+                    Limpar
+                  </button>
+                </div>
+              </div>
+
+              {copyTargetTeams.length ? (
+                <div className={styles.copyTeamList}>
+                  {copyTargetTeams.map((team) => (
+                    <label key={team.id} className={styles.copyTeamOption}>
+                      <input
+                        type="checkbox"
+                        checked={copyModalState.targetTeamIds.includes(team.id)}
+                        onChange={() => toggleCopyTargetTeam(team.id)}
+                        disabled={isCopying}
+                      />
+                      <div>
+                        <strong>{team.name}</strong>
+                        <small>{team.serviceCenterName}</small>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className={styles.helperText}>Nenhuma outra equipe disponivel no filtro atual para receber a copia.</p>
+              )}
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void handleCopyProgramming()}
+                  disabled={!copyModalState.targetTeamIds.length || isCopying}
+                >
+                  {isCopying ? "Copiando..." : "Copiar programacao"}
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={() => closeCopyModal()} disabled={isCopying}>
+                  Fechar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

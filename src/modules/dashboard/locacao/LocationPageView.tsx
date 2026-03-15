@@ -11,6 +11,20 @@ type ProjectOption = {
   city: string;
 };
 
+type LocationOverviewStatus = "LOCADO" | "NAO_LOCADO" | "INATIVO";
+
+type LocationOverviewItem = {
+  id: string;
+  sob: string;
+  city: string;
+  isActive: boolean;
+  hasLocacao: boolean;
+  status: LocationOverviewStatus;
+  planId?: string | null;
+  recordedAt?: string | null;
+  recordedByName?: string | null;
+};
+
 type LocationState = {
   project?: { id: string; sob: string; city: string };
   plan?: {
@@ -73,6 +87,12 @@ type ListFilterState = {
   type: string;
 };
 
+type LocationOverviewFilterState = {
+  sob: string;
+  city: string;
+  status: "" | LocationOverviewStatus;
+};
+
 type QuestionnaireAnswers = {
   planning?: {
     needsProjectReview?: boolean | null;
@@ -133,6 +153,29 @@ function formatCurrency(value: number) {
   }).format(value ?? 0);
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString("pt-BR");
+}
+
+function formatLocationStatus(status: LocationOverviewStatus) {
+  if (status === "LOCADO") {
+    return "Locado";
+  }
+  if (status === "INATIVO") {
+    return "Projeto inativo";
+  }
+  return "Nao locado";
+}
+
 function optionLabel(item: CatalogItem) {
   return `${item.code} - ${item.description}`;
 }
@@ -188,6 +231,12 @@ const INITIAL_LIST_FILTERS: ListFilterState = {
   type: "",
 };
 
+const INITIAL_OVERVIEW_FILTERS: LocationOverviewFilterState = {
+  sob: "",
+  city: "",
+  status: "",
+};
+
 const INITIAL_LOCATION_VALIDATION: LocationValidationState = {
   needsProjectReview: false,
   withShutdown: false,
@@ -204,9 +253,13 @@ export function LocationPageView() {
   const { session } = useAuth();
   const [cities, setCities] = useState<string[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [overviewItems, setOverviewItems] = useState<LocationOverviewItem[]>([]);
   const [selectedCity, setSelectedCity] = useState("");
   const [sobSearch, setSobSearch] = useState("");
+  const [overviewFilterDraft, setOverviewFilterDraft] = useState<LocationOverviewFilterState>(INITIAL_OVERVIEW_FILTERS);
+  const [activeOverviewFilter, setActiveOverviewFilter] = useState<LocationOverviewFilterState>(INITIAL_OVERVIEW_FILTERS);
   const [state, setState] = useState<LocationState | null>(null);
+  const [detailLocation, setDetailLocation] = useState<{ item: LocationOverviewItem; data: LocationState | null } | null>(null);
   const [notes, setNotes] = useState("");
   const [needsProjectReview, setNeedsProjectReview] = useState<boolean | null>(null);
   const [withShutdown, setWithShutdown] = useState<boolean | null>(null);
@@ -245,6 +298,25 @@ export function LocationPageView() {
     () => projects.filter((item) => !selectedCity || item.city === selectedCity),
     [projects, selectedCity],
   );
+
+  const filteredOverviewItems = useMemo(() => {
+    return overviewItems.filter((item) => {
+      const sobFilter = activeOverviewFilter.sob.trim().toLowerCase();
+      if (sobFilter && !item.sob.toLowerCase().includes(sobFilter)) {
+        return false;
+      }
+
+      if (activeOverviewFilter.city && item.city !== activeOverviewFilter.city) {
+        return false;
+      }
+
+      if (activeOverviewFilter.status && item.status !== activeOverviewFilter.status) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [activeOverviewFilter, overviewItems]);
 
   const filteredMaterials = useMemo(() => {
     return (state?.materials ?? []).filter((item) => {
@@ -356,6 +428,7 @@ export function LocationPageView() {
         }
         setCities(data?.cities ?? []);
         setProjects(data?.projects ?? []);
+        setOverviewItems(data?.locationProjects ?? []);
       })
       .catch((error) => {
         setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar locacao.", scope: "page" });
@@ -445,6 +518,44 @@ export function LocationPageView() {
       }
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao abrir locacao.", scope: "page" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function openLocationFromOverview(item: LocationOverviewItem) {
+    setSelectedCity(item.city);
+    setSobSearch(item.sob);
+    await openLocation(item.id);
+  }
+
+  async function openLocationDetails(item: LocationOverviewItem) {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    setBusy(`detail-${item.id}`);
+    setFeedback(null);
+    try {
+      const response = await fetch(`/api/locacao?projectId=${encodeURIComponent(item.id)}`, {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        cache: "no-store",
+      });
+
+      const data = (await response.json().catch(() => null)) as LocationState | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Falha ao carregar detalhes da locacao.");
+      }
+
+      setDetailLocation({ item, data });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao carregar detalhes da locacao.",
+        scope: "page",
+      });
     } finally {
       setBusy(null);
     }
@@ -876,6 +987,175 @@ export function LocationPageView() {
           </div>
         </form>
       </article>
+
+      {!selectedProject ? (
+        <>
+          <article className={styles.card}>
+            <div className={styles.tableHeader}>
+              <div>
+                <h3 className={styles.cardTitle}>Filtros</h3>
+                <p className={styles.tableHint}>Use a lista abaixo para localizar projetos com ou sem locacao registrada.</p>
+              </div>
+            </div>
+
+            <div className={styles.filterGrid}>
+              <label className={styles.field}>
+                <span>Projeto (SOB)</span>
+                <input
+                  value={overviewFilterDraft.sob}
+                  onChange={(event) => setOverviewFilterDraft((current) => ({ ...current, sob: event.target.value }))}
+                  placeholder="Filtrar por SOB"
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Municipio</span>
+                <select
+                  value={overviewFilterDraft.city}
+                  onChange={(event) => setOverviewFilterDraft((current) => ({ ...current, city: event.target.value }))}
+                >
+                  <option value="">Todos</option>
+                  {cities.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span>Status</span>
+                <select
+                  value={overviewFilterDraft.status}
+                  onChange={(event) =>
+                    setOverviewFilterDraft((current) => ({
+                      ...current,
+                      status: event.target.value as LocationOverviewFilterState["status"],
+                    }))
+                  }
+                >
+                  <option value="">Todos</option>
+                  <option value="LOCADO">Locado</option>
+                  <option value="NAO_LOCADO">Nao locado</option>
+                  <option value="INATIVO">Projeto inativo</option>
+                </select>
+              </label>
+            </div>
+
+            <div className={styles.actions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setActiveOverviewFilter({ ...overviewFilterDraft })}>
+                Aplicar
+              </button>
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={() => {
+                  setOverviewFilterDraft(INITIAL_OVERVIEW_FILTERS);
+                  setActiveOverviewFilter(INITIAL_OVERVIEW_FILTERS);
+                }}
+              >
+                Limpar
+              </button>
+            </div>
+          </article>
+
+          <article className={styles.card}>
+            <div className={styles.tableHeader}>
+              <div>
+                <h3 className={styles.cardTitle}>Lista de Locacoes</h3>
+                <p className={styles.tableHint}>{filteredOverviewItems.length} projeto(s) encontrado(s) com o filtro atual.</p>
+              </div>
+            </div>
+
+            <div className={styles.tableWrapper}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Projeto (SOB)</th>
+                    <th>Municipio</th>
+                    <th>Status</th>
+                    <th>Locado por</th>
+                    <th>Registrado em</th>
+                    <th>Acoes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOverviewItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className={styles.emptyRow}>
+                        Nenhum projeto encontrado para o filtro informado.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {filteredOverviewItems.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.sob}</td>
+                      <td>{item.city || "-"}</td>
+                      <td>
+                        <span
+                          className={`${styles.statusBadge} ${
+                            item.status === "LOCADO"
+                              ? styles.statusBadgeSuccess
+                              : item.status === "INATIVO"
+                                ? styles.statusBadgeMuted
+                                : styles.statusBadgeWarning
+                          }`}
+                        >
+                          {formatLocationStatus(item.status)}
+                        </span>
+                      </td>
+                      <td>{item.recordedByName || "-"}</td>
+                      <td>{formatDateTime(item.recordedAt)}</td>
+                      <td className={styles.actionsCell}>
+                        <div className={styles.tableActions}>
+                          <button
+                            type="button"
+                            className={`${styles.actionButton} ${styles.actionEdit}`}
+                            onClick={() => void openLocationFromOverview(item)}
+                            disabled={!item.isActive || busy === "open"}
+                            aria-label={item.isActive ? `Editar locacao do projeto ${item.sob}` : `Projeto ${item.sob} inativo`}
+                            title={!item.isActive ? "Projeto inativo" : "Editar locacao"}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path
+                                d="M4.5 19.5h4l9-9a1.4 1.4 0 0 0 0-2l-2-2a1.4 1.4 0 0 0-2 0l-9 9v4Z"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <path d="M12.5 7.5l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.actionButton} ${styles.actionView}`}
+                            onClick={() => void openLocationDetails(item)}
+                            disabled={busy === `detail-${item.id}`}
+                            aria-label={`Ver detalhes da locacao do projeto ${item.sob}`}
+                            title={busy === `detail-${item.id}` ? "Carregando detalhes" : "Ver detalhes"}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path
+                                d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </>
+      ) : null}
 
       {renderFeedback("page")}
 
@@ -1391,6 +1671,38 @@ export function LocationPageView() {
             </>
           ) : null}
         </>
+      ) : null}
+
+      {detailLocation ? (
+        <div className={styles.modalOverlay} onClick={() => setDetailLocation(null)}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Detalhes da Locacao {detailLocation.item.sob}</h4>
+                <p className={styles.modalSubtitle}>
+                  {detailLocation.item.city ? `Municipio: ${detailLocation.item.city}` : "Sem municipio informado"}
+                </p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailLocation(null)}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.detailGrid}>
+              <div><strong>Status:</strong> {formatLocationStatus(detailLocation.item.status)}</div>
+              <div><strong>Projeto (SOB):</strong> {detailLocation.item.sob}</div>
+              <div><strong>Locado por:</strong> {detailLocation.item.recordedByName || "-"}</div>
+              <div><strong>Registrado em:</strong> {formatDateTime(detailLocation.item.recordedAt)}</div>
+              <div><strong>Materiais atuais:</strong> {formatQuantity(detailLocation.data?.summary?.materialsPlannedTotal ?? 0)}</div>
+              <div><strong>Atividades atuais:</strong> {formatCurrency(detailLocation.data?.summary?.activitiesPlannedTotal ?? 0)}</div>
+              <div><strong>Necessario revisao de projeto?:</strong> {getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).needsProjectReview === true ? "Sim" : getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).needsProjectReview === false ? "Nao" : "-"}</div>
+              <div><strong>Com desligamento?:</strong> {getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).withShutdown === true ? "Sim" : getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).withShutdown === false ? "Nao" : "-"}</div>
+              <div className={styles.detailWide}><strong>Observacoes:</strong> {detailLocation.data?.plan?.notes || "-"}</div>
+              <div className={styles.detailWide}><strong>Observacao da previsao:</strong> {String(getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.executionForecast).observation ?? "-")}</div>
+              <div className={styles.detailWide}><strong>Observacao do Pre APR:</strong> {String(getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.preApr).observation ?? "-")}</div>
+            </div>
+          </article>
+        </div>
       ) : null}
     </section>
   );
