@@ -79,7 +79,6 @@ type ContractRow = {
 
 type CreateProjectPayload = {
   sob: string;
-  fob: string;
   serviceCenter: string;
   serviceType: string;
   executionDeadline: string;
@@ -122,7 +121,6 @@ type HistoryChange = {
 
 type ProjectInput = {
   sob: string;
-  fob: string;
   serviceCenter: string;
   serviceType: string;
   executionDeadline: string;
@@ -172,10 +170,6 @@ function normalizePriority(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
 
-function normalizeFob(value: unknown) {
-  return normalizeText(value);
-}
-
 function normalizeEstimatedValue(value: unknown) {
   const raw = String(value ?? "")
     .trim()
@@ -208,7 +202,6 @@ function getSobRuleError(priority: string, sob: string) {
 function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput {
   return {
     sob: normalizeSob(payload.sob),
-    fob: normalizeFob(payload.fob),
     serviceCenter: normalizeText(payload.serviceCenter),
     serviceType: normalizeText(payload.serviceType),
     executionDeadline: normalizeText(payload.executionDeadline),
@@ -230,7 +223,6 @@ function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput
 function validateRequiredProjectFields(input: ProjectInput) {
   if (
     !input.sob ||
-    !input.fob ||
     !input.serviceCenter ||
     !input.serviceType ||
     !input.executionDeadline ||
@@ -250,8 +242,8 @@ function validateRequiredProjectFields(input: ProjectInput) {
     return "Data limite invalida.";
   }
 
-  if (input.fob.length !== 10) {
-    return "O FOB do projeto deve ter exatamente 10 caracteres.";
+  if (input.sob.length > 10) {
+    return "Projeto (SOB) deve ter no maximo 10 caracteres.";
   }
 
   return null;
@@ -642,7 +634,7 @@ function buildProjectWritePayload(
 ) {
   return {
     sob: input.sob,
-    fob: input.fob,
+    fob: null,
     priority: lookups.priority.id,
     service_center: lookups.serviceCenter.id,
     partner: lookups.partner.id,
@@ -667,7 +659,6 @@ function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, loo
 
   addChange(changes, "priority", current.priority_text, lookups.priority.name);
   addChange(changes, "sob", current.sob, input.sob);
-  addChange(changes, "fob", current.fob, input.fob);
   addChange(changes, "serviceCenter", current.service_center_text, lookups.serviceCenter.name);
   addChange(changes, "serviceType", current.service_type_text, lookups.serviceType.name);
   addChange(changes, "executionDeadline", current.execution_deadline, input.executionDeadline);

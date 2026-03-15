@@ -45,7 +45,7 @@
 - [x] Implementar acoes da lista de Projetos (`Editar`, `Detalhes`, `Historico`, `Cancelar`) com modais e fluxo completo no frontend.
 - [x] Implementar `PUT` e `PATCH` em `/api/projects` para edicao e troca de status (cancelamento/ativacao) com motivo obrigatorio.
 - [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
-- [x] Adicionar o campo `FOB` em `Projetos` com validacao de exatamente `10` caracteres no frontend, API e banco.
+- [x] Remover `FOB` do fluxo operacional de `Projetos` e limitar `Projeto (SOB)` a `10` caracteres no frontend e na API.
 - [x] Paginar o modal de `Historico` de Projetos e exibir `ID do projeto` abaixo do titulo no modal de detalhes.
 - [x] Implementar reativacao de projeto pelo botao `Ativar` (no lugar de `Cancelar` quando inativo) com motivo obrigatorio e historico.
 - [x] Criar base de `Materiais previstos` por projeto com migration `041_create_project_material_forecast.sql` (RLS, auditoria e constraint unica por material no projeto).
@@ -117,6 +117,8 @@
 - [x] Bloquear a `Locacao` para obras inativas em todas as rotas operacionais, inclusive quando o plano ja existia antes da inativacao.
 - [x] Destacar visualmente no header da tela de `Locacao` tanto o estado vazio quanto o projeto selecionado.
 - [x] Destacar visualmente no header da `Locacao`, abaixo do projeto selecionado, o resumo `Materiais atuais` e `Atividades atuais`.
+- [x] Adicionar visao previa da `Locacao` com filtros, lista resumida de projetos, status, responsavel, data e acoes `Editar`/`Ver detalhes`, ocultando essa area ao abrir uma locacao.
+- [x] Padronizar os botoes de `Acoes` da lista previa da `Locacao` com os mesmos icones das outras telas de cadastro.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.
 - [x] Evoluir `Materiais previstos` e `Atividades previstas` em `Projetos` para suportar importacao em massa e inclusao manual, com edicao em linha e protecao via RPC.
 - [x] Padronizar o posicionamento do botao `Adicionar atividade` em `Projetos` para seguir o mesmo layout de `Adicionar material`.
@@ -133,6 +135,18 @@
 - [x] Tornar `/api/projects` tolerante a schema legado de `project_with_labels` sem `has_locacao`.
 - [x] Mover a carga semanal da `Programacao` para RPC de resumo no backend e trocar `Apoio` para catalogo com sugestao automatica baseada na `Locacao`.
 - [x] Criar catalogo proprio de `Apoio` da `Programacao` com vinculacao ao catalogo da `Locacao`.
+- [x] Permitir filtrar quais `Equipes` aparecem na grade da `Programacao` e manter obras ja programadas visiveis na lateral para novas programacoes por dia.
+- [x] Ajustar o resumo do topo da `Programacao` para manter `Programadas`, `Carga media` e um card de `Equipes` com barras internas para `Total`, `Livres` e `Selecionadas`.
+- [x] Simplificar o card lateral da `Programacao` e destacar `Reprogramada` com cor propria na grade e na legenda.
+- [x] Exibir no modal da `Programacao` o `ID da programacao` e os dados da ultima `Reprogramacao` a partir do historico.
+- [x] Manter `Cancelada` e `Adiada` visiveis na grade da `Programacao`, com estados proprios e possibilidade de `Programar novamente`.
+- [x] Manter os cards da grade da `Programacao` sem texto de status e fazer o contador de `Projetos Pendentes` considerar apenas obras ainda nao programadas no periodo visivel.
+- [x] Exibir no modal da `Programacao` o motivo do adiamento quando a programacao estiver `ADIADA`.
+- [x] Simplificar a copia da `Programacao` para uma acao manual no toolbar, copiando a linha inteira da equipe no periodo visivel para outras equipes.
+- [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
+- [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
+- [x] Trocar o `dev` local para `webpack` e documentar o workaround do panic do Turbopack no Windows.
+- [x] Implementar primeira versao frontend de `Medicao` com origem por projeto/programacao, carga de atividades previstas, calculo local e fator ajustavel sem backend proprio.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

@@ -210,6 +210,40 @@
   font-weight: 600;
 }
 
+.basicInfoMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.basicInfoMetaItem {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  background: rgba(244, 248, 255, 0.92);
+}
+
+.basicInfoMetaItem span {
+  color: #5a709a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.basicInfoMetaItem strong {
+  color: #17347a;
+  font-size: 0.96rem;
+}
+
+.basicInfoMetaItem small {
+  color: #4f638a;
+  line-height: 1.5;
+}
+
 .projectCard {
   display: grid;
   gap: 10px;
@@ -222,10 +256,19 @@
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
+.projectCardScheduled {
+  border-color: rgba(136, 34, 62, 0.22);
+  background: linear-gradient(180deg, #fff1f4 0%, #f7dce3 100%);
+}
+
 .projectCard:hover {
   transform: translateY(-2px);
   box-shadow: 0 18px 36px rgba(19, 40, 88, 0.12);
   border-color: rgba(23, 52, 122, 0.18);
+}
+
+.projectCardScheduled:hover {
+  border-color: rgba(136, 34, 62, 0.3);
 }
 
 .projectCard:active {
@@ -316,6 +359,13 @@
   font-size: 0.8rem;
 }
 
+.projectBadges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
 .locationReadyTag {
   color: #1f6a35;
   background: #dbf3e1;
@@ -324,6 +374,19 @@
 .locationPendingTag {
   color: #8a6700;
   background: #fff2c7;
+}
+
+.serviceTypeTag {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.serviceTypeTag {
+  color: #31597d;
+  background: #e0eefc;
 }
 
 .emptyState {
@@ -347,6 +410,13 @@
   place-items: center;
   text-align: center;
   padding: 16px;
+}
+
+.listHelper {
+  margin: 0;
+  color: #5b719b;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .feedbackSuccess,
@@ -384,9 +454,67 @@
   gap: 4px;
 }
 
+.statCardWide {
+  min-width: 280px;
+  gap: 10px;
+}
+
 .statCard strong {
   color: #17347a;
   font-size: 1.18rem;
+}
+
+.teamStatRows {
+  display: grid;
+  gap: 8px;
+}
+
+.teamStatRow {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.teamStatInfo {
+  display: grid;
+  gap: 2px;
+}
+
+.teamStatInfo small {
+  color: #61759d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.teamStatInfo strong {
+  font-size: 0.95rem;
+}
+
+.teamStatBar {
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(52, 79, 136, 0.12);
+}
+
+.teamStatBar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.teamStatBarTotal span {
+  background: linear-gradient(90deg, #183f93 0%, #2f77ef 100%);
+}
+
+.teamStatBarFree span {
+  background: linear-gradient(90deg, #6ca5ff 0%, #3b6fd4 100%);
+}
+
+.teamStatBarSelected span {
+  background: linear-gradient(90deg, #a8bde8 0%, #6d87be 100%);
 }
 
 .toolbar {
@@ -449,6 +577,69 @@
 
 .inlineField select {
   min-width: 180px;
+}
+
+.teamFilterMenu {
+  position: relative;
+}
+
+.teamFilterMenu[open] .teamFilterTrigger {
+  border-color: rgba(33, 80, 177, 0.22);
+  box-shadow: 0 0 0 4px rgba(33, 80, 177, 0.1);
+}
+
+.teamFilterTrigger {
+  list-style: none;
+  min-height: 46px;
+  padding: 11px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 52, 122, 0.16);
+  background: #ffffff;
+  color: #17347a;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teamFilterTrigger::-webkit-details-marker {
+  display: none;
+}
+
+.teamFilterPopover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  min-width: 260px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #ffffff;
+  box-shadow: 0 24px 48px rgba(15, 32, 74, 0.18);
+  display: grid;
+  gap: 12px;
+}
+
+.teamFilterList {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.teamFilterOption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #24406f;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.teamFilterOption input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2150b1;
 }
 
 .viewSwitcher {
@@ -624,6 +815,24 @@
   color: #f8fbff;
 }
 
+.scheduleCardRescheduled {
+  background: linear-gradient(180deg, #efe2ff 0%, #dcc6fb 100%);
+  color: #5b2d8a;
+  border-color: rgba(111, 61, 160, 0.18);
+}
+
+.scheduleCardPostponed {
+  background: linear-gradient(180deg, #fff2db 0%, #ffe1ad 100%);
+  color: #8a5a12;
+  border-color: rgba(184, 125, 24, 0.22);
+}
+
+.scheduleCardCancelled {
+  background: linear-gradient(180deg, #f7e0e8 0%, #efc5d4 100%);
+  color: #7b2744;
+  border-color: rgba(141, 44, 76, 0.22);
+}
+
 .scheduleCardPartial {
   background: linear-gradient(180deg, #fff1cc 0%, #ffe2a8 100%);
   color: #7d5810;
@@ -684,6 +893,18 @@
 
 .legendPlanned {
   background: #2f77ef;
+}
+
+.legendRescheduled {
+  background: #b589f2;
+}
+
+.legendPostponed {
+  background: #e1a63b;
+}
+
+.legendCancelled {
+  background: #bb5b7b;
 }
 
 .legendIssue {
@@ -775,6 +996,53 @@
   color: #46608e;
   font-size: 0.82rem;
   font-weight: 600;
+}
+
+.copyModeGroup,
+.copyTeamList {
+  display: grid;
+  gap: 12px;
+}
+
+.copyModeOption,
+.copyTeamOption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  background: rgba(252, 253, 255, 0.96);
+}
+
+.copyModeOption strong,
+.copyTeamOption strong {
+  color: #17347a;
+}
+
+.copyModeOption small,
+.copyTeamOption small {
+  color: #4f638a;
+  line-height: 1.5;
+}
+
+.copyTeamHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.copyTeamHeader span {
+  color: #17347a;
+  font-weight: 800;
+}
+
+.copyTeamActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .modalSection {
@@ -886,6 +1154,10 @@
 @media (max-width: 900px) {
   .filterGrid,
   .modalGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .basicInfoMeta {
     grid-template-columns: 1fr;
   }
 

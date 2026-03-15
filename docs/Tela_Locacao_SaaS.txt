@@ -72,6 +72,10 @@ Filtros, auto-complete e listagem
 - O `Municipio` reduz a lista de projetos disponiveis para o `SOB`.
 - A selecao de `SOB` considera apenas obras ativas do tenant.
 - Se a obra ja tinha locacao e depois for inativada em `Projetos`, ela deixa de aparecer na selecao e as rotas da `Locacao` passam a bloquear consulta e edicao.
+- Antes de abrir uma locacao, a tela exibe um card `Filtros` e um card `Lista de Locacoes`.
+- A lista previa mostra `Projeto (SOB)`, `Municipio`, `Status`, `Locado por`, `Registrado em` e as acoes `Editar` e `Ver detalhes`.
+- As acoes da lista previa usam os mesmos botoes icon-only padrao das telas de cadastro do sistema.
+- Ao abrir uma locacao, os cards de filtro/lista previa ficam suprimidos.
 - O header da tela destaca visualmente tanto o estado vazio (`Nenhum projeto selecionado.`) quanto o estado com projeto aberto (`Projeto selecionado: ...`).
 - Quando existe projeto aberto, o header empilha em destaque `Projeto selecionado: ...` e, logo abaixo, o resumo `Materiais atuais` e `Atividades atuais`.
 - Depois de abrir a locacao, a navegacao operacional e exibida em um card com abas no topo:
@@ -164,6 +168,8 @@ Atualizacao 2026-03
 - Depois: qualquer salvamento real da locacao passa a marcar `project.has_locacao = true`.
 - Layout visual ajustado para o mesmo padrao estrutural das telas `Projetos` e `Atividades`, removendo o visual customizado anterior.
 - Estrutura da tela ajustada para manter o seletor de projeto no topo, abrir abaixo um card de navegacao com botoes/abas e separar os blocos internos em cards distintos no mesmo padrao da tela `Projetos`.
+- Antes: a tela `/locacao` nao tinha visao geral dos projetos com ou sem locacao antes da abertura.
+- Depois: a tela passa a exibir, enquanto nenhuma locacao estiver aberta, um bloco de filtros e uma lista resumida com status, responsavel, data e acoes `Editar`/`Ver detalhes`.
 - A aba `Locacao` deixou de ser apenas um bloco de observacoes e passou a exibir os 4 blocos operacionais de planejamento, equipes, previsao de execucao e pre APR.
 - O bloco `Pre APR` passou a ter um campo proprio de `Observacao`, salvo junto do `questionnaire_answers`.
 - Os filtros de `Atividades previstas` e `Materiais previstos` passaram a seguir o padrao visual de `Projetos`, em card proprio com titulo `Filtros` e botoes `Aplicar`/`Limpar`.
@@ -188,7 +194,7 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
-  - Responsavel por: filtro por municipio, busca de projeto por SOB, carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e envio de `expectedUpdatedAt` nas acoes de salvar.
+  - Responsavel por: filtro por municipio, busca de projeto por SOB, listagem resumida de locacoes antes da abertura, modal de detalhes, carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e envio de `expectedUpdatedAt` nas acoes de salvar.
 - Caminho: `src/app/api/locacao/route.ts`
   - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, chamando a RPC `save_project_location_plan`, enviando `expectedUpdatedAt` e registrando historico.
 - Caminho: `src/app/api/locacao/materials/route.ts`
@@ -248,7 +254,8 @@ Ajuda contextual
   - `LocationPageView`
   - `requestLocation`
   - `openLocation`
-  - `saveNotes`
+  - `openLocationFromOverview`
+  - `openLocationDetails`
   - `saveLocation`
   - `addCatalogItem`
   - `saveRow`

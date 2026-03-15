@@ -302,6 +302,34 @@
   font-weight: 800;
 }
 
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.statusBadgeSuccess {
+  border: 1px solid rgba(46, 125, 50, 0.18);
+  background: #edf8f2;
+  color: #21643d;
+}
+
+.statusBadgeWarning {
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  background: #fff7e5;
+  color: #9a6300;
+}
+
+.statusBadgeMuted {
+  border: 1px solid rgba(91, 106, 133, 0.18);
+  background: #f3f5fa;
+  color: #5b6a85;
+}
+
 .totalHighlight {
   display: grid;
   gap: 2px;
@@ -380,6 +408,44 @@
   gap: 8px;
 }
 
+.actionButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.actionButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.actionButton:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.97);
+}
+
+.actionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.actionView {
+  color: #1d77b8;
+  background: #dce8f5;
+}
+
+.actionEdit {
+  color: #2a86bd;
+  background: #dce8f5;
+}
+
 .feedbackSuccess,
 .feedbackError {
   border-radius: 16px;
@@ -399,6 +465,85 @@
   color: #a12f2f;
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 22, 47, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 60;
+}
+
+.modalCard {
+  width: min(900px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  box-shadow: 0 22px 48px rgba(16, 35, 77, 0.3);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.modalTitleBlock {
+  display: grid;
+  gap: 2px;
+}
+
+.modalHeader h4 {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.05rem;
+}
+
+.modalSubtitle {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.modalCloseButton {
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #17347a;
+  border-radius: 10px;
+  min-height: 34px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detailGrid div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #f8faff;
+  color: #1f2f54;
+  font-size: 0.9rem;
+}
+
+.detailWide {
+  grid-column: span 2;
+}
+
 @media (max-width: 1080px) {
   .formGrid,
   .filterGrid {
@@ -408,11 +553,16 @@
 
 @media (max-width: 720px) {
   .formGrid,
-  .filterGrid {
+  .filterGrid,
+  .detailGrid {
     grid-template-columns: 1fr;
   }
 
   .fieldWide {
+    grid-column: span 1;
+  }
+
+  .detailWide {
     grid-column: span 1;
   }
 
