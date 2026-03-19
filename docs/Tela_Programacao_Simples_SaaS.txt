@@ -34,6 +34,14 @@ Arquitetura
   - `supabase/migrations/090_add_programming_service_description.sql`
   - Campo em `project_programming`: `service_description`
   - RPC: `set_project_programming_service_description`
+- Migration de transacao unica:
+  - `supabase/migrations/091_create_programming_full_save_rpcs.sql`
+  - RPCs: `save_project_programming_full`, `save_project_programming_batch_full`
+  - Objetivo: consolidar salvamento de base + campos complementares em uma unica transacao.
+- Migration de copia endurecida:
+  - `supabase/migrations/092_harden_copy_team_programming_period_rpc.sql`
+  - RPC: `copy_team_programming_period`
+  - Objetivo: copiar apenas atividades ativas e replicar todos os campos novos pela RPC full.
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -109,6 +117,8 @@ Boas praticas
 - Seguranca operacional:
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
+  - API prioriza RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
+  - `PATCH` exige `expectedUpdatedAt` e `ADIAR` exige `newDate`, reduzindo sobrescrita silenciosa.
 - Auditoria:
   - API registra historico complementar em `app_entity_history` para cada programacao criada no lote (`action = BATCH_CREATE`).
 
@@ -154,6 +164,10 @@ Atualizacao 2026-03
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
 - Ajustado bloco de `Documentos` para `Data Aprovada` e `Data Pedido`, com compatibilidade de payload legado.
 - Ajustado o botao `Edicao` para sempre levar o usuario ao topo do formulario ao entrar em modo de edicao.
+- Corrigida validacao de motivo de reprogramacao para ocorrer antes da gravacao (evita salvar e retornar erro em seguida).
+- Adicionado fallback orientado: API tenta primeiro `save_project_programming_full`/`save_project_programming_batch_full` e usa fluxo legado apenas se a RPC full ainda nao existir no ambiente.
+- Tornado obrigatorio `expectedUpdatedAt` no `PATCH` de cancelamento/adiamento e obrigatoria `newDate` quando `action = ADIAR`.
+- Endurecida a RPC `copy_team_programming_period` para usar `save_project_programming_full` e evitar reativacao indevida de atividades inativas na copia.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -174,12 +188,14 @@ Funcoes utilitarias relacionadas
 - `calculateExpectedMinutes`, `findActivityOption`, `downloadCsvFile`.
 - `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`.
 - `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`, `registerProgrammingHistory`.
+- `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`.
 - `setProgrammingEnelFieldsViaRpc`, `setProgrammingOutageWindowViaRpc`, `setProgrammingDocumentDatesViaRpc`, `resolveProgrammingSgdType`.
 - `setProgrammingServiceDescriptionViaRpc`.
 - `confirmPostpone`, `postponeProgrammingViaRpc`.
 
 Servicos e integracoes externas
 - `save_project_programming_batch` (RPC nova).
+- `save_project_programming_full` e `save_project_programming_batch_full` (RPCs transacionais full).
 - `save_project_programming` (RPC reutilizada por equipe no lote).
 - `set_project_programming_outage_window` (RPC nova para janela de desligamento).
 - `set_project_programming_document_dates` (RPC nova para Data Aprovada/Data Pedido).
@@ -203,6 +219,8 @@ Ajuda contextual
   - `supabase/migrations/088_create_postpone_project_programming_rpc.sql`
   - `supabase/migrations/089_add_programming_outage_and_documents_compat.sql`
   - `supabase/migrations/090_add_programming_service_description.sql`
+  - `supabase/migrations/091_create_programming_full_save_rpcs.sql`
+  - `supabase/migrations/092_harden_copy_team_programming_period_rpc.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`

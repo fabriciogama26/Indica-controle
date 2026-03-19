@@ -171,10 +171,12 @@
 - [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
 - [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
 - [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
+- [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e prioridade para RPC transacional full com fallback legado.
 - [x] Garantir compatibilidade da API de Programacao quando a migration `085` ainda nao estiver aplicada (fallback de leitura e de RPC em lote).
 - [x] Adicionar compatibilidade em `service_activities` para `is_active` x `ativo`, evitando erro interno nas RPCs de Programacao em lote.
 - [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
 - [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
+- [x] Endurecer `copy_team_programming_period` para copiar apenas atividades ativas e replicar campos novos (estrutura/ENEL/desligamento/descricao) via `save_project_programming_full`.
 - [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.
 - [x] Trocar o `dev` local para `webpack` e documentar o workaround do panic do Turbopack no Windows.
 - [x] Implementar primeira versao frontend de `Medicao` com origem por projeto/programacao, carga de atividades previstas, calculo local e fator ajustavel sem backend proprio.
