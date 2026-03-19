@@ -45,6 +45,9 @@
 - [x] Implementar acoes da lista de Projetos (`Editar`, `Detalhes`, `Historico`, `Cancelar`) com modais e fluxo completo no frontend.
 - [x] Implementar `PUT` e `PATCH` em `/api/projects` para edicao e troca de status (cancelamento/ativacao) com motivo obrigatorio.
 - [x] Endurecer `Projetos` com controle de concorrencia por `expectedUpdatedAt` no `PUT` e no `PATCH`, bloqueando sobrescrita silenciosa e troca de status com registro stale.
+- [x] Corrigir falso conflito de concorrencia em `Projetos` ao comparar `updated_at` por instante (epoch), destravando `Salvar alteracoes` quando o timestamp eh equivalente em formato diferente.
+- [x] Ajustar `saveProjectViaRpc` para fallback de compatibilidade sem `p_fob` e retorno detalhado de erro, evitando `500` generico em `Salvar alteracoes`.
+- [x] Adicionar migration de compatibilidade `jsonb_object_length(jsonb)` para evitar falha de RPC em ambientes Postgres sem essa funcao nativa.
 - [x] Migrar as escritas de `Projetos` para RPC transacional (`save_project_record` e `set_project_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
 - [x] Remover `FOB` do fluxo operacional de `Projetos` e limitar `Projeto (SOB)` a `10` caracteres no frontend e na API.
@@ -116,11 +119,13 @@
 - [x] Padronizar os blocos de filtro de `Atividades previstas` e `Materiais previstos` na `Locacao` com card `Filtros` e acoes `Aplicar`/`Limpar`.
 - [x] Separar os filtros internos de `Atividades previstas` e `Materiais previstos` na `Locacao` em campos `Codigo`, `Descricao` e `Tipo`.
 - [x] Criar a tabela `project_location_risks` para armazenar riscos da `Locacao` por projeto com `description`, `is_active`, RLS e auditoria.
+- [x] Ajustar bootstrap da `Locacao` para seedar riscos de `Pre APR` em novos projetos a partir dos riscos ja cadastrados no tenant.
 - [x] Criar o catalogo `location_execution_support_items` para apoio de execucao da `Locacao` por tenant com `description`, `is_active`, RLS e auditoria.
 - [x] Reestruturar a aba `Locacao` em 4 blocos operacionais com questionario, quantidades de equipes, previsao de execucao, apoio de execucao e pre APR.
 - [x] Ajustar a aba `Locacao` removendo prefixos `Bloco x` dos titulos e adicionando `Observacao` no `Pre APR`.
 - [x] Validar a aba principal da `Locacao` com radios obrigatorios, campos numericos iniciando em `0`, bloqueio de negativos e feedback local no `Salvar locacao`.
 - [x] Fazer o `Salvar locacao` retornar ao topo do container principal apos sucesso para recolocar as abas em evidência.
+- [x] Ajustar feedback de sucesso de `Salvar locacao` para aparecer no topo da tela, mantendo erros de validacao no bloco local da aba.
 - [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [x] Centralizar no banco via RPC as regras de bloqueio da `Locacao`, `Materiais previstos` e `Atividades previstas`.
 - [x] Endurecer as RPCs de `Locacao` e dos previstos de `Projetos` com controle de concorrencia por `updated_at`, limites maximos e observacao obrigatoria quando houver revisao/desligamento.
@@ -128,6 +133,7 @@
 - [x] Destacar visualmente no header da tela de `Locacao` tanto o estado vazio quanto o projeto selecionado.
 - [x] Destacar visualmente no header da `Locacao`, abaixo do projeto selecionado, o resumo `Materiais atuais` e `Atividades atuais`.
 - [x] Adicionar visao previa da `Locacao` com filtros, lista resumida de projetos, status, responsavel, data e acoes `Editar`/`Ver detalhes`, ocultando essa area ao abrir uma locacao.
+- [x] Ajustar `/api/locacao/meta` para priorizar projetos recem-atualizados na carga do catalogo e evitar sumico de projetos novos na tela.
 - [x] Padronizar os botoes de `Acoes` da lista previa da `Locacao` com os mesmos icones das outras telas de cadastro.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.
 - [x] Evoluir `Materiais previstos` e `Atividades previstas` em `Projetos` para suportar importacao em massa e inclusao manual, com edicao em linha e protecao via RPC.
@@ -153,8 +159,24 @@
 - [x] Manter os cards da grade da `Programacao` sem texto de status e fazer o contador de `Projetos Pendentes` considerar apenas obras ainda nao programadas no periodo visivel.
 - [x] Exibir no modal da `Programacao` o motivo do adiamento quando a programacao estiver `ADIADA`.
 - [x] Simplificar a copia da `Programacao` para uma acao manual no toolbar, copiando a linha inteira da equipe no periodo visivel para outras equipes.
+- [x] Implementar a nova `Programacao` no padrao de cadastro, com selecao de multiplas equipes e submit em lote via RPC transacional.
+- [x] Desativar a tela legada `/programacao` sem exclusao de codigo, redirecionando para `/programacao-simples` e padronizando o texto da nova tela como `Programacao`.
+- [x] Corrigir inclusao de atividades por codigo na nova Programacao e incluir campos de quantidade (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`) com persistencia em banco.
+- [x] Incluir botoes de acao `Detalhes`, `Edicao` e `Historico` na lista da nova Programacao.
+- [x] Padronizar acoes da nova Programacao com o baseline de `Projetos` (icones, cancelamento com motivo, historico com campos alterados e destaque amarelo no modo de edicao).
+- [x] Adicionar exportacao `ENEL-EXCEL` na nova Programacao com colunas no layout solicitado e preenchimento em branco para campos sem informacao.
+- [x] Ajustar export `ENEL-EXCEL` da nova Programacao para preencher `Observação do Cancelamento / Parcial / Adiamento` com o motivo informado no cancelamento.
+- [x] Ajustar mapeamento completo do `ENEL-EXCEL` na nova Programacao (Responsáveis Enel/Gestor/Endereco por Projeto, Tipo de SGD, Nº Clientes Afetados e roteamento do SGD por tipo).
+- [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
+- [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
+- [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
+- [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
+- [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e prioridade para RPC transacional full com fallback legado.
+- [x] Garantir compatibilidade da API de Programacao quando a migration `085` ainda nao estiver aplicada (fallback de leitura e de RPC em lote).
+- [x] Adicionar compatibilidade em `service_activities` para `is_active` x `ativo`, evitando erro interno nas RPCs de Programacao em lote.
 - [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
 - [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
+- [x] Endurecer `copy_team_programming_period` para copiar apenas atividades ativas e replicar campos novos (estrutura/ENEL/desligamento/descricao) via `save_project_programming_full`.
 - [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.
 - [x] Trocar o `dev` local para `webpack` e documentar o workaround do panic do Turbopack no Windows.
 - [x] Implementar primeira versao frontend de `Medicao` com origem por projeto/programacao, carga de atividades previstas, calculo local e fator ajustavel sem backend proprio.

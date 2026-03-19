@@ -235,6 +235,9 @@ Atualizacao 2026-03
 - As rotas de previstos do projeto passam a enviar `expectedUpdatedAt` na edicao em linha para bloquear sobrescrita concorrente.
 - A tela principal de `Projetos` passa a enviar `expectedUpdatedAt` na edicao e na troca de status para bloquear sobrescrita silenciosa e cancelamento/ativacao com dados stale.
 - A tela principal de `Projetos` passa a delegar escrita para as RPCs `save_project_record` e `set_project_record_status`.
+- Ajustado `src/lib/server/concurrency.ts` para comparar `updated_at` por instante (epoch) antes da validacao de conflito, evitando falso bloqueio de `Salvar alteracoes` quando o timestamp chega com formatos equivalentes.
+- Ajustado `saveProjectViaRpc` em `src/app/api/projects/route.ts` para compatibilidade com assinatura legada da RPC (retry sem `p_fob`) e para retornar mensagem detalhada quando houver erro real de RPC.
+- Criada migration `081_add_jsonb_object_length_compat.sql` para compatibilizar ambientes Postgres sem a funcao nativa `jsonb_object_length(jsonb)`, evitando falha em RPCs administrativas.
 - Incluido botao `Materiais previstos` na coluna `Acoes` da lista de projetos.
 - Ajustada UX da aba `Materiais previstos` para ter filtros e lista proprios de materiais, sem exibir os blocos de filtros/lista de projetos nessa aba.
 - Ajustado o modelo XLSX de `Materiais previstos` para aceitar apenas as colunas `codigo` e `quantidade`.
@@ -248,7 +251,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento, incluindo envio de `expectedUpdatedAt` no save e no status.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, limitando `SOB`, ignorando `FOB` no fluxo operacional atual e delegando update/status para RPCs transacionais.
+  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, limitando `SOB`, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
@@ -310,6 +313,8 @@ Funcoes utilitarias relacionadas
   - Suporta selecao de tenant por requisicao via header `x-tenant-id` (quando o usuario possui vinculo em `app_user_tenants`).
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt` por instante, mantendo bloqueio de concorrencia real e removendo falso conflito por formato textual.
 - Caminho: `supabase/edge_functions/import_project_forecast/index.ts`
   - Responsavel por: validar parse do XLSX (`codigo`, `quantidade`) e preparar payload para RPC.
 - Caminho: `supabase/edge_functions/import_project_activity_forecast/index.ts`
@@ -344,6 +349,7 @@ Ajuda contextual
   - `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
   - `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
   - `supabase/migrations/077_create_admin_write_rpcs.sql`
+  - `supabase/migrations/081_add_jsonb_object_length_compat.sql`
   - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
@@ -368,3 +374,9 @@ Ajuda contextual
   - `GET` de `/api/projects/forecast/template` bloqueado para forcar download via Edge Function
   - `serve` de `get_project_forecast_template`, `import_project_forecast`, `get_project_activity_forecast_template` e `import_project_activity_forecast`
   - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`
+  - Antes: comparacao de `updated_at` em `Projetos` era textual no backend (`string`), podendo bloquear save com timestamps equivalentes em formatos diferentes.
+  - Depois: comparacao de `updated_at` passa a usar o instante da data (epoch), mantendo o lock concorrente real e liberando edicoes validas.
+  - Antes: falha de assinatura/execucao da RPC de save podia retornar somente erro generico `Falha ao salvar projeto.`.
+  - Depois: o save da tela tenta assinatura legada sem `p_fob` quando necessario e retorna detalhes tecnicos quando a RPC falha de fato.
+  - Antes: ambientes Postgres sem `jsonb_object_length(jsonb)` quebravam o save da RPC com erro de funcao inexistente.
+  - Depois: migration de compatibilidade adiciona `public.jsonb_object_length(jsonb)` e elimina essa quebra.

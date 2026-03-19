@@ -119,7 +119,8 @@ vercel --prod
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
   - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
-  - `(dashboard)/programacao/page.tsx`: rota da tela de Programacao com painel lateral filtrado e limitado, card enxuto da obra com prioridade/tipo/municipio/locacao, destaque para obras ja programadas, topo com `Programadas`, `Carga media` e card de `Equipes` com barras internas, carga semanal vinda de RPC, grade semanal/diaria com filtro por equipes, cores proprias para `Reprogramada`, `Adiada` e `Cancelada`, drag and drop, modal com `ID da programacao`, ultima reprogramacao e motivo de adiamento, copia manual da linha da equipe no periodo visivel para outras equipes por RPC transacional e persistencia de lotes de copia no banco, apoio por catalogo e persistencia real via API.
+  - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
+  - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote e exportacao `ENEL-EXCEL`.
   - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com montagem frontend de OS/medicao por projeto ou por programacao, calculo local e conferencia sem persistencia propria.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
@@ -157,7 +158,7 @@ vercel --prod
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico.
   - `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
-  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
+  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
@@ -178,8 +179,11 @@ vercel --prod
   - `LocationPageView.tsx`: tela de locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, modal de detalhes, 4 blocos operacionais, feedback local de salvamento, atividades previstas e materiais previstos.
   - `LocationPageView.module.css`: estilos da tela de locacao.
 - `src/modules/dashboard/programacao/`
-  - `ProgrammingPageView.tsx`: tela de programacao com painel lateral filtrado e limitado, card enxuto da obra com prioridade/tipo/municipio/locacao, destaque para obra ja programada, timeline por equipe com filtro explicito de equipes, carga semanal real do backend, cards agendados com estados visuais de `Reprogramada`, `Adiada` e `Cancelada`, drag and drop, modal com `ID da programacao`, ultima reprogramacao, motivo de adiamento e copia manual da linha da equipe no periodo visivel para outras equipes, apoio por selectbox do catalogo proprio e integracao autenticada com `/api/programacao`.
+  - `ProgrammingPageView.tsx`: implementacao legada da tela antiga de Programacao (desativada no fluxo atual e mantida sem exclusao de codigo).
   - `ProgrammingPageView.module.css`: estilos da tela de programacao.
+- `src/modules/dashboard/programacao-simples/`
+  - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, quantidades estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros, lista com `Detalhes`/`Edicao`/`Historico`, exportacao CSV e exportacao `ENEL-EXCEL`.
+  - `ProgrammingSimplePageView.module.css`: estilos da nova tela de Programacao.
 - `src/modules/dashboard/medicao/`
   - `MeasurementPageView.tsx`: tela frontend de medicao para montar OS/medicao por projeto ou programacao, carregar atividades previstas e calcular fator localmente.
   - `MeasurementPageView.module.css`: estilos da tela de medicao.
@@ -245,6 +249,7 @@ vercel --prod
   - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, historico e troca de status.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
   - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
+  - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: tela frontend de medicao com origem por projeto/programacao, fator de multiplicacao e conferencia local.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
@@ -261,6 +266,11 @@ vercel --prod
 - `supabase/migrations/077_create_admin_write_rpcs.sql`: RPCs transacionais para escrita de `Projetos`, `Materiais`, `Atividades`, `Equipes` e `Permissoes`.
 - `supabase/migrations/078_create_programming_history_append_rpc.sql`: RPC para registrar o historico complementar da `Programacao` sem `insert` direto na route.
 - `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`: RPCs transacionais para escrita/status de `Pessoas` e para auditoria de `Invite`.
+- `supabase/migrations/082_create_programming_batch_create_rpc.sql`: RPC transacional `save_project_programming_batch` para cadastrar Programacao em lote (multiplas equipes).
+- `supabase/migrations/083_add_programacao_simples_page_permissions.sql`: backfill da nova pagina de `Programacao` (`page_key` `programacao-simples`) em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- `supabase/migrations/084_deactivate_legacy_programacao_page.sql`: desativa a pagina legada `programacao` e bloqueia acesso nas tabelas de permissao.
+- `supabase/migrations/085_add_programming_structure_fields_and_actions_support.sql`: adiciona colunas estruturais de quantidade em `project_programming` e atualiza RPCs para persistir esses campos.
+- `supabase/migrations/086_add_service_activities_is_active_compat.sql`: cria compatibilidade entre `ativo` e `is_active` em `service_activities`, estabilizando as RPCs de Programacao em lote.
 
 ---
 

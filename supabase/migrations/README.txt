@@ -75,6 +75,19 @@ Ordem de aplicacao
 71. 071_programming_week_summary_and_support_catalog.sql
 72. 072_create_programming_support_items.sql
 73. 073_add_project_fob.sql
+74. 074_create_programming_copy_batches.sql
+75. 075_allow_team_period_copy_batches.sql
+76. 076_create_copy_team_programming_period_rpc.sql
+77. 077_create_admin_write_rpcs.sql
+78. 078_create_programming_history_append_rpc.sql
+79. 079_create_people_and_invite_write_rpcs.sql
+80. 080_seed_location_risks_on_initialize.sql
+81. 081_add_jsonb_object_length_compat.sql
+82. 082_create_programming_batch_create_rpc.sql
+83. 083_add_programacao_simples_page_permissions.sql
+84. 084_deactivate_legacy_programacao_page.sql
+85. 085_add_programming_structure_fields_and_actions_support.sql
+86. 086_add_service_activities_is_active_compat.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -299,6 +312,45 @@ Resumo por arquivo
 073_add_project_fob.sql
 - Adiciona `project.fob`, aplica `check` de exatamente `10` caracteres quando preenchido e republica `project_with_labels`.
 
+074_create_programming_copy_batches.sql
+- Cria base para rastrear lotes de copia da `Programacao`.
+
+075_allow_team_period_copy_batches.sql
+- Ajusta schema/permissoes para permitir lotes de copia por periodo/equipe.
+
+076_create_copy_team_programming_period_rpc.sql
+- Cria RPC transacional para copiar a linha de programacao por periodo/equipe.
+
+077_create_admin_write_rpcs.sql
+- Centraliza escritas administrativas/cadastrais em RPCs transacionais com concorrencia e historico.
+
+078_create_programming_history_append_rpc.sql
+- Cria RPC dedicada para append de historico da `Programacao`.
+
+079_create_people_and_invite_write_rpcs.sql
+- Cria RPCs transacionais para escrita de `Pessoas` e auditoria de `Invite`.
+
+080_seed_location_risks_on_initialize.sql
+- Atualiza `initialize_project_location_plan` para seedar riscos de `Pre APR` em novos planos com base no historico de riscos do tenant.
+
+081_add_jsonb_object_length_compat.sql
+- Adiciona funcao de compatibilidade `public.jsonb_object_length(jsonb)` para ambientes Postgres sem essa funcao nativa, preservando execucao das RPCs administrativas.
+
+082_create_programming_batch_create_rpc.sql
+- Cria a RPC `save_project_programming_batch` para cadastro transacional da Programacao em lote (multiplas equipes).
+
+083_add_programacao_simples_page_permissions.sql
+- Inclui a nova `Programacao` em `app_pages` (page_key `programacao-simples`) e faz backfill em `role_page_permissions` e `app_user_page_permissions`.
+
+084_deactivate_legacy_programacao_page.sql
+- Desativa a tela legada `programacao` em `app_pages` e bloqueia acesso em `role_page_permissions` e `app_user_page_permissions`.
+
+085_add_programming_structure_fields_and_actions_support.sql
+- Adiciona colunas `poste_qty`, `estrutura_qty`, `trafo_qty` e `rede_qty` em `project_programming`, cria RPC para salvar essas quantidades e atualiza a RPC de lote `save_project_programming_batch`.
+
+086_add_service_activities_is_active_compat.sql
+- Adiciona coluna de compatibilidade `service_activities.is_active`, sincroniza com `ativo` e cria trigger/check para manter ambas alinhadas.
+ 
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
 

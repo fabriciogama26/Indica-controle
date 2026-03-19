@@ -22,6 +22,12 @@ type LocationRiskRow = {
   is_active: boolean;
 };
 
+type LocationRiskCatalogRow = {
+  description: string;
+  is_active: boolean;
+  updated_at: string;
+};
+
 type LocationExecutionSupportRow = {
   id: string;
   description: string;
@@ -207,9 +213,60 @@ export async function ensureLocationPlan(
     } as const;
   }
 
+  const planId = result.plan_id;
+  const { data: planRiskRows, error: planRisksError } = await supabase
+    .from("project_location_risks")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("location_plan_id", planId)
+    .limit(1);
+
+  if (!planRisksError && (planRiskRows ?? []).length === 0) {
+    const { data: riskCatalogRows, error: riskCatalogError } = await supabase
+      .from("project_location_risks")
+      .select("description, is_active, updated_at")
+      .eq("tenant_id", tenantId)
+      .order("updated_at", { ascending: false })
+      .limit(5000)
+      .returns<LocationRiskCatalogRow[]>();
+
+    if (!riskCatalogError && (riskCatalogRows ?? []).length > 0) {
+      const uniqueCatalog = new Map<string, { description: string; is_active: boolean }>();
+      for (const row of riskCatalogRows ?? []) {
+        const description = normalizeText(row.description);
+        if (!description) {
+          continue;
+        }
+
+        const key = description.toLowerCase();
+        if (!uniqueCatalog.has(key)) {
+          uniqueCatalog.set(key, {
+            description,
+            is_active: Boolean(row.is_active),
+          });
+        }
+      }
+
+      if (uniqueCatalog.size > 0) {
+        await supabase
+          .from("project_location_risks")
+          .insert(
+            Array.from(uniqueCatalog.values()).map((item) => ({
+              tenant_id: tenantId,
+              location_plan_id: planId,
+              description: item.description,
+              is_active: item.is_active,
+              created_by: actorUserId,
+              updated_by: actorUserId,
+            })),
+          );
+      }
+    }
+  }
+
   return {
     ok: true,
-    planId: result.plan_id,
+    planId,
     created: Boolean(result.created),
     seededMaterials: Number(result.seeded_materials ?? 0),
   } as const;

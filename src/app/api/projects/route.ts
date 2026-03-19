@@ -713,7 +713,7 @@ async function saveProjectViaRpc(params: {
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
-  const { data, error } = await params.supabase.rpc("save_project_record", {
+  const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_project_id: params.projectId,
@@ -737,10 +737,43 @@ async function saveProjectViaRpc(params: {
     p_observation: params.payload.observation,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
-  });
+  };
+
+  const executeSaveProjectRpc = async (payload: Record<string, unknown>) =>
+    params.supabase.rpc("save_project_record", payload);
+
+  let { data, error } = await executeSaveProjectRpc(rpcPayload);
+  if (error) {
+    const legacyPayload = { ...rpcPayload };
+    delete legacyPayload.p_fob;
+
+    const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
+    if (!legacyAttempt.error) {
+      data = legacyAttempt.data;
+      error = null;
+    }
+  }
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao salvar projeto." } as const;
+    const errorMessage = normalizeText(error.message);
+    const errorHint = normalizeText((error as { hint?: string | null }).hint);
+    const errorDetails = normalizeText((error as { details?: string | null }).details);
+
+    if (errorMessage.toLowerCase().includes("save_project_record") && errorMessage.toLowerCase().includes("function")) {
+      return {
+        ok: false,
+        status: 500,
+        message:
+          "RPC save_project_record indisponivel no banco. Aplique as migrations administrativas (especialmente 077_create_admin_write_rpcs.sql).",
+      } as const;
+    }
+
+    const detailParts = [errorMessage, errorHint, errorDetails].filter(Boolean);
+    return {
+      ok: false,
+      status: 500,
+      message: detailParts.length > 0 ? `Falha ao salvar projeto. ${detailParts.join(" | ")}` : "Falha ao salvar projeto.",
+    } as const;
   }
 
   const result = (data ?? {}) as ProjectSaveRpcResult;

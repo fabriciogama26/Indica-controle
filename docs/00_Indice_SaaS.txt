@@ -13,6 +13,7 @@ Arquivos principais para nova task
 - docs/Tela_Projetos_SaaS.txt
 - docs/Tela_Locacao_SaaS.txt
 - docs/Tela_Programacao_SaaS.txt
+- docs/Tela_Programacao_Simples_SaaS.txt
 - docs/Tela_Medicao_SaaS.txt
 - docs/Tela_Cargo_SaaS.txt
 - docs/Tela_Pessoas_SaaS.txt

@@ -23,7 +23,7 @@ const menuSections = [
     items: [
       { href: "/projetos", label: "Projetos", icon: "folder" },
       { href: "/locacao", label: "Locacao", icon: "briefcase" },
-      { href: "/programacao", label: "Programacao", icon: "calendar" },
+      { href: "/programacao-simples", label: "Programacao", icon: "calendar" },
       { href: "/medicao", label: "Medicao", icon: "calendar" },
     ],
   },
@@ -83,9 +83,13 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Locacao",
     subtitle: "Controle de recursos alocados por locacao.",
   },
-  "/programacao": {
+  "/programacao-simples": {
     title: "Programacao",
-    subtitle: "Planejamento e agenda das operacoes.",
+    subtitle: "Cadastro da programacao para multiplas equipes.",
+  },
+  "/programacao": {
+    title: "Programacao (Legado)",
+    subtitle: "Tela antiga desativada com redirecionamento para o novo fluxo.",
   },
   "/medicao": {
     title: "Medicao",
