@@ -159,6 +159,8 @@
 - [x] Manter os cards da grade da `Programacao` sem texto de status e fazer o contador de `Projetos Pendentes` considerar apenas obras ainda nao programadas no periodo visivel.
 - [x] Exibir no modal da `Programacao` o motivo do adiamento quando a programacao estiver `ADIADA`.
 - [x] Simplificar a copia da `Programacao` para uma acao manual no toolbar, copiando a linha inteira da equipe no periodo visivel para outras equipes.
+- [x] Implementar a nova `Programacao` no padrao de cadastro, com selecao de multiplas equipes e submit em lote via RPC transacional.
+- [x] Desativar a tela legada `/programacao` sem exclusao de codigo, redirecionando para `/programacao-simples` e padronizando o texto da nova tela como `Programacao`.
 - [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
 - [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
 - [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.

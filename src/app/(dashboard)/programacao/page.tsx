@@ -1,5 +1,5 @@
-import { ProgrammingPageView } from "@/modules/dashboard/programacao/ProgrammingPageView";
+import { redirect } from "next/navigation";
 
 export default function ProgramacaoPage() {
-  return <ProgrammingPageView />;
+  redirect("/programacao-simples");
 }

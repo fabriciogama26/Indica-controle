@@ -1,0 +1,144 @@
+Tela: Programacao SaaS (Novo Cadastro)
+
+Visao geral
+-----------
+- Tela de cadastro rapido para criar Programacao em lote no mesmo formato da Programacao principal.
+- Objetivo: permitir selecionar varias equipes e replicar os mesmos campos do formulario para cada equipe selecionada.
+- Fluxo orientado a cadastro: formulario, filtros e lista, sem drag-and-drop.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/programacao-simples/page.tsx`
+- View: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+- Estilo: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+- API reutilizada: `src/app/api/programacao/route.ts`
+- RPC nova:
+  - `supabase/migrations/082_create_programming_batch_create_rpc.sql`
+  - Funcao: `save_project_programming_batch`
+- Migration de permissao:
+  - `supabase/migrations/083_add_programacao_simples_page_permissions.sql`
+  - `supabase/migrations/084_deactivate_legacy_programacao_page.sql`
+- Menu/permissao frontend:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - Projeto
+  - Data
+  - Periodo
+  - Hora inicio
+  - Hora termino
+  - Equipes (multi-selecao)
+- Campos opcionais:
+  - Apoio
+  - Alimentador
+  - Anotacao
+  - Documentos (`SGD`, `PI`, `PEP`)
+  - Atividades (codigo + quantidade)
+- Regra principal:
+  - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
+  - Cada equipe gera uma programacao independente.
+- Persistencia:
+  - Frontend envia `POST /api/programacao` com `action = BATCH_CREATE`.
+  - Backend chama `save_project_programming_batch`.
+  - A RPC reaproveita `save_project_programming` por equipe e faz rollback total se qualquer equipe falhar.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Data inicial
+  - Data final
+  - Projeto
+  - Equipe
+  - Status
+- Auto-complete:
+  - Atividades via `/api/projects/activity-forecast/catalog`.
+- Listagem:
+  - Colunas: Data, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Exportacao CSV da lista filtrada.
+  - Paginacao local com `Anterior/Proxima`.
+
+Boas praticas
+-------------
+- Escopo multi-tenant preservado:
+  - API resolve usuario autenticado por tenant.
+  - RPC recebe `p_tenant_id` e valida dados via regras existentes.
+- Seguranca operacional:
+  - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
+  - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
+- Auditoria:
+  - API registra historico complementar em `app_entity_history` para cada programacao criada no lote (`action = BATCH_CREATE`).
+
+Cancelamento e saldo
+--------------------
+- Esta tela nao altera saldo de estoque.
+- Cancelamento/adiamento continuam no fluxo da tela principal de Programacao.
+- O cadastro em lote gera registros `PROGRAMADA`, seguindo as mesmas regras de status da Programacao.
+
+Atalhos
+-------
+- Rota ativa: `/programacao-simples`.
+- Rota legada desativada: `/programacao` (redireciona para `/programacao-simples`).
+- Menu: secao `Operacao`.
+
+Atualizacao 2026-03
+-------------------
+- Criada tela da nova `Programacao` no padrao de cadastro.
+- Criada action `BATCH_CREATE` em `/api/programacao`.
+- Criada RPC transacional `save_project_programming_batch`.
+- Adicionada pagina `programacao-simples` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
+- Desativada pagina legada `programacao` sem exclusao de codigo.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - Responsavel por: formulario, multi-selecao de equipes, filtros, listagem, exportacao e submit em lote.
+- Caminho: `src/app/api/programacao/route.ts`
+  - Responsavel por: tratar `action = BATCH_CREATE`, validar payload, chamar RPC em lote e registrar historico.
+- Caminho: `supabase/migrations/082_create_programming_batch_create_rpc.sql`
+  - Responsavel por: transacao de cadastro em lote com rollback total em erro.
+
+Constantes e configuracoes
+- `PAGE_SIZE` e `DOCUMENT_KEYS` na tela simples.
+- `ROUTE_PAGE_KEYS` em `authorization.ts` com `programacao-simples`.
+- `permissionCatalog` em `PermissionsPageView.tsx` com `programacao-simples`.
+
+Funcoes utilitarias relacionadas
+- `calculateExpectedMinutes`, `findActivityOption`, `downloadCsvFile`.
+- `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`, `registerProgrammingHistory`.
+
+Servicos e integracoes externas
+- `save_project_programming_batch` (RPC nova).
+- `save_project_programming` (RPC reutilizada por equipe no lote).
+- `append_programming_history` (RPC de auditoria funcional).
+
+Ajuda contextual
+----------------
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/programacao-simples/page.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `src/app/api/programacao/route.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/082_create_programming_batch_create_rpc.sql`
+  - `supabase/migrations/083_add_programacao_simples_page_permissions.sql`
+  - `supabase/migrations/084_deactivate_legacy_programacao_page.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+  - `supabase/migrations/README.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingSimplePageView`
+  - `saveProgrammingBatchViaRpc`
+  - `saveProgrammingBatch`
+  - `POST` de `/api/programacao` (branch `BATCH_CREATE`)
+  - `ROUTE_PAGE_KEYS`
+  - `permissionCatalog`
+- Comportamento antes/depois:
+  - Antes: somente cadastro individual por equipe na Programacao, ou copia de linha via fluxo dedicado.
+  - Depois: cadastro em lote com uma unica submissao para multiplas equipes, mantendo validacoes e isolamento por tenant.

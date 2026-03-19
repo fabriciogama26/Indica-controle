@@ -151,6 +151,30 @@ type CopyProgrammingPayload = {
   endDate?: string;
 };
 
+type BatchCreateProgrammingPayload = {
+  action?: "BATCH_CREATE";
+  projectId?: string;
+  teamIds?: string[];
+  date?: string;
+  period?: string;
+  startTime?: string;
+  endTime?: string;
+  expectedMinutes?: number | string;
+  feeder?: string;
+  support?: string;
+  supportItemId?: string;
+  note?: string;
+  documents?: {
+    sgd?: { number?: string; deliveredAt?: string };
+    pi?: { number?: string; deliveredAt?: string };
+    pep?: { number?: string; deliveredAt?: string };
+  };
+  activities?: Array<{
+    catalogId?: string;
+    quantity?: number | string;
+  }>;
+};
+
 type CancelProgrammingPayload = {
   id?: string;
   action?: string;
@@ -173,6 +197,27 @@ type CopyProgrammingResponse = {
   success?: boolean;
   copiedCount?: number;
   message?: string;
+};
+
+type BatchCreateProgrammingResponse = {
+  success?: boolean;
+  insertedCount?: number;
+  message?: string;
+};
+
+type BatchProgrammingRpcItem = {
+  teamId?: string;
+  programmingId?: string;
+};
+
+type BatchProgrammingRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  project_code?: string;
+  inserted_count?: number;
+  items?: BatchProgrammingRpcItem[];
 };
 
 type CancelProgrammingRpcResult = {
@@ -262,6 +307,10 @@ function normalizeStringArray(value: unknown) {
   }
 
   return value.map((item) => normalizeText(item)).filter(Boolean);
+}
+
+function normalizeUniqueTextArray(value: unknown) {
+  return Array.from(new Set(normalizeStringArray(value)));
 }
 
 function startOfWeekMonday(value: string) {
@@ -716,6 +765,81 @@ async function saveProgrammingViaRpc(params: {
   } as const;
 }
 
+async function saveProgrammingBatchViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  projectId: string;
+  teamIds: string[];
+  executionDate: string;
+  period: "INTEGRAL" | "PARCIAL";
+  startTime: string;
+  endTime: string;
+  expectedMinutes: number;
+  feeder?: string | null;
+  support?: string | null;
+  supportItemId?: string | null;
+  note?: string | null;
+  documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
+  activities: Array<{ catalogId: string; quantity: number }>;
+}) {
+  const { data, error } = await params.supabase.rpc("save_project_programming_batch", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_project_id: params.projectId,
+    p_team_ids: params.teamIds,
+    p_execution_date: params.executionDate,
+    p_period: params.period,
+    p_start_time: params.startTime,
+    p_end_time: params.endTime,
+    p_expected_minutes: params.expectedMinutes,
+    p_feeder: params.feeder ?? null,
+    p_support: params.support ?? null,
+    p_note: params.note ?? null,
+    p_documents: params.documents,
+    p_activities: params.activities.map((item) => ({
+      catalogId: item.catalogId,
+      quantity: item.quantity,
+    })),
+    p_support_item_id: params.supportItemId ?? null,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Falha ao salvar programacao em lote via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as BatchProgrammingRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar programacao em lote.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  const items = Array.isArray(result.items)
+    ? result.items
+        .map((item) => ({
+          teamId: normalizeText(item.teamId),
+          programmingId: normalizeText(item.programmingId),
+        }))
+        .filter((item) => item.teamId && item.programmingId)
+    : [];
+
+  return {
+    ok: true,
+    insertedCount: Number(result.inserted_count ?? items.length),
+    projectCode: normalizeText(result.project_code),
+    message: result.message ?? "Programacao em lote salva com sucesso.",
+    items,
+  } as const;
+}
+
 async function cancelProgrammingViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -987,6 +1111,125 @@ export async function GET(request: NextRequest) {
   }
 }
 
+async function saveProgrammingBatch(request: NextRequest) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para registrar programacao em lote.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const payload = (await request.json().catch(() => null)) as BatchCreateProgrammingPayload | null;
+  const projectId = normalizeText(payload?.projectId);
+  const teamIds = normalizeUniqueTextArray(payload?.teamIds);
+  const executionDate = normalizeIsoDate(payload?.date);
+  const period = normalizePeriod(payload?.period);
+  const startTime = normalizeTime(payload?.startTime);
+  const endTime = normalizeTime(payload?.endTime);
+  const expectedMinutes = normalizePositiveInteger(payload?.expectedMinutes);
+  const feeder = normalizeNullableText(payload?.feeder);
+  const support = normalizeNullableText(payload?.support);
+  const supportItemId = normalizeNullableText(payload?.supportItemId);
+  const note = normalizeNullableText(payload?.note);
+  const documents = payload?.documents ?? {};
+  const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
+  const activities = activitiesInput
+    .map((item) => ({
+      catalogId: normalizeText(item.catalogId),
+      quantity: normalizePositiveNumber(item.quantity),
+    }))
+    .filter((item): item is { catalogId: string; quantity: number } => Boolean(item.catalogId) && item.quantity !== null);
+
+  if (!projectId || !teamIds.length || !executionDate || !period || !startTime || !endTime || !expectedMinutes) {
+    return NextResponse.json({ message: "Preencha os campos obrigatorios da programacao em lote." }, { status: 400 });
+  }
+
+  const [{ data: project }, { data: teamRows }] = await Promise.all([
+    resolution.supabase
+      .from("project_with_labels")
+      .select("id, sob, is_active")
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("id", projectId)
+      .eq("is_active", true)
+      .maybeSingle<{ id: string; sob: string; is_active: boolean }>(),
+    resolution.supabase
+      .from("teams")
+      .select("id, name, ativo")
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .in("id", teamIds)
+      .returns<Array<{ id: string; name: string; ativo: boolean }>>(),
+  ]);
+
+  const teamNameMap = new Map((teamRows ?? []).map((item) => [item.id, normalizeText(item.name)]));
+  const saveResult = await saveProgrammingBatchViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    projectId,
+    teamIds,
+    executionDate,
+    period,
+    startTime,
+    endTime,
+    expectedMinutes,
+    feeder,
+    support,
+    supportItemId,
+    note,
+    documents,
+    activities,
+  });
+
+  if (!saveResult.ok) {
+    return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
+  }
+
+  const projectCode = normalizeText(project?.sob) || normalizeText(saveResult.projectCode) || projectId;
+  const activitiesSnapshot = JSON.stringify(
+    activities.map((item) => ({ code: item.catalogId, quantity: Number(item.quantity.toFixed(2)) })),
+  );
+
+  await Promise.all(
+    saveResult.items.map((item) =>
+      registerProgrammingHistory({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId: item.programmingId,
+        projectCode,
+        changes: {
+          project: { from: null, to: projectCode },
+          team: { from: null, to: teamNameMap.get(item.teamId) ?? item.teamId },
+          executionDate: { from: null, to: executionDate },
+          period: { from: null, to: period },
+          startTime: { from: null, to: formatTime(startTime) },
+          endTime: { from: null, to: formatTime(endTime) },
+          expectedMinutes: { from: null, to: String(expectedMinutes) },
+          feeder: { from: null, to: feeder },
+          support: { from: null, to: support },
+          note: { from: null, to: note },
+          activities: { from: null, to: activitiesSnapshot },
+        },
+        metadata: {
+          action: "BATCH_CREATE",
+          source: "programacao-simples",
+          projectId,
+          teamId: item.teamId,
+          executionDate,
+        },
+      }),
+    ),
+  );
+
+  return NextResponse.json({
+    success: true,
+    insertedCount: saveResult.insertedCount,
+    message: saveResult.message,
+  } satisfies BatchCreateProgrammingResponse);
+}
+
 async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: method === "POST" ? "Sessao invalida para registrar programacao." : "Sessao invalida para editar programacao.",
@@ -1178,8 +1421,9 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const normalizedAction = normalizeText(body?.action).toUpperCase();
 
-  if (normalizeText(body?.action).toUpperCase() === "COPY") {
+  if (normalizedAction === "COPY") {
     const clonedRequest = new NextRequest(request.url, {
       method: request.method,
       headers: request.headers,
@@ -1187,6 +1431,16 @@ export async function POST(request: NextRequest) {
     });
 
     return copyProgramming(clonedRequest);
+  }
+
+  if (normalizedAction === "BATCH_CREATE") {
+    const clonedRequest = new NextRequest(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(body),
+    });
+
+    return saveProgrammingBatch(clonedRequest);
   }
 
   const clonedRequest = new NextRequest(request.url, {
