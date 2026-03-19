@@ -7,6 +7,7 @@ type ProjectMetaRow = {
   sob: string;
   city_text: string | null;
   is_active: boolean;
+  updated_at: string;
   has_locacao?: boolean | null;
 };
 
@@ -41,9 +42,9 @@ export async function GET(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const { data, error } = await supabase
       .from("project_with_labels")
-      .select("id, sob, city_text, is_active, has_locacao")
+      .select("id, sob, city_text, is_active, updated_at, has_locacao")
       .eq("tenant_id", appUser.tenant_id)
-      .order("sob", { ascending: true })
+      .order("updated_at", { ascending: false })
       .limit(5000)
       .returns<ProjectMetaRow[]>();
 
@@ -59,7 +60,8 @@ export async function GET(request: NextRequest) {
         isActive: Boolean(item.is_active),
         hasLocacao: Boolean(item.has_locacao),
       }))
-      .filter((item) => item.id && item.sob);
+      .filter((item) => item.id && item.sob)
+      .sort((a, b) => a.sob.localeCompare(b.sob, "pt-BR"));
 
     const projects = locationProjectsBase.filter((item) => item.isActive);
 

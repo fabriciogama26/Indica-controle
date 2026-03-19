@@ -742,7 +742,7 @@ export function LocationPageView() {
           }),
         },
         "Locacao atualizada com sucesso.",
-        "location",
+        "page",
       );
       scrollDashboardContentToTop();
     } catch (error) {

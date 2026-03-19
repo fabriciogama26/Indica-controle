@@ -28,6 +28,7 @@ Arquitetura
   - `supabase/migrations/061_create_location_risks.sql`
   - `supabase/migrations/062_create_location_execution_support_items.sql`
   - `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
+  - `supabase/migrations/080_seed_location_risks_on_initialize.sql`
   - `supabase/migrations/063_create_location_save_rpcs.sql`
   - `supabase/migrations/064_create_project_activity_forecast.sql`
   - `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
@@ -157,6 +158,7 @@ Atualizacao 2026-03
 - Criada migration `064_create_project_activity_forecast.sql` para fazer a `Locacao` seedar `Atividades previstas` a partir do previsto do projeto quando a lista da locacao ainda estiver vazia.
 - Criada migration `065_project_forecast_manual_and_activity_import.sql` para permitir que as bases de `Materiais previstos` e `Atividades previstas` em `Projetos` cheguem a `Locacao` tanto por importacao em massa quanto por cadastro manual.
 - Criada migration `066_harden_location_and_project_forecast_rpcs.sql` para adicionar controle de concorrencia por `updated_at`, obrigatoriedade condicional de `Observacoes`, limites maximos e validacao estrita de inteiros nas RPCs da `Locacao`.
+- Criada migration `080_seed_location_risks_on_initialize.sql` para a RPC `initialize_project_location_plan` seedar riscos de `Pre APR` em novos projetos a partir dos riscos ja cadastrados no tenant.
 - A inicializacao da locacao passa a copiar os materiais de `project_material_forecast` para a base propria da locacao apenas na primeira carga do projeto.
 - Antes: alterar materiais previstos da locacao exigiria mexer no previsto original do projeto.
 - Depois: a locacao passa a manter `original_qty` e `planned_qty` separados para comparacao.
@@ -178,9 +180,11 @@ Atualizacao 2026-03
 - Os totais de `Atividades previstas` e `Materiais previstos` passaram a usar destaque visual proprio no header.
 - O texto redundante `Projeto selecionado: ...` foi removido dos headers internos das listas.
 - O `Salvar locacao` passou a exibir feedback local na propria aba, evitando deslocamento da tela para o topo.
+- O sucesso de `Salvar locacao` passa a ser exibido no topo da tela (feedback de pagina), mantendo os erros de validacao no bloco local da aba `Locacao`.
 - Ao salvar a aba principal com sucesso, o container principal do dashboard volta para o topo para recolocar em evidência as abas operacionais da locacao.
 - A aba principal da `Locacao` passou a exigir os radios `Necessario revisao de projeto?` e `Com desligamento?` antes de salvar.
 - As rotas da `Locacao` passam a rejeitar projetos inativos, inclusive quando o plano de locacao ja existia antes da inativacao da obra.
+- A API `src/app/api/locacao/meta/route.ts` passa a priorizar projetos recem-atualizados na leitura do banco (mantendo ordenacao final por `SOB` no retorno), evitando sumico de projetos novos no catalogo da tela.
 - As quantidades de equipes e `ETAPAS PREVISTAS` passaram a iniciar com `0`, nao aceitar valor negativo e serem normalizadas no frontend e no backend.
 - O salvar da aba principal passou a exigir pelo menos uma equipe com quantidade maior que `0` e `ETAPAS PREVISTAS` maior que `0`.
 - O backend da locacao deixou de depender de `insert/update` direto e passou a usar RPCs para aplicar as regras de bloqueio no banco.
@@ -202,7 +206,7 @@ Funcoes principais
 - Caminho: `src/app/api/locacao/activities/route.ts`
   - Responsavel por: adicionar atividades e editar quantidade/observacao das atividades da locacao via RPC `save_project_location_activity`, com controle de concorrencia por `updated_at`.
 - Caminho: `src/lib/server/locationPlanning.ts`
-  - Responsavel por: garantir a criacao da locacao, carregar snapshot consolidado com apoio de execucao e riscos, encapsular as RPCs de salvamento e registrar historico no `app_entity_history`.
+  - Responsavel por: garantir a criacao da locacao, seedar riscos quando o plano ainda estiver sem base de `Pre APR`, carregar snapshot consolidado com apoio de execucao e riscos, encapsular as RPCs de salvamento e registrar historico no `app_entity_history`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
@@ -213,6 +217,8 @@ Constantes e configuracoes
   - Responsavel por: tabela `project_location_risks`, RLS, auditoria e indice principal dos riscos da locacao.
 - Caminho: `supabase/migrations/062_create_location_execution_support_items.sql`
   - Responsavel por: catalogo `location_execution_support_items`, RLS, auditoria e indice principal do apoio de execucao da locacao.
+- Caminho: `supabase/migrations/080_seed_location_risks_on_initialize.sql`
+  - Responsavel por: atualizar `initialize_project_location_plan` para seedar riscos de `Pre APR` no bootstrap quando o plano ainda nao possui riscos.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -250,6 +256,7 @@ Ajuda contextual
   - `supabase/migrations/059_create_location_planning.sql`
   - `supabase/migrations/061_create_location_risks.sql`
   - `supabase/migrations/062_create_location_execution_support_items.sql`
+  - `supabase/migrations/080_seed_location_risks_on_initialize.sql`
 - Funcoes/hooks/constantes tocadas:
   - `LocationPageView`
   - `requestLocation`
@@ -268,6 +275,7 @@ Ajuda contextual
   - `ensureLocationPlan`
   - `fetchLocationPlanData`
   - `registerLocationHistory`
+  - `initialize_project_location_plan`
 - Comportamento antes/depois:
   - Antes: locacao nao tinha persistencia nem fluxo operacional.
   - Depois: locacao possui bootstrap por projeto, materiais e atividades previstos editaveis, historico tecnico e comparacao contra o previsto original do projeto.
@@ -285,7 +293,11 @@ Ajuda contextual
   - Depois: a aba `Locacao` passou a salvar 4 blocos operacionais com radios, quantidades, observacao da previsao, apoio de execucao e pre APR.
   - Antes: o `Salvar locacao` usava o mesmo feedback global das outras acoes.
   - Depois: o salvar da aba principal exibe feedback local e valida campos obrigatorios antes de persistir.
+  - Antes: o sucesso de `Salvar locacao` podia ficar visivel apenas no bloco local da aba.
+  - Depois: o sucesso de `Salvar locacao` fica no topo da tela para facilitar a confirmacao visual apos `Editar`/`Abrir locacao`.
   - Antes: as rotas da locacao gravavam diretamente nas tabelas do modulo.
   - Depois: as rotas passam a chamar RPCs do banco, deixando as regras de bloqueio centralizadas no schema.
+  - Antes: projetos novos podiam abrir o bloco `Pre APR` sem riscos, mesmo havendo riscos cadastrados em outros projetos do mesmo tenant.
+  - Depois: o bootstrap da locacao passa a seedar riscos no `Pre APR` para projetos novos a partir da base de riscos ja existente do tenant.
   - Antes: a RPC da locacao bloqueava negativo e zero, mas ainda permitia sobrescrita concorrente e nao exigia observacao quando havia revisao/desligamento.
   - Depois: a RPC da locacao valida `updated_at`, exige observacao condicional, limita valores maximos e rejeita decimais nas equipes e em `ETAPAS PREVISTAS`.

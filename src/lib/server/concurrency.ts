@@ -10,9 +10,25 @@ export function normalizeExpectedUpdatedAt(value: unknown) {
   return normalized || null;
 }
 
+function parseUpdatedAtToEpoch(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function hasUpdatedAtConflict(expectedUpdatedAt: string | null, currentUpdatedAt: string | null) {
   if (!expectedUpdatedAt || !currentUpdatedAt) {
     return false;
+  }
+
+  const expectedEpoch = parseUpdatedAtToEpoch(expectedUpdatedAt);
+  const currentEpoch = parseUpdatedAtToEpoch(currentUpdatedAt);
+
+  if (expectedEpoch !== null && currentEpoch !== null) {
+    return expectedEpoch !== currentEpoch;
   }
 
   return expectedUpdatedAt !== currentUpdatedAt;
