@@ -120,7 +120,7 @@ vercel --prod
   - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
-  - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes e submit em lote.
+  - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote e exportacao `ENEL-EXCEL`.
   - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com montagem frontend de OS/medicao por projeto ou por programacao, calculo local e conferencia sem persistencia propria.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
@@ -182,7 +182,7 @@ vercel --prod
   - `ProgrammingPageView.tsx`: implementacao legada da tela antiga de Programacao (desativada no fluxo atual e mantida sem exclusao de codigo).
   - `ProgrammingPageView.module.css`: estilos da tela de programacao.
 - `src/modules/dashboard/programacao-simples/`
-  - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, filtros, lista e exportacao CSV.
+  - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, quantidades estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros, lista com `Detalhes`/`Edicao`/`Historico`, exportacao CSV e exportacao `ENEL-EXCEL`.
   - `ProgrammingSimplePageView.module.css`: estilos da nova tela de Programacao.
 - `src/modules/dashboard/medicao/`
   - `MeasurementPageView.tsx`: tela frontend de medicao para montar OS/medicao por projeto ou programacao, carregar atividades previstas e calcular fator localmente.
@@ -269,6 +269,8 @@ vercel --prod
 - `supabase/migrations/082_create_programming_batch_create_rpc.sql`: RPC transacional `save_project_programming_batch` para cadastrar Programacao em lote (multiplas equipes).
 - `supabase/migrations/083_add_programacao_simples_page_permissions.sql`: backfill da nova pagina de `Programacao` (`page_key` `programacao-simples`) em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - `supabase/migrations/084_deactivate_legacy_programacao_page.sql`: desativa a pagina legada `programacao` e bloqueia acesso nas tabelas de permissao.
+- `supabase/migrations/085_add_programming_structure_fields_and_actions_support.sql`: adiciona colunas estruturais de quantidade em `project_programming` e atualiza RPCs para persistir esses campos.
+- `supabase/migrations/086_add_service_activities_is_active_compat.sql`: cria compatibilidade entre `ativo` e `is_active` em `service_activities`, estabilizando as RPCs de Programacao em lote.
 
 ---
 

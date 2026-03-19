@@ -10,6 +10,11 @@ type BoardProjectRow = {
   service_type_text: string | null;
   city_text: string | null;
   priority_text: string | null;
+  partner_text: string | null;
+  utility_responsible_text: string | null;
+  utility_field_manager_text: string | null;
+  street: string | null;
+  neighborhood: string | null;
   service_description: string | null;
   observation: string | null;
   has_locacao: boolean | null;
@@ -47,6 +52,13 @@ type SupportOptionRow = {
   is_active: boolean;
 };
 
+type ProgrammingSgdTypeRow = {
+  id: string;
+  description: string;
+  export_column: "SGD_AT_MT_VYP" | "SGD_BT" | "SGD_TET";
+  is_active: boolean;
+};
+
 type LocationPlanSupportRow = {
   project_id: string;
   questionnaire_answers: Record<string, unknown> | null;
@@ -73,10 +85,19 @@ type ProgrammingRow = {
   start_time: string;
   end_time: string;
   expected_minutes: number;
+  outage_start_time: string | null;
+  outage_end_time: string | null;
   feeder: string | null;
   support: string | null;
   support_item_id: string | null;
   note: string | null;
+  service_description: string | null;
+  poste_qty: number | null;
+  estrutura_qty: number | null;
+  trafo_qty: number | null;
+  rede_qty: number | null;
+  affected_customers: number | null;
+  sgd_type_id: string | null;
   sgd_number: string | null;
   sgd_included_at: string | null;
   sgd_delivered_at: string | null;
@@ -126,16 +147,25 @@ type SaveProgrammingPayload = {
   startTime?: string;
   endTime?: string;
   expectedMinutes?: number | string;
+  outageStartTime?: string;
+  outageEndTime?: string;
   feeder?: string;
   support?: string;
   supportItemId?: string;
   note?: string;
+  serviceDescription?: string;
+  posteQty?: number | string;
+  estruturaQty?: number | string;
+  trafoQty?: number | string;
+  redeQty?: number | string;
+  affectedCustomers?: number | string;
+  sgdTypeId?: string;
   changeReason?: string;
   expectedUpdatedAt?: string;
   documents?: {
-    sgd?: { number?: string; deliveredAt?: string };
-    pi?: { number?: string; deliveredAt?: string };
-    pep?: { number?: string; deliveredAt?: string };
+    sgd?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
+    pi?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
+    pep?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
   };
   activities?: Array<{
     catalogId?: string;
@@ -160,14 +190,23 @@ type BatchCreateProgrammingPayload = {
   startTime?: string;
   endTime?: string;
   expectedMinutes?: number | string;
+  outageStartTime?: string;
+  outageEndTime?: string;
   feeder?: string;
   support?: string;
   supportItemId?: string;
   note?: string;
+  serviceDescription?: string;
+  posteQty?: number | string;
+  estruturaQty?: number | string;
+  trafoQty?: number | string;
+  redeQty?: number | string;
+  affectedCustomers?: number | string;
+  sgdTypeId?: string;
   documents?: {
-    sgd?: { number?: string; deliveredAt?: string };
-    pi?: { number?: string; deliveredAt?: string };
-    pep?: { number?: string; deliveredAt?: string };
+    sgd?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
+    pi?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
+    pep?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
   };
   activities?: Array<{
     catalogId?: string;
@@ -179,6 +218,7 @@ type CancelProgrammingPayload = {
   id?: string;
   action?: string;
   reason?: string;
+  newDate?: string;
   expectedUpdatedAt?: string;
 };
 
@@ -220,6 +260,17 @@ type BatchProgrammingRpcResult = {
   items?: BatchProgrammingRpcItem[];
 };
 
+type ProgrammingHistoryListResponse = {
+  history: Array<{
+    id: string;
+    changedAt: string;
+    reason: string;
+    action: string;
+    changes: Record<string, unknown>;
+    metadata: Record<string, unknown>;
+  }>;
+};
+
 type CancelProgrammingRpcResult = {
   success?: boolean;
   status?: number;
@@ -231,6 +282,17 @@ type CancelProgrammingRpcResult = {
   programming_status?: "ADIADA" | "CANCELADA";
 };
 
+type PostponeProgrammingRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  programming_id?: string;
+  new_programming_id?: string;
+  project_code?: string;
+  updated_at?: string;
+};
+
 type AppendProgrammingHistoryRpcResult = {
   success?: boolean;
   status?: number;
@@ -238,6 +300,18 @@ type AppendProgrammingHistoryRpcResult = {
   message?: string;
   skipped?: boolean;
 };
+
+const PROGRAMMING_SELECT_BASE =
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+
+const PROGRAMMING_SELECT_WITH_STRUCTURE =
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+
+const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL =
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+
+const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -268,6 +342,15 @@ function normalizeTime(value: unknown) {
   }
 
   return null;
+}
+
+function normalizeOptionalTime(value: unknown) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return normalizeTime(normalized);
 }
 
 function formatTime(value: string | null) {
@@ -307,6 +390,37 @@ function normalizeStringArray(value: unknown) {
   }
 
   return value.map((item) => normalizeText(item)).filter(Boolean);
+}
+
+function normalizeProgrammingStructureFields<T extends Record<string, unknown>>(row: T): ProgrammingRow {
+  const normalized = {
+    ...row,
+    outage_start_time: normalizeNullableText(row.outage_start_time),
+    outage_end_time: normalizeNullableText(row.outage_end_time),
+    service_description: normalizeNullableText(row.service_description),
+    poste_qty: Number(row.poste_qty ?? 0),
+    estrutura_qty: Number(row.estrutura_qty ?? 0),
+    trafo_qty: Number(row.trafo_qty ?? 0),
+    rede_qty: Number(row.rede_qty ?? 0),
+    affected_customers: Number(row.affected_customers ?? 0),
+    sgd_type_id: normalizeNullableText(row.sgd_type_id),
+  };
+
+  return normalized as unknown as ProgrammingRow;
+}
+
+function normalizeNonNegativeInteger(value: unknown) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return 0;
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
 }
 
 function normalizeUniqueTextArray(value: unknown) {
@@ -384,7 +498,7 @@ async function fetchProjects(
 ) {
   const { data, error } = await supabase
     .from("project_with_labels")
-    .select("id, sob, service_center_text, service_type_text, city_text, priority_text, service_description, observation, has_locacao, is_active")
+    .select("id, sob, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("execution_deadline", { ascending: true })
@@ -528,11 +642,9 @@ async function fetchProgrammingRows(
   startDate: string,
   endDate: string,
 ) {
-  const { data, error } = await supabase
+  const withOutageStructureAndEnelAttempt = await supabase
     .from("project_programming")
-    .select(
-      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at",
-    )
+    .select(PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL)
     .eq("tenant_id", tenantId)
     .gte("execution_date", startDate)
     .lte("execution_date", endDate)
@@ -540,11 +652,60 @@ async function fetchProgrammingRows(
     .order("start_time", { ascending: true })
     .returns<ProgrammingRow[]>();
 
-  if (error) {
+  if (!withOutageStructureAndEnelAttempt.error) {
+    return (withOutageStructureAndEnelAttempt.data ?? []).map((item) =>
+      normalizeProgrammingStructureFields(item as unknown as Record<string, unknown>),
+    );
+  }
+
+  const withStructureAndEnelAttempt = await supabase
+    .from("project_programming")
+    .select(PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL)
+    .eq("tenant_id", tenantId)
+    .gte("execution_date", startDate)
+    .lte("execution_date", endDate)
+    .order("execution_date", { ascending: true })
+    .order("start_time", { ascending: true })
+    .returns<ProgrammingRow[]>();
+
+  if (!withStructureAndEnelAttempt.error) {
+    return (withStructureAndEnelAttempt.data ?? []).map((item) =>
+      normalizeProgrammingStructureFields(item as unknown as Record<string, unknown>),
+    );
+  }
+
+  const withStructureAttempt = await supabase
+    .from("project_programming")
+    .select(PROGRAMMING_SELECT_WITH_STRUCTURE)
+    .eq("tenant_id", tenantId)
+    .gte("execution_date", startDate)
+    .lte("execution_date", endDate)
+    .order("execution_date", { ascending: true })
+    .order("start_time", { ascending: true })
+    .returns<ProgrammingRow[]>();
+
+  if (!withStructureAttempt.error) {
+    return (withStructureAttempt.data ?? []).map((item) =>
+      normalizeProgrammingStructureFields(item as unknown as Record<string, unknown>),
+    );
+  }
+
+  // Compatibilidade com ambientes que ainda nao aplicaram a migration 085.
+  const legacyAttempt = await supabase
+    .from("project_programming")
+    .select(PROGRAMMING_SELECT_BASE)
+    .eq("tenant_id", tenantId)
+    .gte("execution_date", startDate)
+    .lte("execution_date", endDate)
+    .order("execution_date", { ascending: true })
+    .order("start_time", { ascending: true })
+    .returns<Array<Record<string, unknown>>>();
+
+  if (legacyAttempt.error) {
     return [] as ProgrammingRow[];
   }
 
-  return data ?? [];
+  return (legacyAttempt.data ?? []).map((item) => normalizeProgrammingStructureFields(item));
 }
 
 async function fetchProgrammingWeekSummary(
@@ -673,25 +834,103 @@ async function fetchRescheduledProgrammingIds(
   return latestReschedules;
 }
 
-async function fetchProgrammingById(
+async function fetchProgrammingHistory(
   supabase: SupabaseClient,
   tenantId: string,
   programmingId: string,
 ) {
   const { data, error } = await supabase
+    .from("app_entity_history")
+    .select("id, entity_id, reason, changes, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("module_key", "programacao")
+    .eq("entity_table", "project_programming")
+    .eq("entity_id", programmingId)
+    .order("created_at", { ascending: false })
+    .returns<ProgrammingHistoryRow[]>();
+
+  if (error) {
+    return [] as ProgrammingHistoryRow[];
+  }
+
+  return data ?? [];
+}
+
+async function fetchProgrammingSgdTypes(
+  supabase: SupabaseClient,
+  tenantId: string,
+) {
+  const { data, error } = await supabase
+    .from("programming_sgd_types")
+    .select("id, description, export_column, is_active")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("description", { ascending: true })
+    .returns<ProgrammingSgdTypeRow[]>();
+
+  if (error) {
+    return [] as ProgrammingSgdTypeRow[];
+  }
+
+  return data ?? [];
+}
+
+async function fetchProgrammingById(
+  supabase: SupabaseClient,
+  tenantId: string,
+  programmingId: string,
+) {
+  const withOutageStructureAndEnelAttempt = await supabase
     .from("project_programming")
-    .select(
-      "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at",
-    )
+    .select(PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL)
     .eq("tenant_id", tenantId)
     .eq("id", programmingId)
     .maybeSingle<ProgrammingRow>();
 
-  if (error || !data) {
+  if (!withOutageStructureAndEnelAttempt.error && withOutageStructureAndEnelAttempt.data) {
+    return normalizeProgrammingStructureFields(
+      withOutageStructureAndEnelAttempt.data as unknown as Record<string, unknown>,
+    );
+  }
+
+  const withStructureAndEnelAttempt = await supabase
+    .from("project_programming")
+    .select(PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL)
+    .eq("tenant_id", tenantId)
+    .eq("id", programmingId)
+    .maybeSingle<ProgrammingRow>();
+
+  if (!withStructureAndEnelAttempt.error && withStructureAndEnelAttempt.data) {
+    return normalizeProgrammingStructureFields(
+      withStructureAndEnelAttempt.data as unknown as Record<string, unknown>,
+    );
+  }
+
+  const withStructureAttempt = await supabase
+    .from("project_programming")
+    .select(PROGRAMMING_SELECT_WITH_STRUCTURE)
+    .eq("tenant_id", tenantId)
+    .eq("id", programmingId)
+    .maybeSingle<ProgrammingRow>();
+
+  if (!withStructureAttempt.error && withStructureAttempt.data) {
+    return normalizeProgrammingStructureFields(
+      withStructureAttempt.data as unknown as Record<string, unknown>,
+    );
+  }
+
+  const legacyAttempt = await supabase
+    .from("project_programming")
+    .select(PROGRAMMING_SELECT_BASE)
+    .eq("tenant_id", tenantId)
+    .eq("id", programmingId)
+    .maybeSingle<Record<string, unknown>>();
+
+  if (legacyAttempt.error || !legacyAttempt.data) {
     return null;
   }
 
-  return data;
+  return normalizeProgrammingStructureFields(legacyAttempt.data);
 }
 
 async function saveProgrammingViaRpc(params: {
@@ -706,6 +945,8 @@ async function saveProgrammingViaRpc(params: {
   startTime: string;
   endTime: string;
   expectedMinutes: number;
+  outageStartTime?: string | null;
+  outageEndTime?: string | null;
   feeder?: string | null;
   support?: string | null;
   supportItemId?: string | null;
@@ -776,14 +1017,22 @@ async function saveProgrammingBatchViaRpc(params: {
   startTime: string;
   endTime: string;
   expectedMinutes: number;
+  outageStartTime?: string | null;
+  outageEndTime?: string | null;
   feeder?: string | null;
   support?: string | null;
   supportItemId?: string | null;
   note?: string | null;
+  serviceDescription?: string | null;
+  posteQty: number;
+  estruturaQty: number;
+  trafoQty: number;
+  redeQty: number;
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
 }) {
-  const { data, error } = await params.supabase.rpc("save_project_programming_batch", {
+  const structureRequested = params.posteQty > 0 || params.estruturaQty > 0 || params.trafoQty > 0 || params.redeQty > 0;
+  const basePayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_project_id: params.projectId,
@@ -802,13 +1051,38 @@ async function saveProgrammingBatchViaRpc(params: {
       quantity: item.quantity,
     })),
     p_support_item_id: params.supportItemId ?? null,
+  };
+
+  const withStructureAttempt = await params.supabase.rpc("save_project_programming_batch", {
+    ...basePayload,
+    p_poste_qty: params.posteQty,
+    p_estrutura_qty: params.estruturaQty,
+    p_trafo_qty: params.trafoQty,
+    p_rede_qty: params.redeQty,
   });
+
+  let data = withStructureAttempt.data;
+  let error = withStructureAttempt.error;
+  let usedLegacyRpc = false;
+
+  if (error) {
+    const legacyAttempt = await params.supabase.rpc("save_project_programming_batch", basePayload);
+    if (!legacyAttempt.error) {
+      data = legacyAttempt.data;
+      error = null;
+      usedLegacyRpc = true;
+    } else {
+      error = legacyAttempt.error;
+    }
+  }
 
   if (error) {
     return {
       ok: false,
       status: 500,
-      message: "Falha ao salvar programacao em lote via RPC.",
+      message: error.message
+        ? `Falha ao salvar programacao em lote via RPC: ${error.message}`
+        : "Falha ao salvar programacao em lote via RPC.",
     } as const;
   }
 
@@ -819,6 +1093,16 @@ async function saveProgrammingBatchViaRpc(params: {
       status: Number(result.status ?? 400),
       message: result.message ?? "Falha ao salvar programacao em lote.",
       reason: result.reason ?? null,
+    } as const;
+  }
+
+  if (usedLegacyRpc && structureRequested) {
+    return {
+      ok: false,
+      status: 409,
+      message:
+        "Seu ambiente ainda nao suporta os campos estruturais (POSTE/ESTRUTURA/TRAFO/REDE). Aplique a migration 085 e tente novamente.",
+      reason: "STRUCTURE_FIELDS_NOT_AVAILABLE",
     } as const;
   }
 
@@ -838,6 +1122,339 @@ async function saveProgrammingBatchViaRpc(params: {
     message: result.message ?? "Programacao em lote salva com sucesso.",
     items,
   } as const;
+}
+
+async function setProgrammingStructureQuantitiesViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  posteQty: number;
+  estruturaQty: number;
+  trafoQty: number;
+  redeQty: number;
+}) {
+  const structureRequested = params.posteQty > 0 || params.estruturaQty > 0 || params.trafoQty > 0 || params.redeQty > 0;
+  if (!structureRequested) {
+    return { ok: true } as const;
+  }
+
+  const { data, error } = await params.supabase.rpc("set_project_programming_structure_quantities", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_poste_qty: params.posteQty,
+    p_estrutura_qty: params.estruturaQty,
+    p_trafo_qty: params.trafoQty,
+    p_rede_qty: params.redeQty,
+  });
+
+  if (error) {
+    const normalizedError = normalizeText(error.message).toLowerCase();
+    const isMissingRpc =
+      normalizedError.includes("set_project_programming_structure_quantities") ||
+      normalizedError.includes("function") && normalizedError.includes("does not exist") ||
+      normalizedError.includes("could not find");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "Seu ambiente ainda nao suporta os campos estruturais (POSTE/ESTRUTURA/TRAFO/REDE). Aplique a migration 085 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      message: error.message
+        ? `Falha ao salvar quantidades estruturais da programacao: ${error.message}`
+        : "Falha ao salvar quantidades estruturais da programacao.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar quantidades estruturais da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
+async function setProgrammingServiceDescriptionViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  serviceDescription: string | null;
+  force?: boolean;
+}) {
+  const shouldPersist = Boolean(params.force) || Boolean(params.serviceDescription);
+  if (!shouldPersist) {
+    return { ok: true } as const;
+  }
+
+  const { data, error } = await params.supabase.rpc("set_project_programming_service_description", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_service_description: params.serviceDescription,
+  });
+
+  if (error) {
+    const normalizedError = normalizeText(error.message).toLowerCase();
+    const isMissingRpc =
+      normalizedError.includes("set_project_programming_service_description")
+      || normalizedError.includes("function") && normalizedError.includes("does not exist")
+      || normalizedError.includes("could not find");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "Seu ambiente ainda nao suporta o campo Descricao do servico da programacao. Aplique a migration 090 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      message: error.message
+        ? `Falha ao salvar descricao do servico da programacao: ${error.message}`
+        : "Falha ao salvar descricao do servico da programacao.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar descricao do servico da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
+async function setProgrammingOutageWindowViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  outageStartTime: string | null;
+  outageEndTime: string | null;
+  force?: boolean;
+}) {
+  const shouldPersist = Boolean(params.force) || Boolean(params.outageStartTime) || Boolean(params.outageEndTime);
+  if (!shouldPersist) {
+    return { ok: true } as const;
+  }
+
+  const { data, error } = await params.supabase.rpc("set_project_programming_outage_window", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_outage_start_time: params.outageStartTime,
+    p_outage_end_time: params.outageEndTime,
+  });
+
+  if (error) {
+    const normalizedError = normalizeText(error.message).toLowerCase();
+    const isMissingRpc =
+      normalizedError.includes("set_project_programming_outage_window")
+      || normalizedError.includes("function") && normalizedError.includes("does not exist")
+      || normalizedError.includes("could not find");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "Seu ambiente ainda nao suporta os campos Inicio/Termino de desligamento. Aplique a migration 089 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      message: error.message
+        ? `Falha ao salvar janela de desligamento da programacao: ${error.message}`
+        : "Falha ao salvar janela de desligamento da programacao.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar janela de desligamento da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
+function normalizeDocumentsForPersistence(documents: NonNullable<SaveProgrammingPayload["documents"]>) {
+  return {
+    sgd: {
+      approvedAt: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt),
+      requestedAt: normalizeIsoDate(documents?.sgd?.requestedAt ?? documents?.sgd?.deliveredAt),
+    },
+    pi: {
+      approvedAt: normalizeIsoDate(documents?.pi?.approvedAt ?? documents?.pi?.includedAt),
+      requestedAt: normalizeIsoDate(documents?.pi?.requestedAt ?? documents?.pi?.deliveredAt),
+    },
+    pep: {
+      approvedAt: normalizeIsoDate(documents?.pep?.approvedAt ?? documents?.pep?.includedAt),
+      requestedAt: normalizeIsoDate(documents?.pep?.requestedAt ?? documents?.pep?.deliveredAt),
+    },
+  };
+}
+
+async function setProgrammingDocumentDatesViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  documents: NonNullable<SaveProgrammingPayload["documents"]>;
+  force?: boolean;
+}) {
+  const normalizedDocuments = normalizeDocumentsForPersistence(params.documents);
+  const shouldPersist = Boolean(params.force)
+    || Boolean(normalizedDocuments.sgd.approvedAt)
+    || Boolean(normalizedDocuments.sgd.requestedAt)
+    || Boolean(normalizedDocuments.pi.approvedAt)
+    || Boolean(normalizedDocuments.pi.requestedAt)
+    || Boolean(normalizedDocuments.pep.approvedAt)
+    || Boolean(normalizedDocuments.pep.requestedAt);
+
+  if (!shouldPersist) {
+    return { ok: true } as const;
+  }
+
+  const { data, error } = await params.supabase.rpc("set_project_programming_document_dates", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_documents: normalizedDocuments,
+  });
+
+  if (error) {
+    const normalizedError = normalizeText(error.message).toLowerCase();
+    const isMissingRpc =
+      normalizedError.includes("set_project_programming_document_dates")
+      || normalizedError.includes("function") && normalizedError.includes("does not exist")
+      || normalizedError.includes("could not find");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "Seu ambiente ainda nao suporta Data Aprovada/Data Pedido dos documentos. Aplique a migration 089 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      message: error.message
+        ? `Falha ao salvar datas de documentos da programacao: ${error.message}`
+        : "Falha ao salvar datas de documentos da programacao.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar datas de documentos da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
+async function resolveProgrammingSgdType(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  sgdTypeId: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("programming_sgd_types")
+    .select("id, description, export_column, is_active")
+    .eq("tenant_id", params.tenantId)
+    .eq("id", params.sgdTypeId)
+    .eq("is_active", true)
+    .maybeSingle<ProgrammingSgdTypeRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data;
+}
+
+async function setProgrammingEnelFieldsViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  affectedCustomers: number;
+  sgdTypeId: string;
+}) {
+  const { data, error } = await params.supabase.rpc("set_project_programming_enel_fields", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_affected_customers: params.affectedCustomers,
+    p_sgd_type_id: params.sgdTypeId,
+  });
+
+  if (error) {
+    const normalizedError = normalizeText(error.message).toLowerCase();
+    const isMissingRpc =
+      normalizedError.includes("set_project_programming_enel_fields") ||
+      normalizedError.includes("function") && normalizedError.includes("does not exist") ||
+      normalizedError.includes("could not find");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "Seu ambiente ainda nao suporta os campos ENEL obrigatorios (Tipo de SGD e Nº Clientes Afetados). Aplique a migration 089 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      message: error.message
+        ? `Falha ao salvar campos ENEL da programacao: ${error.message}`
+        : "Falha ao salvar campos ENEL da programacao.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar campos ENEL da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
 }
 
 async function cancelProgrammingViaRpc(params: {
@@ -883,6 +1500,69 @@ async function cancelProgrammingViaRpc(params: {
     updatedAt: normalizeText(result.updated_at),
     programmingStatus: result.programming_status ?? params.action,
     message: result.message ?? (params.action === "ADIADA" ? "Programacao adiada com sucesso." : "Programacao cancelada com sucesso."),
+  } as const;
+}
+
+async function postponeProgrammingViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  newExecutionDate: string;
+  reason: string;
+  expectedUpdatedAt?: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("postpone_project_programming", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_new_execution_date: params.newExecutionDate,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    const normalizedError = normalizeText(error.message).toLowerCase();
+    const isMissingRpc =
+      normalizedError.includes("postpone_project_programming") ||
+      normalizedError.includes("function") && normalizedError.includes("does not exist") ||
+      normalizedError.includes("could not find");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "Seu ambiente ainda nao suporta adiamento com nova data. Aplique a migration 088 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      message: error.message
+        ? `Falha ao adiar programacao via RPC: ${error.message}`
+        : "Falha ao adiar programacao via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as PostponeProgrammingRpcResult;
+  if (result.success !== true || !result.programming_id || !result.new_programming_id) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao adiar programacao.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    programmingId: result.programming_id,
+    newProgrammingId: result.new_programming_id,
+    projectCode: normalizeText(result.project_code),
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Programacao adiada com sucesso.",
   } as const;
 }
 
@@ -984,6 +1664,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const historyProgrammingId = normalizeText(request.nextUrl.searchParams.get("historyProgrammingId"));
+    if (historyProgrammingId) {
+      const historyRows = await fetchProgrammingHistory(
+        resolution.supabase,
+        resolution.appUser.tenant_id,
+        historyProgrammingId,
+      );
+
+      return NextResponse.json({
+        history: historyRows.map((item) => ({
+          id: item.id,
+          changedAt: item.created_at,
+          reason: normalizeText(item.reason),
+          action: normalizeText(item.metadata?.action),
+          changes: item.changes ?? {},
+          metadata: item.metadata ?? {},
+        })),
+      } satisfies ProgrammingHistoryListResponse);
+    }
+
     const startDate = normalizeIsoDate(request.nextUrl.searchParams.get("startDate"));
     const endDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
 
@@ -992,15 +1692,17 @@ export async function GET(request: NextRequest) {
     }
 
     const weekStart = startOfWeekMonday(startDate);
-    const [projects, teams, programmingRows, supportOptions, teamSummaries] = await Promise.all([
+    const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, startDate, endDate),
       fetchSupportOptions(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingWeekSummary(resolution.supabase, resolution.appUser.tenant_id, weekStart),
+      fetchProgrammingSgdTypes(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
     const projectMap = new Map(projects.map((item) => [item.id, item]));
+    const sgdTypeMap = new Map(sgdTypes.map((item) => [item.id, item]));
     const supportDefaults = await fetchProjectSupportDefaults({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -1027,6 +1729,11 @@ export async function GET(request: NextRequest) {
           base: normalizeText(item.service_center_text) || "Sem base",
           serviceType: normalizeText(item.service_type_text) || "Sem tipo",
           priority: normalizeText(item.priority_text) || "Sem prioridade",
+          partner: normalizeText(item.partner_text),
+          utilityResponsible: normalizeText(item.utility_responsible_text),
+          utilityFieldManager: normalizeText(item.utility_field_manager_text),
+          street: normalizeText(item.street),
+          district: normalizeText(item.neighborhood),
           note: normalizeText(item.observation) || normalizeText(item.service_description),
           hasLocacao: Boolean(item.has_locacao),
           defaultSupportItemId: supportDefaults.get(item.id)?.supportItemId ?? null,
@@ -1036,6 +1743,11 @@ export async function GET(request: NextRequest) {
       supportOptions: supportOptions.map((item) => ({
         id: item.id,
         description: normalizeText(item.description),
+      })),
+      sgdTypes: sgdTypes.map((item) => ({
+        id: item.id,
+        description: normalizeText(item.description),
+        exportColumn: normalizeText(item.export_column),
       })),
       teamSummaries: teamSummaries.map((item) => ({
         teamId: item.team_id,
@@ -1049,6 +1761,7 @@ export async function GET(request: NextRequest) {
       })),
       schedules: programmingRows.map((item) => {
         const project = projectMap.get(item.project_id);
+        const sgdType = item.sgd_type_id ? sgdTypeMap.get(item.sgd_type_id) : null;
         const scheduleActivities = activitiesMap.get(item.id) ?? [];
 
         return {
@@ -1060,12 +1773,23 @@ export async function GET(request: NextRequest) {
           period: item.period === "INTEGRAL" ? "integral" : "partial",
           startTime: formatTime(item.start_time),
           endTime: formatTime(item.end_time),
+          outageStartTime: formatTime(item.outage_start_time),
+          outageEndTime: formatTime(item.outage_end_time),
           updatedAt: item.updated_at,
           expectedMinutes: Number(item.expected_minutes ?? 0),
+          posteQty: Number(item.poste_qty ?? 0),
+          estruturaQty: Number(item.estrutura_qty ?? 0),
+          trafoQty: Number(item.trafo_qty ?? 0),
+          redeQty: Number(item.rede_qty ?? 0),
+          affectedCustomers: Number(item.affected_customers ?? 0),
+          sgdTypeId: item.sgd_type_id,
+          sgdTypeDescription: normalizeText(sgdType?.description),
+          sgdExportColumn: normalizeText(sgdType?.export_column),
           feeder: normalizeText(item.feeder),
           support: normalizeText(item.support),
           supportItemId: item.support_item_id,
           note: normalizeText(item.note),
+          serviceDescription: normalizeText(item.service_description),
           projectBase: normalizeText(project?.service_center_text) || "Sem base",
           statusReason: normalizeText(item.cancellation_reason),
           statusChangedAt: item.canceled_at ?? "",
@@ -1089,16 +1813,22 @@ export async function GET(request: NextRequest) {
           documents: {
             sgd: {
               number: normalizeText(item.sgd_number),
+              approvedAt: item.sgd_included_at ?? "",
+              requestedAt: item.sgd_delivered_at ?? "",
               includedAt: item.sgd_included_at ?? "",
               deliveredAt: item.sgd_delivered_at ?? "",
             },
             pi: {
               number: normalizeText(item.pi_number),
+              approvedAt: item.pi_included_at ?? "",
+              requestedAt: item.pi_delivered_at ?? "",
               includedAt: item.pi_included_at ?? "",
               deliveredAt: item.pi_delivered_at ?? "",
             },
             pep: {
               number: normalizeText(item.pep_number),
+              approvedAt: item.pep_included_at ?? "",
+              requestedAt: item.pep_delivered_at ?? "",
               includedAt: item.pep_included_at ?? "",
               deliveredAt: item.pep_delivered_at ?? "",
             },
@@ -1128,11 +1858,20 @@ async function saveProgrammingBatch(request: NextRequest) {
   const period = normalizePeriod(payload?.period);
   const startTime = normalizeTime(payload?.startTime);
   const endTime = normalizeTime(payload?.endTime);
+  const outageStartTime = normalizeOptionalTime(payload?.outageStartTime);
+  const outageEndTime = normalizeOptionalTime(payload?.outageEndTime);
   const expectedMinutes = normalizePositiveInteger(payload?.expectedMinutes);
   const feeder = normalizeNullableText(payload?.feeder);
   const support = normalizeNullableText(payload?.support);
   const supportItemId = normalizeNullableText(payload?.supportItemId);
   const note = normalizeNullableText(payload?.note);
+  const serviceDescription = normalizeNullableText(payload?.serviceDescription);
+  const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
+  const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
+  const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
+  const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
+  const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
+  const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
   const documents = payload?.documents ?? {};
   const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
   const activities = activitiesInput
@@ -1144,6 +1883,54 @@ async function saveProgrammingBatch(request: NextRequest) {
 
   if (!projectId || !teamIds.length || !executionDate || !period || !startTime || !endTime || !expectedMinutes) {
     return NextResponse.json({ message: "Preencha os campos obrigatorios da programacao em lote." }, { status: 400 });
+  }
+
+  if ((outageStartTime && !outageEndTime) || (!outageStartTime && outageEndTime)) {
+    return NextResponse.json(
+      { message: "Informe inicio e termino de desligamento." },
+      { status: 400 },
+    );
+  }
+
+  if (outageStartTime && outageEndTime && outageEndTime <= outageStartTime) {
+    return NextResponse.json(
+      { message: "Termino de desligamento deve ser maior que inicio." },
+      { status: 400 },
+    );
+  }
+
+  if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
+    return NextResponse.json(
+      { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
+      { status: 400 },
+    );
+  }
+
+  if (affectedCustomers === null) {
+    return NextResponse.json(
+      { message: "O campo Numero de Clientes Afetados deve ser um inteiro maior ou igual a zero." },
+      { status: 400 },
+    );
+  }
+
+  if (!sgdTypeId) {
+    return NextResponse.json(
+      { message: "Tipo de SGD e obrigatorio para salvar a programacao." },
+      { status: 400 },
+    );
+  }
+
+  const selectedSgdType = await resolveProgrammingSgdType({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    sgdTypeId,
+  });
+
+  if (!selectedSgdType) {
+    return NextResponse.json(
+      { message: "Tipo de SGD invalido para o tenant atual." },
+      { status: 400 },
+    );
   }
 
   const [{ data: project }, { data: teamRows }] = await Promise.all([
@@ -1174,10 +1961,17 @@ async function saveProgrammingBatch(request: NextRequest) {
     startTime,
     endTime,
     expectedMinutes,
+    outageStartTime,
+    outageEndTime,
     feeder,
     support,
     supportItemId,
     note,
+    serviceDescription,
+    posteQty,
+    estruturaQty,
+    trafoQty,
+    redeQty,
     documents,
     activities,
   });
@@ -1191,37 +1985,98 @@ async function saveProgrammingBatch(request: NextRequest) {
     activities.map((item) => ({ code: item.catalogId, quantity: Number(item.quantity.toFixed(2)) })),
   );
 
-  await Promise.all(
-    saveResult.items.map((item) =>
-      registerProgrammingHistory({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: item.programmingId,
-        projectCode,
-        changes: {
-          project: { from: null, to: projectCode },
-          team: { from: null, to: teamNameMap.get(item.teamId) ?? item.teamId },
-          executionDate: { from: null, to: executionDate },
-          period: { from: null, to: period },
-          startTime: { from: null, to: formatTime(startTime) },
-          endTime: { from: null, to: formatTime(endTime) },
-          expectedMinutes: { from: null, to: String(expectedMinutes) },
-          feeder: { from: null, to: feeder },
-          support: { from: null, to: support },
-          note: { from: null, to: note },
-          activities: { from: null, to: activitiesSnapshot },
-        },
-        metadata: {
-          action: "BATCH_CREATE",
-          source: "programacao-simples",
-          projectId,
-          teamId: item.teamId,
-          executionDate,
-        },
-      }),
-    ),
-  );
+  for (const item of saveResult.items) {
+    const outageWindowResult = await setProgrammingOutageWindowViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: item.programmingId,
+      outageStartTime,
+      outageEndTime,
+    });
+    if (!outageWindowResult.ok) {
+      return NextResponse.json({ message: outageWindowResult.message }, { status: outageWindowResult.status });
+    }
+
+    const serviceDescriptionResult = await setProgrammingServiceDescriptionViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: item.programmingId,
+      serviceDescription,
+    });
+    if (!serviceDescriptionResult.ok) {
+      return NextResponse.json({ message: serviceDescriptionResult.message }, { status: serviceDescriptionResult.status });
+    }
+
+    const enelFieldResult = await setProgrammingEnelFieldsViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: item.programmingId,
+      affectedCustomers: affectedCustomers ?? 0,
+      sgdTypeId,
+    });
+
+    if (!enelFieldResult.ok) {
+      return NextResponse.json({ message: enelFieldResult.message }, { status: enelFieldResult.status });
+    }
+
+    const documentDatesResult = await setProgrammingDocumentDatesViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: item.programmingId,
+      documents,
+    });
+
+    if (!documentDatesResult.ok) {
+      return NextResponse.json({ message: documentDatesResult.message }, { status: documentDatesResult.status });
+    }
+
+    await registerProgrammingHistory({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: item.programmingId,
+      projectCode,
+      changes: {
+        project: { from: null, to: projectCode },
+        team: { from: null, to: teamNameMap.get(item.teamId) ?? item.teamId },
+        executionDate: { from: null, to: executionDate },
+        period: { from: null, to: period },
+        startTime: { from: null, to: formatTime(startTime) },
+        endTime: { from: null, to: formatTime(endTime) },
+        outageStartTime: { from: null, to: formatTime(outageStartTime) },
+        outageEndTime: { from: null, to: formatTime(outageEndTime) },
+        expectedMinutes: { from: null, to: String(expectedMinutes) },
+        feeder: { from: null, to: feeder },
+        support: { from: null, to: support },
+        note: { from: null, to: note },
+        serviceDescription: { from: null, to: serviceDescription },
+        posteQty: { from: null, to: String(posteQty) },
+        estruturaQty: { from: null, to: String(estruturaQty) },
+        trafoQty: { from: null, to: String(trafoQty) },
+        redeQty: { from: null, to: String(redeQty) },
+        affectedCustomers: { from: null, to: String(affectedCustomers ?? 0) },
+        sgdType: { from: null, to: selectedSgdType ? normalizeText(selectedSgdType.description) : null },
+        sgdApprovedAt: { from: null, to: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt) },
+        sgdRequestedAt: { from: null, to: normalizeIsoDate(documents?.sgd?.requestedAt ?? documents?.sgd?.deliveredAt) },
+        piApprovedAt: { from: null, to: normalizeIsoDate(documents?.pi?.approvedAt ?? documents?.pi?.includedAt) },
+        piRequestedAt: { from: null, to: normalizeIsoDate(documents?.pi?.requestedAt ?? documents?.pi?.deliveredAt) },
+        pepApprovedAt: { from: null, to: normalizeIsoDate(documents?.pep?.approvedAt ?? documents?.pep?.includedAt) },
+        pepRequestedAt: { from: null, to: normalizeIsoDate(documents?.pep?.requestedAt ?? documents?.pep?.deliveredAt) },
+        activities: { from: null, to: activitiesSnapshot },
+      },
+      metadata: {
+        action: "BATCH_CREATE",
+        source: "programacao-simples",
+        projectId,
+        teamId: item.teamId,
+        executionDate,
+      },
+    });
+  }
 
   return NextResponse.json({
     success: true,
@@ -1248,11 +2103,20 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const period = normalizePeriod(payload?.period);
   const startTime = normalizeTime(payload?.startTime);
   const endTime = normalizeTime(payload?.endTime);
+  const outageStartTime = normalizeOptionalTime(payload?.outageStartTime);
+  const outageEndTime = normalizeOptionalTime(payload?.outageEndTime);
   const expectedMinutes = normalizePositiveInteger(payload?.expectedMinutes);
   const feeder = normalizeNullableText(payload?.feeder);
   const support = normalizeNullableText(payload?.support);
   const supportItemId = normalizeNullableText(payload?.supportItemId);
   const note = normalizeNullableText(payload?.note);
+  const serviceDescription = normalizeNullableText(payload?.serviceDescription);
+  const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
+  const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
+  const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
+  const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
+  const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
+  const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
   const changeReason = normalizeNullableText(payload?.changeReason);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
@@ -1270,6 +2134,54 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   if (!projectId || !teamId || !executionDate || !period || !startTime || !endTime || !expectedMinutes) {
     return NextResponse.json({ message: "Preencha os campos obrigatorios da programacao." }, { status: 400 });
+  }
+
+  if ((outageStartTime && !outageEndTime) || (!outageStartTime && outageEndTime)) {
+    return NextResponse.json(
+      { message: "Informe inicio e termino de desligamento." },
+      { status: 400 },
+    );
+  }
+
+  if (outageStartTime && outageEndTime && outageEndTime <= outageStartTime) {
+    return NextResponse.json(
+      { message: "Termino de desligamento deve ser maior que inicio." },
+      { status: 400 },
+    );
+  }
+
+  if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
+    return NextResponse.json(
+      { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
+      { status: 400 },
+    );
+  }
+
+  if (affectedCustomers === null) {
+    return NextResponse.json(
+      { message: "O campo Numero de Clientes Afetados deve ser um inteiro maior ou igual a zero." },
+      { status: 400 },
+    );
+  }
+
+  if (!sgdTypeId) {
+    return NextResponse.json(
+      { message: "Tipo de SGD e obrigatorio para salvar a programacao." },
+      { status: 400 },
+    );
+  }
+
+  const selectedSgdType = await resolveProgrammingSgdType({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    sgdTypeId,
+  });
+
+  if (!selectedSgdType) {
+    return NextResponse.json(
+      { message: "Tipo de SGD invalido para o tenant atual." },
+      { status: 400 },
+    );
   }
 
   const currentProgramming = programmingId
@@ -1319,6 +2231,8 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     startTime,
     endTime,
     expectedMinutes,
+    outageStartTime,
+    outageEndTime,
     feeder,
     support,
     supportItemId,
@@ -1333,6 +2247,74 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   }
 
   const persistedProgrammingId = saveResult.programmingId;
+  const structureResult = await setProgrammingStructureQuantitiesViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId: persistedProgrammingId,
+    posteQty,
+    estruturaQty,
+    trafoQty,
+    redeQty,
+  });
+  if (!structureResult.ok) {
+    return NextResponse.json({ message: structureResult.message }, { status: structureResult.status });
+  }
+
+  const outageWindowResult = await setProgrammingOutageWindowViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId: persistedProgrammingId,
+    outageStartTime,
+    outageEndTime,
+    force: Boolean(currentProgramming) && (
+      formatTime(currentProgramming?.outage_start_time ?? null) !== formatTime(outageStartTime)
+      || formatTime(currentProgramming?.outage_end_time ?? null) !== formatTime(outageEndTime)
+    ),
+  });
+  if (!outageWindowResult.ok) {
+    return NextResponse.json({ message: outageWindowResult.message }, { status: outageWindowResult.status });
+  }
+
+  const serviceDescriptionResult = await setProgrammingServiceDescriptionViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId: persistedProgrammingId,
+    serviceDescription,
+    force: Boolean(currentProgramming) && (
+      (currentProgramming?.service_description ?? null) !== (serviceDescription ?? null)
+    ),
+  });
+  if (!serviceDescriptionResult.ok) {
+    return NextResponse.json({ message: serviceDescriptionResult.message }, { status: serviceDescriptionResult.status });
+  }
+
+  const enelFieldResult = await setProgrammingEnelFieldsViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId: persistedProgrammingId,
+    affectedCustomers: affectedCustomers ?? 0,
+    sgdTypeId,
+  });
+  if (!enelFieldResult.ok) {
+    return NextResponse.json({ message: enelFieldResult.message }, { status: enelFieldResult.status });
+  }
+
+  const documentDatesResult = await setProgrammingDocumentDatesViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId: persistedProgrammingId,
+    documents,
+    force: Boolean(currentProgramming),
+  });
+  if (!documentDatesResult.ok) {
+    return NextResponse.json({ message: documentDatesResult.message }, { status: documentDatesResult.status });
+  }
+
   const nextProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, persistedProgrammingId);
   if (!nextProgramming) {
     return NextResponse.json({ message: "Falha ao recarregar programacao salva." }, { status: 500 });
@@ -1370,13 +2352,28 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   addChange(changes, "period", currentProgramming?.period ?? null, nextProgramming.period);
   addChange(changes, "startTime", currentProgramming ? formatTime(currentProgramming.start_time) : null, formatTime(nextProgramming.start_time));
   addChange(changes, "endTime", currentProgramming ? formatTime(currentProgramming.end_time) : null, formatTime(nextProgramming.end_time));
+  addChange(changes, "outageStartTime", currentProgramming ? formatTime(currentProgramming.outage_start_time) : null, formatTime(nextProgramming.outage_start_time));
+  addChange(changes, "outageEndTime", currentProgramming ? formatTime(currentProgramming.outage_end_time) : null, formatTime(nextProgramming.outage_end_time));
   addChange(changes, "expectedMinutes", currentProgramming?.expected_minutes ?? null, nextProgramming.expected_minutes);
   addChange(changes, "feeder", currentProgramming?.feeder ?? null, nextProgramming.feeder);
   addChange(changes, "support", currentProgramming?.support ?? null, nextProgramming.support);
   addChange(changes, "note", currentProgramming?.note ?? null, nextProgramming.note);
+  addChange(changes, "serviceDescription", currentProgramming?.service_description ?? null, nextProgramming.service_description);
+  addChange(changes, "posteQty", currentProgramming?.poste_qty ?? null, nextProgramming.poste_qty);
+  addChange(changes, "estruturaQty", currentProgramming?.estrutura_qty ?? null, nextProgramming.estrutura_qty);
+  addChange(changes, "trafoQty", currentProgramming?.trafo_qty ?? null, nextProgramming.trafo_qty);
+  addChange(changes, "redeQty", currentProgramming?.rede_qty ?? null, nextProgramming.rede_qty);
+  addChange(changes, "affectedCustomers", currentProgramming?.affected_customers ?? null, nextProgramming.affected_customers);
+  addChange(changes, "sgdType", currentProgramming?.sgd_type_id ?? null, nextProgramming.sgd_type_id);
   addChange(changes, "sgdNumber", currentProgramming?.sgd_number ?? null, nextProgramming.sgd_number);
+  addChange(changes, "sgdApprovedAt", currentProgramming?.sgd_included_at ?? null, nextProgramming.sgd_included_at);
+  addChange(changes, "sgdRequestedAt", currentProgramming?.sgd_delivered_at ?? null, nextProgramming.sgd_delivered_at);
   addChange(changes, "piNumber", currentProgramming?.pi_number ?? null, nextProgramming.pi_number);
+  addChange(changes, "piApprovedAt", currentProgramming?.pi_included_at ?? null, nextProgramming.pi_included_at);
+  addChange(changes, "piRequestedAt", currentProgramming?.pi_delivered_at ?? null, nextProgramming.pi_delivered_at);
   addChange(changes, "pepNumber", currentProgramming?.pep_number ?? null, nextProgramming.pep_number);
+  addChange(changes, "pepApprovedAt", currentProgramming?.pep_included_at ?? null, nextProgramming.pep_included_at);
+  addChange(changes, "pepRequestedAt", currentProgramming?.pep_delivered_at ?? null, nextProgramming.pep_delivered_at);
   addChange(changes, "activities", toActivitySnapshot(previousActivities), toActivitySnapshot(nextActivities));
   const isReschedule =
     Boolean(currentProgramming) &&
@@ -1470,6 +2467,7 @@ export async function PATCH(request: NextRequest) {
   const programmingId = normalizeText(payload?.id);
   const action = normalizeText(payload?.action).toUpperCase() === "ADIAR" ? "ADIADA" : "CANCELADA";
   const reason = normalizeNullableText(payload?.reason);
+  const newDate = normalizeIsoDate(payload?.newDate);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
 
   if (!programmingId || !reason) {
@@ -1491,6 +2489,80 @@ export async function PATCH(request: NextRequest) {
     .eq("tenant_id", resolution.appUser.tenant_id)
     .eq("id", currentProgramming.project_id)
     .maybeSingle<{ id: string; sob: string }>();
+
+  if (action === "ADIADA" && newDate) {
+    if (newDate === currentProgramming.execution_date) {
+      return NextResponse.json(
+        { message: "Informe uma nova data diferente da data atual da programacao." },
+        { status: 400 },
+      );
+    }
+
+    const postponeResult = await postponeProgrammingViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId,
+      newExecutionDate: newDate,
+      reason,
+      expectedUpdatedAt,
+    });
+
+    if (!postponeResult.ok) {
+      return NextResponse.json({ message: postponeResult.message }, { status: postponeResult.status });
+    }
+
+    await registerProgrammingHistory({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId,
+      projectCode: project?.sob ?? postponeResult.projectCode ?? currentProgramming.project_id,
+      reason,
+      force: true,
+      changes: {
+        status: { from: currentProgramming.status, to: "ADIADA" },
+        isActive: { from: "true", to: "false" },
+        cancellationReason: { from: null, to: reason },
+      },
+      metadata: {
+        action: "ADIADA",
+        projectId: currentProgramming.project_id,
+        teamId: currentProgramming.team_id,
+        executionDate: currentProgramming.execution_date,
+        newExecutionDate: newDate,
+        newProgrammingId: postponeResult.newProgrammingId,
+      },
+    });
+
+    await registerProgrammingHistory({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: postponeResult.newProgrammingId,
+      projectCode: project?.sob ?? postponeResult.projectCode ?? currentProgramming.project_id,
+      reason,
+      changes: {
+        project: { from: null, to: project?.sob ?? currentProgramming.project_id },
+        executionDate: { from: null, to: newDate },
+      },
+      metadata: {
+        action: "CREATE",
+        source: "programacao-postpone",
+        projectId: currentProgramming.project_id,
+        teamId: currentProgramming.team_id,
+        executionDate: newDate,
+        sourceProgrammingId: programmingId,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      id: programmingId,
+      newId: postponeResult.newProgrammingId,
+      message: postponeResult.message,
+    });
+  }
 
   const cancelResult = await cancelProgrammingViaRpc({
     supabase: resolution.supabase,

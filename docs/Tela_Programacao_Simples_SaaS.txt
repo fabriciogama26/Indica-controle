@@ -18,6 +18,22 @@ Arquitetura
 - Migration de permissao:
   - `supabase/migrations/083_add_programacao_simples_page_permissions.sql`
   - `supabase/migrations/084_deactivate_legacy_programacao_page.sql`
+- Migration ENEL:
+  - `supabase/migrations/087_add_programming_enel_fields_and_sgd_types.sql`
+  - Campos em `project_programming`: `affected_customers`, `sgd_type_id`
+  - Catalogo: `programming_sgd_types`
+  - RPC: `set_project_programming_enel_fields`
+- Migration de adiamento com nova data:
+  - `supabase/migrations/088_create_postpone_project_programming_rpc.sql`
+  - RPC: `postpone_project_programming`
+- Migration de desligamento/documentos:
+  - `supabase/migrations/089_add_programming_outage_and_documents_compat.sql`
+  - Campos em `project_programming`: `outage_start_time`, `outage_end_time`
+  - RPCs: `set_project_programming_outage_window`, `set_project_programming_document_dates`
+- Migration de descricao operacional:
+  - `supabase/migrations/090_add_programming_service_description.sql`
+  - Campo em `project_programming`: `service_description`
+  - RPC: `set_project_programming_service_description`
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -31,12 +47,21 @@ Cadastro
   - Periodo
   - Hora inicio
   - Hora termino
+  - Tipo de SGD
   - Equipes (multi-selecao)
 - Campos opcionais:
+  - Descricao do servico
+  - Inicio de desligamento
+  - Termino de desligamento
   - Apoio
   - Alimentador
+  - POSTE (quantidade)
+  - ESTRUTURA (quantidade)
+  - TRAFO (quantidade)
+  - REDE (quantidade)
+  - Numero de Clientes Afetados
   - Anotacao
-  - Documentos (`SGD`, `PI`, `PEP`)
+  - Documentos (`SGD`, `PI`, `PEP`) com `Numero`, `Data Aprovada` e `Data Pedido`
   - Atividades (codigo + quantidade)
 - Regra principal:
   - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
@@ -58,7 +83,22 @@ Filtros, auto-complete e listagem
   - Atividades via `/api/projects/activity-forecast/catalog`.
 - Listagem:
   - Colunas: Data, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Adiar` e `Cancelar`.
+  - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
+  - `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
+  - Registros `ADIADA`/`CANCELADA` aparecem destacados na lista.
   - Exportacao CSV da lista filtrada.
+  - Exportacao `ENEL-EXCEL` com layout de colunas na ordem operacional solicitada.
+  - Mapeamentos ENEL:
+    - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
+    - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
+    - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
+    - `Tipo de SGD` = selecao do formulario da Programacao.
+    - `Numero de Clientes Afetados` = campo do formulario da Programacao.
+    - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
+    - `Inic deslig` = `Inicio de desligamento` da Programacao.
+    - `Term deslig` = `Termino de desligamento` da Programacao.
+    - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o `SGD` conforme o `Tipo de SGD` selecionado.
   - Paginacao local com `Anterior/Proxima`.
 
 Boas praticas
@@ -75,7 +115,12 @@ Boas praticas
 Cancelamento e saldo
 --------------------
 - Esta tela nao altera saldo de estoque.
-- Cancelamento/adiamento continuam no fluxo da tela principal de Programacao.
+- Cancelamento agora esta disponivel na propria lista da tela simples, com modal de motivo obrigatorio (minimo de 10 caracteres), no mesmo padrao de Projetos.
+- Adiamento com nova data:
+  - Modal proprio com `Nova data da programacao` + `Motivo do adiamento` (minimo 10 caracteres).
+  - Ao validar: a programacao atual vira `ADIADA` e um novo registro `PROGRAMADA` e criado na nova data.
+  - Fluxo executado por RPC transacional `postpone_project_programming`.
+- O cancelamento reutiliza `PATCH /api/programacao` e a RPC `set_project_programming_status`.
 - O cadastro em lote gera registros `PROGRAMADA`, seguindo as mesmas regras de status da Programacao.
 
 Atalhos
@@ -91,12 +136,30 @@ Atualizacao 2026-03
 - Criada RPC transacional `save_project_programming_batch`.
 - Adicionada pagina `programacao-simples` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Desativada pagina legada `programacao` sem exclusao de codigo.
+- Adicionados campos estruturais de quantidade (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`) com persistencia em banco.
+- Incluidos botoes de linha `Detalhes`, `Edicao` e `Historico` na lista.
+- Incluido botao `ENEL-EXCEL` para exportacao com colunas no padrao solicitado e campos faltantes em branco.
+- Adicionada compatibilidade na API para manter a listagem/cadastro em lote funcionando mesmo sem a migration `085` aplicada, com mensagem orientativa quando os campos estruturais forem usados.
+- Adicionada migration de compatibilidade `service_activities.is_active` para evitar erro interno nas RPCs de Programacao em ambientes com coluna legada `ativo`.
+- Ajustado o padrao visual/funcional da lista para o baseline de `Projetos`: icones de acao, borda amarela no modo de edicao e modal de cancelamento.
+- Ajustado o modal de historico para exibir somente campos alterados (`De`/`Para`) no mesmo formato de cards da tela de `Projetos`.
+- Ajustado historico para reduzir ruido: eventos de `Cadastro` nao aparecem mais; em `Adiamento/Cancelamento` mostra apenas a mudanca de `Status`; em `Edicao/Reprogramacao` mostra somente os campos alterados.
+- Ajustado export `ENEL-EXCEL`: a coluna `Observacao do Cancelamento / Parcial / Adiamento` agora recebe o mesmo valor informado em `Motivo do cancelamento`.
+- Ajustado export `ENEL-EXCEL` para usar dados de Projeto em `Responsaveis Enel`, `Gestor de campo`, `Logradouro`, `Bairro` e `Municipio`.
+- Criados os campos de Programacao `Numero de Clientes Afetados` e `Tipo de SGD`, com persistencia e uso direto no layout `ENEL-EXCEL`.
+- Criado o botao amarelo `Adiar` na lista da Programacao simples, com modal de motivo + nova data.
+- Implementado adiamento com clonagem da programacao para nova data e mudanca de status da antiga para `ADIADA`.
+- Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
+- Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
+- Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
+- Ajustado bloco de `Documentos` para `Data Aprovada` e `Data Pedido`, com compatibilidade de payload legado.
+- Ajustado o botao `Edicao` para sempre levar o usuario ao topo do formulario ao entrar em modo de edicao.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
-  - Responsavel por: formulario, multi-selecao de equipes, filtros, listagem, exportacao e submit em lote.
+  - Responsavel por: formulario, multi-selecao de equipes, filtros, listagem, exportacao, submit em lote, cancelamento e historico detalhado por campos alterados.
 - Caminho: `src/app/api/programacao/route.ts`
   - Responsavel por: tratar `action = BATCH_CREATE`, validar payload, chamar RPC em lote e registrar historico.
 - Caminho: `supabase/migrations/082_create_programming_batch_create_rpc.sql`
@@ -109,11 +172,17 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - `calculateExpectedMinutes`, `findActivityOption`, `downloadCsvFile`.
+- `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`.
 - `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`, `registerProgrammingHistory`.
+- `setProgrammingEnelFieldsViaRpc`, `setProgrammingOutageWindowViaRpc`, `setProgrammingDocumentDatesViaRpc`, `resolveProgrammingSgdType`.
+- `setProgrammingServiceDescriptionViaRpc`.
+- `confirmPostpone`, `postponeProgrammingViaRpc`.
 
 Servicos e integracoes externas
 - `save_project_programming_batch` (RPC nova).
 - `save_project_programming` (RPC reutilizada por equipe no lote).
+- `set_project_programming_outage_window` (RPC nova para janela de desligamento).
+- `set_project_programming_document_dates` (RPC nova para Data Aprovada/Data Pedido).
 - `append_programming_history` (RPC de auditoria funcional).
 
 Ajuda contextual
@@ -129,16 +198,23 @@ Ajuda contextual
   - `supabase/migrations/082_create_programming_batch_create_rpc.sql`
   - `supabase/migrations/083_add_programacao_simples_page_permissions.sql`
   - `supabase/migrations/084_deactivate_legacy_programacao_page.sql`
+  - `supabase/migrations/085_add_programming_structure_fields_and_actions_support.sql`
+  - `supabase/migrations/087_add_programming_enel_fields_and_sgd_types.sql`
+  - `supabase/migrations/088_create_postpone_project_programming_rpc.sql`
+  - `supabase/migrations/089_add_programming_outage_and_documents_compat.sql`
+  - `supabase/migrations/090_add_programming_service_description.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`
 - Funcoes/hooks/constantes tocadas:
   - `ProgrammingSimplePageView`
+  - `openCancelModal`, `confirmCancellation`, `startEditSchedule`
+  - `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`
   - `saveProgrammingBatchViaRpc`
   - `saveProgrammingBatch`
   - `POST` de `/api/programacao` (branch `BATCH_CREATE`)
   - `ROUTE_PAGE_KEYS`
   - `permissionCatalog`
 - Comportamento antes/depois:
-  - Antes: somente cadastro individual por equipe na Programacao, ou copia de linha via fluxo dedicado.
-  - Depois: cadastro em lote com uma unica submissao para multiplas equipes, mantendo validacoes e isolamento por tenant.
+  - Antes: formulario nao exigia Tipo de SGD, nao tinha janela de desligamento e o bloco de documentos mostrava apenas Data entrega.
+  - Depois: Tipo de SGD virou obrigatorio, existem campos de Inicio/Termino de desligamento e os documentos usam Data Aprovada + Data Pedido com persistencia dedicada.

@@ -161,6 +161,18 @@
 - [x] Simplificar a copia da `Programacao` para uma acao manual no toolbar, copiando a linha inteira da equipe no periodo visivel para outras equipes.
 - [x] Implementar a nova `Programacao` no padrao de cadastro, com selecao de multiplas equipes e submit em lote via RPC transacional.
 - [x] Desativar a tela legada `/programacao` sem exclusao de codigo, redirecionando para `/programacao-simples` e padronizando o texto da nova tela como `Programacao`.
+- [x] Corrigir inclusao de atividades por codigo na nova Programacao e incluir campos de quantidade (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`) com persistencia em banco.
+- [x] Incluir botoes de acao `Detalhes`, `Edicao` e `Historico` na lista da nova Programacao.
+- [x] Padronizar acoes da nova Programacao com o baseline de `Projetos` (icones, cancelamento com motivo, historico com campos alterados e destaque amarelo no modo de edicao).
+- [x] Adicionar exportacao `ENEL-EXCEL` na nova Programacao com colunas no layout solicitado e preenchimento em branco para campos sem informacao.
+- [x] Ajustar export `ENEL-EXCEL` da nova Programacao para preencher `Observação do Cancelamento / Parcial / Adiamento` com o motivo informado no cancelamento.
+- [x] Ajustar mapeamento completo do `ENEL-EXCEL` na nova Programacao (Responsáveis Enel/Gestor/Endereco por Projeto, Tipo de SGD, Nº Clientes Afetados e roteamento do SGD por tipo).
+- [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
+- [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
+- [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
+- [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
+- [x] Garantir compatibilidade da API de Programacao quando a migration `085` ainda nao estiver aplicada (fallback de leitura e de RPC em lote).
+- [x] Adicionar compatibilidade em `service_activities` para `is_active` x `ativo`, evitando erro interno nas RPCs de Programacao em lote.
 - [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
 - [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
 - [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.

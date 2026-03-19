@@ -86,6 +86,8 @@ Ordem de aplicacao
 82. 082_create_programming_batch_create_rpc.sql
 83. 083_add_programacao_simples_page_permissions.sql
 84. 084_deactivate_legacy_programacao_page.sql
+85. 085_add_programming_structure_fields_and_actions_support.sql
+86. 086_add_service_activities_is_active_compat.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -342,6 +344,12 @@ Resumo por arquivo
 
 084_deactivate_legacy_programacao_page.sql
 - Desativa a tela legada `programacao` em `app_pages` e bloqueia acesso em `role_page_permissions` e `app_user_page_permissions`.
+
+085_add_programming_structure_fields_and_actions_support.sql
+- Adiciona colunas `poste_qty`, `estrutura_qty`, `trafo_qty` e `rede_qty` em `project_programming`, cria RPC para salvar essas quantidades e atualiza a RPC de lote `save_project_programming_batch`.
+
+086_add_service_activities_is_active_compat.sql
+- Adiciona coluna de compatibilidade `service_activities.is_active`, sincroniza com `ativo` e cria trigger/check para manter ambas alinhadas.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
