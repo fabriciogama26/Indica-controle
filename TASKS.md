@@ -202,6 +202,7 @@
 - [ ] Adicionar testes automatizados para auth e fluxo base de navegacao.
 - [ ] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
 - [x] Corrigir o `build` atual do Next destravando o type-check de `xlsx` usado em `src/lib/server/projectForecastXlsx.ts`.
+- [x] Corrigir falha de type-check no `build` em `src/app/api/projects/route.ts` removendo uso de `delete` em propriedade nao-opcional no fallback legado de RPC.
 
 - [ ] Definir uma fonte unica de verdade para `supabase/`, porque hoje existe copia na raiz do repositorio e outra em `SaaS (Web)/supabase`.
 - [ ] Revisar README e docs que ainda assumem backend somente externo em `d:\\RQM\\supabase`, enquanto este repositorio ja contem artefatos Supabase versionados.

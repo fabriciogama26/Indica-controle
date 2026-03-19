@@ -744,8 +744,9 @@ async function saveProjectViaRpc(params: {
 
   let { data, error } = await executeSaveProjectRpc(rpcPayload);
   if (error) {
-    const legacyPayload = { ...rpcPayload };
-    delete legacyPayload.p_fob;
+    const legacyPayload = Object.fromEntries(
+      Object.entries(rpcPayload).filter(([key]) => key !== "p_fob"),
+    );
 
     const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
     if (!legacyAttempt.error) {
