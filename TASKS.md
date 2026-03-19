@@ -178,6 +178,9 @@
 - [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
 - [x] Endurecer `copy_team_programming_period` para copiar apenas atividades ativas e replicar campos novos (estrutura/ENEL/desligamento/descricao) via `save_project_programming_full`.
 - [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.
+- [x] Criar visualizacao semanal da `Programacao Simples` (segunda a domingo) por equipe, com cards por dia contendo SOB, indicador de SGD/PI, cores de status e acoes de detalhe/historico.
+- [x] Criar tela separada `/programacao-visualizacao` para consulta da Programacao (lista + calendario), com permissao dedicada e menu proprio.
+- [x] Remover textos dos cards do calendario da Programacao (`SOB` e status textual) e paginar o modal de Historico.
 - [x] Trocar o `dev` local para `webpack` e documentar o workaround do panic do Turbopack no Windows.
 - [x] Implementar primeira versao frontend de `Medicao` com origem por projeto/programacao, carga de atividades previstas, calculo local e fator ajustavel sem backend proprio.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.

@@ -179,6 +179,7 @@ type FilterState = {
 };
 
 const PAGE_SIZE = 20;
+const HISTORY_PAGE_SIZE = 5;
 const CANCEL_REASON_MIN_LENGTH = 10;
 const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
   { key: "sgd", label: "SGD" },
@@ -235,6 +236,41 @@ function addDays(value: string, amount: number) {
   const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + amount);
   return toIsoDate(date);
+}
+
+function startOfWeekMonday(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+  const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  date.setDate(date.getDate() + offset);
+  return toIsoDate(date);
+}
+
+function createWeekDates(weekStartDate: string) {
+  return Array.from({ length: 7 }, (_, index) => addDays(weekStartDate, index));
+}
+
+function isDateInRange(value: string, startDate: string, endDate: string) {
+  return value >= startDate && value <= endDate;
+}
+
+function formatWeekdayShort(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  return parsed.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "").toUpperCase();
+}
+
+function formatWeekRangeLabel(weekStartDate: string) {
+  const weekEndDate = addDays(weekStartDate, 6);
+  return `${formatDate(weekStartDate)} a ${formatDate(weekEndDate)}`;
 }
 
 function formatDate(value: string) {
@@ -517,6 +553,18 @@ function formatHistoryAction(action: string) {
   return action || "-";
 }
 
+function scheduleStatusClassName(status: ProgrammingStatus) {
+  if (status === "ADIADA") {
+    return styles.weekCardPostponed;
+  }
+
+  if (status === "CANCELADA") {
+    return styles.weekCardCancelled;
+  }
+
+  return styles.weekCardPlanned;
+}
+
 function escapeCsvValue(value: string | number) {
   const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
   if (raw.includes(";") || raw.includes('"')) {
@@ -535,13 +583,17 @@ function downloadCsvFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function ProgrammingSimplePageView() {
+type ProgrammingSimplePageViewMode = "cadastro" | "visualizacao";
+
+export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: ProgrammingSimplePageViewMode }) {
   const { session } = useAuth();
   const accessToken = session?.accessToken ?? null;
   const formCardRef = useRef<HTMLElement | null>(null);
+  const isVisualizationMode = mode === "visualizacao";
 
   const today = useMemo(() => toIsoDate(new Date()), []);
   const [form, setForm] = useState<FormState>(() => createInitialForm(today));
+  const [weekStartDate, setWeekStartDate] = useState(() => startOfWeekMonday(today));
   const [filterDraft, setFilterDraft] = useState<FilterState>({
     startDate: today,
     endDate: addDays(today, 6),
@@ -576,6 +628,7 @@ export function ProgrammingSimplePageView() {
   const [detailsTarget, setDetailsTarget] = useState<ScheduleItem | null>(null);
   const [historyTarget, setHistoryTarget] = useState<ScheduleItem | null>(null);
   const [historyItems, setHistoryItems] = useState<ProgrammingHistoryItem[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<ScheduleItem | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -614,9 +667,15 @@ export function ProgrammingSimplePageView() {
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
+  const weekDates = useMemo(() => createWeekDates(weekStartDate), [weekStartDate]);
+  const weekEndDate = weekDates[weekDates.length - 1] ?? weekStartDate;
 
   const filteredSchedules = useMemo(() => {
     return schedules.filter((item) => {
+      if (!isDateInRange(item.date, activeFilters.startDate, activeFilters.endDate)) {
+        return false;
+      }
+
       if (activeFilters.projectId && item.projectId !== activeFilters.projectId) {
         return false;
       }
@@ -631,23 +690,58 @@ export function ProgrammingSimplePageView() {
 
       return true;
     });
-  }, [activeFilters.projectId, activeFilters.status, activeFilters.teamId, schedules]);
+  }, [activeFilters.endDate, activeFilters.projectId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, schedules]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / PAGE_SIZE));
   const pagedSchedules = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
     return filteredSchedules.slice(start, start + PAGE_SIZE);
   }, [filteredSchedules, page]);
+  const totalHistoryPages = Math.max(1, Math.ceil(historyItems.length / HISTORY_PAGE_SIZE));
+  const pagedHistoryItems = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    return historyItems.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [historyItems, historyPage]);
+  const calendarTeams = useMemo(() => {
+    const selectedTeams = activeFilters.teamId
+      ? teams.filter((team) => team.id === activeFilters.teamId)
+      : teams;
+
+    return [...selectedTeams].sort((left, right) => left.name.localeCompare(right.name));
+  }, [activeFilters.teamId, teams]);
+  const weeklySchedules = useMemo(
+    () => filteredSchedules.filter((item) => isDateInRange(item.date, weekStartDate, weekEndDate)),
+    [filteredSchedules, weekEndDate, weekStartDate],
+  );
+  const weeklyScheduleMap = useMemo(() => {
+    const scheduleMap = new Map<string, ScheduleItem[]>();
+
+    for (const schedule of weeklySchedules) {
+      const key = `${schedule.teamId}__${schedule.date}`;
+      const list = scheduleMap.get(key) ?? [];
+      list.push(schedule);
+      scheduleMap.set(key, list);
+    }
+
+    for (const list of scheduleMap.values()) {
+      list.sort((left, right) => left.startTime.localeCompare(right.startTime));
+    }
+
+    return scheduleMap;
+  }, [weeklySchedules]);
 
   const loadBoardData = useCallback(async () => {
     if (!accessToken) {
       return;
     }
 
+    const requestStartDate = activeFilters.startDate < weekStartDate ? activeFilters.startDate : weekStartDate;
+    const requestEndDate = activeFilters.endDate > weekEndDate ? activeFilters.endDate : weekEndDate;
+
     setIsLoadingList(true);
     try {
       const response = await fetch(
-        `/api/programacao?startDate=${activeFilters.startDate}&endDate=${activeFilters.endDate}`,
+        `/api/programacao?startDate=${requestStartDate}&endDate=${requestEndDate}`,
         {
           cache: "no-store",
           headers: {
@@ -698,7 +792,7 @@ export function ProgrammingSimplePageView() {
     } finally {
       setIsLoadingList(false);
     }
-  }, [accessToken, activeFilters.endDate, activeFilters.startDate]);
+  }, [accessToken, activeFilters.endDate, activeFilters.startDate, weekEndDate, weekStartDate]);
 
   useEffect(() => {
     void loadBoardData();
@@ -994,6 +1088,7 @@ export function ProgrammingSimplePageView() {
 
     setHistoryTarget(schedule);
     setHistoryItems([]);
+    setHistoryPage(1);
     setIsLoadingHistory(true);
 
     try {
@@ -1292,6 +1387,7 @@ export function ProgrammingSimplePageView() {
 
     setFeedback(null);
     setActiveFilters(filterDraft);
+    setWeekStartDate(startOfWeekMonday(filterDraft.startDate));
   }
 
   function clearFilters() {
@@ -1304,6 +1400,7 @@ export function ProgrammingSimplePageView() {
     };
     setFilterDraft(reset);
     setActiveFilters(reset);
+    setWeekStartDate(startOfWeekMonday(reset.startDate));
     setFeedback(null);
   }
 
@@ -1474,7 +1571,8 @@ export function ProgrammingSimplePageView() {
         <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
       ) : null}
 
-      <article ref={formCardRef} className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
+      {!isVisualizationMode ? (
+        <article ref={formCardRef} className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
         <h3 className={styles.cardTitle}>{isEditing ? "Edicao de Programacao" : "Cadastro de Programacao"}</h3>
 
         <form className={styles.formGrid} onSubmit={handleSubmit}>
@@ -1848,7 +1946,8 @@ export function ProgrammingSimplePageView() {
             ) : null}
           </div>
         </form>
-      </article>
+        </article>
+      ) : null}
 
       <article className={styles.card}>
         <h3 className={styles.cardTitle}>Filtros</h3>
@@ -1920,7 +2019,7 @@ export function ProgrammingSimplePageView() {
               onClick={() => void handleExportCsv()}
               disabled={isExporting || isExportingEnel || isLoadingList || !filteredSchedules.length}
             >
-              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
+              {isExporting ? "Extraindo..." : "Extracao Comum"}
             </button>
             <button
               type="button"
@@ -1928,7 +2027,7 @@ export function ProgrammingSimplePageView() {
               onClick={() => void handleExportEnelExcel()}
               disabled={isExportingEnel || isExporting || isLoadingList || !filteredSchedules.length}
             >
-              {isExportingEnel ? "Gerando..." : "ENEL-EXCEL"}
+              {isExportingEnel ? "Gerando..." : "Extracao ENEL"}
             </button>
           </div>
         </div>
@@ -1992,25 +2091,6 @@ export function ProgrammingSimplePageView() {
                           </button>
                           <button
                             type="button"
-                            className={`${styles.actionButton} ${styles.actionEdit}`}
-                            onClick={() => startEditSchedule(schedule)}
-                            title="Edicao"
-                            aria-label={`Editar programacao ${project?.code ?? schedule.id}`}
-                            disabled={schedule.status !== "PROGRAMADA"}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path
-                                d="M4.5 19.5h4l9-9a1.4 1.4 0 0 0 0-2l-2-2a1.4 1.4 0 0 0-2 0l-9 9v4Z"
-                                stroke="currentColor"
-                                strokeWidth="1.7"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              <path d="M12.5 7.5l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
                             className={`${styles.actionButton} ${styles.actionHistory}`}
                             onClick={() => void openHistory(schedule)}
                             title="Historico"
@@ -2027,42 +2107,65 @@ export function ProgrammingSimplePageView() {
                               <path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
                             </svg>
                           </button>
-                          <button
-                            type="button"
-                            className={`${styles.actionButton} ${styles.actionPostpone}`}
-                            onClick={() => openPostponeModal(schedule)}
-                            title="Adiar"
-                            aria-label={`Adiar programacao ${project?.code ?? schedule.id}`}
-                            disabled={schedule.status !== "PROGRAMADA"}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path
-                                d="M12 6v6l3.5 2"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            className={`${styles.actionButton} ${styles.actionCancel}`}
-                            onClick={() => openCancelModal(schedule)}
-                            title="Cancelar"
-                            aria-label={`Cancelar programacao ${project?.code ?? schedule.id}`}
-                            disabled={schedule.status !== "PROGRAMADA"}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path
-                                d="M6 6l12 12M18 6L6 18"
-                                stroke="currentColor"
-                                strokeWidth="1.9"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                          </button>
+                          {!isVisualizationMode ? (
+                            <>
+                              <button
+                                type="button"
+                                className={`${styles.actionButton} ${styles.actionEdit}`}
+                                onClick={() => startEditSchedule(schedule)}
+                                title="Edicao"
+                                aria-label={`Editar programacao ${project?.code ?? schedule.id}`}
+                                disabled={schedule.status !== "PROGRAMADA"}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path
+                                    d="M4.5 19.5h4l9-9a1.4 1.4 0 0 0 0-2l-2-2a1.4 1.4 0 0 0-2 0l-9 9v4Z"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <path d="M12.5 7.5l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.actionButton} ${styles.actionPostpone}`}
+                                onClick={() => openPostponeModal(schedule)}
+                                title="Adiar"
+                                aria-label={`Adiar programacao ${project?.code ?? schedule.id}`}
+                                disabled={schedule.status !== "PROGRAMADA"}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path
+                                    d="M12 6v6l3.5 2"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.actionButton} ${styles.actionCancel}`}
+                                onClick={() => openCancelModal(schedule)}
+                                title="Cancelar"
+                                aria-label={`Cancelar programacao ${project?.code ?? schedule.id}`}
+                                disabled={schedule.status !== "PROGRAMADA"}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path
+                                    d="M6 6l12 12M18 6L6 18"
+                                    stroke="currentColor"
+                                    strokeWidth="1.9"
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -2103,6 +2206,116 @@ export function ProgrammingSimplePageView() {
               Proxima
             </button>
           </div>
+        </div>
+      </article>
+
+      <article className={styles.card}>
+        <div className={styles.calendarHeader}>
+          <h3 className={styles.cardTitle}>Calendario Semanal de Programacao</h3>
+          <div className={styles.calendarActions}>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setWeekStartDate((current) => addDays(current, -7))}
+            >
+              Semana anterior
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setWeekStartDate(startOfWeekMonday(today))}
+            >
+              Semana atual
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setWeekStartDate((current) => addDays(current, 7))}
+            >
+              Proxima semana
+            </button>
+          </div>
+        </div>
+
+        <p className={styles.helperText}>
+          Semana exibida: <strong>{formatWeekRangeLabel(weekStartDate)}</strong> (segunda a domingo).
+        </p>
+
+        <div className={styles.weekLegend}>
+          <span className={`${styles.weekLegendItem} ${styles.weekLegendPlanned}`}>Programado</span>
+          <span className={`${styles.weekLegendItem} ${styles.weekLegendPostponed}`}>Adiado</span>
+          <span className={`${styles.weekLegendItem} ${styles.weekLegendCancelled}`}>Cancelado</span>
+        </div>
+
+        <div className={styles.weekCalendarWrapper}>
+          <div className={styles.weekCalendarHeader}>
+            <div className={styles.weekCalendarTeamHeader}>Equipe</div>
+            {weekDates.map((date) => (
+              <div key={date} className={styles.weekCalendarDayHeader}>
+                <strong>{formatWeekdayShort(date)}</strong>
+                <small>{formatDate(date)}</small>
+              </div>
+            ))}
+          </div>
+
+          {calendarTeams.length ? (
+            calendarTeams.map((team) => (
+              <div key={team.id} className={styles.weekCalendarRow}>
+                <div className={styles.weekCalendarTeamCell}>
+                  <strong>{team.name}</strong>
+                  <small>{team.serviceCenterName || "-"}</small>
+                </div>
+
+                {weekDates.map((date) => {
+                  const daySchedules = weeklyScheduleMap.get(`${team.id}__${date}`) ?? [];
+
+                  return (
+                    <div key={`${team.id}-${date}`} className={styles.weekCalendarDayCell}>
+                      {daySchedules.length ? (
+                        daySchedules.map((schedule) => {
+                          const project = projectMap.get(schedule.projectId);
+                          const sob = project?.code ?? schedule.projectId;
+                          const hasSgd = Boolean(schedule.documents?.sgd?.number?.trim());
+                          const hasPi = Boolean(schedule.documents?.pi?.number?.trim());
+
+                          return (
+                            <article
+                              key={schedule.id}
+                              className={`${styles.weekCard} ${scheduleStatusClassName(schedule.status)}`}
+                            >
+                              <div className={styles.weekCardTop}>
+                                <strong>{sob}</strong>
+                              </div>
+
+                              <p className={styles.weekCardTime}>{schedule.startTime} - {schedule.endTime}</p>
+
+                              <div className={styles.weekIndicators}>
+                                <span className={hasSgd ? styles.weekIndicatorOn : styles.weekIndicatorOff}>SGD</span>
+                                <span className={hasPi ? styles.weekIndicatorOn : styles.weekIndicatorOff}>PI</span>
+                              </div>
+
+                              <div className={styles.weekCardActions}>
+                                <button type="button" className={styles.weekActionButton} onClick={() => setDetailsTarget(schedule)}>
+                                  Ver detalhe
+                                </button>
+                                <button type="button" className={styles.weekActionButton} onClick={() => void openHistory(schedule)}>
+                                  Historico
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        })
+                      ) : (
+                        <div className={styles.weekEmptyCell}>Sem programacao</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          ) : (
+            <div className={styles.weekCalendarEmpty}>Nenhuma equipe disponivel para os filtros atuais.</div>
+          )}
         </div>
       </article>
 
@@ -2153,14 +2366,27 @@ export function ProgrammingSimplePageView() {
       ) : null}
 
       {historyTarget ? (
-        <div className={styles.modalOverlay} onClick={() => setHistoryTarget(null)}>
+        <div
+          className={styles.modalOverlay}
+          onClick={() => {
+            setHistoryTarget(null);
+            setHistoryPage(1);
+          }}
+        >
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
                 <h4>Historico da Programacao</h4>
                 <p className={styles.modalSubtitle}>ID da programacao: {historyTarget.id}</p>
               </div>
-              <button type="button" className={styles.modalCloseButton} onClick={() => setHistoryTarget(null)}>
+              <button
+                type="button"
+                className={styles.modalCloseButton}
+                onClick={() => {
+                  setHistoryTarget(null);
+                  setHistoryPage(1);
+                }}
+              >
                 Fechar
               </button>
             </header>
@@ -2172,7 +2398,7 @@ export function ProgrammingSimplePageView() {
               ) : null}
               {!isLoadingHistory && historyItems.length > 0 ? (
                 <div className={styles.historyList}>
-                  {historyItems.map((item) => {
+                  {pagedHistoryItems.map((item) => {
                     const changedFields = Object.entries(item.changes ?? {}).filter(([, change]) => {
                       return (change.from ?? "") !== (change.to ?? "");
                     });
@@ -2202,6 +2428,31 @@ export function ProgrammingSimplePageView() {
                       </article>
                     );
                   })}
+                </div>
+              ) : null}
+              {!isLoadingHistory && historyItems.length > 0 ? (
+                <div className={styles.historyPagination}>
+                  <span>
+                    Pagina {Math.min(historyPage, totalHistoryPages)} de {totalHistoryPages} | Total: {historyItems.length}
+                  </span>
+                  <div className={styles.paginationActions}>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}
+                      disabled={historyPage <= 1}
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => setHistoryPage((current) => Math.min(totalHistoryPages, current + 1))}
+                      disabled={historyPage >= totalHistoryPages}
+                    >
+                      Proxima
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
