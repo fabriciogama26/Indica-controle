@@ -10,6 +10,8 @@ Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/programacao-simples/page.tsx`
 - View: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+- A mesma view tambem atende a rota de consulta:
+  - `src/app/(dashboard)/programacao-visualizacao/page.tsx` usando modo `visualizacao`
 - Estilo: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
 - API reutilizada: `src/app/api/programacao/route.ts`
 - RPC nova:
@@ -42,6 +44,9 @@ Arquitetura
   - `supabase/migrations/092_harden_copy_team_programming_period_rpc.sql`
   - RPC: `copy_team_programming_period`
   - Objetivo: copiar apenas atividades ativas e replicar todos os campos novos pela RPC full.
+- Migration de permissao da tela de consulta:
+  - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
+  - `app_pages.page_key`: `programacao-visualizacao`
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -91,12 +96,15 @@ Filtros, auto-complete e listagem
   - Atividades via `/api/projects/activity-forecast/catalog`.
 - Listagem:
   - Colunas: Data, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
-  - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Adiar` e `Cancelar`.
+- Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Adiar` e `Cancelar`.
   - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
   - `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
   - Registros `ADIADA`/`CANCELADA` aparecem destacados na lista.
   - Exportacao CSV da lista filtrada.
   - Exportacao `ENEL-EXCEL` com layout de colunas na ordem operacional solicitada.
+  - Botoes de extracao na lista:
+    - `Extracao Comum` (CSV da lista filtrada)
+    - `Extracao ENEL` (layout operacional ENEL)
   - Mapeamentos ENEL:
     - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
     - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
@@ -108,6 +116,18 @@ Filtros, auto-complete e listagem
     - `Term deslig` = `Termino de desligamento` da Programacao.
     - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o `SGD` conforme o `Tipo de SGD` selecionado.
   - Paginacao local com `Anterior/Proxima`.
+- Calendario semanal de visualizacao:
+  - Grade fixa de `segunda a domingo` por equipe.
+  - Cada card representa uma programacao da equipe no dia.
+  - Card exibe codigo da obra (sem prefixo `SOB`), horario e indicadores de documento `SGD` e `PI`.
+  - Cores operacionais:
+    - `PROGRAMADA` = azul
+    - `ADIADA` = amarelo
+    - `CANCELADA` = vermelho
+  - O texto de status (`Programado`, `Adiado`, `Cancelado`) nao aparece no card; a diferenciacao fica pela cor.
+  - Acoes diretas no card: `Ver detalhe` e `Historico`.
+  - Navegacao de semana por `Semana anterior`, `Semana atual` e `Proxima semana`.
+  - Modal de historico com paginacao e navegacao `Anterior/Proxima`.
 
 Boas praticas
 -------------
@@ -168,6 +188,11 @@ Atualizacao 2026-03
 - Adicionado fallback orientado: API tenta primeiro `save_project_programming_full`/`save_project_programming_batch_full` e usa fluxo legado apenas se a RPC full ainda nao existir no ambiente.
 - Tornado obrigatorio `expectedUpdatedAt` no `PATCH` de cancelamento/adiamento e obrigatoria `newDate` quando `action = ADIAR`.
 - Endurecida a RPC `copy_team_programming_period` para usar `save_project_programming_full` e evitar reativacao indevida de atividades inativas na copia.
+- Adicionada visualizacao semanal por equipe na Programacao Simples (segunda a domingo), com cards por dia e acao direta de `Ver detalhe` e `Historico`.
+- Padronizados os botoes de exportacao da lista como `Extracao Comum` e `Extracao ENEL`.
+- Criada rota dedicada de consulta `/programacao-visualizacao`, reaproveitando a mesma view em modo somente visualizacao.
+- Removidos textos de status e prefixo `SOB` dos cards no calendario semanal.
+- Adicionada paginacao no modal de historico da Programacao.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -221,11 +246,13 @@ Ajuda contextual
   - `supabase/migrations/090_add_programming_service_description.sql`
   - `supabase/migrations/091_create_programming_full_save_rpcs.sql`
   - `supabase/migrations/092_harden_copy_team_programming_period_rpc.sql`
+  - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`
 - Funcoes/hooks/constantes tocadas:
   - `ProgrammingSimplePageView`
+  - `startOfWeekMonday`, `createWeekDates`, `isDateInRange`
   - `openCancelModal`, `confirmCancellation`, `startEditSchedule`
   - `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`
   - `saveProgrammingBatchViaRpc`
@@ -236,3 +263,5 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: formulario nao exigia Tipo de SGD, nao tinha janela de desligamento e o bloco de documentos mostrava apenas Data entrega.
   - Depois: Tipo de SGD virou obrigatorio, existem campos de Inicio/Termino de desligamento e os documentos usam Data Aprovada + Data Pedido com persistencia dedicada.
+  - Antes: a tela simples nao tinha grade semanal de visualizacao por equipe e dia.
+  - Depois: a tela simples tem calendario de segunda a domingo com cards coloridos por status, exibindo SOB/SGD/PI e acoes de detalhe/historico.

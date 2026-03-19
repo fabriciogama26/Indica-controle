@@ -286,6 +286,233 @@
   flex-wrap: wrap;
 }
 
+.calendarHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.calendarActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weekLegend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weekLegendItem {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.weekLegendPlanned {
+  background: #1f57b8;
+}
+
+.weekLegendPostponed {
+  color: #6f5606;
+  background: #f3d572;
+}
+
+.weekLegendCancelled {
+  background: #c53d3d;
+}
+
+.weekCalendarWrapper {
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  overflow: auto;
+  background: #ffffff;
+}
+
+.weekCalendarHeader,
+.weekCalendarRow {
+  display: grid;
+  grid-template-columns: 220px repeat(7, minmax(180px, 1fr));
+  min-width: 1480px;
+}
+
+.weekCalendarTeamHeader,
+.weekCalendarDayHeader,
+.weekCalendarTeamCell,
+.weekCalendarDayCell {
+  border-bottom: 1px solid rgba(23, 52, 122, 0.1);
+  border-right: 1px solid rgba(23, 52, 122, 0.1);
+  min-height: 100%;
+}
+
+.weekCalendarTeamHeader {
+  padding: 12px;
+  font-weight: 800;
+  color: #17347a;
+  background: rgba(23, 52, 122, 0.06);
+}
+
+.weekCalendarDayHeader {
+  padding: 10px 8px;
+  text-align: center;
+  display: grid;
+  gap: 4px;
+  background: rgba(23, 52, 122, 0.06);
+}
+
+.weekCalendarDayHeader strong {
+  color: #17347a;
+  font-size: 0.84rem;
+}
+
+.weekCalendarDayHeader small {
+  color: #5b6a85;
+  font-size: 0.76rem;
+}
+
+.weekCalendarTeamCell {
+  padding: 12px;
+  background: #f8fbff;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.weekCalendarTeamCell strong {
+  color: #17347a;
+}
+
+.weekCalendarTeamCell small {
+  color: #5b6a85;
+  font-size: 0.8rem;
+}
+
+.weekCalendarDayCell {
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 140px;
+  background: #ffffff;
+}
+
+.weekCard {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.weekCardPlanned {
+  background: linear-gradient(180deg, #2c6ed9 0%, #1f57b8 100%);
+  color: #f3f8ff;
+}
+
+.weekCardPostponed {
+  background: linear-gradient(180deg, #ffe9ad 0%, #f3d572 100%);
+  color: #6d5206;
+  border-color: rgba(145, 106, 7, 0.2);
+}
+
+.weekCardCancelled {
+  background: linear-gradient(180deg, #f5bcbc 0%, #e98787 100%);
+  color: #7f1f1f;
+  border-color: rgba(139, 35, 35, 0.2);
+}
+
+.weekCardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.weekCardTop strong {
+  font-size: 0.86rem;
+}
+
+.weekCardTop span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.weekCardTime {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.weekIndicators {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weekIndicatorOn,
+.weekIndicatorOff {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  border: 1px solid transparent;
+}
+
+.weekIndicatorOn {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.weekIndicatorOff {
+  background: rgba(17, 27, 53, 0.08);
+  border-color: rgba(17, 27, 53, 0.14);
+}
+
+.weekCardActions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.weekActionButton {
+  min-height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(17, 27, 53, 0.2);
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.weekEmptyCell {
+  min-height: 100%;
+  border-radius: 10px;
+  border: 1px dashed rgba(23, 52, 122, 0.16);
+  background: #f9fbff;
+  color: #65789f;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 0.8rem;
+  padding: 8px;
+}
+
+.weekCalendarEmpty {
+  padding: 16px;
+  color: #5b6a85;
+}
+
 .actionsCell {
   min-width: 182px;
 }
@@ -442,6 +669,15 @@
   gap: 10px;
 }
 
+.historyPagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #5b6a85;
+}
+
 .detailWide {
   grid-column: span 2;
 }
@@ -524,6 +760,15 @@
 
   .teamSelectionHeader {
     grid-template-columns: 1fr;
+  }
+
+  .calendarActions {
+    width: 100%;
+  }
+
+  .calendarActions .ghostButton,
+  .calendarActions .secondaryButton {
+    flex: 1 1 auto;
   }
 }
 

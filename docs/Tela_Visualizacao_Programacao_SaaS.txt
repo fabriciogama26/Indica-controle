@@ -1,0 +1,122 @@
+Tela: Visualizacao Programacao SaaS
+
+Visao geral
+-----------
+- Tela dedicada para consulta operacional da programacao.
+- Objetivo: separar visualizacao (lista + calendario semanal) da tela de cadastro.
+- Escopo: leitura, filtros, exportacao e consulta de detalhe/historico.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/programacao-visualizacao/page.tsx`
+- View reutilizada: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx` (modo `visualizacao`)
+- Estilo: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+- API: `src/app/api/programacao/route.ts`
+- Permissao/menu:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Migration:
+  - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
+
+Cadastro
+--------
+- Nao se aplica nesta tela.
+- O cadastro continua na rota `/programacao-simples`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Data inicial
+  - Data final
+  - Projeto
+  - Equipe
+  - Status
+- Lista:
+  - Colunas: Data, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Acoes por linha: `Detalhes` e `Historico`.
+  - Exportacoes:
+    - `Extracao Comum`
+    - `Extracao ENEL`
+- Calendario semanal:
+  - Grade fixa de segunda a domingo, com linhas por equipe.
+  - Cada card representa uma programacao no dia.
+  - Card exibe: codigo da obra (sem prefixo `SOB`), horario e indicadores `SGD`/`PI`.
+  - Cores operacionais:
+    - `PROGRAMADA`: azul
+    - `ADIADA`: amarelo
+    - `CANCELADA`: vermelho
+  - O texto de status (`Programado`, `Adiado`, `Cancelado`) nao aparece no card; a diferenciacao fica pela cor.
+  - Acoes no card: `Ver detalhe` e `Historico`.
+- Modal de historico:
+  - Lista paginada.
+  - Navegacao por `Anterior/Proxima` e indicador de pagina/total.
+
+Boas praticas
+-------------
+- Escopo multi-tenant mantido por `pageKey` e permissoes por tenant.
+- Tela de visualizacao nao grava dados operacionais.
+- Consulta de historico e detalhes reutiliza o mesmo contrato da Programacao Simples.
+
+Cancelamento e saldo
+--------------------
+- Tela sem acao de cancelamento/adiamento.
+- Nao altera saldo de estoque.
+
+Atalhos
+-------
+- Rota da visualizacao: `/programacao-visualizacao`.
+- Rota de cadastro: `/programacao-simples`.
+
+Atualizacao 2026-03
+-------------------
+- Criada tela nova de visualizacao da Programacao com lista + calendario semanal.
+- Separada a responsabilidade de cadastro e consulta em rotas distintas.
+- Incluida permissao dedicada `programacao-visualizacao`.
+- Removidos textos de status e prefixo `SOB` dos cards do calendario.
+- Adicionada paginacao no modal de historico da Programacao.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - Responsavel por: renderizacao em modo `visualizacao`, filtros, lista, calendario semanal, detalhe e historico.
+- Caminho: `src/app/(dashboard)/programacao-visualizacao/page.tsx`
+  - Responsavel por: ativar a view no modo `visualizacao`.
+
+Constantes e configuracoes
+- `ROUTE_PAGE_KEYS` e `resolveDefaultPageAccess` em `src/lib/auth/authorization.ts`.
+- `permissionCatalog` em `src/modules/dashboard/permissoes/PermissionsPageView.tsx`.
+- `menuSections` e `titleMap` em `src/components/layout/AppShell.tsx`.
+
+Funcoes utilitarias relacionadas
+- `startOfWeekMonday`, `createWeekDates`, `isDateInRange`, `formatWeekRangeLabel`.
+- `scheduleStatusClassName`.
+
+Servicos e integracoes externas
+- `GET /api/programacao` para projetos/equipes/programacoes.
+- `GET /api/programacao?historyProgrammingId=...` para historico por programacao.
+
+Ajuda contextual
+----------------
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/programacao-visualizacao/page.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
+  - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingSimplePageView`
+  - `ROUTE_PAGE_KEYS`
+  - `resolveDefaultPageAccess`
+  - `permissionCatalog`
+  - `menuSections`
+  - `titleMap`
+- Comportamento antes/depois:
+  - Antes: lista e calendario estavam acoplados ao fluxo de cadastro.
+  - Depois: existe uma tela nova dedicada para visualizacao, mantendo cadastro separado.
