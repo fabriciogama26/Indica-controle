@@ -458,9 +458,44 @@ export function LocationPageView() {
         if (!ok) {
           throw new Error(data?.message ?? "Falha ao carregar metadados de locacao.");
         }
-        setCities(data?.cities ?? []);
-        setProjects(data?.projects ?? []);
-        setOverviewItems(data?.locationProjects ?? []);
+
+        const projectsPayloadRaw = Array.isArray(data?.projects) ? data.projects : [];
+        const projectsPayload = projectsPayloadRaw as Array<{ id?: unknown; sob?: unknown; city?: unknown }>;
+        const locationProjectsPayload = Array.isArray(data?.locationProjects) ? data.locationProjects : [];
+        const citiesPayload = (Array.isArray(data?.cities) ? data.cities : []) as string[];
+        const fallbackCities =
+          citiesPayload.length > 0
+            ? citiesPayload
+            : Array.from(
+                new Set(
+                  projectsPayload
+                    .map((item) => String(item?.city ?? "").trim())
+                    .filter((value: string) => Boolean(value)),
+                ),
+              ).sort((left, right) => left.localeCompare(right, "pt-BR"));
+
+        const fallbackOverviewItems: LocationOverviewItem[] = projectsPayload
+          .map((item) => ({
+            id: String(item?.id ?? "").trim(),
+            sob: String(item?.sob ?? "").trim(),
+            city: String(item?.city ?? "").trim(),
+            isActive: true,
+            hasLocacao: false,
+            status: "NAO_LOCADO" as LocationOverviewStatus,
+            planId: null,
+            recordedAt: null,
+            recordedByName: null,
+          }))
+          .filter((item) => item.id && item.sob);
+
+        const nextOverviewItems =
+          locationProjectsPayload.length > 0
+            ? (locationProjectsPayload as LocationOverviewItem[])
+            : fallbackOverviewItems;
+
+        setCities(fallbackCities);
+        setProjects(projectsPayload as ProjectOption[]);
+        setOverviewItems(nextOverviewItems);
       })
       .catch((error) => {
         setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar locacao.", scope: "page" });
