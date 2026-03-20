@@ -96,6 +96,8 @@ type ProgrammingRow = {
   estrutura_qty: number | null;
   trafo_qty: number | null;
   rede_qty: number | null;
+  etapa_number: number | null;
+  work_completion_status: "CONCLUIDO" | "PARCIAL" | null;
   affected_customers: number | null;
   sgd_type_id: string | null;
   sgd_number: string | null;
@@ -158,6 +160,8 @@ type SaveProgrammingPayload = {
   estruturaQty?: number | string;
   trafoQty?: number | string;
   redeQty?: number | string;
+  etapaNumber?: number | string;
+  workCompletionStatus?: string;
   affectedCustomers?: number | string;
   sgdTypeId?: string;
   changeReason?: string;
@@ -201,6 +205,8 @@ type BatchCreateProgrammingPayload = {
   estruturaQty?: number | string;
   trafoQty?: number | string;
   redeQty?: number | string;
+  etapaNumber?: number | string;
+  workCompletionStatus?: string;
   affectedCustomers?: number | string;
   sgdTypeId?: string;
   documents?: {
@@ -317,10 +323,10 @@ const PROGRAMMING_SELECT_WITH_STRUCTURE =
   "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -360,6 +366,15 @@ function normalizeOptionalTime(value: unknown) {
   }
 
   return normalizeTime(normalized);
+}
+
+function normalizeWorkCompletionStatus(value: unknown) {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "CONCLUIDO" || normalized === "PARCIAL") {
+    return normalized as "CONCLUIDO" | "PARCIAL";
+  }
+
+  return null;
 }
 
 function formatTime(value: string | null) {
@@ -411,6 +426,8 @@ function normalizeProgrammingStructureFields<T extends Record<string, unknown>>(
     estrutura_qty: Number(row.estrutura_qty ?? 0),
     trafo_qty: Number(row.trafo_qty ?? 0),
     rede_qty: Number(row.rede_qty ?? 0),
+    etapa_number: row.etapa_number === null || row.etapa_number === undefined ? null : Number(row.etapa_number),
+    work_completion_status: normalizeWorkCompletionStatus(row.work_completion_status),
     affected_customers: Number(row.affected_customers ?? 0),
     sgd_type_id: normalizeNullableText(row.sgd_type_id),
   };
@@ -1038,6 +1055,8 @@ async function saveProgrammingFullViaRpc(params: {
   estruturaQty: number;
   trafoQty: number;
   redeQty: number;
+  etapaNumber: number | null;
+  workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
   affectedCustomers: number;
   sgdTypeId: string;
   documents: NonNullable<SaveProgrammingPayload["documents"]>;
@@ -1069,6 +1088,8 @@ async function saveProgrammingFullViaRpc(params: {
     p_estrutura_qty: params.estruturaQty,
     p_trafo_qty: params.trafoQty,
     p_rede_qty: params.redeQty,
+    p_etapa_number: params.etapaNumber,
+    p_work_completion_status: params.workCompletionStatus,
     p_affected_customers: params.affectedCustomers,
     p_sgd_type_id: params.sgdTypeId,
     p_outage_start_time: params.outageStartTime ?? null,
@@ -1137,6 +1158,8 @@ async function saveProgrammingBatchViaRpc(params: {
   estruturaQty: number;
   trafoQty: number;
   redeQty: number;
+  etapaNumber?: number | null;
+  workCompletionStatus?: "CONCLUIDO" | "PARCIAL" | null;
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
 }) {
@@ -1255,6 +1278,8 @@ async function saveProgrammingBatchFullViaRpc(params: {
   estruturaQty: number;
   trafoQty: number;
   redeQty: number;
+  etapaNumber: number | null;
+  workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
   affectedCustomers: number;
   sgdTypeId: string;
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
@@ -1283,6 +1308,8 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_estrutura_qty: params.estruturaQty,
     p_trafo_qty: params.trafoQty,
     p_rede_qty: params.redeQty,
+    p_etapa_number: params.etapaNumber,
+    p_work_completion_status: params.workCompletionStatus,
     p_affected_customers: params.affectedCustomers,
     p_sgd_type_id: params.sgdTypeId,
     p_outage_start_time: params.outageStartTime ?? null,
@@ -1651,6 +1678,64 @@ async function setProgrammingEnelFieldsViaRpc(params: {
   return { ok: true } as const;
 }
 
+async function setProgrammingExecutionResultViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  etapaNumber: number | null;
+  workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
+  force?: boolean;
+}) {
+  const shouldPersist = Boolean(params.force)
+    || params.etapaNumber !== null
+    || params.workCompletionStatus !== null;
+
+  if (!shouldPersist) {
+    return { ok: true } as const;
+  }
+
+  const { data, error } = await params.supabase.rpc("set_project_programming_execution_result", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_etapa_number: params.etapaNumber,
+    p_work_completion_status: params.workCompletionStatus,
+  });
+
+  if (error) {
+    const isMissingRpc = isMissingRpcFunctionError(error.message, "set_project_programming_execution_result");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "Seu ambiente ainda nao suporta os campos ETAPA/Estado Trabalho da programacao. Aplique a migration 094 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      message: error.message
+        ? `Falha ao salvar ETAPA/Estado Trabalho da programacao: ${error.message}`
+        : "Falha ao salvar ETAPA/Estado Trabalho da programacao.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar ETAPA/Estado Trabalho da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
 async function cancelProgrammingViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -1971,6 +2056,8 @@ export async function GET(request: NextRequest) {
           estruturaQty: Number(item.estrutura_qty ?? 0),
           trafoQty: Number(item.trafo_qty ?? 0),
           redeQty: Number(item.rede_qty ?? 0),
+          etapaNumber: item.etapa_number === null ? null : Number(item.etapa_number),
+          workCompletionStatus: normalizeWorkCompletionStatus(item.work_completion_status),
           affectedCustomers: Number(item.affected_customers ?? 0),
           sgdTypeId: item.sgd_type_id,
           sgdTypeDescription: normalizeText(sgdType?.description),
@@ -2060,6 +2147,9 @@ async function saveProgrammingBatch(request: NextRequest) {
   const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
   const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
   const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
+  const etapaNumberRaw = normalizeText(payload?.etapaNumber);
+  const etapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
+  const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
   const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
   const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
   const documents = payload?.documents ?? {};
@@ -2092,6 +2182,27 @@ async function saveProgrammingBatch(request: NextRequest) {
   if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
     return NextResponse.json(
       { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
+      { status: 400 },
+    );
+  }
+
+  if (!etapaNumberRaw) {
+    return NextResponse.json(
+      { message: "O campo ETAPA e obrigatorio." },
+      { status: 400 },
+    );
+  }
+
+  if (etapaNumber === null) {
+    return NextResponse.json(
+      { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
+      { status: 400 },
+    );
+  }
+
+  if (workCompletionStatusRaw) {
+    return NextResponse.json(
+      { message: "Estado Trabalho so pode ser informado na edicao da programacao." },
       { status: 400 },
     );
   }
@@ -2162,6 +2273,8 @@ async function saveProgrammingBatch(request: NextRequest) {
     estruturaQty,
     trafoQty,
     redeQty,
+    etapaNumber,
+    workCompletionStatus: null,
     affectedCustomers: affectedCustomers ?? 0,
     sgdTypeId,
     documents,
@@ -2203,6 +2316,8 @@ async function saveProgrammingBatch(request: NextRequest) {
       estruturaQty,
       trafoQty,
       redeQty,
+      etapaNumber,
+      workCompletionStatus: null,
       documents,
       activities,
     });
@@ -2257,6 +2372,18 @@ async function saveProgrammingBatch(request: NextRequest) {
         return NextResponse.json({ message: enelFieldResult.message }, { status: enelFieldResult.status });
       }
 
+      const executionResult = await setProgrammingExecutionResultViaRpc({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId: item.programmingId,
+        etapaNumber,
+        workCompletionStatus: null,
+      });
+      if (!executionResult.ok) {
+        return NextResponse.json({ message: executionResult.message }, { status: executionResult.status });
+      }
+
       const documentDatesResult = await setProgrammingDocumentDatesViaRpc({
         supabase: resolution.supabase,
         tenantId: resolution.appUser.tenant_id,
@@ -2294,6 +2421,7 @@ async function saveProgrammingBatch(request: NextRequest) {
         estruturaQty: { from: null, to: String(estruturaQty) },
         trafoQty: { from: null, to: String(trafoQty) },
         redeQty: { from: null, to: String(redeQty) },
+        etapaNumber: { from: null, to: etapaNumber === null ? null : String(etapaNumber) },
         affectedCustomers: { from: null, to: String(affectedCustomers ?? 0) },
         sgdType: { from: null, to: selectedSgdType ? normalizeText(selectedSgdType.description) : null },
         sgdApprovedAt: { from: null, to: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt) },
@@ -2351,6 +2479,10 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
   const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
   const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
+  const etapaNumberRaw = normalizeText(payload?.etapaNumber);
+  const etapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
+  const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
+  const workCompletionStatus = normalizeWorkCompletionStatus(workCompletionStatusRaw);
   const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
   const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
   const changeReason = normalizeNullableText(payload?.changeReason);
@@ -2393,6 +2525,34 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
+  if (!etapaNumberRaw) {
+    return NextResponse.json(
+      { message: "O campo ETAPA e obrigatorio." },
+      { status: 400 },
+    );
+  }
+
+  if (etapaNumber === null) {
+    return NextResponse.json(
+      { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
+      { status: 400 },
+    );
+  }
+
+  if (method === "PUT" && !workCompletionStatus) {
+    return NextResponse.json(
+      { message: "Estado Trabalho e obrigatorio na edicao da programacao." },
+      { status: 400 },
+    );
+  }
+
+  if (workCompletionStatusRaw && !workCompletionStatus) {
+    return NextResponse.json(
+      { message: "Estado Trabalho invalido. Use apenas CONCLUIDO ou PARCIAL." },
+      { status: 400 },
+    );
+  }
+
   if (affectedCustomers === null) {
     return NextResponse.json(
       { message: "O campo Numero de Clientes Afetados deve ser um inteiro maior ou igual a zero." },
@@ -2427,6 +2587,11 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   if (programmingId && !currentProgramming) {
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
   }
+
+  const normalizedWorkCompletionStatus =
+    method === "PUT"
+      ? workCompletionStatus
+      : null;
 
   const isPotentialReschedule = currentProgramming
     ? (
@@ -2491,6 +2656,8 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     estruturaQty: estruturaQty ?? 0,
     trafoQty: trafoQty ?? 0,
     redeQty: redeQty ?? 0,
+    etapaNumber,
+    workCompletionStatus: normalizedWorkCompletionStatus,
     affectedCustomers: affectedCustomers ?? 0,
     sgdTypeId,
     documents,
@@ -2602,6 +2769,22 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json({ message: enelFieldResult.message }, { status: enelFieldResult.status });
     }
 
+    const executionResult = await setProgrammingExecutionResultViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: persistedProgrammingId,
+      etapaNumber,
+      workCompletionStatus: normalizedWorkCompletionStatus,
+      force: Boolean(currentProgramming) && (
+        (currentProgramming?.etapa_number ?? null) !== etapaNumber
+        || normalizeWorkCompletionStatus(currentProgramming?.work_completion_status ?? null) !== normalizedWorkCompletionStatus
+      ),
+    });
+    if (!executionResult.ok) {
+      return NextResponse.json({ message: executionResult.message }, { status: executionResult.status });
+    }
+
     const documentDatesResult = await setProgrammingDocumentDatesViaRpc({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -2663,6 +2846,13 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   addChange(changes, "estruturaQty", currentProgramming?.estrutura_qty ?? null, nextProgramming.estrutura_qty);
   addChange(changes, "trafoQty", currentProgramming?.trafo_qty ?? null, nextProgramming.trafo_qty);
   addChange(changes, "redeQty", currentProgramming?.rede_qty ?? null, nextProgramming.rede_qty);
+  addChange(changes, "etapaNumber", currentProgramming?.etapa_number ?? null, nextProgramming.etapa_number);
+  addChange(
+    changes,
+    "workCompletionStatus",
+    normalizeWorkCompletionStatus(currentProgramming?.work_completion_status ?? null),
+    normalizeWorkCompletionStatus(nextProgramming.work_completion_status),
+  );
   addChange(changes, "affectedCustomers", currentProgramming?.affected_customers ?? null, nextProgramming.affected_customers);
   addChange(changes, "sgdType", currentProgramming?.sgd_type_id ?? null, nextProgramming.sgd_type_id);
   addChange(changes, "sgdNumber", currentProgramming?.sgd_number ?? null, nextProgramming.sgd_number);
