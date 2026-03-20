@@ -7,6 +7,7 @@ import styles from "./ProgrammingSimplePageView.module.css";
 
 type PeriodMode = "integral" | "partial";
 type ProgrammingStatus = "PROGRAMADA" | "ADIADA" | "CANCELADA";
+type WorkCompletionStatus = "CONCLUIDO" | "PARCIAL";
 type DocumentKey = "sgd" | "pi" | "pep";
 
 type ProjectItem = {
@@ -87,6 +88,8 @@ type ScheduleItem = {
   estruturaQty: number;
   trafoQty: number;
   redeQty: number;
+  etapaNumber: number | null;
+  workCompletionStatus: WorkCompletionStatus | null;
   affectedCustomers: number;
   sgdTypeId: string | null;
   sgdTypeDescription?: string;
@@ -160,6 +163,8 @@ type FormState = {
   estruturaQty: string;
   trafoQty: string;
   redeQty: string;
+  etapaNumber: string;
+  workCompletionStatus: WorkCompletionStatus | "";
   affectedCustomers: string;
   sgdTypeId: string;
   teamIds: string[];
@@ -204,6 +209,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   estruturaQty: "ESTRUTURA",
   trafoQty: "TRAFO",
   redeQty: "REDE",
+  etapaNumber: "ETAPA",
+  workCompletionStatus: "Estado Trabalho",
   affectedCustomers: "Nº Clientes Afetados",
   sgdType: "Tipo de SGD",
   sgdNumber: "SGD",
@@ -350,6 +357,8 @@ function createInitialForm(initialDate: string): FormState {
     estruturaQty: "0",
     trafoQty: "0",
     redeQty: "0",
+    etapaNumber: "",
+    workCompletionStatus: "",
     affectedCustomers: "0",
     sgdTypeId: "",
     teamIds: [],
@@ -404,6 +413,20 @@ function parseNonNegativeInteger(value: string) {
   const parsed = Number(normalized);
   if (!Number.isInteger(parsed) || parsed < 0) {
     return null;
+  }
+
+  return parsed;
+}
+
+function parseOptionalPositiveInteger(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return undefined;
   }
 
   return parsed;
@@ -1003,6 +1026,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       estruturaQty: String(schedule.estruturaQty ?? 0),
       trafoQty: String(schedule.trafoQty ?? 0),
       redeQty: String(schedule.redeQty ?? 0),
+      etapaNumber: schedule.etapaNumber === null ? "" : String(schedule.etapaNumber),
+      workCompletionStatus: schedule.workCompletionStatus ?? "",
       affectedCustomers: String(schedule.affectedCustomers ?? 0),
       sgdTypeId: schedule.sgdTypeId ?? "",
       teamIds: [schedule.teamId],
@@ -1281,11 +1306,36 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const estruturaQty = parseNonNegativeInteger(form.estruturaQty);
     const trafoQty = parseNonNegativeInteger(form.trafoQty);
     const redeQty = parseNonNegativeInteger(form.redeQty);
+    const etapaNumber = parseOptionalPositiveInteger(form.etapaNumber);
     const affectedCustomers = parseNonNegativeInteger(form.affectedCustomers);
     if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null || affectedCustomers === null) {
       setFeedback({
         type: "error",
         message: "POSTE, ESTRUTURA, TRAFO, REDE e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero.",
+      });
+      return;
+    }
+
+    if (etapaNumber === null) {
+      setFeedback({
+        type: "error",
+        message: "ETAPA e obrigatoria.",
+      });
+      return;
+    }
+
+    if (etapaNumber === undefined) {
+      setFeedback({
+        type: "error",
+        message: "ETAPA deve ser um numero inteiro maior que zero.",
+      });
+      return;
+    }
+
+    if (isEditing && !form.workCompletionStatus) {
+      setFeedback({
+        type: "error",
+        message: "Estado Trabalho e obrigatorio na edicao.",
       });
       return;
     }
@@ -1311,6 +1361,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         estruturaQty,
         trafoQty,
         redeQty,
+        etapaNumber: etapaNumber ?? undefined,
+        workCompletionStatus: isEditing ? form.workCompletionStatus : undefined,
         affectedCustomers,
         sgdTypeId: form.sgdTypeId || undefined,
         documents: DOCUMENT_KEYS.reduce(
@@ -1512,6 +1564,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         const sgdAtMtVyp = (!sgdExportColumn || sgdExportColumn === "SGD_AT_MT_VYP") ? sgdNumber : "";
         const sgdBt = sgdExportColumn === "SGD_BT" ? sgdNumber : "";
         const sgdTet = sgdExportColumn === "SGD_TET" ? sgdNumber : "";
+        const infoStatus = schedule.etapaNumber ? `${schedule.etapaNumber} ETAPA` : "";
 
         return [
           project?.base ?? "",
@@ -1524,7 +1577,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           schedule.endTime ?? "",
           schedule.expectedMinutes ?? "",
           schedule.status ?? "",
-          schedule.statusReason ?? "",
+          infoStatus,
           project?.priority ?? "",
           schedule.estruturaQty ?? "",
           schedule.note ?? "",
@@ -1550,7 +1603,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           formatDate(schedule.date),
           schedule.trafoQty ?? "",
           schedule.note ?? "",
-          schedule.status ?? "",
+          schedule.workCompletionStatus ?? "",
           "",
           schedule.documents?.pep?.number ?? "",
           project?.serviceType ?? "",
@@ -1731,6 +1784,21 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           </label>
 
           <label className={styles.field}>
+            <span>
+              ETAPA <span className="requiredMark">*</span>
+            </span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={form.etapaNumber}
+              onChange={(event) => updateFormField("etapaNumber", event.target.value)}
+              placeholder="Ex.: 1"
+              required
+            />
+          </label>
+
+          <label className={styles.field}>
             <span>Nº Clientes Afetados</span>
             <input
               type="number"
@@ -1778,6 +1846,23 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               placeholder="Observacoes operacionais para todas as equipes selecionadas."
             />
           </label>
+
+          {editingScheduleId ? (
+            <label className={styles.field}>
+              <span>
+                Estado Trabalho <span className="requiredMark">*</span>
+              </span>
+              <select
+                value={form.workCompletionStatus}
+                onChange={(event) => updateFormField("workCompletionStatus", event.target.value as WorkCompletionStatus | "")}
+                required
+              >
+                <option value="">Selecione</option>
+                <option value="CONCLUIDO">CONCLUIDO</option>
+                <option value="PARCIAL">PARCIAL</option>
+              </select>
+            </label>
+          ) : null}
 
           {editingScheduleId ? (
             <label className={`${styles.field} ${styles.fieldWide}`}>
@@ -1940,7 +2025,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             <button
               type="submit"
               className={styles.primaryButton}
-              disabled={isSaving || !form.projectId || !form.teamIds.length || !form.sgdTypeId}
+              disabled={
+                isSaving
+                || !form.projectId
+                || !form.teamIds.length
+                || !form.sgdTypeId
+                || !form.etapaNumber.trim()
+                || (Boolean(editingScheduleId) && !form.workCompletionStatus)
+              }
             >
               {isSaving ? "Salvando..." : editingScheduleId ? "Salvar edicao" : "Cadastrar para equipes selecionadas"}
             </button>
@@ -2388,6 +2480,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>ESTRUTURA:</strong> {detailsTarget.estruturaQty}</p>
                 <p><strong>TRAFO:</strong> {detailsTarget.trafoQty}</p>
                 <p><strong>REDE:</strong> {detailsTarget.redeQty}</p>
+                <p><strong>ETAPA:</strong> {detailsTarget.etapaNumber ?? "-"}</p>
+                <p><strong>Estado Trabalho:</strong> {detailsTarget.workCompletionStatus || "-"}</p>
                 <p><strong>Nº Clientes Afetados:</strong> {detailsTarget.affectedCustomers}</p>
                 <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>
                 <p><strong>Apoio:</strong> {detailsTarget.support || "-"}</p>

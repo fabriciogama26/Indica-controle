@@ -47,6 +47,11 @@ Arquitetura
 - Migration de permissao da tela de consulta:
   - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
   - `app_pages.page_key`: `programacao-visualizacao`
+- Migration de etapa e estado de execucao:
+  - `supabase/migrations/094_add_programming_stage_and_completion_fields.sql`
+  - Campos em `project_programming`: `etapa_number`, `work_completion_status`
+  - RPC: `set_project_programming_execution_result`
+  - Compatibilidade full: sobrecargas de `save_project_programming_full` e `save_project_programming_batch_full` com ETAPA/Estado Trabalho.
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -60,6 +65,7 @@ Cadastro
   - Periodo
   - Hora inicio
   - Hora termino
+  - ETAPA
   - Tipo de SGD
   - Equipes (multi-selecao)
 - Campos opcionais:
@@ -72,6 +78,7 @@ Cadastro
   - ESTRUTURA (quantidade)
   - TRAFO (quantidade)
   - REDE (quantidade)
+  - ETAPA
   - Numero de Clientes Afetados
   - Anotacao
   - Documentos (`SGD`, `PI`, `PEP`) com `Numero`, `Data Aprovada` e `Data Pedido`
@@ -79,6 +86,7 @@ Cadastro
 - Regra principal:
   - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
   - Cada equipe gera uma programacao independente.
+  - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e obrigatorio na edicao.
 - Persistencia:
   - Frontend envia `POST /api/programacao` com `action = BATCH_CREATE`.
   - Backend chama `save_project_programming_batch`.
@@ -112,8 +120,10 @@ Filtros, auto-complete e listagem
     - `Tipo de SGD` = selecao do formulario da Programacao.
     - `Numero de Clientes Afetados` = campo do formulario da Programacao.
     - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
+    - `INFO STATUS` = campo `ETAPA` no formato `x ETAPA`.
     - `Inic deslig` = `Inicio de desligamento` da Programacao.
     - `Term deslig` = `Termino de desligamento` da Programacao.
+    - `Estado Trabalho` = campo de edicao `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`).
     - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o `SGD` conforme o `Tipo de SGD` selecionado.
   - Paginacao local com `Anterior/Proxima`.
 - Calendario semanal de visualizacao (somente na rota `/programacao-visualizacao`):
@@ -198,6 +208,8 @@ Atualizacao 2026-03
 - Adicionada paginacao no modal de historico da Programacao.
 - Removido o calendario da rota de cadastro `/programacao-simples` e reposicionado no topo da rota `/programacao-visualizacao`.
 - Ajustada listagem para exibir registros `ADIADA` e `CANCELADA` mesmo fora da data filtrada de execucao.
+- Adicionado campo `ETAPA` com persistencia na Programacao e exportacao ENEL em `INFO STATUS` no formato `x ETAPA`.
+- Adicionado campo `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) visivel apenas na edicao, persistido em banco e exportado em `Estado Trabalho`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -220,6 +232,7 @@ Funcoes utilitarias relacionadas
 - `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`, `registerProgrammingHistory`.
 - `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`.
 - `setProgrammingEnelFieldsViaRpc`, `setProgrammingOutageWindowViaRpc`, `setProgrammingDocumentDatesViaRpc`, `resolveProgrammingSgdType`.
+- `setProgrammingExecutionResultViaRpc`.
 - `setProgrammingServiceDescriptionViaRpc`.
 - `confirmPostpone`, `postponeProgrammingViaRpc`.
 
@@ -252,6 +265,7 @@ Ajuda contextual
   - `supabase/migrations/091_create_programming_full_save_rpcs.sql`
   - `supabase/migrations/092_harden_copy_team_programming_period_rpc.sql`
   - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
+  - `supabase/migrations/094_add_programming_stage_and_completion_fields.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`
