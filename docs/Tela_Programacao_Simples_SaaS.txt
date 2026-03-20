@@ -116,17 +116,20 @@ Filtros, auto-complete e listagem
     - `Term deslig` = `Termino de desligamento` da Programacao.
     - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o `SGD` conforme o `Tipo de SGD` selecionado.
   - Paginacao local com `Anterior/Proxima`.
-- Calendario semanal de visualizacao:
+- Calendario semanal de visualizacao (somente na rota `/programacao-visualizacao`):
   - Grade fixa de `segunda a domingo` por equipe.
   - Cada card representa uma programacao da equipe no dia.
-  - Card exibe codigo da obra (sem prefixo `SOB`), horario e indicadores de documento `SGD` e `PI`.
+  - Card exibe codigo da obra (sem prefixo `SOB`) e indicadores de documento `SGD` e `PI`.
+  - O horario nao aparece no card.
   - Cores operacionais:
     - `PROGRAMADA` = azul
     - `ADIADA` = amarelo
     - `CANCELADA` = vermelho
   - O texto de status (`Programado`, `Adiado`, `Cancelado`) nao aparece no card; a diferenciacao fica pela cor.
-  - Acoes diretas no card: `Ver detalhe` e `Historico`.
+  - Acoes diretas no card com botoes de icone (`Ver detalhe` e `Historico`).
+  - Indicadores `SGD` e `PI` ficam verdes quando `Data aprovada` estiver preenchida no documento correspondente.
   - Navegacao de semana por `Semana anterior`, `Semana atual` e `Proxima semana`.
+  - Botao `Atualizar` no calendario para recarga manual da agenda.
   - Modal de historico com paginacao e navegacao `Anterior/Proxima`.
 
 Boas praticas
@@ -193,6 +196,8 @@ Atualizacao 2026-03
 - Criada rota dedicada de consulta `/programacao-visualizacao`, reaproveitando a mesma view em modo somente visualizacao.
 - Removidos textos de status e prefixo `SOB` dos cards no calendario semanal.
 - Adicionada paginacao no modal de historico da Programacao.
+- Removido o calendario da rota de cadastro `/programacao-simples` e reposicionado no topo da rota `/programacao-visualizacao`.
+- Ajustada listagem para exibir registros `ADIADA` e `CANCELADA` mesmo fora da data filtrada de execucao.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
