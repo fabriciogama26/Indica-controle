@@ -133,6 +133,7 @@
 - [x] Destacar visualmente no header da tela de `Locacao` tanto o estado vazio quanto o projeto selecionado.
 - [x] Destacar visualmente no header da `Locacao`, abaixo do projeto selecionado, o resumo `Materiais atuais` e `Atividades atuais`.
 - [x] Adicionar visao previa da `Locacao` com filtros, lista resumida de projetos, status, responsavel, data e acoes `Editar`/`Ver detalhes`, ocultando essa area ao abrir uma locacao.
+- [x] Paginar a `Lista de Locacoes` da visao previa (10 por pagina, botoes `Anterior/Proxima`) e ampliar o `Ver detalhes` para exibir equipes, `ETAPAS PREVISTAS`, lista de `Previsao de execucao` e lista de `Pre APR`.
 - [x] Ajustar `/api/locacao/meta` para priorizar projetos recem-atualizados na carga do catalogo e evitar sumico de projetos novos na tela.
 - [x] Padronizar os botoes de `Acoes` da lista previa da `Locacao` com os mesmos icones das outras telas de cadastro.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.

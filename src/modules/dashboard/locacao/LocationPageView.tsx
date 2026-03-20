@@ -248,6 +248,7 @@ const INITIAL_LOCATION_VALIDATION: LocationValidationState = {
 const LOCATION_TEAM_QTY_LIMIT = 50;
 const LOCATION_STEPS_LIMIT = 1000;
 const LOCATION_ITEM_QTY_LIMIT = 100000;
+const OVERVIEW_PAGE_SIZE = 10;
 
 export function LocationPageView() {
   const { session } = useAuth();
@@ -258,6 +259,7 @@ export function LocationPageView() {
   const [sobSearch, setSobSearch] = useState("");
   const [overviewFilterDraft, setOverviewFilterDraft] = useState<LocationOverviewFilterState>(INITIAL_OVERVIEW_FILTERS);
   const [activeOverviewFilter, setActiveOverviewFilter] = useState<LocationOverviewFilterState>(INITIAL_OVERVIEW_FILTERS);
+  const [overviewPage, setOverviewPage] = useState(1);
   const [state, setState] = useState<LocationState | null>(null);
   const [detailLocation, setDetailLocation] = useState<{ item: LocationOverviewItem; data: LocationState | null } | null>(null);
   const [notes, setNotes] = useState("");
@@ -317,6 +319,32 @@ export function LocationPageView() {
       return true;
     });
   }, [activeOverviewFilter, overviewItems]);
+
+  const totalOverviewPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredOverviewItems.length / OVERVIEW_PAGE_SIZE)),
+    [filteredOverviewItems.length],
+  );
+
+  const paginatedOverviewItems = useMemo(() => {
+    const start = (overviewPage - 1) * OVERVIEW_PAGE_SIZE;
+    return filteredOverviewItems.slice(start, start + OVERVIEW_PAGE_SIZE);
+  }, [filteredOverviewItems, overviewPage]);
+
+  const detailQuestionnaireSnapshot = useMemo(() => {
+    if (!detailLocation) {
+      return null;
+    }
+
+    const answers = getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers) as QuestionnaireAnswers;
+    return {
+      planning: getObjectRecord(answers.planning),
+      executionTeams: getObjectRecord(answers.executionTeams),
+      executionForecast: getObjectRecord(answers.executionForecast),
+      preApr: getObjectRecord(answers.preApr),
+      supportItems: detailLocation.data?.supportItems ?? [],
+      risks: detailLocation.data?.risks ?? [],
+    };
+  }, [detailLocation]);
 
   const filteredMaterials = useMemo(() => {
     return (state?.materials ?? []).filter((item) => {
@@ -411,6 +439,10 @@ export function LocationPageView() {
     setActiveMaterialFilter(INITIAL_LIST_FILTERS);
     setActiveActivityFilter(INITIAL_LIST_FILTERS);
   }, [selectedProject?.id]);
+
+  useEffect(() => {
+    setOverviewPage((current) => Math.min(current, totalOverviewPages));
+  }, [totalOverviewPages]);
 
   useEffect(() => {
     if (!session?.accessToken) {
@@ -1043,7 +1075,14 @@ export function LocationPageView() {
             </div>
 
             <div className={styles.actions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setActiveOverviewFilter({ ...overviewFilterDraft })}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  setActiveOverviewFilter({ ...overviewFilterDraft });
+                  setOverviewPage(1);
+                }}
+              >
                 Aplicar
               </button>
               <button
@@ -1052,6 +1091,7 @@ export function LocationPageView() {
                 onClick={() => {
                   setOverviewFilterDraft(INITIAL_OVERVIEW_FILTERS);
                   setActiveOverviewFilter(INITIAL_OVERVIEW_FILTERS);
+                  setOverviewPage(1);
                 }}
               >
                 Limpar
@@ -1063,7 +1103,9 @@ export function LocationPageView() {
             <div className={styles.tableHeader}>
               <div>
                 <h3 className={styles.cardTitle}>Lista de Locacoes</h3>
-                <p className={styles.tableHint}>{filteredOverviewItems.length} projeto(s) encontrado(s) com o filtro atual.</p>
+                <p className={styles.tableHint}>
+                  {filteredOverviewItems.length} projeto(s) encontrado(s) com o filtro atual. Exibindo ate {OVERVIEW_PAGE_SIZE} por pagina.
+                </p>
               </div>
             </div>
 
@@ -1080,14 +1122,14 @@ export function LocationPageView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOverviewItems.length === 0 ? (
+                  {paginatedOverviewItems.length === 0 ? (
                     <tr>
                       <td colSpan={6} className={styles.emptyRow}>
                         Nenhum projeto encontrado para o filtro informado.
                       </td>
                     </tr>
                   ) : null}
-                  {filteredOverviewItems.map((item) => (
+                  {paginatedOverviewItems.map((item) => (
                     <tr key={item.id}>
                       <td>{item.sob}</td>
                       <td>{item.city || "-"}</td>
@@ -1152,6 +1194,30 @@ export function LocationPageView() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className={styles.paginationBar}>
+              <span className={styles.tableHint}>
+                Pagina {overviewPage} de {totalOverviewPages}
+              </span>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.ghostButton}
+                  onClick={() => setOverviewPage((current) => Math.max(1, current - 1))}
+                  disabled={overviewPage <= 1}
+                >
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  className={styles.ghostButton}
+                  onClick={() => setOverviewPage((current) => Math.min(totalOverviewPages, current + 1))}
+                  disabled={overviewPage >= totalOverviewPages}
+                >
+                  Proxima
+                </button>
+              </div>
             </div>
           </article>
         </>
@@ -1695,11 +1761,53 @@ export function LocationPageView() {
               <div><strong>Registrado em:</strong> {formatDateTime(detailLocation.item.recordedAt)}</div>
               <div><strong>Materiais atuais:</strong> {formatQuantity(detailLocation.data?.summary?.materialsPlannedTotal ?? 0)}</div>
               <div><strong>Atividades atuais:</strong> {formatCurrency(detailLocation.data?.summary?.activitiesPlannedTotal ?? 0)}</div>
-              <div><strong>Necessario revisao de projeto?:</strong> {getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).needsProjectReview === true ? "Sim" : getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).needsProjectReview === false ? "Nao" : "-"}</div>
-              <div><strong>Com desligamento?:</strong> {getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).withShutdown === true ? "Sim" : getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.planning).withShutdown === false ? "Nao" : "-"}</div>
+              <div><strong>Necessario revisao de projeto?:</strong> {detailQuestionnaireSnapshot?.planning.needsProjectReview === true ? "Sim" : detailQuestionnaireSnapshot?.planning.needsProjectReview === false ? "Nao" : "-"}</div>
+              <div><strong>Com desligamento?:</strong> {detailQuestionnaireSnapshot?.planning.withShutdown === true ? "Sim" : detailQuestionnaireSnapshot?.planning.withShutdown === false ? "Nao" : "-"}</div>
+              <div><strong>CESTO:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.cestoQty ?? "-")}</div>
+              <div><strong>LINHA MORTA:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.linhaMortaQty ?? "-")}</div>
+              <div><strong>LINHA VIVA:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.linhaVivaQty ?? "-")}</div>
+              <div><strong>PODA LINHA MORTA:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.podaLinhaMortaQty ?? "-")}</div>
+              <div><strong>PODA LINHA VIVA:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.podaLinhaVivaQty ?? "-")}</div>
+              <div><strong>ETAPAS PREVISTAS:</strong> {String(detailQuestionnaireSnapshot?.executionForecast.stepsPlannedQty ?? "-")}</div>
               <div className={styles.detailWide}><strong>Observacoes:</strong> {detailLocation.data?.plan?.notes || "-"}</div>
-              <div className={styles.detailWide}><strong>Observacao da previsao:</strong> {String(getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.executionForecast).observation ?? "-")}</div>
-              <div className={styles.detailWide}><strong>Observacao do Pre APR:</strong> {String(getObjectRecord(detailLocation.data?.plan?.questionnaireAnswers?.preApr).observation ?? "-")}</div>
+              <div className={styles.detailWide}><strong>Observacao da previsao:</strong> {String(detailQuestionnaireSnapshot?.executionForecast.observation ?? "-")}</div>
+              <div className={styles.detailWide}><strong>Observacao do Pre APR:</strong> {String(detailQuestionnaireSnapshot?.preApr.observation ?? "-")}</div>
+            </div>
+
+            <div className={styles.detailSection}>
+              <h5 className={styles.detailSectionTitle}>Previsao de execucao (apoios)</h5>
+              <div className={styles.detailList}>
+                {(detailQuestionnaireSnapshot?.supportItems.length ?? 0) === 0 ? (
+                  <div className={styles.detailListEmpty}>Nenhum item de apoio cadastrado.</div>
+                ) : (
+                  detailQuestionnaireSnapshot?.supportItems.map((item) => (
+                    <div key={item.id} className={styles.detailListItem}>
+                      <span>{item.description}</span>
+                      <span className={`${styles.detailBadge} ${item.isIncluded ? styles.detailBadgeSuccess : styles.detailBadgeMuted}`}>
+                        {item.isIncluded ? "Incluido" : "Removido"}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className={styles.detailSection}>
+              <h5 className={styles.detailSectionTitle}>Pre APR (riscos)</h5>
+              <div className={styles.detailList}>
+                {(detailQuestionnaireSnapshot?.risks.length ?? 0) === 0 ? (
+                  <div className={styles.detailListEmpty}>Nenhum risco cadastrado.</div>
+                ) : (
+                  detailQuestionnaireSnapshot?.risks.map((item) => (
+                    <div key={item.id} className={styles.detailListItem}>
+                      <span>{item.description}</span>
+                      <span className={`${styles.detailBadge} ${item.isActive ? styles.detailBadgeSuccess : styles.detailBadgeMuted}`}>
+                        {item.isActive ? "Incluido" : "Removido"}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </article>
         </div>

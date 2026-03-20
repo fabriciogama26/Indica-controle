@@ -193,12 +193,18 @@ Atualizacao 2026-03
 - `Materiais previstos` e `Atividades previstas` da `Locacao` passam a limitar quantidade em `100000`, alem da regra `> 0`.
 - `Atividades previstas` e `Materiais previstos` continuam com salvamento explicito por acao: `Adicionar ...` para inclusao e `Salvar` por linha para edicao.
 - Adicionada declaracao local `src/types/xlsx.d.ts` e ajuste em `src/lib/server/projectForecastXlsx.ts` para destravar o `build` atual do projeto.
+- Adicionada paginacao local na `Lista de Locacoes` (10 por pagina) com navegacao `Anterior/Proxima`.
+- O modal `Ver detalhes` da locacao passou a exibir uma visao simples mais completa com:
+  - quantidades de equipes (`CESTO`, `LINHA MORTA`, `LINHA VIVA`, `PODA LINHA MORTA`, `PODA LINHA VIVA`)
+  - `ETAPAS PREVISTAS`
+  - lista de `Previsao de execucao` (apoios com status `Incluido`/`Removido`)
+  - lista de `Pre APR` (riscos com status `Incluido`/`Removido`)
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
-  - Responsavel por: filtro por municipio, busca de projeto por SOB, listagem resumida de locacoes antes da abertura, modal de detalhes, carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e envio de `expectedUpdatedAt` nas acoes de salvar.
+  - Responsavel por: filtro por municipio, busca de projeto por SOB, listagem resumida de locacoes antes da abertura, paginacao local da lista previa, modal de detalhes (com listas de `Previsao de execucao` e `Pre APR`), carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e envio de `expectedUpdatedAt` nas acoes de salvar.
 - Caminho: `src/app/api/locacao/route.ts`
   - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, chamando a RPC `save_project_location_plan`, enviando `expectedUpdatedAt` e registrando historico.
 - Caminho: `src/app/api/locacao/materials/route.ts`
@@ -210,7 +216,7 @@ Funcoes principais
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
-  - Responsavel por: estado de filtros, drafts de edicao e labels de busca.
+  - Responsavel por: estado de filtros, drafts de edicao, labels de busca e constantes de paginacao (`OVERVIEW_PAGE_SIZE`).
 - Caminho: `supabase/migrations/059_create_location_planning.sql`
   - Responsavel por: schema, indices, RLS, auditoria e RPC de bootstrap da locacao.
 - Caminho: `supabase/migrations/061_create_location_risks.sql`
@@ -259,6 +265,10 @@ Ajuda contextual
   - `supabase/migrations/080_seed_location_risks_on_initialize.sql`
 - Funcoes/hooks/constantes tocadas:
   - `LocationPageView`
+  - `overviewPage`
+  - `totalOverviewPages`
+  - `paginatedOverviewItems`
+  - `detailQuestionnaireSnapshot`
   - `requestLocation`
   - `openLocation`
   - `openLocationFromOverview`
@@ -301,3 +311,7 @@ Ajuda contextual
   - Depois: o bootstrap da locacao passa a seedar riscos no `Pre APR` para projetos novos a partir da base de riscos ja existente do tenant.
   - Antes: a RPC da locacao bloqueava negativo e zero, mas ainda permitia sobrescrita concorrente e nao exigia observacao quando havia revisao/desligamento.
   - Depois: a RPC da locacao valida `updated_at`, exige observacao condicional, limita valores maximos e rejeita decimais nas equipes e em `ETAPAS PREVISTAS`.
+  - Antes: a `Lista de Locacoes` exibia todos os projetos de uma vez, sem paginacao local.
+  - Depois: a `Lista de Locacoes` passou a exibir 10 registros por pagina com navegacao `Anterior/Proxima`.
+  - Antes: o modal `Ver detalhes` mostrava apenas resumo e observacoes da locacao.
+  - Depois: o modal passou a exibir tambem quantidades de equipes, `ETAPAS PREVISTAS` e as listas de `Previsao de execucao` e `Pre APR` com status por item.
