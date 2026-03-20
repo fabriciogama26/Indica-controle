@@ -134,6 +134,7 @@
 - [x] Destacar visualmente no header da `Locacao`, abaixo do projeto selecionado, o resumo `Materiais atuais` e `Atividades atuais`.
 - [x] Adicionar visao previa da `Locacao` com filtros, lista resumida de projetos, status, responsavel, data e acoes `Editar`/`Ver detalhes`, ocultando essa area ao abrir uma locacao.
 - [x] Paginar a `Lista de Locacoes` da visao previa (10 por pagina, botoes `Anterior/Proxima`) e ampliar o `Ver detalhes` para exibir equipes, `ETAPAS PREVISTAS`, lista de `Previsao de execucao` e lista de `Pre APR`.
+- [x] Corrigir fallback da visao previa de `Locacao`: quando `/api/locacao/meta` nao retornar `locationProjects`, montar a grade a partir de `projects` para evitar lista vazia.
 - [x] Ajustar `/api/locacao/meta` para priorizar projetos recem-atualizados na carga do catalogo e evitar sumico de projetos novos na tela.
 - [x] Padronizar os botoes de `Acoes` da lista previa da `Locacao` com os mesmos icones das outras telas de cadastro.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.
@@ -172,6 +173,7 @@
 - [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
 - [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
 - [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, tornando `ETAPA` obrigatoria no cadastro/edicao e `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) obrigatorio na edicao.
+- [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
 - [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
 - [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e prioridade para RPC transacional full com fallback legado.
 - [x] Garantir compatibilidade da API de Programacao quando a migration `085` ainda nao estiver aplicada (fallback de leitura e de RPC em lote).

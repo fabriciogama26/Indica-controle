@@ -199,6 +199,8 @@ Atualizacao 2026-03
   - `ETAPAS PREVISTAS`
   - lista de `Previsao de execucao` (apoios com status `Incluido`/`Removido`)
   - lista de `Pre APR` (riscos com status `Incluido`/`Removido`)
+- Ajustada a carga da lista previa de locacao no frontend com fallback:
+  - se `locationProjects` vier vazio/ausente no payload de `/api/locacao/meta`, a tela monta a lista a partir de `projects` para nao exibir grade vazia.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -269,6 +271,7 @@ Ajuda contextual
   - `totalOverviewPages`
   - `paginatedOverviewItems`
   - `detailQuestionnaireSnapshot`
+  - fallback de `locationProjects` -> `projects` no carregamento de metadados
   - `requestLocation`
   - `openLocation`
   - `openLocationFromOverview`
@@ -315,3 +318,5 @@ Ajuda contextual
   - Depois: a `Lista de Locacoes` passou a exibir 10 registros por pagina com navegacao `Anterior/Proxima`.
   - Antes: o modal `Ver detalhes` mostrava apenas resumo e observacoes da locacao.
   - Depois: o modal passou a exibir tambem quantidades de equipes, `ETAPAS PREVISTAS` e as listas de `Previsao de execucao` e `Pre APR` com status por item.
+  - Antes: quando o payload de metadados retornava apenas `projects` (ou `locationProjects` vazio), a grade previa podia ficar sem itens.
+  - Depois: a tela usa fallback para montar a `Lista de Locacoes` com base em `projects` quando necessario.
