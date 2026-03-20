@@ -187,6 +187,10 @@
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
+- [ ] Revisao de cadastros (2026-03-20): bloquear submit de `Pessoas` com feedback explicito quando `job_titles` estiver vazio e orientar abertura do cadastro base de `Cargo`.
+- [ ] Revisao de cadastros (2026-03-20): bloquear submit de `Equipes` com feedback explicito quando `team_types`, `project_service_centers` ou lista de encarregados estiver vazia.
+- [ ] Revisao de cadastros (2026-03-20): validar se o filtro de encarregado/supervisor por cargo (`ENCARREGADO`/`SUPERVISOR`) cobre os codigos reais usados por tenant e ajustar fallback quando nao cobrir.
+- [ ] Revisao de cadastros (2026-03-20): exibir diagnostico de prerequisitos vazios em `Atividades` (`team_types`) e `Projetos` (lookups de `Cadastro Base`) antes de permitir novo cadastro.
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
 - [x] Endurecer `Permissoes` com controle de concorrencia por `app_users.updated_at`, bloqueando salvamento concorrente de role/status/telas para o mesmo usuario.
 - [x] Migrar o save de `Permissoes` para RPC transacional (`save_user_permissions`) para consolidar `app_users`, `app_user_page_permissions` e historico em uma unica operacao.
