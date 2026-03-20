@@ -60,7 +60,7 @@ Arquitetura
 Cadastro
 --------
 - Campos obrigatorios:
-  - Projeto
+  - Projeto (SOB)
   - Data
   - Periodo
   - Hora inicio
@@ -78,7 +78,6 @@ Cadastro
   - ESTRUTURA (quantidade)
   - TRAFO (quantidade)
   - REDE (quantidade)
-  - ETAPA
   - Numero de Clientes Afetados
   - Anotacao
   - Documentos (`SGD`, `PI`, `PEP`) com `Numero`, `Data Aprovada` e `Data Pedido`
@@ -101,6 +100,7 @@ Filtros, auto-complete e listagem
   - Equipe
   - Status
 - Auto-complete:
+  - Projeto (SOB) no cadastro com `input + datalist`, no mesmo padrao do SOB da Locacao.
   - Atividades via `/api/projects/activity-forecast/catalog`.
 - Listagem:
   - Colunas: Data, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.

@@ -149,6 +149,7 @@ type ProgrammingHistoryResponse = {
 
 type FormState = {
   projectId: string;
+  projectSearch: string;
   date: string;
   period: PeriodMode;
   startTime: string;
@@ -343,6 +344,7 @@ function createEmptyDocuments(): Record<DocumentKey, DocumentEntry> {
 function createInitialForm(initialDate: string): FormState {
   return {
     projectId: "",
+    projectSearch: "",
     date: initialDate,
     period: "integral",
     startTime: "08:00",
@@ -900,6 +902,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setFilterDraft((current) => ({ ...current, [field]: value }));
   }
 
+  function handleProjectSobChange(value: string) {
+    const searchValue = value;
+    const matchedProject = projects.find((item) => item.code.toLowerCase() === searchValue.trim().toLowerCase()) ?? null;
+
+    setForm((current) => ({
+      ...current,
+      projectSearch: searchValue,
+      projectId: matchedProject?.id ?? "",
+    }));
+  }
+
   function toggleTeam(teamId: string) {
     setForm((current) => ({
       ...current,
@@ -1012,6 +1025,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setForm((current) => ({
       ...current,
       projectId: schedule.projectId,
+      projectSearch: projectMap.get(schedule.projectId)?.code ?? "",
       date: schedule.date,
       period: schedule.period,
       startTime: schedule.startTime,
@@ -1253,6 +1267,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     if (!accessToken) {
       setFeedback({ type: "error", message: "Sessao invalida para salvar programacao." });
+      return;
+    }
+
+    if (!form.projectId) {
+      setFeedback({
+        type: "error",
+        message: "Selecione um Projeto (SOB) valido da lista.",
+      });
       return;
     }
 
@@ -1636,20 +1658,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         <form className={styles.formGrid} onSubmit={handleSubmit}>
           <label className={styles.field}>
             <span>
-              Projeto <span className="requiredMark">*</span>
+              Projeto (SOB) <span className="requiredMark">*</span>
             </span>
-            <select
-              value={form.projectId}
-              onChange={(event) => updateFormField("projectId", event.target.value)}
+            <input
+              list="programming-simple-project-list"
+              value={form.projectSearch}
+              onChange={(event) => handleProjectSobChange(event.target.value)}
+              placeholder="Digite o SOB do projeto"
               required
-            >
-              <option value="">Selecione</option>
+            />
+            <datalist id="programming-simple-project-list">
               {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code} | {project.city} | {project.base}
+                <option key={project.id} value={project.code}>
+                  {project.city} | {project.base}
                 </option>
               ))}
-            </select>
+            </datalist>
           </label>
 
           <label className={styles.field}>
