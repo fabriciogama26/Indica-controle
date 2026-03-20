@@ -27,10 +27,10 @@ Cadastro
 --------
 - Campos obrigatorios:
   - `Nome`
-  - `Cargo`
-- Campos opcionais:
   - `Matricula`
-  - `Tipo` (dependente do cargo selecionado)
+  - `Cargo`
+  - `Tipo`
+- Campos opcionais:
   - `Nivel`
 - Regras:
   - `Tipo` so lista opcoes vinculadas ao `Cargo` selecionado.
@@ -102,6 +102,11 @@ Atualizacao 2026-03
 - Criada migration `079_create_people_and_invite_write_rpcs.sql` para adicionar `save_person_record` e `set_person_record_status`.
 - Implementada exportacao CSV na listagem.
 - Integracao com catalogos `job_titles`, `job_title_types` e `job_levels`.
+- Revisao de cadastro (2026-03-20): formulario agora bloqueia `Cadastrar/Atualizar` quando nao houver `Cargo` ativo carregado em metadados.
+- Revisao de cadastro (2026-03-20): adicionada mensagem explicita na tela orientando cadastrar `Cargo` antes de tentar salvar pessoa.
+- Revisao de cadastro (2026-03-20): `Matricula` e `Tipo` passaram a ser obrigatorios no formulario e na API (`POST`/`PUT`).
+- Revisao de cadastro (2026-03-20): adicionado fallback no backend para cadastro quando a RPC `save_person_record` nao existir no banco (compatibilidade temporaria), com retorno de erro tecnico mais claro.
+- Revisao de cadastro (2026-03-20): reforcado o fallback do `POST/PUT` para matricula numerica quando a RPC retorna erro de tipo (`numeric` x `text/varchar`) em `result.success=false`, evitando `500` generico.
 - Antes: tela apenas informativa (placeholder).
 - Depois: CRUD completo com filtros, paginacao, exportacao, historico, controle de status e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
 - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
@@ -149,10 +154,14 @@ Ajuda contextual
   - `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
 - Funcoes/hooks/constantes tocadas:
   - `loadMeta`, `loadPeople`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`, `handleExportPeople`
-  - `savePersonViaRpc`, `setPersonStatusViaRpc`
+  - `hasJobTitles`, `hasTypeOptionsForSelectedJob`, `canSubmitPersonForm` (bloqueio de submit sem pre-requisitos de cargo/tipo)
+  - `savePersonViaRpc`, `setPersonStatusViaRpc`, `isMatriculationNumericTypeMismatchError`
   - `save_person_record`, `set_person_record_status`
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
 - Comportamento antes/depois:
   - Antes: tela de Pessoas em placeholder.
   - Depois: tela operacional completa no padrao SaaS de cadastros.
   - Depois: a edicao e a troca de status passam a recusar dados stale em vez de aplicar `last-write-wins`.
+  - Depois (2026-03-20): o submit fica bloqueado quando nao houver `Cargo` ativo no tenant, com feedback explicito ao usuario.
+  - Depois (2026-03-20): `Matricula` e `Tipo` tornam-se obrigatorios para cadastro/edicao.
+  - Depois (2026-03-20): cadastro/edicao de pessoa tenta fallback com cast numerico da matricula tambem quando a RPC devolve `success=false` por incompatibilidade de tipo.

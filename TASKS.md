@@ -187,9 +187,15 @@
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
-- [ ] Revisao de cadastros (2026-03-20): bloquear submit de `Pessoas` com feedback explicito quando `job_titles` estiver vazio e orientar abertura do cadastro base de `Cargo`.
-- [ ] Revisao de cadastros (2026-03-20): bloquear submit de `Equipes` com feedback explicito quando `team_types`, `project_service_centers` ou lista de encarregados estiver vazia.
-- [ ] Revisao de cadastros (2026-03-20): validar se o filtro de encarregado/supervisor por cargo (`ENCARREGADO`/`SUPERVISOR`) cobre os codigos reais usados por tenant e ajustar fallback quando nao cobrir.
+- [x] Revisao de cadastros (2026-03-20): bloquear submit de `Pessoas` com feedback explicito quando `job_titles` estiver vazio e orientar abertura do cadastro base de `Cargo`.
+- [x] Revisao de cadastros (2026-03-20): bloquear submit de `Equipes` com feedback explicito quando `team_types`, `project_service_centers` ou lista de encarregados estiver vazia.
+- [x] Revisao de cadastros (2026-03-20): validar se o filtro de encarregado/supervisor por cargo (`ENCARREGADO`/`SUPERVISOR`) cobre os codigos reais usados por tenant e ajustar fallback quando nao cobrir.
+- [x] Revisao de cadastros (2026-03-20): melhorar diagnostico de erro em `POST/PUT/PATCH /api/teams` e aplicar fallback de escrita/status quando `save_team_record`/`set_team_record_status` nao estiverem disponiveis.
+- [x] Revisao de cadastros (2026-03-20): bloquear `POST/PUT` de equipes quando ja existir outra equipe com o mesmo encarregado no tenant (retorno `409`).
+- [x] Revisao de cadastros (2026-03-20): reforcar bloqueio de encarregado unico em `Equipes` no nivel de RPC (`save_team_record`) via migration `093_enforce_single_team_per_foreman_rpc.sql`.
+- [x] Revisao de cadastros (2026-03-20): tornar `Matricula` e `Tipo` obrigatorios no cadastro/edicao de `Pessoas` (frontend + API).
+- [x] Revisao de cadastros (2026-03-20): melhorar diagnostico de erro em `POST /api/people` e aplicar fallback de cadastro quando `save_person_record` nao estiver disponivel.
+- [x] Revisao de cadastros (2026-03-20): tratar tambem o retorno `success=false` da RPC de pessoas quando houver incompatibilidade `matriculation numeric x text/varchar`, com fallback/cast para evitar `500`.
 - [ ] Revisao de cadastros (2026-03-20): exibir diagnostico de prerequisitos vazios em `Atividades` (`team_types`) e `Projetos` (lookups de `Cadastro Base`) antes de permitir novo cadastro.
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
 - [x] Endurecer `Permissoes` com controle de concorrencia por `app_users.updated_at`, bloqueando salvamento concorrente de role/status/telas para o mesmo usuario.

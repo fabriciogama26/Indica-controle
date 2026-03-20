@@ -56,6 +56,12 @@ type ServiceCenterRow = {
   name: string;
 };
 
+type ExistingTeamByForemanRow = {
+  id: string;
+  name: string;
+  foreman_person_id: string;
+};
+
 type TeamHistoryRow = {
   id: string;
   change_type: "UPDATE" | "CANCEL" | "ACTIVATE";
@@ -99,6 +105,16 @@ type TeamSaveRpcResult = {
   updated_at?: string;
 };
 
+type DbErrorShape = {
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+  code?: string | null;
+};
+
+const FOREMAN_JOB_TITLE_FILTER =
+  "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%,code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
+
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value ?? "");
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -116,8 +132,17 @@ function normalizePlate(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
 
+function normalizeDbErrorText(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isMissingFunctionError(error: unknown, functionName: string) {
+  const rawMessage = normalizeDbErrorText((error as DbErrorShape | null)?.message);
+  return rawMessage.includes("function") && rawMessage.includes(functionName.toLowerCase());
+}
+
 function isTeamDuplicateCombinationError(rawMessage: unknown) {
-  const message = String(rawMessage ?? "").toLowerCase();
+  const message = normalizeDbErrorText(rawMessage);
   if (!message.includes("duplicate key")) {
     return false;
   }
@@ -127,6 +152,89 @@ function isTeamDuplicateCombinationError(rawMessage: unknown) {
     || message.includes("teams_tenant_id_name_key")
     || message.includes("teams_tenant_id_vehicle_plate_key")
   );
+}
+
+function mapTeamDbError(error: unknown, fallbackMessage: string) {
+  const dbError = (error ?? {}) as DbErrorShape;
+  const message = normalizeDbErrorText(dbError.message);
+  const details = normalizeDbErrorText(dbError.details);
+  const hint = normalizeDbErrorText(dbError.hint);
+  const combined = `${message} ${details} ${hint}`.trim();
+
+  if (isTeamDuplicateCombinationError(combined) || combined.includes("duplicate_team_combination")) {
+    return {
+      status: 409,
+      message: "Ja existe equipe com o mesmo nome, encarregado e placa no tenant atual.",
+      reason: "DUPLICATE_TEAM_COMBINATION",
+    } as const;
+  }
+
+  if (combined.includes("teams_service_center_tenant_fk")) {
+    return {
+      status: 422,
+      message: "Base invalida para o tenant atual.",
+      reason: "INVALID_SERVICE_CENTER",
+    } as const;
+  }
+
+  if (combined.includes("teams_team_type_tenant_fk")) {
+    return {
+      status: 422,
+      message: "Tipo de equipe invalido para o tenant atual.",
+      reason: "INVALID_TEAM_TYPE",
+    } as const;
+  }
+
+  if (combined.includes("teams_foreman_person_tenant_fk")) {
+    return {
+      status: 422,
+      message: "Encarregado invalido para o tenant atual.",
+      reason: "INVALID_FOREMAN",
+    } as const;
+  }
+
+  if (
+    combined.includes("chk_teams_name_not_blank")
+    || combined.includes("chk_teams_vehicle_plate_not_blank")
+    || combined.includes("null value in column \"name\"")
+    || combined.includes("null value in column \"vehicle_plate\"")
+    || combined.includes("null value in column \"service_center_id\"")
+    || combined.includes("null value in column \"team_type_id\"")
+    || combined.includes("null value in column \"foreman_person_id\"")
+  ) {
+    return {
+      status: 400,
+      message: "Preencha todos os campos obrigatorios da equipe.",
+      reason: "MISSING_REQUIRED_FIELDS",
+    } as const;
+  }
+
+  if (combined.includes("save_team_record") && combined.includes("function")) {
+    return {
+      status: 500,
+      message: "RPC save_team_record indisponivel no banco. Aplique a migration 077_create_admin_write_rpcs.sql.",
+      reason: "RPC_MISSING",
+    } as const;
+  }
+
+  if (combined.includes("set_team_record_status") && combined.includes("function")) {
+    return {
+      status: 500,
+      message: "RPC set_team_record_status indisponivel no banco. Aplique a migration 077_create_admin_write_rpcs.sql.",
+      reason: "RPC_MISSING",
+    } as const;
+  }
+
+  const detailsMessage = [dbError.message, dbError.hint, dbError.details]
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .join(" | ");
+
+  return {
+    status: 500,
+    message: detailsMessage ? `${fallbackMessage} ${detailsMessage}` : fallbackMessage,
+    reason: null,
+  } as const;
 }
 
 function formatComparableValue(value: unknown) {
@@ -210,7 +318,7 @@ async function fetchForemanJobTitleIds(supabase: SupabaseClient, tenantId: strin
     .select("id")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
-    .or("code.ilike.ENCARREGADO,name.ilike.ENCARREGADO")
+    .or(FOREMAN_JOB_TITLE_FILTER)
     .returns<JobTitleIdRow[]>();
 
   if (error) {
@@ -316,6 +424,31 @@ async function fetchTeamById(
   return data;
 }
 
+async function fetchExistingTeamByForeman(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  foremanId: string;
+  excludeTeamId?: string | null;
+}) {
+  let query = params.supabase
+    .from("teams")
+    .select("id, name, foreman_person_id")
+    .eq("tenant_id", params.tenantId)
+    .eq("foreman_person_id", params.foremanId)
+    .limit(1);
+
+  if (params.excludeTeamId) {
+    query = query.neq("id", params.excludeTeamId);
+  }
+
+  const { data, error } = await query.returns<ExistingTeamByForemanRow[]>();
+  if (error || !data || data.length === 0) {
+    return null;
+  }
+
+  return data[0];
+}
+
 async function saveTeamViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -329,6 +462,51 @@ async function saveTeamViaRpc(params: {
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
+  async function saveTeamDirectFallback() {
+    const basePayload = {
+      tenant_id: params.tenantId,
+      name: params.name,
+      vehicle_plate: params.vehiclePlate,
+      service_center_id: params.serviceCenterId,
+      team_type_id: params.teamTypeId,
+      foreman_person_id: params.foremanId,
+      ativo: true,
+      cancellation_reason: null as string | null,
+      canceled_at: null as string | null,
+      canceled_by: null as string | null,
+      created_by: params.actorUserId,
+      updated_by: params.actorUserId,
+    };
+
+    const operation = !params.teamId
+      ? params.supabase.from("teams").insert(basePayload)
+      : params.supabase
+        .from("teams")
+        .update({
+          name: params.name,
+          vehicle_plate: params.vehiclePlate,
+          service_center_id: params.serviceCenterId,
+          team_type_id: params.teamTypeId,
+          foreman_person_id: params.foremanId,
+          updated_by: params.actorUserId,
+        })
+        .eq("tenant_id", params.tenantId)
+        .eq("id", params.teamId);
+
+    const { error } = await operation;
+    if (error) {
+      const mappedError = mapTeamDbError(error, "Falha ao salvar equipe.");
+      return {
+        ok: false,
+        status: mappedError.status,
+        message: mappedError.message,
+        reason: mappedError.reason,
+      } as const;
+    }
+
+    return { ok: true, updatedAt: null } as const;
+  }
+
   const { data, error } = await params.supabase.rpc("save_team_record", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -343,11 +521,25 @@ async function saveTeamViaRpc(params: {
   });
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao salvar equipe." } as const;
+    if (isMissingFunctionError(error, "save_team_record")) {
+      return saveTeamDirectFallback();
+    }
+
+    const mappedError = mapTeamDbError(error, "Falha ao salvar equipe.");
+    return {
+      ok: false,
+      status: mappedError.status,
+      message: mappedError.message,
+      reason: mappedError.reason,
+    } as const;
   }
 
   const result = (data ?? {}) as TeamSaveRpcResult;
   if (result.success !== true) {
+    if (isMissingFunctionError({ message: result.message }, "save_team_record")) {
+      return saveTeamDirectFallback();
+    }
+
     return {
       ok: false,
       status: Number(result.status ?? 500),
@@ -368,6 +560,43 @@ async function setTeamStatusViaRpc(params: {
   reason: string;
   expectedUpdatedAt: string | null;
 }) {
+  async function setTeamStatusDirectFallback() {
+    const nowIso = new Date().toISOString();
+    const payload = params.action === "ACTIVATE"
+      ? {
+        ativo: true,
+        cancellation_reason: null as string | null,
+        canceled_at: null as string | null,
+        canceled_by: null as string | null,
+        updated_by: params.actorUserId,
+      }
+      : {
+        ativo: false,
+        cancellation_reason: params.reason,
+        canceled_at: nowIso,
+        canceled_by: params.actorUserId,
+        updated_by: params.actorUserId,
+      };
+
+    const { error } = await params.supabase
+      .from("teams")
+      .update(payload)
+      .eq("tenant_id", params.tenantId)
+      .eq("id", params.teamId);
+
+    if (error) {
+      const mappedError = mapTeamDbError(error, "Falha ao atualizar status da equipe.");
+      return {
+        ok: false,
+        status: mappedError.status,
+        message: mappedError.message,
+        reason: mappedError.reason,
+      } as const;
+    }
+
+    return { ok: true, updatedAt: null } as const;
+  }
+
   const { data, error } = await params.supabase.rpc("set_team_record_status", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -378,11 +607,25 @@ async function setTeamStatusViaRpc(params: {
   });
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao atualizar status da equipe." } as const;
+    if (isMissingFunctionError(error, "set_team_record_status")) {
+      return setTeamStatusDirectFallback();
+    }
+
+    const mappedError = mapTeamDbError(error, "Falha ao atualizar status da equipe.");
+    return {
+      ok: false,
+      status: mappedError.status,
+      message: mappedError.message,
+      reason: mappedError.reason,
+    } as const;
   }
 
   const result = (data ?? {}) as TeamSaveRpcResult;
   if (result.success !== true) {
+    if (isMissingFunctionError({ message: result.message }, "set_team_record_status")) {
+      return setTeamStatusDirectFallback();
+    }
+
     return {
       ok: false,
       status: Number(result.status ?? 500),
@@ -676,6 +919,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
     }
 
+    const existingTeamByForeman = await fetchExistingTeamByForeman({
+      supabase,
+      tenantId: appUser.tenant_id,
+      foremanId: input.foremanId,
+      excludeTeamId: null,
+    });
+    if (existingTeamByForeman) {
+      return NextResponse.json(
+        { message: "Ja existe equipe cadastrada para este encarregado. Selecione outro encarregado." },
+        { status: 409 },
+      );
+    }
+
     const saveResult = await saveTeamViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
@@ -769,6 +1025,19 @@ export async function PUT(request: NextRequest) {
 
     if (!nextForeman) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
+    }
+
+    const existingTeamByForeman = await fetchExistingTeamByForeman({
+      supabase,
+      tenantId: appUser.tenant_id,
+      foremanId: input.foremanId,
+      excludeTeamId: teamId,
+    });
+    if (existingTeamByForeman) {
+      return NextResponse.json(
+        { message: "Ja existe equipe cadastrada para este encarregado. Selecione outro encarregado." },
+        { status: 409 },
+      );
     }
 
     const changes: Record<string, HistoryChange> = {};

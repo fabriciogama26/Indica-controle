@@ -263,6 +263,7 @@ export function PeoplePageView() {
   const isEditing = Boolean(form.id);
   const statusAction = statusPerson?.isActive ? "cancel" : "activate";
   const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
+  const hasJobTitles = jobTitles.length > 0;
 
   const getJobTitleTypesForJob = useCallback(
     (jobTitleId: string) =>
@@ -279,6 +280,8 @@ export function PeoplePageView() {
     () => getJobTitleTypesForJob(filterDraft.jobTitleId),
     [filterDraft.jobTitleId, getJobTitleTypesForJob],
   );
+  const hasTypeOptionsForSelectedJob = !form.jobTitleId || formTypeOptions.length > 0;
+  const canSubmitPersonForm = hasJobTitles && hasTypeOptionsForSelectedJob && !isSaving;
 
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) {
@@ -498,6 +501,22 @@ export function PeoplePageView() {
       return;
     }
 
+    if (!hasJobTitles) {
+      setFeedback({
+        type: "error",
+        message: "Nao ha cargos ativos para cadastro. Cadastre ao menos um cargo em Cadastro Base > Cargo.",
+      });
+      return;
+    }
+
+    if (!hasTypeOptionsForSelectedJob) {
+      setFeedback({
+        type: "error",
+        message: "Nao ha tipos ativos para o cargo selecionado. Cadastre ao menos um tipo para este cargo.",
+      });
+      return;
+    }
+
     setIsSaving(true);
     setFeedback(null);
 
@@ -707,6 +726,16 @@ export function PeoplePageView() {
 
       <article className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
         <h3 className={styles.cardTitle}>{formTitle}</h3>
+        {!isLoadingMeta && !hasJobTitles ? (
+          <div className={styles.feedbackError}>
+            Nao ha cargos ativos para cadastro. Cadastre ao menos um cargo em Cadastro Base &gt; Cargo.
+          </div>
+        ) : null}
+        {!isLoadingMeta && form.jobTitleId && !hasTypeOptionsForSelectedJob ? (
+          <div className={styles.feedbackError}>
+            Nao ha tipos ativos para o cargo selecionado. Cadastre ao menos um tipo para este cargo.
+          </div>
+        ) : null}
 
         <form className={styles.formGrid} onSubmit={handleSubmit}>
           <label className={styles.field}>
@@ -723,12 +752,15 @@ export function PeoplePageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Matricula</span>
+            <span>
+              Matricula <span className="requiredMark">*</span>
+            </span>
             <input
               type="text"
               value={form.matriculation}
               onChange={(event) => setForm((current) => ({ ...current, matriculation: event.target.value }))}
               placeholder="Ex.: 000123"
+              required
             />
           </label>
 
@@ -756,13 +788,18 @@ export function PeoplePageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Tipo</span>
+            <span>
+              Tipo <span className="requiredMark">*</span>
+            </span>
             <select
               value={form.jobTitleTypeId}
               onChange={(event) => setForm((current) => ({ ...current, jobTitleTypeId: event.target.value }))}
               disabled={isLoadingMeta || !form.jobTitleId}
+              required
             >
-              <option value="">{form.jobTitleId ? "Selecione" : "Selecione o cargo primeiro"}</option>
+              <option value="" disabled>
+                {form.jobTitleId ? "Selecione" : "Selecione o cargo primeiro"}
+              </option>
               {formTypeOptions.map((jobTitleType) => (
                 <option key={jobTitleType.id} value={jobTitleType.id}>
                   {jobTitleType.name}
@@ -793,7 +830,7 @@ export function PeoplePageView() {
                 Cancelar
               </button>
             ) : null}
-            <button type="submit" className={styles.primaryButton} disabled={isSaving}>
+            <button type="submit" className={styles.primaryButton} disabled={!canSubmitPersonForm}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
           </div>

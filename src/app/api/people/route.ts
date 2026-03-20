@@ -68,9 +68,9 @@ type HistoryChange = {
 
 type CreatePersonPayload = {
   name: string;
-  matriculation?: string | null;
+  matriculation: string;
   jobTitleId: string;
-  jobTitleTypeId?: string | null;
+  jobTitleTypeId: string;
   jobLevel?: string | null;
 };
 
@@ -93,6 +93,13 @@ type PersonSaveRpcResult = {
   message?: string;
   person_id?: string;
   updated_at?: string;
+};
+
+type DbErrorShape = {
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+  code?: string | null;
 };
 
 function parsePositiveInteger(value: string | null, fallback: number) {
@@ -119,6 +126,109 @@ function normalizeNullableText(value: unknown) {
 function normalizeNullableMatriculation(value: unknown) {
   const normalized = normalizeMatriculation(value);
   return normalized || null;
+}
+
+function normalizeDbErrorText(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isMissingFunctionError(error: unknown, functionName: string) {
+  const rawMessage = normalizeDbErrorText((error as DbErrorShape | null)?.message);
+  return rawMessage.includes("function") && rawMessage.includes(functionName.toLowerCase());
+}
+
+function isMatriculationNumericTypeMismatchError(error: unknown) {
+  const dbError = (error ?? {}) as DbErrorShape;
+  const message = normalizeDbErrorText(dbError.message);
+  const details = normalizeDbErrorText(dbError.details);
+  const hint = normalizeDbErrorText(dbError.hint);
+  const combined = `${message} ${details} ${hint}`.trim();
+
+  const hasNumericColumnMention = (
+    combined.includes("column \"matriculation\" is of type numeric")
+    || combined.includes("column matriculation is of type numeric")
+    || combined.includes("matriculation is of type numeric")
+  );
+  const hasTextValueMention = (
+    combined.includes("expression is of type text")
+    || combined.includes("expression is of type character varying")
+    || combined.includes("expression is of type varchar")
+  );
+
+  return (
+    hasNumericColumnMention
+    || (combined.includes("matriculation") && hasTextValueMention)
+  );
+}
+
+function mapPersonDbError(error: unknown, fallbackMessage: string) {
+  const dbError = (error ?? {}) as DbErrorShape;
+  const message = normalizeDbErrorText(dbError.message);
+  const details = normalizeDbErrorText(dbError.details);
+  const hint = normalizeDbErrorText(dbError.hint);
+  const combined = `${message} ${details} ${hint}`.trim();
+
+  if (combined.includes("duplicate key") || combined.includes("people_unique_identity")) {
+    return {
+      status: 409,
+      message: "Ja existe pessoa com o mesmo nome, matricula, cargo, tipo e nivel no tenant atual.",
+      reason: "DUPLICATE_PERSON_IDENTITY",
+    } as const;
+  }
+
+  if (combined.includes("people_job_title_type_tenant_fk")) {
+    return {
+      status: 422,
+      message: "Tipo invalido para o cargo selecionado.",
+      reason: "INVALID_JOB_TITLE_TYPE",
+    } as const;
+  }
+
+  if (combined.includes("people_job_level_tenant_fk")) {
+    return {
+      status: 422,
+      message: "Nivel invalido para o tenant atual.",
+      reason: "INVALID_JOB_LEVEL",
+    } as const;
+  }
+
+  if (
+    combined.includes("chk_people_matriculation_not_blank")
+    || combined.includes("null value in column \"matriculation\"")
+  ) {
+    return {
+      status: 400,
+      message: "Matricula obrigatoria para salvar pessoa.",
+      reason: "MATRICULATION_REQUIRED",
+    } as const;
+  }
+
+  if (isMatriculationNumericTypeMismatchError(error) || combined.includes("invalid input syntax for type numeric")) {
+    return {
+      status: 400,
+      message: "Matricula invalida para este ambiente. Use somente numeros.",
+      reason: "INVALID_MATRICULATION_FORMAT",
+    } as const;
+  }
+
+  if (combined.includes("save_person_record") && combined.includes("function")) {
+    return {
+      status: 500,
+      message: "RPC save_person_record indisponivel no banco. Aplique a migration 079_create_people_and_invite_write_rpcs.sql.",
+      reason: "RPC_MISSING",
+    } as const;
+  }
+
+  const detailsMessage = [dbError.message, dbError.hint, dbError.details]
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .join(" | ");
+
+  return {
+    status: 500,
+    message: detailsMessage ? `${fallbackMessage} ${detailsMessage}` : fallbackMessage,
+    reason: null,
+  } as const;
 }
 
 function formatComparableValue(value: unknown) {
@@ -349,6 +459,98 @@ async function savePersonViaRpc(params: {
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
+  function parseMatriculationAsNumeric(value: string | null) {
+    if (!value) {
+      return { ok: true, value: null as number | null } as const;
+    }
+
+    const digitsOnly = /^\d+$/.test(value);
+    if (!digitsOnly) {
+      return { ok: false, message: "Matricula invalida para este ambiente. Use somente numeros." } as const;
+    }
+
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue) || !Number.isSafeInteger(numericValue)) {
+      return { ok: false, message: "Matricula numerica invalida para este ambiente." } as const;
+    }
+
+    return { ok: true, value: numericValue } as const;
+  }
+
+  async function savePersonDirectWithMatriculation(matriculation: string | number | null) {
+    const basePayload: Record<string, string | number | boolean | null> = {
+      tenant_id: params.tenantId,
+      nome: params.name,
+      matriculation,
+      job_title_id: params.jobTitleId,
+      job_title_type_id: params.jobTitleTypeId,
+      job_level: params.jobLevel,
+      ativo: true,
+    };
+
+    if (!params.personId) {
+      return params.supabase.from("people").insert(basePayload);
+    }
+
+    const updatePayload = {
+      nome: params.name,
+      matriculation,
+      job_title_id: params.jobTitleId,
+      job_title_type_id: params.jobTitleTypeId,
+      job_level: params.jobLevel,
+    };
+
+    return params.supabase
+      .from("people")
+      .update(updatePayload)
+      .eq("tenant_id", params.tenantId)
+      .eq("id", params.personId);
+  }
+
+  async function savePersonDirectFallback() {
+    const { error } = await savePersonDirectWithMatriculation(params.matriculation);
+
+    if (error) {
+      if (isMatriculationNumericTypeMismatchError(error)) {
+        const numericMatriculation = parseMatriculationAsNumeric(params.matriculation);
+        if (!numericMatriculation.ok) {
+          return {
+            ok: false,
+            status: 400,
+            message: numericMatriculation.message,
+            reason: "INVALID_MATRICULATION_FORMAT",
+          } as const;
+        }
+
+        const { error: numericInsertError } = await savePersonDirectWithMatriculation(
+          numericMatriculation.value,
+        );
+
+        if (numericInsertError) {
+          const mappedNumericError = mapPersonDbError(numericInsertError, "Falha ao salvar pessoa.");
+          return {
+            ok: false,
+            status: mappedNumericError.status,
+            message: mappedNumericError.message,
+            reason: mappedNumericError.reason,
+          } as const;
+        }
+
+        return { ok: true, updatedAt: null } as const;
+      }
+
+      const mappedError = mapPersonDbError(error, "Falha ao salvar pessoa.");
+      return {
+        ok: false,
+        status: mappedError.status,
+        message: mappedError.message,
+        reason: mappedError.reason,
+      } as const;
+    }
+
+    return { ok: true, updatedAt: null } as const;
+  }
+
   const { data, error } = await params.supabase.rpc("save_person_record", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -363,11 +565,25 @@ async function savePersonViaRpc(params: {
   });
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao salvar pessoa." } as const;
+    if (isMissingFunctionError(error, "save_person_record") || isMatriculationNumericTypeMismatchError(error)) {
+      return savePersonDirectFallback();
+    }
+
+    const mappedError = mapPersonDbError(error, "Falha ao salvar pessoa.");
+    return {
+      ok: false,
+      status: mappedError.status,
+      message: mappedError.message,
+      reason: mappedError.reason,
+    } as const;
   }
 
   const result = (data ?? {}) as PersonSaveRpcResult;
   if (result.success !== true) {
+    if (isMatriculationNumericTypeMismatchError({ message: result.message })) {
+      return savePersonDirectFallback();
+    }
+
     return {
       ok: false,
       status: Number(result.status ?? 500),
@@ -667,7 +883,7 @@ export async function POST(request: NextRequest) {
       jobLevel: normalizeNullableText(body.jobLevel),
     };
 
-    if (!input.name || !input.jobTitleId) {
+    if (!input.name || !input.matriculation || !input.jobTitleId || !input.jobTitleTypeId) {
       return NextResponse.json({ message: "Preencha os campos obrigatorios da pessoa." }, { status: 400 });
     }
 
@@ -676,16 +892,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Cargo invalido para o tenant atual." }, { status: 422 });
     }
 
-    if (input.jobTitleTypeId) {
-      const jobTitleType = await fetchJobTitleTypeById(
-        supabase,
-        appUser.tenant_id,
-        input.jobTitleId,
-        input.jobTitleTypeId,
-      );
-      if (!jobTitleType) {
-        return NextResponse.json({ message: "Tipo invalido para o cargo selecionado." }, { status: 422 });
-      }
+    const jobTitleType = await fetchJobTitleTypeById(
+      supabase,
+      appUser.tenant_id,
+      input.jobTitleId,
+      input.jobTitleTypeId,
+    );
+    if (!jobTitleType) {
+      return NextResponse.json({ message: "Tipo invalido para o cargo selecionado." }, { status: 422 });
     }
 
     if (input.jobLevel) {
@@ -759,7 +973,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Atualize a lista antes de editar a pessoa." }, { status: 400 });
     }
 
-    if (!input.name || !input.jobTitleId) {
+    if (!input.name || !input.matriculation || !input.jobTitleId || !input.jobTitleTypeId) {
       return NextResponse.json({ message: "Preencha os campos obrigatorios da pessoa." }, { status: 400 });
     }
 
@@ -790,11 +1004,14 @@ export async function PUT(request: NextRequest) {
       currentPerson.job_title_id,
       currentPerson.job_title_type_id,
     );
-    const nextJobTitleType = input.jobTitleTypeId
-      ? await fetchJobTitleTypeById(supabase, appUser.tenant_id, input.jobTitleId, input.jobTitleTypeId)
-      : null;
+    const nextJobTitleType = await fetchJobTitleTypeById(
+      supabase,
+      appUser.tenant_id,
+      input.jobTitleId,
+      input.jobTitleTypeId,
+    );
 
-    if (input.jobTitleTypeId && !nextJobTitleType) {
+    if (!nextJobTitleType) {
       return NextResponse.json({ message: "Tipo invalido para o cargo selecionado." }, { status: 422 });
     }
 
