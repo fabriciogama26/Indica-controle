@@ -565,6 +565,10 @@ function scheduleStatusClassName(status: ProgrammingStatus) {
   return styles.weekCardPlanned;
 }
 
+function isInactiveProgrammingStatus(status: ProgrammingStatus) {
+  return status === "ADIADA" || status === "CANCELADA";
+}
+
 function escapeCsvValue(value: string | number) {
   const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
   if (raw.includes(";") || raw.includes('"')) {
@@ -672,7 +676,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   const filteredSchedules = useMemo(() => {
     return schedules.filter((item) => {
-      if (!isDateInRange(item.date, activeFilters.startDate, activeFilters.endDate)) {
+      const shouldApplyDateFilter = !isInactiveProgrammingStatus(item.status);
+      if (shouldApplyDateFilter && !isDateInRange(item.date, activeFilters.startDate, activeFilters.endDate)) {
         return false;
       }
 
@@ -2209,7 +2214,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         </div>
       </article>
 
-      <article className={styles.card}>
+      {isVisualizationMode ? (
+        <article className={`${styles.card} ${styles.calendarTopCard}`}>
         <div className={styles.calendarHeader}>
           <h3 className={styles.cardTitle}>Calendario Semanal de Programacao</h3>
           <div className={styles.calendarActions}>
@@ -2233,6 +2239,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               onClick={() => setWeekStartDate((current) => addDays(current, 7))}
             >
               Proxima semana
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => void loadBoardData()}
+              disabled={isLoadingList}
+            >
+              {isLoadingList ? "Atualizando..." : "Atualizar"}
             </button>
           </div>
         </div>
@@ -2275,8 +2289,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                         daySchedules.map((schedule) => {
                           const project = projectMap.get(schedule.projectId);
                           const sob = project?.code ?? schedule.projectId;
-                          const hasSgd = Boolean(schedule.documents?.sgd?.number?.trim());
-                          const hasPi = Boolean(schedule.documents?.pi?.number?.trim());
+                          const hasSgd = Boolean(schedule.documents?.sgd?.approvedAt?.trim());
+                          const hasPi = Boolean(schedule.documents?.pi?.approvedAt?.trim());
 
                           return (
                             <article
@@ -2287,19 +2301,47 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                                 <strong>{sob}</strong>
                               </div>
 
-                              <p className={styles.weekCardTime}>{schedule.startTime} - {schedule.endTime}</p>
-
                               <div className={styles.weekIndicators}>
                                 <span className={hasSgd ? styles.weekIndicatorOn : styles.weekIndicatorOff}>SGD</span>
                                 <span className={hasPi ? styles.weekIndicatorOn : styles.weekIndicatorOff}>PI</span>
                               </div>
 
                               <div className={styles.weekCardActions}>
-                                <button type="button" className={styles.weekActionButton} onClick={() => setDetailsTarget(schedule)}>
-                                  Ver detalhe
+                                <button
+                                  type="button"
+                                  className={styles.weekActionButton}
+                                  onClick={() => setDetailsTarget(schedule)}
+                                  title="Ver detalhe"
+                                  aria-label={`Ver detalhe da programacao ${sob}`}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path
+                                      d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+                                  </svg>
                                 </button>
-                                <button type="button" className={styles.weekActionButton} onClick={() => void openHistory(schedule)}>
-                                  Historico
+                                <button
+                                  type="button"
+                                  className={styles.weekActionButton}
+                                  onClick={() => void openHistory(schedule)}
+                                  title="Historico"
+                                  aria-label={`Historico da programacao ${sob}`}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path
+                                      d="M3.75 12a8.25 8.25 0 1 0 2.25-5.69M3.75 4.75v4h4"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                    <path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                                  </svg>
                                 </button>
                               </div>
                             </article>
@@ -2317,7 +2359,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             <div className={styles.weekCalendarEmpty}>Nenhuma equipe disponivel para os filtros atuais.</div>
           )}
         </div>
-      </article>
+        </article>
+      ) : null}
 
       {detailsTarget ? (
         <div className={styles.modalOverlay} onClick={() => setDetailsTarget(null)}>
