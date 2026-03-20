@@ -26,13 +26,16 @@ function normalizeName(value: string | null | undefined) {
   return String(value ?? "").trim();
 }
 
+const FOREMAN_JOB_TITLE_FILTER =
+  "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%,code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
+
 async function fetchForemen(supabase: SupabaseClient, tenantId: string) {
   const { data: jobTitles, error: jobTitleError } = await supabase
     .from("job_titles")
     .select("id")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
-    .or("code.ilike.ENCARREGADO,name.ilike.ENCARREGADO")
+    .or(FOREMAN_JOB_TITLE_FILTER)
     .returns<JobTitleIdRow[]>();
 
   if (jobTitleError || !jobTitles || jobTitles.length === 0) {

@@ -4,7 +4,7 @@ Visao geral
 -----------
 - Tela para cadastro e manutencao de equipes operacionais por tenant.
 - Cada equipe possui: nome, placa do veiculo, base, tipo e encarregado.
-- O encarregado e vinculado a `people`, filtrando somente quem tem cargo `ENCARREGADO`.
+- O encarregado e vinculado a `people`, filtrando cargos com correspondencia em `ENCARREGADO` ou `SUPERVISOR`.
 - O tipo e vinculado ao catalogo `team_types` por tenant.
 - A base corresponde ao catalogo `project_service_centers` do tenant.
 
@@ -23,6 +23,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/054_enforce_team_unique_by_name_foreman_plate.sql`
 - Base SQL: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
 - Base SQL: `supabase/migrations/077_create_admin_write_rpcs.sql`
+- Base SQL: `supabase/migrations/093_enforce_single_team_per_foreman_rpc.sql`
 
 Cadastro
 --------
@@ -35,7 +36,8 @@ Cadastro
 - Regras:
   - Base deve existir no tenant e estar ativa em `project_service_centers`.
   - Encarregado deve existir no tenant e estar ativo em `people`.
-  - Encarregado deve ter cargo `ENCARREGADO`.
+  - Encarregado deve ter cargo com correspondencia em `ENCARREGADO` ou `SUPERVISOR`.
+  - Nao permitir cadastrar/editar equipe quando ja existir outra equipe com o mesmo encarregado no tenant.
   - Tipo deve existir no tenant e estar ativo em `team_types`.
   - Bloqueio de duplicidade por combinacao (`tenant_id`, `foreman_person_id`, `name`, `vehicle_plate`).
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear escrita concorrente.
@@ -107,6 +109,12 @@ Atualizacao 2026-03
 - Tela e API passaram a carregar, filtrar, listar e detalhar a `Base` da equipe.
 - Tela e API passam a bloquear sobrescrita silenciosa na edicao e no cancelamento/ativacao por `expectedUpdatedAt`.
 - Tela e API passam a delegar cadastro, edicao e status para RPC transacional com historico no banco.
+- Revisao de cadastro (2026-03-20): formulario bloqueia `Cadastrar/Atualizar` quando faltarem prerequisitos de metadados (`Base`, `Tipo de Equipe` e/ou `Encarregado`).
+- Revisao de cadastro (2026-03-20): tela passa a exibir mensagem explicita listando os prerequisitos faltantes.
+- Revisao de cadastro (2026-03-20): filtro de cargos para encarregado foi ampliado para `ENCARREGADO`/`SUPERVISOR` em `code` e `name` com busca parcial.
+- Revisao de cadastro (2026-03-20): API de equipes recebeu mapeamento de erro detalhado e fallback de escrita/status quando RPC `save_team_record`/`set_team_record_status` nao estiver disponivel.
+- Revisao de cadastro (2026-03-20): API passou a bloquear `POST/PUT` quando ja existe equipe com o mesmo encarregado no tenant (retorno `409`).
+- Revisao de cadastro (2026-03-20): migration `093_enforce_single_team_per_foreman_rpc.sql` reforca o mesmo bloqueio no nivel da RPC `save_team_record`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -152,6 +160,7 @@ Ajuda contextual
   - `supabase/migrations/052_create_teams_and_page_permissions.sql` (novo)
   - `supabase/migrations/053_create_team_types_and_link_teams.sql` (novo)
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
+  - `supabase/migrations/093_enforce_single_team_per_foreman_rpc.sql` (novo)
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -159,9 +168,16 @@ Ajuda contextual
   - Antes: equipes nao possuíam base vinculada.
   - Depois: o cadastro/listagem de equipes inclui base real por `Centro de servico`, o que alimenta a programacao operacional.
   - Depois: a edicao e a troca de status tambem passam a recusar dados stale em vez de aplicar `last-write-wins`.
+  - Depois (2026-03-20): o submit nao e mais tentado sem metadados minimos e a tela orienta exatamente qual cadastro base falta.
+  - Depois (2026-03-20): a busca de encarregados fica menos rigida para nao falhar quando o cargo tiver sufixos/prefixos.
+  - Depois (2026-03-20): erros de banco em `POST/PUT/PATCH` passam a retornar diagnostico especifico e o backend tenta fallback direto quando as RPCs de equipes ainda nao existem no ambiente.
+  - Depois (2026-03-20): cadastro/edicao recusa encarregado ja vinculado em outra equipe, evitando duplicidade operacional por responsavel.
 - Funcoes/hooks/constantes tocadas:
   - `TeamsPageView`, `loadTeams`, `handleSubmit`, `startEdit`, `confirmStatusChange`
+  - `missingTeamMetaReasons`, `canSubmitTeamForm`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/teams`
-  - `saveTeamViaRpc`, `setTeamStatusViaRpc`
+  - `saveTeamViaRpc`, `setTeamStatusViaRpc`, `mapTeamDbError`, `isMissingFunctionError`, `fetchExistingTeamByForeman`
+  - `FOREMAN_JOB_TITLE_FILTER` em `/api/teams` e `/api/teams/meta`
   - `save_team_record`, `set_team_record_status`
+  - `093_enforce_single_team_per_foreman_rpc.sql` (regra `DUPLICATE_TEAM_FOREMAN` na RPC)
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`

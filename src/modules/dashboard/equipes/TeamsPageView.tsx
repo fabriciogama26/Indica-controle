@@ -258,6 +258,24 @@ export function TeamsPageView() {
   const isEditing = Boolean(form.id);
   const statusAction = statusTeam?.isActive ? "cancel" : "activate";
   const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
+  const missingTeamMetaReasons = useMemo(() => {
+    if (isLoadingMeta) {
+      return [] as string[];
+    }
+
+    const reasons: string[] = [];
+    if (serviceCenters.length === 0) {
+      reasons.push("Base (Centro de Servico)");
+    }
+    if (teamTypes.length === 0) {
+      reasons.push("Tipo de Equipe");
+    }
+    if (foremen.length === 0) {
+      reasons.push("Encarregado");
+    }
+    return reasons;
+  }, [foremen.length, isLoadingMeta, serviceCenters.length, teamTypes.length]);
+  const canSubmitTeamForm = missingTeamMetaReasons.length === 0 && !isSaving;
 
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) {
@@ -475,6 +493,14 @@ export function TeamsPageView() {
       return;
     }
 
+    if (missingTeamMetaReasons.length > 0) {
+      setFeedback({
+        type: "error",
+        message: `Cadastre os prerequisitos antes de salvar equipe: ${missingTeamMetaReasons.join(", ")}.`,
+      });
+      return;
+    }
+
     setIsSaving(true);
     setFeedback(null);
 
@@ -676,6 +702,11 @@ export function TeamsPageView() {
 
       <article className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
         <h3 className={styles.cardTitle}>{formTitle}</h3>
+        {missingTeamMetaReasons.length > 0 ? (
+          <div className={styles.feedbackError}>
+            Cadastre os prerequisitos antes de salvar equipe: {missingTeamMetaReasons.join(", ")}.
+          </div>
+        ) : null}
 
         <form className={styles.formGrid} onSubmit={handleSubmit}>
           <label className={styles.field}>
@@ -773,7 +804,7 @@ export function TeamsPageView() {
                 Cancelar
               </button>
             ) : null}
-            <button type="submit" className={styles.primaryButton} disabled={isSaving}>
+            <button type="submit" className={styles.primaryButton} disabled={!canSubmitTeamForm}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
           </div>
