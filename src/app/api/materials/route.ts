@@ -715,7 +715,6 @@ export async function PATCH(request: NextRequest) {
       return buildConcurrencyConflictResponse(`Material ${currentMaterial.codigo} ja esta ativo.`, "STATUS_ALREADY_CHANGED");
     }
 
-    const nowIso = new Date().toISOString();
     const statusResult = await setMaterialStatusViaRpc({
       supabase,
       tenantId: appUser.tenant_id,

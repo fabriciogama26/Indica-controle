@@ -110,6 +110,23 @@ type ProgrammingResponse = {
   supportOptions?: SupportOptionItem[];
   sgdTypes?: SgdTypeItem[];
   schedules?: ScheduleItem[];
+  nextEtapaNumber?: number;
+  message?: string;
+};
+
+type StageValidationTeamSummary = {
+  teamId: string;
+  teamName: string;
+  highestStage: number;
+  existingStages: number[];
+  existingDates: string[];
+};
+
+type StageValidationResponse = {
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: StageValidationTeamSummary[];
   message?: string;
 };
 
@@ -122,6 +139,10 @@ type BatchCreateResponse = {
   success?: boolean;
   insertedCount?: number;
   message?: string;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: StageValidationTeamSummary[];
 };
 
 type SaveProgrammingResponse = {
@@ -130,6 +151,8 @@ type SaveProgrammingResponse = {
   updatedAt?: string;
   warning?: string;
   error?: "conflict";
+  reason?: string | null;
+  detail?: string | null;
   currentUpdatedAt?: string | null;
   updatedBy?: string | null;
   changedFields?: string[];
@@ -141,6 +164,10 @@ type SaveProgrammingResponse = {
     updatedAt: string;
   } | null;
   message?: string;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: StageValidationTeamSummary[];
 };
 
 type HistoryChange = {
@@ -160,6 +187,12 @@ type ProgrammingHistoryItem = {
 type ProgrammingHistoryResponse = {
   history?: ProgrammingHistoryItem[];
   message?: string;
+};
+
+type AlertModalState = {
+  title: string;
+  message: string;
+  details?: string[];
 };
 
 type FormState = {
@@ -246,6 +279,25 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 };
 const HISTORY_ALLOWED_ACTIONS = new Set(["UPDATE", "RESCHEDULE", "ADIADA", "CANCELADA"]);
 const HISTORY_HIDDEN_FIELDS = new Set(["isActive", "cancellationReason", "canceledAt", "statusChangedAt"]);
+const VALIDATION_FIELD_LABELS: Record<string, string> = {
+  projectId: "Projeto (SOB)",
+  teamIds: "Equipes",
+  date: "Data execucao",
+  period: "Periodo",
+  startTime: "Hora inicio",
+  endTime: "Hora termino",
+  outageStartTime: "Inicio de desligamento",
+  outageEndTime: "Termino de desligamento",
+  feeder: "Alimentador",
+  posteQty: "POSTE",
+  estruturaQty: "ESTRUTURA",
+  trafoQty: "TRAFO",
+  redeQty: "REDE",
+  etapaNumber: "ETAPA",
+  workCompletionStatus: "Estado Trabalho",
+  affectedCustomers: "Nº Clientes Afetados",
+  sgdTypeId: "Tipo de SGD",
+};
 
 function toIsoDate(date: Date) {
   const year = date.getFullYear();
@@ -575,6 +627,20 @@ function formatHistoryValue(field: string, value: string | null) {
     return "-";
   }
 
+  if (
+    field === "etapaNumber"
+    || field === "posteQty"
+    || field === "estruturaQty"
+    || field === "trafoQty"
+    || field === "redeQty"
+    || field === "affectedCustomers"
+  ) {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) {
+      return String(Math.trunc(numericValue));
+    }
+  }
+
   if (field === "executionDate") {
     return formatDate(value);
   }
@@ -675,6 +741,148 @@ function buildConflictFeedbackMessage(payload: SaveProgrammingResponse | null, f
   return `${payload.message ?? fallback}${updatedBy || updatedAt ? ` Alterada por ${updatedBy ?? "outro usuario"}${updatedAt ? ` em ${updatedAt}` : ""}.` : ""}${changedFields}`;
 }
 
+function buildFieldValidationDetails(fields: string[]) {
+  const labels = Array.from(
+    new Set(
+      fields
+        .map((field) => VALIDATION_FIELD_LABELS[field] ?? null)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  return labels.length ? labels.map((label) => `Revise o campo ${label}.`) : [];
+}
+
+function buildConflictAlertDetails(payload: SaveProgrammingResponse | null) {
+  if (!payload) {
+    return [];
+  }
+
+  const details: string[] = [];
+  if (payload.reason) {
+    details.push(`Codigo do erro: ${payload.reason}.`);
+  }
+
+  if (payload.detail) {
+    details.push(payload.detail);
+  }
+
+  if (payload.updatedBy || payload.currentUpdatedAt) {
+    details.push(
+      `Ultima alteracao: ${payload.updatedBy?.trim() || "outro usuario"}${payload.currentUpdatedAt ? ` em ${formatDateTime(payload.currentUpdatedAt)}` : ""}.`,
+    );
+  }
+
+  if (Array.isArray(payload.changedFields) && payload.changedFields.length) {
+    details.push(`Campos em conflito: ${payload.changedFields.join(", ")}.`);
+  }
+
+  if (payload.currentRecord) {
+    details.push(
+      `Versao atual: ${formatDate(payload.currentRecord.executionDate)} | ${payload.currentRecord.startTime} - ${payload.currentRecord.endTime}.`,
+    );
+  }
+
+  return details;
+}
+
+function buildLocalStageConflictSummary(params: {
+  schedules: ScheduleItem[];
+  teams: TeamItem[];
+  projectId: string;
+  teamIds: string[];
+  enteredEtapaNumber: number;
+  excludeProgrammingId?: string | null;
+  currentEditingStage?: number | null;
+  currentEditingDate?: string | null;
+  currentEditingTeamId?: string | null;
+}) {
+  const teamNameMap = new Map(params.teams.map((item) => [item.id, item.name]));
+  const relevantSchedules = params.schedules.filter((item) => {
+    if (item.projectId !== params.projectId) {
+      return false;
+    }
+
+    if (!params.teamIds.includes(item.teamId)) {
+      return false;
+    }
+
+    if (params.excludeProgrammingId && item.id === params.excludeProgrammingId) {
+      return false;
+    }
+
+    if (item.etapaNumber === null || item.etapaNumber < params.enteredEtapaNumber) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (!relevantSchedules.length) {
+    return null;
+  }
+
+  const summaries = Array.from(new Set(relevantSchedules.map((item) => item.teamId)))
+    .map((teamId) => {
+      const items = relevantSchedules.filter((item) => item.teamId === teamId);
+      const existingStages = Array.from(
+        new Set(
+          items
+            .map((item) => Number(item.etapaNumber ?? 0))
+            .filter((stage) => Number.isFinite(stage) && stage >= params.enteredEtapaNumber),
+        ),
+      ).sort((left, right) => left - right);
+      const existingDates = Array.from(new Set(items.map((item) => item.date))).sort();
+      const highestStage = existingStages.length ? Math.max(...existingStages) : 0;
+
+      return {
+        teamId,
+        teamName: teamNameMap.get(teamId) ?? teamId,
+        highestStage,
+        existingStages,
+        existingDates,
+      } satisfies StageValidationTeamSummary;
+    })
+    .filter((item) => item.existingStages.length > 0)
+    .sort((left, right) => left.teamName.localeCompare(right.teamName));
+
+  if (
+    params.currentEditingTeamId
+    && params.currentEditingStage
+    && params.currentEditingStage > params.enteredEtapaNumber
+  ) {
+    const existingSummary = summaries.find((item) => item.teamId === params.currentEditingTeamId);
+    if (existingSummary) {
+      if (!existingSummary.existingStages.includes(params.currentEditingStage)) {
+        existingSummary.existingStages = [...existingSummary.existingStages, params.currentEditingStage].sort((left, right) => left - right);
+      }
+      if (params.currentEditingDate && !existingSummary.existingDates.includes(params.currentEditingDate)) {
+        existingSummary.existingDates = [...existingSummary.existingDates, params.currentEditingDate].sort();
+      }
+      existingSummary.highestStage = Math.max(existingSummary.highestStage, params.currentEditingStage);
+    } else {
+      summaries.push({
+        teamId: params.currentEditingTeamId,
+        teamName: teamNameMap.get(params.currentEditingTeamId) ?? params.currentEditingTeamId,
+        highestStage: params.currentEditingStage,
+        existingStages: [params.currentEditingStage],
+        existingDates: params.currentEditingDate ? [params.currentEditingDate] : [],
+      });
+      summaries.sort((left, right) => left.teamName.localeCompare(right.teamName));
+    }
+  }
+
+  if (!summaries.length) {
+    return null;
+  }
+
+  return {
+    enteredEtapaNumber: params.enteredEtapaNumber,
+    highestStage: summaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
+    teams: summaries,
+  };
+}
+
 function escapeCsvValue(value: string | number) {
   const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
   if (raw.includes(";") || raw.includes('"')) {
@@ -699,6 +907,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const { session } = useAuth();
   const accessToken = session?.accessToken ?? null;
   const formCardRef = useRef<HTMLElement | null>(null);
+  const feedbackRef = useRef<HTMLDivElement | null>(null);
   const isVisualizationMode = mode === "visualizacao";
 
   const today = useMemo(() => toIsoDate(new Date()), []);
@@ -748,17 +957,24 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [postponeDate, setPostponeDate] = useState("");
   const [isPostponing, setIsPostponing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
+  const [invalidFields, setInvalidFields] = useState<string[]>([]);
+  const [isEtapaManuallyEdited, setIsEtapaManuallyEdited] = useState(false);
+  const [stageConflictModal, setStageConflictModal] = useState<{
+    enteredEtapaNumber: number;
+    highestStage: number;
+    teams: StageValidationTeamSummary[];
+  } | null>(null);
   const commonExportCooldown = useExportCooldown();
   const enelExportCooldown = useExportCooldown();
 
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
   const isEditing = Boolean(editingScheduleId);
+  const currentEditingSchedule = useMemo(
+    () => (editingScheduleId ? schedules.find((item) => item.id === editingScheduleId) ?? null : null),
+    [editingScheduleId, schedules],
+  );
   const canSubmitCancellation = cancelReason.trim().length >= CANCEL_REASON_MIN_LENGTH && !isCancelling;
-  const canSubmitPostpone = Boolean(postponeDate)
-    && postponeTarget !== null
-    && postponeDate > postponeTarget.date
-    && postponeReason.trim().length >= CANCEL_REASON_MIN_LENGTH
-    && !isPostponing;
   const selectedProject = projects.find((item) => item.id === form.projectId) ?? null;
   const availableTeams = useMemo(() => {
     if (!selectedProject) {
@@ -984,7 +1200,83 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     });
   }, [availableTeams, selectedProject]);
 
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+
+    setIsEtapaManuallyEdited(false);
+  }, [form.projectId, form.date, form.teamIds, isEditing]);
+
+  useEffect(() => {
+    if (isVisualizationMode || isEditing || !accessToken) {
+      return;
+    }
+
+    if (!form.projectId || !form.date || !form.teamIds.length) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          nextEtapaProjectId: form.projectId,
+          nextEtapaDate: form.date,
+          nextEtapaTeamIds: form.teamIds.join(","),
+        });
+
+        const response = await fetch(`/api/programacao?${params.toString()}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          signal: controller.signal,
+        });
+
+        const data = (await response.json().catch(() => ({}))) as ProgrammingResponse;
+        if (!response.ok || !data.nextEtapaNumber) {
+          return;
+        }
+
+        setForm((current) => {
+          if (current.projectId !== form.projectId || current.date !== form.date) {
+            return current;
+          }
+
+          const sameTeamSelection =
+            current.teamIds.length === form.teamIds.length
+            && current.teamIds.every((teamId) => form.teamIds.includes(teamId));
+
+          if (!sameTeamSelection) {
+            return current;
+          }
+
+          if (isEtapaManuallyEdited && current.etapaNumber.trim()) {
+            return current;
+          }
+
+          return { ...current, etapaNumber: String(data.nextEtapaNumber) };
+        });
+        setInvalidFields((current) => current.filter((item) => item !== "etapaNumber"));
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          return;
+        }
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [accessToken, form.date, form.projectId, form.teamIds, isEditing, isEtapaManuallyEdited, isVisualizationMode]);
+
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
+    if (field === "etapaNumber") {
+      setIsEtapaManuallyEdited(Boolean(String(value).trim()));
+    }
+
     setForm((current) => {
       if (field === "period") {
         const nextPeriod = value as PeriodMode;
@@ -998,10 +1290,62 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       return { ...current, [field]: value };
     });
+    setInvalidFields((current) => current.filter((item) => item !== String(field)));
   }
 
   function updateFilterField<Key extends keyof FilterState>(field: Key, value: FilterState[Key]) {
     setFilterDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  async function validateStageConflict(params: {
+    projectId: string;
+    teamIds: string[];
+    etapaNumber: number;
+    excludeProgrammingId?: string | null;
+    currentEditingStage?: number | null;
+    currentEditingDate?: string | null;
+    currentEditingTeamId?: string | null;
+  }) {
+    const query = new URLSearchParams({
+      etapaValidationProjectId: params.projectId,
+      etapaValidationTeamIds: params.teamIds.join(","),
+      etapaValidationNumber: String(params.etapaNumber),
+    });
+
+    if (params.excludeProgrammingId) {
+      query.set("etapaValidationExcludeProgrammingId", params.excludeProgrammingId);
+    }
+    if (params.currentEditingStage) {
+      query.set("etapaValidationCurrentStage", String(params.currentEditingStage));
+    }
+    if (params.currentEditingDate) {
+      query.set("etapaValidationCurrentDate", params.currentEditingDate);
+    }
+    if (params.currentEditingTeamId) {
+      query.set("etapaValidationCurrentTeamId", params.currentEditingTeamId);
+    }
+
+    const response = await fetch(`/api/programacao?${query.toString()}`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = (await response.json().catch(() => ({}))) as StageValidationResponse;
+    if (!response.ok) {
+      throw new Error(data.message ?? "Falha ao validar a etapa da programacao.");
+    }
+
+    if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
+      return {
+        enteredEtapaNumber: Number(data.enteredEtapaNumber ?? params.etapaNumber),
+        highestStage: Number(data.highestStage ?? 0),
+        teams: data.teams,
+      };
+    }
+
+    return null;
   }
 
   function handleProjectSobChange(value: string) {
@@ -1013,6 +1357,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       projectSearch: searchValue,
       projectId: matchedProject?.id ?? "",
     }));
+    setInvalidFields((current) => current.filter((item) => item !== "projectId"));
   }
 
   function toggleTeam(teamId: string) {
@@ -1022,6 +1367,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         ? current.teamIds.filter((item) => item !== teamId)
         : [...current.teamIds, teamId],
     }));
+    setInvalidFields((current) => current.filter((item) => item !== "teamIds"));
   }
 
   function selectAllVisibleTeams() {
@@ -1029,10 +1375,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       ...current,
       teamIds: Array.from(new Set([...current.teamIds, ...visibleTeamOptions.map((team) => team.id)])),
     }));
+    setInvalidFields((current) => current.filter((item) => item !== "teamIds"));
   }
 
   function clearSelectedTeams() {
     setForm((current) => ({ ...current, teamIds: [] }));
+  }
+
+  function isFieldInvalid(field: string) {
+    return invalidFields.includes(field);
   }
 
   function updateDocument(documentKey: DocumentKey, field: keyof DocumentEntry, value: string) {
@@ -1124,6 +1475,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setEditingTeamId(schedule.teamId);
     setEditingExpectedUpdatedAt(schedule.updatedAt);
     setEditChangeReason("");
+    setIsEtapaManuallyEdited(true);
     setForm((current) => ({
       ...current,
       projectId: schedule.projectId,
@@ -1178,17 +1530,37 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setEditingTeamId(null);
     setEditingExpectedUpdatedAt(null);
     setEditChangeReason("");
+    setIsEtapaManuallyEdited(false);
     setForm(createInitialForm(today));
     setFeedback(null);
+    setInvalidFields([]);
   }
 
   function scrollToTopOfScreen() {
     requestAnimationFrame(() => {
+      if (feedbackRef.current) {
+        const top = feedbackRef.current.getBoundingClientRect().top + window.scrollY - 20;
+        window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
+        return;
+      }
+
       if (!isVisualizationMode) {
         formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
+  }
+
+  function openAlertModal(title: string, message: string, details?: string[]) {
+    setAlertModal({
+      title,
+      message,
+      details: details?.filter(Boolean),
+    });
+  }
+
+  function closeAlertModal() {
+    setAlertModal(null);
   }
 
   function openCancelModal(schedule: ScheduleItem) {
@@ -1334,11 +1706,39 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }
 
   async function confirmPostpone() {
-    if (!accessToken || !postponeTarget || !canSubmitPostpone) {
+    if (!accessToken || !postponeTarget) {
+      openAlertModal("Falha ao validar adiamento", "Sessao invalida para validar o adiamento.");
+      return;
+    }
+
+    if (!postponeDate) {
+      openAlertModal(
+        "Valide os dados do adiamento",
+        "Informe a nova data da programacao antes de validar o adiamento.",
+        ["A nova data precisa ser posterior a data atual da programacao."],
+      );
+      return;
+    }
+
+    if (postponeDate <= postponeTarget.date) {
+      openAlertModal(
+        "Conflito na nova data",
+        "A nova data da programacao precisa ser posterior a data atual.",
+        [`Data atual da programacao: ${formatDate(postponeTarget.date)}.`],
+      );
+      return;
+    }
+
+    if (postponeReason.trim().length < CANCEL_REASON_MIN_LENGTH) {
+      openAlertModal(
+        "Motivo do adiamento incompleto",
+        `Informe o motivo do adiamento com no minimo ${CANCEL_REASON_MIN_LENGTH} caracteres.`,
+      );
       return;
     }
 
     setIsPostponing(true);
+    setAlertModal(null);
 
     try {
       const response = await fetch("/api/programacao", {
@@ -1358,10 +1758,16 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const data = (await response.json().catch(() => ({}))) as SaveProgrammingResponse;
       if (!response.ok) {
+        const message = buildConflictFeedbackMessage(data, "Falha ao adiar programacao.");
         setFeedback({
           type: "error",
-          message: buildConflictFeedbackMessage(data, "Falha ao adiar programacao."),
+          message,
         });
+        openAlertModal(
+          data.error === "conflict" ? "Conflito ao validar adiamento" : "Falha ao validar adiamento",
+          message,
+          buildConflictAlertDetails(data),
+        );
         return;
       }
 
@@ -1392,6 +1798,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         type: "error",
         message: "Falha ao adiar programacao.",
       });
+      openAlertModal("Falha ao validar adiamento", "Falha ao adiar programacao.");
     } finally {
       setIsPostponing(false);
     }
@@ -1405,60 +1812,74 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       scrollToTopOfScreen();
     }
 
+    function flagInvalidFields(fields: string[], message: string) {
+      setInvalidFields(Array.from(new Set(fields)));
+      showSubmitFeedback("error", message);
+      openAlertModal(
+        "Revise os campos da programacao",
+        message,
+        buildFieldValidationDetails(fields),
+      );
+    }
+
     if (!accessToken) {
       showSubmitFeedback("error", "Sessao invalida para salvar programacao.");
       return;
     }
 
     if (!form.projectId) {
-      showSubmitFeedback("error", "Selecione um Projeto (SOB) valido da lista.");
+      flagInvalidFields(["projectId"], "Selecione um Projeto (SOB) valido da lista.");
       return;
     }
 
     if (!form.teamIds.length) {
-      showSubmitFeedback("error", "Selecione ao menos uma equipe para cadastrar a programacao.");
+      flagInvalidFields(["teamIds"], "Selecione ao menos uma equipe para cadastrar a programacao.");
       return;
     }
 
     if (editingScheduleId && (form.teamIds.length !== 1 || form.teamIds[0] !== editingTeamId)) {
-      showSubmitFeedback("error", "Na edicao desta tela, a equipe original deve ser mantida.");
+      flagInvalidFields(["teamIds"], "Na edicao desta tela, a equipe original deve ser mantida.");
       return;
     }
 
     if (isInvalidTimeRange(form.startTime, form.endTime)) {
-      showSubmitFeedback("error", "Hora termino deve ser maior que hora inicio.");
+      flagInvalidFields(["startTime", "endTime"], "Hora termino deve ser maior que hora inicio.");
       return;
     }
 
     const expectedMinutes = calculateExpectedMinutes(form.startTime, form.endTime, form.period);
     if (expectedMinutes <= 0) {
-      showSubmitFeedback("error", "Hora termino deve ser maior que hora inicio.");
+      flagInvalidFields(["startTime", "endTime"], "Hora termino deve ser maior que hora inicio.");
       return;
     }
 
     if ((form.outageStartTime && !form.outageEndTime) || (!form.outageStartTime && form.outageEndTime)) {
-      showSubmitFeedback("error", "Informe inicio e termino de desligamento.");
+      flagInvalidFields(["outageStartTime", "outageEndTime"], "Informe inicio e termino de desligamento.");
       return;
     }
 
     if (form.outageStartTime && form.outageEndTime && form.outageEndTime <= form.outageStartTime) {
-      showSubmitFeedback("error", "Termino de desligamento deve ser maior que inicio.");
+      flagInvalidFields(["outageStartTime", "outageEndTime"], "Termino de desligamento deve ser maior que inicio.");
       return;
     }
 
     const invalidDocumentLabel = getDocumentRequestedAfterApprovedLabel(form.documents);
     if (invalidDocumentLabel) {
       showSubmitFeedback("error", `Data pedido do ${invalidDocumentLabel} nao pode ser maior que a data aprovada.`);
+      openAlertModal(
+        "Conflito nas datas dos documentos",
+        `Data pedido do ${invalidDocumentLabel} nao pode ser maior que a data aprovada.`,
+      );
       return;
     }
 
     if (isNegativeNumericText(form.feeder)) {
-      showSubmitFeedback("error", "Alimentador nao pode receber valor negativo.");
+      flagInvalidFields(["feeder"], "Alimentador nao pode receber valor negativo.");
       return;
     }
 
     if (!form.sgdTypeId) {
-      showSubmitFeedback("error", "Tipo de SGD e obrigatorio para salvar a programacao.");
+      flagInvalidFields(["sgdTypeId"], "Tipo de SGD e obrigatorio para salvar a programacao.");
       return;
     }
 
@@ -1469,27 +1890,84 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const etapaNumber = parseOptionalPositiveInteger(form.etapaNumber);
     const affectedCustomers = parseNonNegativeInteger(form.affectedCustomers);
     if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null || affectedCustomers === null) {
-      showSubmitFeedback("error", "POSTE, ESTRUTURA, TRAFO, REDE e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero.");
+      flagInvalidFields(
+        ["posteQty", "estruturaQty", "trafoQty", "redeQty", "affectedCustomers"],
+        "POSTE, ESTRUTURA, TRAFO, REDE e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero.",
+      );
       return;
     }
 
     if (etapaNumber === null) {
-      showSubmitFeedback("error", "ETAPA e obrigatoria.");
+      flagInvalidFields(["etapaNumber"], "ETAPA e obrigatoria.");
       return;
     }
 
     if (etapaNumber === undefined) {
-      showSubmitFeedback("error", "ETAPA deve ser um numero inteiro maior que zero.");
+      flagInvalidFields(["etapaNumber"], "ETAPA deve ser um numero inteiro maior que zero.");
       return;
     }
 
     if (isEditing && !form.workCompletionStatus) {
-      showSubmitFeedback("error", "Estado Trabalho e obrigatorio na edicao.");
+      flagInvalidFields(["workCompletionStatus"], "Estado Trabalho e obrigatorio na edicao.");
+      return;
+    }
+
+    const localStageConflict = buildLocalStageConflictSummary({
+      schedules,
+      teams,
+      projectId: form.projectId,
+      teamIds: form.teamIds,
+      enteredEtapaNumber: etapaNumber,
+      excludeProgrammingId: editingScheduleId,
+      currentEditingStage: currentEditingSchedule?.etapaNumber ?? null,
+      currentEditingDate: currentEditingSchedule?.date ?? null,
+      currentEditingTeamId: currentEditingSchedule?.teamId ?? null,
+    });
+
+    if (localStageConflict) {
+      setStageConflictModal(localStageConflict);
+      flagInvalidFields(["etapaNumber"], "A ETAPA informada conflita com o historico existente da equipe.");
+      showSubmitFeedback(
+        "error",
+        "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto nas equipes selecionadas.",
+      );
+      return;
+    }
+
+    try {
+      const stageConflict = await validateStageConflict({
+        projectId: form.projectId,
+        teamIds: form.teamIds,
+        etapaNumber,
+        excludeProgrammingId: editingScheduleId,
+        currentEditingStage: currentEditingSchedule?.etapaNumber ?? null,
+        currentEditingDate: currentEditingSchedule?.date ?? null,
+        currentEditingTeamId: currentEditingSchedule?.teamId ?? null,
+      });
+
+      if (stageConflict) {
+        setStageConflictModal(stageConflict);
+        flagInvalidFields(["etapaNumber"], "A ETAPA informada conflita com o historico existente da equipe.");
+        showSubmitFeedback(
+          "error",
+          "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto nas equipes selecionadas.",
+        );
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao validar a etapa da programacao.";
+      showSubmitFeedback(
+        "error",
+        message,
+      );
+      openAlertModal("Falha ao validar ETAPA", message);
       return;
     }
 
     setIsSaving(true);
     setFeedback(null);
+    setAlertModal(null);
+    setInvalidFields([]);
 
     try {
       const basePayload = {
@@ -1554,6 +2032,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const data = (await response.json().catch(() => ({}))) as BatchCreateResponse & SaveProgrammingResponse;
       if (!response.ok || (editingScheduleId ? !data.id : !data.success)) {
+        if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
+          setStageConflictModal({
+            enteredEtapaNumber: Number(data.enteredEtapaNumber ?? etapaNumber),
+            highestStage: Number(data.highestStage ?? 0),
+            teams: data.teams,
+          });
+        }
+
         showSubmitFeedback(
           "error",
           buildConflictFeedbackMessage(
@@ -1561,6 +2047,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
           ),
         );
+        if (!(data.hasConflict && Array.isArray(data.teams) && data.teams.length)) {
+          openAlertModal(
+            data.error === "conflict"
+              ? (editingScheduleId ? "Conflito ao salvar edicao" : "Conflito ao cadastrar programacao")
+              : (editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao"),
+            buildConflictFeedbackMessage(
+              data,
+              editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
+            ),
+            buildConflictAlertDetails(data),
+          );
+        }
         return;
       }
 
@@ -1570,6 +2068,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         "success",
         successMessage,
       );
+      setIsEtapaManuallyEdited(false);
       setEditingScheduleId(null);
       setEditingTeamId(null);
       setEditingExpectedUpdatedAt(null);
@@ -1589,9 +2088,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         }
       }
     } catch {
+      const message = editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.";
       showSubmitFeedback(
         "error",
-        editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
+        message,
+      );
+      openAlertModal(
+        editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao",
+        message,
       );
     } finally {
       setIsSaving(false);
@@ -1809,7 +2313,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   return (
     <section className={styles.wrapper}>
       {feedback ? (
-        <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
+        <div
+          ref={feedbackRef}
+          className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}
+        >
+          {feedback.message}
+        </div>
       ) : null}
 
       {!isVisualizationMode ? (
@@ -1817,7 +2326,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         <h3 className={styles.cardTitle}>{isEditing ? "Edicao de Programacao" : "Cadastro de Programacao"}</h3>
 
         <form className={styles.formGrid} onSubmit={handleSubmit}>
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("projectId") ? styles.fieldInvalid : ""}`}>
             <span>
               Projeto (SOB) <span className="requiredMark">*</span>
             </span>
@@ -1857,7 +2366,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             </select>
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("startTime") ? styles.fieldInvalid : ""}`}>
             <span>
               Hora inicio <span className="requiredMark">*</span>
             </span>
@@ -1869,7 +2378,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("endTime") ? styles.fieldInvalid : ""}`}>
             <span>
               Hora termino <span className="requiredMark">*</span>
             </span>
@@ -1881,7 +2390,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("outageStartTime") ? styles.fieldInvalid : ""}`}>
             <span>Inicio de desligamento</span>
             <input
               type="time"
@@ -1890,7 +2399,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("outageEndTime") ? styles.fieldInvalid : ""}`}>
             <span>Termino de desligamento</span>
             <input
               type="time"
@@ -1914,7 +2423,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             </select>
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("feeder") ? styles.fieldInvalid : ""}`}>
             <span>Alimentador</span>
             <input
               type="text"
@@ -1924,7 +2433,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("posteQty") ? styles.fieldInvalid : ""}`}>
             <span>POSTE (quantidade)</span>
             <input
               type="number"
@@ -1935,7 +2444,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("estruturaQty") ? styles.fieldInvalid : ""}`}>
             <span>ESTRUTURA (quantidade)</span>
             <input
               type="number"
@@ -1946,7 +2455,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("trafoQty") ? styles.fieldInvalid : ""}`}>
             <span>TRAFO (quantidade)</span>
             <input
               type="number"
@@ -1957,7 +2466,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("redeQty") ? styles.fieldInvalid : ""}`}>
             <span>REDE (quantidade)</span>
             <input
               type="number"
@@ -1968,7 +2477,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("etapaNumber") ? styles.fieldInvalid : ""}`}>
             <span>
               ETAPA <span className="requiredMark">*</span>
             </span>
@@ -1981,9 +2490,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               placeholder="Ex.: 1"
               required
             />
+            <small className={styles.fieldHint}>
+              A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas.
+            </small>
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("affectedCustomers") ? styles.fieldInvalid : ""}`}>
             <span>Nº Clientes Afetados</span>
             <input
               type="number"
@@ -1994,7 +2506,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${isFieldInvalid("sgdTypeId") ? styles.fieldInvalid : ""}`}>
             <span>
               Tipo de SGD <span className="requiredMark">*</span>
             </span>
@@ -2033,7 +2545,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           </label>
 
           {editingScheduleId ? (
-            <label className={styles.field}>
+            <label className={`${styles.field} ${isFieldInvalid("workCompletionStatus") ? styles.fieldInvalid : ""}`}>
               <span>
                 Estado Trabalho <span className="requiredMark">*</span>
               </span>
@@ -2068,7 +2580,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               </h4>
               <p>Selecione uma ou mais equipes para receber a programacao do formulario.</p>
             </div>
-            <div className={styles.teamSelectionCard}>
+            <div className={`${styles.teamSelectionCard} ${isFieldInvalid("teamIds") ? styles.teamSelectionCardInvalid : ""}`}>
               <div className={styles.teamSelectionHeader}>
                 <input
                   type="text"
@@ -2843,7 +3355,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                   type="button"
                   className={styles.secondaryButton}
                   onClick={() => void confirmPostpone()}
-                  disabled={!canSubmitPostpone}
+                  disabled={isPostponing}
                 >
                   {isPostponing ? "Adiando..." : "Validar adiamento"}
                 </button>
@@ -2896,6 +3408,95 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <button type="button" className={styles.ghostButton} onClick={closeCancelModal} disabled={isCancelling}>
                   Voltar
                 </button>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {alertModal ? (
+        <div className={styles.modalOverlay} onClick={closeAlertModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>{alertModal.title}</h4>
+                <p className={styles.modalSubtitle}>Revise os dados antes de tentar novamente.</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeAlertModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.warningCard}>
+                <p>{alertModal.message}</p>
+              </div>
+
+              {alertModal.details?.length ? (
+                <div className={styles.historyCard}>
+                  <div className={styles.historyCardHeader}>
+                    <strong>Possiveis pontos para revisar</strong>
+                  </div>
+                  <ul className={styles.alertList}>
+                    {alertModal.details.map((detail) => (
+                      <li key={detail}>{detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {stageConflictModal ? (
+        <div className={styles.modalOverlay} onClick={() => setStageConflictModal(null)}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Conflito de ETAPA</h4>
+                <p className={styles.modalSubtitle}>
+                  A ETAPA {stageConflictModal.enteredEtapaNumber} conflita com o historico ja existente para este projeto.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.modalCloseButton}
+                onClick={() => setStageConflictModal(null)}
+              >
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.warningCard}>
+                <p>
+                  <strong>Maior etapa encontrada:</strong> {stageConflictModal.highestStage}
+                </p>
+                <p>
+                  Corrija o campo <strong>ETAPA</strong> no formulario antes de tentar salvar novamente.
+                </p>
+              </div>
+
+              <div className={styles.historyList}>
+                {stageConflictModal.teams.map((team) => (
+                  <article key={team.teamId} className={styles.historyCard}>
+                    <div className={styles.historyCardHeader}>
+                      <strong>{team.teamName}</strong>
+                      <span>Maior etapa: {team.highestStage}</span>
+                    </div>
+                    <div className={styles.historyChanges}>
+                      <div className={styles.historyChangeItem}>
+                        <strong>Etapas ja encontradas</strong>
+                        <span>{team.existingStages.join(", ")}</span>
+                      </div>
+                      <div className={styles.historyChangeItem}>
+                        <strong>Datas encontradas</strong>
+                        <span>{team.existingDates.length ? team.existingDates.map(formatDate).join(", ") : "-"}</span>
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
             </div>
           </article>

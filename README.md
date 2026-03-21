@@ -317,7 +317,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 34. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`, com persistencia e historico delegados para as RPCs `save_material_record` e `set_material_record_status`.
 35. A rota `/medicao` ja possui frontend funcional para montar a OS/medicao por `Projeto` ou `Programacao`, carregar atividades previstas por `/api/projects/activity-forecast`, calcular o total local com fator `1,00`, `1,20`, `1,25` ou `2,85` e preparar a futura integracao com backend proprio.
 36. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor e escrita delegada para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
-37. A rota `/programacao` passa a delegar tambem o historico complementar da agenda para a RPC `append_programming_history`, removendo `insert` direto em `app_entity_history` da route.
+37. A rota `/programacao` passa a usar `project_programming_history` como timeline operacional dedicada da agenda e grava o historico complementar pela RPC `append_project_programming_history_record`, sem depender de `app_entity_history`.
 38. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`.
 39. A rota `/permissoes` continua enviando convite pelo backend, mas a auditoria do invite passa a ser gravada pela RPC `append_user_invite_history`.
 40. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
@@ -363,12 +363,39 @@ npm run build
 - `Falha ao listar projetos.` ou `relation "project" does not exist`:
   - Causa: migration de projetos nao aplicada no banco remoto.
   - Solucao: aplicar `029_create_project_table.sql` antes de usar a tela `/projetos`.
+- `Falha ao salvar programacao em transacao unica.` ou `Falha ao cadastrar programacao em lote.`:
+  - Causa: ambiente com RPC full da `Programacao` desatualizada ou ainda dependente da migration `090_add_programming_service_description.sql`.
+  - Solucao: aplicar `091_create_programming_full_save_rpcs.sql`, `094_add_programming_stage_and_completion_fields.sql`, `095_harden_programming_time_and_document_validations.sql`, `099_harden_programming_batch_full_self_contained.sql` e `100_harden_programming_full_self_contained.sql`.
+- `A ETAPA informada ja existe ou esta abaixo do historico encontrado...`:
+  - Causa: o usuario tentou salvar uma programacao com `ETAPA` igual ou menor do que etapas ja registradas para o mesmo projeto/equipe.
+  - Solucao: fechar o modal de confronto/alerta, corrigir o campo `ETAPA` no formulario e salvar novamente com uma etapa coerente com o historico.
+- `A ETAPA informada ja existe...` mostrando etapa menor do que a etapa atual da propria edicao:
+  - Causa: a validacao tambem considera a etapa atual da programacao que esta sendo editada para impedir reducao silenciosa de etapa.
+  - Solucao: ajustar o campo `ETAPA` para um valor coerente com a maior etapa ja encontrada para a obra/equipe e salvar novamente.
+- Programacao adiada reaparece como `PROGRAMADA` em vez de `REPROGRAMADA`:
+  - Causa: o banco ainda nao recebeu a migration que promove `REPROGRAMADA` a status fisico em `project_programming`.
+  - Solucao: aplicar `101_create_project_programming_history.sql` e `102_use_programming_history_only_and_physical_rescheduled_status.sql`, recarregar a agenda e refazer a leitura da programacao.
+- Historico da Programacao aparece misturado com outros modulos:
+  - Causa: o ambiente ainda nao migrou a timeline operacional da `Programacao` para `project_programming_history`.
+  - Solucao: aplicar `101_create_project_programming_history.sql` e `102_use_programming_history_only_and_physical_rescheduled_status.sql`; a `Programacao` passa a usar somente `project_programming_history` como fonte do historico operacional.
+- `101_create_project_programming_history.sql` falha com FK de `programming_id` inexistente:
+  - Causa: existem historicos legados orfaos em `app_entity_history` apontando para programacoes que ja nao existem mais em `project_programming`.
+  - Solucao: usar a versao atualizada da migration `101`, que ignora esses registros orfaos no backfill e preserva apenas historicos com vinculo valido.
+- `102_use_programming_history_only_and_physical_rescheduled_status.sql` ainda nao refletiu `REPROGRAMADA` na agenda:
+  - Causa: a migration `102` nao foi aplicada ou a leitura da tela ainda esta cacheada com dados anteriores.
+  - Solucao: aplicar a migration `102`, recarregar a pagina e confirmar no banco que `project_programming.status` passou a aceitar `REPROGRAMADA`.
 - `Projeto inativo nao pode ser editado.`:
   - Causa: tentativa de editar obra ja cancelada/inativada.
   - Solucao: editar somente projetos ativos ou criar novo projeto conforme processo operacional.
 - `foi alterado por outro usuario. Recarregue os dados...`:
   - Causa: outro usuario salvou o mesmo registro antes do envio atual em `Projetos`, `Materiais`, `Atividades`, `Equipes`, `Pessoas` ou `Permissoes`.
   - Solucao: revisar os dados recarregados na tela e repetir a alteracao a partir da versao mais recente.
+- Validacao do adiamento, cadastro ou edicao da `Programacao Simples` parece “nao fazer nada”:
+  - Causa: o fluxo agora usa modal de alerta para concentrar erros de validacao e conflitos operacionais, alem do feedback no topo.
+  - Solucao: revisar o modal aberto, corrigir os campos indicados e tentar novamente.
+- O modal de `Adiamento` mostra apenas `Falha ao adiar programacao.`:
+  - Causa: a RPC de adiamento falhou sem detalhe suficiente ou a visualizacao que roda depois do commit quebrou.
+  - Solucao: aplicar `105_fix_postpone_history_signature.sql`; a RPC passa a usar a assinatura correta de `append_project_programming_history_record`, devolve `reason/detail` real da falha e o `PATCH` evita transformar falha de recarga da grade em erro falso.
 - `function public.save_person_record(...) does not exist`, `set_person_record_status` ou `append_user_invite_history`:
   - Causa: migration `079_create_people_and_invite_write_rpcs.sql` ainda nao aplicada no banco remoto.
   - Solucao: aplicar a migration `079_create_people_and_invite_write_rpcs.sql` e repetir a operacao.
