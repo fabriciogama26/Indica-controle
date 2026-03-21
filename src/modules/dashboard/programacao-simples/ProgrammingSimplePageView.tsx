@@ -3,10 +3,11 @@
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./ProgrammingSimplePageView.module.css";
 
 type PeriodMode = "integral" | "partial";
-type ProgrammingStatus = "PROGRAMADA" | "ADIADA" | "CANCELADA";
+type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
 type WorkCompletionStatus = "CONCLUIDO" | "PARCIAL";
 type DocumentKey = "sgd" | "pi" | "pep";
 
@@ -69,6 +70,7 @@ type ScheduleItem = {
   projectId: string;
   teamId: string;
   status: ProgrammingStatus;
+  isReprogrammed?: boolean;
   date: string;
   period: PeriodMode;
   startTime: string;
@@ -125,6 +127,19 @@ type BatchCreateResponse = {
 type SaveProgrammingResponse = {
   success?: boolean;
   id?: string;
+  updatedAt?: string;
+  warning?: string;
+  error?: "conflict";
+  currentUpdatedAt?: string | null;
+  updatedBy?: string | null;
+  changedFields?: string[];
+  currentRecord?: {
+    id: string;
+    executionDate: string;
+    startTime: string;
+    endTime: string;
+    updatedAt: string;
+  } | null;
   message?: string;
 };
 
@@ -195,7 +210,7 @@ const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   project: "Projeto",
   team: "Equipe",
-  executionDate: "Data",
+  executionDate: "Data execucao",
   period: "Periodo",
   startTime: "Hora inicio",
   endTime: "Hora termino",
@@ -320,7 +335,8 @@ function formatWeekday(value: string) {
   return parsed.toLocaleDateString("pt-BR", { weekday: "long" });
 }
 
-function calculateExpectedMinutes(startTime: string, endTime: string, period: PeriodMode) {
+function calculateExpectedMinutes(startTime: string, endTime: string, _period: PeriodMode) {
+  void _period;
   const [startHour, startMinute] = startTime.split(":").map(Number);
   const [endHour, endMinute] = endTime.split(":").map(Number);
   const startTotal = startHour * 60 + startMinute;
@@ -330,7 +346,34 @@ function calculateExpectedMinutes(startTime: string, endTime: string, period: Pe
     return endTotal - startTotal;
   }
 
-  return period === "integral" ? 480 : 240;
+  return 0;
+}
+
+function isInvalidTimeRange(startTime: string, endTime: string) {
+  if (!startTime || !endTime) {
+    return false;
+  }
+
+  return endTime <= startTime;
+}
+
+function getDocumentRequestedAfterApprovedLabel(documents: Record<DocumentKey, DocumentEntry>) {
+  const invalidDocument = DOCUMENT_KEYS.find(({ key }) => {
+    const approvedAt = documents[key].approvedAt;
+    const requestedAt = documents[key].requestedAt;
+    return Boolean(approvedAt && requestedAt && requestedAt > approvedAt);
+  });
+
+  return invalidDocument?.label ?? null;
+}
+
+function isNegativeNumericText(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return /^-\d+([.,]\d+)?$/.test(normalized);
 }
 
 function createEmptyDocuments(): Record<DocumentKey, DocumentEntry> {
@@ -579,6 +622,10 @@ function formatHistoryAction(action: string) {
 }
 
 function scheduleStatusClassName(status: ProgrammingStatus) {
+  if (status === "REPROGRAMADA") {
+    return styles.weekCardRescheduled;
+  }
+
   if (status === "ADIADA") {
     return styles.weekCardPostponed;
   }
@@ -592,6 +639,32 @@ function scheduleStatusClassName(status: ProgrammingStatus) {
 
 function isInactiveProgrammingStatus(status: ProgrammingStatus) {
   return status === "ADIADA" || status === "CANCELADA";
+}
+
+function isActiveProgrammingStatus(status: ProgrammingStatus) {
+  return status === "PROGRAMADA" || status === "REPROGRAMADA";
+}
+
+function getDisplayProgrammingStatus(schedule: Pick<ScheduleItem, "status" | "isReprogrammed">): ProgrammingStatus {
+  if (schedule.status === "PROGRAMADA" && schedule.isReprogrammed) {
+    return "REPROGRAMADA";
+  }
+
+  return schedule.status;
+}
+
+function buildConflictFeedbackMessage(payload: SaveProgrammingResponse | null, fallback: string) {
+  if (payload?.error !== "conflict") {
+    return payload?.message ?? fallback;
+  }
+
+  const updatedBy = payload.updatedBy?.trim();
+  const updatedAt = payload.currentUpdatedAt ? formatDateTime(payload.currentUpdatedAt) : "";
+  const changedFields = Array.isArray(payload.changedFields) && payload.changedFields.length
+    ? ` Campos em conflito: ${payload.changedFields.join(", ")}.`
+    : "";
+
+  return `${payload.message ?? fallback}${updatedBy || updatedAt ? ` Alterada por ${updatedBy ?? "outro usuario"}${updatedAt ? ` em ${updatedAt}` : ""}.` : ""}${changedFields}`;
 }
 
 function escapeCsvValue(value: string | number) {
@@ -667,6 +740,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [postponeDate, setPostponeDate] = useState("");
   const [isPostponing, setIsPostponing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const commonExportCooldown = useExportCooldown();
+  const enelExportCooldown = useExportCooldown();
 
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
   const isEditing = Boolean(editingScheduleId);
@@ -674,6 +749,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const canSubmitPostpone = Boolean(postponeDate)
     && postponeTarget !== null
     && postponeDate !== postponeTarget.date
+    && postponeDate >= today
     && postponeReason.trim().length >= CANCEL_REASON_MIN_LENGTH
     && !isPostponing;
   const selectedProject = projects.find((item) => item.id === form.projectId) ?? null;
@@ -701,7 +777,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   const filteredSchedules = useMemo(() => {
     return schedules.filter((item) => {
-      const shouldApplyDateFilter = !isInactiveProgrammingStatus(item.status);
+      const displayStatus = getDisplayProgrammingStatus(item);
+      const shouldApplyDateFilter = !isInactiveProgrammingStatus(displayStatus);
       if (shouldApplyDateFilter && !isDateInRange(item.date, activeFilters.startDate, activeFilters.endDate)) {
         return false;
       }
@@ -714,7 +791,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         return false;
       }
 
-      if (activeFilters.status !== "TODOS" && item.status !== activeFilters.status) {
+      if (activeFilters.status !== "TODOS" && displayStatus !== activeFilters.status) {
         return false;
       }
 
@@ -760,9 +837,27 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     return scheduleMap;
   }, [weeklySchedules]);
 
-  const loadBoardData = useCallback(async () => {
+  const applyBoardSnapshot = useCallback((data: ProgrammingResponse) => {
+    const nextProjects = data.projects ?? [];
+    const nextTeams = data.teams ?? [];
+    const nextSchedules = (data.schedules ?? []).sort((left, right) => {
+      if (left.date === right.date) {
+        return left.startTime.localeCompare(right.startTime);
+      }
+
+      return left.date.localeCompare(right.date);
+    });
+
+    setProjects(nextProjects);
+    setTeams(nextTeams);
+    setSupportOptions(data.supportOptions ?? []);
+    setSgdTypes(data.sgdTypes ?? []);
+    setSchedules(nextSchedules);
+  }, []);
+
+  const fetchBoardSnapshot = useCallback(async () => {
     if (!accessToken) {
-      return;
+      return null;
     }
 
     const requestStartDate = activeFilters.startDate < weekStartDate ? activeFilters.startDate : weekStartDate;
@@ -782,34 +877,24 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const data = (await response.json().catch(() => ({}))) as ProgrammingResponse;
       if (!response.ok) {
-        setProjects([]);
-        setTeams([]);
-        setSchedules([]);
-        setSupportOptions([]);
-        setSgdTypes([]);
-        setFeedback({
-          type: "error",
-          message: data.message ?? "Falha ao carregar programacao.",
-        });
+        throw new Error(data.message ?? "Falha ao carregar programacao.");
+      }
+
+      return data;
+    } finally {
+      setIsLoadingList(false);
+    }
+  }, [accessToken, activeFilters.endDate, activeFilters.startDate, weekEndDate, weekStartDate]);
+
+  const loadBoardData = useCallback(async () => {
+    try {
+      const data = await fetchBoardSnapshot();
+      if (!data) {
         return;
       }
 
-      const nextProjects = data.projects ?? [];
-      const nextTeams = data.teams ?? [];
-      const nextSchedules = (data.schedules ?? []).sort((left, right) => {
-        if (left.date === right.date) {
-          return left.startTime.localeCompare(right.startTime);
-        }
-
-        return left.date.localeCompare(right.date);
-      });
-
-      setProjects(nextProjects);
-      setTeams(nextTeams);
-      setSupportOptions(data.supportOptions ?? []);
-      setSgdTypes(data.sgdTypes ?? []);
-      setSchedules(nextSchedules);
-    } catch {
+      applyBoardSnapshot(data);
+    } catch (error) {
       setProjects([]);
       setTeams([]);
       setSchedules([]);
@@ -817,12 +902,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       setSgdTypes([]);
       setFeedback({
         type: "error",
-        message: "Falha ao carregar programacao.",
+        message: error instanceof Error ? error.message : "Falha ao carregar programacao.",
       });
-    } finally {
-      setIsLoadingList(false);
     }
-  }, [accessToken, activeFilters.endDate, activeFilters.startDate, weekEndDate, weekStartDate]);
+  }, [applyBoardSnapshot, fetchBoardSnapshot]);
 
   useEffect(() => {
     void loadBoardData();
@@ -895,7 +978,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }, [availableTeams, selectedProject]);
 
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => {
+      if (field === "period") {
+        const nextPeriod = value as PeriodMode;
+
+        return {
+          ...current,
+          period: nextPeriod,
+          endTime: nextPeriod === "partial" ? "12:00" : "17:00",
+        };
+      }
+
+      return { ...current, [field]: value };
+    });
   }
 
   function updateFilterField<Key extends keyof FilterState>(field: Key, value: FilterState[Key]) {
@@ -1010,10 +1105,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }
 
   function startEditSchedule(schedule: ScheduleItem) {
-    if (schedule.status !== "PROGRAMADA") {
+    if (!isActiveProgrammingStatus(getDisplayProgrammingStatus(schedule))) {
       setFeedback({
         type: "error",
-        message: "Somente programacoes com status PROGRAMADA podem entrar em edicao.",
+        message: "Somente programacoes ativas podem entrar em edicao.",
       });
       return;
     }
@@ -1029,7 +1124,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       date: schedule.date,
       period: schedule.period,
       startTime: schedule.startTime,
-      endTime: schedule.endTime,
+      endTime: schedule.period === "partial" ? "12:00" : schedule.endTime,
       outageStartTime: schedule.outageStartTime ?? "",
       outageEndTime: schedule.outageEndTime ?? "",
       feeder: schedule.feeder ?? "",
@@ -1080,11 +1175,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setFeedback(null);
   }
 
+  function scrollToTopOfScreen() {
+    requestAnimationFrame(() => {
+      if (!isVisualizationMode) {
+        formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
   function openCancelModal(schedule: ScheduleItem) {
-    if (schedule.status !== "PROGRAMADA") {
+    if (!isActiveProgrammingStatus(getDisplayProgrammingStatus(schedule))) {
       setFeedback({
         type: "error",
-        message: "Somente programacoes com status PROGRAMADA podem ser canceladas.",
+        message: "Somente programacoes ativas podem ser canceladas.",
       });
       return;
     }
@@ -1095,10 +1199,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }
 
   function openPostponeModal(schedule: ScheduleItem) {
-    if (schedule.status !== "PROGRAMADA") {
+    if (!isActiveProgrammingStatus(getDisplayProgrammingStatus(schedule))) {
       setFeedback({
         type: "error",
-        message: "Somente programacoes com status PROGRAMADA podem ser adiadas.",
+        message: "Somente programacoes ativas podem ser adiadas.",
       });
       return;
     }
@@ -1181,11 +1285,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as SaveProgrammingResponse;
       if (!response.ok) {
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao cancelar programacao.",
+          message: buildConflictFeedbackMessage(data, "Falha ao cancelar programacao."),
         });
         return;
       }
@@ -1199,7 +1303,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         type: "success",
         message: data.message ?? "Programacao cancelada com sucesso.",
       });
-      await loadBoardData();
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) {
+          applyBoardSnapshot(boardData);
+        }
+      } catch {
+        if (!data.warning) {
+          setFeedback({
+            type: "success",
+            message: `${data.message ?? "Programacao cancelada com sucesso."} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+          });
+        }
+      }
     } catch {
       setFeedback({
         type: "error",
@@ -1233,11 +1349,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as SaveProgrammingResponse;
       if (!response.ok) {
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao adiar programacao.",
+          message: buildConflictFeedbackMessage(data, "Falha ao adiar programacao."),
         });
         return;
       }
@@ -1251,7 +1367,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         type: "success",
         message: data.message ?? "Programacao adiada com sucesso.",
       });
-      await loadBoardData();
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) {
+          applyBoardSnapshot(boardData);
+        }
+      } catch {
+        if (!data.warning) {
+          setFeedback({
+            type: "success",
+            message: `${data.message ?? "Programacao adiada com sucesso."} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+          });
+        }
+      }
     } catch {
       setFeedback({
         type: "error",
@@ -1265,62 +1393,65 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    function showSubmitFeedback(type: "success" | "error", message: string) {
+      setFeedback({ type, message });
+      scrollToTopOfScreen();
+    }
+
     if (!accessToken) {
-      setFeedback({ type: "error", message: "Sessao invalida para salvar programacao." });
+      showSubmitFeedback("error", "Sessao invalida para salvar programacao.");
       return;
     }
 
     if (!form.projectId) {
-      setFeedback({
-        type: "error",
-        message: "Selecione um Projeto (SOB) valido da lista.",
-      });
+      showSubmitFeedback("error", "Selecione um Projeto (SOB) valido da lista.");
       return;
     }
 
     if (!form.teamIds.length) {
-      setFeedback({
-        type: "error",
-        message: "Selecione ao menos uma equipe para cadastrar a programacao.",
-      });
+      showSubmitFeedback("error", "Selecione ao menos uma equipe para cadastrar a programacao.");
       return;
     }
 
     if (editingScheduleId && (form.teamIds.length !== 1 || form.teamIds[0] !== editingTeamId)) {
-      setFeedback({
-        type: "error",
-        message: "Na edicao desta tela, a equipe original deve ser mantida.",
-      });
+      showSubmitFeedback("error", "Na edicao desta tela, a equipe original deve ser mantida.");
+      return;
+    }
+
+    if (isInvalidTimeRange(form.startTime, form.endTime)) {
+      showSubmitFeedback("error", "Hora termino deve ser maior que hora inicio.");
       return;
     }
 
     const expectedMinutes = calculateExpectedMinutes(form.startTime, form.endTime, form.period);
     if (expectedMinutes <= 0) {
-      setFeedback({ type: "error", message: "Informe um horario valido para a programacao." });
+      showSubmitFeedback("error", "Hora termino deve ser maior que hora inicio.");
       return;
     }
 
     if ((form.outageStartTime && !form.outageEndTime) || (!form.outageStartTime && form.outageEndTime)) {
-      setFeedback({
-        type: "error",
-        message: "Informe inicio e termino de desligamento.",
-      });
+      showSubmitFeedback("error", "Informe inicio e termino de desligamento.");
       return;
     }
 
     if (form.outageStartTime && form.outageEndTime && form.outageEndTime <= form.outageStartTime) {
-      setFeedback({
-        type: "error",
-        message: "Termino de desligamento deve ser maior que inicio.",
-      });
+      showSubmitFeedback("error", "Termino de desligamento deve ser maior que inicio.");
+      return;
+    }
+
+    const invalidDocumentLabel = getDocumentRequestedAfterApprovedLabel(form.documents);
+    if (invalidDocumentLabel) {
+      showSubmitFeedback("error", `Data pedido do ${invalidDocumentLabel} nao pode ser maior que a data aprovada.`);
+      return;
+    }
+
+    if (isNegativeNumericText(form.feeder)) {
+      showSubmitFeedback("error", "Alimentador nao pode receber valor negativo.");
       return;
     }
 
     if (!form.sgdTypeId) {
-      setFeedback({
-        type: "error",
-        message: "Tipo de SGD e obrigatorio para salvar a programacao.",
-      });
+      showSubmitFeedback("error", "Tipo de SGD e obrigatorio para salvar a programacao.");
       return;
     }
 
@@ -1331,34 +1462,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const etapaNumber = parseOptionalPositiveInteger(form.etapaNumber);
     const affectedCustomers = parseNonNegativeInteger(form.affectedCustomers);
     if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null || affectedCustomers === null) {
-      setFeedback({
-        type: "error",
-        message: "POSTE, ESTRUTURA, TRAFO, REDE e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero.",
-      });
+      showSubmitFeedback("error", "POSTE, ESTRUTURA, TRAFO, REDE e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero.");
       return;
     }
 
     if (etapaNumber === null) {
-      setFeedback({
-        type: "error",
-        message: "ETAPA e obrigatoria.",
-      });
+      showSubmitFeedback("error", "ETAPA e obrigatoria.");
       return;
     }
 
     if (etapaNumber === undefined) {
-      setFeedback({
-        type: "error",
-        message: "ETAPA deve ser um numero inteiro maior que zero.",
-      });
+      showSubmitFeedback("error", "ETAPA deve ser um numero inteiro maior que zero.");
       return;
     }
 
     if (isEditing && !form.workCompletionStatus) {
-      setFeedback({
-        type: "error",
-        message: "Estado Trabalho e obrigatorio na edicao.",
-      });
+      showSubmitFeedback("error", "Estado Trabalho e obrigatorio na edicao.");
       return;
     }
 
@@ -1428,28 +1547,45 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const data = (await response.json().catch(() => ({}))) as BatchCreateResponse & SaveProgrammingResponse;
       if (!response.ok || (editingScheduleId ? !data.id : !data.success)) {
-        setFeedback({
-          type: "error",
-          message: data.message ?? (editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote."),
-        });
+        showSubmitFeedback(
+          "error",
+          buildConflictFeedbackMessage(
+            data,
+            editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
+          ),
+        );
         return;
       }
 
-      setFeedback({
-        type: "success",
-        message: data.message ?? (editingScheduleId ? "Programacao editada com sucesso." : "Programacao cadastrada com sucesso."),
-      });
+      const successMessage =
+        data.message ?? (editingScheduleId ? "Programacao editada com sucesso." : "Programacao cadastrada com sucesso.");
+      showSubmitFeedback(
+        "success",
+        successMessage,
+      );
       setEditingScheduleId(null);
       setEditingTeamId(null);
       setEditingExpectedUpdatedAt(null);
       setEditChangeReason("");
       setForm(createInitialForm(today));
-      await loadBoardData();
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) {
+          applyBoardSnapshot(boardData);
+        }
+      } catch {
+        if (!data.warning) {
+          showSubmitFeedback(
+            "success",
+            `${successMessage} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+          );
+        }
+      }
     } catch {
-      setFeedback({
-        type: "error",
-        message: editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
-      });
+      showSubmitFeedback(
+        "error",
+        editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -1492,12 +1628,21 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    if (!commonExportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${commonExportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
     setIsExporting(true);
     try {
-      const header = ["Data", "Projeto", "Equipe", "Base", "Horario", "Periodo", "Status", "Atualizado em"];
+      const header = ["Data execucao", "Projeto", "Equipe", "Base", "Horario", "Periodo", "Status", "Atualizado em"];
       const rows = filteredSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
         const team = teamMap.get(schedule.teamId);
+        const displayStatus = getDisplayProgrammingStatus(schedule);
         return [
           formatDate(schedule.date),
           project?.code ?? schedule.projectId,
@@ -1505,7 +1650,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           team?.serviceCenterName ?? "-",
           `${schedule.startTime} - ${schedule.endTime}`,
           schedule.period === "integral" ? "Integral" : "Parcial",
-          schedule.status,
+          displayStatus,
           formatDateTime(schedule.updatedAt),
         ];
       });
@@ -1524,6 +1669,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       setFeedback({
         type: "error",
         message: "Nenhuma programacao encontrada para exportar no layout ENEL-EXCEL.",
+      });
+      return;
+    }
+
+    if (!enelExportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${enelExportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
       });
       return;
     }
@@ -1580,6 +1733,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       const rows = filteredSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
         const team = teamMap.get(schedule.teamId);
+        const displayStatus = getDisplayProgrammingStatus(schedule);
         const periodLabel = schedule.period === "integral" ? "Integral" : "Parcial";
         const sgdNumber = schedule.documents?.sgd?.number ?? "";
         const sgdExportColumn = schedule.sgdExportColumn ?? "";
@@ -1598,7 +1752,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           schedule.startTime ?? "",
           schedule.endTime ?? "",
           schedule.expectedMinutes ?? "",
-          schedule.status ?? "",
+          displayStatus ?? "",
           infoStatus,
           project?.priority ?? "",
           schedule.estruturaQty ?? "",
@@ -1678,7 +1832,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
           <label className={styles.field}>
             <span>
-              Data <span className="requiredMark">*</span>
+              Data execucao <span className="requiredMark">*</span>
             </span>
             <input type="date" value={form.date} onChange={(event) => updateFormField("date", event.target.value)} required />
           </label>
@@ -1900,10 +2054,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             </label>
           ) : null}
 
-          <div className={`${styles.field} ${styles.fieldWide}`}>
-            <span>
-              Equipes <span className="requiredMark">*</span>
-            </span>
+          <section className={`${styles.formSection} ${styles.fieldWide}`}>
+            <div className={styles.sectionHeader}>
+              <h4>
+                Equipes <span className="requiredMark">*</span>
+              </h4>
+              <p>Selecione uma ou mais equipes para receber a programacao do formulario.</p>
+            </div>
             <div className={styles.teamSelectionCard}>
               <div className={styles.teamSelectionHeader}>
                 <input
@@ -1955,10 +2112,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 )}
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className={`${styles.field} ${styles.fieldWide}`}>
-            <span>Atividades</span>
+          <section className={`${styles.formSection} ${styles.fieldWide}`}>
+            <div className={styles.sectionHeader}>
+              <h4>Atividades</h4>
+              <p>Inclua o codigo e a quantidade das atividades previstas para a programacao.</p>
+            </div>
             <div className={styles.activityComposer}>
               <label className={styles.field}>
                 <span>Codigo da atividade</span>
@@ -2009,10 +2169,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p className={styles.emptyHint}>Nenhuma atividade incluida.</p>
               )}
             </div>
-          </div>
+          </section>
 
-          <div className={`${styles.field} ${styles.fieldWide}`}>
-            <span>Documentos</span>
+          <section className={`${styles.formSection} ${styles.fieldWide}`}>
+            <div className={styles.sectionHeader}>
+              <h4>Documentos</h4>
+              <p>Preencha os dados dos documentos quando existirem para a programacao.</p>
+            </div>
             <div className={styles.documentsGrid}>
               {DOCUMENT_KEYS.map((item) => (
                 <div key={item.key} className={styles.documentCard}>
@@ -2043,9 +2206,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className={`${styles.actions} ${styles.formActions}`}>
+          <div className={`${styles.actions} ${styles.formActions} ${styles.formActionsInline}`}>
             <button
               type="submit"
               className={styles.primaryButton}
@@ -2058,7 +2221,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 || (Boolean(editingScheduleId) && !form.workCompletionStatus)
               }
             >
-              {isSaving ? "Salvando..." : editingScheduleId ? "Salvar edicao" : "Cadastrar para equipes selecionadas"}
+              {isSaving ? "Salvando..." : editingScheduleId ? "Salvar edicao" : "Cadastrar programacao"}
             </button>
             {editingScheduleId ? (
               <button type="button" className={styles.ghostButton} onClick={cancelEditMode} disabled={isSaving}>
@@ -2115,6 +2278,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             >
               <option value="TODOS">Todos</option>
               <option value="PROGRAMADA">Programada</option>
+              <option value="REPROGRAMADA">Reprogramada</option>
               <option value="ADIADA">Adiada</option>
               <option value="CANCELADA">Cancelada</option>
             </select>
@@ -2138,15 +2302,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               type="button"
               className={styles.ghostButton}
               onClick={() => void handleExportCsv()}
-              disabled={isExporting || isExportingEnel || isLoadingList || !filteredSchedules.length}
+              disabled={isExporting || isExportingEnel || isLoadingList || !filteredSchedules.length || commonExportCooldown.isCoolingDown}
             >
-              {isExporting ? "Extraindo..." : "Extracao Comum"}
+              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
             <button
               type="button"
               className={styles.secondaryButton}
               onClick={() => void handleExportEnelExcel()}
-              disabled={isExportingEnel || isExporting || isLoadingList || !filteredSchedules.length}
+              disabled={isExportingEnel || isExporting || isLoadingList || !filteredSchedules.length || enelExportCooldown.isCoolingDown}
             >
               {isExportingEnel ? "Gerando..." : "Extracao ENEL"}
             </button>
@@ -2157,7 +2321,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Data</th>
+                <th>Data execucao</th>
                 <th>Projeto</th>
                 <th>Equipe</th>
                 <th>Base</th>
@@ -2173,8 +2337,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 pagedSchedules.map((schedule) => {
                   const project = projectMap.get(schedule.projectId);
                   const team = teamMap.get(schedule.teamId);
+                  const displayStatus = getDisplayProgrammingStatus(schedule);
                   return (
-                    <tr key={schedule.id} className={schedule.status !== "PROGRAMADA" ? styles.inactiveRow : undefined}>
+                    <tr key={schedule.id} className={isInactiveProgrammingStatus(displayStatus) ? styles.inactiveRow : undefined}>
                       <td>{formatDate(schedule.date)}</td>
                       <td>{project?.code ?? schedule.projectId}</td>
                       <td>{team?.name ?? schedule.teamId}</td>
@@ -2183,8 +2348,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                       <td>{schedule.period === "integral" ? "Integral" : "Parcial"}</td>
                       <td>
                         <div className={styles.sobCell}>
-                          <span>{schedule.status}</span>
-                          {schedule.status !== "PROGRAMADA" ? (
+                          <span>{displayStatus}</span>
+                          {isInactiveProgrammingStatus(displayStatus) ? (
                             <span className={styles.statusTag}>Inativa</span>
                           ) : null}
                         </div>
@@ -2236,7 +2401,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                                 onClick={() => startEditSchedule(schedule)}
                                 title="Edicao"
                                 aria-label={`Editar programacao ${project?.code ?? schedule.id}`}
-                                disabled={schedule.status !== "PROGRAMADA"}
+                                disabled={!isActiveProgrammingStatus(displayStatus)}
                               >
                                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                   <path
@@ -2255,7 +2420,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                                 onClick={() => openPostponeModal(schedule)}
                                 title="Adiar"
                                 aria-label={`Adiar programacao ${project?.code ?? schedule.id}`}
-                                disabled={schedule.status !== "PROGRAMADA"}
+                                disabled={!isActiveProgrammingStatus(displayStatus)}
                               >
                                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                   <path
@@ -2274,7 +2439,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                                 onClick={() => openCancelModal(schedule)}
                                 title="Cancelar"
                                 aria-label={`Cancelar programacao ${project?.code ?? schedule.id}`}
-                                disabled={schedule.status !== "PROGRAMADA"}
+                                disabled={!isActiveProgrammingStatus(displayStatus)}
                               >
                                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                   <path
@@ -2373,6 +2538,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
         <div className={styles.weekLegend}>
           <span className={`${styles.weekLegendItem} ${styles.weekLegendPlanned}`}>Programado</span>
+          <span className={`${styles.weekLegendItem} ${styles.weekLegendRescheduled}`}>Reprogramado</span>
           <span className={`${styles.weekLegendItem} ${styles.weekLegendPostponed}`}>Adiado</span>
           <span className={`${styles.weekLegendItem} ${styles.weekLegendCancelled}`}>Cancelado</span>
         </div>
@@ -2405,13 +2571,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                         daySchedules.map((schedule) => {
                           const project = projectMap.get(schedule.projectId);
                           const sob = project?.code ?? schedule.projectId;
+                          const displayStatus = getDisplayProgrammingStatus(schedule);
                           const hasSgd = Boolean(schedule.documents?.sgd?.approvedAt?.trim());
                           const hasPi = Boolean(schedule.documents?.pi?.approvedAt?.trim());
 
                           return (
                             <article
                               key={schedule.id}
-                              className={`${styles.weekCard} ${scheduleStatusClassName(schedule.status)}`}
+                              className={`${styles.weekCard} ${scheduleStatusClassName(displayStatus)}`}
                             >
                               <div className={styles.weekCardTop}>
                                 <strong>{sob}</strong>
@@ -2492,11 +2659,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             </header>
             <div className={styles.modalBody}>
               <div className={styles.detailsGrid}>
-                <p><strong>Status:</strong> {detailsTarget.status}</p>
+                <p><strong>Status:</strong> {getDisplayProgrammingStatus(detailsTarget)}</p>
                 <p><strong>Atualizado em:</strong> {formatDateTime(detailsTarget.updatedAt)}</p>
                 <p><strong>Projeto:</strong> {projectMap.get(detailsTarget.projectId)?.code ?? detailsTarget.projectId}</p>
                 <p><strong>Equipe:</strong> {teamMap.get(detailsTarget.teamId)?.name ?? detailsTarget.teamId}</p>
-                <p><strong>Data:</strong> {formatDate(detailsTarget.date)}</p>
+                <p><strong>Data execucao:</strong> {formatDate(detailsTarget.date)}</p>
                 <p><strong>Horario:</strong> {detailsTarget.startTime} - {detailsTarget.endTime}</p>
                 <p><strong>Inicio de desligamento:</strong> {detailsTarget.outageStartTime || "-"}</p>
                 <p><strong>Termino de desligamento:</strong> {detailsTarget.outageEndTime || "-"}</p>
@@ -2512,7 +2679,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>Alimentador:</strong> {detailsTarget.feeder || "-"}</p>
                 <p className={styles.detailWide}><strong>Descricao do servico:</strong> {detailsTarget.serviceDescription || "-"}</p>
                 <p className={styles.detailWide}><strong>Anotacao:</strong> {detailsTarget.note || "-"}</p>
-                {detailsTarget.status !== "PROGRAMADA" ? (
+                {isInactiveProgrammingStatus(getDisplayProgrammingStatus(detailsTarget)) ? (
                   <>
                     <p><strong>Data do cancelamento/adiamento:</strong> {formatDateTime(detailsTarget.statusChangedAt ?? "")}</p>
                     <p className={styles.detailWide}>
@@ -2634,7 +2801,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             <div className={styles.modalBody}>
               <p>
                 Informe o motivo e a nova data da programacao. A programacao atual sera marcada como ADIADA e um novo
-                registro sera criado para a nova data.
+                registro sera criado para a nova data com status REPROGRAMADA. Datas iguais a atual ou anteriores a hoje
+                nao sao permitidas.
               </p>
 
               <label className={styles.field}>
@@ -2645,6 +2813,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                   type="date"
                   value={postponeDate}
                   onChange={(event) => setPostponeDate(event.target.value)}
+                  min={today}
                   disabled={isPostponing}
                 />
               </label>

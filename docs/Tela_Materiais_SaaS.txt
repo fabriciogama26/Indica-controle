@@ -53,6 +53,7 @@ Filtros, auto-complete e listagem
   - `Status` (`Ativo` / `Inativo`)
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`).
 - Botao `Exportar Excel (CSV)` na lista para exportar os materiais filtrados.
+- O botao de exportacao da lista fica bloqueado por `10` segundos apos cada clique.
 - Colunas da lista:
   - `Codigo`
   - `Descricao`

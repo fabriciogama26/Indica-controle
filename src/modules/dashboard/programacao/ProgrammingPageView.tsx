@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, DragEvent, FormEvent, useDeferredValue, useEffect, useState } from "react";
+import { CSSProperties, DragEvent, FormEvent, useCallback, useDeferredValue, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 
@@ -226,6 +226,19 @@ type ActivityCatalogResponse = {
 
 type SaveProgrammingResponse = {
   id?: string;
+  updatedAt?: string;
+  warning?: string;
+  error?: "conflict";
+  currentUpdatedAt?: string | null;
+  updatedBy?: string | null;
+  changedFields?: string[];
+  currentRecord?: {
+    id: string;
+    executionDate: string;
+    startTime: string;
+    endTime: string;
+    updatedAt: string;
+  } | null;
   message?: string;
 };
 
@@ -571,6 +584,20 @@ function normalizeSchedule(
   };
 }
 
+function buildConflictFeedbackMessage(payload: SaveProgrammingResponse | null, fallback: string) {
+  if (payload?.error !== "conflict") {
+    return payload?.message ?? fallback;
+  }
+
+  const updatedBy = payload.updatedBy?.trim();
+  const updatedAt = payload.currentUpdatedAt ? formatDisplayDateTime(payload.currentUpdatedAt) : "";
+  const changedFields = Array.isArray(payload.changedFields) && payload.changedFields.length
+    ? ` Campos em conflito: ${payload.changedFields.join(", ")}.`
+    : "";
+
+  return `${payload.message ?? fallback}${updatedBy || updatedAt ? ` Alterada por ${updatedBy ?? "outro usuario"}${updatedAt ? ` em ${updatedAt}` : ""}.` : ""}${changedFields}`;
+}
+
 function findActivityOption(value: string, options: ActivityCatalogItem[]) {
   const normalizedValue = value.trim().toLowerCase();
   if (!normalizedValue) {
@@ -785,63 +812,52 @@ export function ProgrammingPageView() {
     });
   }, [copySourceTeams, teamSelectionOptions]);
 
-  useEffect(() => {
+  const applyBoardSnapshot = useCallback((data: ProgrammingResponse | null) => {
+    setProjects(data?.projects ?? []);
+    setTeams(data?.teams ?? []);
+    setSupportOptions(data?.supportOptions ?? []);
+    setTeamSummaries(data?.teamSummaries ?? []);
+    setSchedules(sortSchedules((data?.schedules ?? []).map(normalizeSchedule)));
+  }, []);
+
+  const fetchBoardSnapshot = useCallback(async () => {
     if (!accessToken) {
-      setProjects([]);
-      setTeams([]);
-      setSchedules([]);
-      setSupportOptions([]);
-      setTeamSummaries([]);
-      return;
+      return null;
     }
 
-    let ignore = false;
+    setIsBoardLoading(true);
+    try {
+      const response = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
 
-    async function loadBoard() {
-      setIsBoardLoading(true);
-
-      try {
-        const response = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          cache: "no-store",
-        });
-
-        const data = (await response.json().catch(() => null)) as ProgrammingResponse | null;
-        if (!response.ok) {
-          throw new Error(data?.message ?? "Falha ao carregar programacao.");
-        }
-
-        if (ignore) {
-          return;
-        }
-
-        setProjects(data?.projects ?? []);
-        setTeams(data?.teams ?? []);
-        setSupportOptions(data?.supportOptions ?? []);
-        setTeamSummaries(data?.teamSummaries ?? []);
-        setSchedules(sortSchedules((data?.schedules ?? []).map(normalizeSchedule)));
-      } catch (error) {
-        if (ignore) {
-          return;
-        }
-
-        setFeedback({
-          type: "error",
-          message: error instanceof Error ? error.message : "Falha ao carregar programacao.",
-        });
-      } finally {
-        if (!ignore) {
-          setIsBoardLoading(false);
-        }
+      const data = (await response.json().catch(() => null)) as ProgrammingResponse | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Falha ao carregar programacao.");
       }
+
+      return data;
+    } finally {
+      setIsBoardLoading(false);
     }
-
-    void loadBoard();
-
-    return () => {
-      ignore = true;
-    };
   }, [accessToken, rangeEnd, rangeStart]);
+
+  const loadBoardData = useCallback(async () => {
+    try {
+      const data = await fetchBoardSnapshot();
+      applyBoardSnapshot(data);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao carregar programacao.",
+      });
+    }
+  }, [applyBoardSnapshot, fetchBoardSnapshot]);
+
+  useEffect(() => {
+    void loadBoardData();
+  }, [loadBoardData]);
 
   useEffect(() => {
     if (!accessToken || !modalState || deferredActivitySearch.trim().length < 2) {
@@ -1206,6 +1222,20 @@ export function ProgrammingPageView() {
     });
   }
 
+  async function refreshBoardAfterMutation(successMessage: string, warning?: string | null) {
+    try {
+      const boardData = await fetchBoardSnapshot();
+      applyBoardSnapshot(boardData);
+    } catch {
+      if (!warning) {
+        setFeedback({
+          type: "success",
+          message: `${successMessage} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+        });
+      }
+    }
+  }
+
   async function persistSchedule(payload: SaveRequestPayload) {
     if (!accessToken) {
       return;
@@ -1226,32 +1256,20 @@ export function ProgrammingPageView() {
 
       const data = (await response.json().catch(() => null)) as SaveProgrammingResponse | null;
       if (!response.ok) {
-        throw new Error(data?.message ?? "Falha ao salvar programacao.");
+        throw new Error(buildConflictFeedbackMessage(data, "Falha ao salvar programacao."));
       }
 
-      const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
-      const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
-      if (!reloadResponse.ok) {
-        throw new Error(reloadData?.message ?? "Programacao salva, mas falhou ao recarregar a grade.");
-      }
-
-      setProjects(reloadData?.projects ?? []);
-      setTeams(reloadData?.teams ?? []);
-      setSupportOptions(reloadData?.supportOptions ?? []);
-      setTeamSummaries(reloadData?.teamSummaries ?? []);
-      setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
       setModalState(null);
       setCancelModalState(null);
       setReprogramModalState(null);
       setCancelReason("");
       setReprogramReason("");
+      const successMessage = data?.message ?? "Programacao salva com sucesso.";
       setFeedback({
         type: "success",
-        message: data?.message ?? "Programacao salva com sucesso.",
+        message: successMessage,
       });
+      await refreshBoardAfterMutation(successMessage, data?.warning);
     } catch (error) {
       setFeedback({
         type: "error",
@@ -1372,34 +1390,22 @@ export function ProgrammingPageView() {
 
       const data = (await response.json().catch(() => null)) as SaveProgrammingResponse | null;
       if (!response.ok) {
-        throw new Error(data?.message ?? "Falha ao alterar status da programacao.");
+        throw new Error(buildConflictFeedbackMessage(data, "Falha ao alterar status da programacao."));
       }
 
-      const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
-      const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
-      if (!reloadResponse.ok) {
-        throw new Error(reloadData?.message ?? "Alteracao registrada, mas falhou ao recarregar a grade.");
-      }
-
-      setProjects(reloadData?.projects ?? []);
-      setTeams(reloadData?.teams ?? []);
-      setSupportOptions(reloadData?.supportOptions ?? []);
-      setTeamSummaries(reloadData?.teamSummaries ?? []);
-      setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
       setModalState(null);
       setCancelModalState(null);
       setCancelReason("");
+      const successMessage =
+        data?.message ??
+        (cancelModalState.action === "postpone"
+          ? `Programacao do projeto ${cancelModalState.projectCode} adiada com sucesso.`
+          : `Programacao do projeto ${cancelModalState.projectCode} cancelada com sucesso.`);
       setFeedback({
         type: "success",
-        message:
-          data?.message ??
-          (cancelModalState.action === "postpone"
-            ? `Programacao do projeto ${cancelModalState.projectCode} adiada com sucesso.`
-            : `Programacao do projeto ${cancelModalState.projectCode} cancelada com sucesso.`),
+        message: successMessage,
       });
+      await refreshBoardAfterMutation(successMessage, data?.warning);
     } catch (error) {
       setFeedback({
         type: "error",
@@ -1437,26 +1443,13 @@ export function ProgrammingPageView() {
       if (!response.ok) {
         throw new Error(data?.message ?? "Falha ao copiar programacao para as equipes selecionadas.");
       }
-
-      const reloadResponse = await fetch(`/api/programacao?startDate=${rangeStart}&endDate=${rangeEnd}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
-      const reloadData = (await reloadResponse.json().catch(() => null)) as ProgrammingResponse | null;
-      if (!reloadResponse.ok) {
-        throw new Error(reloadData?.message ?? "Copia registrada, mas falhou ao recarregar a grade.");
-      }
-
-      setProjects(reloadData?.projects ?? []);
-      setTeams(reloadData?.teams ?? []);
-      setSupportOptions(reloadData?.supportOptions ?? []);
-      setTeamSummaries(reloadData?.teamSummaries ?? []);
-      setSchedules(sortSchedules((reloadData?.schedules ?? []).map(normalizeSchedule)));
+      const successMessage = data?.message ?? "Programacao copiada com sucesso.";
       setFeedback({
         type: "success",
-        message: data?.message ?? "Programacao copiada com sucesso.",
+        message: successMessage,
       });
       setCopyModalState(null);
+      await refreshBoardAfterMutation(successMessage);
     } catch (error) {
       setFeedback({
         type: "error",

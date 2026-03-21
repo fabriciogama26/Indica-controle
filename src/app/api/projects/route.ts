@@ -1182,7 +1182,7 @@ export async function PATCH(request: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", appUser.tenant_id)
         .eq("project_id", projectId)
-        .in("status", ["PROGRAMADA", "ADIADA"]);
+        .in("status", ["PROGRAMADA", "REPROGRAMADA", "ADIADA"]);
 
       if (programmingGuardError) {
         return NextResponse.json({ message: "Falha ao validar programacoes vinculadas ao projeto." }, { status: 500 });
@@ -1191,7 +1191,7 @@ export async function PATCH(request: NextRequest) {
       if ((programmingCount ?? 0) > 0) {
         return NextResponse.json(
           {
-            message: `Projeto ${currentProject.sob} possui programacoes programadas ou adiadas. Resolva essas etapas antes de inativar o projeto.`,
+            message: `Projeto ${currentProject.sob} possui programacoes programadas, reprogramadas ou adiadas. Resolva essas etapas antes de inativar o projeto.`,
           },
           { status: 409 },
         );

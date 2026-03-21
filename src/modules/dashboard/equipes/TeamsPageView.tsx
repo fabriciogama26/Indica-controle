@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./TeamsPageView.module.css";
 
 type TeamItem = {
@@ -242,6 +243,7 @@ export function TeamsPageView() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const exportCooldown = useExportCooldown();
   const [detailTeam, setDetailTeam] = useState<TeamItem | null>(null);
   const [historyTeam, setHistoryTeam] = useState<TeamItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<TeamHistoryEntry[]>([]);
@@ -631,6 +633,14 @@ export function TeamsPageView() {
       return;
     }
 
+    if (!exportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${exportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
     setIsExporting(true);
 
     try {
@@ -901,7 +911,7 @@ export function TeamsPageView() {
             type="button"
             className={styles.ghostButton}
             onClick={() => void handleExportTeams()}
-            disabled={isExporting || isLoadingList}
+            disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
           >
             {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
           </button>

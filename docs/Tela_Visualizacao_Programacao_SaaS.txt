@@ -33,11 +33,12 @@ Filtros, auto-complete e listagem
   - Equipe
   - Status
 - Lista:
-  - Colunas: Data, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
   - Acoes por linha: `Detalhes` e `Historico`.
   - Exportacoes:
-    - `Extracao Comum`
+    - `Exportar Excel (CSV)`
     - `Extracao ENEL`
+  - Todos os botoes de exportacao da lista possuem bloqueio de novo clique por `10` segundos.
   - Regra de status:
     - `ADIADA` e `CANCELADA` aparecem na lista mesmo quando a data de execucao esta fora do periodo filtrado.
 - Calendario semanal:
@@ -47,6 +48,7 @@ Filtros, auto-complete e listagem
   - O horario nao aparece mais no card.
   - Cores operacionais:
     - `PROGRAMADA`: azul
+    - `REPROGRAMADA`: roxo
     - `ADIADA`: amarelo
     - `CANCELADA`: vermelho
   - O texto de status (`Programado`, `Adiado`, `Cancelado`) nao aparece no card; a diferenciacao fica pela cor.
@@ -82,6 +84,8 @@ Atualizacao 2026-03
 - Adicionada paginacao no modal de historico da Programacao.
 - Calendario removido da tela de cadastro e mantido apenas na tela de visualizacao, posicionado no topo.
 - Ajustada listagem para manter visiveis status `ADIADA` e `CANCELADA`.
+- Ajustado o calendario semanal para exibir `REPROGRAMADA` em roxo quando a programacao for derivada de reprogramacao.
+- Renomeado o botao de exportacao comum para `Exportar Excel (CSV)` e adicionada trava de `10` segundos entre cliques.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -98,7 +102,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - `startOfWeekMonday`, `createWeekDates`, `isDateInRange`, `formatWeekRangeLabel`.
-- `scheduleStatusClassName`.
+- `scheduleStatusClassName`, `getDisplayProgrammingStatus`, `useExportCooldown`.
 
 Servicos e integracoes externas
 - `GET /api/programacao` para projetos/equipes/programacoes.
@@ -110,6 +114,7 @@ Ajuda contextual
   - `src/app/(dashboard)/programacao-visualizacao/page.tsx`
   - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
   - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `src/hooks/useExportCooldown.ts`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`

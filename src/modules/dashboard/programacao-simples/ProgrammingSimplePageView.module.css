@@ -78,6 +78,11 @@
   margin-top: 2px;
 }
 
+.formActionsInline {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
 .primaryButton,
 .secondaryButton,
 .ghostButton,
@@ -129,6 +134,32 @@
   display: grid;
   gap: 10px;
   background: #fbfcff;
+}
+
+.formSection {
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 18px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  background: linear-gradient(180deg, rgba(247, 250, 255, 0.96) 0%, rgba(255, 255, 255, 0.98) 100%);
+}
+
+.sectionHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.sectionHeader h4 {
+  margin: 0;
+  color: #17347a;
+  font-size: 1rem;
+}
+
+.sectionHeader p {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.84rem;
 }
 
 .teamSelectionHeader {
@@ -329,6 +360,10 @@
   background: #f3d572;
 }
 
+.weekLegendRescheduled {
+  background: #8f4fd8;
+}
+
 .weekLegendCancelled {
   background: #c53d3d;
 }
@@ -418,6 +453,11 @@
 .weekCardPlanned {
   background: linear-gradient(180deg, #2c6ed9 0%, #1f57b8 100%);
   color: #f3f8ff;
+}
+
+.weekCardRescheduled {
+  background: linear-gradient(180deg, #bb8cf2 0%, #8f4fd8 100%);
+  color: #f8f1ff;
 }
 
 .weekCardPostponed {
@@ -799,6 +839,10 @@
   .actions .ghostButton,
   .actions .dangerButton {
     flex: 1 1 auto;
+  }
+
+  .formActionsInline {
+    flex-wrap: wrap;
   }
 
   .detailsGrid {
