@@ -159,7 +159,7 @@ Boas praticas
 - Seguranca operacional:
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
   - O backend impede salvar a mesma obra para a mesma equipe na mesma data quando ainda existir programacao ativa para esse conjunto.
-  - O adiamento exige nova data diferente da atual e bloqueia datas passadas no frontend e na RPC do banco.
+  - O adiamento exige nova data posterior a data atual da programacao no frontend, na API e na RPC do banco.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
   - API exige RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
   - `PATCH` exige `expectedUpdatedAt` e `ADIAR` exige `newDate`, reduzindo sobrescrita silenciosa.
@@ -212,7 +212,8 @@ Atualizacao 2026-03
 - Passado a exibir `REPROGRAMADA` como status visual derivado do historico, com card roxo na visualizacao semanal.
 - Adicionada trava de `10` segundos nos botoes de exportacao CSV/ENEL da tela para evitar cliques repetidos.
 - Ajustado o submit para levar o usuario ao topo da tela sempre que houver sucesso ou erro no salvamento.
-- Endurecido o adiamento para bloquear datas passadas na API e na RPC `postpone_project_programming`.
+- Endurecido o adiamento para bloquear datas menores ou iguais a data atual da programacao na API e na RPC `postpone_project_programming`.
+- Ajustado o modal de historico para exibir tambem a mudanca de `Data execucao` nos eventos de `Adiamento`, usando a data atual e a nova data gerada no adiamento.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.

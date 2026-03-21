@@ -511,13 +511,21 @@ function normalizeHistoryItemsForDisplay(items: ProgrammingHistoryItem[]) {
 
       if (action === "ADIADA" || action === "CANCELADA") {
         const statusChange = rawChanges.status;
-        if (!statusChange) {
+        const executionDateChange = rawChanges.executionDate;
+        const relevantChanges = Object.fromEntries(
+          Object.entries({
+            ...(statusChange ? { status: statusChange } : {}),
+            ...(executionDateChange ? { executionDate: executionDateChange } : {}),
+          }),
+        );
+
+        if (!Object.keys(relevantChanges).length) {
           return null;
         }
 
         return {
           ...item,
-          changes: { status: statusChange },
+          changes: relevantChanges,
         };
       }
 
@@ -748,8 +756,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const canSubmitCancellation = cancelReason.trim().length >= CANCEL_REASON_MIN_LENGTH && !isCancelling;
   const canSubmitPostpone = Boolean(postponeDate)
     && postponeTarget !== null
-    && postponeDate !== postponeTarget.date
-    && postponeDate >= today
+    && postponeDate > postponeTarget.date
     && postponeReason.trim().length >= CANCEL_REASON_MIN_LENGTH
     && !isPostponing;
   const selectedProject = projects.find((item) => item.id === form.projectId) ?? null;
@@ -2801,8 +2808,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             <div className={styles.modalBody}>
               <p>
                 Informe o motivo e a nova data da programacao. A programacao atual sera marcada como ADIADA e um novo
-                registro sera criado para a nova data com status REPROGRAMADA. Datas iguais a atual ou anteriores a hoje
-                nao sao permitidas.
+                registro sera criado para a nova data com status REPROGRAMADA. A nova data deve ser posterior a data
+                atual da programacao.
               </p>
 
               <label className={styles.field}>
@@ -2813,7 +2820,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                   type="date"
                   value={postponeDate}
                   onChange={(event) => setPostponeDate(event.target.value)}
-                  min={today}
+                  min={postponeTarget ? addDays(postponeTarget.date, 1) : today}
                   disabled={isPostponing}
                 />
               </label>

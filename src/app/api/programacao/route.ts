@@ -395,12 +395,6 @@ function normalizeIsoDate(value: unknown) {
   return isIsoDate(normalized) ? normalized : null;
 }
 
-function getTodayIsoDateInSaoPaulo() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-  }).format(new Date());
-}
-
 function normalizeTime(value: unknown) {
   const normalized = normalizeText(value);
   if (/^\d{2}:\d{2}$/.test(normalized)) {
@@ -560,6 +554,28 @@ function addChange(
   }
 
   changes[field] = { from, to };
+}
+
+function buildHistoryChangesWithDerivedExecutionDate(
+  changes: Record<string, unknown> | null,
+  metadata: Record<string, unknown> | null,
+) {
+  const normalizedChanges = { ...(changes ?? {}) };
+  const action = normalizeText(metadata?.action).toUpperCase();
+
+  if (action === "ADIADA" && !normalizedChanges.executionDate) {
+    const fromDate = normalizeIsoDate(metadata?.executionDate);
+    const toDate = normalizeIsoDate(metadata?.newExecutionDate);
+
+    if (fromDate && toDate && fromDate !== toDate) {
+      normalizedChanges.executionDate = {
+        from: fromDate,
+        to: toDate,
+      };
+    }
+  }
+
+  return normalizedChanges;
 }
 
 function toActivitySnapshot(items: Array<{ code: string; quantity: number }>) {
@@ -2040,7 +2056,7 @@ export async function GET(request: NextRequest) {
           changedAt: item.created_at,
           reason: normalizeText(item.reason),
           action: normalizeText(item.metadata?.action),
-          changes: item.changes ?? {},
+          changes: buildHistoryChangesWithDerivedExecutionDate(item.changes ?? {}, item.metadata ?? {}),
           metadata: item.metadata ?? {},
         })),
       } satisfies ProgrammingHistoryListResponse);
@@ -2969,16 +2985,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (newDate === currentProgramming.execution_date) {
+    if (newDate <= currentProgramming.execution_date) {
       return NextResponse.json(
-        { message: "Informe uma nova data diferente da data atual da programacao." },
-        { status: 400 },
-      );
-    }
-
-    if (newDate < getTodayIsoDateInSaoPaulo()) {
-      return NextResponse.json(
-        { message: "Informe uma nova data igual ou posterior a hoje para concluir o adiamento." },
+        { message: "Informe uma nova data posterior a data atual da programacao." },
         { status: 400 },
       );
     }
