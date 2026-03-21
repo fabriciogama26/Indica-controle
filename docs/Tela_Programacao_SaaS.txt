@@ -19,6 +19,7 @@ Arquitetura
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - `supabase/migrations/072_create_programming_support_items.sql`
   - `supabase/migrations/078_create_programming_history_append_rpc.sql`
+  - `supabase/migrations/097_move_programming_status_history_into_rpcs.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
 Cadastro
@@ -59,6 +60,7 @@ Cadastro
   - `Data inclusao` nao e digitada manualmente.
   - Ao salvar a programacao com numero preenchido em `SGD`, `PI` ou `PEP`, a `Data inclusao` recebe automaticamente a data atual do sistema no backend.
   - Se o numero do documento mudar numa edicao posterior, a `Data inclusao` e renovada no novo salvamento.
+  - `Data pedido` nao pode ser maior que `Data aprovada` para `SGD`, `PI` e `PEP`.
 - Regra das informacoes basicas:
   - `Projeto`, `Equipe` e `Data de execucao` sao exibidos no modal apenas para conferencia.
   - `Equipe` e `Data de execucao` nao podem ser alterados pelo modal.
@@ -81,6 +83,13 @@ Cadastro
   - Quando uma programacao existente muda data, equipe ou horario, o frontend abre um modal proprio de validacao da reprogramacao antes de persistir.
   - O botao `Validar reprogramacao` so fica habilitado com motivo de no minimo 10 caracteres.
   - Se a tela for fechada antes da validacao final, a alteracao nao e salva; a programacao anterior continua valendo.
+- Regra de validacao de horarios e quantidades:
+  - `Hora termino` nao pode ser igual nem menor que `Hora inicio`.
+  - `Termino de desligamento` nao pode ser igual nem menor que `Inicio de desligamento`.
+  - `POSTE`, `ESTRUTURA`, `TRAFO`, `REDE` e `Nº Clientes Afetados` nao aceitam valor negativo.
+  - `ETAPA` nao aceita valor negativo nem zero.
+  - `Alimentador` nao aceita valor numerico negativo.
+  - Essas protecoes existem no frontend e tambem nas RPCs do banco.
 - Regra de copia:
   - A copia e uma acao manual e independente do salvamento da programacao.
   - O modal de copia trabalha sempre com a linha inteira da equipe no periodo visivel.
@@ -88,6 +97,10 @@ Cadastro
   - Antes de copiar, o backend valida conflito de horario, equipe de destino inativa, copia para a mesma equipe e incompatibilidade de base.
   - A copia em lote agora acontece por RPC transacional; se qualquer item falhar, o lote inteiro e revertido.
   - As tabelas `project_programming_copy_batches` e `project_programming_copy_batch_items` continuam sendo a base oficial do rastreamento da copia; nao foi necessario criar outra tabela para esta mudanca.
+- Regra de compatibilidade do cadastro em lote:
+  - O endpoint de cadastro em lote exige a RPC full mais recente.
+  - Se a RPC full nao existir no ambiente, a API retorna `409` orientando aplicar as migrations faltantes.
+  - O objetivo e evitar gravacao parcial entre campos base e campos complementares.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -127,11 +140,16 @@ Boas praticas
 - As migrations `071` e `072` movem o resumo semanal de carga para o banco e formalizam o catalogo proprio de apoio da Programacao com vinculacao ao catalogo da Locacao.
 - As migrations `074`, `075` e `076` formalizam os lotes de copia da Programacao, adaptam o schema ao modo simplificado `team_period` e movem a copia em lote para uma RPC transacional.
 - O historico complementar da `Programacao` agora tambem e registrado por RPC (`append_programming_history`), sem `insert` direto na route.
+- `Cancelamento` e `Adiamento` agora gravam o historico funcional dentro das proprias RPCs transacionais do banco.
 - O salvamento da programacao agora usa RPC com:
   - validacao de concorrencia por `expected_updated_at`
   - bloqueio de sobreposicao de horario por `equipe + data`
   - bloqueio quando a equipe nao possui base vinculada
   - bloqueio quando a base da equipe diverge da base da obra
+- A API de `Programacao` agora:
+  - devolve `409` com payload de conflito (`currentRecord`, `currentUpdatedAt`, `updatedBy`, `changedFields`) quando detecta concorrencia
+  - deixa de transformar falha de recarga de grade em erro de salvamento
+  - retorna sucesso com `warning` quando o commit ocorreu mas a atualizacao da visualizacao falhou
 
 Cancelamento e saldo
 --------------------
@@ -211,10 +229,17 @@ Atualizacao 2026-03
   - copia transacional da linha inteira da equipe no periodo visivel
   - rollback automatico quando qualquer item do lote falha
   - historico de copia persistido no proprio banco, sem depender da API iterar item por item
+- Arquivo `supabase/migrations/095_harden_programming_time_and_document_validations.sql` criado com:
+  - reforco de validacao em RPC para `data pedido <= data aprovada`
+  - bloqueio de `alimentador` quando vier como valor numerico negativo
+  - reaproveitamento das validacoes ja existentes de horario, quantidades estruturais, etapa e clientes afetados
 - Arquivo `supabase/migrations/078_create_programming_history_append_rpc.sql` criado com:
   - RPC `append_programming_history`
   - registro do historico complementar da `Programacao` no banco
   - remocao do `insert` direto em `app_entity_history` da route
+- Arquivo `supabase/migrations/097_move_programming_status_history_into_rpcs.sql` criado com:
+  - historico de `ADIADA` e `CANCELADA` movido para dentro das RPCs transacionais
+  - reduçao do risco de commit principal sem historico funcional correspondente
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
@@ -222,6 +247,7 @@ Atualizacao 2026-03
   - cancelar ou adiar programacao por `PATCH` com motivo obrigatorio
   - validar reprogramacao por modal proprio com motivo obrigatorio de no minimo 10 caracteres
   - recalcular backlog pendente com dados reais do periodo
+  - tratar `warning` de visualizacao sem perder a confirmacao de que o salvamento principal foi concluido
   - consumir a carga semanal real da equipe pela API em vez de calcular localmente no frontend
   - manter semana completa de segunda a domingo
   - manter nomenclatura documental `PEP`
@@ -267,6 +293,8 @@ Funcoes principais
   - Responsavel por: adaptar o lote de copia para o modo simplificado de copiar a linha da equipe no periodo visivel.
 - Caminho: `supabase/migrations/076_create_copy_team_programming_period_rpc.sql`
   - Responsavel por: executar a copia transacional da linha da equipe, registrar os itens do lote e evitar lote parcial.
+- Caminho: `supabase/migrations/095_harden_programming_time_and_document_validations.sql`
+  - Responsavel por: endurecer as validacoes de horario, documentos e alimentador na camada RPC.
 - Caminho: `supabase/migrations/078_create_programming_history_append_rpc.sql`
   - Responsavel por: registrar via RPC o historico complementar de criacao, atualizacao, reagendamento, adiamento e cancelamento da Programacao.
 

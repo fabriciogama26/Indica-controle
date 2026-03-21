@@ -72,6 +72,7 @@ Filtros, auto-complete e listagem
 - Header da lista:
   - sem texto fixo de pagina no topo;
   - botao `Exportar Excel (CSV)` para exportar os registros filtrados.
+  - o botao fica bloqueado por `10` segundos apos cada clique para evitar exportacoes duplicadas.
 
 Boas praticas
 -------------

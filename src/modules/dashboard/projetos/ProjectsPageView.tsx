@@ -4,6 +4,7 @@
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./ProjectsPageView.module.css";
 
 type ProjectItem = {
@@ -522,6 +523,8 @@ export function ProjectsPageView() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingForecast, setIsExportingForecast] = useState(false);
+  const exportProjectsCooldown = useExportCooldown();
+  const exportForecastCooldown = useExportCooldown();
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingProjectUpdatedAt, setEditingProjectUpdatedAt] = useState<string | null>(null);
@@ -552,6 +555,7 @@ export function ProjectsPageView() {
   const [activityForecastImportFile, setActivityForecastImportFile] = useState<File | null>(null);
   const [isImportingActivityForecast, setIsImportingActivityForecast] = useState(false);
   const [isExportingActivityForecast, setIsExportingActivityForecast] = useState(false);
+  const exportActivityForecastCooldown = useExportCooldown();
   const [activityForecastSearch, setActivityForecastSearch] = useState("");
   const [activityForecastQty, setActivityForecastQty] = useState("");
   const [activityForecastCatalogItems, setActivityForecastCatalogItems] = useState<ProjectActivityForecastCatalogItem[]>([]);
@@ -1946,6 +1950,14 @@ export function ProjectsPageView() {
       return;
     }
 
+    if (!exportProjectsCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${exportProjectsCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
     setIsExporting(true);
 
     try {
@@ -2026,6 +2038,14 @@ export function ProjectsPageView() {
       return;
     }
 
+    if (!exportForecastCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${exportForecastCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
     setIsExportingForecast(true);
 
     try {
@@ -2061,6 +2081,14 @@ export function ProjectsPageView() {
       setFeedback({
         type: "error",
         message: "Nenhuma atividade prevista encontrada para exportar com os filtros atuais.",
+      });
+      return;
+    }
+
+    if (!exportActivityForecastCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${exportActivityForecastCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
       });
       return;
     }
@@ -2657,7 +2685,7 @@ export function ProjectsPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={() => void handleExportProjects()}
-              disabled={isExporting || isLoadingList}
+              disabled={isExporting || isLoadingList || exportProjectsCooldown.isCoolingDown}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
@@ -2931,7 +2959,7 @@ export function ProjectsPageView() {
                 type="button"
                 className={styles.ghostButton}
                 onClick={() => void handleExportForecastItems()}
-                disabled={!forecastProject || isLoadingForecast || isExportingForecast}
+                disabled={!forecastProject || isLoadingForecast || isExportingForecast || exportForecastCooldown.isCoolingDown}
               >
                 {isExportingForecast ? "Exportando..." : "Exportar Excel (CSV)"}
               </button>
@@ -3091,7 +3119,7 @@ export function ProjectsPageView() {
                 type="button"
                 className={styles.ghostButton}
                 onClick={() => void handleExportActivityForecastItems()}
-                disabled={!activityForecastProject || isLoadingActivityForecast || isExportingActivityForecast}
+                disabled={!activityForecastProject || isLoadingActivityForecast || isExportingActivityForecast || exportActivityForecastCooldown.isCoolingDown}
               >
                 {isExportingActivityForecast ? "Exportando..." : "Exportar Excel (CSV)"}
               </button>

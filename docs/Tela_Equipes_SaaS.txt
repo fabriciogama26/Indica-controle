@@ -57,6 +57,7 @@ Filtros, auto-complete e listagem
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`)
   - Botao `Exportar Excel (CSV)` para exportar equipes filtradas
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
   - Colunas: Nome da equipe, Placa, Base, Tipo, Encarregado, Registrado em, Acoes
 - Acoes por linha:
   - `Detalhes`

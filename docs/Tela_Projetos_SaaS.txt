@@ -128,6 +128,7 @@ Filtros, auto-complete e listagem
   - `Responsaveis`
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
 - Botao `Exportar Excel (CSV)` na lista para exportar os projetos filtrados.
+- O botao de exportacao da lista fica bloqueado por `10` segundos apos cada clique para evitar disparos repetidos.
 - Texto fixo de pagina no cabecalho da lista removido para manter header mais limpo.
 - Coluna `Parceira` removida da lista para reduzir redundancia visual.
 - Coluna `Acoes` com botoes: `Ver detalhes`, `Editar`, `Historico`, `Materiais previstos` e `Cancelar`.
@@ -144,10 +145,12 @@ Filtros, auto-complete e listagem
   - `Filtros de Materiais Previstos` (codigo, descricao, tipo).
   - `Lista de Materiais Previstos` (somente materiais do projeto selecionado).
   - Botao `Exportar Excel (CSV)` para exportar os materiais previstos filtrados.
+  - O botao tambem respeita bloqueio de `10` segundos por clique.
 - Quando a aba `Atividades previstas` esta ativa, os blocos de `Filtros` e `Lista de Projetos` ficam ocultos e a tela mostra:
   - `Filtros de Atividades Previstas` (codigo, descricao, tipo).
   - `Lista de Atividades Previstas` (somente atividades do projeto selecionado).
   - Botao `Exportar Excel (CSV)` para exportar as atividades previstas filtradas.
+  - O botao tambem respeita bloqueio de `10` segundos por clique.
 
 Boas praticas
 -------------

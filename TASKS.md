@@ -105,6 +105,7 @@
 
 - [ ] Implementar consumo real no frontend para `get_materials`, `get_responsaveis` e `get_inventory_balance`.
 - [x] Implementar CRUD de `Pessoas` integrado a `people`, `job_titles`, `job_title_types` e `job_levels`, com historico, status e exportacao CSV.
+- [x] Aplicar trava de 10 segundos nos botoes `Exportar Excel (CSV)` das listagens para evitar multiplos disparos de exportacao.
 - [x] Proteger cadastro/edicao de `Pessoas` contra duplicidade pela combinacao `Nome + Matricula + Cargo + Tipo + Nivel` com validacao na API e trigger no banco.
 - [x] Endurecer `Pessoas` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
 - [x] Migrar as escritas de `Pessoas` para RPC transacional (`save_person_record` e `set_person_record_status`) para consolidar update + historico + concorrencia no banco.
@@ -157,6 +158,7 @@
 - [x] Ajustar o resumo do topo da `Programacao` para manter `Programadas`, `Carga media` e um card de `Equipes` com barras internas para `Total`, `Livres` e `Selecionadas`.
 - [x] Simplificar o card lateral da `Programacao` e destacar `Reprogramada` com cor propria na grade e na legenda.
 - [x] Exibir no modal da `Programacao` o `ID da programacao` e os dados da ultima `Reprogramacao` a partir do historico.
+- [x] Ajustar `Programacao Simples` e `Visualizacao` com `Data execucao`, blocos de `Equipes/Atividades/Documentos`, `Periodo Parcial` sugerindo `Hora termino = 12:00`, retorno para `17:00` no `Integral` e status visual `REPROGRAMADA`.
 - [x] Manter `Cancelada` e `Adiada` visiveis na grade da `Programacao`, com estados proprios e possibilidade de `Programar novamente`.
 - [x] Manter os cards da grade da `Programacao` sem texto de status e fazer o contador de `Projetos Pendentes` considerar apenas obras ainda nao programadas no periodo visivel.
 - [x] Exibir no modal da `Programacao` o motivo do adiamento quando a programacao estiver `ADIADA`.
@@ -180,8 +182,12 @@
 - [x] Adicionar compatibilidade em `service_activities` para `is_active` x `ativo`, evitando erro interno nas RPCs de Programacao em lote.
 - [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
 - [x] Mover a copia da linha da `Programacao` para uma RPC transacional, evitando lote parcial e reaproveitando as tabelas de rastreio ja existentes.
+- [x] Ajustar o cadastro em lote da `Programacao simples` para fazer fallback da RPC full para a RPC base quando o ambiente estiver com migrations parciais, e simplificar o texto do botao principal.
+- [x] Reforcar validacoes de horario, datas de documentos e campos numericos da `Programacao` no frontend e nas RPCs do banco.
 - [x] Endurecer `copy_team_programming_period` para copiar apenas atividades ativas e replicar campos novos (estrutura/ENEL/desligamento/descricao) via `save_project_programming_full`.
 - [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.
+- [x] Endurecer o save principal e o save em lote da `Programacao` para exigir RPC full, evitar gravacao parcial e responder sucesso com aviso quando a recarga da grade falhar apos o commit.
+- [x] Enriquecer conflito `409` da `Programacao` com `currentRecord`, `currentUpdatedAt`, `updatedBy` e `changedFields`, e mover o historico de `ADIADA/CANCELADA` para dentro das RPCs transacionais.
 - [x] Criar visualizacao semanal da `Programacao Simples` (segunda a domingo) por equipe, com cards por dia contendo SOB, indicador de SGD/PI, cores de status e acoes de detalhe/historico.
 - [x] Criar tela separada `/programacao-visualizacao` para consulta da Programacao (lista + calendario), com permissao dedicada e menu proprio.
 - [x] Remover textos dos cards do calendario da Programacao (`SOB` e status textual) e paginar o modal de Historico.

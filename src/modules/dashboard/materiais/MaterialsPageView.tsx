@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./MaterialsPageView.module.css";
 
 type MaterialItem = {
@@ -217,6 +218,7 @@ export function MaterialsPageView() {
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const exportCooldown = useExportCooldown();
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [historyMaterial, setHistoryMaterial] = useState<MaterialItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<MaterialHistoryEntry[]>([]);
@@ -533,6 +535,14 @@ export function MaterialsPageView() {
       return;
     }
 
+    if (!exportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${exportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
     setIsExporting(true);
 
     try {
@@ -745,7 +755,7 @@ export function MaterialsPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={() => void handleExportMaterials()}
-              disabled={isExporting || isLoadingList}
+              disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>

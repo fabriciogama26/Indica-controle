@@ -52,6 +52,10 @@ Arquitetura
   - Campos em `project_programming`: `etapa_number`, `work_completion_status`
   - RPC: `set_project_programming_execution_result`
   - Compatibilidade full: sobrecargas de `save_project_programming_full` e `save_project_programming_batch_full` com ETAPA/Estado Trabalho.
+- Migration de historico transacional de status:
+  - `supabase/migrations/097_move_programming_status_history_into_rpcs.sql`
+  - RPCs: `set_project_programming_status`, `postpone_project_programming`
+  - Objetivo: gravar historico funcional de `ADIADA/CANCELADA` dentro da mesma transacao do banco.
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -61,7 +65,7 @@ Cadastro
 --------
 - Campos obrigatorios:
   - Projeto (SOB)
-  - Data
+  - Data execucao
   - Periodo
   - Hora inicio
   - Hora termino
@@ -85,11 +89,14 @@ Cadastro
 - Regra principal:
   - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
   - Cada equipe gera uma programacao independente.
+  - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
+  - Quando `Periodo = Integral`, `Hora termino` volta automaticamente para `17:00`.
   - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e obrigatorio na edicao.
 - Persistencia:
   - Frontend envia `POST /api/programacao` com `action = BATCH_CREATE`.
-  - Backend chama `save_project_programming_batch`.
-  - A RPC reaproveita `save_project_programming` por equipe e faz rollback total se qualquer equipe falhar.
+  - Backend exige `save_project_programming_batch_full`.
+  - O fluxo em lote nao usa mais fallback parcial para RPC legada.
+  - A RPC em lote faz rollback total se qualquer equipe falhar.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -103,7 +110,7 @@ Filtros, auto-complete e listagem
   - Projeto (SOB) no cadastro com `input + datalist`, no mesmo padrao do SOB da Locacao.
   - Atividades via `/api/projects/activity-forecast/catalog`.
 - Listagem:
-  - Colunas: Data, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
 - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Adiar` e `Cancelar`.
   - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
   - `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
@@ -111,8 +118,9 @@ Filtros, auto-complete e listagem
   - Exportacao CSV da lista filtrada.
   - Exportacao `ENEL-EXCEL` com layout de colunas na ordem operacional solicitada.
   - Botoes de extracao na lista:
-    - `Extracao Comum` (CSV da lista filtrada)
+    - `Exportar Excel (CSV)` (CSV da lista filtrada)
     - `Extracao ENEL` (layout operacional ENEL)
+  - Todos os botoes de exportacao da lista passam a ter trava de novo clique por `10` segundos para evitar exportacoes repetidas.
   - Mapeamentos ENEL:
     - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
     - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
@@ -133,6 +141,7 @@ Filtros, auto-complete e listagem
   - O horario nao aparece no card.
   - Cores operacionais:
     - `PROGRAMADA` = azul
+    - `REPROGRAMADA` = roxo
     - `ADIADA` = amarelo
     - `CANCELADA` = vermelho
   - O texto de status (`Programado`, `Adiado`, `Cancelado`) nao aparece no card; a diferenciacao fica pela cor.
@@ -149,9 +158,13 @@ Boas praticas
   - RPC recebe `p_tenant_id` e valida dados via regras existentes.
 - Seguranca operacional:
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
+  - O backend impede salvar a mesma obra para a mesma equipe na mesma data quando ainda existir programacao ativa para esse conjunto.
+  - O adiamento exige nova data diferente da atual e bloqueia datas passadas no frontend e na RPC do banco.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
-  - API prioriza RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
+  - API exige RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
   - `PATCH` exige `expectedUpdatedAt` e `ADIAR` exige `newDate`, reduzindo sobrescrita silenciosa.
+  - Quando houver conflito de concorrencia, a API devolve `409` com `currentRecord`, `currentUpdatedAt`, `updatedBy` e `changedFields`.
+  - Se o commit concluir e a grade falhar ao atualizar, a tela mostra sucesso com aviso em vez de erro falso.
 - Auditoria:
   - API registra historico complementar em `app_entity_history` para cada programacao criada no lote (`action = BATCH_CREATE`).
 
@@ -192,17 +205,25 @@ Atualizacao 2026-03
 - Criados os campos de Programacao `Numero de Clientes Afetados` e `Tipo de SGD`, com persistencia e uso direto no layout `ENEL-EXCEL`.
 - Criado o botao amarelo `Adiar` na lista da Programacao simples, com modal de motivo + nova data.
 - Implementado adiamento com clonagem da programacao para nova data e mudanca de status da antiga para `ADIADA`.
+- Ajustado o formulario para preencher `Hora termino = 12:00` em `Parcial`, manter o campo editavel e restaurar `17:00` ao voltar para `Integral`.
+- Renomeado o botao `Extracao Comum` para `Exportar Excel (CSV)`.
+- Agrupados os campos em blocos visuais de `Equipes`, `Atividades` e `Documentos`.
+- Ajustado o rotulo `Data` para `Data execucao` no formulario e na lista.
+- Passado a exibir `REPROGRAMADA` como status visual derivado do historico, com card roxo na visualizacao semanal.
+- Adicionada trava de `10` segundos nos botoes de exportacao CSV/ENEL da tela para evitar cliques repetidos.
+- Ajustado o submit para levar o usuario ao topo da tela sempre que houver sucesso ou erro no salvamento.
+- Endurecido o adiamento para bloquear datas passadas na API e na RPC `postpone_project_programming`.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
 - Ajustado bloco de `Documentos` para `Data Aprovada` e `Data Pedido`, com compatibilidade de payload legado.
 - Ajustado o botao `Edicao` para sempre levar o usuario ao topo do formulario ao entrar em modo de edicao.
 - Corrigida validacao de motivo de reprogramacao para ocorrer antes da gravacao (evita salvar e retornar erro em seguida).
-- Adicionado fallback orientado: API tenta primeiro `save_project_programming_full`/`save_project_programming_batch_full` e usa fluxo legado apenas se a RPC full ainda nao existir no ambiente.
+- Removido o fallback legado do save principal e do save em lote; a API agora exige as RPCs full para evitar gravacao parcial.
 - Tornado obrigatorio `expectedUpdatedAt` no `PATCH` de cancelamento/adiamento e obrigatoria `newDate` quando `action = ADIAR`.
 - Endurecida a RPC `copy_team_programming_period` para usar `save_project_programming_full` e evitar reativacao indevida de atividades inativas na copia.
 - Adicionada visualizacao semanal por equipe na Programacao Simples (segunda a domingo), com cards por dia e acao direta de `Ver detalhe` e `Historico`.
-- Padronizados os botoes de exportacao da lista como `Extracao Comum` e `Extracao ENEL`.
+- Padronizados os botoes de exportacao da lista como `Exportar Excel (CSV)` e `Extracao ENEL`.
 - Criada rota dedicada de consulta `/programacao-visualizacao`, reaproveitando a mesma view em modo somente visualizacao.
 - Removidos textos de status e prefixo `SOB` dos cards no calendario semanal.
 - Adicionada paginacao no modal de historico da Programacao.
@@ -217,7 +238,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
   - Responsavel por: formulario, multi-selecao de equipes, filtros, listagem, exportacao, submit em lote, cancelamento e historico detalhado por campos alterados.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: tratar `action = BATCH_CREATE`, validar payload, chamar RPC em lote e registrar historico.
+  - Responsavel por: tratar `action = BATCH_CREATE`, validar payload, chamar RPC transacional, retornar conflito rico (`409`) e responder sucesso com aviso quando a visualizacao falhar no pos-save.
 - Caminho: `supabase/migrations/082_create_programming_batch_create_rpc.sql`
   - Responsavel por: transacao de cadastro em lote com rollback total em erro.
 
@@ -235,6 +256,7 @@ Funcoes utilitarias relacionadas
 - `setProgrammingExecutionResultViaRpc`.
 - `setProgrammingServiceDescriptionViaRpc`.
 - `confirmPostpone`, `postponeProgrammingViaRpc`.
+- `getDisplayProgrammingStatus`, `useExportCooldown`.
 
 Servicos e integracoes externas
 - `save_project_programming_batch` (RPC nova).
@@ -250,7 +272,9 @@ Ajuda contextual
   - `src/app/(dashboard)/programacao-simples/page.tsx`
   - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
   - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `src/hooks/useExportCooldown.ts`
   - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/096_harden_postpone_date_validation.sql`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -284,3 +308,7 @@ Ajuda contextual
   - Depois: Tipo de SGD virou obrigatorio, existem campos de Inicio/Termino de desligamento e os documentos usam Data Aprovada + Data Pedido com persistencia dedicada.
   - Antes: a tela simples nao tinha grade semanal de visualizacao por equipe e dia.
   - Depois: a tela simples tem calendario de segunda a domingo com cards coloridos por status, exibindo SOB/SGD/PI e acoes de detalhe/historico.
+  - Antes: o formulario exibia `Data`, nao separava blocos visuais e aceitava manter `Hora termino` livre mesmo em `Parcial`.
+  - Depois: o formulario usa `Data execucao`, blocos dedicados de `Equipes`/`Atividades`/`Documentos`, sugere `Hora termino = 12:00` no periodo parcial e restaura `17:00` ao voltar para integral.
+  - Antes: reprogramacoes seguiam aparecendo como `PROGRAMADA` na consulta.
+  - Depois: reprogramacoes passam a ser exibidas como `REPROGRAMADA` na lista e no calendario semanal.

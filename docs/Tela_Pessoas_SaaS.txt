@@ -58,6 +58,7 @@ Filtros, auto-complete e listagem
   - Colunas: Nome, Matricula, Cargo, Tipo, Nivel, Registrado em, Acoes
   - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`
   - Botao `Exportar Excel (CSV)` no cabecalho
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
 - Historico:
   - Fonte: `app_entity_history`
   - Modal com paginacao fixa de `5` registros por pagina

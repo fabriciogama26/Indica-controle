@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./PeoplePageView.module.css";
 
 type PersonItem = {
@@ -247,6 +248,7 @@ export function PeoplePageView() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const exportCooldown = useExportCooldown();
   const [detailPerson, setDetailPerson] = useState<PersonItem | null>(null);
   const [historyPerson, setHistoryPerson] = useState<PersonItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<PersonHistoryEntry[]>([]);
@@ -655,6 +657,14 @@ export function PeoplePageView() {
       return;
     }
 
+    if (!exportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${exportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
     setIsExporting(true);
 
     try {
@@ -936,7 +946,7 @@ export function PeoplePageView() {
             type="button"
             className={styles.ghostButton}
             onClick={() => void handleExportPeople()}
-            disabled={isExporting || isLoadingList}
+            disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
           >
             {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
           </button>

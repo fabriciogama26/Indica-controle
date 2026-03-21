@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./ActivitiesPageView.module.css";
 
 type ActivityItem = {
@@ -240,6 +241,7 @@ export function ActivitiesPageView() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const exportCooldown = useExportCooldown();
   const [detailActivity, setDetailActivity] = useState<ActivityItem | null>(null);
   const [historyActivity, setHistoryActivity] = useState<ActivityItem | null>(null);
   const [historyEntries, setHistoryEntries] = useState<ActivityHistoryEntry[]>([]);
@@ -601,6 +603,14 @@ export function ActivitiesPageView() {
       return;
     }
 
+    if (!exportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${exportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
     setIsExporting(true);
 
     try {
@@ -820,7 +830,7 @@ export function ActivitiesPageView() {
             type="button"
             className={styles.ghostButton}
             onClick={() => void handleExportActivities()}
-            disabled={isExporting || isLoadingList}
+            disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
           >
             {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
           </button>

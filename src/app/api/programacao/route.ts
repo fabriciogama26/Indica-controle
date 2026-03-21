@@ -79,7 +79,7 @@ type ProgrammingRow = {
   id: string;
   project_id: string;
   team_id: string;
-  status: "PROGRAMADA" | "ADIADA" | "CANCELADA";
+  status: "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
   execution_date: string;
   period: "INTEGRAL" | "PARCIAL";
   start_time: string;
@@ -239,6 +239,26 @@ type SaveProgrammingRpcResult = {
   updated_at?: string;
 };
 
+type ProgrammingConflictRecord = {
+  id: string;
+  projectId: string;
+  teamId: string;
+  status: string;
+  executionDate: string;
+  startTime: string;
+  endTime: string;
+  updatedAt: string;
+};
+
+type ProgrammingConflictPayload = {
+  error: "conflict";
+  message: string;
+  currentRecord: ProgrammingConflictRecord | null;
+  currentUpdatedAt: string | null;
+  updatedBy: string | null;
+  changedFields: string[];
+};
+
 type CopyProgrammingResponse = {
   success?: boolean;
   copiedCount?: number;
@@ -332,6 +352,35 @@ function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function isNegativeNumericLikeText(value: string | null) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  return /^-\d+([.,]\d+)?$/.test(normalized);
+}
+
+function getInvalidRequestedDateLabel(
+  documents: SaveProgrammingPayload["documents"] | BatchCreateProgrammingPayload["documents"] | undefined,
+) {
+  const entries: Array<{ key: "sgd" | "pi" | "pep"; label: string }> = [
+    { key: "sgd", label: "SGD" },
+    { key: "pi", label: "PI" },
+    { key: "pep", label: "PEP" },
+  ];
+
+  for (const entry of entries) {
+    const approvedAt = normalizeIsoDate(documents?.[entry.key]?.approvedAt ?? documents?.[entry.key]?.includedAt);
+    const requestedAt = normalizeIsoDate(documents?.[entry.key]?.requestedAt ?? documents?.[entry.key]?.deliveredAt);
+    if (approvedAt && requestedAt && requestedAt > approvedAt) {
+      return entry.label;
+    }
+  }
+
+  return null;
+}
+
 function normalizeNullableText(value: unknown) {
   const normalized = normalizeText(value);
   return normalized || null;
@@ -344,6 +393,12 @@ function isIsoDate(value: string) {
 function normalizeIsoDate(value: unknown) {
   const normalized = normalizeText(value);
   return isIsoDate(normalized) ? normalized : null;
+}
+
+function getTodayIsoDateInSaoPaulo() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date());
 }
 
 function normalizeTime(value: unknown) {
@@ -860,6 +915,42 @@ async function fetchRescheduledProgrammingIds(
   return latestReschedules;
 }
 
+async function fetchPostponedReprogrammedIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  programmingIds: string[],
+) {
+  if (!programmingIds.length) {
+    return new Set<string>();
+  }
+
+  const { data, error } = await supabase
+    .from("app_entity_history")
+    .select("entity_id, metadata")
+    .eq("tenant_id", tenantId)
+    .eq("module_key", "programacao")
+    .eq("entity_table", "project_programming")
+    .in("entity_id", programmingIds)
+    .returns<Array<{ entity_id: string; metadata: Record<string, unknown> | null }>>();
+
+  if (error) {
+    return new Set<string>();
+  }
+
+  const reprogrammedIds = new Set<string>();
+
+  for (const item of data ?? []) {
+    const action = normalizeText(item.metadata?.action).toUpperCase();
+    const source = normalizeText(item.metadata?.source).toLowerCase();
+
+    if (action === "CREATE" && source === "programacao-postpone") {
+      reprogrammedIds.add(item.entity_id);
+    }
+  }
+
+  return reprogrammedIds;
+}
+
 async function fetchProgrammingHistory(
   supabase: SupabaseClient,
   tenantId: string,
@@ -959,77 +1050,193 @@ async function fetchProgrammingById(
   return normalizeProgrammingStructureFields(legacyAttempt.data);
 }
 
-async function saveProgrammingViaRpc(params: {
+async function fetchProgrammingConflictPayload(params: {
   supabase: SupabaseClient;
   tenantId: string;
-  actorUserId: string;
-  programmingId?: string | null;
-  projectId: string;
-  teamId: string;
-  executionDate: string;
-  period: "INTEGRAL" | "PARCIAL";
-  startTime: string;
-  endTime: string;
-  expectedMinutes: number;
-  outageStartTime?: string | null;
-  outageEndTime?: string | null;
-  feeder?: string | null;
-  support?: string | null;
-  supportItemId?: string | null;
-  note?: string | null;
-  documents: NonNullable<SaveProgrammingPayload["documents"]>;
-  activities: Array<{ catalogId: string; quantity: number }>;
-  expectedUpdatedAt?: string | null;
+  programmingId: string;
+  requested?: {
+    executionDate?: string | null;
+    teamId?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
+    status?: string | null;
+  };
 }) {
-  const { data, error } = await params.supabase.rpc("save_project_programming", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_project_id: params.projectId,
-    p_team_id: params.teamId,
-    p_execution_date: params.executionDate,
-    p_period: params.period,
-    p_start_time: params.startTime,
-    p_end_time: params.endTime,
-    p_expected_minutes: params.expectedMinutes,
-    p_feeder: params.feeder ?? null,
-    p_support: params.support ?? null,
-    p_note: params.note ?? null,
-    p_documents: params.documents,
-    p_activities: params.activities.map((item) => ({
-      catalogId: item.catalogId,
-      quantity: item.quantity,
-    })),
-    p_programming_id: params.programmingId ?? null,
-    p_expected_updated_at: params.expectedUpdatedAt ?? null,
-    p_support_item_id: params.supportItemId ?? null,
-  });
+  const { data: currentRow, error } = await params.supabase
+    .from("project_programming")
+    .select("id, project_id, team_id, status, execution_date, start_time, end_time, updated_at, updated_by")
+    .eq("tenant_id", params.tenantId)
+    .eq("id", params.programmingId)
+    .maybeSingle<{
+      id: string;
+      project_id: string;
+      team_id: string;
+      status: string;
+      execution_date: string;
+      start_time: string;
+      end_time: string;
+      updated_at: string;
+      updated_by: string | null;
+    }>();
 
-  if (error) {
-    return {
-      ok: false,
-      status: 500,
-      message: "Falha ao salvar programacao via RPC.",
-    } as const;
+  if (error || !currentRow) {
+    return null;
   }
 
-  const result = (data ?? {}) as SaveProgrammingRpcResult;
-  if (result.success !== true || !result.programming_id) {
-    return {
-      ok: false,
-      status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao salvar programacao.",
-      reason: result.reason ?? null,
-    } as const;
+  let updatedBy: string | null = null;
+  if (currentRow.updated_by) {
+    const { data: actor } = await params.supabase
+      .from("app_users")
+      .select("login_name, email, matricula")
+      .eq("tenant_id", params.tenantId)
+      .eq("id", currentRow.updated_by)
+      .maybeSingle<{ login_name: string | null; email: string | null; matricula: string | null }>();
+
+    updatedBy =
+      normalizeText(actor?.login_name)
+      || normalizeText(actor?.email)
+      || normalizeText(actor?.matricula)
+      || null;
+  }
+
+  const changedFields: string[] = [];
+  const requested = params.requested ?? {};
+  if (requested.executionDate && requested.executionDate !== currentRow.execution_date) {
+    changedFields.push("executionDate");
+  }
+  if (requested.teamId && requested.teamId !== currentRow.team_id) {
+    changedFields.push("teamId");
+  }
+  if (requested.startTime && requested.startTime !== formatTime(currentRow.start_time)) {
+    changedFields.push("startTime");
+  }
+  if (requested.endTime && requested.endTime !== formatTime(currentRow.end_time)) {
+    changedFields.push("endTime");
+  }
+  if (requested.status && requested.status !== currentRow.status) {
+    changedFields.push("status");
   }
 
   return {
-    ok: true,
-    action: result.action ?? null,
-    programmingId: result.programming_id,
-    projectCode: normalizeText(result.project_code),
-    updatedAt: normalizeText(result.updated_at),
-    message: result.message ?? "Programacao salva com sucesso.",
-  } as const;
+    error: "conflict" as const,
+    message: "Esta programacao foi alterada por outro usuario.",
+    currentRecord: {
+      id: currentRow.id,
+      projectId: currentRow.project_id,
+      teamId: currentRow.team_id,
+      status: currentRow.status,
+      executionDate: currentRow.execution_date,
+      startTime: formatTime(currentRow.start_time),
+      endTime: formatTime(currentRow.end_time),
+      updatedAt: currentRow.updated_at,
+    },
+    currentUpdatedAt: currentRow.updated_at,
+    updatedBy,
+    changedFields,
+  } satisfies ProgrammingConflictPayload;
+}
+
+async function fetchProgrammingResponseItem(
+  supabase: SupabaseClient,
+  tenantId: string,
+  programmingId: string,
+) {
+  const row = await fetchProgrammingById(supabase, tenantId, programmingId);
+  if (!row) {
+    return null;
+  }
+
+  const [activitiesMap, projectRows, sgdTypes, rescheduleHistoryMap, postponedReprogrammedIds] = await Promise.all([
+    fetchProgrammingActivities(supabase, tenantId, [programmingId]),
+    supabase
+      .from("project_with_labels")
+      .select("id, service_center_text")
+      .eq("tenant_id", tenantId)
+      .eq("id", row.project_id)
+      .returns<Array<{ id: string; service_center_text: string | null }>>(),
+    fetchProgrammingSgdTypes(supabase, tenantId),
+    fetchRescheduledProgrammingIds(supabase, tenantId, [programmingId]),
+    fetchPostponedReprogrammedIds(supabase, tenantId, [programmingId]),
+  ]);
+
+  const projectBase =
+    normalizeText(projectRows.data?.[0]?.service_center_text) || "Sem base";
+  const sgdType = row.sgd_type_id ? sgdTypes.find((item) => item.id === row.sgd_type_id) ?? null : null;
+  const scheduleActivities = activitiesMap.get(programmingId) ?? [];
+
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    teamId: row.team_id,
+    status: row.status,
+    isReprogrammed: rescheduleHistoryMap.has(row.id) || postponedReprogrammedIds.has(row.id),
+    date: row.execution_date,
+    period: row.period === "INTEGRAL" ? "integral" : "partial",
+    startTime: formatTime(row.start_time),
+    endTime: formatTime(row.end_time),
+    outageStartTime: formatTime(row.outage_start_time),
+    outageEndTime: formatTime(row.outage_end_time),
+    updatedAt: row.updated_at,
+    expectedMinutes: Number(row.expected_minutes ?? 0),
+    posteQty: Number(row.poste_qty ?? 0),
+    estruturaQty: Number(row.estrutura_qty ?? 0),
+    trafoQty: Number(row.trafo_qty ?? 0),
+    redeQty: Number(row.rede_qty ?? 0),
+    etapaNumber: row.etapa_number === null ? null : Number(row.etapa_number),
+    workCompletionStatus: normalizeWorkCompletionStatus(row.work_completion_status),
+    affectedCustomers: Number(row.affected_customers ?? 0),
+    sgdTypeId: row.sgd_type_id,
+    sgdTypeDescription: normalizeText(sgdType?.description),
+    sgdExportColumn: normalizeText(sgdType?.export_column),
+    feeder: normalizeText(row.feeder),
+    support: normalizeText(row.support),
+    supportItemId: row.support_item_id,
+    note: normalizeText(row.note),
+    serviceDescription: normalizeText(row.service_description),
+    projectBase,
+    statusReason: normalizeText(row.cancellation_reason),
+    statusChangedAt: row.canceled_at ?? "",
+    wasRescheduled: rescheduleHistoryMap.has(row.id),
+    lastReschedule: rescheduleHistoryMap.get(row.id)
+      ? {
+          id: rescheduleHistoryMap.get(row.id)?.historyId ?? "",
+          changedAt: rescheduleHistoryMap.get(row.id)?.changedAt ?? "",
+          reason: rescheduleHistoryMap.get(row.id)?.reason ?? "",
+          fromDate: rescheduleHistoryMap.get(row.id)?.fromDate ?? "",
+          toDate: rescheduleHistoryMap.get(row.id)?.toDate ?? "",
+        }
+      : null,
+    activities: scheduleActivities.map((activity) => ({
+      catalogId: activity.service_activity_id,
+      code: normalizeText(activity.activity_code),
+      description: normalizeText(activity.activity_description),
+      quantity: Number(activity.quantity ?? 0),
+      unit: normalizeText(activity.activity_unit),
+    })),
+    documents: {
+      sgd: {
+        number: normalizeText(row.sgd_number),
+        approvedAt: row.sgd_included_at ?? "",
+        requestedAt: row.sgd_delivered_at ?? "",
+        includedAt: row.sgd_included_at ?? "",
+        deliveredAt: row.sgd_delivered_at ?? "",
+      },
+      pi: {
+        number: normalizeText(row.pi_number),
+        approvedAt: row.pi_included_at ?? "",
+        requestedAt: row.pi_delivered_at ?? "",
+        includedAt: row.pi_included_at ?? "",
+        deliveredAt: row.pi_delivered_at ?? "",
+      },
+      pep: {
+        number: normalizeText(row.pep_number),
+        approvedAt: row.pep_included_at ?? "",
+        requestedAt: row.pep_delivered_at ?? "",
+        includedAt: row.pep_included_at ?? "",
+        deliveredAt: row.pep_delivered_at ?? "",
+      },
+    },
+  };
 }
 
 async function saveProgrammingFullViaRpc(params: {
@@ -1133,126 +1340,6 @@ async function saveProgrammingFullViaRpc(params: {
     projectCode: normalizeText(result.project_code),
     updatedAt: normalizeText(result.updated_at),
     message: result.message ?? "Programacao salva com sucesso.",
-  } as const;
-}
-
-async function saveProgrammingBatchViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  projectId: string;
-  teamIds: string[];
-  executionDate: string;
-  period: "INTEGRAL" | "PARCIAL";
-  startTime: string;
-  endTime: string;
-  expectedMinutes: number;
-  outageStartTime?: string | null;
-  outageEndTime?: string | null;
-  feeder?: string | null;
-  support?: string | null;
-  supportItemId?: string | null;
-  note?: string | null;
-  serviceDescription?: string | null;
-  posteQty: number;
-  estruturaQty: number;
-  trafoQty: number;
-  redeQty: number;
-  etapaNumber?: number | null;
-  workCompletionStatus?: "CONCLUIDO" | "PARCIAL" | null;
-  documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
-  activities: Array<{ catalogId: string; quantity: number }>;
-}) {
-  const structureRequested = params.posteQty > 0 || params.estruturaQty > 0 || params.trafoQty > 0 || params.redeQty > 0;
-  const basePayload = {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_project_id: params.projectId,
-    p_team_ids: params.teamIds,
-    p_execution_date: params.executionDate,
-    p_period: params.period,
-    p_start_time: params.startTime,
-    p_end_time: params.endTime,
-    p_expected_minutes: params.expectedMinutes,
-    p_feeder: params.feeder ?? null,
-    p_support: params.support ?? null,
-    p_note: params.note ?? null,
-    p_documents: params.documents,
-    p_activities: params.activities.map((item) => ({
-      catalogId: item.catalogId,
-      quantity: item.quantity,
-    })),
-    p_support_item_id: params.supportItemId ?? null,
-  };
-
-  const withStructureAttempt = await params.supabase.rpc("save_project_programming_batch", {
-    ...basePayload,
-    p_poste_qty: params.posteQty,
-    p_estrutura_qty: params.estruturaQty,
-    p_trafo_qty: params.trafoQty,
-    p_rede_qty: params.redeQty,
-  });
-
-  let data = withStructureAttempt.data;
-  let error = withStructureAttempt.error;
-  let usedLegacyRpc = false;
-
-  if (error) {
-    const legacyAttempt = await params.supabase.rpc("save_project_programming_batch", basePayload);
-    if (!legacyAttempt.error) {
-      data = legacyAttempt.data;
-      error = null;
-      usedLegacyRpc = true;
-    } else {
-      error = legacyAttempt.error;
-    }
-  }
-
-  if (error) {
-    return {
-      ok: false,
-      status: 500,
-      message: error.message
-        ? `Falha ao salvar programacao em lote via RPC: ${error.message}`
-        : "Falha ao salvar programacao em lote via RPC.",
-    } as const;
-  }
-
-  const result = (data ?? {}) as BatchProgrammingRpcResult;
-  if (result.success !== true) {
-    return {
-      ok: false,
-      status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao salvar programacao em lote.",
-      reason: result.reason ?? null,
-    } as const;
-  }
-
-  if (usedLegacyRpc && structureRequested) {
-    return {
-      ok: false,
-      status: 409,
-      message:
-        "Seu ambiente ainda nao suporta os campos estruturais (POSTE/ESTRUTURA/TRAFO/REDE). Aplique a migration 085 e tente novamente.",
-      reason: "STRUCTURE_FIELDS_NOT_AVAILABLE",
-    } as const;
-  }
-
-  const items = Array.isArray(result.items)
-    ? result.items
-        .map((item) => ({
-          teamId: normalizeText(item.teamId),
-          programmingId: normalizeText(item.programmingId),
-        }))
-        .filter((item) => item.teamId && item.programmingId)
-    : [];
-
-  return {
-    ok: true,
-    insertedCount: Number(result.inserted_count ?? items.length),
-    projectCode: normalizeText(result.project_code),
-    message: result.message ?? "Programacao em lote salva com sucesso.",
-    items,
   } as const;
 }
 
@@ -1989,11 +2076,19 @@ export async function GET(request: NextRequest) {
       resolution.appUser.tenant_id,
       programmingRows.map((item) => item.id),
     );
-    const rescheduleHistoryMap = await fetchRescheduledProgrammingIds(
-      resolution.supabase,
-      resolution.appUser.tenant_id,
-      programmingRows.map((item) => item.id),
-    );
+    const programmingIds = programmingRows.map((item) => item.id);
+    const [rescheduleHistoryMap, postponedReprogrammedIds] = await Promise.all([
+      fetchRescheduledProgrammingIds(
+        resolution.supabase,
+        resolution.appUser.tenant_id,
+        programmingIds,
+      ),
+      fetchPostponedReprogrammedIds(
+        resolution.supabase,
+        resolution.appUser.tenant_id,
+        programmingIds,
+      ),
+    ]);
 
     return NextResponse.json({
       projects: projects.map((item) => ({
@@ -2044,6 +2139,7 @@ export async function GET(request: NextRequest) {
           projectId: item.project_id,
           teamId: item.team_id,
           status: item.status,
+          isReprogrammed: rescheduleHistoryMap.has(item.id) || postponedReprogrammedIds.has(item.id),
           date: item.execution_date,
           period: item.period === "INTEGRAL" ? "integral" : "partial",
           startTime: formatTime(item.start_time),
@@ -2165,6 +2261,13 @@ async function saveProgrammingBatch(request: NextRequest) {
     return NextResponse.json({ message: "Preencha os campos obrigatorios da programacao em lote." }, { status: 400 });
   }
 
+  if (endTime <= startTime) {
+    return NextResponse.json(
+      { message: "Hora termino deve ser maior que hora inicio." },
+      { status: 400 },
+    );
+  }
+
   if ((outageStartTime && !outageEndTime) || (!outageStartTime && outageEndTime)) {
     return NextResponse.json(
       { message: "Informe inicio e termino de desligamento." },
@@ -2175,6 +2278,21 @@ async function saveProgrammingBatch(request: NextRequest) {
   if (outageStartTime && outageEndTime && outageEndTime <= outageStartTime) {
     return NextResponse.json(
       { message: "Termino de desligamento deve ser maior que inicio." },
+      { status: 400 },
+    );
+  }
+
+  const invalidRequestedDateLabel = getInvalidRequestedDateLabel(documents);
+  if (invalidRequestedDateLabel) {
+    return NextResponse.json(
+      { message: `Data pedido do ${invalidRequestedDateLabel} nao pode ser maior que a data aprovada.` },
+      { status: 400 },
+    );
+  }
+
+  if (isNegativeNumericLikeText(feeder)) {
+    return NextResponse.json(
+      { message: "Alimentador nao pode receber valor negativo." },
       { status: 400 },
     );
   }
@@ -2281,53 +2399,27 @@ async function saveProgrammingBatch(request: NextRequest) {
     activities,
   });
 
-  let saveResult: Awaited<ReturnType<typeof saveProgrammingBatchViaRpc>>;
-  let usedFullBatchRpc = false;
+  if (!fullBatchSaveResult.ok) {
+    if (fullBatchSaveResult.reason === "FULL_RPC_NOT_AVAILABLE") {
+      return NextResponse.json(
+        {
+          message:
+            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations mais recentes e tente novamente.",
+        },
+        { status: 409 },
+      );
+    }
 
-  if (fullBatchSaveResult.ok) {
-    saveResult = {
-      ok: true,
-      insertedCount: fullBatchSaveResult.insertedCount,
-      projectCode: fullBatchSaveResult.projectCode,
-      message: fullBatchSaveResult.message,
-      items: fullBatchSaveResult.items,
-    } as const;
-    usedFullBatchRpc = true;
-  } else if (fullBatchSaveResult.reason === "FULL_RPC_NOT_AVAILABLE") {
-    saveResult = await saveProgrammingBatchViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      projectId,
-      teamIds,
-      executionDate,
-      period,
-      startTime,
-      endTime,
-      expectedMinutes,
-      outageStartTime,
-      outageEndTime,
-      feeder,
-      support,
-      supportItemId,
-      note,
-      serviceDescription,
-      posteQty,
-      estruturaQty,
-      trafoQty,
-      redeQty,
-      etapaNumber,
-      workCompletionStatus: null,
-      documents,
-      activities,
-    });
-  } else {
     return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
   }
 
-  if (!saveResult.ok) {
-    return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
-  }
+  const saveResult = {
+    ok: true,
+    insertedCount: fullBatchSaveResult.insertedCount,
+    projectCode: fullBatchSaveResult.projectCode,
+    message: fullBatchSaveResult.message,
+    items: fullBatchSaveResult.items,
+  } as const;
 
   const projectCode = normalizeText(project?.sob) || normalizeText(saveResult.projectCode) || projectId;
   const activitiesSnapshot = JSON.stringify(
@@ -2335,68 +2427,6 @@ async function saveProgrammingBatch(request: NextRequest) {
   );
 
   for (const item of saveResult.items) {
-    if (!usedFullBatchRpc) {
-      const outageWindowResult = await setProgrammingOutageWindowViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: item.programmingId,
-        outageStartTime,
-        outageEndTime,
-      });
-      if (!outageWindowResult.ok) {
-        return NextResponse.json({ message: outageWindowResult.message }, { status: outageWindowResult.status });
-      }
-
-      const serviceDescriptionResult = await setProgrammingServiceDescriptionViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: item.programmingId,
-        serviceDescription,
-      });
-      if (!serviceDescriptionResult.ok) {
-        return NextResponse.json({ message: serviceDescriptionResult.message }, { status: serviceDescriptionResult.status });
-      }
-
-      const enelFieldResult = await setProgrammingEnelFieldsViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: item.programmingId,
-        affectedCustomers: affectedCustomers ?? 0,
-        sgdTypeId,
-      });
-
-      if (!enelFieldResult.ok) {
-        return NextResponse.json({ message: enelFieldResult.message }, { status: enelFieldResult.status });
-      }
-
-      const executionResult = await setProgrammingExecutionResultViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: item.programmingId,
-        etapaNumber,
-        workCompletionStatus: null,
-      });
-      if (!executionResult.ok) {
-        return NextResponse.json({ message: executionResult.message }, { status: executionResult.status });
-      }
-
-      const documentDatesResult = await setProgrammingDocumentDatesViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: item.programmingId,
-        documents,
-      });
-
-      if (!documentDatesResult.ok) {
-        return NextResponse.json({ message: documentDatesResult.message }, { status: documentDatesResult.status });
-      }
-    }
-
     await registerProgrammingHistory({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -2504,6 +2534,13 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "Preencha os campos obrigatorios da programacao." }, { status: 400 });
   }
 
+  if (endTime <= startTime) {
+    return NextResponse.json(
+      { message: "Hora termino deve ser maior que hora inicio." },
+      { status: 400 },
+    );
+  }
+
   if ((outageStartTime && !outageEndTime) || (!outageStartTime && outageEndTime)) {
     return NextResponse.json(
       { message: "Informe inicio e termino de desligamento." },
@@ -2514,6 +2551,21 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   if (outageStartTime && outageEndTime && outageEndTime <= outageStartTime) {
     return NextResponse.json(
       { message: "Termino de desligamento deve ser maior que inicio." },
+      { status: 400 },
+    );
+  }
+
+  const invalidRequestedDateLabel = getInvalidRequestedDateLabel(documents);
+  if (invalidRequestedDateLabel) {
+    return NextResponse.json(
+      { message: `Data pedido do ${invalidRequestedDateLabel} nao pode ser maior que a data aprovada.` },
+      { status: 400 },
+    );
+  }
+
+  if (isNegativeNumericLikeText(feeder)) {
+    return NextResponse.json(
+      { message: "Alimentador nao pode receber valor negativo." },
       { status: 400 },
     );
   }
@@ -2665,153 +2717,64 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     expectedUpdatedAt,
   });
 
-  let saveResult: Awaited<ReturnType<typeof saveProgrammingViaRpc>>;
-  let usedFullSaveRpc = false;
+  if (!fullSaveResult.ok) {
+    if (fullSaveResult.reason === "PROGRAMMING_CONFLICT" && programmingId) {
+      const conflictPayload = await fetchProgrammingConflictPayload({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        programmingId,
+        requested: {
+          executionDate,
+          teamId,
+          startTime,
+          endTime,
+        },
+      });
 
-  if (fullSaveResult.ok) {
-    saveResult = {
-      ok: true,
-      action: fullSaveResult.action,
-      programmingId: fullSaveResult.programmingId,
-      projectCode: fullSaveResult.projectCode,
-      updatedAt: fullSaveResult.updatedAt,
-      message: fullSaveResult.message,
-    } as const;
-    usedFullSaveRpc = true;
-  } else if (fullSaveResult.reason === "FULL_RPC_NOT_AVAILABLE") {
-    saveResult = await saveProgrammingViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: programmingId || null,
-      projectId,
-      teamId,
-      executionDate,
-      period,
-      startTime,
-      endTime,
-      expectedMinutes,
-      outageStartTime,
-      outageEndTime,
-      feeder,
-      support,
-      supportItemId,
-      note,
-      documents,
-      activities,
-      expectedUpdatedAt,
-    });
-  } else {
+      return NextResponse.json(
+        conflictPayload ?? { error: "conflict", message: fullSaveResult.message },
+        { status: 409 },
+      );
+    }
+
+    if (fullSaveResult.reason === "FULL_RPC_NOT_AVAILABLE") {
+      return NextResponse.json(
+        {
+          message:
+            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations mais recentes e tente novamente.",
+        },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json({ message: fullSaveResult.message }, { status: fullSaveResult.status });
   }
 
-  if (!saveResult.ok) {
-    return NextResponse.json({ message: saveResult.message }, { status: saveResult.status });
-  }
+  const saveResult = {
+    ok: true,
+    action: fullSaveResult.action,
+    programmingId: fullSaveResult.programmingId,
+    projectCode: fullSaveResult.projectCode,
+    updatedAt: fullSaveResult.updatedAt,
+    message: fullSaveResult.message,
+  } as const;
 
   const persistedProgrammingId = saveResult.programmingId;
-
-  if (!usedFullSaveRpc) {
-    const structureResult = await setProgrammingStructureQuantitiesViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: persistedProgrammingId,
-      posteQty: posteQty ?? 0,
-      estruturaQty: estruturaQty ?? 0,
-      trafoQty: trafoQty ?? 0,
-      redeQty: redeQty ?? 0,
-      force: Boolean(currentProgramming),
-    });
-    if (!structureResult.ok) {
-      return NextResponse.json({ message: structureResult.message }, { status: structureResult.status });
-    }
-
-    const outageWindowResult = await setProgrammingOutageWindowViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: persistedProgrammingId,
-      outageStartTime,
-      outageEndTime,
-      force: Boolean(currentProgramming) && (
-        formatTime(currentProgramming?.outage_start_time ?? null) !== formatTime(outageStartTime)
-        || formatTime(currentProgramming?.outage_end_time ?? null) !== formatTime(outageEndTime)
-      ),
-    });
-    if (!outageWindowResult.ok) {
-      return NextResponse.json({ message: outageWindowResult.message }, { status: outageWindowResult.status });
-    }
-
-    const serviceDescriptionResult = await setProgrammingServiceDescriptionViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: persistedProgrammingId,
-      serviceDescription,
-      force: Boolean(currentProgramming) && (
-        (currentProgramming?.service_description ?? null) !== (serviceDescription ?? null)
-      ),
-    });
-    if (!serviceDescriptionResult.ok) {
-      return NextResponse.json({ message: serviceDescriptionResult.message }, { status: serviceDescriptionResult.status });
-    }
-
-    const enelFieldResult = await setProgrammingEnelFieldsViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: persistedProgrammingId,
-      affectedCustomers: affectedCustomers ?? 0,
-      sgdTypeId,
-    });
-    if (!enelFieldResult.ok) {
-      return NextResponse.json({ message: enelFieldResult.message }, { status: enelFieldResult.status });
-    }
-
-    const executionResult = await setProgrammingExecutionResultViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: persistedProgrammingId,
-      etapaNumber,
-      workCompletionStatus: normalizedWorkCompletionStatus,
-      force: Boolean(currentProgramming) && (
-        (currentProgramming?.etapa_number ?? null) !== etapaNumber
-        || normalizeWorkCompletionStatus(currentProgramming?.work_completion_status ?? null) !== normalizedWorkCompletionStatus
-      ),
-    });
-    if (!executionResult.ok) {
-      return NextResponse.json({ message: executionResult.message }, { status: executionResult.status });
-    }
-
-    const documentDatesResult = await setProgrammingDocumentDatesViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: persistedProgrammingId,
-      documents,
-      force: Boolean(currentProgramming),
-    });
-    if (!documentDatesResult.ok) {
-      return NextResponse.json({ message: documentDatesResult.message }, { status: documentDatesResult.status });
-    }
-  }
-
   const nextProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, persistedProgrammingId);
-  if (!nextProgramming) {
-    return NextResponse.json({ message: "Falha ao recarregar programacao salva." }, { status: 500 });
-  }
 
-  const nextActivitiesMap = await fetchProgrammingActivities(
-    resolution.supabase,
-    resolution.appUser.tenant_id,
-    [persistedProgrammingId],
-  );
-  const nextActivities = (nextActivitiesMap.get(persistedProgrammingId) ?? []).map((item) => ({
-    code: normalizeText(item.activity_code),
-    quantity: Number(item.quantity ?? 0),
-  }));
+  const nextActivitiesMap = nextProgramming
+    ? await fetchProgrammingActivities(
+        resolution.supabase,
+        resolution.appUser.tenant_id,
+        [persistedProgrammingId],
+      )
+    : new Map<string, ProgrammingActivityRow[]>();
+  const nextActivities = nextProgramming
+    ? (nextActivitiesMap.get(persistedProgrammingId) ?? []).map((item) => ({
+        code: normalizeText(item.activity_code),
+        quantity: Number(item.quantity ?? 0),
+      }))
+    : [];
 
   const previousActivitiesMap = currentProgramming
     ? await fetchProgrammingActivities(resolution.supabase, resolution.appUser.tenant_id, [currentProgramming.id])
@@ -2824,55 +2787,58 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     : [];
 
   const changes: Record<string, HistoryChange> = {};
-  addChange(changes, "project", currentProgramming ? project?.sob ?? null : null, project?.sob ?? null);
-  addChange(
-    changes,
-    "team",
-    currentProgramming ? normalizeText(currentTeamLabel?.name) || currentProgramming.team_id : null,
-    team?.name ?? teamId,
-  );
-  addChange(changes, "executionDate", currentProgramming?.execution_date ?? null, nextProgramming.execution_date);
-  addChange(changes, "period", currentProgramming?.period ?? null, nextProgramming.period);
-  addChange(changes, "startTime", currentProgramming ? formatTime(currentProgramming.start_time) : null, formatTime(nextProgramming.start_time));
-  addChange(changes, "endTime", currentProgramming ? formatTime(currentProgramming.end_time) : null, formatTime(nextProgramming.end_time));
-  addChange(changes, "outageStartTime", currentProgramming ? formatTime(currentProgramming.outage_start_time) : null, formatTime(nextProgramming.outage_start_time));
-  addChange(changes, "outageEndTime", currentProgramming ? formatTime(currentProgramming.outage_end_time) : null, formatTime(nextProgramming.outage_end_time));
-  addChange(changes, "expectedMinutes", currentProgramming?.expected_minutes ?? null, nextProgramming.expected_minutes);
-  addChange(changes, "feeder", currentProgramming?.feeder ?? null, nextProgramming.feeder);
-  addChange(changes, "support", currentProgramming?.support ?? null, nextProgramming.support);
-  addChange(changes, "note", currentProgramming?.note ?? null, nextProgramming.note);
-  addChange(changes, "serviceDescription", currentProgramming?.service_description ?? null, nextProgramming.service_description);
-  addChange(changes, "posteQty", currentProgramming?.poste_qty ?? null, nextProgramming.poste_qty);
-  addChange(changes, "estruturaQty", currentProgramming?.estrutura_qty ?? null, nextProgramming.estrutura_qty);
-  addChange(changes, "trafoQty", currentProgramming?.trafo_qty ?? null, nextProgramming.trafo_qty);
-  addChange(changes, "redeQty", currentProgramming?.rede_qty ?? null, nextProgramming.rede_qty);
-  addChange(changes, "etapaNumber", currentProgramming?.etapa_number ?? null, nextProgramming.etapa_number);
-  addChange(
-    changes,
-    "workCompletionStatus",
-    normalizeWorkCompletionStatus(currentProgramming?.work_completion_status ?? null),
-    normalizeWorkCompletionStatus(nextProgramming.work_completion_status),
-  );
-  addChange(changes, "affectedCustomers", currentProgramming?.affected_customers ?? null, nextProgramming.affected_customers);
-  addChange(changes, "sgdType", currentProgramming?.sgd_type_id ?? null, nextProgramming.sgd_type_id);
-  addChange(changes, "sgdNumber", currentProgramming?.sgd_number ?? null, nextProgramming.sgd_number);
-  addChange(changes, "sgdApprovedAt", currentProgramming?.sgd_included_at ?? null, nextProgramming.sgd_included_at);
-  addChange(changes, "sgdRequestedAt", currentProgramming?.sgd_delivered_at ?? null, nextProgramming.sgd_delivered_at);
-  addChange(changes, "piNumber", currentProgramming?.pi_number ?? null, nextProgramming.pi_number);
-  addChange(changes, "piApprovedAt", currentProgramming?.pi_included_at ?? null, nextProgramming.pi_included_at);
-  addChange(changes, "piRequestedAt", currentProgramming?.pi_delivered_at ?? null, nextProgramming.pi_delivered_at);
-  addChange(changes, "pepNumber", currentProgramming?.pep_number ?? null, nextProgramming.pep_number);
-  addChange(changes, "pepApprovedAt", currentProgramming?.pep_included_at ?? null, nextProgramming.pep_included_at);
-  addChange(changes, "pepRequestedAt", currentProgramming?.pep_delivered_at ?? null, nextProgramming.pep_delivered_at);
-  addChange(changes, "activities", toActivitySnapshot(previousActivities), toActivitySnapshot(nextActivities));
-  const isReschedule =
-    Boolean(currentProgramming) &&
-    (
-      currentProgramming?.execution_date !== nextProgramming.execution_date ||
-      currentProgramming?.team_id !== nextProgramming.team_id ||
-      formatTime(currentProgramming?.start_time ?? null) !== formatTime(nextProgramming.start_time) ||
-      formatTime(currentProgramming?.end_time ?? null) !== formatTime(nextProgramming.end_time)
+  let isReschedule = false;
+  if (currentProgramming && nextProgramming) {
+    isReschedule =
+      currentProgramming.execution_date !== nextProgramming.execution_date ||
+      currentProgramming.team_id !== nextProgramming.team_id ||
+      formatTime(currentProgramming.start_time) !== formatTime(nextProgramming.start_time) ||
+      formatTime(currentProgramming.end_time) !== formatTime(nextProgramming.end_time);
+  }
+
+  if (nextProgramming) {
+    addChange(changes, "project", currentProgramming ? project?.sob ?? null : null, project?.sob ?? null);
+    addChange(
+      changes,
+      "team",
+      currentProgramming ? normalizeText(currentTeamLabel?.name) || currentProgramming.team_id : null,
+      team?.name ?? teamId,
     );
+    addChange(changes, "executionDate", currentProgramming?.execution_date ?? null, nextProgramming.execution_date);
+    addChange(changes, "period", currentProgramming?.period ?? null, nextProgramming.period);
+    addChange(changes, "startTime", currentProgramming ? formatTime(currentProgramming.start_time) : null, formatTime(nextProgramming.start_time));
+    addChange(changes, "endTime", currentProgramming ? formatTime(currentProgramming.end_time) : null, formatTime(nextProgramming.end_time));
+    addChange(changes, "outageStartTime", currentProgramming ? formatTime(currentProgramming.outage_start_time) : null, formatTime(nextProgramming.outage_start_time));
+    addChange(changes, "outageEndTime", currentProgramming ? formatTime(currentProgramming.outage_end_time) : null, formatTime(nextProgramming.outage_end_time));
+    addChange(changes, "expectedMinutes", currentProgramming?.expected_minutes ?? null, nextProgramming.expected_minutes);
+    addChange(changes, "feeder", currentProgramming?.feeder ?? null, nextProgramming.feeder);
+    addChange(changes, "support", currentProgramming?.support ?? null, nextProgramming.support);
+    addChange(changes, "note", currentProgramming?.note ?? null, nextProgramming.note);
+    addChange(changes, "serviceDescription", currentProgramming?.service_description ?? null, nextProgramming.service_description);
+    addChange(changes, "posteQty", currentProgramming?.poste_qty ?? null, nextProgramming.poste_qty);
+    addChange(changes, "estruturaQty", currentProgramming?.estrutura_qty ?? null, nextProgramming.estrutura_qty);
+    addChange(changes, "trafoQty", currentProgramming?.trafo_qty ?? null, nextProgramming.trafo_qty);
+    addChange(changes, "redeQty", currentProgramming?.rede_qty ?? null, nextProgramming.rede_qty);
+    addChange(changes, "etapaNumber", currentProgramming?.etapa_number ?? null, nextProgramming.etapa_number);
+    addChange(
+      changes,
+      "workCompletionStatus",
+      normalizeWorkCompletionStatus(currentProgramming?.work_completion_status ?? null),
+      normalizeWorkCompletionStatus(nextProgramming.work_completion_status),
+    );
+    addChange(changes, "affectedCustomers", currentProgramming?.affected_customers ?? null, nextProgramming.affected_customers);
+    addChange(changes, "sgdType", currentProgramming?.sgd_type_id ?? null, nextProgramming.sgd_type_id);
+    addChange(changes, "sgdNumber", currentProgramming?.sgd_number ?? null, nextProgramming.sgd_number);
+    addChange(changes, "sgdApprovedAt", currentProgramming?.sgd_included_at ?? null, nextProgramming.sgd_included_at);
+    addChange(changes, "sgdRequestedAt", currentProgramming?.sgd_delivered_at ?? null, nextProgramming.sgd_delivered_at);
+    addChange(changes, "piNumber", currentProgramming?.pi_number ?? null, nextProgramming.pi_number);
+    addChange(changes, "piApprovedAt", currentProgramming?.pi_included_at ?? null, nextProgramming.pi_included_at);
+    addChange(changes, "piRequestedAt", currentProgramming?.pi_delivered_at ?? null, nextProgramming.pi_delivered_at);
+    addChange(changes, "pepNumber", currentProgramming?.pep_number ?? null, nextProgramming.pep_number);
+    addChange(changes, "pepApprovedAt", currentProgramming?.pep_included_at ?? null, nextProgramming.pep_included_at);
+    addChange(changes, "pepRequestedAt", currentProgramming?.pep_delivered_at ?? null, nextProgramming.pep_delivered_at);
+    addChange(changes, "activities", toActivitySnapshot(previousActivities), toActivitySnapshot(nextActivities));
+  }
 
   const responseMessage = currentProgramming
     ? isReschedule
@@ -2880,26 +2846,40 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       : saveResult.message
     : saveResult.message;
 
-  await registerProgrammingHistory({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    actorUserId: resolution.appUser.id,
-    programmingId: persistedProgrammingId,
-    projectCode: project?.sob ?? saveResult.projectCode ?? projectId,
-    reason: isReschedule ? changeReason : null,
-    changes,
-    metadata: {
-      action: !currentProgramming ? "CREATE" : isReschedule ? "RESCHEDULE" : "UPDATE",
-      projectId,
-      teamId,
-      executionDate,
-    },
-  });
+  if (nextProgramming) {
+    await registerProgrammingHistory({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingId: persistedProgrammingId,
+      projectCode: project?.sob ?? saveResult.projectCode ?? projectId,
+      reason: isReschedule ? changeReason : null,
+      changes,
+      metadata: {
+        action: !currentProgramming ? "CREATE" : isReschedule ? "RESCHEDULE" : "UPDATE",
+        projectId,
+        teamId,
+        executionDate,
+      },
+    });
+  }
+
+  const savedSchedule = await fetchProgrammingResponseItem(
+    resolution.supabase,
+    resolution.appUser.tenant_id,
+    persistedProgrammingId,
+  );
+  const responseWarning = savedSchedule
+    ? null
+    : "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
 
   return NextResponse.json({
     success: true,
     id: persistedProgrammingId,
-    message: responseMessage,
+    updatedAt: saveResult.updatedAt,
+    schedule: savedSchedule,
+    warning: responseWarning,
+    message: responseWarning ? `${responseMessage} ${responseWarning}` : responseMessage,
   });
 }
 
@@ -2981,13 +2961,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
   }
 
-  const { data: project } = await resolution.supabase
-    .from("project_with_labels")
-    .select("id, sob")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("id", currentProgramming.project_id)
-    .maybeSingle<{ id: string; sob: string }>();
-
   if (action === "ADIADA") {
     if (!newDate) {
       return NextResponse.json(
@@ -3003,6 +2976,13 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    if (newDate < getTodayIsoDateInSaoPaulo()) {
+      return NextResponse.json(
+        { message: "Informe uma nova data igual ou posterior a hoje para concluir o adiamento." },
+        { status: 400 },
+      );
+    }
+
     const postponeResult = await postponeProgrammingViaRpc({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -3014,58 +2994,46 @@ export async function PATCH(request: NextRequest) {
     });
 
     if (!postponeResult.ok) {
+      if (postponeResult.reason === "PROGRAMMING_CONFLICT") {
+        const conflictPayload = await fetchProgrammingConflictPayload({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          programmingId,
+          requested: {
+            executionDate: newDate,
+            teamId: currentProgramming.team_id,
+            startTime: formatTime(currentProgramming.start_time),
+            endTime: formatTime(currentProgramming.end_time),
+            status: "ADIADA",
+          },
+        });
+
+        return NextResponse.json(
+          conflictPayload ?? { error: "conflict", message: postponeResult.message },
+          { status: 409 },
+        );
+      }
+
       return NextResponse.json({ message: postponeResult.message }, { status: postponeResult.status });
     }
 
-    await registerProgrammingHistory({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId,
-      projectCode: project?.sob ?? postponeResult.projectCode ?? currentProgramming.project_id,
-      reason,
-      force: true,
-      changes: {
-        status: { from: currentProgramming.status, to: "ADIADA" },
-        isActive: { from: "true", to: "false" },
-        cancellationReason: { from: null, to: reason },
-      },
-      metadata: {
-        action: "ADIADA",
-        projectId: currentProgramming.project_id,
-        teamId: currentProgramming.team_id,
-        executionDate: currentProgramming.execution_date,
-        newExecutionDate: newDate,
-        newProgrammingId: postponeResult.newProgrammingId,
-      },
-    });
-
-    await registerProgrammingHistory({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: postponeResult.newProgrammingId,
-      projectCode: project?.sob ?? postponeResult.projectCode ?? currentProgramming.project_id,
-      reason,
-      changes: {
-        project: { from: null, to: project?.sob ?? currentProgramming.project_id },
-        executionDate: { from: null, to: newDate },
-      },
-      metadata: {
-        action: "CREATE",
-        source: "programacao-postpone",
-        projectId: currentProgramming.project_id,
-        teamId: currentProgramming.team_id,
-        executionDate: newDate,
-        sourceProgrammingId: programmingId,
-      },
-    });
+    const [updatedSchedule, newSchedule] = await Promise.all([
+      fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, programmingId),
+      fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, postponeResult.newProgrammingId),
+    ]);
+    const warning = updatedSchedule && newSchedule
+      ? null
+      : "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
 
     return NextResponse.json({
       success: true,
       id: programmingId,
       newId: postponeResult.newProgrammingId,
-      message: postponeResult.message,
+      updatedAt: postponeResult.updatedAt,
+      schedule: updatedSchedule,
+      newSchedule,
+      warning,
+      message: warning ? `${postponeResult.message} ${warning}` : postponeResult.message,
     });
   }
 
@@ -3080,33 +3048,44 @@ export async function PATCH(request: NextRequest) {
   });
 
   if (!cancelResult.ok) {
+    if (cancelResult.reason === "PROGRAMMING_CONFLICT") {
+      const conflictPayload = await fetchProgrammingConflictPayload({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        programmingId,
+        requested: {
+          executionDate: currentProgramming.execution_date,
+          teamId: currentProgramming.team_id,
+          startTime: formatTime(currentProgramming.start_time),
+          endTime: formatTime(currentProgramming.end_time),
+          status: action,
+        },
+      });
+
+      return NextResponse.json(
+        conflictPayload ?? { error: "conflict", message: cancelResult.message },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json({ message: cancelResult.message }, { status: cancelResult.status });
   }
 
-  await registerProgrammingHistory({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    actorUserId: resolution.appUser.id,
+  const updatedSchedule = await fetchProgrammingResponseItem(
+    resolution.supabase,
+    resolution.appUser.tenant_id,
     programmingId,
-    projectCode: project?.sob ?? cancelResult.projectCode ?? currentProgramming.project_id,
-    reason,
-    force: true,
-    changes: {
-      status: { from: currentProgramming.status, to: action },
-      isActive: { from: "true", to: "false" },
-      cancellationReason: { from: null, to: reason },
-    },
-    metadata: {
-      action,
-      projectId: currentProgramming.project_id,
-      teamId: currentProgramming.team_id,
-      executionDate: currentProgramming.execution_date,
-    },
-  });
+  );
+  const warning = updatedSchedule
+    ? null
+    : "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
 
   return NextResponse.json({
     success: true,
     id: programmingId,
-    message: cancelResult.message,
+    updatedAt: cancelResult.updatedAt,
+    schedule: updatedSchedule,
+    warning,
+    message: warning ? `${cancelResult.message} ${warning}` : cancelResult.message,
   });
 }

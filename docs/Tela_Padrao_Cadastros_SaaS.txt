@@ -33,6 +33,7 @@ Filtros, auto-complete e listagem
   - Card de filtros com `Aplicar` e `Limpar`.
   - Card de listagem com tabela, estado vazio e paginacao.
   - Toda listagem deve expor botao `Exportar Excel (CSV)` no cabecalho.
+  - O botao de exportacao deve bloquear novo clique por `10` segundos para evitar disparos repetidos.
 - Padrao de acoes na coluna `Acoes` (baseline `Projetos`):
   - `Detalhes`
   - `Editar`
