@@ -36,21 +36,6 @@ type SavedPermissionRow = {
   can_access: boolean;
 };
 
-type HistoryInsertRow = {
-  tenant_id: string;
-  target_user_id: string;
-  page_key?: string | null;
-  change_type: string;
-  previous_can_access?: boolean | null;
-  new_can_access?: boolean | null;
-  previous_role_id?: string | null;
-  new_role_id?: string | null;
-  previous_ativo?: boolean | null;
-  new_ativo?: boolean | null;
-  metadata?: Record<string, unknown>;
-  created_by: string;
-};
-
 type PermissionsSaveRpcResult = {
   success?: boolean;
   status?: number;

@@ -177,7 +177,7 @@
 - [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, tornando `ETAPA` obrigatoria no cadastro/edicao e `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) obrigatorio na edicao.
 - [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
 - [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
-- [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e prioridade para RPC transacional full com fallback legado.
+- [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e uso exclusivo das RPCs transacionais full.
 - [x] Garantir compatibilidade da API de Programacao quando a migration `085` ainda nao estiver aplicada (fallback de leitura e de RPC em lote).
 - [x] Adicionar compatibilidade em `service_activities` para `is_active` x `ativo`, evitando erro interno nas RPCs de Programacao em lote.
 - [x] Criar migrations para persistir lotes de copia da `Programacao` e adaptar o schema ao modo `team_period`.
@@ -185,12 +185,29 @@
 - [x] Ajustar o cadastro em lote da `Programacao simples` para fazer fallback da RPC full para a RPC base quando o ambiente estiver com migrations parciais, e simplificar o texto do botao principal.
 - [x] Reforcar validacoes de horario, datas de documentos e campos numericos da `Programacao` no frontend e nas RPCs do banco.
 - [x] Endurecer `copy_team_programming_period` para copiar apenas atividades ativas e replicar campos novos (estrutura/ENEL/desligamento/descricao) via `save_project_programming_full`.
-- [x] Migrar o historico complementar da `Programacao` para RPC (`append_programming_history`), removendo `insert` direto em `app_entity_history` da route.
+- [x] Migrar o historico complementar da `Programacao` para a RPC `append_project_programming_history_record`, removendo `insert` direto em `app_entity_history` da route.
 - [x] Endurecer o save principal e o save em lote da `Programacao` para exigir RPC full, evitar gravacao parcial e responder sucesso com aviso quando a recarga da grade falhar apos o commit.
 - [x] Enriquecer conflito `409` da `Programacao` com `currentRecord`, `currentUpdatedAt`, `updatedBy` e `changedFields`, e mover o historico de `ADIADA/CANCELADA` para dentro das RPCs transacionais.
 - [x] Formalizar no `AGENTS.md` o padrao obrigatorio de integridade transacional, conflito `409` rico e pos-save sem erro falso para fluxos operacionais criticos no padrao da `Programacao`.
 - [x] Corrigir a protecao de adiamento da `Programacao` para aceitar apenas nova data posterior a data atual da programacao, no frontend, na API e na RPC do banco.
 - [x] Ajustar o modal de historico da `Programacao Simples` para exibir a mudanca de `Data execucao` tambem nos eventos de `Adiamento`.
+- [x] Destacar com contorno vermelho os campos invalidos/obrigatorios da `Programacao Simples` e corrigir o scroll para exibir a mensagem completa de feedback no topo.
+- [x] Trocar a mensagem generica de campos obrigatorios do lote por erros especificos e preencher `ETAPA` automaticamente pela proxima etapa do projeto/equipes selecionadas.
+- [x] Bloquear o save da `Programacao Simples` com modal de aviso quando a `ETAPA` informada conflitar com etapas ja existentes do mesmo projeto/equipe.
+- [x] Impedir que a sugestao automatica sobrescreva a `ETAPA` digitada manualmente e repetir a protecao de conflito de etapa tambem na API da `Programacao`.
+- [x] Ajustar o confronto de `ETAPA` na edicao da `Programacao Simples` para considerar a etapa atual da propria programacao editada e reforcar a marcacao de `REPROGRAMADA` apos adiamento.
+- [x] Promover `REPROGRAMADA` a status fisico em `project_programming`, incluindo adiamento, edicao, copia, carga semanal e protecao de inativacao do projeto.
+- [x] Criar `project_programming_history` como historico operacional proprio da `Programacao`, com backfill inicial a partir de `app_entity_history` e uso exclusivo na API/telas da agenda.
+- [x] Endurecer o backfill da migration `101` para ignorar historicos orfaos de `Programacao` sem registro correspondente em `project_programming`.
+- [x] Eliminar os warnings antigos de lint em `app-users/[userId]/permissions`, `materials` e `programacao`.
+- [x] Abrir modal de alerta na `Programacao Simples` para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`.
+- [x] Criar a migration `103_harden_postpone_patch_error_reporting.sql` e endurecer o `PATCH` de `Adiamento/Cancelamento` para devolver erro detalhado (`reason/detail`) e manter sucesso com aviso quando a recarga da visualizacao falhar apos o commit.
+- [x] Criar a migration `104_fix_postpone_json_error_wrapper.sql` para remover o cast invalido de `SQLERRM -> jsonb` no adiamento e expor o erro real da RPC.
+- [x] Criar a migration `105_fix_postpone_history_signature.sql` para corrigir a assinatura usada no historico do novo registro `REPROGRAMADA` durante o adiamento.
+- [x] Corrigir a normalizacao de `Periodo` da `Programacao Simples` na API para aceitar `integral`/`partial` sem falso erro de campo obrigatorio.
+- [x] Garantir que falhas inesperadas do `BATCH_CREATE` retornem JSON com a causa real, sem `500` generico no cadastro em lote da `Programacao Simples`.
+- [x] Tornar a RPC `save_project_programming_batch_full` autocontida e orientar a aplicacao das migrations `091`, `094`, `095` e `099` quando o lote estiver desatualizado no banco.
+- [x] Tornar a RPC `save_project_programming_full` autocontida, criando `service_description` quando faltar e removendo a dependencia indireta da migration `090` no save transacional da Programacao.
 - [x] Criar visualizacao semanal da `Programacao Simples` (segunda a domingo) por equipe, com cards por dia contendo SOB, indicador de SGD/PI, cores de status e acoes de detalhe/historico.
 - [x] Criar tela separada `/programacao-visualizacao` para consulta da Programacao (lista + calendario), com permissao dedicada e menu proprio.
 - [x] Remover textos dos cards do calendario da Programacao (`SOB` e status textual) e paginar o modal de Historico.

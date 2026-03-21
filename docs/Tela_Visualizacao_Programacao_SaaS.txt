@@ -84,7 +84,7 @@ Atualizacao 2026-03
 - Adicionada paginacao no modal de historico da Programacao.
 - Calendario removido da tela de cadastro e mantido apenas na tela de visualizacao, posicionado no topo.
 - Ajustada listagem para manter visiveis status `ADIADA` e `CANCELADA`.
-- Ajustado o calendario semanal para exibir `REPROGRAMADA` em roxo quando a programacao for derivada de reprogramacao.
+- Ajustado o calendario semanal para exibir `REPROGRAMADA` em roxo quando a programacao estiver salva com status fisico `REPROGRAMADA`.
 - Renomeado o botao de exportacao comum para `Exportar Excel (CSV)` e adicionada trava de `10` segundos entre cliques.
 
 Mapa de Codigo (funcoes, hooks e constantes)

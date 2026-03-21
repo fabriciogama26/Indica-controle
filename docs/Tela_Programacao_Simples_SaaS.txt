@@ -52,6 +52,21 @@ Arquitetura
   - Campos em `project_programming`: `etapa_number`, `work_completion_status`
   - RPC: `set_project_programming_execution_result`
   - Compatibilidade full: sobrecargas de `save_project_programming_full` e `save_project_programming_batch_full` com ETAPA/Estado Trabalho.
+- Migration de endurecimento da RPC full:
+  - `supabase/migrations/100_harden_programming_full_self_contained.sql`
+  - A RPC `save_project_programming_full` passa a ser autocontida.
+  - O fluxo deixa de depender da migration `090` para persistir `service_description` durante o save transacional.
+  - A migration recria o campo `service_description` se ele ainda nao existir no banco.
+- Migration de historico operacional proprio:
+  - `supabase/migrations/101_create_project_programming_history.sql`
+  - Tabela: `project_programming_history`
+  - Funcao: `append_project_programming_history_record`
+  - Objetivo: separar a timeline operacional da `Programacao` do historico generico `app_entity_history`.
+- Migration de status fisico e historico exclusivo:
+  - `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql`
+  - `REPROGRAMADA` passa a ser status fisico em `project_programming`
+  - `Programacao` deixa de ler/gravar `app_entity_history` no fluxo operacional
+  - `copy_team_programming_period` passa a registrar copia apenas em `project_programming_history`
 - Migration de historico transacional de status:
   - `supabase/migrations/097_move_programming_status_history_into_rpcs.sql`
   - RPCs: `set_project_programming_status`, `postpone_project_programming`
@@ -97,6 +112,11 @@ Cadastro
   - Backend exige `save_project_programming_batch_full`.
   - O fluxo em lote nao usa mais fallback parcial para RPC legada.
   - A RPC em lote faz rollback total se qualquer equipe falhar.
+  - A sugestao automatica da `ETAPA` preenche o campo apenas enquanto ele nao tiver sido alterado manualmente pelo usuario no contexto atual.
+  - Antes do save, a tela valida a `ETAPA` informada contra o historico do mesmo `Projeto + Equipe`.
+  - Em modo de edicao, o confronto de `ETAPA` considera tambem a etapa atual da propria programacao editada, para avisar corretamente quando o usuario tentar reduzir uma etapa maior para um valor menor.
+  - A API repete a mesma validacao como protecao final, impedindo bypass do frontend.
+  - Se a `ETAPA` informada for igual ou menor do que etapas ja existentes para o projeto/equipe, a tela abre um modal de aviso e bloqueia o salvamento ate o usuario corrigir o campo.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -160,13 +180,16 @@ Boas praticas
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
   - O backend impede salvar a mesma obra para a mesma equipe na mesma data quando ainda existir programacao ativa para esse conjunto.
   - O adiamento exige nova data posterior a data atual da programacao no frontend, na API e na RPC do banco.
+  - O frontend abre modal de alerta para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`, antes de depender apenas do feedback no topo.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
   - API exige RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
   - `PATCH` exige `expectedUpdatedAt` e `ADIAR` exige `newDate`, reduzindo sobrescrita silenciosa.
   - Quando houver conflito de concorrencia, a API devolve `409` com `currentRecord`, `currentUpdatedAt`, `updatedBy` e `changedFields`.
   - Se o commit concluir e a grade falhar ao atualizar, a tela mostra sucesso com aviso em vez de erro falso.
+  - O `PATCH` de `Adiamento/Cancelamento` segue o mesmo padrao: a alteracao principal salva primeiro e a recarga da visualizacao nao derruba a resposta de sucesso.
 - Auditoria:
-  - API registra historico complementar em `app_entity_history` para cada programacao criada no lote (`action = BATCH_CREATE`).
+  - A timeline operacional da `Programacao` passa a ser registrada em `project_programming_history`.
+  - O frontend e a API da `Programacao` passam a usar somente `project_programming_history` para historico operacional.
 
 Cancelamento e saldo
 --------------------
@@ -174,10 +197,12 @@ Cancelamento e saldo
 - Cancelamento agora esta disponivel na propria lista da tela simples, com modal de motivo obrigatorio (minimo de 10 caracteres), no mesmo padrao de Projetos.
 - Adiamento com nova data:
   - Modal proprio com `Nova data da programacao` + `Motivo do adiamento` (minimo 10 caracteres).
-  - Ao validar: a programacao atual vira `ADIADA` e um novo registro `PROGRAMADA` e criado na nova data.
+  - Ao validar: a programacao atual vira `ADIADA` e um novo registro `REPROGRAMADA` e criado na nova data.
+  - O novo registro criado pelo adiamento passa a ser persistido e exibido como `REPROGRAMADA` na listagem e no calendario semanal.
   - Fluxo executado por RPC transacional `postpone_project_programming`.
 - O cancelamento reutiliza `PATCH /api/programacao` e a RPC `set_project_programming_status`.
 - O cadastro em lote gera registros `PROGRAMADA`, seguindo as mesmas regras de status da Programacao.
+- O historico exibido no modal usa somente `project_programming_history`.
 
 Atalhos
 -------
@@ -209,11 +234,31 @@ Atualizacao 2026-03
 - Renomeado o botao `Extracao Comum` para `Exportar Excel (CSV)`.
 - Agrupados os campos em blocos visuais de `Equipes`, `Atividades` e `Documentos`.
 - Ajustado o rotulo `Data` para `Data execucao` no formulario e na lista.
-- Passado a exibir `REPROGRAMADA` como status visual derivado do historico, com card roxo na visualizacao semanal.
+- Passado a exibir `REPROGRAMADA` como status fisico persistido em `project_programming`, com card roxo na visualizacao semanal.
 - Adicionada trava de `10` segundos nos botoes de exportacao CSV/ENEL da tela para evitar cliques repetidos.
 - Ajustado o submit para levar o usuario ao topo da tela sempre que houver sucesso ou erro no salvamento.
 - Endurecido o adiamento para bloquear datas menores ou iguais a data atual da programacao na API e na RPC `postpone_project_programming`.
 - Ajustado o modal de historico para exibir tambem a mudanca de `Data execucao` nos eventos de `Adiamento`, usando a data atual e a nova data gerada no adiamento.
+- Ajustado o modal de historico para exibir `ETAPA` como inteiro, sem casas decimais (`2` em vez de `2.00`).
+- Ajustado o formulario para destacar com contorno vermelho os campos obrigatorios ou invalidos quando o submit falhar.
+- Ajustado o scroll do feedback de salvamento para levar ate a caixa completa de sucesso/erro no topo da tela.
+- Ajustadas as mensagens do cadastro em lote para retornar o campo obrigatorio especifico que faltou, sem usar erro generico.
+- Adicionada consulta de proxima `ETAPA` na API e preenchimento automatico do campo no formulario com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas em datas anteriores.
+- Corrigida a normalizacao do `Periodo` na API para aceitar o valor enviado pela tela simples (`integral`/`partial`) e converter corretamente para `INTEGRAL`/`PARCIAL`.
+- Endurecido o `BATCH_CREATE` para capturar excecoes inesperadas e devolver a causa real em JSON, evitando `500` generico sem mensagem util para a tela.
+- Criada a migration `099_harden_programming_batch_full_self_contained.sql` para tornar a RPC `save_project_programming_batch_full` autocontida, sem depender de sobrecarga antiga da mesma funcao em ambientes com migrations parciais.
+- Criada a migration `100_harden_programming_full_self_contained.sql` para tornar a RPC `save_project_programming_full` autocontida, removendo a dependencia indireta da migration `090` no save transacional.
+- Ajustada a API para orientar explicitamente a aplicacao das migrations `091`, `094`, `095`, `099` e `100` quando o save full/lote falhar por RPC desatualizada.
+- Adicionada validacao operacional de `ETAPA` antes do save: a tela consulta o historico do mesmo projeto/equipe e abre modal de confronto quando a etapa informada estiver igual ou abaixo de etapas ja existentes.
+- Ajustado o confronto de `ETAPA` na edicao para considerar a etapa atual da propria programacao editada e exibir no modal a maior etapa real ja encontrada.
+- Reforcada a persistencia de `REPROGRAMADA` apos `Adiamento`, incluindo o vinculo entre a programacao antiga (`ADIADA`) e a nova programacao criada para a data futura.
+- Criada a tabela `project_programming_history` como historico operacional proprio da Programacao, com backfill inicial a partir de `app_entity_history`.
+- O backfill da migration `101` ignora historicos legados orfaos cujo `programming_id` ja nao exista mais em `project_programming`, evitando quebra por FK durante a aplicacao.
+- Criada a migration `102_use_programming_history_only_and_physical_rescheduled_status.sql` para promover `REPROGRAMADA` a status fisico, usar somente `project_programming_history` no fluxo operacional e tratar `REPROGRAMADA` como agenda ativa em cargas, edicao, adiamento e copia.
+- Criado modal generico de alerta para consolidar erros de validacao e conflitos operacionais no `Adiamento`, no `Cadastrar programacao` e no `Salvar edicao`.
+- Criada a migration `103_harden_postpone_patch_error_reporting.sql` para endurecer o retorno do `Adiamento`, devolver `reason/detail` quando a RPC falhar e manter o `PATCH` resiliente no pos-save.
+- Criada a migration `104_fix_postpone_json_error_wrapper.sql` para remover o cast invalido de `SQLERRM -> jsonb` no adiamento e expor o erro real da RPC no modal de alerta.
+- Criada a migration `105_fix_postpone_history_signature.sql` para corrigir a chamada de `append_project_programming_history_record` no novo registro `REPROGRAMADA` gerado pelo adiamento.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
@@ -265,7 +310,7 @@ Servicos e integracoes externas
 - `save_project_programming` (RPC reutilizada por equipe no lote).
 - `set_project_programming_outage_window` (RPC nova para janela de desligamento).
 - `set_project_programming_document_dates` (RPC nova para Data Aprovada/Data Pedido).
-- `append_programming_history` (RPC de auditoria funcional).
+- `append_project_programming_history_record` (RPC de historico operacional dedicado).
 
 Ajuda contextual
 ----------------
@@ -291,6 +336,12 @@ Ajuda contextual
   - `supabase/migrations/092_harden_copy_team_programming_period_rpc.sql`
   - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
   - `supabase/migrations/094_add_programming_stage_and_completion_fields.sql`
+  - `supabase/migrations/100_harden_programming_full_self_contained.sql`
+  - `supabase/migrations/101_create_project_programming_history.sql`
+  - `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql`
+  - `supabase/migrations/103_harden_postpone_patch_error_reporting.sql`
+  - `supabase/migrations/104_fix_postpone_json_error_wrapper.sql`
+  - `supabase/migrations/105_fix_postpone_history_signature.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`
@@ -299,9 +350,10 @@ Ajuda contextual
   - `startOfWeekMonday`, `createWeekDates`, `isDateInRange`
   - `openCancelModal`, `confirmCancellation`, `startEditSchedule`
   - `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`
-  - `saveProgrammingBatchViaRpc`
-  - `saveProgrammingBatch`
-  - `POST` de `/api/programacao` (branch `BATCH_CREATE`)
+- `saveProgrammingBatchViaRpc`
+- `saveProgrammingBatch`
+- `validateStageConflict`
+- `POST` de `/api/programacao` (branch `BATCH_CREATE`)
   - `ROUTE_PAGE_KEYS`
   - `permissionCatalog`
 - Comportamento antes/depois:
@@ -311,5 +363,9 @@ Ajuda contextual
   - Depois: a tela simples tem calendario de segunda a domingo com cards coloridos por status, exibindo SOB/SGD/PI e acoes de detalhe/historico.
   - Antes: o formulario exibia `Data`, nao separava blocos visuais e aceitava manter `Hora termino` livre mesmo em `Parcial`.
   - Depois: o formulario usa `Data execucao`, blocos dedicados de `Equipes`/`Atividades`/`Documentos`, sugere `Hora termino = 12:00` no periodo parcial e restaura `17:00` ao voltar para integral.
-  - Antes: reprogramacoes seguiam aparecendo como `PROGRAMADA` na consulta.
-  - Depois: reprogramacoes passam a ser exibidas como `REPROGRAMADA` na lista e no calendario semanal.
+  - Antes: reprogramacoes podiam depender de historico derivado para aparecer como `REPROGRAMADA`.
+  - Depois: `REPROGRAMADA` passa a ser status fisico salvo em `project_programming`, exibido diretamente na lista e no calendario semanal.
+  - Antes: a `ETAPA` era apenas sugerida automaticamente e o usuario podia salvar um numero regressivo sem aviso.
+  - Depois: a `ETAPA` continua sendo sugerida automaticamente, mas nao sobrescreve mais valor digitado manualmente; a tela bloqueia o save e abre um modal de confronto quando ja existirem etapas iguais ou maiores para o mesmo projeto/equipe, e a API repete a protecao no backend.
+  - Antes: parte dos erros de validacao e conflito aparecia so como mensagem no topo.
+  - Depois: `Adiamento`, `Cadastrar programacao` e `Salvar edicao` passam a abrir modal de alerta com os possiveis erros e conflitos, mantendo o feedback no topo como complemento.

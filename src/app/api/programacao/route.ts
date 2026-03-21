@@ -135,6 +135,17 @@ type ProgrammingHistoryRow = {
   created_at: string;
 };
 
+type ProgrammingOperationalHistoryRow = {
+  id: string;
+  programming_id: string;
+  related_programming_id: string | null;
+  action_type: string;
+  reason: string | null;
+  changes: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
 type HistoryChange = {
   from: string | null;
   to: string | null;
@@ -269,6 +280,11 @@ type BatchCreateProgrammingResponse = {
   success?: boolean;
   insertedCount?: number;
   message?: string;
+  warning?: string | null;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: ProgrammingStageValidationTeamSummary[];
 };
 
 type BatchProgrammingRpcItem = {
@@ -297,6 +313,22 @@ type ProgrammingHistoryListResponse = {
   }>;
 };
 
+type ProgrammingStageValidationTeamSummary = {
+  teamId: string;
+  teamName: string;
+  highestStage: number;
+  existingStages: number[];
+  existingDates: string[];
+};
+
+type ProgrammingStageValidationResponse = {
+  enteredEtapaNumber: number;
+  hasConflict: boolean;
+  highestStage: number;
+  teams: ProgrammingStageValidationTeamSummary[];
+  message: string;
+};
+
 type CancelProgrammingRpcResult = {
   success?: boolean;
   status?: number;
@@ -313,18 +345,11 @@ type PostponeProgrammingRpcResult = {
   status?: number;
   reason?: string;
   message?: string;
+  detail?: string;
   programming_id?: string;
   new_programming_id?: string;
   project_code?: string;
   updated_at?: string;
-};
-
-type AppendProgrammingHistoryRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  skipped?: boolean;
 };
 
 function isMissingRpcFunctionError(errorMessage: string, functionName: string) {
@@ -516,8 +541,12 @@ function startOfWeekMonday(value: string) {
 
 function normalizePeriod(value: unknown) {
   const normalized = normalizeText(value).toUpperCase();
-  if (normalized === "INTEGRAL" || normalized === "PARCIAL") {
-    return normalized;
+  if (normalized === "INTEGRAL") {
+    return "INTEGRAL";
+  }
+
+  if (normalized === "PARCIAL" || normalized === "PARTIAL") {
+    return "PARCIAL";
   }
 
   return null;
@@ -873,14 +902,13 @@ async function fetchRescheduledProgrammingIds(
   }
 
   const { data, error } = await supabase
-    .from("app_entity_history")
-    .select("id, entity_id, reason, changes, metadata, created_at")
+    .from("project_programming_history")
+    .select("id, programming_id, reason, changes, metadata, created_at, action_type")
     .eq("tenant_id", tenantId)
-    .eq("module_key", "programacao")
-    .eq("entity_table", "project_programming")
-    .in("entity_id", programmingIds)
+    .eq("action_type", "RESCHEDULE")
+    .in("programming_id", programmingIds)
     .order("created_at", { ascending: false })
-    .returns<ProgrammingHistoryRow[]>();
+    .returns<Array<ProgrammingOperationalHistoryRow & { action_type: string }>>();
 
   if (error) {
     return new Map<
@@ -895,6 +923,18 @@ async function fetchRescheduledProgrammingIds(
     >();
   }
 
+  const normalizedData: ProgrammingHistoryRow[] = (data ?? []).map((item) => ({
+    id: item.id,
+    entity_id: item.programming_id,
+    reason: item.reason,
+    changes: item.changes,
+    metadata: {
+      ...(item.metadata ?? {}),
+      action: normalizeText(item.action_type) || normalizeText(item.metadata?.action),
+    },
+    created_at: item.created_at,
+  }));
+
   const latestReschedules = new Map<
     string,
     {
@@ -906,7 +946,7 @@ async function fetchRescheduledProgrammingIds(
     }
   >();
 
-  for (const item of data ?? []) {
+  for (const item of normalizedData) {
     if (latestReschedules.has(item.entity_id)) {
       continue;
     }
@@ -931,62 +971,169 @@ async function fetchRescheduledProgrammingIds(
   return latestReschedules;
 }
 
-async function fetchPostponedReprogrammedIds(
-  supabase: SupabaseClient,
-  tenantId: string,
-  programmingIds: string[],
-) {
-  if (!programmingIds.length) {
-    return new Set<string>();
-  }
-
-  const { data, error } = await supabase
-    .from("app_entity_history")
-    .select("entity_id, metadata")
-    .eq("tenant_id", tenantId)
-    .eq("module_key", "programacao")
-    .eq("entity_table", "project_programming")
-    .in("entity_id", programmingIds)
-    .returns<Array<{ entity_id: string; metadata: Record<string, unknown> | null }>>();
-
-  if (error) {
-    return new Set<string>();
-  }
-
-  const reprogrammedIds = new Set<string>();
-
-  for (const item of data ?? []) {
-    const action = normalizeText(item.metadata?.action).toUpperCase();
-    const source = normalizeText(item.metadata?.source).toLowerCase();
-
-    if (action === "CREATE" && source === "programacao-postpone") {
-      reprogrammedIds.add(item.entity_id);
-    }
-  }
-
-  return reprogrammedIds;
-}
-
 async function fetchProgrammingHistory(
   supabase: SupabaseClient,
   tenantId: string,
   programmingId: string,
 ) {
   const { data, error } = await supabase
-    .from("app_entity_history")
-    .select("id, entity_id, reason, changes, metadata, created_at")
+    .from("project_programming_history")
+    .select("id, programming_id, reason, changes, metadata, created_at, action_type")
     .eq("tenant_id", tenantId)
-    .eq("module_key", "programacao")
-    .eq("entity_table", "project_programming")
-    .eq("entity_id", programmingId)
+    .eq("programming_id", programmingId)
     .order("created_at", { ascending: false })
-    .returns<ProgrammingHistoryRow[]>();
+    .returns<Array<ProgrammingOperationalHistoryRow & { action_type: string }>>();
 
   if (error) {
     return [] as ProgrammingHistoryRow[];
   }
 
-  return data ?? [];
+  return (data ?? []).map((item) => ({
+    id: item.id,
+    entity_id: item.programming_id,
+    reason: item.reason,
+    changes: item.changes,
+    metadata: {
+      ...(item.metadata ?? {}),
+      action: normalizeText(item.action_type) || normalizeText(item.metadata?.action),
+    },
+    created_at: item.created_at,
+  }));
+}
+
+async function fetchNextProgrammingStage(
+  supabase: SupabaseClient,
+  tenantId: string,
+  projectId: string,
+  teamIds: string[],
+  executionDate: string,
+) {
+  if (!projectId || !teamIds.length || !executionDate) {
+    return 1;
+  }
+
+  const { data, error } = await supabase
+    .from("project_programming")
+    .select("etapa_number")
+    .eq("tenant_id", tenantId)
+    .eq("project_id", projectId)
+    .in("team_id", teamIds)
+    .lt("execution_date", executionDate)
+    .not("etapa_number", "is", null)
+    .order("etapa_number", { ascending: false })
+    .limit(1)
+    .returns<Array<{ etapa_number: number | null }>>();
+
+  if (error) {
+    return 1;
+  }
+
+  const highestStage = Number(data?.[0]?.etapa_number ?? 0);
+  if (!Number.isFinite(highestStage) || highestStage < 1) {
+    return 1;
+  }
+
+  return highestStage + 1;
+}
+
+async function fetchProgrammingStageValidation(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+  teamIds: string[];
+  enteredEtapaNumber: number;
+  excludeProgrammingId?: string | null;
+  currentEditingStage?: number | null;
+  currentEditingDate?: string | null;
+  currentEditingTeamId?: string | null;
+}) {
+  const { data, error } = await params.supabase
+    .from("project_programming")
+    .select("id, team_id, etapa_number, execution_date")
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .in("team_id", params.teamIds)
+    .not("etapa_number", "is", null)
+    .returns<Array<{ id: string; team_id: string; etapa_number: number | null; execution_date: string }>>();
+
+  if (error) {
+    return [];
+  }
+
+  const relevantRows = (data ?? []).filter((item) => {
+    if (!item.etapa_number || item.etapa_number < 1) {
+      return false;
+    }
+
+    if (params.excludeProgrammingId && item.id === params.excludeProgrammingId) {
+      return false;
+    }
+
+    return item.etapa_number >= params.enteredEtapaNumber;
+  });
+
+  const relevantTeamIds = new Set(relevantRows.map((item) => item.team_id));
+  if (
+    params.currentEditingTeamId
+    && params.currentEditingStage
+    && params.currentEditingStage > params.enteredEtapaNumber
+  ) {
+    relevantTeamIds.add(params.currentEditingTeamId);
+  }
+
+  if (!relevantRows.length && !relevantTeamIds.size) {
+    return [];
+  }
+
+  const uniqueTeamIds = Array.from(relevantTeamIds);
+  const { data: teamRows } = await params.supabase
+    .from("teams")
+    .select("id, name")
+    .eq("tenant_id", params.tenantId)
+    .in("id", uniqueTeamIds)
+    .returns<Array<{ id: string; name: string }>>();
+
+  const teamNameMap = new Map((teamRows ?? []).map((item) => [item.id, normalizeText(item.name)]));
+
+  return uniqueTeamIds
+    .map((teamId) => {
+      const teamItems = relevantRows.filter((item) => item.team_id === teamId);
+      let existingStages = Array.from(
+        new Set(
+          teamItems
+            .map((item) => Number(item.etapa_number ?? 0))
+            .filter((stage) => Number.isFinite(stage) && stage >= params.enteredEtapaNumber),
+        ),
+      ).sort((left, right) => left - right);
+
+      let existingDates = Array.from(new Set(teamItems.map((item) => item.execution_date))).sort();
+
+      if (
+        params.currentEditingTeamId === teamId
+        && params.currentEditingStage
+        && params.currentEditingStage > params.enteredEtapaNumber
+      ) {
+        if (!existingStages.includes(params.currentEditingStage)) {
+          existingStages = [...existingStages, params.currentEditingStage].sort((left, right) => left - right);
+        }
+
+        if (params.currentEditingDate && !existingDates.includes(params.currentEditingDate)) {
+          existingDates = [...existingDates, params.currentEditingDate].sort();
+        }
+      }
+
+      const highestStage = existingStages.length ? Math.max(...existingStages) : 0;
+
+      return {
+        teamId,
+        teamName: teamNameMap.get(teamId) ?? teamId,
+        highestStage,
+        existingStages,
+        existingDates,
+      } satisfies ProgrammingStageValidationTeamSummary;
+    })
+    .filter((item) => item.existingStages.length > 0)
+    .sort((left, right) => left.teamName.localeCompare(right.teamName));
 }
 
 async function fetchProgrammingSgdTypes(
@@ -1162,7 +1309,7 @@ async function fetchProgrammingResponseItem(
     return null;
   }
 
-  const [activitiesMap, projectRows, sgdTypes, rescheduleHistoryMap, postponedReprogrammedIds] = await Promise.all([
+  const [activitiesMap, projectRows, sgdTypes, rescheduleHistoryMap] = await Promise.all([
     fetchProgrammingActivities(supabase, tenantId, [programmingId]),
     supabase
       .from("project_with_labels")
@@ -1172,7 +1319,6 @@ async function fetchProgrammingResponseItem(
       .returns<Array<{ id: string; service_center_text: string | null }>>(),
     fetchProgrammingSgdTypes(supabase, tenantId),
     fetchRescheduledProgrammingIds(supabase, tenantId, [programmingId]),
-    fetchPostponedReprogrammedIds(supabase, tenantId, [programmingId]),
   ]);
 
   const projectBase =
@@ -1185,7 +1331,7 @@ async function fetchProgrammingResponseItem(
     projectId: row.project_id,
     teamId: row.team_id,
     status: row.status,
-    isReprogrammed: rescheduleHistoryMap.has(row.id) || postponedReprogrammedIds.has(row.id),
+    isReprogrammed: row.status === "REPROGRAMADA",
     date: row.execution_date,
     period: row.period === "INTEGRAL" ? "integral" : "partial",
     startTime: formatTime(row.start_time),
@@ -1212,7 +1358,7 @@ async function fetchProgrammingResponseItem(
     projectBase,
     statusReason: normalizeText(row.cancellation_reason),
     statusChangedAt: row.canceled_at ?? "",
-    wasRescheduled: rescheduleHistoryMap.has(row.id),
+    wasRescheduled: row.status === "REPROGRAMADA" || rescheduleHistoryMap.has(row.id),
     lastReschedule: rescheduleHistoryMap.get(row.id)
       ? {
           id: rescheduleHistoryMap.get(row.id)?.historyId ?? "",
@@ -1467,251 +1613,6 @@ async function saveProgrammingBatchFullViaRpc(params: {
   } as const;
 }
 
-async function setProgrammingStructureQuantitiesViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  programmingId: string;
-  posteQty: number;
-  estruturaQty: number;
-  trafoQty: number;
-  redeQty: number;
-  force?: boolean;
-}) {
-  const structureRequested = Boolean(params.force) || params.posteQty > 0 || params.estruturaQty > 0 || params.trafoQty > 0 || params.redeQty > 0;
-  if (!structureRequested) {
-    return { ok: true } as const;
-  }
-
-  const { data, error } = await params.supabase.rpc("set_project_programming_structure_quantities", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_programming_id: params.programmingId,
-    p_poste_qty: params.posteQty,
-    p_estrutura_qty: params.estruturaQty,
-    p_trafo_qty: params.trafoQty,
-    p_rede_qty: params.redeQty,
-  });
-
-  if (error) {
-    const isMissingRpc = isMissingRpcFunctionError(error.message, "set_project_programming_structure_quantities");
-
-    if (isMissingRpc) {
-      return {
-        ok: false,
-        status: 409,
-        message:
-          "Seu ambiente ainda nao suporta os campos estruturais (POSTE/ESTRUTURA/TRAFO/REDE). Aplique a migration 085 e tente novamente.",
-      } as const;
-    }
-
-    return {
-      ok: false,
-      status: 500,
-      message: error.message
-        ? `Falha ao salvar quantidades estruturais da programacao: ${error.message}`
-        : "Falha ao salvar quantidades estruturais da programacao.",
-    } as const;
-  }
-
-  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
-  if (result.success !== true) {
-    return {
-      ok: false,
-      status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao salvar quantidades estruturais da programacao.",
-    } as const;
-  }
-
-  return { ok: true } as const;
-}
-
-async function setProgrammingServiceDescriptionViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  programmingId: string;
-  serviceDescription: string | null;
-  force?: boolean;
-}) {
-  const shouldPersist = Boolean(params.force) || Boolean(params.serviceDescription);
-  if (!shouldPersist) {
-    return { ok: true } as const;
-  }
-
-  const { data, error } = await params.supabase.rpc("set_project_programming_service_description", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_programming_id: params.programmingId,
-    p_service_description: params.serviceDescription,
-  });
-
-  if (error) {
-    const isMissingRpc = isMissingRpcFunctionError(error.message, "set_project_programming_service_description");
-
-    if (isMissingRpc) {
-      return {
-        ok: false,
-        status: 409,
-        message:
-          "Seu ambiente ainda nao suporta o campo Descricao do servico da programacao. Aplique a migration 090 e tente novamente.",
-      } as const;
-    }
-
-    return {
-      ok: false,
-      status: 500,
-      message: error.message
-        ? `Falha ao salvar descricao do servico da programacao: ${error.message}`
-        : "Falha ao salvar descricao do servico da programacao.",
-    } as const;
-  }
-
-  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
-  if (result.success !== true) {
-    return {
-      ok: false,
-      status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao salvar descricao do servico da programacao.",
-    } as const;
-  }
-
-  return { ok: true } as const;
-}
-
-async function setProgrammingOutageWindowViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  programmingId: string;
-  outageStartTime: string | null;
-  outageEndTime: string | null;
-  force?: boolean;
-}) {
-  const shouldPersist = Boolean(params.force) || Boolean(params.outageStartTime) || Boolean(params.outageEndTime);
-  if (!shouldPersist) {
-    return { ok: true } as const;
-  }
-
-  const { data, error } = await params.supabase.rpc("set_project_programming_outage_window", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_programming_id: params.programmingId,
-    p_outage_start_time: params.outageStartTime,
-    p_outage_end_time: params.outageEndTime,
-  });
-
-  if (error) {
-    const isMissingRpc = isMissingRpcFunctionError(error.message, "set_project_programming_outage_window");
-
-    if (isMissingRpc) {
-      return {
-        ok: false,
-        status: 409,
-        message:
-          "Seu ambiente ainda nao suporta os campos Inicio/Termino de desligamento. Aplique a migration 089 e tente novamente.",
-      } as const;
-    }
-
-    return {
-      ok: false,
-      status: 500,
-      message: error.message
-        ? `Falha ao salvar janela de desligamento da programacao: ${error.message}`
-        : "Falha ao salvar janela de desligamento da programacao.",
-    } as const;
-  }
-
-  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
-  if (result.success !== true) {
-    return {
-      ok: false,
-      status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao salvar janela de desligamento da programacao.",
-    } as const;
-  }
-
-  return { ok: true } as const;
-}
-
-function normalizeDocumentsForPersistence(documents: NonNullable<SaveProgrammingPayload["documents"]>) {
-  return {
-    sgd: {
-      approvedAt: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt),
-      requestedAt: normalizeIsoDate(documents?.sgd?.requestedAt ?? documents?.sgd?.deliveredAt),
-    },
-    pi: {
-      approvedAt: normalizeIsoDate(documents?.pi?.approvedAt ?? documents?.pi?.includedAt),
-      requestedAt: normalizeIsoDate(documents?.pi?.requestedAt ?? documents?.pi?.deliveredAt),
-    },
-    pep: {
-      approvedAt: normalizeIsoDate(documents?.pep?.approvedAt ?? documents?.pep?.includedAt),
-      requestedAt: normalizeIsoDate(documents?.pep?.requestedAt ?? documents?.pep?.deliveredAt),
-    },
-  };
-}
-
-async function setProgrammingDocumentDatesViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  programmingId: string;
-  documents: NonNullable<SaveProgrammingPayload["documents"]>;
-  force?: boolean;
-}) {
-  const normalizedDocuments = normalizeDocumentsForPersistence(params.documents);
-  const shouldPersist = Boolean(params.force)
-    || Boolean(normalizedDocuments.sgd.approvedAt)
-    || Boolean(normalizedDocuments.sgd.requestedAt)
-    || Boolean(normalizedDocuments.pi.approvedAt)
-    || Boolean(normalizedDocuments.pi.requestedAt)
-    || Boolean(normalizedDocuments.pep.approvedAt)
-    || Boolean(normalizedDocuments.pep.requestedAt);
-
-  if (!shouldPersist) {
-    return { ok: true } as const;
-  }
-
-  const { data, error } = await params.supabase.rpc("set_project_programming_document_dates", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_programming_id: params.programmingId,
-    p_documents: normalizedDocuments,
-  });
-
-  if (error) {
-    const isMissingRpc = isMissingRpcFunctionError(error.message, "set_project_programming_document_dates");
-
-    if (isMissingRpc) {
-      return {
-        ok: false,
-        status: 409,
-        message:
-          "Seu ambiente ainda nao suporta Data Aprovada/Data Pedido dos documentos. Aplique a migration 089 e tente novamente.",
-      } as const;
-    }
-
-    return {
-      ok: false,
-      status: 500,
-      message: error.message
-        ? `Falha ao salvar datas de documentos da programacao: ${error.message}`
-        : "Falha ao salvar datas de documentos da programacao.",
-    } as const;
-  }
-
-  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string };
-  if (result.success !== true) {
-    return {
-      ok: false,
-      status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao salvar datas de documentos da programacao.",
-    } as const;
-  }
-
-  return { ok: true } as const;
-}
-
 async function resolveProgrammingSgdType(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -1732,6 +1633,8 @@ async function resolveProgrammingSgdType(params: {
   return data;
 }
 
+// Legacy compatibility helper kept for staged rollback support in partially migrated environments.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function setProgrammingEnelFieldsViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -1781,6 +1684,8 @@ async function setProgrammingEnelFieldsViaRpc(params: {
   return { ok: true } as const;
 }
 
+// Legacy compatibility helper kept for staged rollback support in partially migrated environments.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function setProgrammingExecutionResultViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -1926,11 +1831,16 @@ async function postponeProgrammingViaRpc(params: {
 
   const result = (data ?? {}) as PostponeProgrammingRpcResult;
   if (result.success !== true || !result.programming_id || !result.new_programming_id) {
+    const fallbackMessage = result.detail
+      ? `Falha ao adiar programacao: ${result.detail}`
+      : result.message ?? "Falha ao adiar programacao.";
+
     return {
       ok: false,
       status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao adiar programacao.",
+      message: fallbackMessage,
       reason: result.reason ?? null,
+      detail: result.detail ?? null,
     } as const;
   }
 
@@ -1949,32 +1859,58 @@ async function registerProgrammingHistory(params: {
   tenantId: string;
   actorUserId: string;
   programmingId: string;
-  projectCode: string;
+  projectId?: string | null;
+  teamId?: string | null;
+  relatedProgrammingId?: string | null;
+  actionType: string;
   changes: Record<string, HistoryChange>;
   metadata: Record<string, unknown>;
   reason?: string | null;
-  force?: boolean;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  fromExecutionDate?: string | null;
+  toExecutionDate?: string | null;
+  fromTeamId?: string | null;
+  toTeamId?: string | null;
+  fromStartTime?: string | null;
+  toStartTime?: string | null;
+  fromEndTime?: string | null;
+  toEndTime?: string | null;
+  fromEtapaNumber?: number | null;
+  toEtapaNumber?: number | null;
 }) {
-  const { data, error } = await params.supabase.rpc("append_programming_history", {
+  const { data, error } = await params.supabase.rpc("append_project_programming_history_record", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_programming_id: params.programmingId,
-    p_project_code: params.projectCode,
+    p_project_id: params.projectId ?? null,
+    p_team_id: params.teamId ?? null,
+    p_related_programming_id: params.relatedProgrammingId ?? null,
+    p_action_type: params.actionType,
     p_reason: params.reason ?? null,
     p_changes: params.changes,
     p_metadata: params.metadata,
-    p_change_type: "UPDATE",
-    p_force: params.force ?? false,
+    p_from_status: params.fromStatus ?? null,
+    p_to_status: params.toStatus ?? null,
+    p_from_execution_date: params.fromExecutionDate ?? null,
+    p_to_execution_date: params.toExecutionDate ?? null,
+    p_from_team_id: params.fromTeamId ?? null,
+    p_to_team_id: params.toTeamId ?? null,
+    p_from_start_time: params.fromStartTime ?? null,
+    p_to_start_time: params.toStartTime ?? null,
+    p_from_end_time: params.fromEndTime ?? null,
+    p_to_end_time: params.toEndTime ?? null,
+    p_from_etapa_number: params.fromEtapaNumber ?? null,
+    p_to_etapa_number: params.toEtapaNumber ?? null,
   });
 
   if (error) {
-    return;
+    console.error("registerProgrammingHistory_failed", error);
+    return false;
   }
 
-  const result = (data ?? {}) as AppendProgrammingHistoryRpcResult;
-  if (result.success !== true) {
-    return;
-  }
+  const result = (data ?? {}) as { success?: boolean };
+  return result.success === true;
 }
 
 async function copyProgramming(request: NextRequest) {
@@ -2062,6 +1998,92 @@ export async function GET(request: NextRequest) {
       } satisfies ProgrammingHistoryListResponse);
     }
 
+    const nextEtapaProjectId = normalizeText(request.nextUrl.searchParams.get("nextEtapaProjectId"));
+    if (nextEtapaProjectId) {
+      const nextEtapaDate = normalizeIsoDate(request.nextUrl.searchParams.get("nextEtapaDate"));
+      const nextEtapaTeamIds = normalizeText(request.nextUrl.searchParams.get("nextEtapaTeamIds"))
+        .split(",")
+        .map((item) => normalizeText(item))
+        .filter(Boolean);
+
+      if (!nextEtapaDate || !nextEtapaTeamIds.length) {
+        return NextResponse.json(
+          { message: "Informe projeto, data de execucao e ao menos uma equipe para calcular a proxima etapa." },
+          { status: 400 },
+        );
+      }
+
+      const nextEtapaNumber = await fetchNextProgrammingStage(
+        resolution.supabase,
+        resolution.appUser.tenant_id,
+        nextEtapaProjectId,
+        nextEtapaTeamIds,
+        nextEtapaDate,
+      );
+
+      return NextResponse.json({
+        nextEtapaNumber,
+        message: "Proxima etapa calculada com sucesso.",
+      });
+    }
+
+    const etapaValidationProjectId = normalizeText(request.nextUrl.searchParams.get("etapaValidationProjectId"));
+    if (etapaValidationProjectId) {
+      const etapaValidationTeamIds = normalizeText(request.nextUrl.searchParams.get("etapaValidationTeamIds"))
+        .split(",")
+        .map((item) => normalizeText(item))
+        .filter(Boolean);
+      const etapaValidationNumber = normalizePositiveInteger(
+        request.nextUrl.searchParams.get("etapaValidationNumber"),
+      );
+      const etapaValidationExcludeProgrammingId = normalizeNullableText(
+        request.nextUrl.searchParams.get("etapaValidationExcludeProgrammingId"),
+      );
+      const etapaValidationCurrentStage = normalizePositiveInteger(
+        request.nextUrl.searchParams.get("etapaValidationCurrentStage"),
+      );
+      const etapaValidationCurrentDate = normalizeIsoDate(
+        request.nextUrl.searchParams.get("etapaValidationCurrentDate"),
+      );
+      const etapaValidationCurrentTeamId = normalizeNullableText(
+        request.nextUrl.searchParams.get("etapaValidationCurrentTeamId"),
+      );
+
+      if (!etapaValidationTeamIds.length || etapaValidationNumber === null) {
+        return NextResponse.json(
+          { message: "Informe projeto, equipes e etapa valida para validar o historico da programacao." },
+          { status: 400 },
+        );
+      }
+
+      const teamSummaries = await fetchProgrammingStageValidation({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        projectId: etapaValidationProjectId,
+        teamIds: etapaValidationTeamIds,
+        enteredEtapaNumber: etapaValidationNumber,
+        excludeProgrammingId: etapaValidationExcludeProgrammingId,
+        currentEditingStage: etapaValidationCurrentStage,
+        currentEditingDate: etapaValidationCurrentDate,
+        currentEditingTeamId: etapaValidationCurrentTeamId,
+      });
+
+      const highestStage = teamSummaries.reduce(
+        (current, item) => Math.max(current, item.highestStage),
+        0,
+      );
+
+      return NextResponse.json({
+        enteredEtapaNumber: etapaValidationNumber,
+        hasConflict: teamSummaries.length > 0,
+        highestStage,
+        teams: teamSummaries,
+        message: teamSummaries.length
+          ? "Ja existem etapas iguais ou maiores para este projeto nas equipes selecionadas."
+          : "Nenhum conflito de etapa encontrado para as equipes selecionadas.",
+      } satisfies ProgrammingStageValidationResponse);
+    }
+
     const startDate = normalizeIsoDate(request.nextUrl.searchParams.get("startDate"));
     const endDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
 
@@ -2093,13 +2115,8 @@ export async function GET(request: NextRequest) {
       programmingRows.map((item) => item.id),
     );
     const programmingIds = programmingRows.map((item) => item.id);
-    const [rescheduleHistoryMap, postponedReprogrammedIds] = await Promise.all([
+    const [rescheduleHistoryMap] = await Promise.all([
       fetchRescheduledProgrammingIds(
-        resolution.supabase,
-        resolution.appUser.tenant_id,
-        programmingIds,
-      ),
-      fetchPostponedReprogrammedIds(
         resolution.supabase,
         resolution.appUser.tenant_id,
         programmingIds,
@@ -2155,7 +2172,7 @@ export async function GET(request: NextRequest) {
           projectId: item.project_id,
           teamId: item.team_id,
           status: item.status,
-          isReprogrammed: rescheduleHistoryMap.has(item.id) || postponedReprogrammedIds.has(item.id),
+          isReprogrammed: item.status === "REPROGRAMADA",
           date: item.execution_date,
           period: item.period === "INTEGRAL" ? "integral" : "partial",
           startTime: formatTime(item.start_time),
@@ -2182,7 +2199,7 @@ export async function GET(request: NextRequest) {
           projectBase: normalizeText(project?.service_center_text) || "Sem base",
           statusReason: normalizeText(item.cancellation_reason),
           statusChangedAt: item.canceled_at ?? "",
-          wasRescheduled: rescheduleHistoryMap.has(item.id),
+          wasRescheduled: item.status === "REPROGRAMADA" || rescheduleHistoryMap.has(item.id),
           lastReschedule: rescheduleHistoryMap.get(item.id)
             ? {
                 id: rescheduleHistoryMap.get(item.id)?.historyId ?? "",
@@ -2240,187 +2257,250 @@ async function saveProgrammingBatch(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
-  const payload = (await request.json().catch(() => null)) as BatchCreateProgrammingPayload | null;
-  const projectId = normalizeText(payload?.projectId);
-  const teamIds = normalizeUniqueTextArray(payload?.teamIds);
-  const executionDate = normalizeIsoDate(payload?.date);
-  const period = normalizePeriod(payload?.period);
-  const startTime = normalizeTime(payload?.startTime);
-  const endTime = normalizeTime(payload?.endTime);
-  const outageStartTime = normalizeOptionalTime(payload?.outageStartTime);
-  const outageEndTime = normalizeOptionalTime(payload?.outageEndTime);
-  const expectedMinutes = normalizePositiveInteger(payload?.expectedMinutes);
-  const feeder = normalizeNullableText(payload?.feeder);
-  const support = normalizeNullableText(payload?.support);
-  const supportItemId = normalizeNullableText(payload?.supportItemId);
-  const note = normalizeNullableText(payload?.note);
-  const serviceDescription = normalizeNullableText(payload?.serviceDescription);
-  const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
-  const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
-  const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
-  const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
-  const etapaNumberRaw = normalizeText(payload?.etapaNumber);
-  const etapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
-  const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
-  const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
-  const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
-  const documents = payload?.documents ?? {};
-  const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
-  const activities = activitiesInput
-    .map((item) => ({
-      catalogId: normalizeText(item.catalogId),
-      quantity: normalizePositiveNumber(item.quantity),
-    }))
-    .filter((item): item is { catalogId: string; quantity: number } => Boolean(item.catalogId) && item.quantity !== null);
+  try {
+    const payload = (await request.json().catch(() => null)) as BatchCreateProgrammingPayload | null;
+    const projectId = normalizeText(payload?.projectId);
+    const teamIds = normalizeUniqueTextArray(payload?.teamIds);
+    const executionDate = normalizeIsoDate(payload?.date);
+    const period = normalizePeriod(payload?.period);
+    const startTime = normalizeTime(payload?.startTime);
+    const endTime = normalizeTime(payload?.endTime);
+    const outageStartTime = normalizeOptionalTime(payload?.outageStartTime);
+    const outageEndTime = normalizeOptionalTime(payload?.outageEndTime);
+    const expectedMinutes = normalizePositiveInteger(payload?.expectedMinutes);
+    const feeder = normalizeNullableText(payload?.feeder);
+    const support = normalizeNullableText(payload?.support);
+    const supportItemId = normalizeNullableText(payload?.supportItemId);
+    const note = normalizeNullableText(payload?.note);
+    const serviceDescription = normalizeNullableText(payload?.serviceDescription);
+    const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
+    const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
+    const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
+    const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
+    const etapaNumberRaw = normalizeText(payload?.etapaNumber);
+    const etapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
+    const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
+    const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
+    const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
+    const documents = payload?.documents ?? {};
+    const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
+    const activities = activitiesInput
+      .map((item) => ({
+        catalogId: normalizeText(item.catalogId),
+        quantity: normalizePositiveNumber(item.quantity),
+      }))
+      .filter((item): item is { catalogId: string; quantity: number } => Boolean(item.catalogId) && item.quantity !== null);
 
-  if (!projectId || !teamIds.length || !executionDate || !period || !startTime || !endTime || !expectedMinutes) {
-    return NextResponse.json({ message: "Preencha os campos obrigatorios da programacao em lote." }, { status: 400 });
-  }
+    if (!projectId) {
+      return NextResponse.json({ message: "Selecione um Projeto (SOB) valido da lista." }, { status: 400 });
+    }
 
-  if (endTime <= startTime) {
-    return NextResponse.json(
-      { message: "Hora termino deve ser maior que hora inicio." },
-      { status: 400 },
-    );
-  }
+    if (!teamIds.length) {
+      return NextResponse.json({ message: "Selecione ao menos uma equipe para cadastrar a programacao." }, { status: 400 });
+    }
 
-  if ((outageStartTime && !outageEndTime) || (!outageStartTime && outageEndTime)) {
-    return NextResponse.json(
-      { message: "Informe inicio e termino de desligamento." },
-      { status: 400 },
-    );
-  }
+    if (!executionDate) {
+      return NextResponse.json({ message: "Informe a Data execucao da programacao." }, { status: 400 });
+    }
 
-  if (outageStartTime && outageEndTime && outageEndTime <= outageStartTime) {
-    return NextResponse.json(
-      { message: "Termino de desligamento deve ser maior que inicio." },
-      { status: 400 },
-    );
-  }
+    if (!period) {
+      return NextResponse.json({ message: "Selecione o Periodo da programacao." }, { status: 400 });
+    }
 
-  const invalidRequestedDateLabel = getInvalidRequestedDateLabel(documents);
-  if (invalidRequestedDateLabel) {
-    return NextResponse.json(
-      { message: `Data pedido do ${invalidRequestedDateLabel} nao pode ser maior que a data aprovada.` },
-      { status: 400 },
-    );
-  }
+    if (!startTime) {
+      return NextResponse.json({ message: "Informe a Hora inicio da programacao." }, { status: 400 });
+    }
 
-  if (isNegativeNumericLikeText(feeder)) {
-    return NextResponse.json(
-      { message: "Alimentador nao pode receber valor negativo." },
-      { status: 400 },
-    );
-  }
+    if (!endTime) {
+      return NextResponse.json({ message: "Informe a Hora termino da programacao." }, { status: 400 });
+    }
 
-  if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
-    return NextResponse.json(
-      { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
-      { status: 400 },
-    );
-  }
+    if (!expectedMinutes) {
+      return NextResponse.json({ message: "Hora termino deve ser maior que hora inicio." }, { status: 400 });
+    }
 
-  if (!etapaNumberRaw) {
-    return NextResponse.json(
-      { message: "O campo ETAPA e obrigatorio." },
-      { status: 400 },
-    );
-  }
+    if (endTime <= startTime) {
+      return NextResponse.json(
+        { message: "Hora termino deve ser maior que hora inicio." },
+        { status: 400 },
+      );
+    }
 
-  if (etapaNumber === null) {
-    return NextResponse.json(
-      { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
-      { status: 400 },
-    );
-  }
+    if ((outageStartTime && !outageEndTime) || (!outageStartTime && outageEndTime)) {
+      return NextResponse.json(
+        { message: "Informe inicio e termino de desligamento." },
+        { status: 400 },
+      );
+    }
 
-  if (workCompletionStatusRaw) {
-    return NextResponse.json(
-      { message: "Estado Trabalho so pode ser informado na edicao da programacao." },
-      { status: 400 },
-    );
-  }
+    if (outageStartTime && outageEndTime && outageEndTime <= outageStartTime) {
+      return NextResponse.json(
+        { message: "Termino de desligamento deve ser maior que inicio." },
+        { status: 400 },
+      );
+    }
 
-  if (affectedCustomers === null) {
-    return NextResponse.json(
-      { message: "O campo Numero de Clientes Afetados deve ser um inteiro maior ou igual a zero." },
-      { status: 400 },
-    );
-  }
+    const invalidRequestedDateLabel = getInvalidRequestedDateLabel(documents);
+    if (invalidRequestedDateLabel) {
+      return NextResponse.json(
+        { message: `Data pedido do ${invalidRequestedDateLabel} nao pode ser maior que a data aprovada.` },
+        { status: 400 },
+      );
+    }
 
-  if (!sgdTypeId) {
-    return NextResponse.json(
-      { message: "Tipo de SGD e obrigatorio para salvar a programacao." },
-      { status: 400 },
-    );
-  }
+    if (isNegativeNumericLikeText(feeder)) {
+      return NextResponse.json(
+        { message: "Alimentador nao pode receber valor negativo." },
+        { status: 400 },
+      );
+    }
 
-  const selectedSgdType = await resolveProgrammingSgdType({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    sgdTypeId,
-  });
+    if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
+      return NextResponse.json(
+        { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
+        { status: 400 },
+      );
+    }
 
-  if (!selectedSgdType) {
-    return NextResponse.json(
-      { message: "Tipo de SGD invalido para o tenant atual." },
-      { status: 400 },
-    );
-  }
+    if (!etapaNumberRaw) {
+      return NextResponse.json(
+        { message: "O campo ETAPA e obrigatorio." },
+        { status: 400 },
+      );
+    }
 
-  const [{ data: project }, { data: teamRows }] = await Promise.all([
-    resolution.supabase
-      .from("project_with_labels")
-      .select("id, sob, is_active")
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("id", projectId)
-      .eq("is_active", true)
-      .maybeSingle<{ id: string; sob: string; is_active: boolean }>(),
-    resolution.supabase
-      .from("teams")
-      .select("id, name, ativo")
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .in("id", teamIds)
-      .returns<Array<{ id: string; name: string; ativo: boolean }>>(),
-  ]);
+    if (etapaNumber === null) {
+      return NextResponse.json(
+        { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
+        { status: 400 },
+      );
+    }
 
-  const teamNameMap = new Map((teamRows ?? []).map((item) => [item.id, normalizeText(item.name)]));
-  const fullBatchSaveResult = await saveProgrammingBatchFullViaRpc({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    actorUserId: resolution.appUser.id,
-    projectId,
-    teamIds,
-    executionDate,
-    period,
-    startTime,
-    endTime,
-    expectedMinutes,
-    outageStartTime,
-    outageEndTime,
-    feeder,
-    support,
-    supportItemId,
-    note,
-    serviceDescription,
-    posteQty,
-    estruturaQty,
-    trafoQty,
-    redeQty,
-    etapaNumber,
-    workCompletionStatus: null,
-    affectedCustomers: affectedCustomers ?? 0,
-    sgdTypeId,
-    documents,
-    activities,
-  });
+    const batchStageConflictSummaries = await fetchProgrammingStageValidation({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      teamIds,
+      enteredEtapaNumber: etapaNumber,
+    });
 
-  if (!fullBatchSaveResult.ok) {
+    if (batchStageConflictSummaries.length) {
+      return NextResponse.json(
+        {
+          enteredEtapaNumber: etapaNumber,
+          hasConflict: true,
+          highestStage: batchStageConflictSummaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
+          teams: batchStageConflictSummaries,
+          message: "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto nas equipes selecionadas.",
+        } satisfies BatchCreateProgrammingResponse,
+        { status: 409 },
+      );
+    }
+
+    if (workCompletionStatusRaw) {
+      return NextResponse.json(
+        { message: "Estado Trabalho so pode ser informado na edicao da programacao." },
+        { status: 400 },
+      );
+    }
+
+    if (affectedCustomers === null) {
+      return NextResponse.json(
+        { message: "O campo Numero de Clientes Afetados deve ser um inteiro maior ou igual a zero." },
+        { status: 400 },
+      );
+    }
+
+    if (!sgdTypeId) {
+      return NextResponse.json(
+        { message: "Tipo de SGD e obrigatorio para salvar a programacao." },
+        { status: 400 },
+      );
+    }
+
+    const selectedSgdType = await resolveProgrammingSgdType({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      sgdTypeId,
+    });
+
+    if (!selectedSgdType) {
+      return NextResponse.json(
+        { message: "Tipo de SGD invalido para o tenant atual." },
+        { status: 400 },
+      );
+    }
+
+    const [{ data: project }, { data: teamRows }] = await Promise.all([
+      resolution.supabase
+        .from("project_with_labels")
+        .select("id, sob, is_active")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("id", projectId)
+        .eq("is_active", true)
+        .maybeSingle<{ id: string; sob: string; is_active: boolean }>(),
+      resolution.supabase
+        .from("teams")
+        .select("id, name, ativo")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .in("id", teamIds)
+        .returns<Array<{ id: string; name: string; ativo: boolean }>>(),
+    ]);
+
+    const teamNameMap = new Map((teamRows ?? []).map((item) => [item.id, normalizeText(item.name)]));
+    const fullBatchSaveResult = await saveProgrammingBatchFullViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      projectId,
+      teamIds,
+      executionDate,
+      period,
+      startTime,
+      endTime,
+      expectedMinutes,
+      outageStartTime,
+      outageEndTime,
+      feeder,
+      support,
+      supportItemId,
+      note,
+      serviceDescription,
+      posteQty,
+      estruturaQty,
+      trafoQty,
+      redeQty,
+      etapaNumber,
+      workCompletionStatus: null,
+      affectedCustomers: affectedCustomers ?? 0,
+      sgdTypeId,
+      documents,
+      activities,
+    });
+
+    if (!fullBatchSaveResult.ok) {
     if (fullBatchSaveResult.reason === "FULL_RPC_NOT_AVAILABLE") {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations mais recentes e tente novamente.",
+            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations 091, 094, 095, 099 e 100 e tente novamente.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      (fullBatchSaveResult.reason === "BATCH_FULL_CREATE_FAILED"
+        || fullBatchSaveResult.reason === "SAVE_PROGRAMMING_FULL_FAILED")
+      && (
+        fullBatchSaveResult.message === "Falha ao cadastrar programacao em lote."
+        || fullBatchSaveResult.message === "Falha ao salvar programacao em transacao unica."
+      )
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com a RPC full desatualizada ou ainda depender da migration 090. Aplique as migrations 091, 094, 095, 099 e 100 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2429,70 +2509,98 @@ async function saveProgrammingBatch(request: NextRequest) {
     return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
   }
 
-  const saveResult = {
-    ok: true,
-    insertedCount: fullBatchSaveResult.insertedCount,
-    projectCode: fullBatchSaveResult.projectCode,
-    message: fullBatchSaveResult.message,
-    items: fullBatchSaveResult.items,
-  } as const;
+    const saveResult = {
+      ok: true,
+      insertedCount: fullBatchSaveResult.insertedCount,
+      projectCode: fullBatchSaveResult.projectCode,
+      message: fullBatchSaveResult.message,
+      items: fullBatchSaveResult.items,
+    } as const;
 
-  const projectCode = normalizeText(project?.sob) || normalizeText(saveResult.projectCode) || projectId;
-  const activitiesSnapshot = JSON.stringify(
-    activities.map((item) => ({ code: item.catalogId, quantity: Number(item.quantity.toFixed(2)) })),
-  );
+    const projectCode = normalizeText(project?.sob) || normalizeText(saveResult.projectCode) || projectId;
+    const activitiesSnapshot = JSON.stringify(
+      activities.map((item) => ({ code: item.catalogId, quantity: Number(item.quantity.toFixed(2)) })),
+    );
+    let historyWarning: string | null = null;
 
-  for (const item of saveResult.items) {
-    await registerProgrammingHistory({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId: item.programmingId,
-      projectCode,
-      changes: {
-        project: { from: null, to: projectCode },
-        team: { from: null, to: teamNameMap.get(item.teamId) ?? item.teamId },
-        executionDate: { from: null, to: executionDate },
-        period: { from: null, to: period },
-        startTime: { from: null, to: formatTime(startTime) },
-        endTime: { from: null, to: formatTime(endTime) },
-        outageStartTime: { from: null, to: formatTime(outageStartTime) },
-        outageEndTime: { from: null, to: formatTime(outageEndTime) },
-        expectedMinutes: { from: null, to: String(expectedMinutes) },
-        feeder: { from: null, to: feeder },
-        support: { from: null, to: support },
-        note: { from: null, to: note },
-        serviceDescription: { from: null, to: serviceDescription },
-        posteQty: { from: null, to: String(posteQty) },
-        estruturaQty: { from: null, to: String(estruturaQty) },
-        trafoQty: { from: null, to: String(trafoQty) },
-        redeQty: { from: null, to: String(redeQty) },
-        etapaNumber: { from: null, to: etapaNumber === null ? null : String(etapaNumber) },
-        affectedCustomers: { from: null, to: String(affectedCustomers ?? 0) },
-        sgdType: { from: null, to: selectedSgdType ? normalizeText(selectedSgdType.description) : null },
-        sgdApprovedAt: { from: null, to: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt) },
-        sgdRequestedAt: { from: null, to: normalizeIsoDate(documents?.sgd?.requestedAt ?? documents?.sgd?.deliveredAt) },
-        piApprovedAt: { from: null, to: normalizeIsoDate(documents?.pi?.approvedAt ?? documents?.pi?.includedAt) },
-        piRequestedAt: { from: null, to: normalizeIsoDate(documents?.pi?.requestedAt ?? documents?.pi?.deliveredAt) },
-        pepApprovedAt: { from: null, to: normalizeIsoDate(documents?.pep?.approvedAt ?? documents?.pep?.includedAt) },
-        pepRequestedAt: { from: null, to: normalizeIsoDate(documents?.pep?.requestedAt ?? documents?.pep?.deliveredAt) },
-        activities: { from: null, to: activitiesSnapshot },
-      },
-      metadata: {
-        action: "BATCH_CREATE",
-        source: "programacao-simples",
+    for (const item of saveResult.items) {
+      const historySaved = await registerProgrammingHistory({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId: item.programmingId,
         projectId,
         teamId: item.teamId,
-        executionDate,
-      },
-    });
-  }
+        actionType: "BATCH_CREATE",
+        changes: {
+          project: { from: null, to: projectCode },
+          team: { from: null, to: teamNameMap.get(item.teamId) ?? item.teamId },
+          executionDate: { from: null, to: executionDate },
+          period: { from: null, to: period },
+          startTime: { from: null, to: formatTime(startTime) },
+          endTime: { from: null, to: formatTime(endTime) },
+          outageStartTime: { from: null, to: formatTime(outageStartTime) },
+          outageEndTime: { from: null, to: formatTime(outageEndTime) },
+          expectedMinutes: { from: null, to: String(expectedMinutes) },
+          feeder: { from: null, to: feeder },
+          support: { from: null, to: support },
+          note: { from: null, to: note },
+          serviceDescription: { from: null, to: serviceDescription },
+          posteQty: { from: null, to: String(posteQty) },
+          estruturaQty: { from: null, to: String(estruturaQty) },
+          trafoQty: { from: null, to: String(trafoQty) },
+          redeQty: { from: null, to: String(redeQty) },
+          etapaNumber: { from: null, to: etapaNumber === null ? null : String(etapaNumber) },
+          affectedCustomers: { from: null, to: String(affectedCustomers ?? 0) },
+          sgdType: { from: null, to: selectedSgdType ? normalizeText(selectedSgdType.description) : null },
+          sgdApprovedAt: { from: null, to: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt) },
+          sgdRequestedAt: { from: null, to: normalizeIsoDate(documents?.sgd?.requestedAt ?? documents?.sgd?.deliveredAt) },
+          piApprovedAt: { from: null, to: normalizeIsoDate(documents?.pi?.approvedAt ?? documents?.pi?.includedAt) },
+          piRequestedAt: { from: null, to: normalizeIsoDate(documents?.pi?.requestedAt ?? documents?.pi?.deliveredAt) },
+          pepApprovedAt: { from: null, to: normalizeIsoDate(documents?.pep?.approvedAt ?? documents?.pep?.includedAt) },
+          pepRequestedAt: { from: null, to: normalizeIsoDate(documents?.pep?.requestedAt ?? documents?.pep?.deliveredAt) },
+          activities: { from: null, to: activitiesSnapshot },
+        },
+        metadata: {
+          action: "BATCH_CREATE",
+          source: "programacao-simples",
+          projectId,
+          teamId: item.teamId,
+          executionDate,
+        },
+        fromStatus: null,
+        toStatus: "PROGRAMADA",
+        fromExecutionDate: null,
+        toExecutionDate: executionDate,
+        fromTeamId: null,
+        toTeamId: item.teamId,
+        fromStartTime: null,
+        toStartTime: formatTime(startTime),
+        fromEndTime: null,
+        toEndTime: formatTime(endTime),
+        fromEtapaNumber: null,
+        toEtapaNumber: etapaNumber,
+      });
 
-  return NextResponse.json({
-    success: true,
-    insertedCount: saveResult.insertedCount,
-    message: saveResult.message,
-  } satisfies BatchCreateProgrammingResponse);
+      if (!historySaved) {
+        historyWarning = "Programacao salva com sucesso, mas houve falha ao atualizar o historico operacional.";
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      insertedCount: saveResult.insertedCount,
+      warning: historyWarning,
+      message: historyWarning ? `${saveResult.message} ${historyWarning}` : saveResult.message,
+    } satisfies BatchCreateProgrammingResponse);
+  } catch (error) {
+    console.error("saveProgrammingBatch_unhandled", error);
+    const detailedMessage = error instanceof Error && error.message
+      ? `Falha ao cadastrar programacao em lote: ${error.message}`
+      : "Falha ao cadastrar programacao em lote.";
+
+    return NextResponse.json({ message: detailedMessage }, { status: 500 });
+  }
 }
 
 async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
@@ -2607,6 +2715,39 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
+  const currentProgramming = programmingId
+    ? await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId)
+    : null;
+
+  if (programmingId && !currentProgramming) {
+    return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
+  }
+
+  const saveStageConflictSummaries = await fetchProgrammingStageValidation({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId,
+    teamIds: [teamId],
+    enteredEtapaNumber: etapaNumber,
+    excludeProgrammingId: programmingId || null,
+    currentEditingStage: currentProgramming?.etapa_number ?? null,
+    currentEditingDate: currentProgramming?.execution_date ?? null,
+    currentEditingTeamId: currentProgramming?.team_id ?? null,
+  });
+
+  if (saveStageConflictSummaries.length) {
+    return NextResponse.json(
+      {
+        enteredEtapaNumber: etapaNumber,
+        hasConflict: true,
+        highestStage: saveStageConflictSummaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
+        teams: saveStageConflictSummaries,
+        message: "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto na equipe selecionada.",
+      },
+      { status: 409 },
+    );
+  }
+
   if (method === "PUT" && !workCompletionStatus) {
     return NextResponse.json(
       { message: "Estado Trabalho e obrigatorio na edicao da programacao." },
@@ -2646,14 +2787,6 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       { message: "Tipo de SGD invalido para o tenant atual." },
       { status: 400 },
     );
-  }
-
-  const currentProgramming = programmingId
-    ? await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId)
-    : null;
-
-  if (programmingId && !currentProgramming) {
-    return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
   }
 
   const normalizedWorkCompletionStatus =
@@ -2757,7 +2890,20 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations mais recentes e tente novamente.",
+            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations 091, 094, 095 e 100 e tente novamente.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (
+      fullSaveResult.reason === "SAVE_PROGRAMMING_FULL_FAILED"
+      && fullSaveResult.message === "Falha ao salvar programacao em transacao unica."
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Falha ao salvar programacao no banco. O ambiente pode estar com a RPC full desatualizada ou ainda depender da migration 090. Aplique as migrations 091, 094, 095 e 100 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2862,13 +3008,16 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       : saveResult.message
     : saveResult.message;
 
+  let historyWarning: string | null = null;
   if (nextProgramming) {
-    await registerProgrammingHistory({
+    const historySaved = await registerProgrammingHistory({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
       actorUserId: resolution.appUser.id,
       programmingId: persistedProgrammingId,
-      projectCode: project?.sob ?? saveResult.projectCode ?? projectId,
+      projectId,
+      teamId,
+      actionType: !currentProgramming ? "CREATE" : isReschedule ? "RESCHEDULE" : "UPDATE",
       reason: isReschedule ? changeReason : null,
       changes,
       metadata: {
@@ -2877,7 +3026,23 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
         teamId,
         executionDate,
       },
+      fromStatus: currentProgramming?.status ?? null,
+      toStatus: nextProgramming.status,
+      fromExecutionDate: currentProgramming?.execution_date ?? null,
+      toExecutionDate: nextProgramming.execution_date,
+      fromTeamId: currentProgramming?.team_id ?? null,
+      toTeamId: nextProgramming.team_id,
+      fromStartTime: currentProgramming ? formatTime(currentProgramming.start_time) : null,
+      toStartTime: formatTime(nextProgramming.start_time),
+      fromEndTime: currentProgramming ? formatTime(currentProgramming.end_time) : null,
+      toEndTime: formatTime(nextProgramming.end_time),
+      fromEtapaNumber: currentProgramming?.etapa_number ?? null,
+      toEtapaNumber: nextProgramming.etapa_number ?? null,
     });
+
+    if (!historySaved) {
+      historyWarning = "Programacao salva com sucesso, mas houve falha ao atualizar o historico operacional.";
+    }
   }
 
   const savedSchedule = await fetchProgrammingResponseItem(
@@ -2885,9 +3050,11 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     resolution.appUser.tenant_id,
     persistedProgrammingId,
   );
-  const responseWarning = savedSchedule
-    ? null
-    : "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+  const warningParts = [
+    !savedSchedule ? "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao." : null,
+    historyWarning,
+  ].filter((value): value is string => Boolean(value));
+  const responseWarning = warningParts.length ? warningParts.join(" ") : null;
 
   return NextResponse.json({
     success: true,
@@ -3017,22 +3184,38 @@ export async function PATCH(request: NextRequest) {
           },
         });
 
-        return NextResponse.json(
-          conflictPayload ?? { error: "conflict", message: postponeResult.message },
+      return NextResponse.json(
+          conflictPayload ?? { error: "conflict", message: postponeResult.message, reason: postponeResult.reason ?? null },
           { status: 409 },
         );
       }
 
-      return NextResponse.json({ message: postponeResult.message }, { status: postponeResult.status });
+      return NextResponse.json(
+        {
+          message: postponeResult.message,
+          reason: postponeResult.reason ?? null,
+          detail: "detail" in postponeResult ? (postponeResult.detail ?? null) : null,
+        },
+        { status: postponeResult.status },
+      );
     }
 
-    const [updatedSchedule, newSchedule] = await Promise.all([
-      fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, programmingId),
-      fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, postponeResult.newProgrammingId),
-    ]);
-    const warning = updatedSchedule && newSchedule
-      ? null
-      : "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+    let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
+    let newSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
+    let warning: string | null = null;
+
+    try {
+      [updatedSchedule, newSchedule] = await Promise.all([
+        fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, programmingId),
+        fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, postponeResult.newProgrammingId),
+      ]);
+
+      if (!updatedSchedule || !newSchedule) {
+        warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+      }
+    } catch {
+      warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+    }
 
     return NextResponse.json({
       success: true,
@@ -3072,22 +3255,32 @@ export async function PATCH(request: NextRequest) {
       });
 
       return NextResponse.json(
-        conflictPayload ?? { error: "conflict", message: cancelResult.message },
+        conflictPayload ?? { error: "conflict", message: cancelResult.message, reason: cancelResult.reason ?? null },
         { status: 409 },
       );
     }
 
-    return NextResponse.json({ message: cancelResult.message }, { status: cancelResult.status });
+    return NextResponse.json(
+      { message: cancelResult.message, reason: cancelResult.reason ?? null },
+      { status: cancelResult.status },
+    );
   }
 
-  const updatedSchedule = await fetchProgrammingResponseItem(
-    resolution.supabase,
-    resolution.appUser.tenant_id,
-    programmingId,
-  );
-  const warning = updatedSchedule
-    ? null
-    : "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+  let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
+  let warning: string | null = null;
+
+  try {
+    updatedSchedule = await fetchProgrammingResponseItem(
+      resolution.supabase,
+      resolution.appUser.tenant_id,
+      programmingId,
+    );
+    if (!updatedSchedule) {
+      warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+    }
+  } catch {
+    warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+  }
 
   return NextResponse.json({
     success: true,

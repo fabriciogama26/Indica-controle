@@ -18,7 +18,8 @@ Arquitetura
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - `supabase/migrations/072_create_programming_support_items.sql`
-  - `supabase/migrations/078_create_programming_history_append_rpc.sql`
+  - `supabase/migrations/101_create_project_programming_history.sql`
+  - `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql`
   - `supabase/migrations/097_move_programming_status_history_into_rpcs.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
@@ -139,7 +140,7 @@ Boas praticas
 - As migrations `067` e `068` formalizam a base multi-tenant da programacao, o vinculo de base da equipe e a RPC transacional de salvamento.
 - As migrations `071` e `072` movem o resumo semanal de carga para o banco e formalizam o catalogo proprio de apoio da Programacao com vinculacao ao catalogo da Locacao.
 - As migrations `074`, `075` e `076` formalizam os lotes de copia da Programacao, adaptam o schema ao modo simplificado `team_period` e movem a copia em lote para uma RPC transacional.
-- O historico complementar da `Programacao` agora tambem e registrado por RPC (`append_programming_history`), sem `insert` direto na route.
+- O historico operacional da `Programacao` agora usa somente `project_programming_history`, com escrita via RPC `append_project_programming_history_record`.
 - `Cancelamento` e `Adiamento` agora gravam o historico funcional dentro das proprias RPCs transacionais do banco.
 - O salvamento da programacao agora usa RPC com:
   - validacao de concorrencia por `expected_updated_at`
@@ -159,7 +160,7 @@ Cancelamento e saldo
 - No adiamento, o backend grava motivo, data/hora e usuario e preserva a etapa como `ADIADA`.
 - A programacao cancelada permanece visivel na grade com estado proprio para consulta e reativacao operacional.
 - A programacao adiada permanece visivel na grade com estado proprio para consulta e reativacao operacional.
-- Reagendamento nao cria um status novo na grade: ele atualiza a mesma programacao e fica auditado no historico como remanejamento.
+- Reagendamento passa a persistir o status fisico `REPROGRAMADA` na propria `project_programming`, mantendo a trilha operacional detalhada em `project_programming_history`.
 - Ao sair da pagina com modal de programacao/status/reprogramacao aberto, o navegador recebe aviso de alteracao pendente.
 - Nao existe impacto em saldo de estoque nesta tela.
 
@@ -180,7 +181,7 @@ Atualizacao 2026-03
   - leitura e persistencia de `project_programming`
   - sincronizacao de `project_programming_activities`
   - data automatica de inclusao para `SGD`, `PI` e `PEP`
-  - historico em `app_entity_history`
+  - historico operacional em `project_programming_history`
 - Arquivo `supabase/migrations/067_create_project_programming.sql` criado com:
   - tabelas `project_programming` e `project_programming_activities`
   - RLS ON
@@ -234,12 +235,21 @@ Atualizacao 2026-03
   - bloqueio de `alimentador` quando vier como valor numerico negativo
   - reaproveitamento das validacoes ja existentes de horario, quantidades estruturais, etapa e clientes afetados
 - Arquivo `supabase/migrations/078_create_programming_history_append_rpc.sql` criado com:
-  - RPC `append_programming_history`
-  - registro do historico complementar da `Programacao` no banco
-  - remocao do `insert` direto em `app_entity_history` da route
+  - RPC inicial de historico complementar da `Programacao`
+  - base para a posterior separacao da timeline operacional dedicada
 - Arquivo `supabase/migrations/097_move_programming_status_history_into_rpcs.sql` criado com:
   - historico de `ADIADA` e `CANCELADA` movido para dentro das RPCs transacionais
   - reduçao do risco de commit principal sem historico funcional correspondente
+- Arquivo `supabase/migrations/101_create_project_programming_history.sql` criado com:
+  - tabela `project_programming_history`
+  - backfill inicial do historico da Programacao a partir de `app_entity_history`
+  - RPC `append_project_programming_history_record`
+  - separacao entre timeline operacional da Programacao e auditoria generica
+- Arquivo `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql` criado com:
+  - promocao de `REPROGRAMADA` a status fisico em `project_programming`
+  - uso exclusivo de `project_programming_history` na Programacao
+  - adiamento criando novo registro `REPROGRAMADA`
+  - carga semanal, edicao, copia e guarda de projeto considerando `REPROGRAMADA`
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
@@ -256,10 +266,10 @@ Atualizacao 2026-03
   - simplificar o card do projeto pendente para mostrar apenas os dados operacionais essenciais
   - exibir o status de `Locacao` no card do projeto pendente
   - manter a obra visivel na lateral mesmo quando ja estiver programada no periodo, para permitir novas programacoes em outros dias
-  - marcar visualmente o card da grade como `Reprogramada` quando houver historico `RESCHEDULE`, usando cor propria em roxo diferente de `Planejado`
+  - exibir `Reprogramada` pela leitura direta do status fisico `REPROGRAMADA`, usando cor propria em roxo diferente de `Planejado`
   - manter `Cancelada` e `Adiada` visiveis na grade com cores proprias
   - manter os cards da grade sem texto extra de status; a diferenciacao operacional continua pela cor do card e pela legenda
-  - exibir no modal o resumo da ultima reprogramacao a partir do historico `app_entity_history`
+  - exibir no modal o resumo da ultima reprogramacao a partir de `project_programming_history`
   - abrir modal manual `Copiar programacao` no toolbar para copiar a linha inteira da equipe origem no periodo visivel
   - usar `Apoio` por selectbox com sugestao automatica quando a locacao exigir apoio de transito
   - exibir o feedback de sucesso/erro no topo da tela, no mesmo padrao dos demais modulos
@@ -274,7 +284,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: carregar dados autenticados, controlar filtros, periodo, timeline, drag and drop, modal e salvamento.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/status/copia e delegar o historico complementar para `append_programming_history`.
+  - Responsavel por: listar projetos/equipes/programacoes do periodo, chamar as RPCs de salvamento/status/copia e ler/escrever o historico operacional em `project_programming_history`.
 - Caminho: `supabase/migrations/067_create_project_programming.sql`
   - Responsavel por: formalizar a base multi-tenant de programacao e suas atividades.
 - Caminho: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
@@ -295,8 +305,10 @@ Funcoes principais
   - Responsavel por: executar a copia transacional da linha da equipe, registrar os itens do lote e evitar lote parcial.
 - Caminho: `supabase/migrations/095_harden_programming_time_and_document_validations.sql`
   - Responsavel por: endurecer as validacoes de horario, documentos e alimentador na camada RPC.
-- Caminho: `supabase/migrations/078_create_programming_history_append_rpc.sql`
-  - Responsavel por: registrar via RPC o historico complementar de criacao, atualizacao, reagendamento, adiamento e cancelamento da Programacao.
+- Caminho: `supabase/migrations/101_create_project_programming_history.sql`
+  - Responsavel por: criar o historico operacional proprio da Programacao e registrar seus eventos por RPC dedicada.
+- Caminho: `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql`
+  - Responsavel por: promover `REPROGRAMADA` a status fisico e fazer a Programacao usar somente o historico operacional dedicado.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -318,7 +330,8 @@ Servicos e integracoes externas
 - `service_activities`: catalogo real e snapshot de atividades salvas na programacao.
 - `programming_support_items`: catalogo proprio de apoio da Programacao.
 - `location_execution_support_items`: origem de mapeamento para auto-preenchimento do apoio pela Locacao.
-- `app_entity_history`: auditoria funcional da programacao.
+- `project_programming_history`: timeline operacional dedicada da Programacao.
+- `app_entity_history`: auditoria generica do sistema, fora do fluxo operacional primario da Programacao.
 
 Ajuda contextual
 - Arquivos alterados/criados:
@@ -331,7 +344,8 @@ Ajuda contextual
   - `supabase/migrations/070_add_programming_status_and_project_guard.sql`
   - `supabase/migrations/071_programming_week_summary_and_support_catalog.sql`
   - `supabase/migrations/072_create_programming_support_items.sql`
-  - `supabase/migrations/078_create_programming_history_append_rpc.sql`
+  - `supabase/migrations/101_create_project_programming_history.sql`
+  - `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql`
 - Hooks/constantes tocadas:
   - `useAuth`
   - `useState`
@@ -343,4 +357,4 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: a obra sumia da lateral assim que era programada no periodo, o card lateral exibia informacao demais e a grade nao destacava diferenca entre programacao original e reprogramacao.
   - Depois: a obra continua visivel na lateral mesmo ja programada, o card lateral ficou mais enxuto, a lateral mostra no maximo 5 cards filtrados, a grade pode ser filtrada por subconjunto explicito de equipes e a reprogramacao recebe cor propria na agenda.
-  - Depois: o historico complementar da agenda deixa de depender de `insert` direto na route e passa a ser gravado por RPC.
+  - Depois: o historico operacional da agenda passa a usar somente `project_programming_history` e `REPROGRAMADA` deixa de ser derivada para virar status fisico salvo em `project_programming`.
