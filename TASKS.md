@@ -189,6 +189,8 @@
 - [x] Endurecer o save principal e o save em lote da `Programacao` para exigir RPC full, evitar gravacao parcial e responder sucesso com aviso quando a recarga da grade falhar apos o commit.
 - [x] Enriquecer conflito `409` da `Programacao` com `currentRecord`, `currentUpdatedAt`, `updatedBy` e `changedFields`, e mover o historico de `ADIADA/CANCELADA` para dentro das RPCs transacionais.
 - [x] Formalizar no `AGENTS.md` o padrao obrigatorio de integridade transacional, conflito `409` rico e pos-save sem erro falso para fluxos operacionais criticos no padrao da `Programacao`.
+- [x] Corrigir a protecao de adiamento da `Programacao` para aceitar apenas nova data posterior a data atual da programacao, no frontend, na API e na RPC do banco.
+- [x] Ajustar o modal de historico da `Programacao Simples` para exibir a mudanca de `Data execucao` tambem nos eventos de `Adiamento`.
 - [x] Criar visualizacao semanal da `Programacao Simples` (segunda a domingo) por equipe, com cards por dia contendo SOB, indicador de SGD/PI, cores de status e acoes de detalhe/historico.
 - [x] Criar tela separada `/programacao-visualizacao` para consulta da Programacao (lista + calendario), com permissao dedicada e menu proprio.
 - [x] Remover textos dos cards do calendario da Programacao (`SOB` e status textual) e paginar o modal de Historico.
