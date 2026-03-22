@@ -149,6 +149,7 @@ type SaveProgrammingResponse = {
   success?: boolean;
   id?: string;
   updatedAt?: string;
+  schedule?: ScheduleItem | null;
   warning?: string;
   error?: "conflict";
   reason?: string | null;
@@ -725,6 +726,47 @@ function getDisplayProgrammingStatus(schedule: Pick<ScheduleItem, "status" | "is
   }
 
   return schedule.status;
+}
+
+function buildSavedOutsideFiltersMessage(params: {
+  date: string;
+  status: ProgrammingStatus;
+  projectId: string;
+  teamIds: string[];
+  activeFilters: FilterState;
+  projectMap: Map<string, ProjectItem>;
+  teamMap: Map<string, TeamItem>;
+}) {
+  const reasons: string[] = [];
+
+  if (
+    !isInactiveProgrammingStatus(params.status)
+    && !isDateInRange(params.date, params.activeFilters.startDate, params.activeFilters.endDate)
+  ) {
+    reasons.push(
+      `a Data execucao ${formatDate(params.date)} esta fora do filtro atual (${formatDate(params.activeFilters.startDate)} a ${formatDate(params.activeFilters.endDate)})`,
+    );
+  }
+
+  if (params.activeFilters.projectId && params.projectId !== params.activeFilters.projectId) {
+    const filteredProject = params.projectMap.get(params.activeFilters.projectId)?.code ?? "selecionado";
+    reasons.push(`o Projeto filtrado e ${filteredProject}`);
+  }
+
+  if (params.activeFilters.teamId && !params.teamIds.includes(params.activeFilters.teamId)) {
+    const filteredTeam = params.teamMap.get(params.activeFilters.teamId)?.name ?? "selecionada";
+    reasons.push(`a Equipe filtrada e ${filteredTeam}`);
+  }
+
+  if (params.activeFilters.status !== "TODOS" && params.status !== params.activeFilters.status) {
+    reasons.push(`o Status filtrado e ${params.activeFilters.status}`);
+  }
+
+  if (!reasons.length) {
+    return null;
+  }
+
+  return `A programacao foi salva, mas pode nao aparecer na lista atual porque ${reasons.join(" e ")}.`;
 }
 
 function buildConflictFeedbackMessage(payload: SaveProgrammingResponse | null, fallback: string) {
@@ -2064,9 +2106,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const successMessage =
         data.message ?? (editingScheduleId ? "Programacao editada com sucesso." : "Programacao cadastrada com sucesso.");
+      const savedStatus = data.schedule?.status ?? currentEditingSchedule?.status ?? "PROGRAMADA";
+      const hiddenByFiltersWarning = buildSavedOutsideFiltersMessage({
+        date: data.schedule?.date ?? form.date,
+        status: savedStatus,
+        projectId: data.schedule?.projectId ?? form.projectId,
+        teamIds: data.schedule ? [data.schedule.teamId] : (editingScheduleId ? [form.teamIds[0]] : form.teamIds),
+        activeFilters,
+        projectMap,
+        teamMap,
+      });
       showSubmitFeedback(
         "success",
-        successMessage,
+        hiddenByFiltersWarning ? `${successMessage} ${hiddenByFiltersWarning}` : successMessage,
       );
       setIsEtapaManuallyEdited(false);
       setEditingScheduleId(null);
@@ -2083,7 +2135,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         if (!data.warning) {
           showSubmitFeedback(
             "success",
-            `${successMessage} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+            `${successMessage}${hiddenByFiltersWarning ? ` ${hiddenByFiltersWarning}` : ""} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
           );
         }
       }

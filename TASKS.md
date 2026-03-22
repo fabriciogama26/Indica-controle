@@ -198,6 +198,8 @@
 - [x] Ajustar o confronto de `ETAPA` na edicao da `Programacao Simples` para considerar a etapa atual da propria programacao editada e reforcar a marcacao de `REPROGRAMADA` apos adiamento.
 - [x] Promover `REPROGRAMADA` a status fisico em `project_programming`, incluindo adiamento, edicao, copia, carga semanal e protecao de inativacao do projeto.
 - [x] Criar `project_programming_history` como historico operacional proprio da `Programacao`, com backfill inicial a partir de `app_entity_history` e uso exclusivo na API/telas da agenda.
+- [x] Mover o historico de `CREATE`, `UPDATE`, `RESCHEDULE` e `BATCH_CREATE` da `Programacao` para dentro das RPCs transacionais full, removendo o passo complementar pos-commit da API.
+- [x] Ajustar o feedback de sucesso da `Programacao Simples` para avisar quando o registro foi salvo fora dos filtros ativos da lista e, por isso, nao aparecer imediatamente na visualizacao.
 - [x] Endurecer o backfill da migration `101` para ignorar historicos orfaos de `Programacao` sem registro correspondente em `project_programming`.
 - [x] Eliminar os warnings antigos de lint em `app-users/[userId]/permissions`, `materials` e `programacao`.
 - [x] Abrir modal de alerta na `Programacao Simples` para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`.
