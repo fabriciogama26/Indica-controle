@@ -317,7 +317,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 34. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`, com persistencia e historico delegados para as RPCs `save_material_record` e `set_material_record_status`.
 35. A rota `/medicao` ja possui frontend funcional para montar a OS/medicao por `Projeto` ou `Programacao`, carregar atividades previstas por `/api/projects/activity-forecast`, calcular o total local com fator `1,00`, `1,20`, `1,25` ou `2,85` e preparar a futura integracao com backend proprio.
 36. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor e escrita delegada para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
-37. A rota `/programacao` passa a usar `project_programming_history` como timeline operacional dedicada da agenda e grava o historico complementar pela RPC `append_project_programming_history_record`, sem depender de `app_entity_history`.
+37. A rota `/programacao` passa a usar `project_programming_history` como timeline operacional dedicada da agenda, com `REPROGRAMADA` salvo fisicamente em `project_programming` e historico de `CREATE/UPDATE/RESCHEDULE/BATCH_CREATE` gravado dentro das RPCs transacionais full, sem depender de `app_entity_history` nem de historico complementar pos-commit na API.
 38. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`.
 39. A rota `/permissoes` continua enviando convite pelo backend, mas a auditoria do invite passa a ser gravada pela RPC `append_user_invite_history`.
 40. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
@@ -365,7 +365,7 @@ npm run build
   - Solucao: aplicar `029_create_project_table.sql` antes de usar a tela `/projetos`.
 - `Falha ao salvar programacao em transacao unica.` ou `Falha ao cadastrar programacao em lote.`:
   - Causa: ambiente com RPC full da `Programacao` desatualizada ou ainda dependente da migration `090_add_programming_service_description.sql`.
-  - Solucao: aplicar `091_create_programming_full_save_rpcs.sql`, `094_add_programming_stage_and_completion_fields.sql`, `095_harden_programming_time_and_document_validations.sql`, `099_harden_programming_batch_full_self_contained.sql` e `100_harden_programming_full_self_contained.sql`.
+  - Solucao: aplicar `091_create_programming_full_save_rpcs.sql`, `094_add_programming_stage_and_completion_fields.sql`, `095_harden_programming_time_and_document_validations.sql`, `099_harden_programming_batch_full_self_contained.sql`, `100_harden_programming_full_self_contained.sql` e `106_move_programming_save_history_into_full_rpcs.sql`.
 - `A ETAPA informada ja existe ou esta abaixo do historico encontrado...`:
   - Causa: o usuario tentou salvar uma programacao com `ETAPA` igual ou menor do que etapas ja registradas para o mesmo projeto/equipe.
   - Solucao: fechar o modal de confronto/alerta, corrigir o campo `ETAPA` no formulario e salvar novamente com uma etapa coerente com o historico.
@@ -384,6 +384,12 @@ npm run build
 - `102_use_programming_history_only_and_physical_rescheduled_status.sql` ainda nao refletiu `REPROGRAMADA` na agenda:
   - Causa: a migration `102` nao foi aplicada ou a leitura da tela ainda esta cacheada com dados anteriores.
   - Solucao: aplicar a migration `102`, recarregar a pagina e confirmar no banco que `project_programming.status` passou a aceitar `REPROGRAMADA`.
+- `Programacao` salva, mas o historico de cadastro/edicao/reprogramacao nao aparece em `project_programming_history`:
+  - Causa: o ambiente ainda nao recebeu a migration que move o historico de `save` para dentro das RPCs full.
+  - Solucao: aplicar `106_move_programming_save_history_into_full_rpcs.sql`; depois disso, `CREATE`, `UPDATE`, `RESCHEDULE` e `BATCH_CREATE` passam a ser registrados na mesma transacao do save principal.
+- A programacao foi salva no banco, mas nao apareceu na lista da `Programacao Simples`:
+  - Causa: o registro pode ter sido salvo fora dos filtros ativos de `Data`, `Projeto`, `Equipe` ou `Status`.
+  - Solucao: revisar o feedback de sucesso da tela, que agora informa quando o item ficou fora do recorte filtrado, ou ajustar os filtros para incluir a nova `Data execucao`.
 - `Projeto inativo nao pode ser editado.`:
   - Causa: tentativa de editar obra ja cancelada/inativada.
   - Solucao: editar somente projetos ativos ou criar novo projeto conforme processo operacional.

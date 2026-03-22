@@ -67,6 +67,10 @@ Arquitetura
   - `REPROGRAMADA` passa a ser status fisico em `project_programming`
   - `Programacao` deixa de ler/gravar `app_entity_history` no fluxo operacional
   - `copy_team_programming_period` passa a registrar copia apenas em `project_programming_history`
+- Migration de historico transacional do save:
+  - `supabase/migrations/106_move_programming_save_history_into_full_rpcs.sql`
+  - `save_project_programming_full` e `save_project_programming_batch_full` passam a registrar `CREATE`, `UPDATE`, `RESCHEDULE` e `BATCH_CREATE` dentro da mesma transacao do banco
+  - A API deixa de gravar historico complementar apos o commit do save
 - Migration de historico transacional de status:
   - `supabase/migrations/097_move_programming_status_history_into_rpcs.sql`
   - RPCs: `set_project_programming_status`, `postpone_project_programming`
@@ -131,6 +135,7 @@ Filtros, auto-complete e listagem
   - Atividades via `/api/projects/activity-forecast/catalog`.
 - Listagem:
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Quando uma programacao e salva fora do intervalo, projeto, equipe ou status filtrados, a tela avisa no feedback de sucesso que o registro pode nao aparecer na lista atual por causa dos filtros.
 - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Adiar` e `Cancelar`.
   - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
   - `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
@@ -190,6 +195,7 @@ Boas praticas
 - Auditoria:
   - A timeline operacional da `Programacao` passa a ser registrada em `project_programming_history`.
   - O frontend e a API da `Programacao` passam a usar somente `project_programming_history` para historico operacional.
+  - `Cadastrar programacao`, `Salvar edicao`, `Reprogramar` e `Cadastrar em lote` passam a gravar historico dentro das RPCs transacionais full, sem passo pos-commit na API.
 
 Cancelamento e saldo
 --------------------
@@ -259,6 +265,9 @@ Atualizacao 2026-03
 - Criada a migration `103_harden_postpone_patch_error_reporting.sql` para endurecer o retorno do `Adiamento`, devolver `reason/detail` quando a RPC falhar e manter o `PATCH` resiliente no pos-save.
 - Criada a migration `104_fix_postpone_json_error_wrapper.sql` para remover o cast invalido de `SQLERRM -> jsonb` no adiamento e expor o erro real da RPC no modal de alerta.
 - Criada a migration `105_fix_postpone_history_signature.sql` para corrigir a chamada de `append_project_programming_history_record` no novo registro `REPROGRAMADA` gerado pelo adiamento.
+- Criada a migration `106_move_programming_save_history_into_full_rpcs.sql` para mover o historico de `CREATE`, `UPDATE`, `RESCHEDULE` e `BATCH_CREATE` para dentro das RPCs `save_project_programming_full` e `save_project_programming_batch_full`.
+- Ajustado o feedback de sucesso do cadastro/edicao para informar quando a programacao foi salva, mas ficou fora dos filtros ativos da lista.
+- Removida da API a gravacao complementar de historico depois do commit no save individual e no cadastro em lote.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
@@ -296,7 +305,7 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - `calculateExpectedMinutes`, `findActivityOption`, `downloadCsvFile`.
 - `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`.
-- `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`, `registerProgrammingHistory`.
+- `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`.
 - `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`.
 - `setProgrammingEnelFieldsViaRpc`, `setProgrammingOutageWindowViaRpc`, `setProgrammingDocumentDatesViaRpc`, `resolveProgrammingSgdType`.
 - `setProgrammingExecutionResultViaRpc`.
@@ -342,6 +351,7 @@ Ajuda contextual
   - `supabase/migrations/103_harden_postpone_patch_error_reporting.sql`
   - `supabase/migrations/104_fix_postpone_json_error_wrapper.sql`
   - `supabase/migrations/105_fix_postpone_history_signature.sql`
+  - `supabase/migrations/106_move_programming_save_history_into_full_rpcs.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`

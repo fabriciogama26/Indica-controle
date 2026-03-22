@@ -20,6 +20,7 @@ Arquitetura
   - `supabase/migrations/072_create_programming_support_items.sql`
   - `supabase/migrations/101_create_project_programming_history.sql`
   - `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql`
+  - `supabase/migrations/106_move_programming_save_history_into_full_rpcs.sql`
   - `supabase/migrations/097_move_programming_status_history_into_rpcs.sql`
 - Shell e permissao permanecem via `src/components/layout/AppShell.tsx` e `src/lib/auth/authorization.ts`
 
@@ -142,6 +143,7 @@ Boas praticas
 - As migrations `074`, `075` e `076` formalizam os lotes de copia da Programacao, adaptam o schema ao modo simplificado `team_period` e movem a copia em lote para uma RPC transacional.
 - O historico operacional da `Programacao` agora usa somente `project_programming_history`, com escrita via RPC `append_project_programming_history_record`.
 - `Cancelamento` e `Adiamento` agora gravam o historico funcional dentro das proprias RPCs transacionais do banco.
+- `Cadastrar`, `Editar`, `Reprogramar` e `Cadastrar em lote` agora gravam o historico operacional dentro das RPCs `save_project_programming_full` e `save_project_programming_batch_full`, sem passo complementar pos-commit na API.
 - O salvamento da programacao agora usa RPC com:
   - validacao de concorrencia por `expected_updated_at`
   - bloqueio de sobreposicao de horario por `equipe + data`
@@ -250,6 +252,10 @@ Atualizacao 2026-03
   - uso exclusivo de `project_programming_history` na Programacao
   - adiamento criando novo registro `REPROGRAMADA`
   - carga semanal, edicao, copia e guarda de projeto considerando `REPROGRAMADA`
+- Arquivo `supabase/migrations/106_move_programming_save_history_into_full_rpcs.sql` criado com:
+  - historico de `CREATE`, `UPDATE`, `RESCHEDULE` e `BATCH_CREATE` movido para dentro das RPCs transacionais full
+  - remocao da dependencia de historico complementar apos o commit da API
+  - endurecimento do wrapper de erro das RPCs full e batch full com `detail` real da falha
 - Arquivo `src/modules/dashboard/programacao/ProgrammingPageView.tsx` deixou de usar dados mockados e passou a:
   - carregar grade e backlog por `/api/programacao`
   - pesquisar atividades reais por `/api/projects/activity-forecast/catalog`
@@ -309,6 +315,8 @@ Funcoes principais
   - Responsavel por: criar o historico operacional proprio da Programacao e registrar seus eventos por RPC dedicada.
 - Caminho: `supabase/migrations/102_use_programming_history_only_and_physical_rescheduled_status.sql`
   - Responsavel por: promover `REPROGRAMADA` a status fisico e fazer a Programacao usar somente o historico operacional dedicado.
+- Caminho: `supabase/migrations/106_move_programming_save_history_into_full_rpcs.sql`
+  - Responsavel por: mover o historico do save individual e em lote para dentro das RPCs full da Programacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
@@ -322,7 +330,7 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: `createVisibleDates`, `formatBoardDate`, `formatPeriodLabel`, `calculateExpectedMinutes`, `getScheduleTone`, `workloadBarClassName`, `workloadPrimaryLabel`, `normalizeSchedule` e `buildIncludedAtLabel`.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingViaRpc`, `cancelProgrammingViaRpc` e `registerProgrammingHistory`.
+  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`, `cancelProgrammingViaRpc` e `postponeProgrammingViaRpc`.
 
 Servicos e integracoes externas
 - `project_with_labels`: backlog real de projetos ativos.
@@ -353,8 +361,7 @@ Ajuda contextual
   - `useDeferredValue`
   - `DOCUMENT_KEYS`
   - `INITIAL_PERIOD_START`
-  - `registerProgrammingHistory`
 - Comportamento antes/depois:
   - Antes: a obra sumia da lateral assim que era programada no periodo, o card lateral exibia informacao demais e a grade nao destacava diferenca entre programacao original e reprogramacao.
   - Depois: a obra continua visivel na lateral mesmo ja programada, o card lateral ficou mais enxuto, a lateral mostra no maximo 5 cards filtrados, a grade pode ser filtrada por subconjunto explicito de equipes e a reprogramacao recebe cor propria na agenda.
-  - Depois: o historico operacional da agenda passa a usar somente `project_programming_history` e `REPROGRAMADA` deixa de ser derivada para virar status fisico salvo em `project_programming`.
+  - Depois: o historico operacional da agenda passa a usar somente `project_programming_history`, `REPROGRAMADA` deixa de ser derivada para virar status fisico salvo em `project_programming` e o save deixa de depender de historico complementar apos o commit da API.
