@@ -30,6 +30,9 @@ type LocationState = {
   plan?: {
     id: string;
     notes: string;
+    feeder?: string | null;
+    sgdTypeId?: string | null;
+    cutElement?: number | null;
     questionnaireAnswers?: QuestionnaireAnswers;
     createdAt: string;
     updatedAt: string;
@@ -97,6 +100,9 @@ type QuestionnaireAnswers = {
   planning?: {
     needsProjectReview?: boolean | null;
     withShutdown?: boolean | null;
+    feeder?: string;
+    sgdTypeId?: string | null;
+    cutElement?: number | null;
   };
   executionTeams?: {
     cestoQty?: number;
@@ -120,6 +126,11 @@ type CatalogItem = {
   code: string;
   description: string;
   unit?: string;
+};
+
+type SgdTypeOption = {
+  id: string;
+  description: string;
 };
 
 type FeedbackScope = "page" | "location" | "activities" | "materials";
@@ -265,6 +276,9 @@ export function LocationPageView() {
   const [notes, setNotes] = useState("");
   const [needsProjectReview, setNeedsProjectReview] = useState<boolean | null>(null);
   const [withShutdown, setWithShutdown] = useState<boolean | null>(null);
+  const [feeder, setFeeder] = useState("");
+  const [sgdTypeId, setSgdTypeId] = useState("");
+  const [cutElement, setCutElement] = useState("0");
   const [teamCestoQty, setTeamCestoQty] = useState("0");
   const [teamLinhaMortaQty, setTeamLinhaMortaQty] = useState("0");
   const [teamLinhaVivaQty, setTeamLinhaVivaQty] = useState("0");
@@ -285,6 +299,7 @@ export function LocationPageView() {
   const [activityQty, setActivityQty] = useState("");
   const [materialOptions, setMaterialOptions] = useState<CatalogItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<CatalogItem[]>([]);
+  const [sgdTypes, setSgdTypes] = useState<SgdTypeOption[]>([]);
   const [materialDrafts, setMaterialDrafts] = useState<Record<string, Draft>>({});
   const [activityDrafts, setActivityDrafts] = useState<Record<string, Draft>>({});
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
@@ -346,6 +361,20 @@ export function LocationPageView() {
     };
   }, [detailLocation]);
 
+  const sgdTypeLabelById = useMemo(
+    () => new Map(sgdTypes.map((item) => [item.id, item.description])),
+    [sgdTypes],
+  );
+
+  const detailPlanningSgdLabel = useMemo(() => {
+    const sgdId = String(detailQuestionnaireSnapshot?.planning.sgdTypeId ?? "").trim();
+    if (!sgdId) {
+      return "-";
+    }
+
+    return sgdTypeLabelById.get(sgdId) ?? sgdId;
+  }, [detailQuestionnaireSnapshot, sgdTypeLabelById]);
+
   const filteredMaterials = useMemo(() => {
     return (state?.materials ?? []).filter((item) => {
       const codeFilter = activeMaterialFilter.code.trim().toLowerCase();
@@ -398,6 +427,9 @@ export function LocationPageView() {
     setNotes(state?.plan?.notes ?? "");
     setNeedsProjectReview(typeof planning?.needsProjectReview === "boolean" ? planning.needsProjectReview : null);
     setWithShutdown(typeof planning?.withShutdown === "boolean" ? planning.withShutdown : null);
+    setFeeder(String(planning?.feeder ?? ""));
+    setSgdTypeId(String(planning?.sgdTypeId ?? ""));
+    setCutElement(getNonNegativeIntegerInput(planning?.cutElement));
     setTeamCestoQty(getNonNegativeIntegerInput(executionTeams?.cestoQty));
     setTeamLinhaMortaQty(getNonNegativeIntegerInput(executionTeams?.linhaMortaQty));
     setTeamLinhaVivaQty(getNonNegativeIntegerInput(executionTeams?.linhaVivaQty));
@@ -463,6 +495,7 @@ export function LocationPageView() {
         const projectsPayload = projectsPayloadRaw as Array<{ id?: unknown; sob?: unknown; city?: unknown }>;
         const locationProjectsPayload = Array.isArray(data?.locationProjects) ? data.locationProjects : [];
         const citiesPayload = (Array.isArray(data?.cities) ? data.cities : []) as string[];
+        const sgdTypesPayload = Array.isArray(data?.sgdTypes) ? data.sgdTypes : [];
         const fallbackCities =
           citiesPayload.length > 0
             ? citiesPayload
@@ -492,10 +525,17 @@ export function LocationPageView() {
           locationProjectsPayload.length > 0
             ? (locationProjectsPayload as LocationOverviewItem[])
             : fallbackOverviewItems;
+        const nextSgdTypes = (sgdTypesPayload as Array<{ id?: unknown; description?: unknown }>)
+          .map((item) => ({
+            id: String(item?.id ?? "").trim(),
+            description: String(item?.description ?? "").trim(),
+          }))
+          .filter((item) => item.id && item.description);
 
         setCities(fallbackCities);
         setProjects(projectsPayload as ProjectOption[]);
         setOverviewItems(nextOverviewItems);
+        setSgdTypes(nextSgdTypes);
       })
       .catch((error) => {
         setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar locacao.", scope: "page" });
@@ -771,10 +811,23 @@ export function LocationPageView() {
       return;
     }
 
+    const expectedUpdatedAt = String(state?.plan?.updatedAt ?? "").trim();
+    if (!expectedUpdatedAt) {
+      setFeedback({
+        type: "error",
+        message: "Reabra a locacao antes de salvar para evitar sobreposicao com outro usuario.",
+        scope: "location",
+      });
+      return;
+    }
+
     const questionnaireAnswers: QuestionnaireAnswers = {
       planning: {
         needsProjectReview,
         withShutdown,
+        feeder: feeder.trim(),
+        sgdTypeId: sgdTypeId || null,
+        cutElement: String(cutElement).trim() ? parseNonNegativeInteger(getNonNegativeIntegerInput(cutElement)) : null,
       },
       executionTeams: {
         cestoQty: parseNonNegativeInteger(normalizedIntegers.cestoQty),
@@ -805,7 +858,7 @@ export function LocationPageView() {
             notes,
             questionnaireAnswers,
             risks: riskDraft.map((item) => ({ id: item.id, isActive: item.isActive })),
-            expectedUpdatedAt: state?.plan?.updatedAt ?? null,
+            expectedUpdatedAt,
           }),
         },
         "Locacao atualizada com sucesso.",
@@ -1354,6 +1407,48 @@ export function LocationPageView() {
                     </div>
                   </div>
                 </div>
+
+                <div className={styles.formGrid}>
+                  <label className={styles.field}>
+                    <span>Alimentador</span>
+                    <input
+                      value={feeder}
+                      onChange={(event) => setFeeder(event.target.value)}
+                      placeholder="Informe o alimentador"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Tipo de SGD</span>
+                    <select
+                      value={sgdTypeId}
+                      onChange={(event) => setSgdTypeId(event.target.value)}
+                      disabled={!selectedProject}
+                    >
+                      <option value="">Selecione</option>
+                      {sgdTypes.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.description}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Elemento de corte</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={cutElement}
+                      onChange={(event) => handleNonNegativeIntegerChange(setCutElement, event.target.value)}
+                      onBlur={() => setCutElement(getNonNegativeIntegerInput(cutElement))}
+                      placeholder="0"
+                      disabled={!selectedProject}
+                    />
+                  </label>
+                </div>
               </article>
 
               <article className={styles.card}>
@@ -1798,6 +1893,9 @@ export function LocationPageView() {
               <div><strong>Atividades atuais:</strong> {formatCurrency(detailLocation.data?.summary?.activitiesPlannedTotal ?? 0)}</div>
               <div><strong>Necessario revisao de projeto?:</strong> {detailQuestionnaireSnapshot?.planning.needsProjectReview === true ? "Sim" : detailQuestionnaireSnapshot?.planning.needsProjectReview === false ? "Nao" : "-"}</div>
               <div><strong>Com desligamento?:</strong> {detailQuestionnaireSnapshot?.planning.withShutdown === true ? "Sim" : detailQuestionnaireSnapshot?.planning.withShutdown === false ? "Nao" : "-"}</div>
+              <div><strong>Alimentador:</strong> {String(detailQuestionnaireSnapshot?.planning.feeder ?? "-") || "-"}</div>
+              <div><strong>Tipo de SGD:</strong> {detailPlanningSgdLabel}</div>
+              <div><strong>Elemento de corte:</strong> {String(detailQuestionnaireSnapshot?.planning.cutElement ?? "-")}</div>
               <div><strong>CESTO:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.cestoQty ?? "-")}</div>
               <div><strong>LINHA MORTA:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.linhaMortaQty ?? "-")}</div>
               <div><strong>LINHA VIVA:</strong> {String(detailQuestionnaireSnapshot?.executionTeams.linhaVivaQty ?? "-")}</div>

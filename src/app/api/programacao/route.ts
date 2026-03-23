@@ -55,7 +55,7 @@ type SupportOptionRow = {
 type ProgrammingSgdTypeRow = {
   id: string;
   description: string;
-  export_column: "SGD_AT_MT_VYP" | "SGD_BT" | "SGD_TET";
+  export_column: "SGD_AT_MT_VYP" | "SGD_BT" | "SGD_TET" | "AREA_LIVRE";
   is_active: boolean;
 };
 
@@ -91,6 +91,7 @@ type ProgrammingRow = {
   support: string | null;
   support_item_id: string | null;
   note: string | null;
+  campo_eletrico: string | null;
   service_description: string | null;
   poste_qty: number | null;
   estrutura_qty: number | null;
@@ -161,6 +162,7 @@ type SaveProgrammingPayload = {
   support?: string;
   supportItemId?: string;
   note?: string;
+  electricalField?: string;
   serviceDescription?: string;
   posteQty?: number | string;
   estruturaQty?: number | string;
@@ -206,6 +208,7 @@ type BatchCreateProgrammingPayload = {
   support?: string;
   supportItemId?: string;
   note?: string;
+  electricalField?: string;
   serviceDescription?: string;
   posteQty?: number | string;
   estruturaQty?: number | string;
@@ -363,10 +366,10 @@ const PROGRAMMING_SELECT_WITH_STRUCTURE =
   "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -490,6 +493,7 @@ function normalizeProgrammingStructureFields<T extends Record<string, unknown>>(
     ...row,
     outage_start_time: normalizeNullableText(row.outage_start_time),
     outage_end_time: normalizeNullableText(row.outage_end_time),
+    campo_eletrico: normalizeNullableText(row.campo_eletrico),
     service_description: normalizeNullableText(row.service_description),
     poste_qty: Number(row.poste_qty ?? 0),
     estrutura_qty: Number(row.estrutura_qty ?? 0),
@@ -1289,6 +1293,7 @@ async function fetchProgrammingResponseItem(
     endTime: formatTime(row.end_time),
     outageStartTime: formatTime(row.outage_start_time),
     outageEndTime: formatTime(row.outage_end_time),
+    createdAt: row.created_at,
     updatedAt: row.updated_at,
     expectedMinutes: Number(row.expected_minutes ?? 0),
     posteQty: Number(row.poste_qty ?? 0),
@@ -1305,6 +1310,7 @@ async function fetchProgrammingResponseItem(
     support: normalizeText(row.support),
     supportItemId: row.support_item_id,
     note: normalizeText(row.note),
+    electricalField: normalizeText(row.campo_eletrico),
     serviceDescription: normalizeText(row.service_description),
     projectBase,
     statusReason: normalizeText(row.cancellation_reason),
@@ -1701,6 +1707,62 @@ async function setProgrammingExecutionResultViaRpc(params: {
   return { ok: true } as const;
 }
 
+async function setProgrammingElectricalFieldViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  electricalField: string;
+  historyAction?: string | null;
+  historyReason?: string | null;
+  historyMetadata?: Record<string, unknown> | null;
+}) {
+  const { data, error } = await params.supabase.rpc("set_project_programming_campo_eletrico", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_campo_eletrico: params.electricalField,
+    p_history_action: params.historyAction ?? null,
+    p_history_reason: params.historyReason ?? null,
+    p_history_metadata: params.historyMetadata ?? {},
+  });
+
+  if (error) {
+    const isMissingRpc = isMissingRpcFunctionError(error.message, "set_project_programming_campo_eletrico");
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "ELECTRICAL_FIELD_RPC_NOT_AVAILABLE",
+        message:
+          "Seu ambiente ainda nao suporta o campo Campo eletrico da Programacao. Aplique a migration 110 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      reason: "ELECTRICAL_FIELD_RPC_FAILED",
+      message: error.message
+        ? `Falha ao salvar Campo eletrico da programacao: ${error.message}`
+        : "Falha ao salvar Campo eletrico da programacao.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as { success?: boolean; status?: number; message?: string; reason?: string };
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      reason: result.reason ?? "ELECTRICAL_FIELD_SAVE_FAILED",
+      message: result.message ?? "Falha ao salvar Campo eletrico da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
 async function cancelProgrammingViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -2077,6 +2139,7 @@ export async function GET(request: NextRequest) {
           endTime: formatTime(item.end_time),
           outageStartTime: formatTime(item.outage_start_time),
           outageEndTime: formatTime(item.outage_end_time),
+          createdAt: item.created_at,
           updatedAt: item.updated_at,
           expectedMinutes: Number(item.expected_minutes ?? 0),
           posteQty: Number(item.poste_qty ?? 0),
@@ -2093,6 +2156,7 @@ export async function GET(request: NextRequest) {
           support: normalizeText(item.support),
           supportItemId: item.support_item_id,
           note: normalizeText(item.note),
+          electricalField: normalizeText(item.campo_eletrico),
           serviceDescription: normalizeText(item.service_description),
           projectBase: normalizeText(project?.service_center_text) || "Sem base",
           statusReason: normalizeText(item.cancellation_reason),
@@ -2170,13 +2234,14 @@ async function saveProgrammingBatch(request: NextRequest) {
     const support = normalizeNullableText(payload?.support);
     const supportItemId = normalizeNullableText(payload?.supportItemId);
     const note = normalizeNullableText(payload?.note);
+    const electricalField = normalizeText(payload?.electricalField).toUpperCase();
     const serviceDescription = normalizeNullableText(payload?.serviceDescription);
     const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
     const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
     const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
     const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
     const etapaNumberRaw = normalizeText(payload?.etapaNumber);
-    const etapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
+    const parsedEtapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
     const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
     const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
     const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
@@ -2260,6 +2325,13 @@ async function saveProgrammingBatch(request: NextRequest) {
       );
     }
 
+    if (!electricalField) {
+      return NextResponse.json(
+        { message: "Campo eletrico e obrigatorio para salvar a programacao." },
+        { status: 400 },
+      );
+    }
+
     if (!etapaNumberRaw) {
       return NextResponse.json(
         { message: "O campo ETAPA e obrigatorio." },
@@ -2267,32 +2339,35 @@ async function saveProgrammingBatch(request: NextRequest) {
       );
     }
 
-    if (etapaNumber === null) {
+    if (parsedEtapaNumber === null) {
       return NextResponse.json(
         { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
         { status: 400 },
       );
     }
 
-    const batchStageConflictSummaries = await fetchProgrammingStageValidation({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      projectId,
-      teamIds,
-      enteredEtapaNumber: etapaNumber,
-    });
+    const etapaNumber = parsedEtapaNumber;
+    if (etapaNumber !== null) {
+      const batchStageConflictSummaries = await fetchProgrammingStageValidation({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        projectId,
+        teamIds,
+        enteredEtapaNumber: etapaNumber,
+      });
 
-    if (batchStageConflictSummaries.length) {
-      return NextResponse.json(
-        {
-          enteredEtapaNumber: etapaNumber,
-          hasConflict: true,
-          highestStage: batchStageConflictSummaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
-          teams: batchStageConflictSummaries,
-          message: "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto nas equipes selecionadas.",
-        } satisfies BatchCreateProgrammingResponse,
-        { status: 409 },
-      );
+      if (batchStageConflictSummaries.length) {
+        return NextResponse.json(
+          {
+            enteredEtapaNumber: etapaNumber,
+            hasConflict: true,
+            highestStage: batchStageConflictSummaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
+            teams: batchStageConflictSummaries,
+            message: "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto nas equipes selecionadas.",
+          } satisfies BatchCreateProgrammingResponse,
+          { status: 409 },
+        );
+      }
     }
 
     if (workCompletionStatusRaw) {
@@ -2396,6 +2471,28 @@ async function saveProgrammingBatch(request: NextRequest) {
       message: fullBatchSaveResult.message,
     } as const;
 
+    for (const item of fullBatchSaveResult.items) {
+      const electricalFieldResult = await setProgrammingElectricalFieldViaRpc({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId: item.programmingId,
+        electricalField,
+        historyAction: "BATCH_CREATE",
+        historyMetadata: {
+          source: "programacao-api",
+          mode: "batch",
+        },
+      });
+
+      if (!electricalFieldResult.ok) {
+        return NextResponse.json(
+          { message: electricalFieldResult.message, reason: electricalFieldResult.reason ?? null },
+          { status: electricalFieldResult.status },
+        );
+      }
+    }
+
     return NextResponse.json({
       success: true,
       insertedCount: saveResult.insertedCount,
@@ -2436,13 +2533,14 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const support = normalizeNullableText(payload?.support);
   const supportItemId = normalizeNullableText(payload?.supportItemId);
   const note = normalizeNullableText(payload?.note);
+  const electricalField = normalizeText(payload?.electricalField).toUpperCase();
   const serviceDescription = normalizeNullableText(payload?.serviceDescription);
   const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
   const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
   const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
   const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
   const etapaNumberRaw = normalizeText(payload?.etapaNumber);
-  const etapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
+  const parsedEtapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
   const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
   const workCompletionStatus = normalizeWorkCompletionStatus(workCompletionStatusRaw);
   const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
@@ -2509,14 +2607,21 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
-  if (!etapaNumberRaw) {
+  if (!electricalField) {
+    return NextResponse.json(
+      { message: "Campo eletrico e obrigatorio para salvar a programacao." },
+      { status: 400 },
+    );
+  }
+
+  if (method === "POST" && !etapaNumberRaw) {
     return NextResponse.json(
       { message: "O campo ETAPA e obrigatorio." },
       { status: 400 },
     );
   }
 
-  if (etapaNumber === null) {
+  if (etapaNumberRaw && parsedEtapaNumber === null) {
     return NextResponse.json(
       { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
       { status: 400 },
@@ -2531,36 +2636,43 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
   }
 
-  const saveStageConflictSummaries = await fetchProgrammingStageValidation({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    projectId,
-    teamIds: [teamId],
-    enteredEtapaNumber: etapaNumber,
-    excludeProgrammingId: programmingId || null,
-    currentEditingStage: currentProgramming?.etapa_number ?? null,
-    currentEditingDate: currentProgramming?.execution_date ?? null,
-    currentEditingTeamId: currentProgramming?.team_id ?? null,
-  });
+  const existingEtapaNumber = currentProgramming?.etapa_number ?? null;
+  const etapaNumber =
+    method === "PUT" && !etapaNumberRaw
+      ? existingEtapaNumber
+      : parsedEtapaNumber;
 
-  if (saveStageConflictSummaries.length) {
-    return NextResponse.json(
-      {
-        enteredEtapaNumber: etapaNumber,
-        hasConflict: true,
-        highestStage: saveStageConflictSummaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
-        teams: saveStageConflictSummaries,
-        message: "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto na equipe selecionada.",
-      },
-      { status: 409 },
+  const shouldValidateStageConflict = etapaNumber !== null
+    && (
+      method === "POST"
+      || etapaNumber !== existingEtapaNumber
     );
-  }
 
-  if (method === "PUT" && !workCompletionStatus) {
-    return NextResponse.json(
-      { message: "Estado Trabalho e obrigatorio na edicao da programacao." },
-      { status: 400 },
-    );
+  if (shouldValidateStageConflict && etapaNumber !== null) {
+    const saveStageConflictSummaries = await fetchProgrammingStageValidation({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      teamIds: [teamId],
+      enteredEtapaNumber: etapaNumber,
+      excludeProgrammingId: programmingId || null,
+      currentEditingStage: currentProgramming?.etapa_number ?? null,
+      currentEditingDate: currentProgramming?.execution_date ?? null,
+      currentEditingTeamId: currentProgramming?.team_id ?? null,
+    });
+
+    if (saveStageConflictSummaries.length) {
+      return NextResponse.json(
+        {
+          enteredEtapaNumber: etapaNumber,
+          hasConflict: true,
+          highestStage: saveStageConflictSummaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
+          teams: saveStageConflictSummaries,
+          message: "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto na equipe selecionada.",
+        },
+        { status: 409 },
+      );
+    }
   }
 
   if (workCompletionStatusRaw && !workCompletionStatus) {
@@ -2707,6 +2819,27 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   } as const;
 
   const persistedProgrammingId = saveResult.programmingId;
+  const electricalFieldResult = await setProgrammingElectricalFieldViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId: persistedProgrammingId,
+    electricalField,
+    historyAction: method === "POST" ? "CREATE" : "UPDATE",
+    historyReason: isPotentialReschedule ? changeReason : null,
+    historyMetadata: {
+      source: "programacao-api",
+      mode: method,
+    },
+  });
+
+  if (!electricalFieldResult.ok) {
+    return NextResponse.json(
+      { message: electricalFieldResult.message, reason: electricalFieldResult.reason ?? null },
+      { status: electricalFieldResult.status },
+    );
+  }
+
   const savedSchedule = await fetchProgrammingResponseItem(
     resolution.supabase,
     resolution.appUser.tenant_id,
@@ -2858,6 +2991,30 @@ export async function PATCH(request: NextRequest) {
         },
         { status: postponeResult.status },
       );
+    }
+
+    const postponedElectricalField = normalizeText(currentProgramming.campo_eletrico).toUpperCase();
+    if (postponedElectricalField) {
+      const postponedElectricalFieldResult = await setProgrammingElectricalFieldViaRpc({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId: postponeResult.newProgrammingId,
+        electricalField: postponedElectricalField,
+        historyAction: "RESCHEDULE",
+        historyReason: reason,
+        historyMetadata: {
+          source: "programacao-api",
+          mode: "postpone",
+        },
+      });
+
+      if (!postponedElectricalFieldResult.ok) {
+        return NextResponse.json(
+          { message: postponedElectricalFieldResult.message, reason: postponedElectricalFieldResult.reason ?? null },
+          { status: postponedElectricalFieldResult.status },
+        );
+      }
     }
 
     let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
