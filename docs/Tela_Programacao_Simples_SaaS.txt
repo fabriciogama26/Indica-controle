@@ -56,6 +56,10 @@ Arquitetura
   - `supabase/migrations/110_add_programming_electrical_field_and_history_rpc.sql`
   - Campo em `project_programming`: `campo_eletrico`
   - RPC: `set_project_programming_campo_eletrico` (persistencia + historico)
+- Migration de consolidacao transacional do Campo eletrico:
+  - `supabase/migrations/111_move_electrical_field_into_full_rpcs_and_adjust_reschedule_rule.sql`
+  - RPCs: `save_project_programming_full_with_electrical_field`, `save_project_programming_batch_full_with_electrical_field`
+  - Objetivo: salvar Programacao + Campo eletrico no mesmo fluxo transacional e ajustar regra de reprogramacao (projeto/equipe/data/hora inicio/hora termino/periodo).
 - Migration de compatibilidade do tipo SGD:
   - `supabase/migrations/108_allow_area_livre_programming_sgd_types.sql`
   - Catalogo `programming_sgd_types` passa a aceitar `AREA_LIVRE` em `export_column`.
@@ -121,7 +125,8 @@ Cadastro
   - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e opcional.
 - Persistencia:
   - Frontend envia `POST /api/programacao` com `action = BATCH_CREATE`.
-  - Backend exige `save_project_programming_batch_full`.
+  - Backend exige `save_project_programming_batch_full_with_electrical_field`.
+  - `POST/PUT` usam `save_project_programming_full_with_electrical_field`.
   - O fluxo em lote nao usa mais fallback parcial para RPC legada.
   - A RPC em lote faz rollback total se qualquer equipe falhar.
   - A sugestao automatica da `ETAPA` preenche o campo apenas enquanto ele nao tiver sido alterado manualmente pelo usuario no contexto atual.
@@ -204,6 +209,7 @@ Boas praticas
   - O frontend abre modal de alerta para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`, antes de depender apenas do feedback no topo.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
   - API exige RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
+  - Reprogramacao na edicao ocorre quando muda `Projeto`, `Equipe`, `Data execucao`, `Hora inicio`, `Hora termino` ou `Periodo`.
   - `PATCH` exige `expectedUpdatedAt` e `ADIAR` exige `newDate`, reduzindo sobrescrita silenciosa.
   - Quando houver conflito de concorrencia, a API devolve `409` com `currentRecord`, `currentUpdatedAt`, `updatedBy` e `changedFields`.
   - Se o commit concluir e a grade falhar ao atualizar, a tela mostra sucesso com aviso em vez de erro falso.
@@ -313,6 +319,7 @@ Atualizacao 2026-03
 - Ajustado export `ENEL-EXCEL`: `ResponsÃ¡vel ExecuÃ§Ã£o` fixo como `INDICA`, `Tempo Previsto` em horas e `PerÃ­odo` em maiusculas.
 - Adicionado campo obrigatorio `Campo eletrico` no formulario da Programacao simples.
 - Criada a migration `110_add_programming_electrical_field_and_history_rpc.sql` para persistir `campo_eletrico` em `project_programming` e refletir a mudanca no historico.
+- Criada a migration `111_move_electrical_field_into_full_rpcs_and_adjust_reschedule_rule.sql` para salvar `Campo eletrico` no mesmo fluxo transacional full (`single` e `batch`) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -343,6 +350,7 @@ Funcoes utilitarias relacionadas
 Servicos e integracoes externas
 - `save_project_programming_batch` (RPC nova).
 - `save_project_programming_full` e `save_project_programming_batch_full` (RPCs transacionais full).
+- `save_project_programming_full_with_electrical_field` e `save_project_programming_batch_full_with_electrical_field` (RPCs full com Campo eletrico no mesmo commit).
 - `save_project_programming` (RPC reutilizada por equipe no lote).
 - `set_project_programming_outage_window` (RPC nova para janela de desligamento).
 - `set_project_programming_document_dates` (RPC nova para Data Aprovada/Data Pedido).
@@ -381,6 +389,7 @@ Ajuda contextual
   - `supabase/migrations/106_move_programming_save_history_into_full_rpcs.sql`
   - `supabase/migrations/109_make_programming_stage_optional_on_edit.sql`
   - `supabase/migrations/110_add_programming_electrical_field_and_history_rpc.sql`
+  - `supabase/migrations/111_move_electrical_field_into_full_rpcs_and_adjust_reschedule_rule.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`
@@ -408,4 +417,6 @@ Ajuda contextual
   - Depois: a `ETAPA` continua sendo sugerida automaticamente, mas nao sobrescreve mais valor digitado manualmente; a tela bloqueia o save e abre um modal de confronto quando ja existirem etapas iguais ou maiores para o mesmo projeto/equipe, e a API repete a protecao no backend.
   - Antes: parte dos erros de validacao e conflito aparecia so como mensagem no topo.
   - Depois: `Adiamento`, `Cadastrar programacao` e `Salvar edicao` passam a abrir modal de alerta com os possiveis erros e conflitos, mantendo o feedback no topo como complemento.
+  - Antes: o backend salvava `Campo eletrico` em um passo complementar apos o save full, e edicao so de horario podia cair como reprogramacao.
+  - Depois: `Campo eletrico` passa a ser persistido no mesmo fluxo transacional full (`single` e `batch`) e a reprogramacao na edicao considera mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 
