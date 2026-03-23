@@ -1,0 +1,288 @@
+Auditoria Completa - Indica Controle SaaS
+==========================================
+Data: 2026-03-22
+Escopo: revisao de integridade de dados, tabelas Supabase, duplicidade de codigo, edge functions, padronizacao de telas e documentacao.
+
+================================================================================
+1. RESUMO EXECUTIVO
+================================================================================
+O projeto possui uma base solida de seguranca multi-tenant (RLS, RPCs transacionais, validacao de concorrencia com expectedUpdatedAt). Porem, existem problemas de manutenibilidade graves:
+- Duplicidade de funcoes utilitarias em ate 7 arquivos.
+- Views monoliticas com 3500+ linhas e 128KB em um unico arquivo.
+- Edge functions copy-paste com ~95% de codigo identico.
+- 14 de 27 telas sem documentacao TXT.
+- Fallback progressivo de queries com 4 tentativas em cascata (tecnica de compatibilidade que pode mascarar erros).
+
+================================================================================
+2. DUPLICIDADE DE CODIGO (CRITICO)
+================================================================================
+
+2.1. Funcoes utilitarias duplicadas no frontend
+------------------------------------------------
+As seguintes funcoes aparecem copiadas em multiplos arquivos PageView.tsx:
+
+| Funcao                  | Ocorrencias | Arquivos                                               |
+|-------------------------|-------------|-------------------------------------------------------|
+| formatDateTime          | 7           | Projetos, ProgramacaoSimples, Pessoas, Materiais, Locacao, Equipes, Atividades |
+| downloadCsvFile         | 6           | Projetos, ProgramacaoSimples, Pessoas, Materiais, Equipes, Atividades          |
+| toIsoDate               | 3           | ProgramacaoSimples, Programacao, Medicao                |
+| formatDate              | 3           | Projetos, ProgramacaoSimples, Medicao                   |
+| parseNonNegativeInteger | 2           | ProgramacaoSimples, Locacao                             |
+
+Recomendacao:
+- Criar `src/lib/utils/formatters.ts` com: formatDate, formatDateTime, toIsoDate, formatDateShort.
+- Criar `src/lib/utils/csv.ts` com: downloadCsvFile.
+- Criar `src/lib/utils/parsers.ts` com: parseNonNegativeInteger, parseOptionalPositiveInteger, parsePositiveNumber.
+- Importar de cada PageView ao inves de copiar.
+- Impacto: reduz ~200 linhas duplicadas e garante correcao uniforme.
+
+2.2. Edge Functions quase identicas
+------------------------------------
+- `import_project_forecast/index.ts` (333 linhas)
+- `import_project_activity_forecast/index.ts` (334 linhas)
+
+Ambas compartilham ~95% do codigo:
+- corsHeaders, respond, getBearerToken, normalizeText, normalizeHeader, parsePositiveNumber, parseWorkbook (identicas).
+- Autenticacao, validacao de projeto, leitura de formulario (identicas).
+- Unica diferenca: tabela de lookup (materials vs service_activities), RPC de precheck e RPC de append.
+
+Recomendacao:
+- Criar um modulo compartilhado `supabase/edge_functions/_shared/xlsx-import-utils.ts` com as funcoes comuns.
+- Cada edge function importa o modulo e configura apenas a tabela, campo de lookup e RPCs.
+- Impacto: reduz ~270 linhas duplicadas entre os dois arquivos.
+
+================================================================================
+3. VIEWS MONOLITICAS (ALTO RISCO DE MANUTENCAO)
+================================================================================
+
+| Arquivo                        | Linhas | Tamanho |
+|-------------------------------|--------|---------|
+| ProgrammingSimplePageView.tsx | 3566   | 128 KB  |
+| ProjectsPageView.tsx          | ~3500  | 129 KB  |
+| ProgrammingPageView.tsx       | ~2400  | 84 KB   |
+| LocationPageView.tsx          | ~2200  | 78 KB   |
+
+Problemas:
+- Todos os types, utils, constantes e estado inline em um unico componente.
+- Dificulta code review, testes e reutilizacao.
+- Hot reload lento em desenvolvimento.
+
+Recomendacao para padrão novo de telas:
+- Separar types em `types.ts` no mesmo modulo.
+- Separar utilitarios em `utils.ts` ou importar de `src/lib/utils/`.
+- Separar constantes em `constants.ts`.
+- Manter o componente PageView focado em rendering e orquestracao de estado.
+- Meta: PageView com no maximo ~800-1000 linhas.
+
+================================================================================
+4. INTEGRIDADE DE DADOS E SALVAMENTO
+================================================================================
+
+4.1. Pontos positivos (ja bem feitos)
+--------------------------------------
+- Concorrencia: `expectedUpdatedAt` exigido em PATCH para todas as telas operacionais (Programacao, Projetos, Locacao, Pessoas, Materiais, Equipes, Atividades).
+- Conflito rico: resposta 409 com `currentRecord`, `currentUpdatedAt`, `updatedBy`, `changedFields`.
+- RPCs transacionais: `save_project_programming_full` e `save_project_programming_batch_full` fazem rollback total em caso de erro.
+- Historico transacional: o historico de CREATE/UPDATE/RESCHEDULE/BATCH_CREATE e gravado dentro da mesma transacao do save (migration 106).
+- Adiamento protegido: valida data futura no frontend, API e RPC.
+- Importacao em massa: precheck de duplicata antes do insert (edge functions verificam codigo duplicado no arquivo e no banco).
+
+4.2. Riscos e melhorias necessarias
+------------------------------------
+a) Fallback progressivo na API de Programacao (route.ts, linhas 716-786):
+   - `fetchProgrammingRows` tenta 4 SELECTs diferentes em cascata, do mais completo ao legado.
+   - Risco: erros no SELECT mais completo (ex.: timeout) podem silenciosamente degradar para um SELECT antigo sem alertar o usuario.
+   - Recomendacao: se todas as migrations ja estao aplicadas, remover os fallbacks e usar apenas o SELECT completo. Se compatibilidade e necessaria, logar quando um fallback e ativado.
+
+b) Ausencia de `useErrorLogger`:
+   - O AGENTS.md menciona `useErrorLogger('<modulo>')` como padrao para erros de tela.
+   - Nenhum modulo implementa isso atualmente (0 ocorrencias no codigo).
+   - Recomendacao: criar o hook `useErrorLogger` e integrar nas telas operacionais.
+
+c) Telas de cadastro-base sem transacao:
+   - Modulos como `cadastro-base`, `cargo`, `centro-servico`, `contrato`, `municipio`, `nivel-tensao`, `porte`, `prioridade`, `responsavel-distribuidora`, `tipo-equipe`, `tipo-servico` sao telas de lookup simples.
+   - Verificar se o CRUD dessas telas passa por RPC ou faz INSERT direto via Supabase client, o que poderia bypassar validacao.
+
+d) Medicao (MeasurementPageView.tsx):
+   - Tela de medicao parece menos madura que Programacao. Verificar se possui controle de concorrencia igual.
+
+================================================================================
+5. TABELAS SUPABASE - COBERTURA POR TELA
+================================================================================
+
+5.1. Tabelas principais mapeadas
+----------------------------------
+- auth: app_users, auth_event_log, app_roles, user_tenant_access
+- permissoes: app_pages, role_page_permissions, app_user_page_permissions, permission_change_history
+- projetos: project (com view project_with_labels), project_history, project_cancellation
+- locacao: project_location_plans, location_risks, location_execution_support_items
+- programacao: project_programming, project_programming_history, programming_activities, programming_support_items, programming_sgd_types, programming_copy_batches
+- materiais: materials, project_material_balance, project_material_forecast, stock_conflicts
+- pessoas: people, job_titles, job_title_types, job_levels
+- equipes: teams, team_types
+- atividades: service_activities, project_activity_forecast
+- medicao: (tabelas nao encontradas em migrations dedicadas - POSSIVEL LACUNA)
+- contratos: contracts
+- lookup tables: project_cities, project_partners, project_priorities, project_service_centers, project_service_types, project_voltage_levels, project_utility_responsibles, project_sizes, project_codes_imei
+
+5.2. Possivel tabela faltante: Medicao
+----------------------------------------
+- A tela de Medicao existe (`src/app/(dashboard)/medicao/`).
+- Nao encontrada migration dedicada para tabela de medicao (as 106 migrations cobrem auth, projetos, materiais, locacao, programacao, permissoes, equipes, atividades).
+- Verificar se a Medicao usa tabelas ja existentes (projetos? programacao?) ou se precisa de tabela propria.
+- Se a Medicao grava dados, deve ter tabela e RLS proprios.
+
+5.3. Telas sem tabela propria (correto para lookup)
+-----------------------------------------------------
+- cadastro-base, cargo, centro-servico, contrato, municipio, nivel-tensao, porte, prioridade, responsavel-distribuidora, tipo-equipe, tipo-servico
+- Estas telas sao CRUDs de lookup e usam as tabelas de lookup existentes (project_cities, project_partners, etc.)
+
+================================================================================
+6. DOCUMENTACAO - TELAS SEM TXT
+================================================================================
+
+Telas com docs existentes (9):
+- Atividades, Cadastro Base, Cargo, Equipes, Home, Locacao, Login, Materiais, Medicao
+- Permissoes, Pessoas, Programacao, Programacao Simples, Projetos, Recuperacao Senha, Tipo Equipe
+- Padrao Cadastros, Layout Principal, Visualizacao Programacao
+
+Telas SEM docs (14 de 27 pastas no dashboard):
+1. centro-servico
+2. contrato
+3. entrada
+4. estoque
+5. imei
+6. municipio
+7. nivel-tensao
+8. porte
+9. prioridade
+10. responsavel-distribuidora
+11. saida
+12. tipo-servico
+13. programacao (legada, desativada - pode nao precisar)
+14. programacao-visualizacao (ja documentada dentro de Tela_Programacao_Simples_SaaS.txt)
+
+Recomendacao:
+- Criar TXT para: centro-servico, contrato, entrada, estoque, imei, municipio, nivel-tensao, porte, prioridade, responsavel-distribuidora, saida, tipo-servico.
+- Para telas de lookup simples, um TXT conciso basta (padrao de Tela_Cargo_SaaS.txt).
+- Entrada e Saida sao telas operacionais e precisam de TXT completo.
+
+================================================================================
+7. EDGE FUNCTIONS - ANALISE
+================================================================================
+
+7.1. Funcoes de importacao (import_project_forecast, import_project_activity_forecast)
+---------------------------------------------------------------------------------------
+- Estrutura solida: autenticacao, validacao de tenant, precheck de duplicatas, RPC transacional.
+- Problema principal: duplicidade de codigo (ver secao 2.2).
+- Risco: `Access-Control-Allow-Origin: '*'` em CORS. Em producao, restringir ao dominio da aplicacao.
+
+7.2. Demais edge functions
+--------------------------
+- auth-login-web, auth-recover, login_matricula, logout: fluxo de autenticacao.
+- get_inventory_balance, get_materials, get_project_material_balance: consultas read-only.
+- get_responsaveis: consulta de lookup.
+- get_project_forecast_template, get_project_activity_forecast_template: geracao de template XLSX.
+- log_error: centralizacao de erro.
+- submit_material_request: operacao de estoque.
+- sync_run: sincronizacao.
+- verify_admin_pin: seguranca administrativa.
+- doc: documentacao interna.
+
+Verificar:
+- Se `submit_material_request` e `sync_run` usam transacao/RPC ou INSERT direto.
+- Se `verify_admin_pin` tem rate limiting adequado.
+- Se `log_error` persiste em tabela ou apenas loga.
+
+================================================================================
+8. PROGRAMACAO SIMPLES COMO PADRAO (TELA REFERENCIA)
+================================================================================
+
+A tela Programacao Simples e a mais completa em termos de boas praticas:
+
+Acertos:
+- Concorrencia com expectedUpdatedAt no PATCH.
+- Save transacional com RPC full (save_project_programming_full).
+- Lote atomico com rollback (save_project_programming_batch_full).
+- Historico dentro da transacao (migration 106).
+- Validacao de ETAPA com confronto e modal de alerta.
+- Adiamento transacional com clonagem (postpone_project_programming).
+- Feedback de filtro (avisa quando o registro salvo nao aparece na lista).
+- Exportacao com cooldown de 10 segundos.
+- Modal de historico com paginacao.
+
+Problemas da propria tela referencia:
+- Arquivo monolitico de 3566 linhas / 128 KB.
+- Todos os types e utils inline.
+- Funcoes utilitarias duplicadas (downloadCsvFile, formatDate, etc.).
+- useErrorLogger ausente.
+
+================================================================================
+9. PADRAO DE TELA RECOMENDADO (PARA NOVAS TELAS)
+================================================================================
+
+Baseado na analise da Programacao Simples, o padrao ideal para novas telas:
+
+Estrutura de arquivos:
+  src/modules/dashboard/<nome-tela>/
+    types.ts              - tipos (FormState, FilterState, *Item, *Response)
+    constants.ts          - constantes (PAGE_SIZE, FIELD_LABELS, DOCUMENT_KEYS)
+    utils.ts              - utilitarios especificos da tela (funcoes de normalizacao local)
+    <NomeTela>PageView.tsx         - componente principal
+    <NomeTela>PageView.module.css  - estilos
+
+Imports compartilhados (criar se nao existir):
+  src/lib/utils/formatters.ts  - formatDate, formatDateTime, toIsoDate
+  src/lib/utils/csv.ts         - downloadCsvFile
+  src/lib/utils/parsers.ts     - parseNonNegativeInteger, parsePositiveNumber
+
+Salvamento:
+  - SEMPRE usar RPC transacional (save_*_full) para operacoes com efeitos colaterais.
+  - SEMPRE exigir expectedUpdatedAt no PATCH/PUT para controle de concorrencia.
+  - SEMPRE retornar o registro salvo no response para evitar "salvar e buscar novamente".
+  - Em lote: atomico com rollback total.
+  - Historico dentro da transacao.
+
+Concorrencia:
+  - 409 Conflict com: currentRecord, currentUpdatedAt, updatedBy, changedFields.
+  - UX de conflito com mensagem objetiva e acao para recarregar.
+
+Feedback:
+  - Sucesso com aviso quando registro salvo esta fora dos filtros.
+  - Modal de alerta para erros de validacao (nao apenas mensagem no topo).
+  - Scroll ao topo apos sucesso/erro.
+
+Exportacao:
+  - Cooldown de 10 segundos entre exportacoes.
+  - CSV + layout dedicado quando aplicavel.
+
+Auditoria:
+  - Historico operacional em tabela propria (*_history).
+  - Modal de historico com paginacao.
+  - useErrorLogger('<modulo>') para erros de tela (IMPLEMENTAR).
+
+================================================================================
+10. PLANO DE ACAO PRIORIZADO
+================================================================================
+
+PRIORIDADE ALTA:
+1. Criar src/lib/utils/ com formatters.ts, csv.ts, parsers.ts
+2. Refatorar imports nos 7+ arquivos PageView para usar utils compartilhados
+3. Verificar/criar tabela de Medicao se necessario
+4. Implementar useErrorLogger e integrar nas telas operacionais
+5. Restringir CORS nas edge functions (trocar '*' pelo dominio real)
+
+PRIORIDADE MEDIA:
+6. Criar modulo compartilhado para edge functions de importacao XLSX
+7. Criar TXT docs para 12 telas sem documentacao
+8. Remover fallbacks de SELECT progressivo na API de Programacao (se migrations estao aplicadas)
+9. Separar types/constants/utils das views monoliticas (comecando pelas maiores)
+
+PRIORIDADE BAIXA:
+10. Verificar rate limiting em verify_admin_pin
+11. Verificar se submit_material_request e sync_run usam transacao
+12. Padronizar assinatura de formatDateTime (aceita string vs string|null vs string|null|undefined)
+
+================================================================================
+FIM DA AUDITORIA
+================================================================================
