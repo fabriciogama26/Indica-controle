@@ -2404,6 +2404,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const rows = filteredSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
+        const team = teamMap.get(schedule.teamId);
         const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
         const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
         const displayStatus = getDisplayProgrammingStatus(schedule);
@@ -2462,7 +2463,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           project?.serviceType ?? "",
           "",
           "",
-          "",
+          team?.foremanName ?? "",
           project?.utilityFieldManager ?? "",
         ];
       });
