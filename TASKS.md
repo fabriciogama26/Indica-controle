@@ -175,6 +175,7 @@
 - [x] Ajustar mapeamento completo do `ENEL-EXCEL` na nova Programacao (Responsáveis Enel/Gestor/Endereco por Projeto, Tipo de SGD, Nº Clientes Afetados e roteamento do SGD por tipo).
 - [x] Ajustar o `ENEL-EXCEL` da Programacao para: `Estrutura` por composicao de equipes (`MK/CETO/LV`) por projeto/data, `Nº EQ` por total de equipes, `Data da programacao` por `created_at`, `Responsavel Execucao = INDICA`, `Tempo Previsto` em horas e `Periodo` em maiusculas.
 - [x] Criar o campo obrigatorio `Campo eletrico` na Programacao, persistir em `project_programming` e usar esse valor na coluna `Nº EQ (RE, CO, CF, CC ou TR)` do `ENEL-EXCEL`, com reflexo no historico operacional.
+- [x] Mover o `Campo eletrico` para o mesmo fluxo transacional das RPCs full da Programacao (sem passo complementar de save na API) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 - [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
 - [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
 - [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.

@@ -2736,7 +2736,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
           {editingScheduleId ? (
             <label className={`${styles.field} ${styles.fieldWide}`}>
-              <span>Motivo da reprogramacao (obrigatorio se alterar data, horario ou equipe)</span>
+              <span>Motivo da reprogramacao (obrigatorio se alterar projeto, equipe, data, horario ou periodo)</span>
               <input
                 type="text"
                 value={editChangeReason}

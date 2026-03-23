@@ -1376,6 +1376,7 @@ async function saveProgrammingFullViaRpc(params: {
   support?: string | null;
   supportItemId?: string | null;
   note?: string | null;
+  electricalField: string;
   serviceDescription?: string | null;
   posteQty: number;
   estruturaQty: number;
@@ -1392,7 +1393,7 @@ async function saveProgrammingFullViaRpc(params: {
   historyReason?: string | null;
   historyMetadata?: Record<string, unknown> | null;
 }) {
-  const { data, error } = await params.supabase.rpc("save_project_programming_full", {
+  const { data, error } = await params.supabase.rpc("save_project_programming_full_with_electrical_field", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_project_id: params.projectId,
@@ -1427,15 +1428,16 @@ async function saveProgrammingFullViaRpc(params: {
     p_history_action_override: params.historyActionOverride ?? null,
     p_history_reason: params.historyReason ?? null,
     p_history_metadata: params.historyMetadata ?? {},
+    p_campo_eletrico: params.electricalField,
   });
 
   if (error) {
-    if (isMissingRpcFunctionError(error.message, "save_project_programming_full")) {
+    if (isMissingRpcFunctionError(error.message, "save_project_programming_full_with_electrical_field")) {
       return {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full indisponivel no ambiente atual.",
+        message: "RPC transacional full com Campo eletrico indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1443,7 +1445,7 @@ async function saveProgrammingFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? `Falha ao salvar programacao via RPC full: ${error.message}`
+        ? `Falha ao salvar programacao via RPC full com Campo eletrico: ${error.message}`
         : "Falha ao salvar programacao via RPC full.",
     } as const;
   }
@@ -1485,6 +1487,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
   support?: string | null;
   supportItemId?: string | null;
   note?: string | null;
+  electricalField: string;
   serviceDescription?: string | null;
   posteQty: number;
   estruturaQty: number;
@@ -1497,7 +1500,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
 }) {
-  const { data, error } = await params.supabase.rpc("save_project_programming_batch_full", {
+  const { data, error } = await params.supabase.rpc("save_project_programming_batch_full_with_electrical_field", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_project_id: params.projectId,
@@ -1527,15 +1530,16 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_outage_start_time: params.outageStartTime ?? null,
     p_outage_end_time: params.outageEndTime ?? null,
     p_service_description: params.serviceDescription ?? null,
+    p_campo_eletrico: params.electricalField,
   });
 
   if (error) {
-    if (isMissingRpcFunctionError(error.message, "save_project_programming_batch_full")) {
+    if (isMissingRpcFunctionError(error.message, "save_project_programming_batch_full_with_electrical_field")) {
       return {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full de lote indisponivel no ambiente atual.",
+        message: "RPC transacional full de lote com Campo eletrico indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1543,7 +1547,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? `Falha ao salvar programacao em lote via RPC full: ${error.message}`
+        ? `Falha ao salvar programacao em lote via RPC full com Campo eletrico: ${error.message}`
         : "Falha ao salvar programacao em lote via RPC full.",
     } as const;
   }
@@ -1707,6 +1711,8 @@ async function setProgrammingExecutionResultViaRpc(params: {
   return { ok: true } as const;
 }
 
+// Legacy compatibility helper kept for staged rollback support in partially migrated environments.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function setProgrammingElectricalFieldViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -2421,6 +2427,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       support,
       supportItemId,
       note,
+      electricalField,
       serviceDescription,
       posteQty,
       estruturaQty,
@@ -2439,7 +2446,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations 091, 094, 095, 099, 100 e 106 e tente novamente.",
+            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote com Campo eletrico. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2456,7 +2463,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com a RPC full desatualizada ou ainda depender da migration 090. Aplique as migrations 091, 094, 095, 099, 100 e 106 e tente novamente.",
+            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2465,38 +2472,10 @@ async function saveProgrammingBatch(request: NextRequest) {
     return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
   }
 
-    const saveResult = {
-      ok: true,
-      insertedCount: fullBatchSaveResult.insertedCount,
-      message: fullBatchSaveResult.message,
-    } as const;
-
-    for (const item of fullBatchSaveResult.items) {
-      const electricalFieldResult = await setProgrammingElectricalFieldViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: item.programmingId,
-        electricalField,
-        historyAction: "BATCH_CREATE",
-        historyMetadata: {
-          source: "programacao-api",
-          mode: "batch",
-        },
-      });
-
-      if (!electricalFieldResult.ok) {
-        return NextResponse.json(
-          { message: electricalFieldResult.message, reason: electricalFieldResult.reason ?? null },
-          { status: electricalFieldResult.status },
-        );
-      }
-    }
-
     return NextResponse.json({
       success: true,
-      insertedCount: saveResult.insertedCount,
-      message: saveResult.message,
+      insertedCount: fullBatchSaveResult.insertedCount,
+      message: fullBatchSaveResult.message,
     } satisfies BatchCreateProgrammingResponse);
   } catch (error) {
     console.error("saveProgrammingBatch_unhandled", error);
@@ -2716,8 +2695,10 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   const isPotentialReschedule = currentProgramming
     ? (
-      currentProgramming.execution_date !== executionDate
+      currentProgramming.project_id !== projectId
+      || currentProgramming.execution_date !== executionDate
       || currentProgramming.team_id !== teamId
+      || normalizePeriod(currentProgramming.period) !== period
       || formatTime(currentProgramming.start_time) !== formatTime(startTime)
       || formatTime(currentProgramming.end_time) !== formatTime(endTime)
     )
@@ -2745,6 +2726,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     support,
     supportItemId,
     note,
+    electricalField,
     serviceDescription,
     posteQty: posteQty ?? 0,
     estruturaQty: estruturaQty ?? 0,
@@ -2787,7 +2769,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations 091, 094, 095, 100 e 106 e tente novamente.",
+            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao com Campo eletrico. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2800,7 +2782,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Falha ao salvar programacao no banco. O ambiente pode estar com a RPC full desatualizada ou ainda depender da migration 090. Aplique as migrations 091, 094, 095, 100 e 106 e tente novamente.",
+            "Falha ao salvar programacao no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2819,26 +2801,6 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   } as const;
 
   const persistedProgrammingId = saveResult.programmingId;
-  const electricalFieldResult = await setProgrammingElectricalFieldViaRpc({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    actorUserId: resolution.appUser.id,
-    programmingId: persistedProgrammingId,
-    electricalField,
-    historyAction: method === "POST" ? "CREATE" : "UPDATE",
-    historyReason: isPotentialReschedule ? changeReason : null,
-    historyMetadata: {
-      source: "programacao-api",
-      mode: method,
-    },
-  });
-
-  if (!electricalFieldResult.ok) {
-    return NextResponse.json(
-      { message: electricalFieldResult.message, reason: electricalFieldResult.reason ?? null },
-      { status: electricalFieldResult.status },
-    );
-  }
 
   const savedSchedule = await fetchProgrammingResponseItem(
     resolution.supabase,
@@ -2991,30 +2953,6 @@ export async function PATCH(request: NextRequest) {
         },
         { status: postponeResult.status },
       );
-    }
-
-    const postponedElectricalField = normalizeText(currentProgramming.campo_eletrico).toUpperCase();
-    if (postponedElectricalField) {
-      const postponedElectricalFieldResult = await setProgrammingElectricalFieldViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId: postponeResult.newProgrammingId,
-        electricalField: postponedElectricalField,
-        historyAction: "RESCHEDULE",
-        historyReason: reason,
-        historyMetadata: {
-          source: "programacao-api",
-          mode: "postpone",
-        },
-      });
-
-      if (!postponedElectricalFieldResult.ok) {
-        return NextResponse.json(
-          { message: postponedElectricalFieldResult.message, reason: postponedElectricalFieldResult.reason ?? null },
-          { status: postponedElectricalFieldResult.status },
-        );
-      }
     }
 
     let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
