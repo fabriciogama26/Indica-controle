@@ -201,12 +201,24 @@ Atualizacao 2026-03
   - lista de `Pre APR` (riscos com status `Incluido`/`Removido`)
 - Ajustada a carga da lista previa de locacao no frontend com fallback:
   - se `locationProjects` vier vazio/ausente no payload de `/api/locacao/meta`, a tela monta a lista a partir de `projects` para nao exibir grade vazia.
+- Adicionados novos campos no bloco `Planejamento / Vistoria` ao abrir a locacao:
+  - `Alimentador` (texto)
+  - `Tipo de SGD` (selectbox a partir de `programming_sgd_types`)
+  - `Elemento de corte` (numero inteiro nao-negativo)
+- Os novos campos sao salvos em `questionnaireAnswers.planning` junto do mesmo fluxo de `Salvar locacao`.
+- Criada migration `107_add_location_plan_structured_fields_and_history.sql` com:
+  - colunas fisicas em `project_location_plans`: `feeder`, `sgd_type_id`, `cut_element`
+  - tabela dedicada `project_location_plan_history`
+  - RPC `append_project_location_plan_history_record`
+  - endurecimento da RPC `save_project_location_plan` para exigir `expected_updated_at` e registrar historico transacional no banco.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`
-  - Responsavel por: filtro por municipio, busca de projeto por SOB, listagem resumida de locacoes antes da abertura, paginacao local da lista previa, modal de detalhes (com listas de `Previsao de execucao` e `Pre APR`), carga da locacao, validacao do questionario da aba `Locacao`, toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e envio de `expectedUpdatedAt` nas acoes de salvar.
+  - Responsavel por: filtro por municipio, busca de projeto por SOB, listagem resumida de locacoes antes da abertura, paginacao local da lista previa, modal de detalhes (com listas de `Previsao de execucao` e `Pre APR`), carga da locacao, validacao do questionario da aba `Locacao`, novos campos de `Planejamento / Vistoria` (`Alimentador`, `Tipo de SGD`, `Elemento de corte`), toggles de apoio/risco, feedback local por aba, edicao de materiais, edicao de atividades e envio de `expectedUpdatedAt` nas acoes de salvar.
+- Caminho: `src/app/api/locacao/meta/route.ts`
+  - Responsavel por: retornar opcoes ativas de `Tipo de SGD` (`programming_sgd_types`) para o selectbox da tela de locacao.
 - Caminho: `src/app/api/locacao/route.ts`
   - Responsavel por: carregar, inicializar e atualizar o cabecalho da locacao, chamando a RPC `save_project_location_plan`, enviando `expectedUpdatedAt` e registrando historico.
 - Caminho: `src/app/api/locacao/materials/route.ts`
@@ -227,6 +239,8 @@ Constantes e configuracoes
   - Responsavel por: catalogo `location_execution_support_items`, RLS, auditoria e indice principal do apoio de execucao da locacao.
 - Caminho: `supabase/migrations/080_seed_location_risks_on_initialize.sql`
   - Responsavel por: atualizar `initialize_project_location_plan` para seedar riscos de `Pre APR` no bootstrap quando o plano ainda nao possui riscos.
+- Caminho: `supabase/migrations/107_add_location_plan_structured_fields_and_history.sql`
+  - Responsavel por: adicionar colunas fisicas da locacao, criar historico dedicado e reforcar concorrencia da RPC principal da locacao.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -265,6 +279,7 @@ Ajuda contextual
   - `supabase/migrations/061_create_location_risks.sql`
   - `supabase/migrations/062_create_location_execution_support_items.sql`
   - `supabase/migrations/080_seed_location_risks_on_initialize.sql`
+  - `supabase/migrations/107_add_location_plan_structured_fields_and_history.sql`
 - Funcoes/hooks/constantes tocadas:
   - `LocationPageView`
   - `overviewPage`
@@ -272,6 +287,13 @@ Ajuda contextual
   - `paginatedOverviewItems`
   - `detailQuestionnaireSnapshot`
   - fallback de `locationProjects` -> `projects` no carregamento de metadados
+  - `feeder`
+  - `sgdTypeId`
+  - `cutElement`
+  - `sgdTypes`
+  - `detailPlanningSgdLabel`
+  - `append_project_location_plan_history_record`
+  - `save_project_location_plan`
   - `requestLocation`
   - `openLocation`
   - `openLocationFromOverview`
@@ -320,3 +342,11 @@ Ajuda contextual
   - Depois: o modal passou a exibir tambem quantidades de equipes, `ETAPAS PREVISTAS` e as listas de `Previsao de execucao` e `Pre APR` com status por item.
   - Antes: quando o payload de metadados retornava apenas `projects` (ou `locationProjects` vazio), a grade previa podia ficar sem itens.
   - Depois: a tela usa fallback para montar a `Lista de Locacoes` com base em `projects` quando necessario.
+  - Antes: o bloco `Planejamento / Vistoria` nao tinha `Alimentador`, `Tipo de SGD` e `Elemento de corte`.
+  - Depois: os 3 campos foram adicionados e persistem em `questionnaireAnswers.planning` no salvar da locacao.
+  - Antes: `Alimentador`, `Tipo de SGD` e `Elemento de corte` ficavam apenas no JSON (`questionnaire_answers`), sem colunas fisicas dedicadas.
+  - Depois: os 3 campos passaram a existir tambem em colunas fisicas de `project_location_plans` (`feeder`, `sgd_type_id`, `cut_element`) com backfill.
+  - Antes: o historico da locacao dependia apenas de historico generico e podia perder rastreio detalhado da evolucao do plano.
+  - Depois: cada salvamento da locacao registra trilha dedicada em `project_location_plan_history` com snapshot antes/depois e mapa de mudancas.
+  - Antes: o save da locacao permitia payload sem `expected_updated_at` e podia facilitar sobreposicao silenciosa em edicao simultanea.
+  - Depois: o save passou a exigir `expected_updated_at` e rejeita conflito concorrente no banco com retorno `409`.

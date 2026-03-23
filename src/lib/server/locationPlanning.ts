@@ -12,6 +12,9 @@ type LocationPlanRow = {
   id: string;
   questionnaire_answers: Record<string, unknown> | null;
   notes: string | null;
+  feeder: string | null;
+  sgd_type_id: string | null;
+  cut_element: number | string | null;
   created_at: string;
   updated_at: string;
 };
@@ -279,7 +282,7 @@ export async function fetchLocationPlanRow(
 ) {
   const { data, error } = await supabase
     .from("project_location_plans")
-    .select("id, questionnaire_answers, notes, created_at, updated_at")
+    .select("id, questionnaire_answers, notes, feeder, sgd_type_id, cut_element, created_at, updated_at")
     .eq("tenant_id", tenantId)
     .eq("project_id", projectId)
     .maybeSingle<LocationPlanRow>();
@@ -406,6 +409,21 @@ export async function fetchLocationPlanData(
   });
 
   const questionnaireAnswers = normalizeQuestionnaireAnswers(plan.questionnaire_answers);
+  const planningAnswers = normalizeQuestionnaireAnswers(questionnaireAnswers.planning);
+  const planningFeeder = normalizeText(planningAnswers.feeder) || normalizeText(plan.feeder);
+  const planningSgdTypeId = normalizeText(planningAnswers.sgdTypeId) || normalizeText(plan.sgd_type_id);
+  const planningCutElementRaw = planningAnswers.cutElement ?? plan.cut_element;
+  const planningCutElementNumeric = Number(planningCutElementRaw);
+  const planningCutElement = Number.isFinite(planningCutElementNumeric) && planningCutElementNumeric >= 0
+    ? Math.trunc(planningCutElementNumeric)
+    : null;
+
+  questionnaireAnswers.planning = {
+    ...planningAnswers,
+    feeder: planningFeeder,
+    sgdTypeId: planningSgdTypeId || null,
+    cutElement: planningCutElement,
+  };
   const executionForecast = normalizeQuestionnaireAnswers(questionnaireAnswers.executionForecast);
   const removedSupportItemIds = new Set(
     normalizeStringArray(executionForecast.removedSupportItemIds),
@@ -438,6 +456,9 @@ export async function fetchLocationPlanData(
       id: plan.id,
       questionnaireAnswers,
       notes: plan.notes ? normalizeText(plan.notes) : "",
+      feeder: planningFeeder || null,
+      sgdTypeId: planningSgdTypeId || null,
+      cutElement: planningCutElement,
       createdAt: plan.created_at,
       updatedAt: plan.updated_at,
     },

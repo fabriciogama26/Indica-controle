@@ -24,6 +24,12 @@ type AppUserRow = {
   login_name: string | null;
 };
 
+type ProgrammingSgdTypeRow = {
+  id: string;
+  description: string | null;
+  is_active: boolean | null;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -105,6 +111,23 @@ export async function GET(request: NextRequest) {
     );
     const plansByProjectId = new Map((plans ?? []).map((item) => [item.project_id, item]));
 
+    const { data: sgdTypesData, error: sgdTypesError } = await supabase
+      .from("programming_sgd_types")
+      .select("id, description, is_active")
+      .eq("tenant_id", appUser.tenant_id)
+      .eq("is_active", true)
+      .order("description", { ascending: true })
+      .returns<ProgrammingSgdTypeRow[]>();
+
+    const sgdTypes = sgdTypesError
+      ? []
+      : (sgdTypesData ?? [])
+          .map((item) => ({
+            id: item.id,
+            description: normalizeText(item.description),
+          }))
+          .filter((item) => item.id && item.description);
+
     const locationProjects = locationProjectsBase.map((item) => {
       const plan = plansByProjectId.get(item.id);
       const isInactive = !item.isActive;
@@ -127,6 +150,7 @@ export async function GET(request: NextRequest) {
       cities,
       projects,
       locationProjects,
+      sgdTypes,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao carregar metadados de locacao." }, { status: 500 });

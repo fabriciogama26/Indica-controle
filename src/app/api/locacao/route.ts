@@ -171,6 +171,14 @@ export async function PUT(request: NextRequest) {
 
     const nextNotes = normalizeText(payload?.notes);
     const nextQuestionnaire = normalizeQuestionnaireAnswers(payload?.questionnaireAnswers);
+    const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+
+    if (!expectedUpdatedAt) {
+      return NextResponse.json(
+        { message: "Atualize a locacao antes de salvar para evitar sobreposicao com outro usuario." },
+        { status: 409 },
+      );
+    }
 
     const changes: Record<string, { from: string | null; to: string | null }> = {};
     if ((currentData.plan.notes ?? "") !== nextNotes) {
@@ -192,7 +200,7 @@ export async function PUT(request: NextRequest) {
       notes: nextNotes,
       questionnaireAnswers: nextQuestionnaire,
       risks: requestedRisks,
-      expectedUpdatedAt: normalizeText(payload?.expectedUpdatedAt) || null,
+      expectedUpdatedAt,
     });
 
     if (!saveResult.ok) {

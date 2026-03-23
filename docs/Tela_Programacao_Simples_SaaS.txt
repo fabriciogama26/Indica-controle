@@ -1,4 +1,4 @@
-Tela: Programacao SaaS (Novo Cadastro)
+﻿Tela: Programacao SaaS (Novo Cadastro)
 
 Visao geral
 -----------
@@ -52,6 +52,13 @@ Arquitetura
   - Campos em `project_programming`: `etapa_number`, `work_completion_status`
   - RPC: `set_project_programming_execution_result`
   - Compatibilidade full: sobrecargas de `save_project_programming_full` e `save_project_programming_batch_full` com ETAPA/Estado Trabalho.
+- Migration de Campo eletrico:
+  - `supabase/migrations/110_add_programming_electrical_field_and_history_rpc.sql`
+  - Campo em `project_programming`: `campo_eletrico`
+  - RPC: `set_project_programming_campo_eletrico` (persistencia + historico)
+- Migration de compatibilidade do tipo SGD:
+  - `supabase/migrations/108_allow_area_livre_programming_sgd_types.sql`
+  - Catalogo `programming_sgd_types` passa a aceitar `AREA_LIVRE` em `export_column`.
 - Migration de endurecimento da RPC full:
   - `supabase/migrations/100_harden_programming_full_self_contained.sql`
   - A RPC `save_project_programming_full` passa a ser autocontida.
@@ -88,7 +95,8 @@ Cadastro
   - Periodo
   - Hora inicio
   - Hora termino
-  - ETAPA
+  - Campo eletrico
+  - ETAPA (somente no cadastro novo)
   - Tipo de SGD
   - Equipes (multi-selecao)
 - Campos opcionais:
@@ -110,7 +118,7 @@ Cadastro
   - Cada equipe gera uma programacao independente.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
   - Quando `Periodo = Integral`, `Hora termino` volta automaticamente para `17:00`.
-  - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e obrigatorio na edicao.
+  - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e opcional.
 - Persistencia:
   - Frontend envia `POST /api/programacao` com `action = BATCH_CREATE`.
   - Backend exige `save_project_programming_batch_full`.
@@ -118,15 +126,15 @@ Cadastro
   - A RPC em lote faz rollback total se qualquer equipe falhar.
   - A sugestao automatica da `ETAPA` preenche o campo apenas enquanto ele nao tiver sido alterado manualmente pelo usuario no contexto atual.
   - Antes do save, a tela valida a `ETAPA` informada contra o historico do mesmo `Projeto + Equipe`.
-  - Em modo de edicao, o confronto de `ETAPA` considera tambem a etapa atual da propria programacao editada, para avisar corretamente quando o usuario tentar reduzir uma etapa maior para um valor menor.
+  - Em modo de edicao, o confronto de `ETAPA` so roda quando a etapa for alterada; se o campo nao for alterado, o valor atual e preservado.
   - A API repete a mesma validacao como protecao final, impedindo bypass do frontend.
   - Se a `ETAPA` informada for igual ou menor do que etapas ja existentes para o projeto/equipe, a tela abre um modal de aviso e bloqueia o salvamento ate o usuario corrigir o campo.
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
-  - Data inicial
-  - Data final
+  - Data inicial (padrao: primeiro dia do ano vigente)
+  - Data final (padrao: ultimo dia do ano vigente)
   - Projeto
   - Equipe
   - Status
@@ -151,9 +159,16 @@ Filtros, auto-complete e listagem
     - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
     - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
     - `Tipo de SGD` = selecao do formulario da Programacao.
+    - `AREA_LIVRE` em `Tipo de SGD` nao preenche `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT`.
     - `Numero de Clientes Afetados` = campo do formulario da Programacao.
     - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
+    - `Estrutura` = composicao de equipes por tipo (ex.: `2 MK`, `1 MK + 1 CETO`, `1 LV`) por `Projeto + Data de execucao`.
+    - `Nº EQ (RE, CO, CF, CC ou TR)` = valor do campo `Campo eletrico` informado na programacao.
     - `INFO STATUS` = campo `ETAPA` no formato `x ETAPA`.
+    - `PerÃ­odo` exportado sempre em maiusculas (`INTEGRAL`/`PARCIAL`).
+    - `Tempo Previsto` exportado em horas.
+    - `ResponsÃ¡vel ExecuÃ§Ã£o` fixo como `INDICA`.
+    - `Data da programaÃ§Ã£o` = data de registro da programacao (`created_at`).
     - `Inic deslig` = `Inicio de desligamento` da Programacao.
     - `Term deslig` = `Termino de desligamento` da Programacao.
     - `Estado Trabalho` = campo de edicao `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`).
@@ -163,6 +178,7 @@ Filtros, auto-complete e listagem
   - Grade fixa de `segunda a domingo` por equipe.
   - Cada card representa uma programacao da equipe no dia.
   - Card exibe codigo da obra (sem prefixo `SOB`) e indicadores de documento `SGD` e `PI`.
+  - Quando `Tipo de SGD = AREA_LIVRE`, o card mostra apenas indicador `AREA LIVRE` em verde (no lugar de `SGD` e `PI`).
   - O horario nao aparece no card.
   - Cores operacionais:
     - `PROGRAMADA` = azul
@@ -286,6 +302,17 @@ Atualizacao 2026-03
 - Ajustada listagem para exibir registros `ADIADA` e `CANCELADA` mesmo fora da data filtrada de execucao.
 - Adicionado campo `ETAPA` com persistencia na Programacao e exportacao ENEL em `INFO STATUS` no formato `x ETAPA`.
 - Adicionado campo `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) visivel apenas na edicao, persistido em banco e exportado em `Estado Trabalho`.
+- Ajustada a edicao para nao bloquear salvamento quando a `ETAPA` nao foi alterada.
+- Ajustada a API para preservar automaticamente a etapa atual quando o campo `ETAPA` nao for alterado na edicao.
+- Tornado opcional o campo `Estado Trabalho` na edicao da Programacao Simples.
+- Criada a migration `109_make_programming_stage_optional_on_edit.sql` para permitir ETAPA nula na RPC `set_project_programming_execution_result`.
+- Ajustado padrao inicial dos filtros para cobrir o ano vigente completo (`01/01` a `31/12`).
+- Ajustado export `ENEL-EXCEL`: `Estrutura` passa a refletir a composicao de equipes por tipo (`MK`, `CETO`, `LV`) por projeto/data.
+- Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido pelo campo obrigatorio `Campo eletrico`.
+- Ajustado export `ENEL-EXCEL`: `Data da programaÃ§Ã£o` passa a usar a data de registro (`created_at`) da programacao.
+- Ajustado export `ENEL-EXCEL`: `ResponsÃ¡vel ExecuÃ§Ã£o` fixo como `INDICA`, `Tempo Previsto` em horas e `PerÃ­odo` em maiusculas.
+- Adicionado campo obrigatorio `Campo eletrico` no formulario da Programacao simples.
+- Criada a migration `110_add_programming_electrical_field_and_history_rpc.sql` para persistir `campo_eletrico` em `project_programming` e refletir a mudanca no historico.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -352,6 +379,8 @@ Ajuda contextual
   - `supabase/migrations/104_fix_postpone_json_error_wrapper.sql`
   - `supabase/migrations/105_fix_postpone_history_signature.sql`
   - `supabase/migrations/106_move_programming_save_history_into_full_rpcs.sql`
+  - `supabase/migrations/109_make_programming_stage_optional_on_edit.sql`
+  - `supabase/migrations/110_add_programming_electrical_field_and_history_rpc.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
   - `supabase/migrations/README.txt`
@@ -379,3 +408,4 @@ Ajuda contextual
   - Depois: a `ETAPA` continua sendo sugerida automaticamente, mas nao sobrescreve mais valor digitado manualmente; a tela bloqueia o save e abre um modal de confronto quando ja existirem etapas iguais ou maiores para o mesmo projeto/equipe, e a API repete a protecao no backend.
   - Antes: parte dos erros de validacao e conflito aparecia so como mensagem no topo.
   - Depois: `Adiamento`, `Cadastrar programacao` e `Salvar edicao` passam a abrir modal de alerta com os possiveis erros e conflitos, mantendo o feedback no topo como complemento.
+

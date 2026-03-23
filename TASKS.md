@@ -136,6 +136,8 @@
 - [x] Adicionar visao previa da `Locacao` com filtros, lista resumida de projetos, status, responsavel, data e acoes `Editar`/`Ver detalhes`, ocultando essa area ao abrir uma locacao.
 - [x] Paginar a `Lista de Locacoes` da visao previa (10 por pagina, botoes `Anterior/Proxima`) e ampliar o `Ver detalhes` para exibir equipes, `ETAPAS PREVISTAS`, lista de `Previsao de execucao` e lista de `Pre APR`.
 - [x] Corrigir fallback da visao previa de `Locacao`: quando `/api/locacao/meta` nao retornar `locationProjects`, montar a grade a partir de `projects` para evitar lista vazia.
+- [x] Adicionar no `Planejamento / Vistoria` da `Locacao` os campos `Alimentador` (texto), `Tipo de SGD` (select) e `Elemento de corte` (numero), com persistencia em `questionnaireAnswers.planning`.
+- [x] Estruturar `Locacao` com colunas fisicas (`feeder`, `sgd_type_id`, `cut_element`) em `project_location_plans`, criar historico dedicado `project_location_plan_history` e endurecer concorrencia com `expected_updated_at` obrigatorio no save principal.
 - [x] Ajustar `/api/locacao/meta` para priorizar projetos recem-atualizados na carga do catalogo e evitar sumico de projetos novos na tela.
 - [x] Padronizar os botoes de `Acoes` da lista previa da `Locacao` com os mesmos icones das outras telas de cadastro.
 - [x] Adicionar aba `Atividades previstas` em `Projetos` com inclusao/edicao em linha e seed inicial da `Locacao` a partir dessa base.
@@ -171,11 +173,15 @@
 - [x] Adicionar exportacao `ENEL-EXCEL` na nova Programacao com colunas no layout solicitado e preenchimento em branco para campos sem informacao.
 - [x] Ajustar export `ENEL-EXCEL` da nova Programacao para preencher `Observação do Cancelamento / Parcial / Adiamento` com o motivo informado no cancelamento.
 - [x] Ajustar mapeamento completo do `ENEL-EXCEL` na nova Programacao (Responsáveis Enel/Gestor/Endereco por Projeto, Tipo de SGD, Nº Clientes Afetados e roteamento do SGD por tipo).
+- [x] Ajustar o `ENEL-EXCEL` da Programacao para: `Estrutura` por composicao de equipes (`MK/CETO/LV`) por projeto/data, `Nº EQ` por total de equipes, `Data da programacao` por `created_at`, `Responsavel Execucao = INDICA`, `Tempo Previsto` em horas e `Periodo` em maiusculas.
+- [x] Criar o campo obrigatorio `Campo eletrico` na Programacao, persistir em `project_programming` e usar esse valor na coluna `Nº EQ (RE, CO, CF, CC ou TR)` do `ENEL-EXCEL`, com reflexo no historico operacional.
 - [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
 - [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
 - [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
-- [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, tornando `ETAPA` obrigatoria no cadastro/edicao e `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) obrigatorio na edicao.
+- [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, com `ETAPA` obrigatoria no cadastro novo e preservada automaticamente na edicao quando nao alterada; `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) fica disponivel na edicao.
 - [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
+- [x] Incluir suporte ao tipo de SGD `AREA_LIVRE` no catalogo `programming_sgd_types`, ajustando constraint SQL e seed por tenant.
+- [x] Ajustar cards da visualizacao semanal da Programacao para mostrar `AREA LIVRE` em verde quando o `Tipo de SGD` for `AREA_LIVRE`, substituindo indicadores `SGD` e `PI`.
 - [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
 - [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e uso exclusivo das RPCs transacionais full.
 - [x] Garantir compatibilidade da API de Programacao quando a migration `085` ainda nao estiver aplicada (fallback de leitura e de RPC em lote).
@@ -196,6 +202,7 @@
 - [x] Bloquear o save da `Programacao Simples` com modal de aviso quando a `ETAPA` informada conflitar com etapas ja existentes do mesmo projeto/equipe.
 - [x] Impedir que a sugestao automatica sobrescreva a `ETAPA` digitada manualmente e repetir a protecao de conflito de etapa tambem na API da `Programacao`.
 - [x] Ajustar o confronto de `ETAPA` na edicao da `Programacao Simples` para considerar a etapa atual da propria programacao editada e reforcar a marcacao de `REPROGRAMADA` apos adiamento.
+- [x] Corrigir validacao de `ETAPA` na edicao para nao bloquear o save quando a etapa nao foi alterada, mantendo a validacao de conflito apenas quando houver mudanca real no campo.
 - [x] Promover `REPROGRAMADA` a status fisico em `project_programming`, incluindo adiamento, edicao, copia, carga semanal e protecao de inativacao do projeto.
 - [x] Criar `project_programming_history` como historico operacional proprio da `Programacao`, com backfill inicial a partir de `app_entity_history` e uso exclusivo na API/telas da agenda.
 - [x] Mover o historico de `CREATE`, `UPDATE`, `RESCHEDULE` e `BATCH_CREATE` da `Programacao` para dentro das RPCs transacionais full, removendo o passo complementar pos-commit da API.

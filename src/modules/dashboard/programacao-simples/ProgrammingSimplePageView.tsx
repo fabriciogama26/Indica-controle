@@ -30,6 +30,7 @@ type TeamItem = {
   id: string;
   name: string;
   serviceCenterName: string;
+  teamTypeName?: string;
   foremanName?: string;
 };
 
@@ -77,6 +78,7 @@ type ScheduleItem = {
   endTime: string;
   outageStartTime: string;
   outageEndTime: string;
+  createdAt: string;
   updatedAt: string;
   statusReason?: string;
   statusChangedAt?: string;
@@ -85,6 +87,7 @@ type ScheduleItem = {
   support: string;
   supportItemId: string | null;
   note: string;
+  electricalField: string;
   serviceDescription: string;
   posteQty: number;
   estruturaQty: number;
@@ -208,6 +211,7 @@ type FormState = {
   feeder: string;
   supportItemId: string;
   note: string;
+  electricalField: string;
   serviceDescription: string;
   posteQty: string;
   estruturaQty: string;
@@ -254,6 +258,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   feeder: "Alimentador",
   support: "Apoio",
   note: "Anotacao",
+  electricalField: "Campo eletrico",
   serviceDescription: "Descricao do servico",
   posteQty: "POSTE",
   estruturaQty: "ESTRUTURA",
@@ -290,6 +295,7 @@ const VALIDATION_FIELD_LABELS: Record<string, string> = {
   outageStartTime: "Inicio de desligamento",
   outageEndTime: "Termino de desligamento",
   feeder: "Alimentador",
+  electricalField: "Campo eletrico",
   posteQty: "POSTE",
   estruturaQty: "ESTRUTURA",
   trafoQty: "TRAFO",
@@ -312,6 +318,14 @@ function addDays(value: string, amount: number) {
   const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + amount);
   return toIsoDate(date);
+}
+
+function getCurrentYearDateRange(referenceDate: string) {
+  const year = referenceDate.slice(0, 4);
+  return {
+    startDate: `${year}-01-01`,
+    endDate: `${year}-12-31`,
+  };
 }
 
 function startOfWeekMonday(value: string) {
@@ -388,6 +402,73 @@ function formatWeekday(value: string) {
   return parsed.toLocaleDateString("pt-BR", { weekday: "long" });
 }
 
+function formatExpectedHours(value: number) {
+  const minutes = Number(value ?? 0);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return "";
+  }
+
+  const totalHours = minutes / 60;
+  if (Number.isInteger(totalHours)) {
+    return String(totalHours);
+  }
+
+  return totalHours.toFixed(2);
+}
+
+function resolveTeamStructureCode(team?: TeamItem | null) {
+  if (!team) {
+    return "";
+  }
+
+  const normalized = normalizeSearchText(`${team.teamTypeName ?? ""} ${team.name ?? ""}`);
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.includes("linha morta") || normalized.includes("morta") || /\bmk\b/.test(normalized)) {
+    return "MK";
+  }
+
+  if (normalized.includes("cesto") || normalized.includes("ceto")) {
+    return "CETO";
+  }
+
+  if (normalized.includes("linha viva") || normalized.includes("viva") || /\blv\b/.test(normalized)) {
+    return "LV";
+  }
+
+  return "";
+}
+
+function formatStructureSummaryByCode(codeCountMap: Record<string, number>) {
+  const priorityOrder = ["MK", "CETO", "LV"];
+  const codes = Object.keys(codeCountMap)
+    .filter((code) => codeCountMap[code] > 0)
+    .sort((left, right) => {
+      const leftIndex = priorityOrder.indexOf(left);
+      const rightIndex = priorityOrder.indexOf(right);
+
+      if (leftIndex !== -1 && rightIndex !== -1) {
+        return leftIndex - rightIndex;
+      }
+      if (leftIndex !== -1) {
+        return -1;
+      }
+      if (rightIndex !== -1) {
+        return 1;
+      }
+
+      return left.localeCompare(right);
+    });
+
+  if (!codes.length) {
+    return "";
+  }
+
+  return codes.map((code) => `${codeCountMap[code]} ${code}`).join(" + ");
+}
+
 function calculateExpectedMinutes(startTime: string, endTime: string, _period: PeriodMode) {
   void _period;
   const [startHour, startMinute] = startTime.split(":").map(Number);
@@ -450,6 +531,7 @@ function createInitialForm(initialDate: string): FormState {
     feeder: "",
     supportItemId: "",
     note: "",
+    electricalField: "",
     serviceDescription: "",
     posteQty: "0",
     estruturaQty: "0",
@@ -953,18 +1035,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const isVisualizationMode = mode === "visualizacao";
 
   const today = useMemo(() => toIsoDate(new Date()), []);
+  const currentYearDateRange = useMemo(() => getCurrentYearDateRange(today), [today]);
   const [form, setForm] = useState<FormState>(() => createInitialForm(today));
   const [weekStartDate, setWeekStartDate] = useState(() => startOfWeekMonday(today));
   const [filterDraft, setFilterDraft] = useState<FilterState>({
-    startDate: today,
-    endDate: addDays(today, 6),
+    startDate: currentYearDateRange.startDate,
+    endDate: currentYearDateRange.endDate,
     projectId: "",
     teamId: "",
     status: "TODOS",
   });
   const [activeFilters, setActiveFilters] = useState<FilterState>({
-    startDate: today,
-    endDate: addDays(today, 6),
+    startDate: currentYearDateRange.startDate,
+    endDate: currentYearDateRange.endDate,
     projectId: "",
     teamId: "",
     status: "TODOS",
@@ -1531,6 +1614,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       feeder: schedule.feeder ?? "",
       supportItemId: schedule.supportItemId ?? "",
       note: schedule.note ?? "",
+      electricalField: schedule.electricalField ?? "",
       serviceDescription: schedule.serviceDescription ?? "",
       posteQty: String(schedule.posteQty ?? 0),
       estruturaQty: String(schedule.estruturaQty ?? 0),
@@ -1920,6 +2004,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    if (!form.electricalField.trim()) {
+      flagInvalidFields(["electricalField"], "Campo eletrico e obrigatorio.");
+      return;
+    }
+
     if (!form.sgdTypeId) {
       flagInvalidFields(["sgdTypeId"], "Tipo de SGD e obrigatorio para salvar a programacao.");
       return;
@@ -1929,7 +2018,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const estruturaQty = parseNonNegativeInteger(form.estruturaQty);
     const trafoQty = parseNonNegativeInteger(form.trafoQty);
     const redeQty = parseNonNegativeInteger(form.redeQty);
-    const etapaNumber = parseOptionalPositiveInteger(form.etapaNumber);
+    const etapaNumberInput = parseOptionalPositiveInteger(form.etapaNumber);
     const affectedCustomers = parseNonNegativeInteger(form.affectedCustomers);
     if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null || affectedCustomers === null) {
       flagInvalidFields(
@@ -1939,56 +2028,39 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (etapaNumber === null) {
-      flagInvalidFields(["etapaNumber"], "ETAPA e obrigatoria.");
-      return;
-    }
-
-    if (etapaNumber === undefined) {
+    if (etapaNumberInput === undefined) {
       flagInvalidFields(["etapaNumber"], "ETAPA deve ser um numero inteiro maior que zero.");
       return;
     }
 
-    if (isEditing && !form.workCompletionStatus) {
-      flagInvalidFields(["workCompletionStatus"], "Estado Trabalho e obrigatorio na edicao.");
+    const etapaNumber = etapaNumberInput ?? (isEditing ? (currentEditingSchedule?.etapaNumber ?? null) : null);
+
+    if (!isEditing && etapaNumber === null) {
+      flagInvalidFields(["etapaNumber"], "ETAPA e obrigatoria no cadastro.");
       return;
     }
 
-    const localStageConflict = buildLocalStageConflictSummary({
-      schedules,
-      teams,
-      projectId: form.projectId,
-      teamIds: form.teamIds,
-      enteredEtapaNumber: etapaNumber,
-      excludeProgrammingId: editingScheduleId,
-      currentEditingStage: currentEditingSchedule?.etapaNumber ?? null,
-      currentEditingDate: currentEditingSchedule?.date ?? null,
-      currentEditingTeamId: currentEditingSchedule?.teamId ?? null,
-    });
-
-    if (localStageConflict) {
-      setStageConflictModal(localStageConflict);
-      flagInvalidFields(["etapaNumber"], "A ETAPA informada conflita com o historico existente da equipe.");
-      showSubmitFeedback(
-        "error",
-        "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto nas equipes selecionadas.",
+    const shouldValidateStageConflict = etapaNumber !== null
+      && (
+        !isEditing
+        || etapaNumber !== (currentEditingSchedule?.etapaNumber ?? null)
       );
-      return;
-    }
 
-    try {
-      const stageConflict = await validateStageConflict({
+    if (shouldValidateStageConflict && etapaNumber !== null) {
+      const localStageConflict = buildLocalStageConflictSummary({
+        schedules,
+        teams,
         projectId: form.projectId,
         teamIds: form.teamIds,
-        etapaNumber,
+        enteredEtapaNumber: etapaNumber,
         excludeProgrammingId: editingScheduleId,
         currentEditingStage: currentEditingSchedule?.etapaNumber ?? null,
         currentEditingDate: currentEditingSchedule?.date ?? null,
         currentEditingTeamId: currentEditingSchedule?.teamId ?? null,
       });
 
-      if (stageConflict) {
-        setStageConflictModal(stageConflict);
+      if (localStageConflict) {
+        setStageConflictModal(localStageConflict);
         flagInvalidFields(["etapaNumber"], "A ETAPA informada conflita com o historico existente da equipe.");
         showSubmitFeedback(
           "error",
@@ -1996,14 +2068,36 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         );
         return;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao validar a etapa da programacao.";
-      showSubmitFeedback(
-        "error",
-        message,
-      );
-      openAlertModal("Falha ao validar ETAPA", message);
-      return;
+
+      try {
+        const stageConflict = await validateStageConflict({
+          projectId: form.projectId,
+          teamIds: form.teamIds,
+          etapaNumber,
+          excludeProgrammingId: editingScheduleId,
+          currentEditingStage: currentEditingSchedule?.etapaNumber ?? null,
+          currentEditingDate: currentEditingSchedule?.date ?? null,
+          currentEditingTeamId: currentEditingSchedule?.teamId ?? null,
+        });
+
+        if (stageConflict) {
+          setStageConflictModal(stageConflict);
+          flagInvalidFields(["etapaNumber"], "A ETAPA informada conflita com o historico existente da equipe.");
+          showSubmitFeedback(
+            "error",
+            "A ETAPA informada ja existe ou esta abaixo do historico encontrado para este projeto nas equipes selecionadas.",
+          );
+          return;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha ao validar a etapa da programacao.";
+        showSubmitFeedback(
+          "error",
+          message,
+        );
+        openAlertModal("Falha ao validar ETAPA", message);
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -2024,6 +2118,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         feeder: form.feeder.trim(),
         supportItemId: form.supportItemId || undefined,
         note: form.note.trim(),
+        electricalField: form.electricalField.trim(),
         serviceDescription: form.serviceDescription.trim(),
         posteQty,
         estruturaQty,
@@ -2170,8 +2265,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   function clearFilters() {
     const reset: FilterState = {
-      startDate: today,
-      endDate: addDays(today, 6),
+      startDate: currentYearDateRange.startDate,
+      endDate: currentYearDateRange.endDate,
       projectId: "",
       teamId: "",
       status: "TODOS",
@@ -2293,17 +2388,36 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         "Gestor de campo",
       ];
 
+      const structureAccumulator = new Map<string, { codeCount: Record<string, number>; teamCount: number }>();
+      for (const schedule of filteredSchedules) {
+        const key = `${schedule.projectId}__${schedule.date}`;
+        const current = structureAccumulator.get(key) ?? { codeCount: {}, teamCount: 0 };
+        current.teamCount += 1;
+
+        const teamCode = resolveTeamStructureCode(teamMap.get(schedule.teamId));
+        if (teamCode) {
+          current.codeCount[teamCode] = (current.codeCount[teamCode] ?? 0) + 1;
+        }
+
+        structureAccumulator.set(key, current);
+      }
+
       const rows = filteredSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
-        const team = teamMap.get(schedule.teamId);
+        const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
+        const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
         const displayStatus = getDisplayProgrammingStatus(schedule);
-        const periodLabel = schedule.period === "integral" ? "Integral" : "Parcial";
+        const periodLabel = schedule.period === "integral" ? "INTEGRAL" : "PARCIAL";
         const sgdNumber = schedule.documents?.sgd?.number ?? "";
         const sgdExportColumn = schedule.sgdExportColumn ?? "";
         const sgdAtMtVyp = (!sgdExportColumn || sgdExportColumn === "SGD_AT_MT_VYP") ? sgdNumber : "";
         const sgdBt = sgdExportColumn === "SGD_BT" ? sgdNumber : "";
         const sgdTet = sgdExportColumn === "SGD_TET" ? sgdNumber : "";
         const infoStatus = schedule.etapaNumber ? `${schedule.etapaNumber} ETAPA` : "";
+        const scheduleCreatedDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
+        const estruturaValue = structureSummaryGroup
+          ? formatStructureSummaryByCode(structureSummaryGroup.codeCount)
+          : "";
 
         return [
           project?.base ?? "",
@@ -2314,22 +2428,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           periodLabel,
           schedule.startTime ?? "",
           schedule.endTime ?? "",
-          schedule.expectedMinutes ?? "",
+          formatExpectedHours(schedule.expectedMinutes ?? 0),
           displayStatus ?? "",
           infoStatus,
           project?.priority ?? "",
-          schedule.estruturaQty ?? "",
+          estruturaValue,
           schedule.note ?? "",
           schedule.support ?? "",
           project?.utilityResponsible ?? "",
           project?.partner ?? "",
-          team?.foremanName ?? team?.name ?? "",
+          "INDICA",
           schedule.sgdTypeDescription ?? "",
           schedule.affectedCustomers ?? "",
           sgdAtMtVyp,
           sgdBt,
           sgdTet,
-          "1",
+          schedule.electricalField ?? "",
           schedule.outageStartTime ?? "",
           schedule.outageEndTime ?? "",
           schedule.feeder ?? "",
@@ -2339,7 +2453,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           schedule.serviceDescription ?? "",
           schedule.statusReason ?? "",
           schedule.statusReason ?? "",
-          formatDate(schedule.date),
+          formatDate(scheduleCreatedDate),
           schedule.trafoQty ?? "",
           schedule.note ?? "",
           schedule.workCompletionStatus ?? "",
@@ -2485,6 +2599,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             />
           </label>
 
+          <label className={`${styles.field} ${isFieldInvalid("electricalField") ? styles.fieldInvalid : ""}`}>
+            <span>
+              Campo eletrico <span className="requiredMark">*</span>
+            </span>
+            <input
+              type="text"
+              value={form.electricalField}
+              onChange={(event) => updateFormField("electricalField", event.target.value)}
+              placeholder="Ex.: 2 RE ou 1 TR"
+              required
+            />
+          </label>
+
           <label className={`${styles.field} ${isFieldInvalid("posteQty") ? styles.fieldInvalid : ""}`}>
             <span>POSTE (quantidade)</span>
             <input
@@ -2530,9 +2657,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           </label>
 
           <label className={`${styles.field} ${isFieldInvalid("etapaNumber") ? styles.fieldInvalid : ""}`}>
-            <span>
-              ETAPA <span className="requiredMark">*</span>
-            </span>
+            <span>ETAPA</span>
             <input
               type="number"
               min="1"
@@ -2540,10 +2665,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               value={form.etapaNumber}
               onChange={(event) => updateFormField("etapaNumber", event.target.value)}
               placeholder="Ex.: 1"
-              required
             />
             <small className={styles.fieldHint}>
-              A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas.
+              A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas. Na edicao, se nao alterar esse campo, o valor atual e preservado.
             </small>
           </label>
 
@@ -2598,13 +2722,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
           {editingScheduleId ? (
             <label className={`${styles.field} ${isFieldInvalid("workCompletionStatus") ? styles.fieldInvalid : ""}`}>
-              <span>
-                Estado Trabalho <span className="requiredMark">*</span>
-              </span>
+              <span>Estado Trabalho</span>
               <select
                 value={form.workCompletionStatus}
                 onChange={(event) => updateFormField("workCompletionStatus", event.target.value as WorkCompletionStatus | "")}
-                required
               >
                 <option value="">Selecione</option>
                 <option value="CONCLUIDO">CONCLUIDO</option>
@@ -2788,8 +2909,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 || !form.projectId
                 || !form.teamIds.length
                 || !form.sgdTypeId
-                || !form.etapaNumber.trim()
-                || (Boolean(editingScheduleId) && !form.workCompletionStatus)
+                || !form.electricalField.trim()
               }
             >
               {isSaving ? "Salvando..." : editingScheduleId ? "Salvar edicao" : "Cadastrar programacao"}
@@ -3145,6 +3265,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                           const displayStatus = getDisplayProgrammingStatus(schedule);
                           const hasSgd = Boolean(schedule.documents?.sgd?.approvedAt?.trim());
                           const hasPi = Boolean(schedule.documents?.pi?.approvedAt?.trim());
+                          const isAreaLivreSgdType = (schedule.sgdExportColumn ?? "").toUpperCase() === "AREA_LIVRE";
 
                           return (
                             <article
@@ -3156,8 +3277,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                               </div>
 
                               <div className={styles.weekIndicators}>
-                                <span className={hasSgd ? styles.weekIndicatorOn : styles.weekIndicatorOff}>SGD</span>
-                                <span className={hasPi ? styles.weekIndicatorOn : styles.weekIndicatorOff}>PI</span>
+                                {isAreaLivreSgdType ? (
+                                  <span className={styles.weekIndicatorOn}>AREA LIVRE</span>
+                                ) : (
+                                  <>
+                                    <span className={hasSgd ? styles.weekIndicatorOn : styles.weekIndicatorOff}>SGD</span>
+                                    <span className={hasPi ? styles.weekIndicatorOn : styles.weekIndicatorOff}>PI</span>
+                                  </>
+                                )}
                               </div>
 
                               <div className={styles.weekCardActions}>
@@ -3248,6 +3375,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>
                 <p><strong>Apoio:</strong> {detailsTarget.support || "-"}</p>
                 <p><strong>Alimentador:</strong> {detailsTarget.feeder || "-"}</p>
+                <p><strong>Campo eletrico:</strong> {detailsTarget.electricalField || "-"}</p>
                 <p className={styles.detailWide}><strong>Descricao do servico:</strong> {detailsTarget.serviceDescription || "-"}</p>
                 <p className={styles.detailWide}><strong>Anotacao:</strong> {detailsTarget.note || "-"}</p>
                 {isInactiveProgrammingStatus(getDisplayProgrammingStatus(detailsTarget)) ? (
