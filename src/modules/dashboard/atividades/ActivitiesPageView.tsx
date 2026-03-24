@@ -144,15 +144,33 @@ function escapeCsvValue(value: string | number | null | undefined) {
 }
 
 function buildActivitiesCsv(activityItems: ActivityItem[]) {
-  const header = ["Codigo", "Descricao", "Tipo", "Valor", "Unidade", "Registrado em", "Status"];
+  const header = [
+    "Codigo",
+    "Descricao",
+    "Tipo",
+    "Grupo",
+    "Valor",
+    "Unidade",
+    "Alcance",
+    "Status",
+    "Registrado por",
+    "Registrado em",
+    "Atualizado por",
+    "Atualizado em",
+  ];
   const rows = activityItems.map((activity) => [
     activity.code,
     activity.description,
     activity.teamTypeName,
+    activity.group || "",
     activity.value.toFixed(2),
     activity.unit,
-    formatDateTime(activity.createdAt),
+    activity.scope || "",
     activity.isActive ? "Ativo" : "Inativo",
+    formatAuditActor(activity.createdByName),
+    formatDateTime(activity.createdAt),
+    formatAuditActor(activity.updatedByName),
+    formatDateTime(activity.updatedAt),
   ]);
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
@@ -191,6 +209,11 @@ function formatDateTime(value: string | null) {
   }
 
   return parsed.toLocaleString("pt-BR");
+}
+
+function formatAuditActor(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "Nao identificado";
 }
 
 function formatHistoryValue(field: string, value: string | null) {
@@ -1013,9 +1036,9 @@ export function ActivitiesPageView() {
                 <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
                 <div><strong>Unidade:</strong> {detailActivity.unit}</div>
                 <div><strong>Alcance:</strong> {detailActivity.scope || "-"}</div>
-                <div><strong>Registrado por:</strong> {detailActivity.createdByName}</div>
+                <div><strong>Registrado por:</strong> {formatAuditActor(detailActivity.createdByName)}</div>
                 <div><strong>Criado em:</strong> {formatDateTime(detailActivity.createdAt)}</div>
-                <div><strong>Atualizado por:</strong> {detailActivity.updatedByName}</div>
+                <div><strong>Atualizado por:</strong> {formatAuditActor(detailActivity.updatedByName)}</div>
                 <div><strong>Atualizado em:</strong> {formatDateTime(detailActivity.updatedAt)}</div>
                 {!detailActivity.isActive ? (
                   <>

@@ -122,16 +122,29 @@ function escapeCsvValue(value: string | number | null | undefined) {
 }
 
 function buildMaterialsCsv(materialItems: MaterialItem[]) {
-  const header = ["Codigo", "Descricao", "Tipo", "UMB", "Preco", "Registrado por", "Registrado em", "Status"];
+  const header = [
+    "Codigo",
+    "Descricao",
+    "Tipo",
+    "UMB",
+    "Preco",
+    "Status",
+    "Registrado por",
+    "Registrado em",
+    "Atualizado por",
+    "Atualizado em",
+  ];
   const rows = materialItems.map((material) => [
     material.codigo,
     material.descricao,
     material.tipo,
     material.umb ?? "",
     material.unitPrice.toFixed(2),
-    material.createdByName,
-    formatDateTime(material.createdAt),
     material.isActive ? "Ativo" : "Inativo",
+    formatAuditActor(material.createdByName),
+    formatDateTime(material.createdAt),
+    formatAuditActor(material.updatedByName),
+    formatDateTime(material.updatedAt),
   ]);
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
@@ -153,6 +166,11 @@ function formatDateTime(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString("pt-BR");
+}
+
+function formatAuditActor(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "Nao identificado";
 }
 
 function formatCurrency(value: number) {

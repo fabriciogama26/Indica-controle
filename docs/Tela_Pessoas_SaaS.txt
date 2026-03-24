@@ -166,3 +166,12 @@ Ajuda contextual
   - Depois (2026-03-20): o submit fica bloqueado quando nao houver `Cargo` ativo no tenant, com feedback explicito ao usuario.
   - Depois (2026-03-20): `Matricula` e `Tipo` tornam-se obrigatorios para cadastro/edicao.
   - Depois (2026-03-20): cadastro/edicao de pessoa tenta fallback com cast numerico da matricula tambem quando a RPC devolve `success=false` por incompatibilidade de tipo.
+  - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir os campos obrigatorios do cadastro e metadados de auditoria da lista (`Status`, `Registrado por/em`, `Atualizado por/em`).
+- Arquivos alterados/criados (2026-03-24):
+  - `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+- Funcoes/hooks/constantes tocadas (2026-03-24):
+  - `buildPeopleCsv`
+- Comportamento antes/depois (2026-03-24):
+  - Antes: CSV de Pessoas exportava colunas reduzidas sem dados de `Atualizado por` e `Atualizado em`.
+  - Depois: CSV exporta colunas completas para preenchimento/consulta operacional e rastreabilidade de auditoria.
+  - Depois: `Criado por`/`Atualizado por` no CSV e no modal de detalhes aplicam fallback `Nao identificado` quando o nome vier vazio.

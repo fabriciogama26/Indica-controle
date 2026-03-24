@@ -173,6 +173,7 @@ Ajuda contextual
   - Depois (2026-03-20): a busca de encarregados fica menos rigida para nao falhar quando o cargo tiver sufixos/prefixos.
   - Depois (2026-03-20): erros de banco em `POST/PUT/PATCH` passam a retornar diagnostico especifico e o backend tenta fallback direto quando as RPCs de equipes ainda nao existem no ambiente.
   - Depois (2026-03-20): cadastro/edicao recusa encarregado ja vinculado em outra equipe, evitando duplicidade operacional por responsavel.
+  - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios da tela e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Funcoes/hooks/constantes tocadas:
   - `TeamsPageView`, `loadTeams`, `handleSubmit`, `startEdit`, `confirmStatusChange`
   - `missingTeamMetaReasons`, `canSubmitTeamForm`
@@ -182,3 +183,10 @@ Ajuda contextual
   - `save_team_record`, `set_team_record_status`
   - `093_enforce_single_team_per_foreman_rpc.sql` (regra `DUPLICATE_TEAM_FOREMAN` na RPC)
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
+  - `buildTeamsCsv` (2026-03-24)
+- Arquivos alterados/criados (2026-03-24):
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
+- Comportamento antes/depois (2026-03-24):
+  - Antes: CSV de Equipes nao incluia `Registrado por`, `Atualizado por` e `Atualizado em`.
+  - Depois: CSV de Equipes passa a exportar colunas completas para cadastro e rastreabilidade operacional.
+  - Depois: modal de detalhes e CSV de Equipes aplicam fallback `Nao identificado` para nomes de auditoria vazios.

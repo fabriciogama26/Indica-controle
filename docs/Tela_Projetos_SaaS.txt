@@ -383,3 +383,16 @@ Ajuda contextual
   - Depois: o save da tela tenta assinatura legada sem `p_fob` quando necessario e retorna detalhes tecnicos quando a RPC falha de fato.
   - Antes: ambientes Postgres sem `jsonb_object_length(jsonb)` quebravam o save da RPC com erro de funcao inexistente.
   - Depois: migration de compatibilidade adiciona `public.jsonb_object_length(jsonb)` e elimina essa quebra.
+
+Atualizacao adicional 2026-03-24
+--------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+- Funcoes/hooks/constantes tocadas:
+  - `buildProjectsCsv`
+  - `buildForecastCsv`
+  - `buildActivityForecastCsv`
+- Comportamento antes/depois:
+  - Antes: os CSVs de `Projetos`, `Materiais previstos` e `Atividades previstas` exportavam apenas subconjuntos de colunas.
+  - Depois: os CSVs passam a incluir campos obrigatorios de cadastro de projeto e metadados extras operacionais/auditoria disponiveis (`Status`, `Registrado por/em`, `Atualizado por/em`, `Origem`, `Importado em`, `Criado em`, `Atualizado em`).
+  - Depois: modal de detalhes e CSV de Projetos aplicam fallback `Nao identificado` para nomes de auditoria vazios.

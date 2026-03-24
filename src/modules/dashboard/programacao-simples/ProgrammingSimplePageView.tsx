@@ -80,6 +80,8 @@ type ScheduleItem = {
   outageEndTime: string;
   createdAt: string;
   updatedAt: string;
+  createdByName: string;
+  updatedByName: string;
   statusReason?: string;
   statusChangedAt?: string;
   expectedMinutes: number;
@@ -388,6 +390,11 @@ function formatDateTime(value: string) {
   }
 
   return parsed.toLocaleString("pt-BR");
+}
+
+function formatAuditActor(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "Nao identificado";
 }
 
 function formatWeekday(value: string) {
@@ -2319,7 +2326,39 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setIsExporting(true);
     try {
-      const header = ["Data execucao", "Projeto", "Equipe", "Base", "Horario", "Periodo", "Status", "Atualizado em"];
+      const header = [
+        "Data execucao",
+        "Projeto",
+        "Equipe",
+        "Base",
+        "Hora inicio",
+        "Hora termino",
+        "Periodo",
+        "Ponto eletrico",
+        "Tipo de SGD",
+        "Alimentador",
+        "Inicio de desligamento",
+        "Termino de desligamento",
+        "Apoio",
+        "Descricao do servico",
+        "Status",
+        "Motivo do status",
+        "Status alterado em",
+        "POSTE",
+        "ESTRUTURA",
+        "TRAFO",
+        "REDE",
+        "ETAPA",
+        "Estado trabalho",
+        "Nº Clientes afetados",
+        "SGD",
+        "PI",
+        "PEP",
+        "Criado por",
+        "Criado em",
+        "Atualizado por",
+        "Atualizado em",
+      ];
       const rows = filteredSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
         const team = teamMap.get(schedule.teamId);
@@ -2329,9 +2368,32 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           project?.code ?? schedule.projectId,
           team?.name ?? schedule.teamId,
           team?.serviceCenterName ?? "-",
-          `${schedule.startTime} - ${schedule.endTime}`,
+          schedule.startTime,
+          schedule.endTime,
           schedule.period === "integral" ? "Integral" : "Parcial",
+          schedule.electricalField || "",
+          schedule.sgdTypeDescription || "",
+          schedule.feeder || "",
+          schedule.outageStartTime || "",
+          schedule.outageEndTime || "",
+          schedule.support || "",
+          schedule.serviceDescription || "",
           displayStatus,
+          schedule.statusReason || "",
+          formatDateTime(schedule.statusChangedAt ?? ""),
+          schedule.posteQty,
+          schedule.estruturaQty,
+          schedule.trafoQty,
+          schedule.redeQty,
+          schedule.etapaNumber ?? "",
+          schedule.workCompletionStatus ?? "",
+          schedule.affectedCustomers,
+          schedule.documents?.sgd?.number ?? "",
+          schedule.documents?.pi?.number ?? "",
+          schedule.documents?.pep?.number ?? "",
+          formatAuditActor(schedule.createdByName),
+          formatDateTime(schedule.createdAt),
+          formatAuditActor(schedule.updatedByName),
           formatDateTime(schedule.updatedAt),
         ];
       });
@@ -3387,6 +3449,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             <div className={styles.modalBody}>
               <div className={styles.detailsGrid}>
                 <p><strong>Status:</strong> {getDisplayProgrammingStatus(detailsTarget)}</p>
+                <p><strong>Criado por:</strong> {formatAuditActor(detailsTarget.createdByName)}</p>
+                <p><strong>Criado em:</strong> {formatDateTime(detailsTarget.createdAt)}</p>
+                <p><strong>Atualizado por:</strong> {formatAuditActor(detailsTarget.updatedByName)}</p>
                 <p><strong>Atualizado em:</strong> {formatDateTime(detailsTarget.updatedAt)}</p>
                 <p><strong>Projeto:</strong> {projectMap.get(detailsTarget.projectId)?.code ?? detailsTarget.projectId}</p>
                 <p><strong>Equipe:</strong> {teamMap.get(detailsTarget.teamId)?.name ?? detailsTarget.teamId}</p>

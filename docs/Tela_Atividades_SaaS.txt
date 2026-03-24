@@ -199,3 +199,12 @@ Ajuda contextual
   - Antes: atividade nao possuia tipo vinculado.
   - Depois: atividade passa a exigir tipo de equipe valido por tenant (`team_types`).
   - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
+  - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios do cadastro e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`) alem de `Grupo` e `Alcance`.
+- Arquivos alterados/criados (2026-03-24):
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+- Funcoes/hooks/constantes tocadas (2026-03-24):
+  - `buildActivitiesCsv`
+- Comportamento antes/depois (2026-03-24):
+  - Antes: CSV de Atividades nao trazia `Grupo`, `Alcance` nem dados de atualizacao.
+  - Depois: CSV de Atividades exporta colunas operacionais completas com trilha de auditoria.
+  - Depois: modal de detalhes e CSV de Atividades aplicam fallback `Nao identificado` para nomes de auditoria vazios.

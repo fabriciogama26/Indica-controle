@@ -280,6 +280,11 @@ function formatDateTime(value: string) {
   return parsed.toLocaleString("pt-BR");
 }
 
+function formatAuditActor(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "Nao identificado";
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -319,27 +324,53 @@ function escapeCsvValue(value: string | number | null | undefined) {
 
 function buildProjectsCsv(projectItems: ProjectItem[]) {
   const header = [
+    "Prioridade",
     "Projeto (SOB)",
     "Centro de Servico",
     "Tipo de Servico",
     "Data limite",
-    "Municipio",
     "Valor estimado",
+    "Municipio",
+    "Logradouro",
+    "Bairro",
+    "Responsavel Contratada",
+    "Responsavel Distribuidora",
+    "Gestor de campo Distribuidora",
+    "Nivel de Tensao",
+    "Porte",
+    "Parceira",
+    "Descricao do servico",
+    "Observacao",
+    "Status",
     "Registrado por",
     "Registrado em",
-    "Status",
+    "Atualizado por",
+    "Atualizado em",
   ];
 
   const rows = projectItems.map((project) => [
+    project.priority,
     project.sob,
     project.serviceCenter,
     project.serviceType,
     formatDate(project.executionDeadline),
-    project.city,
     project.estimatedValue.toFixed(2),
-    project.createdByName,
-    formatDateTime(project.createdAt),
+    project.city,
+    project.street,
+    project.neighborhood,
+    project.contractorResponsible,
+    project.utilityResponsible,
+    project.utilityFieldManager,
+    project.voltageLevel ?? "",
+    project.projectSize ?? "",
+    project.partner,
+    project.serviceDescription ?? "",
+    project.observation ?? "",
     project.isActive ? "Ativo" : "Inativo",
+    formatAuditActor(project.createdByName),
+    formatDateTime(project.createdAt),
+    formatAuditActor(project.updatedByName),
+    formatDateTime(project.updatedAt),
   ]);
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
@@ -347,13 +378,26 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
 }
 
 function buildForecastCsv(forecastItems: ProjectForecastItem[]) {
-  const header = ["Codigo", "Descricao", "UMB", "Tipo", "Quantidade prevista", "Atualizado em"];
+  const header = [
+    "Codigo",
+    "Descricao",
+    "UMB",
+    "Tipo",
+    "Quantidade prevista",
+    "Observacao",
+    "Origem",
+    "Importado em",
+    "Atualizado em",
+  ];
   const rows = forecastItems.map((item) => [
     item.code,
     item.description,
     item.umb ?? "",
     item.type ?? "",
     item.qtyPlanned,
+    item.observation ?? "",
+    item.source,
+    formatDateTime(item.importedAt),
     formatDateTime(item.updatedAt),
   ]);
 
@@ -362,7 +406,18 @@ function buildForecastCsv(forecastItems: ProjectForecastItem[]) {
 }
 
 function buildActivityForecastCsv(forecastItems: ProjectActivityForecastItem[]) {
-  const header = ["Codigo", "Descricao", "Tipo", "Unidade", "Valor unitario", "Quantidade prevista", "Atualizado em"];
+  const header = [
+    "Codigo",
+    "Descricao",
+    "Tipo",
+    "Unidade",
+    "Valor unitario",
+    "Quantidade prevista",
+    "Observacao",
+    "Origem",
+    "Criado em",
+    "Atualizado em",
+  ];
   const rows = forecastItems.map((item) => [
     item.code,
     item.description,
@@ -370,6 +425,9 @@ function buildActivityForecastCsv(forecastItems: ProjectActivityForecastItem[]) 
     item.unit,
     item.unitValue.toFixed(2),
     item.qtyPlanned,
+    item.observation ?? "",
+    item.source,
+    formatDateTime(item.createdAt),
     formatDateTime(item.updatedAt),
   ]);
 
@@ -3402,9 +3460,9 @@ export function ProjectsPageView() {
                 <div><strong>Bairro:</strong> {detailProject.neighborhood}</div>
                 <div><strong>Descricao do servico:</strong> {detailProject.serviceDescription ?? "-"}</div>
                 <div><strong>Observacao:</strong> {detailProject.observation ?? "-"}</div>
-                <div><strong>Registrado por:</strong> {detailProject.createdByName}</div>
+                <div><strong>Registrado por:</strong> {formatAuditActor(detailProject.createdByName)}</div>
                 <div><strong>Criado em:</strong> {formatDateTime(detailProject.createdAt)}</div>
-                <div><strong>Atualizado por:</strong> {detailProject.updatedByName}</div>
+                <div><strong>Atualizado por:</strong> {formatAuditActor(detailProject.updatedByName)}</div>
                 <div><strong>Atualizado em:</strong> {formatDateTime(detailProject.updatedAt)}</div>
                 {!detailProject.isActive ? (
                   <>

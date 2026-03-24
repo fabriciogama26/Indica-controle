@@ -160,15 +160,29 @@ function escapeCsvValue(value: string | number | null | undefined) {
 }
 
 function buildTeamsCsv(teamItems: TeamItem[]) {
-  const header = ["Nome da equipe", "Placa do veiculo", "Base", "Tipo", "Encarregado", "Registrado em", "Status"];
+  const header = [
+    "Nome da equipe",
+    "Placa do veiculo",
+    "Base",
+    "Tipo",
+    "Encarregado",
+    "Status",
+    "Registrado por",
+    "Registrado em",
+    "Atualizado por",
+    "Atualizado em",
+  ];
   const rows = teamItems.map((team) => [
     team.name,
     team.vehiclePlate,
     team.serviceCenterName,
     team.teamTypeName,
     team.foremanName,
-    formatDateTime(team.createdAt),
     team.isActive ? "Ativo" : "Inativo",
+    formatAuditActor(team.createdByName),
+    formatDateTime(team.createdAt),
+    formatAuditActor(team.updatedByName),
+    formatDateTime(team.updatedAt),
   ]);
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
@@ -196,6 +210,11 @@ function formatDateTime(value: string | null) {
   }
 
   return parsed.toLocaleString("pt-BR");
+}
+
+function formatAuditActor(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "Nao identificado";
 }
 
 function formatHistoryValue(field: string, value: string | null) {
@@ -1105,13 +1124,13 @@ export function TeamsPageView() {
                   <strong>Encarregado:</strong> {detailTeam.foremanName}
                 </div>
                 <div>
-                  <strong>Registrado por:</strong> {detailTeam.createdByName}
+                  <strong>Registrado por:</strong> {formatAuditActor(detailTeam.createdByName)}
                 </div>
                 <div>
                   <strong>Criado em:</strong> {formatDateTime(detailTeam.createdAt)}
                 </div>
                 <div>
-                  <strong>Atualizado por:</strong> {detailTeam.updatedByName}
+                  <strong>Atualizado por:</strong> {formatAuditActor(detailTeam.updatedByName)}
                 </div>
                 <div>
                   <strong>Atualizado em:</strong> {formatDateTime(detailTeam.updatedAt)}
