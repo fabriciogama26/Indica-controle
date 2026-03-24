@@ -99,7 +99,7 @@ Cadastro
   - Periodo
   - Hora inicio
   - Hora termino
-  - Campo eletrico
+  - Ponto eletrico
   - ETAPA (somente no cadastro novo)
   - Tipo de SGD
   - Equipes (multi-selecao)
@@ -145,6 +145,7 @@ Filtros, auto-complete e listagem
   - Status
 - Auto-complete:
   - Projeto (SOB) no cadastro com `input + datalist`, no mesmo padrao do SOB da Locacao.
+  - Projeto no filtro com `input + datalist` (digitavel e com selecao por SOB).
   - Atividades via `/api/projects/activity-forecast/catalog`.
 - Listagem:
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
@@ -160,15 +161,17 @@ Filtros, auto-complete e listagem
     - `Extracao ENEL` (layout operacional ENEL)
   - Todos os botoes de exportacao da lista passam a ter trava de novo clique por `10` segundos para evitar exportacoes repetidas.
   - Mapeamentos ENEL:
+    - Ordem de colunas segue exatamente o layout operacional solicitado para `ENEL excel` (incluindo `ENCARREGADO` apos `Estrutura` e `Mão de obra` no bloco final).
     - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
     - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
+    - `ENCARREGADO` = nome do encarregado da equipe programada.
     - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
     - `Tipo de SGD` = selecao do formulario da Programacao.
     - `AREA_LIVRE` em `Tipo de SGD` nao preenche `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT`.
     - `Numero de Clientes Afetados` = campo do formulario da Programacao.
     - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
     - `Estrutura` = composicao de equipes por tipo (ex.: `2 MK`, `1 MK + 1 CETO`, `1 LV`) por `Projeto + Data de execucao`.
-    - `Nº EQ (RE, CO, CF, CC ou TR)` = valor do campo `Campo eletrico` informado na programacao.
+    - `Nº EQ (RE, CO, CF, CC ou TR)` = valor do campo `Ponto eletrico` informado na programacao.
     - `INFO STATUS` = campo `ETAPA` no formato `x ETAPA`.
     - `PerÃ­odo` exportado sempre em maiusculas (`INTEGRAL`/`PARCIAL`).
     - `Tempo Previsto` exportado em horas.
@@ -314,11 +317,14 @@ Atualizacao 2026-03
 - Criada a migration `109_make_programming_stage_optional_on_edit.sql` para permitir ETAPA nula na RPC `set_project_programming_execution_result`.
 - Ajustado padrao inicial dos filtros para cobrir o ano vigente completo (`01/01` a `31/12`).
 - Ajustado export `ENEL-EXCEL`: `Estrutura` passa a refletir a composicao de equipes por tipo (`MK`, `CETO`, `LV`) por projeto/data.
-- Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido pelo campo obrigatorio `Campo eletrico`.
-- Ajustado export `ENEL-EXCEL`: coluna de `Encarregado` (`Mão de obra`) passa a usar o nome do encarregado da equipe programada.
+- Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido pelo campo obrigatorio `Ponto eletrico`.
+- Ajustado export `ENEL-EXCEL`: coluna `ENCARREGADO` (apos `Estrutura`) passa a usar o nome do encarregado da equipe programada.
+- Ajustado export `ENEL-EXCEL`: mantida a coluna `Mão de obra` no bloco final do layout.
 - Ajustado export `ENEL-EXCEL`: `Data da programaÃ§Ã£o` passa a usar a data de registro (`created_at`) da programacao.
 - Ajustado export `ENEL-EXCEL`: `ResponsÃ¡vel ExecuÃ§Ã£o` fixo como `INDICA`, `Tempo Previsto` em horas e `PerÃ­odo` em maiusculas.
-- Adicionado campo obrigatorio `Campo eletrico` no formulario da Programacao simples.
+- Adicionado campo obrigatorio `Ponto eletrico` no formulario da Programacao simples.
+- Renomeado no frontend o rotulo do campo obrigatorio de `Campo eletrico` para `Ponto eletrico` (mantendo persistencia em `campo_eletrico`).
+- Ajustado filtro de `Projeto` para modo digitavel com selecao (`input + datalist`).
 - Criada a migration `110_add_programming_electrical_field_and_history_rpc.sql` para persistir `campo_eletrico` em `project_programming` e refletir a mudanca no historico.
 - Criada a migration `111_move_electrical_field_into_full_rpcs_and_adjust_reschedule_rule.sql` para salvar `Campo eletrico` no mesmo fluxo transacional full (`single` e `batch`) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 
