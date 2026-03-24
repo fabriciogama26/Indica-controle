@@ -138,6 +138,8 @@ type ProgrammingActivityRow = {
 type ProgrammingHistoryRow = {
   id: string;
   entity_id: string;
+  created_by: string | null;
+  changed_by_name: string;
   reason: string | null;
   changes: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
@@ -148,6 +150,7 @@ type ProgrammingOperationalHistoryRow = {
   id: string;
   programming_id: string;
   related_programming_id: string | null;
+  created_by: string | null;
   action_type: string;
   reason: string | null;
   changes: Record<string, unknown> | null;
@@ -874,7 +877,7 @@ async function fetchRescheduledProgrammingIds(
 
   const { data, error } = await supabase
     .from("project_programming_history")
-    .select("id, programming_id, reason, changes, metadata, created_at, action_type")
+    .select("id, programming_id, created_by, reason, changes, metadata, created_at, action_type")
     .eq("tenant_id", tenantId)
     .eq("action_type", "RESCHEDULE")
     .in("programming_id", programmingIds)
@@ -897,6 +900,8 @@ async function fetchRescheduledProgrammingIds(
   const normalizedData: ProgrammingHistoryRow[] = (data ?? []).map((item) => ({
     id: item.id,
     entity_id: item.programming_id,
+    created_by: item.created_by ?? null,
+    changed_by_name: "",
     reason: item.reason,
     changes: item.changes,
     metadata: {
@@ -949,7 +954,7 @@ async function fetchProgrammingHistory(
 ) {
   const { data, error } = await supabase
     .from("project_programming_history")
-    .select("id, programming_id, reason, changes, metadata, created_at, action_type")
+    .select("id, programming_id, created_by, reason, changes, metadata, created_at, action_type")
     .eq("tenant_id", tenantId)
     .eq("programming_id", programmingId)
     .order("created_at", { ascending: false })
@@ -959,9 +964,32 @@ async function fetchProgrammingHistory(
     return [] as ProgrammingHistoryRow[];
   }
 
-  return (data ?? []).map((item) => ({
+  const historyRows = data ?? [];
+  const historyAuthorIds = Array.from(
+    new Set(historyRows.map((item) => item.created_by).filter((value): value is string => Boolean(value))),
+  );
+
+  let historyUsers: AppUserLookupRow[] = [];
+  if (historyAuthorIds.length > 0) {
+    const usersResult = await supabase
+      .from("app_users")
+      .select("id, display, login_name")
+      .eq("tenant_id", tenantId)
+      .in("id", historyAuthorIds)
+      .returns<AppUserLookupRow[]>();
+
+    if (!usersResult.error) {
+      historyUsers = usersResult.data ?? [];
+    }
+  }
+
+  const historyUserMap = new Map(historyUsers.map((item) => [item.id, item]));
+
+  return historyRows.map((item) => ({
     id: item.id,
     entity_id: item.programming_id,
+    created_by: item.created_by ?? null,
+    changed_by_name: resolveAppUserName(historyUserMap.get(item.created_by ?? "")),
     reason: item.reason,
     changes: item.changes,
     metadata: {
@@ -1972,6 +2000,7 @@ export async function GET(request: NextRequest) {
         history: historyRows.map((item) => ({
           id: item.id,
           changedAt: item.created_at,
+          changedByName: item.changed_by_name,
           reason: normalizeText(item.reason),
           action: normalizeText(item.metadata?.action),
           changes: buildHistoryChangesWithDerivedExecutionDate(item.changes ?? {}, item.metadata ?? {}),
