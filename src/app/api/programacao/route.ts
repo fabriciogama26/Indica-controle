@@ -1437,7 +1437,7 @@ async function saveProgrammingFullViaRpc(params: {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full com Campo eletrico indisponivel no ambiente atual.",
+        message: "RPC transacional full com Ponto eletrico indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1445,7 +1445,7 @@ async function saveProgrammingFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? `Falha ao salvar programacao via RPC full com Campo eletrico: ${error.message}`
+        ? `Falha ao salvar programacao via RPC full com Ponto eletrico: ${error.message}`
         : "Falha ao salvar programacao via RPC full.",
     } as const;
   }
@@ -1539,7 +1539,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full de lote com Campo eletrico indisponivel no ambiente atual.",
+        message: "RPC transacional full de lote com Ponto eletrico indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1547,7 +1547,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? `Falha ao salvar programacao em lote via RPC full com Campo eletrico: ${error.message}`
+        ? `Falha ao salvar programacao em lote via RPC full com Ponto eletrico: ${error.message}`
         : "Falha ao salvar programacao em lote via RPC full.",
     } as const;
   }
@@ -1742,7 +1742,7 @@ async function setProgrammingElectricalFieldViaRpc(params: {
         status: 409,
         reason: "ELECTRICAL_FIELD_RPC_NOT_AVAILABLE",
         message:
-          "Seu ambiente ainda nao suporta o campo Campo eletrico da Programacao. Aplique a migration 110 e tente novamente.",
+          "Seu ambiente ainda nao suporta o campo Ponto eletrico da Programacao. Aplique a migration 110 e tente novamente.",
       } as const;
     }
 
@@ -1751,8 +1751,8 @@ async function setProgrammingElectricalFieldViaRpc(params: {
       status: 500,
       reason: "ELECTRICAL_FIELD_RPC_FAILED",
       message: error.message
-        ? `Falha ao salvar Campo eletrico da programacao: ${error.message}`
-        : "Falha ao salvar Campo eletrico da programacao.",
+        ? `Falha ao salvar Ponto eletrico da programacao: ${error.message}`
+        : "Falha ao salvar Ponto eletrico da programacao.",
     } as const;
   }
 
@@ -1762,7 +1762,7 @@ async function setProgrammingElectricalFieldViaRpc(params: {
       ok: false,
       status: Number(result.status ?? 400),
       reason: result.reason ?? "ELECTRICAL_FIELD_SAVE_FAILED",
-      message: result.message ?? "Falha ao salvar Campo eletrico da programacao.",
+      message: result.message ?? "Falha ao salvar Ponto eletrico da programacao.",
     } as const;
   }
 
@@ -2333,7 +2333,7 @@ async function saveProgrammingBatch(request: NextRequest) {
 
     if (!electricalField) {
       return NextResponse.json(
-        { message: "Campo eletrico e obrigatorio para salvar a programacao." },
+        { message: "Ponto eletrico e obrigatorio para salvar a programacao." },
         { status: 400 },
       );
     }
@@ -2446,7 +2446,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote com Campo eletrico. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
+            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote com Ponto eletrico. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2588,7 +2588,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   if (!electricalField) {
     return NextResponse.json(
-      { message: "Campo eletrico e obrigatorio para salvar a programacao." },
+      { message: "Ponto eletrico e obrigatorio para salvar a programacao." },
       { status: 400 },
     );
   }
@@ -2769,7 +2769,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao com Campo eletrico. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
+            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao com Ponto eletrico. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );

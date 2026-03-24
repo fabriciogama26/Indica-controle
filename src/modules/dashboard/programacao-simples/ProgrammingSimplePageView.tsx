@@ -232,6 +232,7 @@ type FormState = {
 type FilterState = {
   startDate: string;
   endDate: string;
+  projectSearch: string;
   projectId: string;
   teamId: string;
   status: "TODOS" | ProgrammingStatus;
@@ -258,7 +259,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   feeder: "Alimentador",
   support: "Apoio",
   note: "Anotacao",
-  electricalField: "Campo eletrico",
+  electricalField: "Ponto eletrico",
   serviceDescription: "Descricao do servico",
   posteQty: "POSTE",
   estruturaQty: "ESTRUTURA",
@@ -295,7 +296,7 @@ const VALIDATION_FIELD_LABELS: Record<string, string> = {
   outageStartTime: "Inicio de desligamento",
   outageEndTime: "Termino de desligamento",
   feeder: "Alimentador",
-  electricalField: "Campo eletrico",
+  electricalField: "Ponto eletrico",
   posteQty: "POSTE",
   estruturaQty: "ESTRUTURA",
   trafoQty: "TRAFO",
@@ -1041,6 +1042,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [filterDraft, setFilterDraft] = useState<FilterState>({
     startDate: currentYearDateRange.startDate,
     endDate: currentYearDateRange.endDate,
+    projectSearch: "",
     projectId: "",
     teamId: "",
     status: "TODOS",
@@ -1048,6 +1050,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [activeFilters, setActiveFilters] = useState<FilterState>({
     startDate: currentYearDateRange.startDate,
     endDate: currentYearDateRange.endDate,
+    projectSearch: "",
     projectId: "",
     teamId: "",
     status: "TODOS",
@@ -1420,6 +1423,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   function updateFilterField<Key extends keyof FilterState>(field: Key, value: FilterState[Key]) {
     setFilterDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function handleFilterProjectSearchChange(value: string) {
+    const searchValue = value;
+    const matchedProject = projects.find((item) => item.code.toLowerCase() === searchValue.trim().toLowerCase()) ?? null;
+
+    setFilterDraft((current) => ({
+      ...current,
+      projectSearch: searchValue,
+      projectId: matchedProject?.id ?? "",
+    }));
   }
 
   async function validateStageConflict(params: {
@@ -2005,7 +2019,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     }
 
     if (!form.electricalField.trim()) {
-      flagInvalidFields(["electricalField"], "Campo eletrico e obrigatorio.");
+      flagInvalidFields(["electricalField"], "Ponto eletrico e obrigatorio.");
       return;
     }
 
@@ -2258,6 +2272,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    if (filterDraft.projectSearch.trim() && !filterDraft.projectId) {
+      setFeedback({
+        type: "error",
+        message: "Selecione um Projeto valido da lista para filtrar.",
+      });
+      return;
+    }
+
     setFeedback(null);
     setActiveFilters(filterDraft);
     setWeekStartDate(startOfWeekMonday(filterDraft.startDate));
@@ -2267,6 +2289,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const reset: FilterState = {
       startDate: currentYearDateRange.startDate,
       endDate: currentYearDateRange.endDate,
+      projectSearch: "",
       projectId: "",
       teamId: "",
       status: "TODOS",
@@ -2355,7 +2378,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         "INFO STATUS",
         "PRIORIDADE",
         "Estrutura",
-        "Anotação",
+        "ENCARREGADO",
         "Apoio",
         "Responsáveis Enel",
         "Parceira",
@@ -2434,7 +2457,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           infoStatus,
           project?.priority ?? "",
           estruturaValue,
-          schedule.note ?? "",
+          team?.foremanName ?? "",
           schedule.support ?? "",
           project?.utilityResponsible ?? "",
           project?.partner ?? "",
@@ -2463,7 +2486,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           project?.serviceType ?? "",
           "",
           "",
-          team?.foremanName ?? "",
+          "",
           project?.utilityFieldManager ?? "",
         ];
       });
@@ -2602,7 +2625,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
           <label className={`${styles.field} ${isFieldInvalid("electricalField") ? styles.fieldInvalid : ""}`}>
             <span>
-              Campo eletrico <span className="requiredMark">*</span>
+              Ponto eletrico <span className="requiredMark">*</span>
             </span>
             <input
               type="text"
@@ -2942,14 +2965,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           </label>
           <label className={styles.field}>
             <span>Projeto</span>
-            <select value={filterDraft.projectId} onChange={(event) => updateFilterField("projectId", event.target.value)}>
-              <option value="">Todos</option>
+            <input
+              list="programming-simple-filter-project-list"
+              value={filterDraft.projectSearch}
+              onChange={(event) => handleFilterProjectSearchChange(event.target.value)}
+              placeholder="Todos"
+            />
+            <datalist id="programming-simple-filter-project-list">
               {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code}
+                <option key={project.id} value={project.code}>
+                  {project.city} | {project.base}
                 </option>
               ))}
-            </select>
+            </datalist>
           </label>
           <label className={styles.field}>
             <span>Equipe</span>
@@ -3376,7 +3404,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>
                 <p><strong>Apoio:</strong> {detailsTarget.support || "-"}</p>
                 <p><strong>Alimentador:</strong> {detailsTarget.feeder || "-"}</p>
-                <p><strong>Campo eletrico:</strong> {detailsTarget.electricalField || "-"}</p>
+                <p><strong>Ponto eletrico:</strong> {detailsTarget.electricalField || "-"}</p>
                 <p className={styles.detailWide}><strong>Descricao do servico:</strong> {detailsTarget.serviceDescription || "-"}</p>
                 <p className={styles.detailWide}><strong>Anotacao:</strong> {detailsTarget.note || "-"}</p>
                 {isInactiveProgrammingStatus(getDisplayProgrammingStatus(detailsTarget)) ? (
