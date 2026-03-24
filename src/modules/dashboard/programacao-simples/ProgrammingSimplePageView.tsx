@@ -184,6 +184,7 @@ type HistoryChange = {
 type ProgrammingHistoryItem = {
   id: string;
   changedAt: string;
+  changedByName?: string;
   reason: string;
   action: string;
   changes: Record<string, HistoryChange>;
@@ -3528,7 +3529,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                       <article key={item.id} className={styles.historyCard}>
                         <header className={styles.historyCardHeader}>
                           <strong>{formatHistoryAction(item.action)}</strong>
-                          <span>{formatDateTime(item.changedAt)}</span>
+                          <span>{formatDateTime(item.changedAt)} | {formatAuditActor(item.changedByName)}</span>
                         </header>
 
                         <div className={styles.historyChanges}>

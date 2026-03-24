@@ -448,4 +448,6 @@ Atualizacao adicional 2026-03-24
   - Depois: o modal exibe `Criado por`, `Criado em`, `Atualizado por` e `Atualizado em`.
   - Antes: em alguns cenarios de dados legados, `Criado por`/`Atualizado por` podiam aparecer em branco no export.
   - Depois: o frontend aplica fallback `Nao identificado` quando o nome vier vazio.
+  - Antes: o modal `Historico da Programacao` mostrava o que mudou e quando, mas sem o autor da alteracao.
+  - Depois: o modal `Historico da Programacao` passa a mostrar tambem quem alterou (`changedByName`) em cada evento.
 
