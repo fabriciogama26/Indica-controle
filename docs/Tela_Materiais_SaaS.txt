@@ -174,3 +174,12 @@ Ajuda contextual
   - Antes: tela de Materiais sem CRUD.
   - Depois: cadastro completo com historico, preco obrigatorio, inativacao/ativacao com motivo e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
   - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
+  - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios do cadastro e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`).
+- Arquivos alterados/criados (2026-03-24):
+  - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+- Funcoes/hooks/constantes tocadas (2026-03-24):
+  - `buildMaterialsCsv`
+- Comportamento antes/depois (2026-03-24):
+  - Antes: CSV de Materiais nao exportava `Atualizado por` e `Atualizado em`.
+  - Depois: CSV de Materiais exporta os campos obrigatorios + trilha de auditoria completa disponivel na listagem.
+  - Depois: `Criado por`/`Atualizado por` no CSV aplicam fallback `Nao identificado` quando o valor vier vazio.

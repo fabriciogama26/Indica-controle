@@ -165,15 +165,29 @@ function escapeCsvValue(value: string | number | null | undefined) {
 }
 
 function buildPeopleCsv(personItems: PersonItem[]) {
-  const header = ["Nome", "Matricula", "Cargo", "Tipo", "Nivel", "Registrado em", "Status"];
+  const header = [
+    "Nome",
+    "Matricula",
+    "Cargo",
+    "Tipo",
+    "Nivel",
+    "Status",
+    "Registrado por",
+    "Registrado em",
+    "Atualizado por",
+    "Atualizado em",
+  ];
   const rows = personItems.map((person) => [
     person.name,
     person.matriculation ?? "-",
     person.jobTitleName,
     person.jobTitleTypeName ?? "-",
     person.jobLevel ?? "-",
-    formatDateTime(person.createdAt),
     person.isActive ? "Ativo" : "Inativo",
+    formatAuditActor(person.createdByName),
+    formatDateTime(person.createdAt),
+    formatAuditActor(person.updatedByName),
+    formatDateTime(person.updatedAt),
   ]);
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
@@ -201,6 +215,11 @@ function formatDateTime(value: string | null) {
   }
 
   return parsed.toLocaleString("pt-BR");
+}
+
+function formatAuditActor(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "Nao identificado";
 }
 
 function formatHistoryValue(field: string, value: string | null) {
@@ -1140,13 +1159,13 @@ export function PeoplePageView() {
                   <strong>Nivel:</strong> {detailPerson.jobLevel ?? "-"}
                 </div>
                 <div>
-                  <strong>Registrado por:</strong> {detailPerson.createdByName}
+                  <strong>Registrado por:</strong> {formatAuditActor(detailPerson.createdByName)}
                 </div>
                 <div>
                   <strong>Criado em:</strong> {formatDateTime(detailPerson.createdAt)}
                 </div>
                 <div>
-                  <strong>Atualizado por:</strong> {detailPerson.updatedByName}
+                  <strong>Atualizado por:</strong> {formatAuditActor(detailPerson.updatedByName)}
                 </div>
                 <div>
                   <strong>Atualizado em:</strong> {formatDateTime(detailPerson.updatedAt)}

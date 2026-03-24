@@ -112,8 +112,16 @@ type ProgrammingRow = {
   pep_delivered_at: string | null;
   cancellation_reason: string | null;
   canceled_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type AppUserLookupRow = {
+  id: string;
+  display: string | null;
+  login_name: string | null;
 };
 
 type ProgrammingActivityRow = {
@@ -360,19 +368,27 @@ function isMissingRpcFunctionError(errorMessage: string, functionName: string) {
 }
 
 const PROGRAMMING_SELECT_BASE =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_STRUCTURE =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function resolveAppUserName(user: AppUserLookupRow | undefined) {
+  if (!user) {
+    return "Nao identificado";
+  }
+
+  return normalizeText(user.login_name) || normalizeText(user.display) || "Nao identificado";
 }
 
 function isNegativeNumericLikeText(value: string | null) {
@@ -2088,6 +2104,29 @@ export async function GET(request: NextRequest) {
         programmingIds,
       ),
     ]);
+    const programmingUserIds = Array.from(
+      new Set(
+        programmingRows
+          .flatMap((item) => [item.created_by, item.updated_by])
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    let programmingUsers: AppUserLookupRow[] = [];
+    if (programmingUserIds.length > 0) {
+      const usersResult = await resolution.supabase
+        .from("app_users")
+        .select("id, display, login_name")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .in("id", programmingUserIds)
+        .returns<AppUserLookupRow[]>();
+
+      if (!usersResult.error) {
+        programmingUsers = usersResult.data ?? [];
+      }
+    }
+
+    const programmingUserMap = new Map(programmingUsers.map((item) => [item.id, item]));
 
     return NextResponse.json({
       projects: projects.map((item) => ({
@@ -2147,6 +2186,8 @@ export async function GET(request: NextRequest) {
           outageEndTime: formatTime(item.outage_end_time),
           createdAt: item.created_at,
           updatedAt: item.updated_at,
+          createdByName: resolveAppUserName(programmingUserMap.get(item.created_by ?? "")),
+          updatedByName: resolveAppUserName(programmingUserMap.get(item.updated_by ?? "")),
           expectedMinutes: Number(item.expected_minutes ?? 0),
           posteQty: Number(item.poste_qty ?? 0),
           estruturaQty: Number(item.estrutura_qty ?? 0),

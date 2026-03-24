@@ -21,6 +21,10 @@ type LocationOverviewItem = {
   hasLocacao: boolean;
   status: LocationOverviewStatus;
   planId?: string | null;
+  createdAt?: string | null;
+  createdByName?: string | null;
+  updatedAt?: string | null;
+  updatedByName?: string | null;
   recordedAt?: string | null;
   recordedByName?: string | null;
 };
@@ -1887,8 +1891,10 @@ export function LocationPageView() {
             <div className={styles.detailGrid}>
               <div><strong>Status:</strong> {formatLocationStatus(detailLocation.item.status)}</div>
               <div><strong>Projeto (SOB):</strong> {detailLocation.item.sob}</div>
-              <div><strong>Locado por:</strong> {detailLocation.item.recordedByName || "-"}</div>
-              <div><strong>Registrado em:</strong> {formatDateTime(detailLocation.item.recordedAt)}</div>
+              <div><strong>Criado por:</strong> {detailLocation.item.createdByName || "-"}</div>
+              <div><strong>Criado em:</strong> {formatDateTime(detailLocation.item.createdAt)}</div>
+              <div><strong>Atualizado por:</strong> {detailLocation.item.updatedByName || "-"}</div>
+              <div><strong>Atualizado em:</strong> {formatDateTime(detailLocation.item.updatedAt)}</div>
               <div><strong>Materiais atuais:</strong> {formatQuantity(detailLocation.data?.summary?.materialsPlannedTotal ?? 0)}</div>
               <div><strong>Atividades atuais:</strong> {formatCurrency(detailLocation.data?.summary?.activitiesPlannedTotal ?? 0)}</div>
               <div><strong>Necessario revisao de projeto?:</strong> {detailQuestionnaireSnapshot?.planning.needsProjectReview === true ? "Sim" : detailQuestionnaireSnapshot?.planning.needsProjectReview === false ? "Nao" : "-"}</div>

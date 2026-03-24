@@ -14,6 +14,8 @@ type ProjectMetaRow = {
 type LocationPlanListRow = {
   id: string;
   project_id: string;
+  created_at: string;
+  created_by: string | null;
   updated_at: string;
   updated_by: string | null;
 };
@@ -32,6 +34,10 @@ type ProgrammingSgdTypeRow = {
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function resolveAppUserName(user: AppUserRow | undefined) {
+  return normalizeText(user?.display) || normalizeText(user?.login_name) || "Nao identificado";
 }
 
 export async function GET(request: NextRequest) {
@@ -79,7 +85,7 @@ export async function GET(request: NextRequest) {
     const { data: plans, error: plansError } = projectIds.length
       ? await supabase
           .from("project_location_plans")
-          .select("id, project_id, updated_at, updated_by")
+          .select("id, project_id, created_at, created_by, updated_at, updated_by")
           .eq("tenant_id", appUser.tenant_id)
           .in("project_id", projectIds)
           .returns<LocationPlanListRow[]>()
@@ -89,16 +95,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao carregar listagem de locacao." }, { status: 500 });
     }
 
-    const updatedByIds = Array.from(
-      new Set((plans ?? []).map((item) => normalizeText(item.updated_by)).filter(Boolean)),
+    const appUserIds = Array.from(
+      new Set(
+        (plans ?? [])
+          .flatMap((item) => [normalizeText(item.created_by), normalizeText(item.updated_by)])
+          .filter(Boolean),
+      ),
     );
 
-    const { data: appUsers, error: appUsersError } = updatedByIds.length
+    const { data: appUsers, error: appUsersError } = appUserIds.length
       ? await supabase
           .from("app_users")
           .select("id, display, login_name")
           .eq("tenant_id", appUser.tenant_id)
-          .in("id", updatedByIds)
+          .in("id", appUserIds)
           .returns<AppUserRow[]>()
       : { data: [], error: null };
 
@@ -106,9 +116,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao carregar responsaveis da locacao." }, { status: 500 });
     }
 
-    const appUsersById = new Map(
-      (appUsers ?? []).map((item) => [item.id, normalizeText(item.display) || normalizeText(item.login_name)]),
-    );
+    const appUsersById = new Map((appUsers ?? []).map((item) => [item.id, item]));
     const plansByProjectId = new Map((plans ?? []).map((item) => [item.project_id, item]));
 
     const { data: sgdTypesData, error: sgdTypesError } = await supabase
@@ -141,8 +149,12 @@ export async function GET(request: NextRequest) {
         hasLocacao: item.hasLocacao,
         status,
         planId: plan?.id ?? null,
+        createdAt: item.hasLocacao ? plan?.created_at ?? null : null,
+        createdByName: item.hasLocacao ? resolveAppUserName(appUsersById.get(normalizeText(plan?.created_by))) : null,
+        updatedAt: item.hasLocacao ? plan?.updated_at ?? null : null,
+        updatedByName: item.hasLocacao ? resolveAppUserName(appUsersById.get(normalizeText(plan?.updated_by))) : null,
         recordedAt: item.hasLocacao ? plan?.updated_at ?? null : null,
-        recordedByName: item.hasLocacao ? appUsersById.get(normalizeText(plan?.updated_by)) ?? null : null,
+        recordedByName: item.hasLocacao ? resolveAppUserName(appUsersById.get(normalizeText(plan?.updated_by))) : null,
       };
     });
 

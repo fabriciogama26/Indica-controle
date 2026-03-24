@@ -350,3 +350,7 @@ Ajuda contextual
   - Depois: cada salvamento da locacao registra trilha dedicada em `project_location_plan_history` com snapshot antes/depois e mapa de mudancas.
   - Antes: o save da locacao permitia payload sem `expected_updated_at` e podia facilitar sobreposicao silenciosa em edicao simultanea.
   - Depois: o save passou a exigir `expected_updated_at` e rejeita conflito concorrente no banco com retorno `409`.
+  - Antes: o modal `Ver detalhes` da locacao exibia apenas o responsavel/instante da ultima gravacao.
+  - Depois: o modal `Ver detalhes` passa a exibir `Criado por`, `Criado em`, `Atualizado por` e `Atualizado em`.
+  - Antes: o metadado da lista da locacao retornava somente `updated_by`/`updated_at` do plano.
+  - Depois: o metadado passa a retornar tambem `created_by`/`created_at` com resolucao de nome em `app_users` por tenant.

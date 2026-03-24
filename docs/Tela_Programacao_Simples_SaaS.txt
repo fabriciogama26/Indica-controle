@@ -427,3 +427,25 @@ Ajuda contextual
   - Antes: o backend salvava `Campo eletrico` em um passo complementar apos o save full, e edicao so de horario podia cair como reprogramacao.
   - Depois: `Campo eletrico` passa a ser persistido no mesmo fluxo transacional full (`single` e `batch`) e a reprogramacao na edicao considera mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 
+Atualizacao adicional 2026-03-24
+--------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/app/api/programacao/route.ts`
+- Funcoes/hooks/constantes tocadas:
+  - `handleExportCsv`
+  - `PROGRAMMING_SELECT_BASE`
+  - `PROGRAMMING_SELECT_WITH_STRUCTURE`
+  - `PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL`
+  - `PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL`
+  - `resolveAppUserName`
+- Comportamento antes/depois:
+  - Antes: o CSV comum de `Exportar Excel (CSV)` trazia somente colunas resumidas da grade.
+  - Depois: o CSV comum passa a exportar campos obrigatorios da tela (projeto/equipe/data/horario/periodo/ponto eletrico/tipo de SGD) e metadados extras (`Status`, `Motivo`, `Criado por/em`, `Atualizado por/em`, documentos e quantidades).
+  - Antes: a API de Programacao nao devolvia nomes de criacao/atualizacao por registro da lista.
+  - Depois: a API passa a carregar `created_by`/`updated_by` e resolver nomes em `app_users` no escopo de tenant para suportar exportacao com auditoria.
+  - Antes: o modal `Detalhes da Programacao` nao exibia autor de criacao/atualizacao.
+  - Depois: o modal exibe `Criado por`, `Criado em`, `Atualizado por` e `Atualizado em`.
+  - Antes: em alguns cenarios de dados legados, `Criado por`/`Atualizado por` podiam aparecer em branco no export.
+  - Depois: o frontend aplica fallback `Nao identificado` quando o nome vier vazio.
+
