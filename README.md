@@ -121,7 +121,7 @@ vercel --prod
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
   - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote e exportacao `ENEL-EXCEL`.
-  - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com montagem frontend de OS/medicao por projeto ou por programacao, calculo local e conferencia sem persistencia propria.
+  - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com `cadastro + filtros + lista`, persistencia transacional em banco, cadastro independente da programacao, match automatico por `Projeto + Equipe + Data`, status visual `Programada/Nao programada` e alerta para mudanca posterior de `CONCLUIDO/PARCIAL` na programacao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
@@ -185,7 +185,7 @@ vercel --prod
   - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, quantidades estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros, lista com `Detalhes`/`Edicao`/`Historico`, exportacao CSV e exportacao `ENEL-EXCEL`.
   - `ProgrammingSimplePageView.module.css`: estilos da nova tela de Programacao.
 - `src/modules/dashboard/medicao/`
-  - `MeasurementPageView.tsx`: tela frontend de medicao para montar OS/medicao por projeto ou programacao, carregar atividades previstas e calcular fator localmente.
+  - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, inclusao de atividades da medicao, cadastro em massa CSV, match de programacao e alerta de atualizacao de `CONCLUIDO/PARCIAL`.
   - `MeasurementPageView.module.css`: estilos da tela de medicao.
 - `src/modules/dashboard/equipes/`
   - `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, historico e cancelamento/ativacao.

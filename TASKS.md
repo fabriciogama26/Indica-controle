@@ -51,6 +51,7 @@
 - [x] Migrar as escritas de `Projetos` para RPC transacional (`save_project_record` e `set_project_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Criar migration `036_create_project_history_and_cancellation.sql` com `project.is_active`, `project_history` e `project_cancellation_history`.
 - [x] Remover `FOB` do fluxo operacional de `Projetos` e limitar `Projeto (SOB)` a `10` caracteres no frontend e na API.
+- [x] Remover na tela/API de `Projetos` a regra de formato por prioridade e o limite de `10` caracteres do campo `Projeto (SOB)`, com migration para retirar a constraint `chk_project_sob_priority_format`.
 - [x] Paginar o modal de `Historico` de Projetos e exibir `ID do projeto` abaixo do titulo no modal de detalhes.
 - [x] Implementar reativacao de projeto pelo botao `Ativar` (no lugar de `Cancelar` quando inativo) com motivo obrigatorio e historico.
 - [x] Criar base de `Materiais previstos` por projeto com migration `041_create_project_material_forecast.sql` (RLS, auditoria e constraint unica por material no projeto).
@@ -188,6 +189,7 @@
 - [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, com `ETAPA` obrigatoria no cadastro novo e preservada automaticamente na edicao quando nao alterada; `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) fica disponivel na edicao.
 - [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
 - [x] Incluir suporte ao tipo de SGD `AREA_LIVRE` no catalogo `programming_sgd_types`, ajustando constraint SQL e seed por tenant.
+- [x] Destravar cadastro de novos `Tipo de SGD` removendo a unicidade por `tenant_id + export_column` em `programming_sgd_types` e definindo `AREA_LIVRE` como default de `export_column`.
 - [x] Ajustar cards da visualizacao semanal da Programacao para mostrar `AREA LIVRE` em verde quando o `Tipo de SGD` for `AREA_LIVRE`, substituindo indicadores `SGD` e `PI`.
 - [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
 - [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e uso exclusivo das RPCs transacionais full.
@@ -231,6 +233,42 @@
 - [x] Remover horario dos cards do calendario, trocar botoes por icones, deixar `SGD/PI` verdes por `Data aprovada` e adicionar botao `Atualizar`.
 - [x] Trocar o `dev` local para `webpack` e documentar o workaround do panic do Turbopack no Windows.
 - [x] Implementar primeira versao frontend de `Medicao` com origem por projeto/programacao, carga de atividades previstas, calculo local e fator ajustavel sem backend proprio.
+- [x] Implementar modulo base de `Ordem de Medicao` com `cadastro + filtros + lista`, persistencia em banco, RLS multi-tenant, historico e RPC transacional (`save_project_measurement_order` e `set_project_measurement_order_status`).
+- [x] Corrigir erro de build da tela `Medicao` (`Return statement is not allowed here`) removendo bloco duplicado no `MeasurementPageView.tsx` e ajustando tipagem da API `medicao`.
+- [x] Ajustar `Medicao` para usar `voice_point` por atividade (origem em `service_activities`), removendo input manual de pontos no cabecalho da ordem.
+- [x] Ajustar `Medicao` com pre-filtro de `Data da programacao` antes do campo `Programacao` e padronizar filtro de `Projeto` em `input + datalist`.
+- [x] Reposicionar `Salvar ordem` para o final de `Atividades da Ordem`, remover botao `Limpar` do cadastro e endurecer auto-complete de atividade com fallback da programacao selecionada.
+- [x] Adicionar fallback legado nas APIs de forecast/catalog para funcionar mesmo sem coluna `voice_point` aplicada no banco.
+- [x] Corrigir falso erro no `Adicionar` da Medicao com fallback imediato no catalogo e match tolerante de codigo de atividade (incluindo variacao `O`/`0`).
+- [x] Desacoplar atividades da `Medicao` da `Programacao`: criar tabela/catalogo proprio (`measurement_activities`) e vincular `project_measurement_order_items` a essa nova base.
+- [x] Melhorar busca do botao `Adicionar` na Medicao com lookup por multiplos tokens (texto completo, prefixo antes de `|` e codigo antes de `-`) para eliminar falso `Atividade nao encontrada`.
+- [x] Travar `Valor unitario` na grade `Atividades da Ordem` da Medicao (somente leitura).
+- [x] Exibir campo `Status` (`ABERTA`, `FECHADA`, `CANCELADA`) no cadastro da Medicao.
+- [x] Implementar `Cadastro em massa (CSV)` na Medicao com download de modelo e colunas obrigatorias (atual: `projeto,data,equipe,voz,quantidade`).
+- [x] Ajustar o cadastro em massa da Medicao para aceitar medicao antiga via programacao historica (qualquer status), mantendo save + historico no mesmo RPC transacional.
+- [x] Desacoplar cadastro da Medicao da Programacao, com identificacao automatica de match por `Projeto + Equipe + Data`, status visual `Programada/Nao programada` e alerta quando `CONCLUIDO/PARCIAL` da Programacao mudar apos a medicao.
+- [x] Remover do formulario de cadastro da Medicao os campos de `Programacao (opcional)` e `Programacao da medicao`, mantendo essa informacao apenas na lista e em detalhes apos salvar.
+- [x] Remover o campo visual `Data da medicao` do cadastro da Medicao e adotar `Data execucao` como origem automatica da data de medicao no cadastro novo; trocar `Projeto` para `input + datalist` no mesmo padrao do filtro.
+- [x] Reposicionar `Taxa manual` no bloco `Atividades da Ordem` (entre `Atividade` e `Quantidade`) e reduzir a largura visual dos campos `Taxa manual` e `Quantidade`.
+- [x] Ajustar a Medicao para remover `Status` do cadastro, remover `Quantidade total` do resumo, padronizar acoes da lista (`Detalhes`, `Historico`, `Editar`, `Cancelar`, `Fechar`) e exibir `Cancelar edicao` no modo de edicao.
+- [x] Padronizar visual dos botoes de `Acoes` da lista da Medicao para o mesmo estilo das outras telas (icones circulares com tooltip e sem quebra em duas linhas).
+- [x] Padronizar UX das `Acoes` da Medicao com modais (`Detalhes`, `Historico`, `Cancelar`) e rolagem ao topo ao clicar em `Editar`.
+- [x] Padronizar Historico da Medicao (cards + paginacao), habilitar edicao de `Projeto/Equipe/Data execucao` com persistencia no RPC e mover `Cadastro em massa` para modal ao lado de `Salvar ordem`.
+- [x] Corrigir campo digitavel `Projeto` no cadastro da Medicao, removendo limpeza automatica que impedia a digitacao antes da selecao.
+- [x] Corrigir inclusao de atividades da Medicao para usar valores atualizados (`unit_value`/`voice_point`), priorizar match exato por codigo e evitar divergencia de valor unitario.
+- [x] Ajustar campo `Projeto` da Medicao para o mesmo comportamento do `Projeto (SOB)` da Programacao Simples, com selecao por codigo exato e suporte a apagar com backspace sem reescrever valor automaticamente.
+- [x] Corrigir catalogo de atividades da Medicao para sincronizar por `tenant_id + code` e retornar `unit_value/voice_point` sempre atualizados da `service_activities`.
+- [x] Finalizar cadastro em massa da Medicao com arquivo de erros (`linha,coluna,valor,erro`), processamento parcial de linhas validas e feedback de status (`sucesso total`, `parcial` ou `sem sucesso`).
+- [x] Refinar validacoes do cadastro em massa da Medicao para erros por campo (ex.: `Projeto nao encontrado`, `Data invalida`, `Atividade nao encontrada`, `Quantidade invalida`) e remover a mensagem generica de `programacao nao encontrada`.
+- [x] Permitir importacao em massa da Medicao sem programacao vinculada: quando nao houver programacao para a data, salvar com `Projeto + Equipe da linha CSV + Data`, exibindo `Nao programada` na lista.
+- [x] Ajustar lookup do campo `voz` no cadastro em massa da Medicao para entrada textual com tolerancia de variacao `0`/`O` no codigo da atividade.
+- [x] Exibir no modal de cadastro em massa da Medicao um resumo de resultado (ordens salvas + linhas com erro) e botao para baixar o CSV de erros quando houver falhas.
+- [x] Reforcar API de catalogo da Medicao com fallback de busca ampla e match normalizado para reduzir falso erro `Atividade nao encontrada no catalogo da medicao`.
+- [x] Atualizar modelo e parser do cadastro em massa da Medicao para incluir coluna obrigatoria `equipe` e validar equipe por texto (nome/codigo), sem dependencia da equipe selecionada no formulario.
+- [x] Proteger sobreposicao no cadastro em massa da Medicao: quando ja existir ordem para `Projeto + Equipe + Data de execucao`, ignorar a linha, seguir com as demais e exibir no resumo `x linhas ja cadastradas`.
+- [x] Migrar cadastro em massa da Medicao para RPC transacional parcial (`save_project_measurement_order_batch_partial`), salvando linhas validas e retornando por lote as invalidas/duplicadas.
+- [x] Adicionar botao `Exportar Excel (CSV)` na lista de Ordens de Medicao para exportar o resultado filtrado no padrao das outras telas.
+- [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

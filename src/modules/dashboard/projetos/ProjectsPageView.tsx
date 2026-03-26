@@ -197,7 +197,6 @@ const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 100;
 const PROJECT_FORECAST_QTY_LIMIT = 100000;
 const PRIORITY_OPTIONS = ["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO", "FUSESAVER"] as const;
-const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO"]);
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   priority: "Prioridade",
   sob: "Projeto (SOB)",
@@ -490,21 +489,6 @@ function scrollDashboardContentToTop() {
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-function getSobRuleError(priority: string, sob: string) {
-  const normalizedPriority = normalizePriority(priority);
-  const normalizedSob = normalizeSob(sob);
-
-  if (PRIORITY_A_PREFIX.has(normalizedPriority) && !/^A[0-9]{9}$/.test(normalizedSob)) {
-    return "Para esta prioridade, Projeto (SOB) deve iniciar com A e conter 9 numeros (ex.: A123456789).";
-  }
-
-  if (normalizedPriority === "FUSESAVER" && !/^(ZX|FS)[0-9]{8}$/.test(normalizedSob)) {
-    return "Para FUSESAVER, Projeto (SOB) deve iniciar com ZX ou FS e conter 8 numeros (ex.: ZX12345678).";
-  }
-
-  return null;
 }
 
 function toFormState(project: ProjectItem): FormState {
@@ -1857,15 +1841,6 @@ export function ProjectsPageView() {
       return;
     }
 
-    const sobRuleError = getSobRuleError(form.priority, form.sob);
-    if (sobRuleError) {
-      setFeedback({
-        type: "error",
-        message: sobRuleError,
-      });
-      return;
-    }
-
     setIsSubmitting(true);
     setFeedback(null);
 
@@ -2232,11 +2207,10 @@ export function ProjectsPageView() {
                 <input
                   type="text"
                   value={form.sob}
-                  onChange={(event) => updateFormField("sob", normalizeSob(event.target.value).slice(0, 10))}
+                  onChange={(event) => updateFormField("sob", normalizeSob(event.target.value))}
                   onBlur={(event) => handleSobAutoFill(event.target.value)}
                   placeholder={isSobEnabled ? "Digite o SOB" : "Selecione a Prioridade primeiro"}
                   list="sob-list"
-                  maxLength={10}
                   disabled={!isSobEnabled}
                   aria-disabled={!isSobEnabled}
                   required

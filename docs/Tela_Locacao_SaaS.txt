@@ -32,6 +32,8 @@ Arquitetura
   - `supabase/migrations/063_create_location_save_rpcs.sql`
   - `supabase/migrations/064_create_project_activity_forecast.sql`
   - `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
+  - `supabase/migrations/107_add_location_plan_structured_fields_and_history.sql`
+  - `supabase/migrations/120_allow_multiple_programming_sgd_types_per_export_column.sql`
 
 Cadastro
 --------
@@ -354,3 +356,5 @@ Ajuda contextual
   - Depois: o modal `Ver detalhes` passa a exibir `Criado por`, `Criado em`, `Atualizado por` e `Atualizado em`.
   - Antes: o metadado da lista da locacao retornava somente `updated_by`/`updated_at` do plano.
   - Depois: o metadado passa a retornar tambem `created_by`/`created_at` com resolucao de nome em `app_users` por tenant.
+  - Antes: o catalogo de `Tipo de SGD` podia ficar travado para novos cadastros quando cada `export_column` tecnico ja estivesse ocupado no tenant.
+  - Depois: o catalogo passa a aceitar varios tipos por `export_column` no mesmo tenant, destravando novas opcoes na selectbox de `Tipo de SGD` da Locacao.
