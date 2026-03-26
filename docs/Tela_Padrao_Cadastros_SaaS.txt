@@ -11,6 +11,10 @@ Arquitetura
 - Referencia principal:
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+- Componentes compartilhados do padrao:
+  - `src/components/ui/ActionIcon.tsx`
+  - `src/components/ui/CsvExportButton.tsx`
+  - `src/components/ui/CsvExportButton.module.css`
 - Tela ajustada para aderencia:
   - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
   - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
@@ -33,12 +37,14 @@ Filtros, auto-complete e listagem
   - Card de filtros com `Aplicar` e `Limpar`.
   - Card de listagem com tabela, estado vazio e paginacao.
   - Toda listagem deve expor botao `Exportar Excel (CSV)` no cabecalho.
+  - O botao de exportacao deve reutilizar `CsvExportButton`.
   - O botao de exportacao deve bloquear novo clique por `10` segundos para evitar disparos repetidos.
 - Padrao de acoes na coluna `Acoes` (baseline `Projetos`):
   - `Detalhes`
   - `Editar`
   - `Historico`
   - `Cancelar/Ativar`
+  - Icones das acoes devem vir de `ActionIcon` (sem SVG inline novo na tela).
 - Padrao de botoes de filtro:
   - `Aplicar`: `.secondaryButton`.
   - `Limpar`: `.ghostButton`.
@@ -52,6 +58,7 @@ Boas praticas
 - Reutilizar classes e semantica de botoes da tela `Projetos`.
 - Manter consistencia de espacamento, altura de botoes e raio de borda.
 - Em listagens com acoes por linha, usar `actionButton` circular com variacoes de cor por acao.
+- Para novas telas, reutilizar `ActionIcon` e `CsvExportButton` como baseline obrigatoria.
 - Nao alterar o comportamento especifico da lista de `Materiais` sem demanda explicita.
 - Toda nova tela deve ser entregue com permissao completa no mesmo pacote:
   - migration em `app_pages`
@@ -63,6 +70,7 @@ Atalhos
 - Sempre comparar nova tela de cadastro com:
   - `ProjectsPageView.tsx` (estrutura/fluxo)
   - `ProjectsPageView.module.css` (tokens visuais/classes)
+  - `ActionIcon.tsx` e `CsvExportButton.tsx` (padrao de icones/exportacao)
 
 Atualizacao 2026-03
 -------------------
@@ -77,6 +85,9 @@ Atualizacao 2026-03
   - modais com mesma hierarquia visual e botoes padrao
 - Regra consolidada para historico:
   - Todos os modais de `Historico` devem usar `HISTORY_PAGE_SIZE = 5`.
+- Componentizacao inicial do padrao de acoes/exportacao:
+  - `ActionIcon` centraliza os SVGs oficiais de `Detalhes`, `Editar`, `Historico`, `Cancelar`, `Ativar` e `Exportar`.
+  - `CsvExportButton` centraliza o texto/icone de exportacao para padronizar as listas novas.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -97,18 +108,23 @@ Constantes e configuracoes
   - Responsavel por: reutilizacao das classes padrao de cadastro/listagem/modais.
 
 Funcoes utilitarias relacionadas
-- Nao se aplica (padrao visual/comportamental de tela).
+- Caminho: `src/components/ui/ActionIcon.tsx`
+  - Responsavel por: padronizar SVG dos botoes de acao e do botao de exportacao.
+- Caminho: `src/components/ui/CsvExportButton.tsx`
+  - Responsavel por: padronizar CTA `Exportar Excel (CSV)` na cabecalho das listagens.
+- Caminho: `src/components/ui/CsvExportButton.module.css`
+  - Responsavel por: garantir alinhamento consistente de icone + label no botao de exportacao.
 
 Servicos e integracoes externas
 - Nao se aplica (documento de padrao frontend).
 
 Ajuda contextual
 - Arquivos alterados/criados:
-  - `docs/Tela_Padrao_Cadastros_SaaS.txt` (novo)
-  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
-  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
-  - `src/modules/dashboard/equipes/TeamsPageView.module.css`
+  - `docs/Tela_Padrao_Cadastros_SaaS.txt`
+  - `src/components/ui/ActionIcon.tsx`
+  - `src/components/ui/CsvExportButton.tsx`
+  - `src/components/ui/CsvExportButton.module.css`
+  - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
 - Comportamento antes/depois:
-  - Antes: Atividades usava hierarquia de botoes diferente de Projetos em partes do fluxo.
-  - Depois: Atividades e Equipes seguem o mesmo padrao de botoes da tela Projetos.
+  - Antes: cada tela declarava SVG inline para acoes/exportacao, com maior risco de variacao entre telas novas.
+  - Depois: padrao oficial passa a ter componentes compartilhados para icones de acao e botao de exportacao CSV.

@@ -2,6 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
+import { ActionIcon } from "@/components/ui/ActionIcon";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./MaterialsPageView.module.css";
@@ -769,14 +771,12 @@ export function MaterialsPageView() {
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Materiais</h3>
           <div className={styles.tableHeaderActions}>
-            <button
-              type="button"
+            <CsvExportButton
               className={styles.ghostButton}
               onClick={() => void handleExportMaterials()}
               disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
-            >
-              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
-            </button>
+              isLoading={isExporting}
+            />
           </div>
         </div>
 
@@ -820,16 +820,7 @@ export function MaterialsPageView() {
                             title="Editar"
                             disabled={!material.isActive}
                           >
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path
-                                d="M4.5 19.5h4l9-9a1.4 1.4 0 0 0 0-2l-2-2a1.4 1.4 0 0 0-2 0l-9 9v4Z"
-                                stroke="currentColor"
-                                strokeWidth="1.7"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              <path d="M12.5 7.5l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-                            </svg>
+                            <ActionIcon name="edit" />
                           </button>
 
                           <button
@@ -839,16 +830,7 @@ export function MaterialsPageView() {
                             aria-label={`Historico do material ${material.codigo}`}
                             title="Historico"
                           >
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path
-                                d="M3.75 12a8.25 8.25 0 1 0 2.25-5.69M3.75 4.75v4h4"
-                                stroke="currentColor"
-                                strokeWidth="1.7"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              <path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-                            </svg>
+                            <ActionIcon name="history" />
                           </button>
 
                           <button
@@ -858,23 +840,7 @@ export function MaterialsPageView() {
                             aria-label={`${material.isActive ? "Cancelar" : "Ativar"} material ${material.codigo}`}
                             title={material.isActive ? "Cancelar" : "Ativar"}
                           >
-                            {material.isActive ? (
-                              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
-                                <path d="m9.5 9.5 5 5m0-5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-                              </svg>
-                            ) : (
-                              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
-                                <path
-                                  d="m8.5 12 2.2 2.2 4.8-4.8"
-                                  stroke="currentColor"
-                                  strokeWidth="1.7"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            )}
+                            <ActionIcon name={material.isActive ? "cancel" : "activate"} />
                           </button>
                         </div>
                       </td>

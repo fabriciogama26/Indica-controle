@@ -11,6 +11,9 @@ Arquitetura
 - Rota: `src/app/(dashboard)/materiais/page.tsx`
 - View: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
 - Estilo: `src/modules/dashboard/materiais/MaterialsPageView.module.css`
+- UI compartilhada: `src/components/ui/ActionIcon.tsx`
+- UI compartilhada: `src/components/ui/CsvExportButton.tsx`
+- UI compartilhada: `src/components/ui/CsvExportButton.module.css`
 - API de materiais: `src/app/api/materials/route.ts`
 - Banco (core de materiais): `supabase/migrations/001_create_core_tables.sql`
 - Banco (auditoria): `supabase/migrations/015_add_audit_columns.sql`
@@ -52,7 +55,7 @@ Filtros, auto-complete e listagem
   - `Tipo` (texto)
   - `Status` (`Ativo` / `Inativo`)
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`).
-- Botao `Exportar Excel (CSV)` na lista para exportar os materiais filtrados.
+- Botao `Exportar Excel (CSV)` na lista para exportar os materiais filtrados, usando `CsvExportButton`.
 - O botao de exportacao da lista fica bloqueado por `10` segundos apos cada clique.
 - Colunas da lista:
   - `Codigo`
@@ -67,6 +70,7 @@ Filtros, auto-complete e listagem
   - `Editar`
   - `Historico`
   - `Cancelar` / `Ativar`
+  - Icones vindos de `ActionIcon` para manter padrao visual unico.
 - Acao `Ver detalhes` nao existe nesta tela.
 
 Boas praticas
@@ -115,6 +119,9 @@ Atualizacao 2026-03
 - Criada migration `044_material_code_precheck_rpc.sql` com RPC para validar duplicidade de `codigo` por tenant antes de gravar.
 - Criada migration `077_create_admin_write_rpcs.sql` para consolidar escrita, status, historico e concorrencia de `Materiais` no banco.
 - Atualizada Edge Function `get_materials` para refletir novo contrato (`unit_price`, `is_active`) sem `lp`/`serial`.
+- Atualizacao (2026-03-26):
+  - A tela passou a reutilizar os componentes compartilhados `ActionIcon` e `CsvExportButton`.
+  - O comportamento funcional nao mudou; o ajuste foi de padronizacao para novas telas.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -144,6 +151,10 @@ Funcoes utilitarias relacionadas
   - Suporta selecao de tenant por requisicao via header `x-tenant-id` (quando o usuario possui vinculo em `app_user_tenants`).
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
+- Caminho: `src/components/ui/ActionIcon.tsx`
+  - Responsavel por: centralizar os SVGs das acoes da lista (`Editar`, `Historico`, `Cancelar`, `Ativar`).
+- Caminho: `src/components/ui/CsvExportButton.tsx`
+  - Responsavel por: padronizar o botao de exportacao com icone e labels.
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS.
@@ -183,3 +194,15 @@ Ajuda contextual
   - Antes: CSV de Materiais nao exportava `Atualizado por` e `Atualizado em`.
   - Depois: CSV de Materiais exporta os campos obrigatorios + trilha de auditoria completa disponivel na listagem.
   - Depois: `Criado por`/`Atualizado por` no CSV aplicam fallback `Nao identificado` quando o valor vier vazio.
+- Arquivos alterados/criados (2026-03-26):
+  - `src/components/ui/ActionIcon.tsx`
+  - `src/components/ui/CsvExportButton.tsx`
+  - `src/components/ui/CsvExportButton.module.css`
+  - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+- Funcoes/hooks/constantes tocadas (2026-03-26):
+  - `MaterialsPageView`
+  - `ActionIcon`
+  - `CsvExportButton`
+- Comportamento antes/depois (2026-03-26):
+  - Antes: icones de acao e botao de exportacao eram declarados inline na propria tela.
+  - Depois: a tela usa componentes compartilhados, reduzindo duplicacao e mantendo o mesmo padrao visual para futuras geracoes de tela.
