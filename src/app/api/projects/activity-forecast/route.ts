@@ -21,6 +21,7 @@ type ForecastItemRow = {
     description: string;
     unit: string;
     unit_value: number;
+    voice_point: number;
     team_types: {
       name: string | null;
     } | null;
@@ -135,13 +136,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Projeto nao encontrado no tenant informado." }, { status: 404 });
   }
 
-  const { data, error } = await resolution.supabase
+  let data: ForecastItemRow[] | null = null;
+  let error: { message?: string } | null = null;
+
+  const withVoicePoint = await resolution.supabase
     .from("project_activity_forecast")
-    .select("id, service_activity_id, qty_planned, observation, source, created_at, updated_at, service_activities!inner(code, description, unit, unit_value, team_types(name))")
+    .select("id, service_activity_id, qty_planned, observation, source, created_at, updated_at, service_activities!inner(code, description, unit, unit_value, voice_point, team_types(name))")
     .eq("tenant_id", resolution.appUser.tenant_id)
     .eq("project_id", project.id)
-    .order("updated_at", { ascending: false })
-    .returns<ForecastItemRow[]>();
+    .order("updated_at", { ascending: false });
+
+  data = (withVoicePoint.data ?? null) as ForecastItemRow[] | null;
+  error = withVoicePoint.error ? { message: withVoicePoint.error.message } : null;
+
+  if (error?.message?.toLowerCase().includes("voice_point")) {
+    const fallback = await resolution.supabase
+      .from("project_activity_forecast")
+      .select("id, service_activity_id, qty_planned, observation, source, created_at, updated_at, service_activities!inner(code, description, unit, unit_value, team_types(name))")
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("project_id", project.id)
+      .order("updated_at", { ascending: false });
+
+    data = (fallback.data ?? null) as ForecastItemRow[] | null;
+    error = fallback.error ? { message: fallback.error.message } : null;
+  }
 
   if (error) {
     return NextResponse.json({ message: "Falha ao listar atividades previstas do projeto." }, { status: 500 });
@@ -160,6 +178,7 @@ export async function GET(request: NextRequest) {
       type: item.service_activities?.team_types?.name ?? null,
       unit: item.service_activities?.unit ?? "",
       unitValue: Number(item.service_activities?.unit_value ?? 0),
+      voicePoint: Number(item.service_activities?.voice_point ?? 1),
       qtyPlanned: Number(item.qty_planned ?? 0),
       observation: item.observation,
       source: item.source,

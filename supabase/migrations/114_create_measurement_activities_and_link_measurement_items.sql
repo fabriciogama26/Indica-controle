@@ -1,0 +1,283 @@
+-- 114_create_measurement_activities_and_link_measurement_items.sql
+-- Cria catalogo proprio de atividades da Medicao e vincula itens da Ordem a esse catalogo.
+
+create table if not exists public.measurement_activities (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  code text not null,
+  description text not null,
+  unit text not null,
+  unit_value numeric(14, 2) not null default 0,
+  voice_point numeric(14, 6) not null default 1,
+  ativo boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid null references public.app_users(id) on delete set null,
+  updated_by uuid null references public.app_users(id) on delete set null,
+  constraint measurement_activities_code_not_blank check (btrim(code) <> ''),
+  constraint measurement_activities_description_not_blank check (btrim(description) <> ''),
+  constraint measurement_activities_unit_not_blank check (btrim(unit) <> ''),
+  constraint measurement_activities_unit_value_non_negative check (unit_value >= 0),
+  constraint measurement_activities_voice_point_positive check (voice_point > 0),
+  constraint measurement_activities_unique_code unique (tenant_id, code)
+);
+
+create index if not exists idx_measurement_activities_tenant_active_code
+  on public.measurement_activities (tenant_id, ativo, code);
+
+alter table if exists public.measurement_activities enable row level security;
+
+drop policy if exists measurement_activities_tenant_select on public.measurement_activities;
+create policy measurement_activities_tenant_select on public.measurement_activities
+for select to authenticated
+using (public.user_can_access_tenant(measurement_activities.tenant_id));
+
+drop policy if exists measurement_activities_tenant_insert on public.measurement_activities;
+create policy measurement_activities_tenant_insert on public.measurement_activities
+for insert to authenticated
+with check (public.user_can_access_tenant(measurement_activities.tenant_id));
+
+drop policy if exists measurement_activities_tenant_update on public.measurement_activities;
+create policy measurement_activities_tenant_update on public.measurement_activities
+for update to authenticated
+using (public.user_can_access_tenant(measurement_activities.tenant_id))
+with check (public.user_can_access_tenant(measurement_activities.tenant_id));
+
+drop trigger if exists trg_measurement_activities_audit on public.measurement_activities;
+create trigger trg_measurement_activities_audit before insert or update on public.measurement_activities
+for each row execute function public.apply_audit_fields();
+
+insert into public.measurement_activities (
+  id, tenant_id, code, description, unit, unit_value, voice_point, ativo, created_at, updated_at, created_by, updated_by
+)
+select
+  sa.id,
+  sa.tenant_id,
+  sa.code,
+  sa.description,
+  sa.unit,
+  coalesce(sa.unit_value, 0),
+  coalesce(sa.voice_point, 1),
+  coalesce(sa.ativo, true),
+  sa.created_at,
+  sa.updated_at,
+  sa.created_by,
+  sa.updated_by
+from public.service_activities sa
+on conflict (id) do nothing;
+
+alter table if exists public.project_measurement_order_items
+  drop constraint if exists project_measurement_order_items_service_activity_id_fkey;
+
+alter table if exists public.project_measurement_order_items
+  add constraint project_measurement_order_items_service_activity_id_fkey
+  foreign key (service_activity_id)
+  references public.measurement_activities(id)
+  on delete restrict;
+
+create or replace function public.save_project_measurement_order(
+  p_tenant_id uuid,
+  p_actor_user_id uuid,
+  p_measurement_order_id uuid default null,
+  p_programming_id uuid default null,
+  p_project_id uuid default null,
+  p_team_id uuid default null,
+  p_execution_date date default null,
+  p_measurement_date date default null,
+  p_voice_point numeric default null,
+  p_manual_rate numeric default null,
+  p_notes text default null,
+  p_items jsonb default '[]'::jsonb,
+  p_expected_updated_at timestamptz default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_order public.project_measurement_orders%rowtype;
+  v_order_id uuid;
+  v_updated_at timestamptz;
+  v_project_id uuid;
+  v_team_id uuid;
+  v_execution_date date;
+  v_project_code text;
+  v_team_name text;
+  v_foreman_name text;
+  v_item_count integer := coalesce(jsonb_array_length(coalesce(p_items, '[]'::jsonb)), 0);
+  v_inserted_count integer := 0;
+  v_action text;
+begin
+  if jsonb_typeof(coalesce(p_items, '[]'::jsonb)) <> 'array' or v_item_count = 0 then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_MEASUREMENT_ITEMS', 'message', 'Informe itens validos da ordem de medicao.');
+  end if;
+
+  if coalesce(p_measurement_date, null) is null or coalesce(p_voice_point, 0) <= 0 or coalesce(p_manual_rate, 0) <= 0 then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_MEASUREMENT_HEADER', 'message', 'Cabecalho da ordem de medicao invalido.');
+  end if;
+
+  if p_measurement_order_id is null then
+    v_project_id := p_project_id;
+    v_team_id := p_team_id;
+    v_execution_date := p_execution_date;
+
+    if p_programming_id is not null then
+      select pp.project_id, pp.team_id, pp.execution_date, p.sob, t.name, pe.nome
+      into v_project_id, v_team_id, v_execution_date, v_project_code, v_team_name, v_foreman_name
+      from public.project_programming pp
+      join public.project p on p.id = pp.project_id and p.tenant_id = pp.tenant_id
+      join public.teams t on t.id = pp.team_id and t.tenant_id = pp.tenant_id
+      left join public.people pe on pe.id = t.foreman_person_id and pe.tenant_id = t.tenant_id
+      where pp.tenant_id = p_tenant_id
+        and pp.id = p_programming_id
+        and pp.status in ('PROGRAMADA', 'REPROGRAMADA')
+      for update;
+
+      if not found then
+        return jsonb_build_object('success', false, 'status', 404, 'reason', 'PROGRAMMING_NOT_FOUND', 'message', 'Programacao nao encontrada para gerar a ordem.');
+      end if;
+
+      if exists (
+        select 1 from public.project_measurement_orders
+        where tenant_id = p_tenant_id and programming_id = p_programming_id
+      ) then
+        return jsonb_build_object('success', false, 'status', 409, 'reason', 'MEASUREMENT_ORDER_ALREADY_EXISTS', 'message', 'Ja existe ordem para esta programacao.');
+      end if;
+    end if;
+
+    if v_project_id is null or v_team_id is null or v_execution_date is null then
+      return jsonb_build_object('success', false, 'status', 400, 'reason', 'MISSING_MEASUREMENT_CONTEXT', 'message', 'Projeto, equipe e data de execucao sao obrigatorios.');
+    end if;
+
+    if v_project_code is null then
+      select sob into v_project_code from public.project where tenant_id = p_tenant_id and id = v_project_id and is_active = true;
+      if not found then
+        return jsonb_build_object('success', false, 'status', 404, 'reason', 'PROJECT_NOT_FOUND', 'message', 'Projeto invalido para ordem de medicao.');
+      end if;
+    end if;
+
+    if v_team_name is null then
+      select t.name, pe.nome
+      into v_team_name, v_foreman_name
+      from public.teams t
+      left join public.people pe on pe.id = t.foreman_person_id and pe.tenant_id = t.tenant_id
+      where t.tenant_id = p_tenant_id and t.id = v_team_id and t.ativo = true;
+      if not found then
+        return jsonb_build_object('success', false, 'status', 404, 'reason', 'TEAM_NOT_FOUND', 'message', 'Equipe invalida para ordem de medicao.');
+      end if;
+    end if;
+
+    insert into public.project_measurement_orders (
+      tenant_id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, status,
+      notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, created_by, updated_by
+    ) values (
+      p_tenant_id,
+      format('OM-%s-%s', to_char(p_measurement_date, 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6))),
+      p_programming_id, v_project_id, v_team_id, v_execution_date, p_measurement_date, p_voice_point, p_manual_rate, 'ABERTA',
+      nullif(btrim(coalesce(p_notes, '')), ''), v_project_code, v_team_name, nullif(btrim(coalesce(v_foreman_name, '')), ''), p_actor_user_id, p_actor_user_id
+    ) returning id, updated_at into v_order_id, v_updated_at;
+
+    v_action := 'CREATE';
+  else
+    select * into v_order
+    from public.project_measurement_orders
+    where tenant_id = p_tenant_id and id = p_measurement_order_id
+    for update;
+
+    if not found then
+      return jsonb_build_object('success', false, 'status', 404, 'reason', 'MEASUREMENT_ORDER_NOT_FOUND', 'message', 'Ordem de medicao nao encontrada.');
+    end if;
+
+    if p_expected_updated_at is null then
+      return jsonb_build_object('success', false, 'status', 400, 'reason', 'EXPECTED_UPDATED_AT_REQUIRED', 'message', 'Atualize a lista antes de editar.');
+    end if;
+
+    if date_trunc('milliseconds', v_order.updated_at) <> date_trunc('milliseconds', p_expected_updated_at) then
+      return jsonb_build_object('success', false, 'status', 409, 'reason', 'CONCURRENT_MODIFICATION', 'message', 'Ordem alterada por outro usuario.');
+    end if;
+
+    if v_order.status <> 'ABERTA' then
+      return jsonb_build_object('success', false, 'status', 409, 'reason', 'MEASUREMENT_ORDER_LOCKED', 'message', 'Somente ordem ABERTA pode ser editada.');
+    end if;
+
+    v_order_id := v_order.id;
+    update public.project_measurement_orders
+    set
+      measurement_date = p_measurement_date,
+      voice_point = p_voice_point,
+      manual_rate = p_manual_rate,
+      notes = nullif(btrim(coalesce(p_notes, '')), ''),
+      updated_by = p_actor_user_id
+    where tenant_id = p_tenant_id and id = v_order_id
+    returning updated_at into v_updated_at;
+
+    update public.project_measurement_order_items
+    set is_active = false, updated_by = p_actor_user_id
+    where tenant_id = p_tenant_id and measurement_order_id = v_order_id and is_active = true;
+
+    v_action := 'UPDATE';
+  end if;
+
+  insert into public.project_measurement_order_items (
+    tenant_id, measurement_order_id, service_activity_id, programming_activity_id, project_activity_forecast_id,
+    activity_code, activity_description, activity_unit, quantity, voice_point, manual_rate, unit_value, observation, is_active, created_by, updated_by
+  )
+  select
+    p_tenant_id,
+    v_order_id,
+    ma.id,
+    case when coalesce(nullif(btrim(raw.item ->> 'programmingActivityId'), ''), '') ~* '^[0-9a-f-]{36}$' then (raw.item ->> 'programmingActivityId')::uuid else null end,
+    case when coalesce(nullif(btrim(raw.item ->> 'projectActivityForecastId'), ''), '') ~* '^[0-9a-f-]{36}$' then (raw.item ->> 'projectActivityForecastId')::uuid else null end,
+    ma.code,
+    ma.description,
+    ma.unit,
+    replace(raw.item ->> 'quantity', ',', '.')::numeric,
+    coalesce(case when nullif(btrim(raw.item ->> 'voicePoint'), '') is not null then replace(raw.item ->> 'voicePoint', ',', '.')::numeric else null end, ma.voice_point, p_voice_point),
+    coalesce(case when nullif(btrim(raw.item ->> 'manualRate'), '') is not null then replace(raw.item ->> 'manualRate', ',', '.')::numeric else null end, p_manual_rate),
+    coalesce(case when nullif(btrim(raw.item ->> 'unitValue'), '') is not null then replace(raw.item ->> 'unitValue', ',', '.')::numeric else null end, ma.unit_value),
+    nullif(btrim(coalesce(raw.item ->> 'observation', '')), ''),
+    true,
+    p_actor_user_id,
+    p_actor_user_id
+  from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) as raw(item)
+  join public.measurement_activities ma
+    on ma.tenant_id = p_tenant_id
+   and ma.id = case when coalesce(nullif(btrim(raw.item ->> 'activityId'), ''), '') ~* '^[0-9a-f-]{36}$' then (raw.item ->> 'activityId')::uuid else null end
+   and ma.ativo = true
+  where replace(raw.item ->> 'quantity', ',', '.')::numeric > 0;
+
+  get diagnostics v_inserted_count = row_count;
+  if v_inserted_count <> v_item_count then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_MEASUREMENT_ITEMS', 'message', 'Ha atividades invalidas na ordem de medicao.');
+  end if;
+
+  perform public.append_project_measurement_order_history_record(
+    p_tenant_id,
+    p_actor_user_id,
+    v_order_id,
+    v_action,
+    null,
+    jsonb_build_object('itemCount', jsonb_build_object('from', null, 'to', v_item_count::text)),
+    jsonb_build_object('source', 'measurement-api')
+  );
+
+  return jsonb_build_object(
+    'success', true,
+    'status', 200,
+    'measurement_order_id', v_order_id,
+    'updated_at', v_updated_at,
+    'message', case when v_action = 'CREATE' then 'Ordem de medicao criada com sucesso.' else 'Ordem de medicao atualizada com sucesso.' end
+  );
+exception
+  when unique_violation then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'MEASUREMENT_ORDER_ALREADY_EXISTS', 'message', 'Ja existe ordem para esta programacao.');
+  when others then
+    return jsonb_build_object('success', false, 'status', 500, 'reason', 'SAVE_MEASUREMENT_ORDER_FAILED', 'message', format('Falha ao salvar ordem de medicao: %s', sqlerrm));
+end;
+$$;
+
+revoke all on table public.measurement_activities from public;
+grant select, insert, update on table public.measurement_activities to authenticated;
+grant all privileges on table public.measurement_activities to service_role;
+

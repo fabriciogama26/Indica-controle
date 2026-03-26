@@ -55,7 +55,7 @@ type SupportOptionRow = {
 type ProgrammingSgdTypeRow = {
   id: string;
   description: string;
-  export_column: "SGD_AT_MT_VYP" | "SGD_BT" | "SGD_TET" | "AREA_LIVRE";
+  export_column: string;
   is_active: boolean;
 };
 
@@ -1370,6 +1370,7 @@ async function fetchProgrammingResponseItem(
         }
       : null,
     activities: scheduleActivities.map((activity) => ({
+      id: activity.id,
       catalogId: activity.service_activity_id,
       code: normalizeText(activity.activity_code),
       description: normalizeText(activity.activity_description),
@@ -2248,6 +2249,7 @@ export async function GET(request: NextRequest) {
               }
             : null,
           activities: scheduleActivities.map((activity) => ({
+            id: activity.id,
             catalogId: activity.service_activity_id,
             code: normalizeText(activity.activity_code),
             description: normalizeText(activity.activity_description),

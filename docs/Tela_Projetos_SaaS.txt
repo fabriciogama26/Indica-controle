@@ -5,7 +5,7 @@ Visao geral
 -----------
 - Tela operacional para cadastro, filtro e listagem de projetos por tenant.
 - Implementa fluxo completo com criacao, edicao, inativacao e historico de alteracoes.
-- O formulario de cadastro/edicao trabalha apenas com `Projeto (SOB)` e limita a digitacao a `10` caracteres.
+- O formulario de cadastro/edicao trabalha apenas com `Projeto (SOB)`, sem limite maximo de caracteres e sem padrao fixo de prefixo por prioridade.
 - O fluxo operacional da tela nao expõe nem exige `FOB`.
 - Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
 - Inclui aba `Materiais previstos` para manter a lista inicial de materiais planejados por projeto, com importacao em massa e inclusao manual.
@@ -43,6 +43,7 @@ Arquitetura
 - Banco (materiais manuais + importacao protegida de atividades): `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
 - Banco (concorrencia e limites dos previstos): `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
 - Banco (RPC transacional da tela principal): `supabase/migrations/077_create_admin_write_rpcs.sql`
+- Banco (remocao da constraint de formato por prioridade no SOB): `supabase/migrations/118_remove_project_sob_priority_format_constraint.sql`
 
 Cadastro
 --------
@@ -77,9 +78,7 @@ Cadastro
   - `Gestor de campo Distribuidora`
 - Campo `Responsavel Contratada` carregado de `people` ativo, filtrando apenas cargos `SUPERVISOR` em `job_titles`.
 - Regra de validacao do `SOB` antes do banco:
-  - Se prioridade for `GRUPO B - FLUXO`, `DRP / DRC` ou `GRUPO A - FLUXO`, o `SOB` deve ser `A` + 9 numeros.
-  - Se prioridade for `FUSESAVER`, o `SOB` deve iniciar com `ZX` ou `FS` + 8 numeros.
-  - O campo aceita no maximo `10` caracteres no frontend e na API.
+  - O campo aceita texto livre (normalizado em maiusculas), sem validacao de prefixo por prioridade.
   - `SOB` duplicado no mesmo tenant nao pode ser cadastrado.
 - Regra de habilitacao no formulario:
   - `Projeto (SOB)` so fica ativo depois que `Prioridade` for selecionada.
@@ -156,7 +155,7 @@ Boas praticas
 -------------
 - Sempre filtrar e gravar com `tenant_id` no backend.
 - Usar validacao de campos obrigatorios na API antes de gravar.
-- Limitar `Projeto (SOB)` a `10` caracteres no frontend e na API, mantendo tambem a regra de formato por prioridade.
+- Manter `Projeto (SOB)` sem limite fixo de caracteres e sem regra de prefixo por prioridade no frontend e na API.
 - Manter paginacao server-side para listas grandes.
 - Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
 - Exigir `expectedUpdatedAt` na edicao e no cancelamento/ativacao para evitar `last-write-wins`.
@@ -197,7 +196,7 @@ Atualizacao 2026-03
 - Antes: rota `/projetos` era placeholder sem CRUD.
 - Depois: tela com cadastro, filtros, lista paginada e acoes completas.
 - Criada migration `029_create_project_table.sql` para tabela `public.project` com RLS e auditoria.
-- Criada migration `030_project_sob_priority_rules.sql` para validar formato de `SOB` por prioridade e unicidade case-insensitive no tenant.
+- Criada migration `030_project_sob_priority_rules.sql` para normalizacao de `SOB` e unicidade case-insensitive por tenant.
 - Criada migration `031_create_project_lookup_tables.sql` para normalizar campos de dominio e vincular `project` com FKs.
 - Criada migration `034_use_people_for_project_contractor_responsible.sql` para usar `people` (SUPERVISOR) em `Responsavel Contratada`.
 - Criada migration `036_create_project_history_and_cancellation.sql` para status ativo e historicos de projeto/cancelamento.
@@ -229,7 +228,7 @@ Atualizacao 2026-03
   - proteger a importacao de `Atividades previstas` por RPC
   - permitir inclusao manual e edicao de `Materiais previstos` no projeto
 - Criada migration `066_harden_location_and_project_forecast_rpcs.sql` para adicionar controle de concorrencia por `updated_at` e limite maximo de quantidade nas RPCs de `Materiais previstos` e `Atividades previstas` do projeto.
-- O formulario de `Projetos` remove `FOB` do fluxo operacional e passa a limitar `Projeto (SOB)` em `10` caracteres no frontend e na API.
+- O formulario de `Projetos` remove `FOB` do fluxo operacional.
 - Antes: nao havia marcador simples para saber se o projeto passou pela tela de `Locacao`.
 - Depois: o projeto passa a registrar `has_locacao = true` quando existe salvamento real na `Locacao`.
 - Importacao e download de modelo de `Materiais previstos` passaram a ser feitos por Edge Functions (`get_project_forecast_template` e `import_project_forecast`).
@@ -247,6 +246,7 @@ Atualizacao 2026-03
 - Ajustado o modelo XLSX de `Atividades previstas` para aceitar apenas as colunas `codigo` e `quantidade`.
 - Ajustada UX das abas `Materiais previstos` e `Atividades previstas` para manter simultaneamente importacao em massa e inclusao manual.
 - UX: em modo edicao do projeto, o bloco de cadastro recebe destaque visual com borda amarela.
+- Ajustadas tela/API/migration para remover a regra de formato por prioridade e o limite de 10 caracteres do `Projeto (SOB)`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -254,7 +254,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
   - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento, incluindo envio de `expectedUpdatedAt` no save e no status.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, limitando `SOB`, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
+  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
@@ -276,11 +276,11 @@ Funcoes principais
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
-  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS` e validacao de `SOB`.
+  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS` e `HISTORY_FIELD_LABELS`.
 - Caminho: `supabase/migrations/029_create_project_table.sql`
   - Responsavel por: tabela `project`, indices, policies RLS e trigger de auditoria.
 - Caminho: `supabase/migrations/030_project_sob_priority_rules.sql`
-  - Responsavel por: regra de formato do `SOB` por prioridade e unicidade case-insensitive por tenant.
+  - Responsavel por: normalizacao de `SOB` e unicidade case-insensitive por tenant.
 - Caminho: `supabase/migrations/031_create_project_lookup_tables.sql`
   - Responsavel por: normalizar e disponibilizar tabelas de dominio do formulario de projetos.
 - Caminho: `supabase/migrations/034_use_people_for_project_contractor_responsible.sql`
@@ -303,6 +303,8 @@ Constantes e configuracoes
   - Responsavel por: endurecer as RPCs de previstos do projeto com concorrencia por `updated_at` e limite maximo de quantidade.
 - Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
   - Responsavel por: criar `save_project_record` e `set_project_record_status` para escrita transacional da tela principal de projetos.
+- Caminho: `supabase/migrations/118_remove_project_sob_priority_format_constraint.sql`
+  - Responsavel por: remover a constraint `chk_project_sob_priority_format`, liberando `SOB` sem padrao de prefixo por prioridade.
 - Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
 - Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
@@ -396,3 +398,21 @@ Atualizacao adicional 2026-03-24
   - Antes: os CSVs de `Projetos`, `Materiais previstos` e `Atividades previstas` exportavam apenas subconjuntos de colunas.
   - Depois: os CSVs passam a incluir campos obrigatorios de cadastro de projeto e metadados extras operacionais/auditoria disponiveis (`Status`, `Registrado por/em`, `Atualizado por/em`, `Origem`, `Importado em`, `Criado em`, `Atualizado em`).
   - Depois: modal de detalhes e CSV de Projetos aplicam fallback `Nao identificado` para nomes de auditoria vazios.
+
+Atualizacao adicional 2026-03-26
+--------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/route.ts`
+  - `supabase/migrations/118_remove_project_sob_priority_format_constraint.sql`
+  - `docs/Tela_Projetos_SaaS.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `handleSubmit`
+  - `validateRequiredProjectFields`
+  - `parseProjectInput`
+  - `normalizeSob`
+  - `chk_project_sob_priority_format` (constraint de banco removida)
+- Comportamento antes/depois:
+  - Antes: `Projeto (SOB)` era bloqueado por formato baseado em `Prioridade` (ex.: `A`, `ZX`, `FS`) e por limite de `10` caracteres no frontend/API.
+  - Depois: `Projeto (SOB)` aceita texto livre (normalizado para maiusculas), sem validacao de prefixo por prioridade e sem limite fixo de 10 caracteres na tela/API.
+  - Depois: a constraint de banco `chk_project_sob_priority_format` foi removida para manter o comportamento consistente ponta a ponta.

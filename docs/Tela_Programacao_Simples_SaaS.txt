@@ -63,6 +63,10 @@ Arquitetura
 - Migration de compatibilidade do tipo SGD:
   - `supabase/migrations/108_allow_area_livre_programming_sgd_types.sql`
   - Catalogo `programming_sgd_types` passa a aceitar `AREA_LIVRE` em `export_column`.
+- Migration de flexibilizacao do catalogo de Tipo de SGD:
+  - `supabase/migrations/120_allow_multiple_programming_sgd_types_per_export_column.sql`
+  - Remove a unicidade por `tenant_id + export_column` em `programming_sgd_types`, permitindo varios tipos de SGD por coluna tecnica no mesmo tenant.
+  - Define `AREA_LIVRE` como valor padrao de `export_column` para novos cadastros.
 - Migration de endurecimento da RPC full:
   - `supabase/migrations/100_harden_programming_full_self_contained.sql`
   - A RPC `save_project_programming_full` passa a ser autocontida.
@@ -451,3 +455,15 @@ Atualizacao adicional 2026-03-24
   - Antes: o modal `Historico da Programacao` mostrava o que mudou e quando, mas sem o autor da alteracao.
   - Depois: o modal `Historico da Programacao` passa a mostrar tambem quem alterou (`changedByName`) em cada evento.
 
+Atualizacao adicional 2026-03-26
+--------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/120_allow_multiple_programming_sgd_types_per_export_column.sql`
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingSgdTypeRow` (tipagem de `export_column` na API de Programacao)
+- Comportamento antes/depois:
+  - Antes: o catalogo `programming_sgd_types` aceitava apenas um registro por `export_column` em cada tenant, bloqueando inclusao de novos tipos quando as colunas tecnicas base ja estavam ocupadas.
+  - Depois: o catalogo passa a aceitar varios tipos por `export_column` no mesmo tenant, mantendo o escopo multi-tenant e destravando novos cadastros de Tipo de SGD.

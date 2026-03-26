@@ -2,134 +2,247 @@ Tela: Medicao SaaS
 
 Visao geral
 -----------
-- Tela frontend para montar OS e medicao por projeto.
-- Permite iniciar a medicao a partir de uma `Programacao` existente ou direto do `Projeto`.
-- Reaproveita as atividades previstas do projeto e o snapshot de atividades da programacao para compor a medicao.
-- Nesta etapa, a tela ainda nao possui backend proprio de persistencia; o fechamento atual e apenas local no frontend.
+- Tela de `Ordem de Medicao` no padrao `cadastro + filtros + lista`.
+- A ordem pode nascer independente da `Programacao`.
+- O sistema tenta identificar automaticamente se existe programacao para a medicao por `Projeto + Equipe + Data de execucao`.
+- O usuario registra as atividades executadas e calcula o total da medicao por item.
+- Formula oficial da medicao por item:
+  - `Pontos (voice_point) x Quantidade x Taxa manual x Valor unitario`
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/medicao/page.tsx`
 - View principal: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
 - Estilo dedicado: `src/modules/dashboard/medicao/MeasurementPageView.module.css`
-- Fontes de leitura reutilizadas:
+- API da tela:
+  - `src/app/api/medicao/route.ts`
+- Fonte complementar para selecao de origem (somente contexto da ordem):
   - `src/app/api/programacao/route.ts`
-  - `src/app/api/projects/activity-forecast/route.ts`
-- Guard de rota e shell:
-  - `src/components/layout/AppShell.tsx`
-  - `src/lib/auth/authorization.ts`
+- Catalogo de atividades proprio da Medicao:
+  - `src/app/api/medicao/activities/catalog/route.ts`
+- Banco (multi-tenant + RLS + RPC transacional):
+  - `supabase/migrations/112_create_measurement_order_module.sql`
+  - `supabase/migrations/114_create_measurement_activities_and_link_measurement_items.sql`
+  - `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
+  - `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
+  - `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
+  - `supabase/migrations/119_create_measurement_batch_import_partial_rpc.sql`
 
 Cadastro
 --------
-- Abertura da medicao:
-  - `Gerar da Programacao`
-  - `Criar do Projeto`
+- Origem obrigatoria:
+  - `Projeto + Equipe + Data de execucao`
 - Campos principais:
-  - Codigo da medicao
-  - Codigo da OS
-  - Data da medicao
-  - Origem
-  - Titulo
+  - Projeto (padrao `input + datalist`, igual ao filtro)
+  - Equipe
+  - Data execucao
+  - Encarregado (somente leitura da equipe)
   - Observacoes
-- Regras desta etapa:
-  - A tela abre com fator `Normal = 1,00`.
-  - O usuario pode trocar manualmente para:
-    - `Emergencial = 1,20`
-    - `Municipio com modificador = 1,25`
-    - `Ilha = 2,85`
-  - O calculo atual e local:
-    - `quantidade executada x valor unitario x fator`
-  - A tela permite incluir linha manual para atividade fora da base carregada.
+- Itens da ordem:
+  - Atividade (catalogo proprio da Medicao)
+  - Taxa manual (campo no topo do bloco `Atividades da Ordem`, ao lado de Quantidade)
+  - Pontos (`voice_point`) por atividade, vindos de `measurement_activities`
+  - Quantidade
+  - Valor unitario (somente leitura na grade)
+  - Observacao
+- Regras:
+  - A Programacao deixa de ser obrigatoria para cadastro da medicao.
+  - Quando existir match por `Projeto + Equipe + Data de execucao`, a ordem vincula automaticamente a melhor programacao candidata.
+  - O resultado do match de Programacao e exibido somente apos salvar a medicao (na lista e em detalhes).
+  - A inclusao de atividades e independente da lista de atividades da Programacao.
+  - O sistema salva snapshot do status `CONCLUIDO/PARCIAL` da programacao no momento da criacao.
+  - Lista e detalhes avisam quando o status `CONCLUIDO/PARCIAL` da programacao foi atualizado apos a medicao.
+  - `Data da medicao` nao e campo no formulario; no cadastro novo ela segue automaticamente a `Data execucao`.
+  - Cada item calcula `total_value` com base na formula da medicao.
+  - A ordem recalcula os totais no frontend para conferencia.
+  - O botao `Salvar ordem` fica no final do bloco `Atividades da Ordem` (fechamento do cadastro apos revisar itens).
+  - O botao `Limpar` foi removido do cadastro principal para evitar limpeza acidental ao trocar programacao.
+  - Cadastro em massa por CSV com modelo `projeto,data,equipe,voz,quantidade`.
+  - Cadastro em massa aceita programacoes historicas (nao limita a status `PROGRAMADA/REPROGRAMADA`).
+  - No import em massa, a identificacao da programacao e feita por `projeto + equipe + data` com coluna de equipe vinda da propria linha CSV.
+  - Quando houver erro no import, a tela gera automaticamente um CSV de retorno com `linha`, `coluna`, `valor` e `erro`.
+  - O import em massa processa linhas validas mesmo com falhas parciais e informa status final (`sucesso total`, `parcial` ou `sem sucesso`).
+  - As falhas do import em massa sao reportadas por tipo de campo (ex.: `Projeto nao encontrado`, `Data invalida`, `Atividade nao encontrada`, `Quantidade invalida`) para facilitar a correcao da planilha.
+  - Quando nao existir programacao para o `Projeto + Equipe + Data`, o import em massa ainda salva a medicao e a ordem aparece como `Nao programada` na lista.
+  - O campo `voz` no import em massa aceita codigo textual e aplica tolerancia de lookup para variacao `0`/`O`.
+  - O modal de importacao em massa exibe resumo de resultado com quantidade de ordens salvas e linhas com erro.
+  - Quando houver falha, o modal disponibiliza botao para baixar o CSV de erros.
+  - O import em massa protege sobreposicao: se ja existir ordem para o mesmo `Projeto + Equipe + Data de execucao`, a linha e ignorada e o resumo exibe `x linhas ja cadastradas`.
+  - O import em massa usa RPC de lote parcial (`save_project_measurement_order_batch_partial`) para salvar linhas validas e retornar erros/duplicidades por linha no mesmo fluxo.
+  - Na edicao da ordem `ABERTA`, e permitido alterar `Projeto`, `Equipe` e `Data de execucao`.
+  - Persistencia transacional feita por RPC.
 
 Filtros, auto-complete e listagem
 ---------------------------------
-- Busca de origem:
-  - Periodo inicial e final para consultar `Programacao`
+- Filtros:
+  - Data inicial
+  - Data final
+  - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
+  - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
+  - Programacao (`TODOS`, `Programada`, `Nao programada`)
+  - Alerta Concluido/Parcial (`TODOS`, `Com alerta`, `Sem alerta`)
+- Listagem:
+  - Numero da ordem
   - Projeto
-  - Programacao
-- Base carregada:
-  - Se origem for `Programacao`, a tela usa as atividades da agenda e complementa o `valor unitario` a partir do previsto do projeto.
-  - Se origem for `Projeto`, a tela usa as atividades previstas em `project_activity_forecast`.
-- Listagens:
-  - Contexto do projeto selecionado
-  - Contexto da equipe/programacao selecionada
-  - Tabela editavel dos itens da medicao
-  - Resumo total previsto, executado e valor final
+  - Data execucao
+  - Equipe
+  - Encarregado
+  - Programacao (`Programada` ou `Nao programada`)
+  - Status execucao da programacao + alerta de atualizacao
+  - Quantidade de itens
+  - Valor total
+  - Status
+  - Atualizado em
+  - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela.
+  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`.
+- Acoes:
+  - Detalhes
+  - Historico
+  - Editar (somente quando `ABERTA`)
+  - Cancelar (motivo obrigatorio, bloqueando quando ja cancelada)
+  - Fechar (somente quando `ABERTA`)
 
 Boas praticas
 -------------
-- Manter `medicao` como `pageKey` oficial no controle de permissao.
-- Tratar esta entrega como frontend de preparacao; nao simular persistencia definitiva no banco.
-- Centralizar o calculo oficial de fator e fechamento da medicao no backend na proxima etapa.
-- Evitar duplicar regra final de `ilha` entre `Projeto` e `Locacao` sem fonte de verdade no backend.
+- Manter segregacao por tenant em todas as leituras/escritas com `tenant_id`.
+- Preservar a escrita critica via RPC transacional (sem `insert/update` fragmentado na API).
+- Manter controle de concorrencia otimista com `expectedUpdatedAt`.
+- Manter status de faturamento fora deste modulo (faturamento fica para outra tela).
 
 Cancelamento e saldo
 --------------------
-- Nao existe cancelamento persistente nesta etapa.
-- Nao existe aprovacao persistente nesta etapa.
-- Nao existe impacto em saldo de estoque nesta etapa.
+- `Cancelamento` exige motivo minimo e grava historico.
+- `Fechamento` da ordem altera status para `FECHADA`.
+- Nao existe status `FATURADA` nesta etapa.
+- Nao ha impacto direto em saldo de estoque nesta tela.
 
 Atalhos
 -------
 - Rota ativa: `/medicao`
-- Interacoes principais:
-  - Selecionar origem por `Programacao` ou `Projeto`
-  - Carregar atividades previstas
-  - Ajustar quantidades e valor unitario
-  - Trocar regra de fator
-  - Gerar previa local da medicao
+- Endpoints:
+  - `GET /api/medicao` (lista, detalhe, historico)
+  - `POST /api/medicao` (criar ordem)
+  - `PUT /api/medicao` (editar ordem)
+  - `PATCH /api/medicao` (fechar/cancelar)
+  - `GET /api/medicao/activities/catalog` (catalogo de atividades da medicao)
+- Modelo cadastro em massa:
+  - colunas obrigatorias: `projeto,data,equipe,voz,quantidade`
 
 Atualizacao 2026-03
 -------------------
-- Arquivo `src/modules/dashboard/medicao/MeasurementPageView.tsx` criado.
-- Arquivo `src/modules/dashboard/medicao/MeasurementPageView.module.css` criado.
-- Arquivo `src/app/(dashboard)/medicao/page.tsx` deixou de usar placeholder e passou a montar a tela real do frontend.
-- A tela agora consulta:
-  - `/api/programacao` para projetos, equipes e programacoes do periodo
-  - `/api/projects/activity-forecast` para atividades previstas por projeto
+- Arquivos criados/alterados:
+  - `supabase/migrations/114_create_measurement_activities_and_link_measurement_items.sql`
+  - `supabase/migrations/112_create_measurement_order_module.sql`
+  - `src/app/api/medicao/route.ts`
+  - `src/app/api/medicao/activities/catalog/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+  - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
+  - `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
+  - `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
+  - `supabase/migrations/119_create_measurement_batch_import_partial_rpc.sql`
 - Antes:
-  - `/medicao` era apenas placeholder visual sem fluxo funcional.
+  - Tela de medicao sem backend proprio, com calculo local preparatorio.
 - Depois:
-  - `/medicao` possui fluxo frontend para montar a medicao, calcular valor final e preparar a futura integracao com backend proprio.
+  - Modulo de `Ordem de Medicao` com persistencia em banco, RLS, historico e RPC transacional.
+- Ajuste tecnico recente:
+  - Remocao de bloco duplicado em `MeasurementPageView.tsx` que quebrava o parser (`Return statement is not allowed here`).
+  - Correcao de tipagem em `src/app/api/medicao/route.ts` para evitar `never` no `supabase` durante o type-check do build.
+  - Ajuste de calculo para usar `voice_point` por atividade na grade da ordem (nao manual no cabecalho).
+  - Inclusao de pre-filtro por `Data da programacao` antes da selecao da `Programacao`.
+  - Botao `Salvar ordem` movido para o fim de `Atividades da Ordem` e remocao do `Limpar`.
+  - Busca de atividade endurecida com fallback da propria programacao selecionada.
+  - Busca de atividade com fallback adicional em tempo real no catalogo e comparacao tolerante de codigo (`O`/`0`), reduzindo falso erro no botao `Adicionar`.
+  - Busca do `Adicionar` expandida para multiplos tokens de lookup (texto completo, trecho antes de `|` e codigo antes de `-`).
+  - Medicao desacoplada das atividades da Programacao: agora usa tabela propria `measurement_activities`.
+  - `Valor unitario` travado na grade `Atividades da Ordem` (somente leitura).
+  - Inclusao do botao `Cadastro em massa (CSV)` com download de modelo no bloco `Atividades da Ordem`.
+  - Cadastro em massa ajustado para importar medicao antiga via programacao historica (qualquer status), mantendo save/historico no mesmo RPC.
+  - Cadastro da medicao desacoplado da programacao: agora o vinculo de programacao e opcional e identificado por `Projeto + Equipe + Data`.
+  - Alerta para mudanca posterior de `CONCLUIDO/PARCIAL` da programacao.
+  - Modelo CSV alinhado ao padrao de importacao (`;` com BOM UTF-8) e parser tolerante ao BOM no cabecalho.
+  - Fallback de compatibilidade nas APIs de forecast/catalog quando `voice_point` ainda nao existe no banco (mantem `voicePoint = 1`).
+  - Remocao do campo visual `Status` no cadastro (status mantido na lista e detalhes).
+  - Remocao do indicador de `Quantidade total` no resumo do cadastro (mantidos `Itens` e `Valor total`).
+  - Acoes da lista padronizadas para `Detalhes`, `Historico`, `Editar`, `Cancelar` e `Fechar`.
+  - Acoes da lista migradas para o padrao visual das outras telas (botoes circulares com icones e tooltip).
+  - `Detalhes`, `Historico` e `Cancelar` agora abrem em modais no mesmo estilo das telas de cadastro base.
+  - Botao `Editar` ajustado para rolar automaticamente ao topo do conteudo principal.
+  - Inclusao do botao `Cancelar edicao` no modo de edicao da ordem.
+  - Historico padronizado no modal com cards de alteracao e paginacao (5 por pagina), igual as telas base.
+  - `Cadastro em massa` movido para junto do `Salvar ordem`, abrindo modal com passo a passo (baixar modelo, preencher, enviar arquivo).
+  - Edicao de `Projeto/Equipe/Data execucao` habilitada no frontend e persistida no RPC transacional.
+  - Correcao do campo digitavel `Projeto`: removida limpeza automatica durante digitacao no cadastro da Medicao.
+  - Campo `Projeto` alinhado ao mesmo padrao do `Projeto (SOB)` da Programacao Simples: validacao por codigo exato e suporte a apagar com backspace sem autocorrecao indevida.
+  - Catalogo de atividades da Medicao ajustado para sincronizar `measurement_activities` por `tenant_id + code` e devolver `unit_value/voice_point` atualizados da `service_activities`.
+  - Inclusao manual (`Adicionar`) reforcada para revalidar a atividade no catalogo remoto antes de incluir na grade, evitando valor antigo de cache local.
+  - Correcao na inclusao de atividades: busca prioriza match exato de codigo e sincroniza valores de `unit_value/voice_point` a partir de `service_activities` para evitar divergencia no valor exibido.
+  - Cadastro em massa finalizado com geracao de arquivo de erro por linha/coluna e feedback objetivo de resultado da carga.
+  - Mensagem generica de `programacao nao encontrada` removida do import em massa, priorizando erros especificos por campo.
+  - Import em massa ajustado para nao bloquear salvamento quando nao houver programacao: usa contexto `Projeto + Equipe do formulario + Data`, permitindo carga retroativa e exibicao como `Nao programada`.
+  - Lookup do campo `voz` reforcado para pesquisa textual com variantes `0`/`O`, reduzindo falso erro de atividade nao encontrada no CSV.
+  - Modal do cadastro em massa atualizado com resumo visual de importacao (`Incluido com sucesso`, `parcial` ou `com erros`) e botao para baixar CSV de erros.
+  - API do catalogo de atividades da Medicao reforcada com fallback de busca ampla e match normalizado para codigos/descricao.
+  - Modelo de importacao em massa atualizado com coluna obrigatoria `equipe` e validacao textual da equipe por nome/codigo (sem exigir UUID).
+  - Import em massa com anti-sobreposicao por `Projeto + Equipe + Data de execucao`, mantendo processamento parcial e resumo dedicado para `linhas ja cadastradas`.
+  - Import em massa migrado para RPC de lote parcial, removendo salvamento linha-a-linha via HTTP e concentrando o processamento no banco com retorno estruturado.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
-  - Responsavel por: carregar projeto/programacao, montar itens da medicao, calcular total local e controlar a regra de fator no frontend.
-- Caminho: `src/app/(dashboard)/medicao/page.tsx`
-  - Responsavel por: expor a view principal da tela `Medicao`.
+  - Responsavel por: fluxo `cadastro + filtros + lista`, pre-filtro por data da programacao, inclusao de itens, calculo com `voice_point` por atividade, valor unitario bloqueado na grade, cadastro em massa CSV, historico e acoes de status.
+- Caminho: `src/app/api/medicao/route.ts`
+  - Responsavel por: validacao de payload, leitura de ordens, leitura de historico, criacao/edicao e troca de status via RPC.
+- Caminho: `src/app/api/programacao/route.ts`
+  - Responsavel por: fornecer contexto operacional da ordem (programacao/projeto/equipe/data).
+- Caminho: `src/app/api/medicao/activities/catalog/route.ts`
+  - Responsavel por: listar atividades da tabela propria da Medicao para o auto-complete de inclusao de itens.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
-  - Responsavel por: definir `FACTOR_RULES` com `1,00`, `1,20`, `1,25` e `2,85`.
-- Caminho: `src/lib/auth/authorization.ts`
-  - Responsavel por: manter a rota `/medicao` vinculada ao `pageKey = medicao`.
-- Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: expor `Medicao` na secao `Operacao` e mostrar o subtitulo da tela.
+  - Responsavel por: estados de formulario, filtros padrao, parse de numeros e formatadores.
+- Caminho: `supabase/migrations/112_create_measurement_order_module.sql`
+  - Responsavel por: tabelas `project_measurement_orders`, `project_measurement_order_items`, `project_measurement_order_history`, policies RLS e RPCs do modulo.
+- Caminho: `supabase/migrations/114_create_measurement_activities_and_link_measurement_items.sql`
+  - Responsavel por: criar `measurement_activities`, migrar base inicial e vincular os itens da ordem de medicao a esse catalogo.
+- Caminho: `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
+  - Responsavel por: permitir que o save da Ordem de Medicao use `programming_id` historico (qualquer status) sem quebrar o fluxo transacional e o historico append.
+- Caminho: `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
+  - Responsavel por: salvar snapshot de `CONCLUIDO/PARCIAL` da Programacao e permitir link automatico opcional por `Projeto + Equipe + Data`.
+- Caminho: `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
+  - Responsavel por: permitir alteracao de contexto (`Projeto`, `Equipe`, `Data execucao`) na edicao da Medicao e registrar diffs no historico da ordem.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
-  - Responsavel por: `toIsoDate`, `addDays`, `formatDate`, `formatCurrency`, `formatFactor`, `parseDecimal`, `mapForecastRows` e `mapScheduleRows`.
-- Caminho: `src/hooks/useAuth.ts`
-  - Responsavel por: disponibilizar sessao autenticada para chamadas das APIs reaproveitadas.
+  - Responsavel por: `parsePositiveNumber`, `parseNonNegativeNumber`, `formatDate`, `formatDateTime`, `formatCurrency`.
+- Caminho: `src/app/api/medicao/route.ts`
+  - Responsavel por: normalizacao de UUID/data/numero, carga de usuario e montagem de DTO de resposta.
 
 Servicos e integracoes externas
-- `/api/programacao`: fonte de projetos, equipes e programacoes ativas do periodo.
-- `/api/projects/activity-forecast`: fonte de atividades previstas, quantidade prevista e valor unitario.
-- Nao existe `/api/medicao` nesta etapa.
+- `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
+- Supabase/Postgres com RLS ativo e RPC security-definer no fluxo transacional da medicao.
 
 Ajuda contextual
 - Arquivos alterados/criados:
-  - `src/app/(dashboard)/medicao/page.tsx`
+  - `supabase/migrations/114_create_measurement_activities_and_link_measurement_items.sql`
+  - `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
+  - `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
+  - `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
+  - `supabase/migrations/119_create_measurement_batch_import_partial_rpc.sql`
+  - `supabase/migrations/112_create_measurement_order_module.sql`
+  - `src/app/api/medicao/route.ts`
+  - `src/app/api/medicao/activities/catalog/route.ts`
+  - `src/app/api/programacao/route.ts`
   - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
   - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
-- Hooks/constantes tocadas:
-  - `useAuth`
-  - `useState`
-  - `useEffect`
-  - `useMemo`
-  - `FACTOR_RULES`
+- Hooks/funcoes/constantes tocadas:
+  - `useState`, `useEffect`, `useMemo`
+  - `submitOrder`, `changeStatus`, `startEdit`, `addActivity`, `updateRow`
+  - `handleProgrammingChange`, `findProjectOption`, `findTeamOption`, `findActivityOption`
+  - normalizadores da API (`normalizeUuid`, `normalizeIsoDate`, `normalizePositiveNumber`)
 - Comportamento antes/depois:
-  - Antes: tela sem formulario, sem leitura de projeto/programacao e sem calculo.
-  - Depois: tela frontend funcional para preparar medicao/OS, com base de atividades, fator ajustavel e conferencia local antes da futura API.
+  - Antes: a tela tentava aproveitar atividades da Programacao/forecast no fluxo de inclusao.
+  - Depois: atividades da Medicao sao de uma lista propria (`measurement_activities`), a medicao pode ser cadastrada sem programacao obrigatoria e a tela mostra match de programacao + alerta de atualizacao de `CONCLUIDO/PARCIAL`.
+

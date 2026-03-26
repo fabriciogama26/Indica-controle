@@ -2809,7 +2809,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
           {editingScheduleId ? (
             <label className={`${styles.field} ${isFieldInvalid("workCompletionStatus") ? styles.fieldInvalid : ""}`}>
-              <span>Estado Trabalho</span>
+              <span>Estado do Projeto</span>
               <select
                 value={form.workCompletionStatus}
                 onChange={(event) => updateFormField("workCompletionStatus", event.target.value as WorkCompletionStatus | "")}

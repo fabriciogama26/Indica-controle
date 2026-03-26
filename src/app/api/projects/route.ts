@@ -167,8 +167,6 @@ type ProjectSaveRpcResult = {
   updated_at?: string;
 };
 
-const PRIORITY_A_PREFIX = new Set(["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO"]);
-
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -201,18 +199,6 @@ function normalizeEstimatedValue(value: unknown) {
 
 function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function getSobRuleError(priority: string, sob: string) {
-  if (PRIORITY_A_PREFIX.has(priority) && !/^A[0-9]{9}$/.test(sob)) {
-    return "Para esta prioridade, Projeto (SOB) deve iniciar com A e conter 9 numeros.";
-  }
-
-  if (priority === "FUSESAVER" && !/^(ZX|FS)[0-9]{8}$/.test(sob)) {
-    return "Para FUSESAVER, Projeto (SOB) deve iniciar com ZX ou FS e conter 8 numeros.";
-  }
-
-  return null;
 }
 
 function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput {
@@ -256,10 +242,6 @@ function validateRequiredProjectFields(input: ProjectInput) {
 
   if (!isIsoDate(input.executionDeadline)) {
     return "Data limite invalida.";
-  }
-
-  if (input.sob.length > 10) {
-    return "Projeto (SOB) deve ter no maximo 10 caracteres.";
   }
 
   return null;
@@ -1012,11 +994,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: lookupResolution.message ?? "Falha ao validar cadastro." }, { status: 422 });
     }
 
-    const sobRuleError = getSobRuleError(normalizePriority(lookupResolution.data.priority.name), input.sob);
-    if (sobRuleError) {
-      return NextResponse.json({ message: sobRuleError }, { status: 422 });
-    }
-
     const insertPayload = buildProjectWritePayload(input, lookupResolution.data);
 
     const saveResult = await saveProjectViaRpc({
@@ -1087,11 +1064,6 @@ export async function PUT(request: NextRequest) {
     const lookupResolution = await resolveProjectLookups(supabase, appUser.tenant_id, input);
     if (lookupResolution.message || !lookupResolution.data) {
       return NextResponse.json({ message: lookupResolution.message ?? "Falha ao validar edicao." }, { status: 422 });
-    }
-
-    const sobRuleError = getSobRuleError(normalizePriority(lookupResolution.data.priority.name), input.sob);
-    if (sobRuleError) {
-      return NextResponse.json({ message: sobRuleError }, { status: 422 });
     }
 
     const updatePayload = buildProjectWritePayload(input, lookupResolution.data);
