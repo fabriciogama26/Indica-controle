@@ -95,6 +95,7 @@
 - [x] Endurecer `Equipes` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
 - [x] Migrar as escritas de `Equipes` para RPC transacional (`save_team_record` e `set_team_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Padronizar todas as listas ativas (`Projetos`, `Materiais`, `Atividades`, `Equipes` e `Materiais previstos`) com botao `Exportar Excel (CSV)` e remover o texto fixo de paginacao no cabecalho.
+- [x] Criar componentes compartilhados de padrao de tela (`ActionIcon` e `CsvExportButton`) e aplicar na tela `Materiais` para reduzir duplicacao e garantir consistencia nas novas telas.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
 - [x] Reorganizar `src/app` para manter rotas/layouts finos e mover Login/Home para `src/modules`.
 - [x] Versionar base Supabase com migrations de autenticacao, auditoria, RLS multi-tenant, materiais, saldo, conflitos, rate limit, pessoas e cargos.
