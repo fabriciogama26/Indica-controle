@@ -27,6 +27,7 @@ Arquitetura
   - `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
   - `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
   - `supabase/migrations/119_create_measurement_batch_import_partial_rpc.sql`
+  - `supabase/migrations/120_unify_measurement_with_service_activities.sql`
 
 Cadastro
 --------
@@ -39,9 +40,9 @@ Cadastro
   - Encarregado (somente leitura da equipe)
   - Observacoes
 - Itens da ordem:
-  - Atividade (catalogo proprio da Medicao)
+  - Atividade (catalogo oficial de `service_activities`)
   - Taxa manual (campo no topo do bloco `Atividades da Ordem`, ao lado de Quantidade)
-  - Pontos (`voice_point`) por atividade, vindos de `measurement_activities`
+  - Pontos (`voice_point`) por atividade, vindos de `service_activities`
   - Quantidade
   - Valor unitario (somente leitura na grade)
   - Observacao
@@ -142,6 +143,7 @@ Atualizacao 2026-03
   - `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
   - `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
   - `supabase/migrations/119_create_measurement_batch_import_partial_rpc.sql`
+  - `supabase/migrations/120_unify_measurement_with_service_activities.sql`
 - Antes:
   - Tela de medicao sem backend proprio, com calculo local preparatorio.
 - Depois:
@@ -155,7 +157,7 @@ Atualizacao 2026-03
   - Busca de atividade endurecida com fallback da propria programacao selecionada.
   - Busca de atividade com fallback adicional em tempo real no catalogo e comparacao tolerante de codigo (`O`/`0`), reduzindo falso erro no botao `Adicionar`.
   - Busca do `Adicionar` expandida para multiplos tokens de lookup (texto completo, trecho antes de `|` e codigo antes de `-`).
-  - Medicao desacoplada das atividades da Programacao: agora usa tabela propria `measurement_activities`.
+  - Medicao desacoplada das atividades da Programacao: inicialmente com catalogo proprio `measurement_activities`.
   - `Valor unitario` travado na grade `Atividades da Ordem` (somente leitura).
   - Inclusao do botao `Cadastro em massa (CSV)` com download de modelo no bloco `Atividades da Ordem`.
   - Cadastro em massa ajustado para importar medicao antiga via programacao historica (qualquer status), mantendo save/historico no mesmo RPC.
@@ -175,7 +177,7 @@ Atualizacao 2026-03
   - Edicao de `Projeto/Equipe/Data execucao` habilitada no frontend e persistida no RPC transacional.
   - Correcao do campo digitavel `Projeto`: removida limpeza automatica durante digitacao no cadastro da Medicao.
   - Campo `Projeto` alinhado ao mesmo padrao do `Projeto (SOB)` da Programacao Simples: validacao por codigo exato e suporte a apagar com backspace sem autocorrecao indevida.
-  - Catalogo de atividades da Medicao ajustado para sincronizar `measurement_activities` por `tenant_id + code` e devolver `unit_value/voice_point` atualizados da `service_activities`.
+  - Catalogo de atividades da Medicao ajustado para leitura direta de `service_activities` (sem sincronizacao em tabela espelho).
   - Inclusao manual (`Adicionar`) reforcada para revalidar a atividade no catalogo remoto antes de incluir na grade, evitando valor antigo de cache local.
   - Correcao na inclusao de atividades: busca prioriza match exato de codigo e sincroniza valores de `unit_value/voice_point` a partir de `service_activities` para evitar divergencia no valor exibido.
   - Cadastro em massa finalizado com geracao de arquivo de erro por linha/coluna e feedback objetivo de resultado da carga.
@@ -187,6 +189,7 @@ Atualizacao 2026-03
   - Modelo de importacao em massa atualizado com coluna obrigatoria `equipe` e validacao textual da equipe por nome/codigo (sem exigir UUID).
   - Import em massa com anti-sobreposicao por `Projeto + Equipe + Data de execucao`, mantendo processamento parcial e resumo dedicado para `linhas ja cadastradas`.
   - Import em massa migrado para RPC de lote parcial, removendo salvamento linha-a-linha via HTTP e concentrando o processamento no banco com retorno estruturado.
+  - Medicao unificada para usar somente `service_activities` como catalogo de atividades, com ajuste de FK/backfill nos itens historicos.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -198,7 +201,7 @@ Funcoes principais
 - Caminho: `src/app/api/programacao/route.ts`
   - Responsavel por: fornecer contexto operacional da ordem (programacao/projeto/equipe/data).
 - Caminho: `src/app/api/medicao/activities/catalog/route.ts`
-  - Responsavel por: listar atividades da tabela propria da Medicao para o auto-complete de inclusao de itens.
+  - Responsavel por: listar atividades de `service_activities` para o auto-complete de inclusao de itens.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
@@ -207,6 +210,8 @@ Constantes e configuracoes
   - Responsavel por: tabelas `project_measurement_orders`, `project_measurement_order_items`, `project_measurement_order_history`, policies RLS e RPCs do modulo.
 - Caminho: `supabase/migrations/114_create_measurement_activities_and_link_measurement_items.sql`
   - Responsavel por: criar `measurement_activities`, migrar base inicial e vincular os itens da ordem de medicao a esse catalogo.
+- Caminho: `supabase/migrations/120_unify_measurement_with_service_activities.sql`
+  - Responsavel por: unificar Medicao em `service_activities`, migrar IDs legados dos itens e restaurar FK para `service_activities`.
 - Caminho: `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
   - Responsavel por: permitir que o save da Ordem de Medicao use `programming_id` historico (qualquer status) sem quebrar o fluxo transacional e o historico append.
 - Caminho: `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
@@ -231,6 +236,7 @@ Ajuda contextual
   - `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
   - `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
   - `supabase/migrations/119_create_measurement_batch_import_partial_rpc.sql`
+  - `supabase/migrations/120_unify_measurement_with_service_activities.sql`
   - `supabase/migrations/112_create_measurement_order_module.sql`
   - `src/app/api/medicao/route.ts`
   - `src/app/api/medicao/activities/catalog/route.ts`
@@ -244,5 +250,5 @@ Ajuda contextual
   - normalizadores da API (`normalizeUuid`, `normalizeIsoDate`, `normalizePositiveNumber`)
 - Comportamento antes/depois:
   - Antes: a tela tentava aproveitar atividades da Programacao/forecast no fluxo de inclusao.
-  - Depois: atividades da Medicao sao de uma lista propria (`measurement_activities`), a medicao pode ser cadastrada sem programacao obrigatoria e a tela mostra match de programacao + alerta de atualizacao de `CONCLUIDO/PARCIAL`.
+  - Depois: atividades da Medicao usam catalogo unico de `service_activities`; a medicao pode ser cadastrada sem programacao obrigatoria e a tela mostra match de programacao + alerta de atualizacao de `CONCLUIDO/PARCIAL`.
 

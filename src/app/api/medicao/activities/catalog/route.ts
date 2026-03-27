@@ -141,76 +141,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items: [] });
     }
 
-    const syncResult = await resolution.supabase
-      .from("measurement_activities")
-      .upsert(
-        serviceData.map((item) => ({
-          tenant_id: resolution.appUser.tenant_id,
-          code: item.code,
-          description: item.description,
-          unit: item.unit,
-          unit_value: Number(item.unit_value ?? 0),
-          voice_point: Number(item.voice_point ?? 1),
-          ativo: true,
-        })),
-        { onConflict: "tenant_id,code" },
-      );
-
-    const syncErrorMessage = syncResult.error?.message?.toLowerCase() ?? "";
-    if (syncResult.error && !syncErrorMessage.includes("measurement_activities")) {
-      return NextResponse.json({
-        items: serviceData.map((item) => ({
-          id: String(item.id ?? ""),
-          code: item.code,
-          description: item.description,
-          unit: item.unit,
-          unitValue: Number(item.unit_value ?? 0),
-          voicePoint: Number(item.voice_point ?? 1),
-        })),
-      });
-    }
-
-    const measurementRead = await resolution.supabase
-      .from("measurement_activities")
-      .select("id, code, description, unit, unit_value, voice_point")
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("ativo", true)
-      .in("code", serviceData.map((item) => item.code))
-      .order("code", { ascending: true })
-      .limit(40);
-
-    const data = (measurementRead.data ?? []) as CatalogRow[];
-    const error = measurementRead.error ? { message: measurementRead.error.message } : null;
-    if (error) {
-      if (error.message?.toLowerCase().includes("measurement_activities")) {
-        return NextResponse.json({
-          items: serviceData.map((item) => ({
-            id: item.id,
-            code: item.code,
-            description: item.description,
-            unit: item.unit,
-            unitValue: Number(item.unit_value ?? 0),
-            voicePoint: Number(item.voice_point ?? 1),
-          })),
-        });
-      }
-      return NextResponse.json({ message: "Falha ao pesquisar atividades da medicao." }, { status: 500 });
-    }
-
-    const measurementByCode = new Map(data.map((item) => [String(item.code), item]));
-
     return NextResponse.json({
-      items: serviceData.map((serviceItem) => {
-        const measurementItem = measurementByCode.get(String(serviceItem.code));
-        return {
-          id: String(measurementItem?.id ?? serviceItem.id ?? ""),
-          code: String(measurementItem?.code ?? serviceItem.code),
-          description: String(measurementItem?.description ?? serviceItem.description),
-          unit: String(measurementItem?.unit ?? serviceItem.unit),
-          unitValue: Number(serviceItem.unit_value ?? measurementItem?.unit_value ?? 0),
-          voicePoint: Number(serviceItem.voice_point ?? measurementItem?.voice_point ?? 1),
-        };
-      }),
+      items: serviceData.map((item) => ({
+        id: String(item.id ?? ""),
+        code: String(item.code),
+        description: String(item.description),
+        unit: String(item.unit),
+        unitValue: Number(item.unit_value ?? 0),
+        voicePoint: Number(item.voice_point ?? 1),
+      })),
     });
   } catch {
     return NextResponse.json({ message: "Falha ao pesquisar atividades da medicao." }, { status: 500 });
