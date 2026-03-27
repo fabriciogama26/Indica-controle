@@ -67,6 +67,9 @@ Arquitetura
   - `supabase/migrations/120_allow_multiple_programming_sgd_types_per_export_column.sql`
   - Remove a unicidade por `tenant_id + export_column` em `programming_sgd_types`, permitindo varios tipos de SGD por coluna tecnica no mesmo tenant.
   - Define `AREA_LIVRE` como valor padrao de `export_column` para novos cadastros.
+- Migration de desbloqueio de novos valores tecnicos de Tipo de SGD:
+  - `supabase/migrations/121_relax_programming_sgd_export_column_check.sql`
+  - Remove o bloqueio de valores fixos em `export_column`, exigindo apenas valor nao vazio.
 - Migration de endurecimento da RPC full:
   - `supabase/migrations/100_harden_programming_full_self_contained.sql`
   - A RPC `save_project_programming_full` passa a ser autocontida.
@@ -172,6 +175,9 @@ Filtros, auto-complete e listagem
     - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
     - `Tipo de SGD` = selecao do formulario da Programacao.
     - `AREA_LIVRE` em `Tipo de SGD` nao preenche `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT`.
+    - `SGD AT/MT/VyP`, `SGD AT/MT`, `SGD AT`, `SGD MT` e `SGD VyP` preenchem a coluna `SGD AT/MT/VyP` com o valor de `Ponto eletrico`.
+    - `SGD BT` preenche a coluna `SGD BT` com o valor de `Ponto eletrico`.
+    - `SGD TeT` preenche a coluna `SGD TeT` com o valor de `Ponto eletrico`.
     - `Numero de Clientes Afetados` = campo do formulario da Programacao.
     - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
     - `Estrutura` = composicao de equipes por tipo (ex.: `2 MK`, `1 MK + 1 CETO`, `1 LV`) por `Projeto + Data de execucao`.
@@ -184,7 +190,7 @@ Filtros, auto-complete e listagem
     - `Inic deslig` = `Inicio de desligamento` da Programacao.
     - `Term deslig` = `Termino de desligamento` da Programacao.
     - `Estado Trabalho` = campo de edicao `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`).
-    - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o `SGD` conforme o `Tipo de SGD` selecionado.
+    - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o valor de `Ponto eletrico` conforme o `Tipo de SGD` selecionado.
   - Paginacao local com `Anterior/Proxima`.
 - Calendario semanal de visualizacao (somente na rota `/programacao-visualizacao`):
   - Grade fixa de `segunda a domingo` por equipe.
@@ -467,3 +473,16 @@ Atualizacao adicional 2026-03-26
 - Comportamento antes/depois:
   - Antes: o catalogo `programming_sgd_types` aceitava apenas um registro por `export_column` em cada tenant, bloqueando inclusao de novos tipos quando as colunas tecnicas base ja estavam ocupadas.
   - Depois: o catalogo passa a aceitar varios tipos por `export_column` no mesmo tenant, mantendo o escopo multi-tenant e destravando novos cadastros de Tipo de SGD.
+
+Atualizacao adicional 2026-03-27
+--------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/121_relax_programming_sgd_export_column_check.sql`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `handleExportEnelCsv` (normalizacao de `sgdExportColumn` no mapeamento de exportacao)
+- Comportamento antes/depois:
+  - Antes: mesmo com a remoção da unicidade por coluna, o banco ainda bloqueava `export_column` fora da lista fixa (`SGD_AT_MT_VYP`, `SGD_BT`, `SGD_TET`, `AREA_LIVRE`).
+  - Depois: `export_column` passa a aceitar qualquer valor nao vazio, destravando cadastro de novos Tipos de SGD.
