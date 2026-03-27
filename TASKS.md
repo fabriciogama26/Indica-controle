@@ -182,6 +182,7 @@
 - [x] Criar o campo obrigatorio `Campo eletrico` na Programacao, persistir em `project_programming` e usar esse valor na coluna `Nº EQ (RE, CO, CF, CC ou TR)` do `ENEL-EXCEL`, com reflexo no historico operacional.
 - [x] Corrigir export `ENEL-EXCEL` da Programacao para preencher a coluna de `Encarregado` (`Mão de obra`) com o nome do encarregado da equipe programada.
 - [x] Reordenar as colunas do `ENEL-EXCEL` da Programacao para o layout operacional solicitado, com `ENCARREGADO` apos `Estrutura` e `Mão de obra` mantida no bloco final.
+- [x] Ajustar mapeamento do `ENEL-EXCEL` para preencher `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT` com o valor de `Ponto eletrico`, incluindo regra agrupada de tipos (`SGD AT/MT`, `SGD AT`, `SGD MT`, `SGD VyP` -> `SGD AT/MT/VyP`).
 - [x] Renomear no frontend o campo obrigatorio de `Campo eletrico` para `Ponto eletrico`, tornar o filtro de `Projeto` digitavel (`input + datalist`) e alinhar o `ENEL-EXCEL` para coluna `Encarregado` com nome do encarregado da equipe programada.
 - [x] Mover o `Campo eletrico` para o mesmo fluxo transacional das RPCs full da Programacao (sem passo complementar de save na API) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 - [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
@@ -191,6 +192,7 @@
 - [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
 - [x] Incluir suporte ao tipo de SGD `AREA_LIVRE` no catalogo `programming_sgd_types`, ajustando constraint SQL e seed por tenant.
 - [x] Destravar cadastro de novos `Tipo de SGD` removendo a unicidade por `tenant_id + export_column` em `programming_sgd_types` e definindo `AREA_LIVRE` como default de `export_column`.
+- [x] Remover o bloqueio de valores fixos em `programming_sgd_types.export_column`, aceitando qualquer valor nao vazio para permitir novos Tipos de SGD.
 - [x] Ajustar cards da visualizacao semanal da Programacao para mostrar `AREA LIVRE` em verde quando o `Tipo de SGD` for `AREA_LIVRE`, substituindo indicadores `SGD` e `PI`.
 - [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
 - [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e uso exclusivo das RPCs transacionais full.
@@ -270,6 +272,8 @@
 - [x] Migrar cadastro em massa da Medicao para RPC transacional parcial (`save_project_measurement_order_batch_partial`), salvando linhas validas e retornando por lote as invalidas/duplicadas.
 - [x] Adicionar botao `Exportar Excel (CSV)` na lista de Ordens de Medicao para exportar o resultado filtrado no padrao das outras telas.
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
+- [x] Unificar Medicao para usar somente `service_activities` (sem dependencia operacional de `measurement_activities`), incluindo ajuste de FK/backfill e catalogo da API.
+- [x] Corrigir ordem da migration `120_unify_measurement_with_service_activities` para remover a FK antiga antes do backfill dos IDs e evitar erro `23503` durante a unificacao.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

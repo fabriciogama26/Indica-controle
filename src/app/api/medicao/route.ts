@@ -389,12 +389,11 @@ function measurementModuleMigrationHint(message: string | undefined) {
     normalized.includes("project_measurement_orders")
     || normalized.includes("project_measurement_order_items")
     || normalized.includes("project_measurement_order_history")
-    || normalized.includes("measurement_activities")
     || normalized.includes("save_project_measurement_order")
     || normalized.includes("set_project_measurement_order_status")
     || normalized.includes("save_project_measurement_order_batch_partial")
   ) {
-    return " Verifique se as migrations 112_create_measurement_order_module.sql, 114_create_measurement_activities_and_link_measurement_items.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql e 119_create_measurement_batch_import_partial_rpc.sql foram aplicadas.";
+    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql e 120_unify_measurement_with_service_activities.sql foram aplicadas.";
   }
   return "";
 }

@@ -34,6 +34,7 @@ Arquitetura
   - `supabase/migrations/065_project_forecast_manual_and_activity_import.sql`
   - `supabase/migrations/107_add_location_plan_structured_fields_and_history.sql`
   - `supabase/migrations/120_allow_multiple_programming_sgd_types_per_export_column.sql`
+  - `supabase/migrations/121_relax_programming_sgd_export_column_check.sql`
 
 Cadastro
 --------
@@ -358,3 +359,5 @@ Ajuda contextual
   - Depois: o metadado passa a retornar tambem `created_by`/`created_at` com resolucao de nome em `app_users` por tenant.
   - Antes: o catalogo de `Tipo de SGD` podia ficar travado para novos cadastros quando cada `export_column` tecnico ja estivesse ocupado no tenant.
   - Depois: o catalogo passa a aceitar varios tipos por `export_column` no mesmo tenant, destravando novas opcoes na selectbox de `Tipo de SGD` da Locacao.
+  - Antes: o cadastro de novo tipo ainda podia falhar quando `export_column` nao estava entre valores fixos predefinidos.
+  - Depois: `export_column` passa a aceitar qualquer valor nao vazio, mantendo a locacao livre para carregar novos tipos cadastrados.

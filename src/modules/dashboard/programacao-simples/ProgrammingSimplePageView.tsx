@@ -2495,11 +2495,33 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
         const displayStatus = getDisplayProgrammingStatus(schedule);
         const periodLabel = schedule.period === "integral" ? "INTEGRAL" : "PARCIAL";
-        const sgdNumber = schedule.documents?.sgd?.number ?? "";
-        const sgdExportColumn = schedule.sgdExportColumn ?? "";
-        const sgdAtMtVyp = (!sgdExportColumn || sgdExportColumn === "SGD_AT_MT_VYP") ? sgdNumber : "";
-        const sgdBt = sgdExportColumn === "SGD_BT" ? sgdNumber : "";
-        const sgdTet = sgdExportColumn === "SGD_TET" ? sgdNumber : "";
+        const sgdExportValue = schedule.electricalField ?? "";
+        const sgdExportColumn = (schedule.sgdExportColumn ?? "").trim().toUpperCase();
+        const sgdTypeDescription = (schedule.sgdTypeDescription ?? "").trim().toUpperCase();
+        const isAreaLivreSgd = sgdExportColumn === "AREA_LIVRE" || sgdExportColumn === "AREA LIVRE"
+          || sgdTypeDescription === "AREA_LIVRE" || sgdTypeDescription === "AREA LIVRE";
+        const isSgdBt = sgdExportColumn === "SGD_BT" || sgdExportColumn === "SGD BT"
+          || sgdTypeDescription === "SGD_BT" || sgdTypeDescription === "SGD BT";
+        const isSgdTet = sgdExportColumn === "SGD_TET" || sgdExportColumn === "SGD TET"
+          || sgdTypeDescription === "SGD_TET" || sgdTypeDescription === "SGD TET"
+          || sgdTypeDescription === "SGD TET";
+        const isSgdAtMtVyp = !isAreaLivreSgd && !isSgdBt && !isSgdTet && (
+          !sgdExportColumn
+          || sgdExportColumn === "SGD_AT_MT_VYP"
+          || sgdExportColumn === "SGD AT/MT/VYP"
+          || sgdExportColumn === "SGD AT/MT"
+          || sgdExportColumn === "SGD AT"
+          || sgdExportColumn === "SGD MT"
+          || sgdExportColumn === "SGD VYP"
+          || sgdTypeDescription === "SGD AT/MT/VYP"
+          || sgdTypeDescription === "SGD AT/MT"
+          || sgdTypeDescription === "SGD AT"
+          || sgdTypeDescription === "SGD MT"
+          || sgdTypeDescription === "SGD VYP"
+        );
+        const sgdAtMtVyp = isSgdAtMtVyp ? sgdExportValue : "";
+        const sgdBt = isSgdBt ? sgdExportValue : "";
+        const sgdTet = isSgdTet ? sgdExportValue : "";
         const infoStatus = schedule.etapaNumber ? `${schedule.etapaNumber} ETAPA` : "";
         const scheduleCreatedDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
         const estruturaValue = structureSummaryGroup
