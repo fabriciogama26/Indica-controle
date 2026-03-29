@@ -211,6 +211,15 @@ function normalizeOptionalNonNegativeNumber(value: unknown) {
   return Number(parsed.toFixed(6));
 }
 
+function normalizePositiveInteger(value: unknown, fallback: number, max = 200) {
+  const parsed = Number(String(value ?? "").trim());
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.min(parsed, max);
+}
+
 function normalizePositiveIntegerArray(values: unknown) {
   if (!Array.isArray(values)) return [] as number[];
   const normalized = values
@@ -244,6 +253,21 @@ function normalizeMeasurementItems(itemsInput: SaveMeasurementPayload["items"] |
       voicePoint: item.voicePoint,
       observation: item.observation,
     }));
+}
+
+function findDuplicateMeasurementActivityId(
+  items: Array<{
+    activityId: string;
+  }>,
+) {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.activityId)) {
+      return item.activityId;
+    }
+    seen.add(item.activityId);
+  }
+  return null;
 }
 
 function resolveAppUserName(user: AppUserRow | undefined) {
@@ -393,7 +417,7 @@ function measurementModuleMigrationHint(message: string | undefined) {
     || normalized.includes("set_project_measurement_order_status")
     || normalized.includes("save_project_measurement_order_batch_partial")
   ) {
-    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql e 120_unify_measurement_with_service_activities.sql foram aplicadas.";
+    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql e 122_protect_duplicate_measurement_items_in_rpc.sql foram aplicadas.";
   }
   return "";
 }
@@ -590,6 +614,8 @@ export async function GET(request: NextRequest) {
   const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
   const programmingMatchFilter = normalizeText(request.nextUrl.searchParams.get("programmingMatch")).toUpperCase();
   const completionAlertFilter = normalizeText(request.nextUrl.searchParams.get("completionAlert")).toUpperCase();
+  const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
+  const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
 
   if (!startDate || !endDate) {
     return NextResponse.json({ message: "startDate e endDate sao obrigatorios." }, { status: 400 });
@@ -617,26 +643,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: `Falha ao listar ordens de medicao.${hint}`.trim() }, { status: 500 });
   }
 
-  const orderIds = (orders ?? []).map((item) => item.id);
-  const { data: aggregateItems } = orderIds.length
-    ? await resolution.supabase
-        .from("project_measurement_order_items")
-        .select("measurement_order_id, total_value, quantity")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("is_active", true)
-        .in("measurement_order_id", orderIds)
-        .returns<MeasurementOrderAggregateItem[]>()
-    : { data: [] as MeasurementOrderAggregateItem[] };
-
-  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number; totalQuantity: number }>();
-  for (const item of aggregateItems ?? []) {
-    const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0, totalQuantity: 0 };
-    current.totalAmount += Number(item.total_value ?? 0);
-    current.totalQuantity += Number(item.quantity ?? 0);
-    current.itemCount += 1;
-    aggregateMap.set(item.measurement_order_id, current);
-  }
-
   const userIds = Array.from(
     new Set(
       (orders ?? [])
@@ -656,8 +662,7 @@ export async function GET(request: NextRequest) {
     orders: orders ?? [],
   });
 
-  const mappedOrders = (orders ?? []).map((item) => {
-      const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0, totalQuantity: 0 };
+  const baseOrders = (orders ?? []).map((item) => {
       const programmingMatch = programmingMatchMap.get(item.id) ?? {
         status: "NAO_PROGRAMADA" as ProgrammingMatchStatus,
         programmingId: null,
@@ -689,15 +694,12 @@ export async function GET(request: NextRequest) {
         matchedProgrammingId: programmingMatch.programmingId,
         programmingCompletionStatus: programmingMatch.completionStatus,
         programmingCompletionStatusChangedAfterMeasurement: programmingMatch.completionStatusChangedAfterMeasurement,
-        totalAmount: Number(aggregate.totalAmount ?? 0),
-        totalQuantity: Number(aggregate.totalQuantity ?? 0),
-        itemCount: Number(aggregate.itemCount ?? 0),
       };
     });
 
   const filteredByProgrammingMatch = (programmingMatchFilter === "PROGRAMADA" || programmingMatchFilter === "NAO_PROGRAMADA")
-    ? mappedOrders.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
-    : mappedOrders;
+    ? baseOrders.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
+    : baseOrders;
 
   const filteredByCompletionAlert = (completionAlertFilter === "SIM" || completionAlertFilter === "NAO")
     ? filteredByProgrammingMatch.filter((item) =>
@@ -706,7 +708,48 @@ export async function GET(request: NextRequest) {
           : !item.programmingCompletionStatusChangedAfterMeasurement)
     : filteredByProgrammingMatch;
 
-  return NextResponse.json({ orders: filteredByCompletionAlert });
+  const total = filteredByCompletionAlert.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const pagedBaseOrders = filteredByCompletionAlert.slice(startIndex, startIndex + pageSize);
+  const pagedOrderIds = pagedBaseOrders.map((item) => item.id);
+
+  const { data: aggregateItems } = pagedOrderIds.length
+    ? await resolution.supabase
+        .from("project_measurement_order_items")
+        .select("measurement_order_id, total_value, quantity")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("is_active", true)
+        .in("measurement_order_id", pagedOrderIds)
+        .returns<MeasurementOrderAggregateItem[]>()
+    : { data: [] as MeasurementOrderAggregateItem[] };
+
+  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number }>();
+  for (const item of aggregateItems ?? []) {
+    const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0 };
+    current.totalAmount += Number(item.total_value ?? 0);
+    current.itemCount += 1;
+    aggregateMap.set(item.measurement_order_id, current);
+  }
+
+  const pagedOrders = pagedBaseOrders.map((item) => {
+    const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0 };
+    return {
+      ...item,
+      totalAmount: Number(aggregate.totalAmount ?? 0),
+      itemCount: Number(aggregate.itemCount ?? 0),
+    };
+  });
+
+  return NextResponse.json({
+    orders: pagedOrders,
+    pagination: {
+      page: safePage,
+      pageSize,
+      total,
+    },
+  });
 }
 
 async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT") {
@@ -751,6 +794,13 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
 
   if (!items.length) {
     return NextResponse.json({ message: "Informe ao menos uma atividade valida na ordem de medicao." }, { status: 400 });
+  }
+
+  if (findDuplicateMeasurementActivityId(items)) {
+    return NextResponse.json(
+      { message: "A mesma atividade nao pode ser repetida na ordem de medicao.", reason: "DUPLICATE_MEASUREMENT_ACTIVITY" },
+      { status: 400 },
+    );
   }
 
   const { data, error } = await resolution.supabase.rpc("save_project_measurement_order", {
