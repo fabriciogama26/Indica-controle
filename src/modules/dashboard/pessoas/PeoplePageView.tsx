@@ -137,7 +137,7 @@ function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SI
     params.set("name", filters.name.trim());
   }
   if (filters.matriculation.trim()) {
-    params.set("matriculation", filters.matriculation.trim());
+    params.set("matriculation", normalizeMatriculation(filters.matriculation));
   }
   if (filters.jobTitleId.trim()) {
     params.set("jobTitleId", filters.jobTitleId.trim());
