@@ -100,6 +100,8 @@ Filtros, auto-complete e listagem
   - Data final
   - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
   - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
+  - Tipo (`TODOS`, `Com producao`, `Sem producao`)
+  - Motivo sem producao (lista carregada de `measurement_no_production_reasons`; aceita `Todos`)
   - Programacao (`TODOS`, `Programada`, `Nao programada`)
   - Alerta Concluido/Parcial (`TODOS`, `Com alerta`, `Sem alerta`)
 - Listagem:

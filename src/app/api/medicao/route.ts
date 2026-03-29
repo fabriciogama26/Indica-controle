@@ -626,6 +626,8 @@ export async function GET(request: NextRequest) {
   const endDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
   const projectId = normalizeUuid(request.nextUrl.searchParams.get("projectId"));
   const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
+  const measurementKindFilter = normalizeText(request.nextUrl.searchParams.get("measurementKind")).toUpperCase();
+  const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
   const programmingMatchFilter = normalizeText(request.nextUrl.searchParams.get("programmingMatch")).toUpperCase();
   const completionAlertFilter = normalizeText(request.nextUrl.searchParams.get("completionAlert")).toUpperCase();
   const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
@@ -725,11 +727,19 @@ export async function GET(request: NextRequest) {
           : !item.programmingCompletionStatusChangedAfterMeasurement)
     : filteredByProgrammingMatch;
 
-  const total = filteredByCompletionAlert.length;
+  const filteredByMeasurementKind = (measurementKindFilter === "COM_PRODUCAO" || measurementKindFilter === "SEM_PRODUCAO")
+    ? filteredByCompletionAlert.filter((item) => item.measurementKind === measurementKindFilter)
+    : filteredByCompletionAlert;
+
+  const filteredByNoProductionReason = noProductionReasonIdFilter
+    ? filteredByMeasurementKind.filter((item) => item.noProductionReasonId === noProductionReasonIdFilter)
+    : filteredByMeasurementKind;
+
+  const total = filteredByNoProductionReason.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const startIndex = (safePage - 1) * pageSize;
-  const pagedBaseOrders = filteredByCompletionAlert.slice(startIndex, startIndex + pageSize);
+  const pagedBaseOrders = filteredByNoProductionReason.slice(startIndex, startIndex + pageSize);
   const pagedOrderIds = pagedBaseOrders.map((item) => item.id);
 
   const { data: aggregateItems } = pagedOrderIds.length

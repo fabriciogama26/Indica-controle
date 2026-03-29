@@ -263,6 +263,8 @@ type Filters = {
   endDate: string;
   projectId: string;
   status: "TODOS" | MeasurementStatus;
+  measurementKind: "TODOS" | MeasurementKind;
+  noProductionReasonId: string;
   programmingMatch: "TODOS" | ProgrammingMatchStatus;
   completionAlert: "TODOS" | "SIM" | "NAO";
 };
@@ -291,11 +293,13 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   params.set("startDate", filters.startDate);
   params.set("endDate", filters.endDate);
   params.set("status", filters.status);
+  params.set("measurementKind", filters.measurementKind);
   params.set("programmingMatch", filters.programmingMatch);
   params.set("completionAlert", filters.completionAlert);
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   if (filters.projectId) params.set("projectId", filters.projectId);
+  if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
   return params.toString();
 }
 
@@ -735,7 +739,15 @@ export function MeasurementPageView() {
   const accessToken = session?.accessToken ?? null;
   const today = useMemo(() => toIsoDate(new Date()), []);
   const initialFilters = useMemo(
-    () => ({ ...yearRange(today), projectId: "", status: "TODOS" as const, programmingMatch: "TODOS" as const, completionAlert: "TODOS" as const }),
+    () => ({
+      ...yearRange(today),
+      projectId: "",
+      status: "TODOS" as const,
+      measurementKind: "TODOS" as const,
+      noProductionReasonId: "",
+      programmingMatch: "TODOS" as const,
+      completionAlert: "TODOS" as const,
+    }),
     [today],
   );
 
@@ -2268,6 +2280,21 @@ export function MeasurementPageView() {
             />
           </label>
           <label className={styles.field}><span>Status</span><select value={filterDraft.status} onChange={(event) => setFilterDraft((current) => ({ ...current, status: event.target.value as Filters["status"] }))}><option value="TODOS">Todos</option><option value="ABERTA">Aberta</option><option value="FECHADA">Fechada</option><option value="CANCELADA">Cancelada</option></select></label>
+          <label className={styles.field}>
+            <span>Tipo</span>
+            <select value={filterDraft.measurementKind} onChange={(event) => setFilterDraft((current) => ({ ...current, measurementKind: event.target.value as Filters["measurementKind"] }))}>
+              <option value="TODOS">Todos</option>
+              <option value="COM_PRODUCAO">Com producao</option>
+              <option value="SEM_PRODUCAO">Sem producao</option>
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span>Motivo sem producao</span>
+            <select value={filterDraft.noProductionReasonId} onChange={(event) => setFilterDraft((current) => ({ ...current, noProductionReasonId: event.target.value }))}>
+              <option value="">Todos</option>
+              {noProductionReasons.map((reason) => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
+            </select>
+          </label>
           <label className={styles.field}>
             <span>Programacao</span>
             <select value={filterDraft.programmingMatch} onChange={(event) => setFilterDraft((current) => ({ ...current, programmingMatch: event.target.value as Filters["programmingMatch"] }))}>
