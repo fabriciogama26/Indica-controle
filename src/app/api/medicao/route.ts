@@ -6,6 +6,7 @@ import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 type MeasurementOrderStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
 type ProgrammingWorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | null;
+type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 
 type MeasurementOrderRow = {
   id: string;
@@ -17,6 +18,9 @@ type MeasurementOrderRow = {
   measurement_date: string;
   voice_point: number | string;
   manual_rate: number | string;
+  measurement_kind: MeasurementKind;
+  no_production_reason_id: string | null;
+  no_production_reason_name_snapshot: string | null;
   status: MeasurementOrderStatus;
   notes: string | null;
   project_code_snapshot: string;
@@ -94,6 +98,8 @@ type SaveMeasurementPayload = {
   measurementDate?: string;
   voicePoint?: string | number;
   manualRate?: string | number;
+  measurementKind?: string;
+  noProductionReasonId?: string;
   notes?: string;
   expectedUpdatedAt?: string;
   items?: Array<{
@@ -117,6 +123,8 @@ type SaveMeasurementBatchRowPayload = {
   measurementDate?: string;
   voicePoint?: string | number;
   manualRate?: string | number;
+  measurementKind?: string;
+  noProductionReasonId?: string;
   notes?: string;
   items?: SaveMeasurementPayload["items"];
 };
@@ -188,6 +196,11 @@ function normalizeIsoDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
+function normalizeMeasurementKind(value: unknown): MeasurementKind {
+  const normalized = normalizeText(value).toUpperCase();
+  return normalized === "SEM_PRODUCAO" ? "SEM_PRODUCAO" : "COM_PRODUCAO";
+}
+
 function normalizePositiveNumber(value: unknown) {
   const normalized = String(value ?? "").trim().replace(",", ".");
   const parsed = Number(normalized);
@@ -238,7 +251,6 @@ function normalizeMeasurementItems(itemsInput: SaveMeasurementPayload["items"] |
       projectActivityForecastId: normalizeUuid(item.projectActivityForecastId),
       quantity: normalizePositiveNumber(item.quantity),
       unitValue: normalizeOptionalNonNegativeNumber(item.unitValue),
-      manualRate: normalizeOptionalNonNegativeNumber(item.manualRate),
       voicePoint: normalizeOptionalNonNegativeNumber(item.voicePoint),
       observation: normalizeText(item.observation) || null,
     }))
@@ -249,7 +261,6 @@ function normalizeMeasurementItems(itemsInput: SaveMeasurementPayload["items"] |
       projectActivityForecastId: item.projectActivityForecastId,
       quantity: item.quantity as number,
       unitValue: item.unitValue,
-      manualRate: item.manualRate,
       voicePoint: item.voicePoint,
       observation: item.observation,
     }));
@@ -417,7 +428,7 @@ function measurementModuleMigrationHint(message: string | undefined) {
     || normalized.includes("set_project_measurement_order_status")
     || normalized.includes("save_project_measurement_order_batch_partial")
   ) {
-    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql e 122_protect_duplicate_measurement_items_in_rpc.sql foram aplicadas.";
+    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql e 123_support_measurement_without_production.sql foram aplicadas.";
   }
   return "";
 }
@@ -448,7 +459,7 @@ async function fetchMeasurementOrderDetail(params: {
 }) {
   const { data: order, error: orderError } = await params.supabase
     .from("project_measurement_orders")
-    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
+    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
     .eq("tenant_id", params.tenantId)
     .eq("id", params.orderId)
     .maybeSingle<MeasurementOrderRow>();
@@ -511,6 +522,9 @@ async function fetchMeasurementOrderDetail(params: {
     measurementDate: order.measurement_date,
     voicePoint: Number(order.voice_point ?? 0),
     manualRate: Number(order.manual_rate ?? 0),
+    measurementKind: normalizeMeasurementKind(order.measurement_kind),
+    noProductionReasonId: order.no_production_reason_id,
+    noProductionReasonName: normalizeText(order.no_production_reason_name_snapshot),
     status: order.status,
     notes: normalizeText(order.notes),
     projectCode: normalizeText(order.project_code_snapshot),
@@ -623,7 +637,7 @@ export async function GET(request: NextRequest) {
 
   let query = resolution.supabase
     .from("project_measurement_orders")
-    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
+    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
     .eq("tenant_id", resolution.appUser.tenant_id)
     .gte("execution_date", startDate)
     .lte("execution_date", endDate)
@@ -679,6 +693,9 @@ export async function GET(request: NextRequest) {
         measurementDate: item.measurement_date,
         voicePoint: Number(item.voice_point ?? 0),
         manualRate: Number(item.manual_rate ?? 0),
+        measurementKind: normalizeMeasurementKind(item.measurement_kind),
+        noProductionReasonId: item.no_production_reason_id,
+        noProductionReasonName: normalizeText(item.no_production_reason_name_snapshot),
         status: item.status,
         notes: normalizeText(item.notes),
         projectCode: normalizeText(item.project_code_snapshot),
@@ -771,6 +788,8 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
   const measurementDate = normalizeIsoDate(payload?.measurementDate);
   const voicePoint = normalizePositiveNumber(payload?.voicePoint);
   const manualRate = normalizePositiveNumber(payload?.manualRate);
+  const measurementKind = normalizeMeasurementKind(payload?.measurementKind);
+  const noProductionReasonId = normalizeUuid(payload?.noProductionReasonId);
   const notes = normalizeText(payload?.notes) || null;
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
 
@@ -786,14 +805,30 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     return NextResponse.json({ message: "Informe Projeto, Equipe e Data de execucao para cadastrar a medicao sem programacao." }, { status: 400 });
   }
 
-  if (!measurementDate || voicePoint === null || manualRate === null) {
-    return NextResponse.json({ message: "Data da medicao, pontos e taxa manual sao obrigatorios." }, { status: 400 });
+  if (!measurementDate) {
+    return NextResponse.json({ message: "Data da medicao e obrigatoria." }, { status: 400 });
   }
 
   const items = normalizeMeasurementItems(payload?.items);
 
-  if (!items.length) {
-    return NextResponse.json({ message: "Informe ao menos uma atividade valida na ordem de medicao." }, { status: 400 });
+  if (measurementKind === "COM_PRODUCAO") {
+    if (voicePoint === null || manualRate === null) {
+      return NextResponse.json({ message: "Para medicao com producao, pontos e taxa manual sao obrigatorios." }, { status: 400 });
+    }
+
+    if (!items.length) {
+      return NextResponse.json({ message: "Informe ao menos uma atividade valida na ordem de medicao." }, { status: 400 });
+    }
+  }
+
+  if (measurementKind === "SEM_PRODUCAO") {
+    if (!noProductionReasonId) {
+      return NextResponse.json({ message: "Selecione o motivo de sem producao." }, { status: 400 });
+    }
+
+    if (items.length) {
+      return NextResponse.json({ message: "Medicao sem producao nao pode conter atividades." }, { status: 400 });
+    }
   }
 
   if (findDuplicateMeasurementActivityId(items)) {
@@ -812,9 +847,11 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     p_team_id: teamId,
     p_execution_date: executionDate,
     p_measurement_date: measurementDate,
-    p_voice_point: voicePoint,
-    p_manual_rate: manualRate,
+    p_voice_point: voicePoint ?? 1,
+    p_manual_rate: manualRate ?? 1,
     p_notes: notes,
+    p_measurement_kind: measurementKind,
+    p_no_production_reason_id: noProductionReasonId,
     p_items: items,
     p_expected_updated_at: expectedUpdatedAt,
   });
@@ -877,7 +914,9 @@ async function saveMeasurementOrderBatchPartial(request: NextRequest) {
       executionDate,
       measurementDate,
       voicePoint: normalizePositiveNumber(row.voicePoint) ?? 1,
-      manualRate: normalizePositiveNumber(row.manualRate),
+      manualRate: normalizePositiveNumber(row.manualRate) ?? null,
+      measurementKind: normalizeMeasurementKind(row.measurementKind),
+      noProductionReasonId: normalizeUuid(row.noProductionReasonId),
       notes: normalizeText(row.notes) || null,
       items: normalizeMeasurementItems(row.items),
     };
