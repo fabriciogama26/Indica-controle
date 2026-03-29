@@ -297,6 +297,7 @@
 - [x] Revisao de cadastros (2026-03-20): tornar `Matricula` e `Tipo` obrigatorios no cadastro/edicao de `Pessoas` (frontend + API).
 - [x] Revisao de cadastros (2026-03-20): melhorar diagnostico de erro em `POST /api/people` e aplicar fallback de cadastro quando `save_person_record` nao estiver disponivel.
 - [x] Revisao de cadastros (2026-03-20): tratar tambem o retorno `success=false` da RPC de pessoas quando houver incompatibilidade `matriculation numeric x text/varchar`, com fallback/cast para evitar `500`.
+- [x] Revisao de cadastros (2026-03-29): estabilizar o filtro de `Matricula` em `Pessoas`, com fallback do `GET /api/people` para ambientes legados onde `people.matriculation` ainda esta `numeric`.
 - [ ] Revisao de cadastros (2026-03-20): exibir diagnostico de prerequisitos vazios em `Atividades` (`team_types`) e `Projetos` (lookups de `Cadastro Base`) antes de permitir novo cadastro.
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
 - [x] Endurecer `Permissoes` com controle de concorrencia por `app_users.updated_at`, bloqueando salvamento concorrente de role/status/telas para o mesmo usuario.

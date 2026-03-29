@@ -108,6 +108,7 @@ Atualizacao 2026-03
 - Revisao de cadastro (2026-03-20): `Matricula` e `Tipo` passaram a ser obrigatorios no formulario e na API (`POST`/`PUT`).
 - Revisao de cadastro (2026-03-20): adicionado fallback no backend para cadastro quando a RPC `save_person_record` nao existir no banco (compatibilidade temporaria), com retorno de erro tecnico mais claro.
 - Revisao de cadastro (2026-03-20): reforcado o fallback do `POST/PUT` para matricula numerica quando a RPC retorna erro de tipo (`numeric` x `text/varchar`) em `result.success=false`, evitando `500` generico.
+- Revisao de filtros (2026-03-29): `GET /api/people` passou a normalizar `Matricula` e aplicar fallback de busca exata quando o ambiente legado ainda expuser `people.matriculation` como `numeric`, evitando falha no filtro da lista.
 - Antes: tela apenas informativa (placeholder).
 - Depois: CRUD completo com filtros, paginacao, exportacao, historico, controle de status e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
 - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
@@ -156,7 +157,7 @@ Ajuda contextual
 - Funcoes/hooks/constantes tocadas:
   - `loadMeta`, `loadPeople`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`, `handleExportPeople`
   - `hasJobTitles`, `hasTypeOptionsForSelectedJob`, `canSubmitPersonForm` (bloqueio de submit sem pre-requisitos de cargo/tipo)
-  - `savePersonViaRpc`, `setPersonStatusViaRpc`, `isMatriculationNumericTypeMismatchError`
+  - `buildQuery`, `savePersonViaRpc`, `setPersonStatusViaRpc`, `isMatriculationNumericTypeMismatchError`, `listPeople`
   - `save_person_record`, `set_person_record_status`
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
 - Comportamento antes/depois:
@@ -166,12 +167,22 @@ Ajuda contextual
   - Depois (2026-03-20): o submit fica bloqueado quando nao houver `Cargo` ativo no tenant, com feedback explicito ao usuario.
   - Depois (2026-03-20): `Matricula` e `Tipo` tornam-se obrigatorios para cadastro/edicao.
   - Depois (2026-03-20): cadastro/edicao de pessoa tenta fallback com cast numerico da matricula tambem quando a RPC devolve `success=false` por incompatibilidade de tipo.
+  - Depois (2026-03-29): o filtro de `Matricula` da lista continua usando busca parcial em bancos atualizados (`text`) e recua para busca exata em ambientes legados (`numeric`) sem quebrar a listagem.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir os campos obrigatorios do cadastro e metadados de auditoria da lista (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Arquivos alterados/criados (2026-03-24):
   - `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+- Arquivos alterados/criados (2026-03-29):
+  - `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+  - `src/app/api/people/route.ts`
 - Funcoes/hooks/constantes tocadas (2026-03-24):
   - `buildPeopleCsv`
+- Funcoes/hooks/constantes tocadas (2026-03-29):
+  - `buildQuery`
+  - `listPeople`
 - Comportamento antes/depois (2026-03-24):
   - Antes: CSV de Pessoas exportava colunas reduzidas sem dados de `Atualizado por` e `Atualizado em`.
   - Depois: CSV exporta colunas completas para preenchimento/consulta operacional e rastreabilidade de auditoria.
   - Depois: `Criado por`/`Atualizado por` no CSV e no modal de detalhes aplicam fallback `Nao identificado` quando o nome vier vazio.
+- Comportamento antes/depois (2026-03-29):
+  - Antes: o filtro de `Matricula` podia falhar em ambientes onde `people.matriculation` ainda estava em formato numerico legado.
+  - Depois: o filtro normaliza a entrada e tenta `contains` em bancos atualizados, com fallback automatico para `eq` em ambientes legados.
