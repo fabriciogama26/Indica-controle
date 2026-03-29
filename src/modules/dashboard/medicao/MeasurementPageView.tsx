@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./MeasurementPageView.module.css";
@@ -102,6 +102,7 @@ type OrderItem = {
 
 type OrderListResponse = {
   orders?: OrderItem[];
+  pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
 
@@ -115,7 +116,9 @@ type OrderDetailItem = {
   unit: string;
   quantity: number;
   voicePoint: number;
+  manualRate: number;
   unitValue: number;
+  totalValue: number;
   observation: string;
 };
 
@@ -178,6 +181,8 @@ type ParsedMassImportRow = {
   voiceRaw: string;
   quantity: number | null;
   quantityRaw: string;
+  manualRate: number | null;
+  manualRateRaw: string;
 };
 
 type MassImportErrorReportData = {
@@ -216,6 +221,8 @@ type MassImportBatchResponse = {
   results?: MassImportBatchResultItem[];
 };
 
+const PAGE_SIZE = 20;
+const EXPORT_PAGE_SIZE = 200;
 const HISTORY_PAGE_SIZE = 5;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
@@ -251,6 +258,19 @@ type FormState = {
   activityQuantity: string;
   items: MeasurementRow[];
 };
+
+function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) {
+  const params = new URLSearchParams();
+  params.set("startDate", filters.startDate);
+  params.set("endDate", filters.endDate);
+  params.set("status", filters.status);
+  params.set("programmingMatch", filters.programmingMatch);
+  params.set("completionAlert", filters.completionAlert);
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  if (filters.projectId) params.set("projectId", filters.projectId);
+  return params.toString();
+}
 
 function toIsoDate(value: Date) {
   const y = value.getFullYear();
@@ -401,6 +421,57 @@ function buildActivityLookupQueries(rawValue: string) {
 
 function activityOptionLabel(item: ActivityCatalogItem) {
   return `${item.code} - ${item.description}`;
+}
+
+function buildImportCodeCandidates(rawValue: string) {
+  const input = String(rawValue ?? "").trim();
+  if (!input) return [] as string[];
+
+  const candidates = new Set<string>();
+  candidates.add(input);
+
+  const byPipe = input.split("|")[0]?.trim();
+  if (byPipe) candidates.add(byPipe);
+
+  const byLabel = input.split(" - ")[0]?.trim();
+  if (byLabel) candidates.add(byLabel);
+
+  const bySpace = input.split(/\s+/)[0]?.trim();
+  if (bySpace) candidates.add(bySpace);
+
+  const byUnderscore = input.split("_")[0]?.trim();
+  if (byUnderscore) candidates.add(byUnderscore);
+
+  return Array.from(candidates)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
+}
+
+function findActivityOptionByImportCode(value: string, options: ActivityCatalogItem[]) {
+  const candidates = buildImportCodeCandidates(value);
+  if (!candidates.length) return null;
+
+  const normalizedCandidates = new Set(candidates.map((item) => normalizeSearchText(item)).filter(Boolean));
+  const tokenCandidates = new Set(candidates.map((item) => normalizeCodeToken(item)).filter(Boolean));
+  const looseTokenCandidates = new Set(candidates.map((item) => normalizeCodeTokenLoose(item)).filter(Boolean));
+
+  const exactCodeMatches = options.filter((item) => normalizedCandidates.has(normalizeSearchText(item.code)));
+  if (exactCodeMatches.length === 1) return exactCodeMatches[0];
+  if (exactCodeMatches.length > 1) return null;
+
+  const exactLabelMatches = options.filter((item) => normalizedCandidates.has(normalizeSearchText(activityOptionLabel(item))));
+  if (exactLabelMatches.length === 1) return exactLabelMatches[0];
+  if (exactLabelMatches.length > 1) return null;
+
+  const exactTokenMatches = options.filter((item) => tokenCandidates.has(normalizeCodeToken(item.code)));
+  if (exactTokenMatches.length === 1) return exactTokenMatches[0];
+  if (exactTokenMatches.length > 1) return null;
+
+  const exactLooseTokenMatches = options.filter((item) => looseTokenCandidates.has(normalizeCodeTokenLoose(item.code)));
+  if (exactLooseTokenMatches.length === 1) return exactLooseTokenMatches[0];
+  if (exactLooseTokenMatches.length > 1) return null;
+
+  return null;
 }
 
 function findActivityOption(value: string, options: ActivityCatalogItem[]) {
@@ -598,6 +669,17 @@ function resolveImportScheduleCandidate(candidates: ScheduleItem[]) {
   return { schedule: teamCandidates[0] ?? null, reason: null as null };
 }
 
+function findDuplicateFormActivityId(items: Array<{ activityId: string }>) {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.activityId)) {
+      return item.activityId;
+    }
+    seen.add(item.activityId);
+  }
+  return null;
+}
+
 export function MeasurementPageView() {
   const { session } = useAuth();
   const accessToken = session?.accessToken ?? null;
@@ -617,6 +699,8 @@ export function MeasurementPageView() {
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
   const [activeFilters, setActiveFilters] = useState<Filters>(initialFilters);
   const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [detailOrder, setDetailOrder] = useState<OrderDetail | null>(null);
   const [historyOrder, setHistoryOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const [historyEntries, setHistoryEntries] = useState<OrderHistoryEntry[]>([]);
@@ -660,6 +744,7 @@ export function MeasurementPageView() {
     }, 0);
   }, [form.items, form.manualRate]);
   const canSubmitCancelStatus = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyEntries.length / HISTORY_PAGE_SIZE));
   const pagedHistoryEntries = useMemo(
     () => historyEntries.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE),
@@ -667,10 +752,62 @@ export function MeasurementPageView() {
   );
 
   useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  useEffect(() => {
     if (historyPage > historyTotalPages) {
       setHistoryPage(historyTotalPages);
     }
   }, [historyPage, historyTotalPages]);
+
+  const fetchOrdersPage = useCallback(
+    async (targetPage: number, filters: Filters, pageSize = PAGE_SIZE) => {
+      if (!accessToken) {
+        return null;
+      }
+
+      const response = await fetch(`/api/medicao?${buildOrdersQuery(filters, targetPage, pageSize)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as OrderListResponse | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Falha ao carregar ordens de medicao.");
+      }
+
+      return {
+        orders: data?.orders ?? [],
+        pagination: data?.pagination ?? { page: targetPage, pageSize, total: data?.orders?.length ?? 0 },
+      };
+    },
+    [accessToken],
+  );
+
+  const loadAllOrdersForExport = useCallback(async () => {
+    if (!accessToken) {
+      return [] as OrderItem[];
+    }
+
+    const collected: OrderItem[] = [];
+    let exportPage = 1;
+    let exportTotalPages = 1;
+
+    do {
+      const result = await fetchOrdersPage(exportPage, activeFilters, EXPORT_PAGE_SIZE);
+      if (!result) {
+        return [] as OrderItem[];
+      }
+
+      collected.push(...result.orders);
+      exportTotalPages = Math.max(1, Math.ceil((result.pagination.total ?? 0) / EXPORT_PAGE_SIZE));
+      exportPage += 1;
+    } while (exportPage <= exportTotalPages);
+
+    return collected;
+  }, [accessToken, activeFilters, fetchOrdersPage]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -714,6 +851,7 @@ export function MeasurementPageView() {
   useEffect(() => {
     if (!accessToken) {
       setOrders([]);
+      setTotal(0);
       return;
     }
 
@@ -721,24 +859,15 @@ export function MeasurementPageView() {
     async function loadOrders() {
       setIsLoadingOrders(true);
       try {
-        const params = new URLSearchParams();
-        params.set("startDate", activeFilters.startDate);
-        params.set("endDate", activeFilters.endDate);
-        params.set("status", activeFilters.status);
-        params.set("programmingMatch", activeFilters.programmingMatch);
-        params.set("completionAlert", activeFilters.completionAlert);
-        if (activeFilters.projectId) params.set("projectId", activeFilters.projectId);
-        const response = await fetch(`/api/medicao?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          cache: "no-store",
-        });
-        const data = (await response.json().catch(() => null)) as OrderListResponse | null;
-        if (!response.ok) throw new Error(data?.message ?? "Falha ao carregar ordens de medicao.");
+        const result = await fetchOrdersPage(page, activeFilters);
         if (ignore) return;
-        setOrders(data?.orders ?? []);
+        setOrders(result?.orders ?? []);
+        setTotal(result?.pagination.total ?? 0);
+        setPage(result?.pagination.page ?? page);
       } catch (error) {
         if (!ignore) {
           setOrders([]);
+          setTotal(0);
           setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar ordens de medicao." });
         }
       } finally {
@@ -750,7 +879,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters]);
+  }, [accessToken, activeFilters, fetchOrdersPage, page]);
 
   useEffect(() => {
     if (!accessToken || deferredActivitySearch.trim().length < 2) {
@@ -884,7 +1013,7 @@ export function MeasurementPageView() {
   }
 
   function downloadMassTemplate() {
-    const model = "\uFEFFprojeto;data;equipe;voz;quantidade\nA0123456789;2026-03-25;MK-01;TH0108;1\n";
+    const model = "\uFEFFprojeto;data;equipe;voz;quantidade;taxa\nA0123456789;2026-03-25;MK-01;TH0108;1;1,00\n";
     const blob = new Blob([model], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -897,7 +1026,7 @@ export function MeasurementPageView() {
 
   async function resolveActivityByCode(codeValue: string) {
     if (!accessToken) {
-      return findActivityOption(codeValue, resolvedActivityOptions);
+      return findActivityOptionByImportCode(codeValue, resolvedActivityOptions);
     }
 
     const lookupQueries = buildActivityLookupQueries(codeValue);
@@ -919,9 +1048,9 @@ export function MeasurementPageView() {
       }
     }
 
-    const remote = findActivityOption(codeValue, Array.from(unique.values()));
+    const remote = findActivityOptionByImportCode(codeValue, Array.from(unique.values()));
     if (remote) return remote;
-    return findActivityOption(codeValue, resolvedActivityOptions);
+    return findActivityOptionByImportCode(codeValue, resolvedActivityOptions);
   }
 
   async function handleMassImportFile(file: File) {
@@ -960,6 +1089,7 @@ export function MeasurementPageView() {
       const teamIndex = headerMap.get("equipe") ?? headerMap.get("team");
       const voiceIndex = headerMap.get("voz") ?? headerMap.get("voice") ?? headerMap.get("codigo") ?? headerMap.get("code");
       const quantityIndex = headerMap.get("quantidade") ?? headerMap.get("qtd") ?? headerMap.get("qty");
+      const manualRateIndex = headerMap.get("taxa") ?? headerMap.get("taxa manual") ?? headerMap.get("manual rate") ?? headerMap.get("manualrate") ?? headerMap.get("rate");
 
       const missingColumns: string[] = [];
       if (projectIndex === undefined) missingColumns.push("projeto");
@@ -967,7 +1097,8 @@ export function MeasurementPageView() {
       if (teamIndex === undefined) missingColumns.push("equipe");
       if (voiceIndex === undefined) missingColumns.push("voz");
       if (quantityIndex === undefined) missingColumns.push("quantidade");
-      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || voiceIndex === undefined || quantityIndex === undefined) {
+      if (manualRateIndex === undefined) missingColumns.push("taxa");
+      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || voiceIndex === undefined || quantityIndex === undefined || manualRateIndex === undefined) {
         for (const column of missingColumns) {
           importIssues.push({
             rowNumber: 1,
@@ -980,12 +1111,12 @@ export function MeasurementPageView() {
         setMassImportErrorReport(report);
         setMassImportResult({
           status: "error",
-          message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade.",
+          message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade,taxa.",
           successCount: 0,
           errorRows: report?.errorRows ?? 0,
           alreadyRegisteredRows: 0,
         });
-        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade." });
+        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade,taxa." });
         return;
       }
 
@@ -995,8 +1126,10 @@ export function MeasurementPageView() {
         const teamRaw = String(row[teamIndex] ?? "").trim();
         const voiceRaw = String(row[voiceIndex] ?? "").trim();
         const quantityRaw = String(row[quantityIndex] ?? "").trim();
+        const manualRateRaw = String(row[manualRateIndex] ?? "").trim();
         const executionDate = parseImportDate(dateRaw);
         const quantity = parsePositiveNumber(quantityRaw);
+        const manualRate = parsePositiveNumber(manualRateRaw);
         return {
           rowNumber: rowIndex + 2,
           projectCode: projectRaw,
@@ -1009,6 +1142,8 @@ export function MeasurementPageView() {
           voiceRaw,
           quantity,
           quantityRaw,
+          manualRate,
+          manualRateRaw,
         };
       });
 
@@ -1033,6 +1168,10 @@ export function MeasurementPageView() {
         }
         if (!row.quantity) {
           importIssues.push({ rowNumber: row.rowNumber, column: "quantidade", value: row.quantityRaw, error: "Quantidade invalida. Informe numero maior que zero." });
+          hasError = true;
+        }
+        if (!row.manualRate) {
+          importIssues.push({ rowNumber: row.rowNumber, column: "taxa", value: row.manualRateRaw, error: "Taxa invalida. Informe numero maior que zero." });
           hasError = true;
         }
         if (!hasError) {
@@ -1099,6 +1238,7 @@ export function MeasurementPageView() {
           projectId: string;
           teamId: string;
           executionDate: string;
+          manualRate: number;
         };
         items: Map<string, { activity: ActivityCatalogItem; quantity: number }>;
         rowNumbers: Set<number>;
@@ -1153,18 +1293,29 @@ export function MeasurementPageView() {
         const projectId = selectedSchedule?.projectId ?? matchedProject.id;
         const teamId = selectedSchedule?.teamId ?? matchedTeam.id;
         const executionDate = selectedSchedule?.date ?? (row.executionDate as string);
+        const manualRate = row.manualRate as number;
 
-        const groupingKey = selectedSchedule?.id ?? `${projectId}|${teamId}|${executionDate}`;
+        const groupingKey = `${projectId}|${teamId}|${executionDate}`;
         const group = grouped.get(groupingKey) ?? {
           context: {
             programmingId: selectedSchedule?.id ?? null,
             projectId,
             teamId,
             executionDate,
+            manualRate,
           },
           items: new Map(),
           rowNumbers: new Set<number>(),
         };
+        if (Math.abs(group.context.manualRate - manualRate) > 0.000001) {
+          importIssues.push({
+            rowNumber: row.rowNumber,
+            column: "taxa",
+            value: row.manualRateRaw,
+            error: "Taxa divergente para o mesmo Projeto + Equipe + Data. Use uma unica taxa por ordem.",
+          });
+          continue;
+        }
         const current = group.items.get(activity.id);
         const quantity = row.quantity as number;
         if (current) {
@@ -1191,7 +1342,6 @@ export function MeasurementPageView() {
         return;
       }
 
-      const manualRate = parsePositiveNumber(form.manualRate) ?? 1;
       const batchRows = Array.from(grouped.values()).map((group) => ({
         rowNumbers: Array.from(group.rowNumbers.values()).sort((a, b) => a - b),
         programmingId: group.context.programmingId ?? undefined,
@@ -1200,7 +1350,7 @@ export function MeasurementPageView() {
         executionDate: group.context.executionDate,
         measurementDate: group.context.executionDate,
         voicePoint: 1,
-        manualRate,
+        manualRate: group.context.manualRate,
         notes: "Cadastro em massa (CSV)",
         items: Array.from(group.items.values()).map((entry) => ({
           activityId: entry.activity.id,
@@ -1381,6 +1531,9 @@ export function MeasurementPageView() {
           observation: item.observation,
         })),
       });
+      if (findDuplicateFormActivityId(order.items)) {
+        setFeedback({ type: "error", message: "Esta ordem possui atividade duplicada. Remova as linhas repetidas antes de salvar." });
+      }
       setDetailOrder(null);
       closeHistoryModal();
       closeCancelModal();
@@ -1422,6 +1575,11 @@ export function MeasurementPageView() {
 
     if (!items.length || items.length !== form.items.length) {
       setFeedback({ type: "error", message: "Revise os itens: atividade, quantidade e pontos sao obrigatorios." });
+      return;
+    }
+
+    if (findDuplicateFormActivityId(items)) {
+      setFeedback({ type: "error", message: "A mesma atividade nao pode ser repetida na ordem de medicao." });
       return;
     }
 
@@ -1575,23 +1733,30 @@ export function MeasurementPageView() {
     const nextFilters = { ...filterDraft, projectId: matchedProject?.id ?? "" };
     setFilterDraft(nextFilters);
     setFilterProjectSearch(matchedProject?.code ?? "");
+    setPage(1);
     setActiveFilters(nextFilters);
   }
 
   function clearFilters() {
     setFilterDraft(initialFilters);
+    setPage(1);
     setActiveFilters(initialFilters);
     setFilterProjectSearch("");
   }
 
   async function exportOrdersCsv() {
-    if (!orders.length) {
+    if (!total) {
       setFeedback({ type: "error", message: "Nenhuma ordem encontrada para exportar com os filtros atuais." });
       return;
     }
 
     setIsExporting(true);
     try {
+      const exportOrders = await loadAllOrdersForExport();
+      if (!exportOrders.length) {
+        throw new Error("Nenhuma ordem encontrada para exportar com os filtros atuais.");
+      }
+
       const header = [
         "Ordem",
         "Projeto",
@@ -1605,7 +1770,7 @@ export function MeasurementPageView() {
         "Status",
         "Atualizado em",
       ];
-      const rows = orders.map((order) => {
+      const rows = exportOrders.map((order) => {
         const executionStatus = order.programmingCompletionStatusChangedAfterMeasurement
           ? `${order.programmingCompletionStatus ?? "-"} (Atualizado apos medicao)`
           : (order.programmingCompletionStatus ?? "-");
@@ -1634,13 +1799,15 @@ export function MeasurementPageView() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar ordens de medicao." });
     } finally {
       setIsExporting(false);
     }
   }
 
   async function exportOrdersDetailedCsv() {
-    if (!orders.length) {
+    if (!total) {
       setFeedback({ type: "error", message: "Nenhuma ordem encontrada para exportar detalhamento." });
       return;
     }
@@ -1648,7 +1815,12 @@ export function MeasurementPageView() {
 
     setIsExportingDetails(true);
     try {
-      const detailResults = await Promise.allSettled(orders.map((order) => loadOrderDetail(order.id)));
+      const exportOrders = await loadAllOrdersForExport();
+      if (!exportOrders.length) {
+        throw new Error("Nenhuma ordem encontrada para exportar detalhamento.");
+      }
+
+      const detailResults = await Promise.allSettled(exportOrders.map((order) => loadOrderDetail(order.id)));
       const details = detailResults
         .filter((result): result is PromiseFulfilledResult<OrderDetail | null> => result.status === "fulfilled")
         .map((result) => result.value)
@@ -1682,7 +1854,7 @@ export function MeasurementPageView() {
 
       const rows: string[][] = [];
       for (const detail of details) {
-        const summary = orders.find((order) => order.id === detail.id);
+        const summary = exportOrders.find((order) => order.id === detail.id);
         const projectCode = summary?.projectCode ?? projectMap.get(detail.projectId)?.code ?? detail.projectId;
         const teamName = summary?.teamName ?? teamMap.get(detail.teamId)?.name ?? detail.teamId;
         const foremanName = summary?.foremanName ?? teamMap.get(detail.teamId)?.foremanName ?? "-";
@@ -1701,12 +1873,15 @@ export function MeasurementPageView() {
           unit: "",
           quantity: 0,
           voicePoint: 0,
+          manualRate: detail.manualRate,
           unitValue: 0,
+          totalValue: 0,
           observation: "",
         }];
 
         for (const item of detailItems) {
-          const totalItem = item.voicePoint * item.quantity * detail.manualRate * item.unitValue;
+          const itemRate = item.manualRate || detail.manualRate;
+          const totalItem = item.totalValue || (item.voicePoint * item.quantity * itemRate * item.unitValue);
           rows.push([
             detail.orderNumber,
             projectCode,
@@ -1721,7 +1896,7 @@ export function MeasurementPageView() {
             item.unit || "-",
             item.voicePoint ? item.voicePoint.toLocaleString("pt-BR") : "0",
             item.quantity ? item.quantity.toLocaleString("pt-BR") : "0",
-            detail.manualRate.toLocaleString("pt-BR"),
+            itemRate.toLocaleString("pt-BR"),
             formatCurrency(item.unitValue),
             formatCurrency(totalItem),
             item.observation || "-",
@@ -1900,7 +2075,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.secondaryButton}
               onClick={() => void exportOrdersCsv()}
-              disabled={isExporting || isExportingDetails || isLoadingOrders || !orders.length}
+              disabled={isExporting || isExportingDetails || isLoadingOrders || total <= 0}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
@@ -1908,7 +2083,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={() => void exportOrdersDetailedCsv()}
-              disabled={isExportingDetails || isExporting || isLoadingOrders || !orders.length}
+              disabled={isExportingDetails || isExporting || isLoadingOrders || total <= 0}
             >
               {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
             </button>
@@ -2035,6 +2210,30 @@ export function MeasurementPageView() {
             </tbody>
           </table>
         </div>
+
+        <div className={styles.pagination}>
+          <span>
+            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
+          </span>
+          <div className={styles.paginationActions}>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1 || isLoadingOrders}
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages || isLoadingOrders}
+            >
+              Proxima
+            </button>
+          </div>
+        </div>
       </article>
 
       {detailOrder ? (
@@ -2071,7 +2270,7 @@ export function MeasurementPageView() {
 
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
-                  <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
+                  <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Quantidade</th><th>Taxa</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
                   <tbody>
                     {detailOrder.items.length ? detailOrder.items.map((item) => (
                       <tr key={item.id}>
@@ -2080,11 +2279,12 @@ export function MeasurementPageView() {
                         <td>{item.unit}</td>
                         <td>{item.voicePoint.toLocaleString("pt-BR")}</td>
                         <td>{item.quantity.toLocaleString("pt-BR")}</td>
+                        <td>{item.manualRate.toLocaleString("pt-BR")}</td>
                         <td>{formatCurrency(item.unitValue)}</td>
-                        <td>{formatCurrency(item.voicePoint * item.quantity * detailOrder.manualRate * item.unitValue)}</td>
+                        <td>{formatCurrency(item.totalValue)}</td>
                         <td>{item.observation || "-"}</td>
                       </tr>
-                    )) : <tr><td colSpan={8} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
+                    )) : <tr><td colSpan={9} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -2225,7 +2425,7 @@ export function MeasurementPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas obrigatorias: projeto, data, equipe, voz, quantidade.</p>
+                    <p>Colunas obrigatorias: projeto, data, equipe, voz, quantidade, taxa.</p>
                   </div>
                 </div>
               </section>

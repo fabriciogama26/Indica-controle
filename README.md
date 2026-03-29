@@ -121,7 +121,7 @@ vercel --prod
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
   - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote e exportacao `ENEL-EXCEL`.
-  - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com `cadastro + filtros + lista`, persistencia transacional em banco, cadastro independente da programacao, match automatico por `Projeto + Equipe + Data`, status visual `Programada/Nao programada` e alerta para mudanca posterior de `CONCLUIDO/PARCIAL` na programacao.
+  - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com `cadastro + filtros + lista` paginada, persistencia transacional em banco, cadastro independente da programacao, match automatico por `Projeto + Equipe + Data`, status visual `Programada/Nao programada` e alerta para mudanca posterior de `CONCLUIDO/PARCIAL` na programacao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
@@ -185,7 +185,7 @@ vercel --prod
   - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, quantidades estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros, lista com `Detalhes`/`Edicao`/`Historico`, exportacao CSV e exportacao `ENEL-EXCEL`.
   - `ProgrammingSimplePageView.module.css`: estilos da nova tela de Programacao.
 - `src/modules/dashboard/medicao/`
-  - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, inclusao de atividades da medicao, cadastro em massa CSV, match de programacao e alerta de atualizacao de `CONCLUIDO/PARCIAL`.
+  - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, lista paginada, inclusao de atividades da medicao, cadastro em massa CSV com `taxa` por linha, detalhe por item com `taxa` visivel, importacao reforcada por match exato/univoco do codigo da atividade e bloqueio de atividade duplicada na mesma ordem com validacao tambem na RPC.
   - `MeasurementPageView.module.css`: estilos da tela de medicao.
 - `src/modules/dashboard/equipes/`
   - `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, historico e cancelamento/ativacao.
@@ -250,7 +250,7 @@ vercel --prod
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
   - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
-  - `Tela_Medicao_SaaS.txt`: tela frontend de medicao com origem por projeto/programacao, fator de multiplicacao e conferencia local.
+  - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Padrao_Cadastros_SaaS.txt`: referencia obrigatoria de padrao visual/comportamental para telas de cadastro.
@@ -315,7 +315,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 32. A migration `065_project_forecast_manual_and_activity_import.sql` cria a RPC `save_project_material_forecast` e protege a importacao em massa de `Atividades previstas` por RPC.
 33. A migration `066_harden_location_and_project_forecast_rpcs.sql` adiciona controle de concorrencia por `updated_at`, limites maximos e obrigatoriedade condicional de observacao nas RPCs de `Locacao` e dos previstos do projeto.
 34. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`, com persistencia e historico delegados para as RPCs `save_material_record` e `set_material_record_status`.
-35. A rota `/medicao` ja possui frontend funcional para montar a OS/medicao por `Projeto` ou `Programacao`, carregar atividades previstas por `/api/projects/activity-forecast`, calcular o total local com fator `1,00`, `1,20`, `1,25` ou `2,85` e preparar a futura integracao com backend proprio.
+35. A rota `/medicao` opera `Ordem de Medicao` com persistencia transacional via `/api/medicao`, lista paginada no servidor, match automatico opcional por `Projeto + Equipe + Data`, historico, exportacoes e cadastro em massa CSV com `taxa` por linha para compor a `taxa manual` enviada ao banco.
 36. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor e escrita delegada para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 37. A rota `/programacao` passa a usar `project_programming_history` como timeline operacional dedicada da agenda, com `REPROGRAMADA` salvo fisicamente em `project_programming` e historico de `CREATE/UPDATE/RESCHEDULE/BATCH_CREATE` gravado dentro das RPCs transacionais full, sem depender de `app_entity_history` nem de historico complementar pos-commit na API.
 38. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`.
