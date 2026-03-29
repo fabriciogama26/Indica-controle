@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import styles from "./MeasurementPageView.module.css";
 
 type MeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
+type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
 type WorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | null;
@@ -62,6 +63,17 @@ type ActivityCatalogResponse = {
   items?: ActivityCatalogItem[];
 };
 
+type NoProductionReasonItem = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+type MeasurementMetaResponse = {
+  noProductionReasons?: NoProductionReasonItem[];
+  message?: string;
+};
+
 type MeasurementRow = {
   rowId: string;
   activityId: string;
@@ -86,6 +98,9 @@ type OrderItem = {
   measurementDate: string;
   voicePoint: number;
   manualRate: number;
+  measurementKind: MeasurementKind;
+  noProductionReasonId: string | null;
+  noProductionReasonName: string;
   status: MeasurementStatus;
   notes: string;
   projectCode: string;
@@ -132,6 +147,9 @@ type OrderDetail = {
   measurementDate: string;
   voicePoint: number;
   manualRate: number;
+  measurementKind: MeasurementKind;
+  noProductionReasonId: string | null;
+  noProductionReasonName: string;
   status: MeasurementStatus;
   notes: string;
   programmingMatchStatus: ProgrammingMatchStatus;
@@ -183,6 +201,11 @@ type ParsedMassImportRow = {
   quantityRaw: string;
   manualRate: number | null;
   manualRateRaw: string;
+  measurementKind: MeasurementKind;
+  measurementKindRaw: string;
+  noProductionReasonId: string | null;
+  noProductionReasonName: string;
+  noProductionReasonRaw: string;
 };
 
 type MassImportErrorReportData = {
@@ -229,6 +252,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   teamId: "Equipe",
   executionDate: "Data execucao",
   manualRate: "Taxa manual",
+  measurementKind: "Tipo da medicao",
+  noProductionReason: "Motivo sem producao",
   itemCount: "Quantidade de itens",
   status: "Status",
 };
@@ -253,6 +278,8 @@ type FormState = {
   executionDate: string;
   measurementDate: string;
   manualRate: string;
+  measurementKind: MeasurementKind;
+  noProductionReasonId: string;
   notes: string;
   activitySearch: string;
   activityQuantity: string;
@@ -310,6 +337,8 @@ function createForm(today: string): FormState {
     executionDate: today,
     measurementDate: today,
     manualRate: "1",
+    measurementKind: "COM_PRODUCAO",
+    noProductionReasonId: "",
     notes: "",
     activitySearch: "",
     activityQuantity: "1",
@@ -347,6 +376,10 @@ function formatDateTime(value: string) {
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function measurementKindLabel(value: MeasurementKind) {
+  return value === "SEM_PRODUCAO" ? "Sem producao" : "Com producao";
 }
 
 function programmingMatchLabel(status: ProgrammingMatchStatus) {
@@ -387,6 +420,12 @@ function normalizeCodeToken(value: string) {
 
 function normalizeCodeTokenLoose(value: string) {
   return normalizeCodeToken(value).replace(/o/g, "0");
+}
+
+function normalizeMeasurementKindInput(value: string): MeasurementKind {
+  const normalized = normalizeSearchText(value)
+    .replace(/[^a-z0-9]/g, "");
+  return normalized.includes("semproducao") ? "SEM_PRODUCAO" : "COM_PRODUCAO";
 }
 
 function buildActivityLookupQueries(rawValue: string) {
@@ -669,6 +708,17 @@ function resolveImportScheduleCandidate(candidates: ScheduleItem[]) {
   return { schedule: teamCandidates[0] ?? null, reason: null as null };
 }
 
+function findNoProductionReasonOption(value: string, options: NoProductionReasonItem[]) {
+  const normalized = normalizeSearchText(value);
+  if (!normalized) return null;
+
+  return options.find((item) =>
+    normalizeSearchText(item.name) === normalized
+    || normalizeSearchText(item.code) === normalized
+    || normalizeSearchText(`${item.code} - ${item.name}`) === normalized,
+  ) ?? null;
+}
+
 function findDuplicateFormActivityId(items: Array<{ activityId: string }>) {
   const seen = new Set<string>();
   for (const item of items) {
@@ -695,6 +745,7 @@ export function MeasurementPageView() {
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
+  const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
   const [activeFilters, setActiveFilters] = useState<Filters>(initialFilters);
@@ -735,6 +786,9 @@ export function MeasurementPageView() {
   }, [activityOptions]);
 
   const totalAmount = useMemo(() => {
+    if (form.measurementKind === "SEM_PRODUCAO") {
+      return 0;
+    }
     const manualRate = parsePositiveNumber(form.manualRate) ?? 1;
     return form.items.reduce((sum, item) => {
       const voicePoint = parsePositiveNumber(item.voicePoint) ?? 1;
@@ -742,8 +796,9 @@ export function MeasurementPageView() {
       const unitValue = parseNonNegativeNumber(item.unitValue) ?? 0;
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
-  }, [form.items, form.manualRate]);
+  }, [form.items, form.manualRate, form.measurementKind]);
   const canSubmitCancelStatus = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
+  const isEditing = Boolean(form.id);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyEntries.length / HISTORY_PAGE_SIZE));
   const pagedHistoryEntries = useMemo(
@@ -850,6 +905,37 @@ export function MeasurementPageView() {
 
   useEffect(() => {
     if (!accessToken) {
+      setNoProductionReasons([]);
+      return;
+    }
+
+    let ignore = false;
+    async function loadMeasurementMeta() {
+      try {
+        const response = await fetch("/api/medicao/meta", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => null)) as MeasurementMetaResponse | null;
+        if (!response.ok) throw new Error(data?.message ?? "Falha ao carregar motivos de sem producao.");
+        if (ignore) return;
+        setNoProductionReasons(data?.noProductionReasons ?? []);
+      } catch (error) {
+        if (!ignore) {
+          setNoProductionReasons([]);
+          setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar motivos de sem producao." });
+        }
+      }
+    }
+
+    void loadMeasurementMeta();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) {
       setOrders([]);
       setTotal(0);
       return;
@@ -924,6 +1010,30 @@ export function MeasurementPageView() {
     setFormProjectSearch("");
   }
 
+  function handleMeasurementKindChange(nextKind: MeasurementKind) {
+    setForm((current) => ({
+      ...current,
+      measurementKind: nextKind,
+      noProductionReasonId: nextKind === "COM_PRODUCAO" ? "" : current.noProductionReasonId,
+      manualRate: nextKind === "SEM_PRODUCAO" ? "1" : current.manualRate,
+      activitySearch: "",
+      activityQuantity: "1",
+      items: nextKind === "SEM_PRODUCAO" ? [] : current.items,
+    }));
+  }
+
+  function recalculateItemsWithMeasurementRate() {
+    if (form.measurementKind === "SEM_PRODUCAO" || !form.items.length) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item) => ({ ...item })),
+    }));
+    setFeedback({ type: "success", message: "Totais recalculados com a taxa unica da medicao." });
+  }
+
   function updateRow(rowId: string, field: "quantity" | "observation", value: string) {
     setForm((current) => ({
       ...current,
@@ -936,6 +1046,11 @@ export function MeasurementPageView() {
   }
 
   async function addActivity() {
+    if (form.measurementKind === "SEM_PRODUCAO") {
+      setFeedback({ type: "error", message: "Ordem sem producao nao permite adicionar atividades." });
+      return;
+    }
+
     let option = findActivityOption(form.activitySearch, resolvedActivityOptions);
     if (!option && accessToken && form.activitySearch.trim().length >= 2) {
       try {
@@ -1013,7 +1128,7 @@ export function MeasurementPageView() {
   }
 
   function downloadMassTemplate() {
-    const model = "\uFEFFprojeto;data;equipe;voz;quantidade;taxa\nA0123456789;2026-03-25;MK-01;TH0108;1;1,00\n";
+    const model = "\uFEFFprojeto;data;equipe;tipo_medicao;motivo_sem_producao;voz;quantidade;taxa\nA0123456789;2026-03-25;MK-01;COM_PRODUCAO;;TH0108;1;1,00\nA0123456790;2026-03-25;MK-02;SEM_PRODUCAO;Apoio;;;\n";
     const blob = new Blob([model], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -1087,6 +1202,8 @@ export function MeasurementPageView() {
       const projectIndex = headerMap.get("projeto") ?? headerMap.get("project") ?? headerMap.get("sob");
       const dateIndex = headerMap.get("data") ?? headerMap.get("date");
       const teamIndex = headerMap.get("equipe") ?? headerMap.get("team");
+      const measurementKindIndex = headerMap.get("tipo_medicao") ?? headerMap.get("tipomedicao") ?? headerMap.get("tipo") ?? headerMap.get("measurementkind");
+      const noProductionReasonIndex = headerMap.get("motivo_sem_producao") ?? headerMap.get("motivosemproducao") ?? headerMap.get("motivo") ?? headerMap.get("no_production_reason");
       const voiceIndex = headerMap.get("voz") ?? headerMap.get("voice") ?? headerMap.get("codigo") ?? headerMap.get("code");
       const quantityIndex = headerMap.get("quantidade") ?? headerMap.get("qtd") ?? headerMap.get("qty");
       const manualRateIndex = headerMap.get("taxa") ?? headerMap.get("taxa manual") ?? headerMap.get("manual rate") ?? headerMap.get("manualrate") ?? headerMap.get("rate");
@@ -1095,10 +1212,12 @@ export function MeasurementPageView() {
       if (projectIndex === undefined) missingColumns.push("projeto");
       if (dateIndex === undefined) missingColumns.push("data");
       if (teamIndex === undefined) missingColumns.push("equipe");
+      if (measurementKindIndex === undefined) missingColumns.push("tipo_medicao");
+      if (noProductionReasonIndex === undefined) missingColumns.push("motivo_sem_producao");
       if (voiceIndex === undefined) missingColumns.push("voz");
       if (quantityIndex === undefined) missingColumns.push("quantidade");
       if (manualRateIndex === undefined) missingColumns.push("taxa");
-      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || voiceIndex === undefined || quantityIndex === undefined || manualRateIndex === undefined) {
+      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || measurementKindIndex === undefined || noProductionReasonIndex === undefined || voiceIndex === undefined || quantityIndex === undefined || manualRateIndex === undefined) {
         for (const column of missingColumns) {
           importIssues.push({
             rowNumber: 1,
@@ -1111,12 +1230,12 @@ export function MeasurementPageView() {
         setMassImportErrorReport(report);
         setMassImportResult({
           status: "error",
-          message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade,taxa.",
+          message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa.",
           successCount: 0,
           errorRows: report?.errorRows ?? 0,
           alreadyRegisteredRows: 0,
         });
-        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade,taxa." });
+        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa." });
         return;
       }
 
@@ -1124,12 +1243,18 @@ export function MeasurementPageView() {
         const projectRaw = String(row[projectIndex] ?? "").trim();
         const dateRaw = String(row[dateIndex] ?? "").trim();
         const teamRaw = String(row[teamIndex] ?? "").trim();
+        const measurementKindRaw = String(row[measurementKindIndex] ?? "").trim();
+        const noProductionReasonRaw = String(row[noProductionReasonIndex] ?? "").trim();
         const voiceRaw = String(row[voiceIndex] ?? "").trim();
         const quantityRaw = String(row[quantityIndex] ?? "").trim();
         const manualRateRaw = String(row[manualRateIndex] ?? "").trim();
         const executionDate = parseImportDate(dateRaw);
-        const quantity = parsePositiveNumber(quantityRaw);
-        const manualRate = parsePositiveNumber(manualRateRaw);
+        const measurementKind = normalizeMeasurementKindInput(measurementKindRaw);
+        const quantity = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(quantityRaw);
+        const manualRate = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(manualRateRaw);
+        const matchedNoProductionReason = measurementKind === "SEM_PRODUCAO"
+          ? findNoProductionReasonOption(noProductionReasonRaw, noProductionReasons)
+          : null;
         return {
           rowNumber: rowIndex + 2,
           projectCode: projectRaw,
@@ -1138,6 +1263,11 @@ export function MeasurementPageView() {
           teamRaw,
           executionDate,
           executionDateRaw: dateRaw,
+          measurementKind,
+          measurementKindRaw,
+          noProductionReasonId: matchedNoProductionReason?.id ?? null,
+          noProductionReasonName: matchedNoProductionReason?.name ?? "",
+          noProductionReasonRaw,
           voiceCode: voiceRaw,
           voiceRaw,
           quantity,
@@ -1162,17 +1292,28 @@ export function MeasurementPageView() {
           importIssues.push({ rowNumber: row.rowNumber, column: "equipe", value: row.teamRaw, error: "Equipe obrigatoria." });
           hasError = true;
         }
-        if (!row.voiceCode) {
-          importIssues.push({ rowNumber: row.rowNumber, column: "voz", value: row.voiceRaw, error: "Codigo da atividade obrigatorio." });
+        if (!row.measurementKindRaw) {
+          importIssues.push({ rowNumber: row.rowNumber, column: "tipo_medicao", value: row.measurementKindRaw, error: "Tipo da medicao obrigatorio." });
           hasError = true;
         }
-        if (!row.quantity) {
-          importIssues.push({ rowNumber: row.rowNumber, column: "quantidade", value: row.quantityRaw, error: "Quantidade invalida. Informe numero maior que zero." });
-          hasError = true;
-        }
-        if (!row.manualRate) {
-          importIssues.push({ rowNumber: row.rowNumber, column: "taxa", value: row.manualRateRaw, error: "Taxa invalida. Informe numero maior que zero." });
-          hasError = true;
+        if (row.measurementKind === "SEM_PRODUCAO") {
+          if (!row.noProductionReasonId) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "motivo_sem_producao", value: row.noProductionReasonRaw, error: "Motivo de sem producao invalido ou nao encontrado." });
+            hasError = true;
+          }
+        } else {
+          if (!row.voiceCode) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "voz", value: row.voiceRaw, error: "Codigo da atividade obrigatorio." });
+            hasError = true;
+          }
+          if (!row.quantity) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "quantidade", value: row.quantityRaw, error: "Quantidade invalida. Informe numero maior que zero." });
+            hasError = true;
+          }
+          if (!row.manualRate) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "taxa", value: row.manualRateRaw, error: "Taxa invalida. Informe numero maior que zero." });
+            hasError = true;
+          }
         }
         if (!hasError) {
           validRows.push(row);
@@ -1239,6 +1380,8 @@ export function MeasurementPageView() {
           teamId: string;
           executionDate: string;
           manualRate: number;
+          measurementKind: MeasurementKind;
+          noProductionReasonId: string | null;
         };
         items: Map<string, { activity: ActivityCatalogItem; quantity: number }>;
         rowNumbers: Set<number>;
@@ -1279,8 +1422,10 @@ export function MeasurementPageView() {
           }
         }
 
-        const activity = activityByCode.get(normalizeSearchText(row.voiceCode));
-        if (!activity) {
+        const activity = row.measurementKind === "COM_PRODUCAO"
+          ? activityByCode.get(normalizeSearchText(row.voiceCode))
+          : null;
+        if (row.measurementKind === "COM_PRODUCAO" && !activity) {
           importIssues.push({
             rowNumber: row.rowNumber,
             column: "voz",
@@ -1293,7 +1438,7 @@ export function MeasurementPageView() {
         const projectId = selectedSchedule?.projectId ?? matchedProject.id;
         const teamId = selectedSchedule?.teamId ?? matchedTeam.id;
         const executionDate = selectedSchedule?.date ?? (row.executionDate as string);
-        const manualRate = row.manualRate as number;
+        const manualRate = row.measurementKind === "SEM_PRODUCAO" ? 1 : (row.manualRate as number);
 
         const groupingKey = `${projectId}|${teamId}|${executionDate}`;
         const group = grouped.get(groupingKey) ?? {
@@ -1303,10 +1448,30 @@ export function MeasurementPageView() {
             teamId,
             executionDate,
             manualRate,
+            measurementKind: row.measurementKind,
+            noProductionReasonId: row.noProductionReasonId,
           },
           items: new Map(),
           rowNumbers: new Set<number>(),
         };
+        if (group.context.measurementKind !== row.measurementKind) {
+          importIssues.push({
+            rowNumber: row.rowNumber,
+            column: "tipo_medicao",
+            value: row.measurementKindRaw,
+            error: "Tipo da medicao divergente para o mesmo Projeto + Equipe + Data.",
+          });
+          continue;
+        }
+        if ((group.context.noProductionReasonId ?? "") !== (row.noProductionReasonId ?? "")) {
+          importIssues.push({
+            rowNumber: row.rowNumber,
+            column: "motivo_sem_producao",
+            value: row.noProductionReasonRaw,
+            error: "Motivo de sem producao divergente para o mesmo Projeto + Equipe + Data.",
+          });
+          continue;
+        }
         if (Math.abs(group.context.manualRate - manualRate) > 0.000001) {
           importIssues.push({
             rowNumber: row.rowNumber,
@@ -1316,12 +1481,14 @@ export function MeasurementPageView() {
           });
           continue;
         }
-        const current = group.items.get(activity.id);
-        const quantity = row.quantity as number;
-        if (current) {
-          current.quantity = Number((current.quantity + quantity).toFixed(6));
-        } else {
-          group.items.set(activity.id, { activity, quantity });
+        if (row.measurementKind === "COM_PRODUCAO" && activity) {
+          const current = group.items.get(activity.id);
+          const quantity = row.quantity as number;
+          if (current) {
+            current.quantity = Number((current.quantity + quantity).toFixed(6));
+          } else {
+            group.items.set(activity.id, { activity, quantity });
+          }
         }
         group.rowNumbers.add(row.rowNumber);
         grouped.set(groupingKey, group);
@@ -1349,10 +1516,12 @@ export function MeasurementPageView() {
         teamId: group.context.teamId,
         executionDate: group.context.executionDate,
         measurementDate: group.context.executionDate,
+        measurementKind: group.context.measurementKind,
+        noProductionReasonId: group.context.noProductionReasonId ?? undefined,
         voicePoint: 1,
         manualRate: group.context.manualRate,
         notes: "Cadastro em massa (CSV)",
-        items: Array.from(group.items.values()).map((entry) => ({
+        items: group.context.measurementKind === "SEM_PRODUCAO" ? [] : Array.from(group.items.values()).map((entry) => ({
           activityId: entry.activity.id,
           quantity: entry.quantity,
           voicePoint: entry.activity.voicePoint,
@@ -1514,6 +1683,8 @@ export function MeasurementPageView() {
         executionDate: order.executionDate,
         measurementDate: order.measurementDate,
         manualRate: String(order.manualRate),
+        measurementKind: order.measurementKind,
+        noProductionReasonId: order.noProductionReasonId ?? "",
         notes: order.notes,
         activitySearch: "",
         activityQuantity: "1",
@@ -1556,8 +1727,13 @@ export function MeasurementPageView() {
 
     const selectedProjectId = matchedProject.id;
     const manualRate = parsePositiveNumber(form.manualRate);
-    if (!manualRate) {
+    if (form.measurementKind === "COM_PRODUCAO" && !manualRate) {
       setFeedback({ type: "error", message: "Taxa manual e obrigatoria." });
+      return;
+    }
+
+    if (form.measurementKind === "SEM_PRODUCAO" && !form.noProductionReasonId) {
+      setFeedback({ type: "error", message: "Selecione o motivo de sem producao." });
       return;
     }
 
@@ -1573,8 +1749,13 @@ export function MeasurementPageView() {
       }))
       .filter((item) => item.activityId && item.quantity !== null && item.voicePoint !== null);
 
-    if (!items.length || items.length !== form.items.length) {
+    if (form.measurementKind === "COM_PRODUCAO" && (!items.length || items.length !== form.items.length)) {
       setFeedback({ type: "error", message: "Revise os itens: atividade, quantidade e pontos sao obrigatorios." });
+      return;
+    }
+
+    if (form.measurementKind === "SEM_PRODUCAO" && form.items.length) {
+      setFeedback({ type: "error", message: "Medicao sem producao nao pode conter atividades." });
       return;
     }
 
@@ -1590,7 +1771,7 @@ export function MeasurementPageView() {
 
     const measurementDateToSave = form.executionDate || today;
 
-    const orderVoicePoint = items[0]?.voicePoint ?? 1;
+    const orderVoicePoint = form.measurementKind === "SEM_PRODUCAO" ? 1 : (items[0]?.voicePoint ?? 1);
 
     setIsSubmitting(true);
     try {
@@ -1607,11 +1788,13 @@ export function MeasurementPageView() {
           teamId: form.teamId || undefined,
           executionDate: form.executionDate || undefined,
           measurementDate: measurementDateToSave,
+          measurementKind: form.measurementKind,
+          noProductionReasonId: form.measurementKind === "SEM_PRODUCAO" ? form.noProductionReasonId || undefined : undefined,
           voicePoint: orderVoicePoint,
-          manualRate,
+          manualRate: form.measurementKind === "SEM_PRODUCAO" ? 1 : manualRate,
           notes: form.notes,
           expectedUpdatedAt: form.expectedUpdatedAt,
-          items,
+          items: form.measurementKind === "SEM_PRODUCAO" ? [] : items,
         }),
       });
 
@@ -1763,6 +1946,8 @@ export function MeasurementPageView() {
         "Data execucao",
         "Equipe",
         "Encarregado",
+        "Tipo da medicao",
+        "Motivo sem producao",
         "Programacao",
         "Status execucao",
         "Itens",
@@ -1780,6 +1965,8 @@ export function MeasurementPageView() {
           formatDate(order.executionDate),
           order.teamName,
           order.foremanName || "-",
+          measurementKindLabel(order.measurementKind),
+          order.noProductionReasonName || "-",
           programmingMatchLabel(order.programmingMatchStatus),
           executionStatus,
           String(order.itemCount),
@@ -1837,6 +2024,8 @@ export function MeasurementPageView() {
         "Data execucao",
         "Equipe",
         "Encarregado",
+        "Tipo da medicao",
+        "Motivo sem producao",
         "Programacao",
         "Status execucao",
         "Status ordem",
@@ -1888,6 +2077,8 @@ export function MeasurementPageView() {
             formatDate(detail.executionDate),
             teamName,
             foremanName || "-",
+            measurementKindLabel(detail.measurementKind),
+            detail.noProductionReasonName || "-",
             programmingLabel,
             executionStatus,
             detail.status,
@@ -1971,7 +2162,24 @@ export function MeasurementPageView() {
               onChange={(event) => setForm((current) => ({ ...current, executionDate: event.target.value, programmingId: "", items: current.id ? current.items : [] }))}
             />
           </label>
+          <label className={styles.field}>
+            <span>Tipo da medicao <span className="requiredMark">*</span></span>
+            <select value={form.measurementKind} onChange={(event) => handleMeasurementKindChange(event.target.value as MeasurementKind)}>
+              <option value="COM_PRODUCAO">Com producao</option>
+              <option value="SEM_PRODUCAO">Sem producao</option>
+            </select>
+          </label>
           <label className={styles.field}><span>Encarregado</span><input value={teamMap.get(form.teamId)?.foremanName ?? ""} readOnly /></label>
+          <label className={styles.field}>
+            <span>Motivo sem producao{form.measurementKind === "SEM_PRODUCAO" ? " *" : ""}</span>
+            <select
+              value={form.noProductionReasonId}
+              onChange={(event) => setForm((current) => ({ ...current, noProductionReasonId: event.target.value }))}
+            >
+              <option value="">Selecione</option>
+              {noProductionReasons.map((reason) => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
+            </select>
+          </label>
           <label className={`${styles.field} ${styles.fieldWide}`}><span>Observacoes</span><textarea rows={3} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></label>
           {isLoadingSources ? <div className={`${styles.formActions} ${styles.actions}`}><span className={styles.loadingHint}>Atualizando dados...</span></div> : null}
         </form>
@@ -1979,18 +2187,29 @@ export function MeasurementPageView() {
         <div className={styles.subCard}>
           <div className={styles.tableHeader}>
             <h3 className={styles.tableTitle}>Atividades da Ordem</h3>
-            <span className={styles.tableHint}>Formula: pontos x quantidade x taxa x valor unitario</span>
+            <span className={styles.tableHint}>
+              {form.measurementKind === "SEM_PRODUCAO"
+                ? "Sem producao: a ordem sera salva sem atividades e com total zero."
+                : "Formula: pontos x quantidade x taxa x valor unitario"}
+            </span>
           </div>
           <div className={styles.inlineForm}>
-            <label className={styles.field}><span>Atividade</span><input value={form.activitySearch} onChange={(event) => setForm((current) => ({ ...current, activitySearch: event.target.value }))} list="medicao-activity-list" /></label>
-            <label className={`${styles.field} ${styles.compactField}`}><span>Taxa manual <span className="requiredMark">*</span></span><input type="number" min="0.01" step="0.01" value={form.manualRate} onChange={(event) => setForm((current) => ({ ...current, manualRate: event.target.value }))} /></label>
-            <label className={`${styles.field} ${styles.compactField}`}><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.activityQuantity} onChange={(event) => setForm((current) => ({ ...current, activityQuantity: event.target.value }))} /></label>
-            <div className={styles.actions}><button type="button" className={styles.secondaryButton} onClick={() => void addActivity()}>Adicionar</button></div>
+            <label className={styles.field}><span>Atividade</span><input value={form.activitySearch} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activitySearch: event.target.value }))} list="medicao-activity-list" /></label>
+            <label className={`${styles.field} ${styles.compactField}`}><span>Taxa unica da medicao {form.measurementKind === "COM_PRODUCAO" ? <span className="requiredMark">*</span> : null}</span><input type="number" min="0.01" step="0.01" value={form.manualRate} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, manualRate: event.target.value }))} /></label>
+            <label className={`${styles.field} ${styles.compactField}`}><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.activityQuantity} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityQuantity: event.target.value }))} /></label>
+            <div className={styles.actions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => void addActivity()} disabled={form.measurementKind === "SEM_PRODUCAO"}>Adicionar</button>
+              {isEditing && form.measurementKind === "COM_PRODUCAO" && form.items.length ? (
+                <button type="button" className={styles.ghostButton} onClick={recalculateItemsWithMeasurementRate}>
+                  Recalcular totais
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className={styles.tableWrapper}>
             <table className={styles.table}>
-              <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th><th>Acoes</th></tr></thead>
+              <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Taxa aplicada</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th><th>Acoes</th></tr></thead>
               <tbody>
                 {form.items.length ? form.items.map((item) => {
                   const voicePoint = parsePositiveNumber(item.voicePoint) ?? 1;
@@ -2002,6 +2221,7 @@ export function MeasurementPageView() {
                     <tr key={item.rowId}>
                       <td>{item.code}</td><td>{item.description}</td><td>{item.unit}</td>
                       <td><input className={styles.tableInput} value={item.voicePoint} readOnly /></td>
+                      <td><input className={styles.tableInput} value={rate.toLocaleString("pt-BR")} readOnly /></td>
                       <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={item.quantity} onChange={(event) => updateRow(item.rowId, "quantity", event.target.value)} /></td>
                       <td><input className={styles.tableInput} type="number" value={item.unitValue} readOnly /></td>
                       <td>{formatCurrency(rowTotal)}</td>
@@ -2009,7 +2229,7 @@ export function MeasurementPageView() {
                       <td><button type="button" className={styles.ghostButton} onClick={() => removeRow(item.rowId)}>Remover</button></td>
                     </tr>
                   );
-                }) : <tr><td colSpan={9} className={styles.emptyRow}>Nenhuma atividade adicionada.</td></tr>}
+                }) : <tr><td colSpan={10} className={styles.emptyRow}>{form.measurementKind === "SEM_PRODUCAO" ? "Ordem sem producao: nenhuma atividade deve ser adicionada." : "Nenhuma atividade adicionada."}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -2018,9 +2238,11 @@ export function MeasurementPageView() {
             <button type="submit" form="measurement-order-form" className={styles.primaryButton} disabled={isSubmitting}>
               {isSubmitting ? "Salvando..." : form.id ? "Salvar alteracoes" : "Salvar ordem"}
             </button>
-            <button type="button" className={styles.secondaryButton} onClick={openMassImportModal}>
-              Cadastro em massa
-            </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={openMassImportModal}>
+                Cadastro em massa
+              </button>
+            ) : null}
             {form.id ? <button type="button" className={styles.ghostButton} onClick={resetForm}>Cancelar edicao</button> : null}
           </div>
         </div>
@@ -2091,7 +2313,7 @@ export function MeasurementPageView() {
         </div>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
-            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Encarregado</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
+            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Encarregado</th><th>Tipo</th><th>Motivo sem producao</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
             <tbody>
               {orders.length ? orders.map((order) => (
                 <tr key={order.id} className={order.status === "CANCELADA" ? styles.inactiveRow : ""}>
@@ -2100,6 +2322,8 @@ export function MeasurementPageView() {
                   <td>{formatDate(order.executionDate)}</td>
                   <td>{order.teamName}</td>
                   <td>{order.foremanName || "-"}</td>
+                  <td>{measurementKindLabel(order.measurementKind)}</td>
+                  <td>{order.noProductionReasonName || "-"}</td>
                   <td>{programmingMatchLabel(order.programmingMatchStatus)}</td>
                   <td>
                     {order.programmingCompletionStatus ?? "-"}
@@ -2206,7 +2430,7 @@ export function MeasurementPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={12} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
+              )) : <tr><td colSpan={14} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -2255,6 +2479,8 @@ export function MeasurementPageView() {
                 <div><strong>Equipe:</strong> {teamMap.get(detailOrder.teamId)?.name ?? "-"}</div>
                 <div><strong>Encarregado:</strong> {teamMap.get(detailOrder.teamId)?.foremanName ?? "-"}</div>
                 <div><strong>Data execucao:</strong> {formatDate(detailOrder.executionDate)}</div>
+                <div><strong>Tipo da medicao:</strong> {measurementKindLabel(detailOrder.measurementKind)}</div>
+                <div><strong>Motivo sem producao:</strong> {detailOrder.noProductionReasonName || "-"}</div>
                 <div><strong>Programacao:</strong> {programmingMatchLabel(detailOrder.programmingMatchStatus)}</div>
                 <div><strong>Status execucao:</strong> {detailOrder.programmingCompletionStatus ?? "-"}</div>
                 <div><strong>Status da ordem:</strong> {detailOrder.status}</div>
@@ -2425,7 +2651,7 @@ export function MeasurementPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas obrigatorias: projeto, data, equipe, voz, quantidade, taxa.</p>
+                    <p>Colunas obrigatorias: projeto, data, equipe, tipo_medicao, motivo_sem_producao, voz, quantidade, taxa.</p>
                   </div>
                 </div>
               </section>

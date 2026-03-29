@@ -278,6 +278,9 @@
 - [x] Adicionar botao `Exportar Excel (CSV)` na lista de Ordens de Medicao para exportar o resultado filtrado no padrao das outras telas.
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
 - [x] Paginar a `Lista de Ordens de Medicao` com `page`, `pageSize` e `total` no backend, navegacao `Anterior/Proxima` na tela e exportacao preservando o resultado filtrado completo.
+- [x] Ampliar a Medicao para suportar `Com producao` e `Sem producao` na mesma tela, com motivo estruturado por tenant, save sem atividades para `Sem producao` e suporte correspondente no cadastro em massa.
+- [x] Ajustar a Medicao para tratar a `taxa` como valor unico por ordem, reaplicando e recalculando todas as atividades ao editar o cabecalho.
+- [x] Ajustar a UX da edicao da Medicao para ocultar `Cadastro em massa`, exibir `Taxa aplicada` na grade e oferecer acao explicita de `Recalcular totais`.
 - [x] Unificar Medicao para usar somente `service_activities` (sem dependencia operacional de `measurement_activities`), incluindo ajuste de FK/backfill e catalogo da API.
 - [x] Corrigir ordem da migration `120_unify_measurement_with_service_activities` para remover a FK antiga antes do backfill dos IDs e evitar erro `23503` durante a unificacao.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
