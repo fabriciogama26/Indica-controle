@@ -106,11 +106,11 @@ Cadastro
   - Periodo
   - Hora inicio
   - Hora termino
-  - Ponto eletrico
   - ETAPA (somente no cadastro novo)
   - Tipo de SGD
   - Equipes (multi-selecao)
 - Campos opcionais:
+  - Ponto eletrico
   - Descricao do servico
   - Inicio de desligamento
   - Termino de desligamento
@@ -127,6 +127,8 @@ Cadastro
 - Regra principal:
   - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
   - Cada equipe gera uma programacao independente.
+  - `Ponto eletrico` e opcional; no cadastro pode ficar vazio.
+  - Em edicao, se `Ponto eletrico` for apagado e salvo, o valor da equipe editada passa a ficar nulo.
   - Em edicao, quando `Estado Trabalho` for alterado em uma equipe, o sistema sincroniza o mesmo valor para todas as equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
   - Se `Estado Trabalho` for limpo na edicao, a limpeza tambem e replicada para todas as equipes ativas do mesmo `Projeto + Data de execucao`.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
@@ -332,13 +334,13 @@ Atualizacao 2026-03
 - Criada a migration `109_make_programming_stage_optional_on_edit.sql` para permitir ETAPA nula na RPC `set_project_programming_execution_result`.
 - Ajustado padrao inicial dos filtros para cobrir o ano vigente completo (`01/01` a `31/12`).
 - Ajustado export `ENEL-EXCEL`: `Estrutura` passa a refletir a composicao de equipes por tipo (`MK`, `CETO`, `LV`) por projeto/data.
-- Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido pelo campo obrigatorio `Ponto eletrico`.
+- Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido pelo campo `Ponto eletrico`.
 - Ajustado export `ENEL-EXCEL`: coluna `ENCARREGADO` (apos `Estrutura`) passa a usar o nome do encarregado da equipe programada.
 - Ajustado export `ENEL-EXCEL`: mantida a coluna `Mão de obra` no bloco final do layout.
 - Ajustado export `ENEL-EXCEL`: `Data da programaÃ§Ã£o` passa a usar a data de registro (`created_at`) da programacao.
 - Ajustado export `ENEL-EXCEL`: `ResponsÃ¡vel ExecuÃ§Ã£o` fixo como `INDICA`, `Tempo Previsto` em horas e `PerÃ­odo` em maiusculas.
-- Adicionado campo obrigatorio `Ponto eletrico` no formulario da Programacao simples.
-- Renomeado no frontend o rotulo do campo obrigatorio de `Campo eletrico` para `Ponto eletrico` (mantendo persistencia em `campo_eletrico`).
+- Tornado opcional o campo `Ponto eletrico` no formulario da Programacao simples e no backend de salvamento.
+- Renomeado no frontend o rotulo do campo `Campo eletrico` para `Ponto eletrico` (mantendo persistencia em `campo_eletrico`).
 - Ajustado filtro de `Projeto` para modo digitavel com selecao (`input + datalist`).
 - Criada a migration `110_add_programming_electrical_field_and_history_rpc.sql` para persistir `campo_eletrico` em `project_programming` e refletir a mudanca no historico.
 - Criada a migration `111_move_electrical_field_into_full_rpcs_and_adjust_reschedule_rule.sql` para salvar `Campo eletrico` no mesmo fluxo transacional full (`single` e `batch`) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
@@ -456,7 +458,7 @@ Atualizacao adicional 2026-03-24
   - `resolveAppUserName`
 - Comportamento antes/depois:
   - Antes: o CSV comum de `Exportar Excel (CSV)` trazia somente colunas resumidas da grade.
-  - Depois: o CSV comum passa a exportar campos obrigatorios da tela (projeto/equipe/data/horario/periodo/ponto eletrico/tipo de SGD) e metadados extras (`Status`, `Motivo`, `Criado por/em`, `Atualizado por/em`, documentos e quantidades).
+  - Depois: o CSV comum passa a exportar campos principais da tela (projeto/equipe/data/horario/periodo/ponto eletrico/tipo de SGD) e metadados extras (`Status`, `Motivo`, `Criado por/em`, `Atualizado por/em`, documentos e quantidades).
   - Antes: a API de Programacao nao devolvia nomes de criacao/atualizacao por registro da lista.
   - Depois: a API passa a carregar `created_by`/`updated_by` e resolver nomes em `app_users` no escopo de tenant para suportar exportacao com auditoria.
   - Antes: o modal `Detalhes da Programacao` nao exibia autor de criacao/atualizacao.

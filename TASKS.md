@@ -186,6 +186,7 @@
 - [x] Renomear no frontend o campo obrigatorio de `Campo eletrico` para `Ponto eletrico`, tornar o filtro de `Projeto` digitavel (`input + datalist`) e alinhar o `ENEL-EXCEL` para coluna `Encarregado` com nome do encarregado da equipe programada.
 - [x] Incluir filtro de `Estado Trabalho` na Programacao Simples, com opcoes `Todos`, `Concluido`, `Parcial` e `Nao informado`, aplicando o filtro na lista e no aviso de registro salvo fora dos filtros.
 - [x] Sincronizar `Estado Trabalho` por `Projeto + Data` na Programacao ativa: ao editar uma equipe e mudar o valor, atualizar automaticamente todas as equipes `PROGRAMADA`/`REPROGRAMADA` do mesmo projeto/data, incluindo limpeza para todas quando o campo ficar vazio.
+- [x] Remover a obrigatoriedade de `Ponto eletrico` na tela de Programacao e no backend, permitindo cadastro/edicao sem preencher esse campo.
 - [x] Mover o `Campo eletrico` para o mesmo fluxo transacional das RPCs full da Programacao (sem passo complementar de save na API) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 - [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
 - [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
