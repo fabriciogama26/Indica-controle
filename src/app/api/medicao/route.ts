@@ -6,6 +6,7 @@ import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 type MeasurementOrderStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
 type ProgrammingWorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | null;
+type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 
 type MeasurementOrderRow = {
   id: string;
@@ -17,6 +18,9 @@ type MeasurementOrderRow = {
   measurement_date: string;
   voice_point: number | string;
   manual_rate: number | string;
+  measurement_kind: MeasurementKind;
+  no_production_reason_id: string | null;
+  no_production_reason_name_snapshot: string | null;
   status: MeasurementOrderStatus;
   notes: string | null;
   project_code_snapshot: string;
@@ -94,6 +98,8 @@ type SaveMeasurementPayload = {
   measurementDate?: string;
   voicePoint?: string | number;
   manualRate?: string | number;
+  measurementKind?: string;
+  noProductionReasonId?: string;
   notes?: string;
   expectedUpdatedAt?: string;
   items?: Array<{
@@ -117,6 +123,8 @@ type SaveMeasurementBatchRowPayload = {
   measurementDate?: string;
   voicePoint?: string | number;
   manualRate?: string | number;
+  measurementKind?: string;
+  noProductionReasonId?: string;
   notes?: string;
   items?: SaveMeasurementPayload["items"];
 };
@@ -188,6 +196,11 @@ function normalizeIsoDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
+function normalizeMeasurementKind(value: unknown): MeasurementKind {
+  const normalized = normalizeText(value).toUpperCase();
+  return normalized === "SEM_PRODUCAO" ? "SEM_PRODUCAO" : "COM_PRODUCAO";
+}
+
 function normalizePositiveNumber(value: unknown) {
   const normalized = String(value ?? "").trim().replace(",", ".");
   const parsed = Number(normalized);
@@ -211,6 +224,15 @@ function normalizeOptionalNonNegativeNumber(value: unknown) {
   return Number(parsed.toFixed(6));
 }
 
+function normalizePositiveInteger(value: unknown, fallback: number, max = 200) {
+  const parsed = Number(String(value ?? "").trim());
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.min(parsed, max);
+}
+
 function normalizePositiveIntegerArray(values: unknown) {
   if (!Array.isArray(values)) return [] as number[];
   const normalized = values
@@ -229,7 +251,6 @@ function normalizeMeasurementItems(itemsInput: SaveMeasurementPayload["items"] |
       projectActivityForecastId: normalizeUuid(item.projectActivityForecastId),
       quantity: normalizePositiveNumber(item.quantity),
       unitValue: normalizeOptionalNonNegativeNumber(item.unitValue),
-      manualRate: normalizeOptionalNonNegativeNumber(item.manualRate),
       voicePoint: normalizeOptionalNonNegativeNumber(item.voicePoint),
       observation: normalizeText(item.observation) || null,
     }))
@@ -240,10 +261,24 @@ function normalizeMeasurementItems(itemsInput: SaveMeasurementPayload["items"] |
       projectActivityForecastId: item.projectActivityForecastId,
       quantity: item.quantity as number,
       unitValue: item.unitValue,
-      manualRate: item.manualRate,
       voicePoint: item.voicePoint,
       observation: item.observation,
     }));
+}
+
+function findDuplicateMeasurementActivityId(
+  items: Array<{
+    activityId: string;
+  }>,
+) {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.activityId)) {
+      return item.activityId;
+    }
+    seen.add(item.activityId);
+  }
+  return null;
 }
 
 function resolveAppUserName(user: AppUserRow | undefined) {
@@ -393,7 +428,7 @@ function measurementModuleMigrationHint(message: string | undefined) {
     || normalized.includes("set_project_measurement_order_status")
     || normalized.includes("save_project_measurement_order_batch_partial")
   ) {
-    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql e 120_unify_measurement_with_service_activities.sql foram aplicadas.";
+    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql e 123_support_measurement_without_production.sql foram aplicadas.";
   }
   return "";
 }
@@ -424,7 +459,7 @@ async function fetchMeasurementOrderDetail(params: {
 }) {
   const { data: order, error: orderError } = await params.supabase
     .from("project_measurement_orders")
-    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
+    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
     .eq("tenant_id", params.tenantId)
     .eq("id", params.orderId)
     .maybeSingle<MeasurementOrderRow>();
@@ -487,6 +522,9 @@ async function fetchMeasurementOrderDetail(params: {
     measurementDate: order.measurement_date,
     voicePoint: Number(order.voice_point ?? 0),
     manualRate: Number(order.manual_rate ?? 0),
+    measurementKind: normalizeMeasurementKind(order.measurement_kind),
+    noProductionReasonId: order.no_production_reason_id,
+    noProductionReasonName: normalizeText(order.no_production_reason_name_snapshot),
     status: order.status,
     notes: normalizeText(order.notes),
     projectCode: normalizeText(order.project_code_snapshot),
@@ -588,8 +626,12 @@ export async function GET(request: NextRequest) {
   const endDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
   const projectId = normalizeUuid(request.nextUrl.searchParams.get("projectId"));
   const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
+  const measurementKindFilter = normalizeText(request.nextUrl.searchParams.get("measurementKind")).toUpperCase();
+  const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
   const programmingMatchFilter = normalizeText(request.nextUrl.searchParams.get("programmingMatch")).toUpperCase();
   const completionAlertFilter = normalizeText(request.nextUrl.searchParams.get("completionAlert")).toUpperCase();
+  const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
+  const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
 
   if (!startDate || !endDate) {
     return NextResponse.json({ message: "startDate e endDate sao obrigatorios." }, { status: 400 });
@@ -597,7 +639,7 @@ export async function GET(request: NextRequest) {
 
   let query = resolution.supabase
     .from("project_measurement_orders")
-    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
+    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
     .eq("tenant_id", resolution.appUser.tenant_id)
     .gte("execution_date", startDate)
     .lte("execution_date", endDate)
@@ -615,26 +657,6 @@ export async function GET(request: NextRequest) {
   if (error) {
     const hint = measurementModuleMigrationHint(error.message);
     return NextResponse.json({ message: `Falha ao listar ordens de medicao.${hint}`.trim() }, { status: 500 });
-  }
-
-  const orderIds = (orders ?? []).map((item) => item.id);
-  const { data: aggregateItems } = orderIds.length
-    ? await resolution.supabase
-        .from("project_measurement_order_items")
-        .select("measurement_order_id, total_value, quantity")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("is_active", true)
-        .in("measurement_order_id", orderIds)
-        .returns<MeasurementOrderAggregateItem[]>()
-    : { data: [] as MeasurementOrderAggregateItem[] };
-
-  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number; totalQuantity: number }>();
-  for (const item of aggregateItems ?? []) {
-    const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0, totalQuantity: 0 };
-    current.totalAmount += Number(item.total_value ?? 0);
-    current.totalQuantity += Number(item.quantity ?? 0);
-    current.itemCount += 1;
-    aggregateMap.set(item.measurement_order_id, current);
   }
 
   const userIds = Array.from(
@@ -656,8 +678,7 @@ export async function GET(request: NextRequest) {
     orders: orders ?? [],
   });
 
-  const mappedOrders = (orders ?? []).map((item) => {
-      const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0, totalQuantity: 0 };
+  const baseOrders = (orders ?? []).map((item) => {
       const programmingMatch = programmingMatchMap.get(item.id) ?? {
         status: "NAO_PROGRAMADA" as ProgrammingMatchStatus,
         programmingId: null,
@@ -674,6 +695,9 @@ export async function GET(request: NextRequest) {
         measurementDate: item.measurement_date,
         voicePoint: Number(item.voice_point ?? 0),
         manualRate: Number(item.manual_rate ?? 0),
+        measurementKind: normalizeMeasurementKind(item.measurement_kind),
+        noProductionReasonId: item.no_production_reason_id,
+        noProductionReasonName: normalizeText(item.no_production_reason_name_snapshot),
         status: item.status,
         notes: normalizeText(item.notes),
         projectCode: normalizeText(item.project_code_snapshot),
@@ -689,15 +713,12 @@ export async function GET(request: NextRequest) {
         matchedProgrammingId: programmingMatch.programmingId,
         programmingCompletionStatus: programmingMatch.completionStatus,
         programmingCompletionStatusChangedAfterMeasurement: programmingMatch.completionStatusChangedAfterMeasurement,
-        totalAmount: Number(aggregate.totalAmount ?? 0),
-        totalQuantity: Number(aggregate.totalQuantity ?? 0),
-        itemCount: Number(aggregate.itemCount ?? 0),
       };
     });
 
   const filteredByProgrammingMatch = (programmingMatchFilter === "PROGRAMADA" || programmingMatchFilter === "NAO_PROGRAMADA")
-    ? mappedOrders.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
-    : mappedOrders;
+    ? baseOrders.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
+    : baseOrders;
 
   const filteredByCompletionAlert = (completionAlertFilter === "SIM" || completionAlertFilter === "NAO")
     ? filteredByProgrammingMatch.filter((item) =>
@@ -706,7 +727,56 @@ export async function GET(request: NextRequest) {
           : !item.programmingCompletionStatusChangedAfterMeasurement)
     : filteredByProgrammingMatch;
 
-  return NextResponse.json({ orders: filteredByCompletionAlert });
+  const filteredByMeasurementKind = (measurementKindFilter === "COM_PRODUCAO" || measurementKindFilter === "SEM_PRODUCAO")
+    ? filteredByCompletionAlert.filter((item) => item.measurementKind === measurementKindFilter)
+    : filteredByCompletionAlert;
+
+  const filteredByNoProductionReason = noProductionReasonIdFilter
+    ? filteredByMeasurementKind.filter((item) => item.noProductionReasonId === noProductionReasonIdFilter)
+    : filteredByMeasurementKind;
+
+  const total = filteredByNoProductionReason.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const pagedBaseOrders = filteredByNoProductionReason.slice(startIndex, startIndex + pageSize);
+  const pagedOrderIds = pagedBaseOrders.map((item) => item.id);
+
+  const { data: aggregateItems } = pagedOrderIds.length
+    ? await resolution.supabase
+        .from("project_measurement_order_items")
+        .select("measurement_order_id, total_value, quantity")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("is_active", true)
+        .in("measurement_order_id", pagedOrderIds)
+        .returns<MeasurementOrderAggregateItem[]>()
+    : { data: [] as MeasurementOrderAggregateItem[] };
+
+  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number }>();
+  for (const item of aggregateItems ?? []) {
+    const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0 };
+    current.totalAmount += Number(item.total_value ?? 0);
+    current.itemCount += 1;
+    aggregateMap.set(item.measurement_order_id, current);
+  }
+
+  const pagedOrders = pagedBaseOrders.map((item) => {
+    const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0 };
+    return {
+      ...item,
+      totalAmount: Number(aggregate.totalAmount ?? 0),
+      itemCount: Number(aggregate.itemCount ?? 0),
+    };
+  });
+
+  return NextResponse.json({
+    orders: pagedOrders,
+    pagination: {
+      page: safePage,
+      pageSize,
+      total,
+    },
+  });
 }
 
 async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT") {
@@ -728,6 +798,8 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
   const measurementDate = normalizeIsoDate(payload?.measurementDate);
   const voicePoint = normalizePositiveNumber(payload?.voicePoint);
   const manualRate = normalizePositiveNumber(payload?.manualRate);
+  const measurementKind = normalizeMeasurementKind(payload?.measurementKind);
+  const noProductionReasonId = normalizeUuid(payload?.noProductionReasonId);
   const notes = normalizeText(payload?.notes) || null;
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
 
@@ -743,14 +815,37 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     return NextResponse.json({ message: "Informe Projeto, Equipe e Data de execucao para cadastrar a medicao sem programacao." }, { status: 400 });
   }
 
-  if (!measurementDate || voicePoint === null || manualRate === null) {
-    return NextResponse.json({ message: "Data da medicao, pontos e taxa manual sao obrigatorios." }, { status: 400 });
+  if (!measurementDate) {
+    return NextResponse.json({ message: "Data da medicao e obrigatoria." }, { status: 400 });
   }
 
   const items = normalizeMeasurementItems(payload?.items);
 
-  if (!items.length) {
-    return NextResponse.json({ message: "Informe ao menos uma atividade valida na ordem de medicao." }, { status: 400 });
+  if (measurementKind === "COM_PRODUCAO") {
+    if (voicePoint === null || manualRate === null) {
+      return NextResponse.json({ message: "Para medicao com producao, pontos e taxa manual sao obrigatorios." }, { status: 400 });
+    }
+
+    if (!items.length) {
+      return NextResponse.json({ message: "Informe ao menos uma atividade valida na ordem de medicao." }, { status: 400 });
+    }
+  }
+
+  if (measurementKind === "SEM_PRODUCAO") {
+    if (!noProductionReasonId) {
+      return NextResponse.json({ message: "Selecione o motivo de sem producao." }, { status: 400 });
+    }
+
+    if (items.length) {
+      return NextResponse.json({ message: "Medicao sem producao nao pode conter atividades." }, { status: 400 });
+    }
+  }
+
+  if (findDuplicateMeasurementActivityId(items)) {
+    return NextResponse.json(
+      { message: "A mesma atividade nao pode ser repetida na ordem de medicao.", reason: "DUPLICATE_MEASUREMENT_ACTIVITY" },
+      { status: 400 },
+    );
   }
 
   const { data, error } = await resolution.supabase.rpc("save_project_measurement_order", {
@@ -762,9 +857,11 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     p_team_id: teamId,
     p_execution_date: executionDate,
     p_measurement_date: measurementDate,
-    p_voice_point: voicePoint,
-    p_manual_rate: manualRate,
+    p_voice_point: voicePoint ?? 1,
+    p_manual_rate: manualRate ?? 1,
     p_notes: notes,
+    p_measurement_kind: measurementKind,
+    p_no_production_reason_id: noProductionReasonId,
     p_items: items,
     p_expected_updated_at: expectedUpdatedAt,
   });
@@ -827,7 +924,9 @@ async function saveMeasurementOrderBatchPartial(request: NextRequest) {
       executionDate,
       measurementDate,
       voicePoint: normalizePositiveNumber(row.voicePoint) ?? 1,
-      manualRate: normalizePositiveNumber(row.manualRate),
+      manualRate: normalizePositiveNumber(row.manualRate) ?? null,
+      measurementKind: normalizeMeasurementKind(row.measurementKind),
+      noProductionReasonId: normalizeUuid(row.noProductionReasonId),
       notes: normalizeText(row.notes) || null,
       items: normalizeMeasurementItems(row.items),
     };

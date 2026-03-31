@@ -37,6 +37,8 @@ Cadastro
   - Projeto (padrao `input + datalist`, igual ao filtro)
   - Equipe
   - Data execucao
+  - Tipo da medicao (`Com producao` ou `Sem producao`)
+  - Motivo sem producao (sempre visivel; obrigatorio apenas em `Sem producao`)
   - Encarregado (somente leitura da equipe)
   - Observacoes
 - Itens da ordem:
@@ -47,25 +49,43 @@ Cadastro
   - Valor unitario (somente leitura na grade)
   - Observacao
 - Regras:
+  - Toda ordem exige `Tipo da medicao`.
+  - `Com producao` exige ao menos uma atividade valida na ordem.
+  - `Sem producao` exige `Motivo sem producao` e salva a ordem sem itens.
+  - `Sem producao` nao permite atividades na ordem e registra total `0`.
+  - O motivo de `Sem producao` vem do catalogo `measurement_no_production_reasons` segregado por tenant.
   - A Programacao deixa de ser obrigatoria para cadastro da medicao.
   - Quando existir match por `Projeto + Equipe + Data de execucao`, a ordem vincula automaticamente a melhor programacao candidata.
   - O resultado do match de Programacao e exibido somente apos salvar a medicao (na lista e em detalhes).
   - A inclusao de atividades e independente da lista de atividades da Programacao.
+  - A mesma atividade nao pode se repetir dentro da mesma ordem (`tenant + Projeto + Equipe + Data de execucao` no contexto operacional da medicao).
+  - A regra de nao repetir atividade vale no frontend, na API e na RPC `save_project_measurement_order`, cobrindo tambem o cadastro em massa.
   - O sistema salva snapshot do status `CONCLUIDO/PARCIAL` da programacao no momento da criacao.
   - Lista e detalhes avisam quando o status `CONCLUIDO/PARCIAL` da programacao foi atualizado apos a medicao.
   - `Data da medicao` nao e campo no formulario; no cadastro novo ela segue automaticamente a `Data execucao`.
   - Cada item calcula `total_value` com base na formula da medicao.
+  - A `Taxa` e unica por ordem de medicao; ao editar a taxa do cabecalho e salvar, o sistema reaplica a mesma taxa em todas as atividades da ordem e recalcula todos os itens.
+  - No modo de edicao, o botao `Cadastro em massa` nao aparece.
+  - No modo de edicao, a grade exibe a coluna `Taxa aplicada` e o botao `Recalcular totais`, ambos baseados na taxa unica do cabecalho.
   - A ordem recalcula os totais no frontend para conferencia.
   - O botao `Salvar ordem` fica no final do bloco `Atividades da Ordem` (fechamento do cadastro apos revisar itens).
   - O botao `Limpar` foi removido do cadastro principal para evitar limpeza acidental ao trocar programacao.
-  - Cadastro em massa por CSV com modelo `projeto,data,equipe,voz,quantidade`.
+  - Cadastro em massa por CSV com modelo `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa`.
   - Cadastro em massa aceita programacoes historicas (nao limita a status `PROGRAMADA/REPROGRAMADA`).
   - No import em massa, a identificacao da programacao e feita por `projeto + equipe + data` com coluna de equipe vinda da propria linha CSV.
   - Quando houver erro no import, a tela gera automaticamente um CSV de retorno com `linha`, `coluna`, `valor` e `erro`.
   - O import em massa processa linhas validas mesmo com falhas parciais e informa status final (`sucesso total`, `parcial` ou `sem sucesso`).
   - As falhas do import em massa sao reportadas por tipo de campo (ex.: `Projeto nao encontrado`, `Data invalida`, `Atividade nao encontrada`, `Quantidade invalida`) para facilitar a correcao da planilha.
+  - A coluna `tipo_medicao` do CSV e obrigatoria.
+  - A coluna `motivo_sem_producao` e obrigatoria quando `tipo_medicao = SEM_PRODUCAO`.
+  - A coluna `taxa` do CSV e obrigatoria apenas para `COM_PRODUCAO`; em `SEM_PRODUCAO` o sistema salva a ordem com taxa tecnica `1`.
+  - Em `SEM_PRODUCAO`, `voz` e `quantidade` podem ficar vazios no CSV.
+  - Se o mesmo `Projeto + Equipe + Data de execucao` aparecer no arquivo com taxas diferentes, a linha conflitante entra no CSV de erros e nao e agrupada na mesma ordem.
+  - Se o mesmo `Projeto + Equipe + Data de execucao` aparecer no arquivo com `tipo_medicao` ou `motivo_sem_producao` divergente, a linha conflitante entra no CSV de erros.
   - Quando nao existir programacao para o `Projeto + Equipe + Data`, o import em massa ainda salva a medicao e a ordem aparece como `Nao programada` na lista.
   - O campo `voz` no import em massa aceita codigo textual e aplica tolerancia de lookup para variacao `0`/`O`.
+  - O cruzamento do campo `voz` no import em massa usa somente match exato/univoco de codigo da atividade antes de aplicar a tolerancia `0`/`O`.
+  - Quando o codigo estiver ambiguo no catalogo, a linha falha no import em vez de associar `voice_point` de outra atividade.
   - O modal de importacao em massa exibe resumo de resultado com quantidade de ordens salvas e linhas com erro.
   - Quando houver falha, o modal disponibiliza botao para baixar o CSV de erros.
   - Em falha geral da API (sem detalhamento por linha), o modal ainda gera CSV de erro com entrada sintetica para nao perder rastreabilidade.
@@ -81,6 +101,8 @@ Filtros, auto-complete e listagem
   - Data final
   - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
   - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
+  - Tipo (`TODOS`, `Com producao`, `Sem producao`)
+  - Motivo sem producao (lista carregada de `measurement_no_production_reasons`; aceita `Todos`)
   - Programacao (`TODOS`, `Programada`, `Nao programada`)
   - Alerta Concluido/Parcial (`TODOS`, `Com alerta`, `Sem alerta`)
 - Listagem:
@@ -94,8 +116,11 @@ Filtros, auto-complete e listagem
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` da lista, recalculado conforme os filtros aplicados
+  - Tipo da medicao
+  - Motivo sem producao
   - Status
   - Atualizado em
+  - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
   - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela.
   - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`.
 - Acoes:
@@ -104,6 +129,10 @@ Filtros, auto-complete e listagem
   - Editar (somente quando `ABERTA`)
   - Cancelar (motivo obrigatorio, bloqueando quando ja cancelada)
   - Fechar (somente quando `ABERTA`)
+- Modal de detalhes:
+  - Exibe `Tipo da medicao` e `Motivo sem producao` no cabecalho.
+  - Exibe `Taxa manual` no cabecalho e tambem a coluna `Taxa` por item na grade.
+  - Usa `manual_rate` e `total_value` persistidos no item para conferencia visual e exportacao detalhada.
 
 Boas praticas
 -------------
@@ -128,8 +157,9 @@ Atalhos
   - `PUT /api/medicao` (editar ordem)
   - `PATCH /api/medicao` (fechar/cancelar)
   - `GET /api/medicao/activities/catalog` (catalogo de atividades da medicao)
+  - `GET /api/medicao/meta` (motivos de sem producao)
 - Modelo cadastro em massa:
-  - colunas obrigatorias: `projeto,data,equipe,voz,quantidade`
+  - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa`
 
 Atualizacao 2026-03
 -------------------
@@ -190,18 +220,32 @@ Atualizacao 2026-03
   - Cadastro em massa ajustado para gerar CSV de erros tambem quando o backend retorna falha geral sem `results` detalhado por linha.
   - API do catalogo de atividades da Medicao reforcada com fallback de busca ampla e match normalizado para codigos/descricao.
   - Modelo de importacao em massa atualizado com coluna obrigatoria `equipe` e validacao textual da equipe por nome/codigo (sem exigir UUID).
+  - Modelo de importacao em massa atualizado com coluna obrigatoria `taxa`, usada no frontend para montar o payload do lote e no banco como `manual_rate` oficial da ordem.
+  - Import em massa reforcado para bloquear agrupamento de linhas com taxas diferentes no mesmo contexto `Projeto + Equipe + Data`, evitando ordem inconsistente.
   - Import em massa com anti-sobreposicao por `Projeto + Equipe + Data de execucao`, mantendo processamento parcial e resumo dedicado para `linhas ja cadastradas`.
   - Import em massa migrado para RPC de lote parcial, removendo salvamento linha-a-linha via HTTP e concentrando o processamento no banco com retorno estruturado.
   - Medicao unificada para usar somente `service_activities` como catalogo de atividades, com ajuste de FK/backfill nos itens historicos.
   - Inclusao de resumo na lista da Medicao com `Ordens (filtro)` e `Somatorio valor total (filtro)` para leitura rapida dos resultados filtrados.
+  - Modal `Detalhes` ajustado para mostrar `Taxa` por item e usar o total salvo no banco (`total_value`) na grade.
+  - Import em massa endurecido para aceitar apenas match exato/univoco de codigo da atividade, reduzindo erro de pontos por atividade incorreta.
+  - Quando houver ambiguidade no codigo da atividade, a linha passa a falhar no import em vez de usar aproximacao por prefixo.
+  - Save da Medicao reforcado para rejeitar atividades duplicadas no payload e avisar quando uma ordem antiga carregada para edicao ja possui linhas repetidas.
+  - RPC `save_project_measurement_order` reforcada para bloquear atividade duplicada no payload, protegendo o fluxo normal e o cadastro em massa mesmo se a API for contornada.
+  - Lista principal de ordens ajustada para paginacao por servidor, mantendo exportacao do resultado filtrado completo e nao apenas da pagina visivel.
+  - Cadastro da Medicao ampliado com `Com producao` e `Sem producao` na mesma tela, com motivo obrigatorio para `Sem producao` vindo de tabela por tenant.
+  - API `GET /api/medicao/meta` adicionada para carregar o catalogo de motivos de `Sem producao`.
+  - Save da Medicao ajustado para aceitar ordem sem itens apenas quando `Tipo da medicao = Sem producao`.
+  - Cadastro em massa ampliado para aceitar linhas `SEM_PRODUCAO` com `motivo_sem_producao`, sem `voz/quantidade/taxa`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
-  - Responsavel por: fluxo `cadastro + filtros + lista`, pre-filtro por data da programacao, inclusao de itens, calculo com `voice_point` por atividade, valor unitario bloqueado na grade, cadastro em massa CSV, historico e acoes de status.
+  - Responsavel por: fluxo `cadastro + filtros + lista`, paginacao da listagem, pre-filtro por data da programacao, inclusao de itens, calculo com `voice_point` por atividade, valor unitario bloqueado na grade, cadastro em massa CSV, historico e acoes de status.
 - Caminho: `src/app/api/medicao/route.ts`
-  - Responsavel por: validacao de payload, leitura de ordens, leitura de historico, criacao/edicao e troca de status via RPC.
+  - Responsavel por: validacao de payload, leitura paginada de ordens, leitura de historico, criacao/edicao e troca de status via RPC.
+- Caminho: `src/app/api/medicao/meta/route.ts`
+  - Responsavel por: carregar motivos ativos de `Sem producao` por tenant para a tela da Medicao.
 - Caminho: `src/app/api/programacao/route.ts`
   - Responsavel por: fornecer contexto operacional da ordem (programacao/projeto/equipe/data).
 - Caminho: `src/app/api/medicao/activities/catalog/route.ts`
@@ -216,6 +260,8 @@ Constantes e configuracoes
   - Responsavel por: criar `measurement_activities`, migrar base inicial e vincular os itens da ordem de medicao a esse catalogo.
 - Caminho: `supabase/migrations/120_unify_measurement_with_service_activities.sql`
   - Responsavel por: unificar Medicao em `service_activities`, migrar IDs legados dos itens e restaurar FK para `service_activities`.
+- Caminho: `supabase/migrations/123_support_measurement_without_production.sql`
+  - Responsavel por: criar catalogo de motivos de `Sem producao`, ampliar o cabecalho da Medicao com `measurement_kind/no_production_reason` e ajustar as RPCs do save manual e em lote.
 - Caminho: `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
   - Responsavel por: permitir que o save da Ordem de Medicao use `programming_id` historico (qualquer status) sem quebrar o fluxo transacional e o historico append.
 - Caminho: `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`

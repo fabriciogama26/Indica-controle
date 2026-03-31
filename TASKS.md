@@ -270,10 +270,20 @@
 - [x] Exibir no modal de cadastro em massa da Medicao um resumo de resultado (ordens salvas + linhas com erro) e botao para baixar o CSV de erros quando houver falhas.
 - [x] Reforcar API de catalogo da Medicao com fallback de busca ampla e match normalizado para reduzir falso erro `Atividade nao encontrada no catalogo da medicao`.
 - [x] Atualizar modelo e parser do cadastro em massa da Medicao para incluir coluna obrigatoria `equipe` e validar equipe por texto (nome/codigo), sem dependencia da equipe selecionada no formulario.
+- [x] Atualizar o cadastro em massa da Medicao para exigir a coluna `taxa` no CSV, usar essa taxa por linha como `manualRate` da ordem e bloquear agrupamento com taxas divergentes para o mesmo `Projeto + Equipe + Data`.
+- [x] Ajustar `Detalhes` da Medicao para exibir a `taxa` por item e usar `total_value` persistido, alem de endurecer o lookup do campo `voz` no import em massa para cruzar atividade por codigo exato.
+- [x] Endurecer o lookup do campo `voz` no import em massa da Medicao para aceitar apenas match exato/univoco do codigo da atividade e falhar quando houver ambiguidade, evitando puxar `voice_point` de item parecido.
+- [x] Proteger a Medicao contra atividade duplicada na mesma ordem: bloquear repeticao no save da API e avisar na edicao quando uma ordem antiga vier com linhas repetidas.
+- [x] Levar a protecao de atividade duplicada da Medicao para a RPC `save_project_measurement_order`, garantindo a mesma regra no fluxo normal e no cadastro em massa mesmo com bypass da API.
 - [x] Proteger sobreposicao no cadastro em massa da Medicao: quando ja existir ordem para `Projeto + Equipe + Data de execucao`, ignorar a linha, seguir com as demais e exibir no resumo `x linhas ja cadastradas`.
 - [x] Migrar cadastro em massa da Medicao para RPC transacional parcial (`save_project_measurement_order_batch_partial`), salvando linhas validas e retornando por lote as invalidas/duplicadas.
 - [x] Adicionar botao `Exportar Excel (CSV)` na lista de Ordens de Medicao para exportar o resultado filtrado no padrao das outras telas.
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
+- [x] Paginar a `Lista de Ordens de Medicao` com `page`, `pageSize` e `total` no backend, navegacao `Anterior/Proxima` na tela e exportacao preservando o resultado filtrado completo.
+- [x] Ampliar a Medicao para suportar `Com producao` e `Sem producao` na mesma tela, com motivo estruturado por tenant, save sem atividades para `Sem producao` e suporte correspondente no cadastro em massa.
+- [x] Ajustar a Medicao para tratar a `taxa` como valor unico por ordem, reaplicando e recalculando todas as atividades ao editar o cabecalho.
+- [x] Ajustar a UX da edicao da Medicao para ocultar `Cadastro em massa`, exibir `Taxa aplicada` na grade e oferecer acao explicita de `Recalcular totais`.
+- [x] Incluir nos filtros da lista da Medicao os campos `Tipo` e `Motivo sem producao`, alinhando frontend e `/api/medicao` com a paginacao server-side.
 - [x] Unificar Medicao para usar somente `service_activities` (sem dependencia operacional de `measurement_activities`), incluindo ajuste de FK/backfill e catalogo da API.
 - [x] Corrigir ordem da migration `120_unify_measurement_with_service_activities` para remover a FK antiga antes do backfill dos IDs e evitar erro `23503` durante a unificacao.
 - [x] Garantir no cadastro em massa da Medicao a geracao do CSV de erros mesmo quando a API retornar falha geral sem detalhamento por linha.
@@ -291,6 +301,7 @@
 - [x] Revisao de cadastros (2026-03-20): tornar `Matricula` e `Tipo` obrigatorios no cadastro/edicao de `Pessoas` (frontend + API).
 - [x] Revisao de cadastros (2026-03-20): melhorar diagnostico de erro em `POST /api/people` e aplicar fallback de cadastro quando `save_person_record` nao estiver disponivel.
 - [x] Revisao de cadastros (2026-03-20): tratar tambem o retorno `success=false` da RPC de pessoas quando houver incompatibilidade `matriculation numeric x text/varchar`, com fallback/cast para evitar `500`.
+- [x] Revisao de cadastros (2026-03-29): estabilizar o filtro de `Matricula` em `Pessoas`, com fallback do `GET /api/people` para ambientes legados onde `people.matriculation` ainda esta `numeric`.
 - [ ] Revisao de cadastros (2026-03-20): exibir diagnostico de prerequisitos vazios em `Atividades` (`team_types`) e `Projetos` (lookups de `Cadastro Base`) antes de permitir novo cadastro.
 - [ ] Implementar controle de permissao no frontend por `role` para esconder/bloquear acoes sensiveis.
 - [x] Endurecer `Permissoes` com controle de concorrencia por `app_users.updated_at`, bloqueando salvamento concorrente de role/status/telas para o mesmo usuario.

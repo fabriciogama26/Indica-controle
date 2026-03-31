@@ -37,5 +37,6 @@ yarn-error.log*
 
 # Database
 AGENTS.md
+/verificação
 estrutura_saas_multitenant.md
 Recuperar.txt

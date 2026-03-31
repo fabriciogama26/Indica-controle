@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./MeasurementPageView.module.css";
 
 type MeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
+type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
 type WorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | null;
@@ -62,6 +63,17 @@ type ActivityCatalogResponse = {
   items?: ActivityCatalogItem[];
 };
 
+type NoProductionReasonItem = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+type MeasurementMetaResponse = {
+  noProductionReasons?: NoProductionReasonItem[];
+  message?: string;
+};
+
 type MeasurementRow = {
   rowId: string;
   activityId: string;
@@ -86,6 +98,9 @@ type OrderItem = {
   measurementDate: string;
   voicePoint: number;
   manualRate: number;
+  measurementKind: MeasurementKind;
+  noProductionReasonId: string | null;
+  noProductionReasonName: string;
   status: MeasurementStatus;
   notes: string;
   projectCode: string;
@@ -102,6 +117,7 @@ type OrderItem = {
 
 type OrderListResponse = {
   orders?: OrderItem[];
+  pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
 
@@ -115,7 +131,9 @@ type OrderDetailItem = {
   unit: string;
   quantity: number;
   voicePoint: number;
+  manualRate: number;
   unitValue: number;
+  totalValue: number;
   observation: string;
 };
 
@@ -129,6 +147,9 @@ type OrderDetail = {
   measurementDate: string;
   voicePoint: number;
   manualRate: number;
+  measurementKind: MeasurementKind;
+  noProductionReasonId: string | null;
+  noProductionReasonName: string;
   status: MeasurementStatus;
   notes: string;
   programmingMatchStatus: ProgrammingMatchStatus;
@@ -178,6 +199,13 @@ type ParsedMassImportRow = {
   voiceRaw: string;
   quantity: number | null;
   quantityRaw: string;
+  manualRate: number | null;
+  manualRateRaw: string;
+  measurementKind: MeasurementKind;
+  measurementKindRaw: string;
+  noProductionReasonId: string | null;
+  noProductionReasonName: string;
+  noProductionReasonRaw: string;
 };
 
 type MassImportErrorReportData = {
@@ -216,12 +244,16 @@ type MassImportBatchResponse = {
   results?: MassImportBatchResultItem[];
 };
 
+const PAGE_SIZE = 20;
+const EXPORT_PAGE_SIZE = 200;
 const HISTORY_PAGE_SIZE = 5;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
   teamId: "Equipe",
   executionDate: "Data execucao",
   manualRate: "Taxa manual",
+  measurementKind: "Tipo da medicao",
+  noProductionReason: "Motivo sem producao",
   itemCount: "Quantidade de itens",
   status: "Status",
 };
@@ -231,6 +263,8 @@ type Filters = {
   endDate: string;
   projectId: string;
   status: "TODOS" | MeasurementStatus;
+  measurementKind: "TODOS" | MeasurementKind;
+  noProductionReasonId: string;
   programmingMatch: "TODOS" | ProgrammingMatchStatus;
   completionAlert: "TODOS" | "SIM" | "NAO";
 };
@@ -246,11 +280,28 @@ type FormState = {
   executionDate: string;
   measurementDate: string;
   manualRate: string;
+  measurementKind: MeasurementKind;
+  noProductionReasonId: string;
   notes: string;
   activitySearch: string;
   activityQuantity: string;
   items: MeasurementRow[];
 };
+
+function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) {
+  const params = new URLSearchParams();
+  params.set("startDate", filters.startDate);
+  params.set("endDate", filters.endDate);
+  params.set("status", filters.status);
+  params.set("measurementKind", filters.measurementKind);
+  params.set("programmingMatch", filters.programmingMatch);
+  params.set("completionAlert", filters.completionAlert);
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  if (filters.projectId) params.set("projectId", filters.projectId);
+  if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
+  return params.toString();
+}
 
 function toIsoDate(value: Date) {
   const y = value.getFullYear();
@@ -290,6 +341,8 @@ function createForm(today: string): FormState {
     executionDate: today,
     measurementDate: today,
     manualRate: "1",
+    measurementKind: "COM_PRODUCAO",
+    noProductionReasonId: "",
     notes: "",
     activitySearch: "",
     activityQuantity: "1",
@@ -327,6 +380,10 @@ function formatDateTime(value: string) {
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function measurementKindLabel(value: MeasurementKind) {
+  return value === "SEM_PRODUCAO" ? "Sem producao" : "Com producao";
 }
 
 function programmingMatchLabel(status: ProgrammingMatchStatus) {
@@ -369,6 +426,12 @@ function normalizeCodeTokenLoose(value: string) {
   return normalizeCodeToken(value).replace(/o/g, "0");
 }
 
+function normalizeMeasurementKindInput(value: string): MeasurementKind {
+  const normalized = normalizeSearchText(value)
+    .replace(/[^a-z0-9]/g, "");
+  return normalized.includes("semproducao") ? "SEM_PRODUCAO" : "COM_PRODUCAO";
+}
+
 function buildActivityLookupQueries(rawValue: string) {
   const input = String(rawValue ?? "").trim();
   if (!input) return [] as string[];
@@ -401,6 +464,57 @@ function buildActivityLookupQueries(rawValue: string) {
 
 function activityOptionLabel(item: ActivityCatalogItem) {
   return `${item.code} - ${item.description}`;
+}
+
+function buildImportCodeCandidates(rawValue: string) {
+  const input = String(rawValue ?? "").trim();
+  if (!input) return [] as string[];
+
+  const candidates = new Set<string>();
+  candidates.add(input);
+
+  const byPipe = input.split("|")[0]?.trim();
+  if (byPipe) candidates.add(byPipe);
+
+  const byLabel = input.split(" - ")[0]?.trim();
+  if (byLabel) candidates.add(byLabel);
+
+  const bySpace = input.split(/\s+/)[0]?.trim();
+  if (bySpace) candidates.add(bySpace);
+
+  const byUnderscore = input.split("_")[0]?.trim();
+  if (byUnderscore) candidates.add(byUnderscore);
+
+  return Array.from(candidates)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
+}
+
+function findActivityOptionByImportCode(value: string, options: ActivityCatalogItem[]) {
+  const candidates = buildImportCodeCandidates(value);
+  if (!candidates.length) return null;
+
+  const normalizedCandidates = new Set(candidates.map((item) => normalizeSearchText(item)).filter(Boolean));
+  const tokenCandidates = new Set(candidates.map((item) => normalizeCodeToken(item)).filter(Boolean));
+  const looseTokenCandidates = new Set(candidates.map((item) => normalizeCodeTokenLoose(item)).filter(Boolean));
+
+  const exactCodeMatches = options.filter((item) => normalizedCandidates.has(normalizeSearchText(item.code)));
+  if (exactCodeMatches.length === 1) return exactCodeMatches[0];
+  if (exactCodeMatches.length > 1) return null;
+
+  const exactLabelMatches = options.filter((item) => normalizedCandidates.has(normalizeSearchText(activityOptionLabel(item))));
+  if (exactLabelMatches.length === 1) return exactLabelMatches[0];
+  if (exactLabelMatches.length > 1) return null;
+
+  const exactTokenMatches = options.filter((item) => tokenCandidates.has(normalizeCodeToken(item.code)));
+  if (exactTokenMatches.length === 1) return exactTokenMatches[0];
+  if (exactTokenMatches.length > 1) return null;
+
+  const exactLooseTokenMatches = options.filter((item) => looseTokenCandidates.has(normalizeCodeTokenLoose(item.code)));
+  if (exactLooseTokenMatches.length === 1) return exactLooseTokenMatches[0];
+  if (exactLooseTokenMatches.length > 1) return null;
+
+  return null;
 }
 
 function findActivityOption(value: string, options: ActivityCatalogItem[]) {
@@ -598,12 +712,42 @@ function resolveImportScheduleCandidate(candidates: ScheduleItem[]) {
   return { schedule: teamCandidates[0] ?? null, reason: null as null };
 }
 
+function findNoProductionReasonOption(value: string, options: NoProductionReasonItem[]) {
+  const normalized = normalizeSearchText(value);
+  if (!normalized) return null;
+
+  return options.find((item) =>
+    normalizeSearchText(item.name) === normalized
+    || normalizeSearchText(item.code) === normalized
+    || normalizeSearchText(`${item.code} - ${item.name}`) === normalized,
+  ) ?? null;
+}
+
+function findDuplicateFormActivityId(items: Array<{ activityId: string }>) {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.activityId)) {
+      return item.activityId;
+    }
+    seen.add(item.activityId);
+  }
+  return null;
+}
+
 export function MeasurementPageView() {
   const { session } = useAuth();
   const accessToken = session?.accessToken ?? null;
   const today = useMemo(() => toIsoDate(new Date()), []);
   const initialFilters = useMemo(
-    () => ({ ...yearRange(today), projectId: "", status: "TODOS" as const, programmingMatch: "TODOS" as const, completionAlert: "TODOS" as const }),
+    () => ({
+      ...yearRange(today),
+      projectId: "",
+      status: "TODOS" as const,
+      measurementKind: "TODOS" as const,
+      noProductionReasonId: "",
+      programmingMatch: "TODOS" as const,
+      completionAlert: "TODOS" as const,
+    }),
     [today],
   );
 
@@ -613,10 +757,13 @@ export function MeasurementPageView() {
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
+  const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
   const [activeFilters, setActiveFilters] = useState<Filters>(initialFilters);
   const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [detailOrder, setDetailOrder] = useState<OrderDetail | null>(null);
   const [historyOrder, setHistoryOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const [historyEntries, setHistoryEntries] = useState<OrderHistoryEntry[]>([]);
@@ -651,6 +798,9 @@ export function MeasurementPageView() {
   }, [activityOptions]);
 
   const totalAmount = useMemo(() => {
+    if (form.measurementKind === "SEM_PRODUCAO") {
+      return 0;
+    }
     const manualRate = parsePositiveNumber(form.manualRate) ?? 1;
     return form.items.reduce((sum, item) => {
       const voicePoint = parsePositiveNumber(item.voicePoint) ?? 1;
@@ -663,7 +813,10 @@ export function MeasurementPageView() {
     () => orders.reduce((sum, order) => sum + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0), 0),
     [orders],
   );
+  }, [form.items, form.manualRate, form.measurementKind]);
   const canSubmitCancelStatus = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
+  const isEditing = Boolean(form.id);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyEntries.length / HISTORY_PAGE_SIZE));
   const pagedHistoryEntries = useMemo(
     () => historyEntries.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE),
@@ -671,10 +824,62 @@ export function MeasurementPageView() {
   );
 
   useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  useEffect(() => {
     if (historyPage > historyTotalPages) {
       setHistoryPage(historyTotalPages);
     }
   }, [historyPage, historyTotalPages]);
+
+  const fetchOrdersPage = useCallback(
+    async (targetPage: number, filters: Filters, pageSize = PAGE_SIZE) => {
+      if (!accessToken) {
+        return null;
+      }
+
+      const response = await fetch(`/api/medicao?${buildOrdersQuery(filters, targetPage, pageSize)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as OrderListResponse | null;
+      if (!response.ok) {
+        throw new Error(data?.message ?? "Falha ao carregar ordens de medicao.");
+      }
+
+      return {
+        orders: data?.orders ?? [],
+        pagination: data?.pagination ?? { page: targetPage, pageSize, total: data?.orders?.length ?? 0 },
+      };
+    },
+    [accessToken],
+  );
+
+  const loadAllOrdersForExport = useCallback(async () => {
+    if (!accessToken) {
+      return [] as OrderItem[];
+    }
+
+    const collected: OrderItem[] = [];
+    let exportPage = 1;
+    let exportTotalPages = 1;
+
+    do {
+      const result = await fetchOrdersPage(exportPage, activeFilters, EXPORT_PAGE_SIZE);
+      if (!result) {
+        return [] as OrderItem[];
+      }
+
+      collected.push(...result.orders);
+      exportTotalPages = Math.max(1, Math.ceil((result.pagination.total ?? 0) / EXPORT_PAGE_SIZE));
+      exportPage += 1;
+    } while (exportPage <= exportTotalPages);
+
+    return collected;
+  }, [accessToken, activeFilters, fetchOrdersPage]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -717,7 +922,39 @@ export function MeasurementPageView() {
 
   useEffect(() => {
     if (!accessToken) {
+      setNoProductionReasons([]);
+      return;
+    }
+
+    let ignore = false;
+    async function loadMeasurementMeta() {
+      try {
+        const response = await fetch("/api/medicao/meta", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => null)) as MeasurementMetaResponse | null;
+        if (!response.ok) throw new Error(data?.message ?? "Falha ao carregar motivos de sem producao.");
+        if (ignore) return;
+        setNoProductionReasons(data?.noProductionReasons ?? []);
+      } catch (error) {
+        if (!ignore) {
+          setNoProductionReasons([]);
+          setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar motivos de sem producao." });
+        }
+      }
+    }
+
+    void loadMeasurementMeta();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) {
       setOrders([]);
+      setTotal(0);
       return;
     }
 
@@ -725,24 +962,15 @@ export function MeasurementPageView() {
     async function loadOrders() {
       setIsLoadingOrders(true);
       try {
-        const params = new URLSearchParams();
-        params.set("startDate", activeFilters.startDate);
-        params.set("endDate", activeFilters.endDate);
-        params.set("status", activeFilters.status);
-        params.set("programmingMatch", activeFilters.programmingMatch);
-        params.set("completionAlert", activeFilters.completionAlert);
-        if (activeFilters.projectId) params.set("projectId", activeFilters.projectId);
-        const response = await fetch(`/api/medicao?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          cache: "no-store",
-        });
-        const data = (await response.json().catch(() => null)) as OrderListResponse | null;
-        if (!response.ok) throw new Error(data?.message ?? "Falha ao carregar ordens de medicao.");
+        const result = await fetchOrdersPage(page, activeFilters);
         if (ignore) return;
-        setOrders(data?.orders ?? []);
+        setOrders(result?.orders ?? []);
+        setTotal(result?.pagination.total ?? 0);
+        setPage(result?.pagination.page ?? page);
       } catch (error) {
         if (!ignore) {
           setOrders([]);
+          setTotal(0);
           setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar ordens de medicao." });
         }
       } finally {
@@ -754,7 +982,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters]);
+  }, [accessToken, activeFilters, fetchOrdersPage, page]);
 
   useEffect(() => {
     if (!accessToken || deferredActivitySearch.trim().length < 2) {
@@ -799,6 +1027,30 @@ export function MeasurementPageView() {
     setFormProjectSearch("");
   }
 
+  function handleMeasurementKindChange(nextKind: MeasurementKind) {
+    setForm((current) => ({
+      ...current,
+      measurementKind: nextKind,
+      noProductionReasonId: nextKind === "COM_PRODUCAO" ? "" : current.noProductionReasonId,
+      manualRate: nextKind === "SEM_PRODUCAO" ? "1" : current.manualRate,
+      activitySearch: "",
+      activityQuantity: "1",
+      items: nextKind === "SEM_PRODUCAO" ? [] : current.items,
+    }));
+  }
+
+  function recalculateItemsWithMeasurementRate() {
+    if (form.measurementKind === "SEM_PRODUCAO" || !form.items.length) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item) => ({ ...item })),
+    }));
+    setFeedback({ type: "success", message: "Totais recalculados com a taxa unica da medicao." });
+  }
+
   function updateRow(rowId: string, field: "quantity" | "observation", value: string) {
     setForm((current) => ({
       ...current,
@@ -811,6 +1063,11 @@ export function MeasurementPageView() {
   }
 
   async function addActivity() {
+    if (form.measurementKind === "SEM_PRODUCAO") {
+      setFeedback({ type: "error", message: "Ordem sem producao nao permite adicionar atividades." });
+      return;
+    }
+
     let option = findActivityOption(form.activitySearch, resolvedActivityOptions);
     if (!option && accessToken && form.activitySearch.trim().length >= 2) {
       try {
@@ -888,7 +1145,7 @@ export function MeasurementPageView() {
   }
 
   function downloadMassTemplate() {
-    const model = "\uFEFFprojeto;data;equipe;voz;quantidade\nA0123456789;2026-03-25;MK-01;TH0108;1\n";
+    const model = "\uFEFFprojeto;data;equipe;tipo_medicao;motivo_sem_producao;voz;quantidade;taxa\nA0123456789;2026-03-25;MK-01;COM_PRODUCAO;;TH0108;1;1,00\nA0123456790;2026-03-25;MK-02;SEM_PRODUCAO;Apoio;;;\n";
     const blob = new Blob([model], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -901,7 +1158,7 @@ export function MeasurementPageView() {
 
   async function resolveActivityByCode(codeValue: string) {
     if (!accessToken) {
-      return findActivityOption(codeValue, resolvedActivityOptions);
+      return findActivityOptionByImportCode(codeValue, resolvedActivityOptions);
     }
 
     const lookupQueries = buildActivityLookupQueries(codeValue);
@@ -923,9 +1180,9 @@ export function MeasurementPageView() {
       }
     }
 
-    const remote = findActivityOption(codeValue, Array.from(unique.values()));
+    const remote = findActivityOptionByImportCode(codeValue, Array.from(unique.values()));
     if (remote) return remote;
-    return findActivityOption(codeValue, resolvedActivityOptions);
+    return findActivityOptionByImportCode(codeValue, resolvedActivityOptions);
   }
 
   async function handleMassImportFile(file: File) {
@@ -962,16 +1219,22 @@ export function MeasurementPageView() {
       const projectIndex = headerMap.get("projeto") ?? headerMap.get("project") ?? headerMap.get("sob");
       const dateIndex = headerMap.get("data") ?? headerMap.get("date");
       const teamIndex = headerMap.get("equipe") ?? headerMap.get("team");
+      const measurementKindIndex = headerMap.get("tipo_medicao") ?? headerMap.get("tipomedicao") ?? headerMap.get("tipo") ?? headerMap.get("measurementkind");
+      const noProductionReasonIndex = headerMap.get("motivo_sem_producao") ?? headerMap.get("motivosemproducao") ?? headerMap.get("motivo") ?? headerMap.get("no_production_reason");
       const voiceIndex = headerMap.get("voz") ?? headerMap.get("voice") ?? headerMap.get("codigo") ?? headerMap.get("code");
       const quantityIndex = headerMap.get("quantidade") ?? headerMap.get("qtd") ?? headerMap.get("qty");
+      const manualRateIndex = headerMap.get("taxa") ?? headerMap.get("taxa manual") ?? headerMap.get("manual rate") ?? headerMap.get("manualrate") ?? headerMap.get("rate");
 
       const missingColumns: string[] = [];
       if (projectIndex === undefined) missingColumns.push("projeto");
       if (dateIndex === undefined) missingColumns.push("data");
       if (teamIndex === undefined) missingColumns.push("equipe");
+      if (measurementKindIndex === undefined) missingColumns.push("tipo_medicao");
+      if (noProductionReasonIndex === undefined) missingColumns.push("motivo_sem_producao");
       if (voiceIndex === undefined) missingColumns.push("voz");
       if (quantityIndex === undefined) missingColumns.push("quantidade");
-      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || voiceIndex === undefined || quantityIndex === undefined) {
+      if (manualRateIndex === undefined) missingColumns.push("taxa");
+      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || measurementKindIndex === undefined || noProductionReasonIndex === undefined || voiceIndex === undefined || quantityIndex === undefined || manualRateIndex === undefined) {
         for (const column of missingColumns) {
           importIssues.push({
             rowNumber: 1,
@@ -984,12 +1247,12 @@ export function MeasurementPageView() {
         setMassImportErrorReport(report);
         setMassImportResult({
           status: "error",
-          message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade.",
+          message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa.",
           successCount: 0,
           errorRows: report?.errorRows ?? 0,
           alreadyRegisteredRows: 0,
         });
-        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,voz,quantidade." });
+        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa." });
         return;
       }
 
@@ -997,10 +1260,18 @@ export function MeasurementPageView() {
         const projectRaw = String(row[projectIndex] ?? "").trim();
         const dateRaw = String(row[dateIndex] ?? "").trim();
         const teamRaw = String(row[teamIndex] ?? "").trim();
+        const measurementKindRaw = String(row[measurementKindIndex] ?? "").trim();
+        const noProductionReasonRaw = String(row[noProductionReasonIndex] ?? "").trim();
         const voiceRaw = String(row[voiceIndex] ?? "").trim();
         const quantityRaw = String(row[quantityIndex] ?? "").trim();
+        const manualRateRaw = String(row[manualRateIndex] ?? "").trim();
         const executionDate = parseImportDate(dateRaw);
-        const quantity = parsePositiveNumber(quantityRaw);
+        const measurementKind = normalizeMeasurementKindInput(measurementKindRaw);
+        const quantity = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(quantityRaw);
+        const manualRate = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(manualRateRaw);
+        const matchedNoProductionReason = measurementKind === "SEM_PRODUCAO"
+          ? findNoProductionReasonOption(noProductionReasonRaw, noProductionReasons)
+          : null;
         return {
           rowNumber: rowIndex + 2,
           projectCode: projectRaw,
@@ -1009,10 +1280,17 @@ export function MeasurementPageView() {
           teamRaw,
           executionDate,
           executionDateRaw: dateRaw,
+          measurementKind,
+          measurementKindRaw,
+          noProductionReasonId: matchedNoProductionReason?.id ?? null,
+          noProductionReasonName: matchedNoProductionReason?.name ?? "",
+          noProductionReasonRaw,
           voiceCode: voiceRaw,
           voiceRaw,
           quantity,
           quantityRaw,
+          manualRate,
+          manualRateRaw,
         };
       });
 
@@ -1031,13 +1309,28 @@ export function MeasurementPageView() {
           importIssues.push({ rowNumber: row.rowNumber, column: "equipe", value: row.teamRaw, error: "Equipe obrigatoria." });
           hasError = true;
         }
-        if (!row.voiceCode) {
-          importIssues.push({ rowNumber: row.rowNumber, column: "voz", value: row.voiceRaw, error: "Codigo da atividade obrigatorio." });
+        if (!row.measurementKindRaw) {
+          importIssues.push({ rowNumber: row.rowNumber, column: "tipo_medicao", value: row.measurementKindRaw, error: "Tipo da medicao obrigatorio." });
           hasError = true;
         }
-        if (!row.quantity) {
-          importIssues.push({ rowNumber: row.rowNumber, column: "quantidade", value: row.quantityRaw, error: "Quantidade invalida. Informe numero maior que zero." });
-          hasError = true;
+        if (row.measurementKind === "SEM_PRODUCAO") {
+          if (!row.noProductionReasonId) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "motivo_sem_producao", value: row.noProductionReasonRaw, error: "Motivo de sem producao invalido ou nao encontrado." });
+            hasError = true;
+          }
+        } else {
+          if (!row.voiceCode) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "voz", value: row.voiceRaw, error: "Codigo da atividade obrigatorio." });
+            hasError = true;
+          }
+          if (!row.quantity) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "quantidade", value: row.quantityRaw, error: "Quantidade invalida. Informe numero maior que zero." });
+            hasError = true;
+          }
+          if (!row.manualRate) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "taxa", value: row.manualRateRaw, error: "Taxa invalida. Informe numero maior que zero." });
+            hasError = true;
+          }
         }
         if (!hasError) {
           validRows.push(row);
@@ -1103,6 +1396,9 @@ export function MeasurementPageView() {
           projectId: string;
           teamId: string;
           executionDate: string;
+          manualRate: number;
+          measurementKind: MeasurementKind;
+          noProductionReasonId: string | null;
         };
         items: Map<string, { activity: ActivityCatalogItem; quantity: number }>;
         rowNumbers: Set<number>;
@@ -1143,8 +1439,10 @@ export function MeasurementPageView() {
           }
         }
 
-        const activity = activityByCode.get(normalizeSearchText(row.voiceCode));
-        if (!activity) {
+        const activity = row.measurementKind === "COM_PRODUCAO"
+          ? activityByCode.get(normalizeSearchText(row.voiceCode))
+          : null;
+        if (row.measurementKind === "COM_PRODUCAO" && !activity) {
           importIssues.push({
             rowNumber: row.rowNumber,
             column: "voz",
@@ -1157,24 +1455,57 @@ export function MeasurementPageView() {
         const projectId = selectedSchedule?.projectId ?? matchedProject.id;
         const teamId = selectedSchedule?.teamId ?? matchedTeam.id;
         const executionDate = selectedSchedule?.date ?? (row.executionDate as string);
+        const manualRate = row.measurementKind === "SEM_PRODUCAO" ? 1 : (row.manualRate as number);
 
-        const groupingKey = selectedSchedule?.id ?? `${projectId}|${teamId}|${executionDate}`;
+        const groupingKey = `${projectId}|${teamId}|${executionDate}`;
         const group = grouped.get(groupingKey) ?? {
           context: {
             programmingId: selectedSchedule?.id ?? null,
             projectId,
             teamId,
             executionDate,
+            manualRate,
+            measurementKind: row.measurementKind,
+            noProductionReasonId: row.noProductionReasonId,
           },
           items: new Map(),
           rowNumbers: new Set<number>(),
         };
-        const current = group.items.get(activity.id);
-        const quantity = row.quantity as number;
-        if (current) {
-          current.quantity = Number((current.quantity + quantity).toFixed(6));
-        } else {
-          group.items.set(activity.id, { activity, quantity });
+        if (group.context.measurementKind !== row.measurementKind) {
+          importIssues.push({
+            rowNumber: row.rowNumber,
+            column: "tipo_medicao",
+            value: row.measurementKindRaw,
+            error: "Tipo da medicao divergente para o mesmo Projeto + Equipe + Data.",
+          });
+          continue;
+        }
+        if ((group.context.noProductionReasonId ?? "") !== (row.noProductionReasonId ?? "")) {
+          importIssues.push({
+            rowNumber: row.rowNumber,
+            column: "motivo_sem_producao",
+            value: row.noProductionReasonRaw,
+            error: "Motivo de sem producao divergente para o mesmo Projeto + Equipe + Data.",
+          });
+          continue;
+        }
+        if (Math.abs(group.context.manualRate - manualRate) > 0.000001) {
+          importIssues.push({
+            rowNumber: row.rowNumber,
+            column: "taxa",
+            value: row.manualRateRaw,
+            error: "Taxa divergente para o mesmo Projeto + Equipe + Data. Use uma unica taxa por ordem.",
+          });
+          continue;
+        }
+        if (row.measurementKind === "COM_PRODUCAO" && activity) {
+          const current = group.items.get(activity.id);
+          const quantity = row.quantity as number;
+          if (current) {
+            current.quantity = Number((current.quantity + quantity).toFixed(6));
+          } else {
+            group.items.set(activity.id, { activity, quantity });
+          }
         }
         group.rowNumbers.add(row.rowNumber);
         grouped.set(groupingKey, group);
@@ -1195,7 +1526,6 @@ export function MeasurementPageView() {
         return;
       }
 
-      const manualRate = parsePositiveNumber(form.manualRate) ?? 1;
       const batchRows = Array.from(grouped.values()).map((group) => ({
         rowNumbers: Array.from(group.rowNumbers.values()).sort((a, b) => a - b),
         programmingId: group.context.programmingId ?? undefined,
@@ -1203,10 +1533,12 @@ export function MeasurementPageView() {
         teamId: group.context.teamId,
         executionDate: group.context.executionDate,
         measurementDate: group.context.executionDate,
+        measurementKind: group.context.measurementKind,
+        noProductionReasonId: group.context.noProductionReasonId ?? undefined,
         voicePoint: 1,
-        manualRate,
+        manualRate: group.context.manualRate,
         notes: "Cadastro em massa (CSV)",
-        items: Array.from(group.items.values()).map((entry) => ({
+        items: group.context.measurementKind === "SEM_PRODUCAO" ? [] : Array.from(group.items.values()).map((entry) => ({
           activityId: entry.activity.id,
           quantity: entry.quantity,
           voicePoint: entry.activity.voicePoint,
@@ -1422,6 +1754,8 @@ export function MeasurementPageView() {
         executionDate: order.executionDate,
         measurementDate: order.measurementDate,
         manualRate: String(order.manualRate),
+        measurementKind: order.measurementKind,
+        noProductionReasonId: order.noProductionReasonId ?? "",
         notes: order.notes,
         activitySearch: "",
         activityQuantity: "1",
@@ -1439,6 +1773,9 @@ export function MeasurementPageView() {
           observation: item.observation,
         })),
       });
+      if (findDuplicateFormActivityId(order.items)) {
+        setFeedback({ type: "error", message: "Esta ordem possui atividade duplicada. Remova as linhas repetidas antes de salvar." });
+      }
       setDetailOrder(null);
       closeHistoryModal();
       closeCancelModal();
@@ -1461,8 +1798,13 @@ export function MeasurementPageView() {
 
     const selectedProjectId = matchedProject.id;
     const manualRate = parsePositiveNumber(form.manualRate);
-    if (!manualRate) {
+    if (form.measurementKind === "COM_PRODUCAO" && !manualRate) {
       setFeedback({ type: "error", message: "Taxa manual e obrigatoria." });
+      return;
+    }
+
+    if (form.measurementKind === "SEM_PRODUCAO" && !form.noProductionReasonId) {
+      setFeedback({ type: "error", message: "Selecione o motivo de sem producao." });
       return;
     }
 
@@ -1478,8 +1820,18 @@ export function MeasurementPageView() {
       }))
       .filter((item) => item.activityId && item.quantity !== null && item.voicePoint !== null);
 
-    if (!items.length || items.length !== form.items.length) {
+    if (form.measurementKind === "COM_PRODUCAO" && (!items.length || items.length !== form.items.length)) {
       setFeedback({ type: "error", message: "Revise os itens: atividade, quantidade e pontos sao obrigatorios." });
+      return;
+    }
+
+    if (form.measurementKind === "SEM_PRODUCAO" && form.items.length) {
+      setFeedback({ type: "error", message: "Medicao sem producao nao pode conter atividades." });
+      return;
+    }
+
+    if (findDuplicateFormActivityId(items)) {
+      setFeedback({ type: "error", message: "A mesma atividade nao pode ser repetida na ordem de medicao." });
       return;
     }
 
@@ -1490,7 +1842,7 @@ export function MeasurementPageView() {
 
     const measurementDateToSave = form.executionDate || today;
 
-    const orderVoicePoint = items[0]?.voicePoint ?? 1;
+    const orderVoicePoint = form.measurementKind === "SEM_PRODUCAO" ? 1 : (items[0]?.voicePoint ?? 1);
 
     setIsSubmitting(true);
     try {
@@ -1507,11 +1859,13 @@ export function MeasurementPageView() {
           teamId: form.teamId || undefined,
           executionDate: form.executionDate || undefined,
           measurementDate: measurementDateToSave,
+          measurementKind: form.measurementKind,
+          noProductionReasonId: form.measurementKind === "SEM_PRODUCAO" ? form.noProductionReasonId || undefined : undefined,
           voicePoint: orderVoicePoint,
-          manualRate,
+          manualRate: form.measurementKind === "SEM_PRODUCAO" ? 1 : manualRate,
           notes: form.notes,
           expectedUpdatedAt: form.expectedUpdatedAt,
-          items,
+          items: form.measurementKind === "SEM_PRODUCAO" ? [] : items,
         }),
       });
 
@@ -1633,29 +1987,38 @@ export function MeasurementPageView() {
     const nextFilters = { ...filterDraft, projectId: matchedProject?.id ?? "" };
     setFilterDraft(nextFilters);
     setFilterProjectSearch(matchedProject?.code ?? "");
+    setPage(1);
     setActiveFilters(nextFilters);
   }
 
   function clearFilters() {
     setFilterDraft(initialFilters);
+    setPage(1);
     setActiveFilters(initialFilters);
     setFilterProjectSearch("");
   }
 
   async function exportOrdersCsv() {
-    if (!orders.length) {
+    if (!total) {
       setFeedback({ type: "error", message: "Nenhuma ordem encontrada para exportar com os filtros atuais." });
       return;
     }
 
     setIsExporting(true);
     try {
+      const exportOrders = await loadAllOrdersForExport();
+      if (!exportOrders.length) {
+        throw new Error("Nenhuma ordem encontrada para exportar com os filtros atuais.");
+      }
+
       const header = [
         "Ordem",
         "Projeto",
         "Data execucao",
         "Equipe",
         "Encarregado",
+        "Tipo da medicao",
+        "Motivo sem producao",
         "Programacao",
         "Status execucao",
         "Itens",
@@ -1663,7 +2026,7 @@ export function MeasurementPageView() {
         "Status",
         "Atualizado em",
       ];
-      const rows = orders.map((order) => {
+      const rows = exportOrders.map((order) => {
         const executionStatus = order.programmingCompletionStatusChangedAfterMeasurement
           ? `${order.programmingCompletionStatus ?? "-"} (Atualizado apos medicao)`
           : (order.programmingCompletionStatus ?? "-");
@@ -1673,6 +2036,8 @@ export function MeasurementPageView() {
           formatDate(order.executionDate),
           order.teamName,
           order.foremanName || "-",
+          measurementKindLabel(order.measurementKind),
+          order.noProductionReasonName || "-",
           programmingMatchLabel(order.programmingMatchStatus),
           executionStatus,
           String(order.itemCount),
@@ -1692,13 +2057,15 @@ export function MeasurementPageView() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar ordens de medicao." });
     } finally {
       setIsExporting(false);
     }
   }
 
   async function exportOrdersDetailedCsv() {
-    if (!orders.length) {
+    if (!total) {
       setFeedback({ type: "error", message: "Nenhuma ordem encontrada para exportar detalhamento." });
       return;
     }
@@ -1706,7 +2073,12 @@ export function MeasurementPageView() {
 
     setIsExportingDetails(true);
     try {
-      const detailResults = await Promise.allSettled(orders.map((order) => loadOrderDetail(order.id)));
+      const exportOrders = await loadAllOrdersForExport();
+      if (!exportOrders.length) {
+        throw new Error("Nenhuma ordem encontrada para exportar detalhamento.");
+      }
+
+      const detailResults = await Promise.allSettled(exportOrders.map((order) => loadOrderDetail(order.id)));
       const details = detailResults
         .filter((result): result is PromiseFulfilledResult<OrderDetail | null> => result.status === "fulfilled")
         .map((result) => result.value)
@@ -1723,6 +2095,8 @@ export function MeasurementPageView() {
         "Data execucao",
         "Equipe",
         "Encarregado",
+        "Tipo da medicao",
+        "Motivo sem producao",
         "Programacao",
         "Status execucao",
         "Status ordem",
@@ -1740,7 +2114,7 @@ export function MeasurementPageView() {
 
       const rows: string[][] = [];
       for (const detail of details) {
-        const summary = orders.find((order) => order.id === detail.id);
+        const summary = exportOrders.find((order) => order.id === detail.id);
         const projectCode = summary?.projectCode ?? projectMap.get(detail.projectId)?.code ?? detail.projectId;
         const teamName = summary?.teamName ?? teamMap.get(detail.teamId)?.name ?? detail.teamId;
         const foremanName = summary?.foremanName ?? teamMap.get(detail.teamId)?.foremanName ?? "-";
@@ -1759,18 +2133,23 @@ export function MeasurementPageView() {
           unit: "",
           quantity: 0,
           voicePoint: 0,
+          manualRate: detail.manualRate,
           unitValue: 0,
+          totalValue: 0,
           observation: "",
         }];
 
         for (const item of detailItems) {
-          const totalItem = item.voicePoint * item.quantity * detail.manualRate * item.unitValue;
+          const itemRate = item.manualRate || detail.manualRate;
+          const totalItem = item.totalValue || (item.voicePoint * item.quantity * itemRate * item.unitValue);
           rows.push([
             detail.orderNumber,
             projectCode,
             formatDate(detail.executionDate),
             teamName,
             foremanName || "-",
+            measurementKindLabel(detail.measurementKind),
+            detail.noProductionReasonName || "-",
             programmingLabel,
             executionStatus,
             detail.status,
@@ -1779,7 +2158,7 @@ export function MeasurementPageView() {
             item.unit || "-",
             item.voicePoint ? item.voicePoint.toLocaleString("pt-BR") : "0",
             item.quantity ? item.quantity.toLocaleString("pt-BR") : "0",
-            detail.manualRate.toLocaleString("pt-BR"),
+            itemRate.toLocaleString("pt-BR"),
             formatCurrency(item.unitValue),
             formatCurrency(totalItem),
             item.observation || "-",
@@ -1854,7 +2233,24 @@ export function MeasurementPageView() {
               onChange={(event) => setForm((current) => ({ ...current, executionDate: event.target.value, programmingId: "", items: current.id ? current.items : [] }))}
             />
           </label>
+          <label className={styles.field}>
+            <span>Tipo da medicao <span className="requiredMark">*</span></span>
+            <select value={form.measurementKind} onChange={(event) => handleMeasurementKindChange(event.target.value as MeasurementKind)}>
+              <option value="COM_PRODUCAO">Com producao</option>
+              <option value="SEM_PRODUCAO">Sem producao</option>
+            </select>
+          </label>
           <label className={styles.field}><span>Encarregado</span><input value={teamMap.get(form.teamId)?.foremanName ?? ""} readOnly /></label>
+          <label className={styles.field}>
+            <span>Motivo sem producao{form.measurementKind === "SEM_PRODUCAO" ? " *" : ""}</span>
+            <select
+              value={form.noProductionReasonId}
+              onChange={(event) => setForm((current) => ({ ...current, noProductionReasonId: event.target.value }))}
+            >
+              <option value="">Selecione</option>
+              {noProductionReasons.map((reason) => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
+            </select>
+          </label>
           <label className={`${styles.field} ${styles.fieldWide}`}><span>Observacoes</span><textarea rows={3} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></label>
           {isLoadingSources ? <div className={`${styles.formActions} ${styles.actions}`}><span className={styles.loadingHint}>Atualizando dados...</span></div> : null}
         </form>
@@ -1862,18 +2258,29 @@ export function MeasurementPageView() {
         <div className={styles.subCard}>
           <div className={styles.tableHeader}>
             <h3 className={styles.tableTitle}>Atividades da Ordem</h3>
-            <span className={styles.tableHint}>Formula: pontos x quantidade x taxa x valor unitario</span>
+            <span className={styles.tableHint}>
+              {form.measurementKind === "SEM_PRODUCAO"
+                ? "Sem producao: a ordem sera salva sem atividades e com total zero."
+                : "Formula: pontos x quantidade x taxa x valor unitario"}
+            </span>
           </div>
           <div className={styles.inlineForm}>
-            <label className={styles.field}><span>Atividade</span><input value={form.activitySearch} onChange={(event) => setForm((current) => ({ ...current, activitySearch: event.target.value }))} list="medicao-activity-list" /></label>
-            <label className={`${styles.field} ${styles.compactField}`}><span>Taxa manual <span className="requiredMark">*</span></span><input type="number" min="0.01" step="0.01" value={form.manualRate} onChange={(event) => setForm((current) => ({ ...current, manualRate: event.target.value }))} /></label>
-            <label className={`${styles.field} ${styles.compactField}`}><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.activityQuantity} onChange={(event) => setForm((current) => ({ ...current, activityQuantity: event.target.value }))} /></label>
-            <div className={styles.actions}><button type="button" className={styles.secondaryButton} onClick={() => void addActivity()}>Adicionar</button></div>
+            <label className={styles.field}><span>Atividade</span><input value={form.activitySearch} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activitySearch: event.target.value }))} list="medicao-activity-list" /></label>
+            <label className={`${styles.field} ${styles.compactField}`}><span>Taxa unica da medicao {form.measurementKind === "COM_PRODUCAO" ? <span className="requiredMark">*</span> : null}</span><input type="number" min="0.01" step="0.01" value={form.manualRate} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, manualRate: event.target.value }))} /></label>
+            <label className={`${styles.field} ${styles.compactField}`}><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.activityQuantity} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityQuantity: event.target.value }))} /></label>
+            <div className={styles.actions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => void addActivity()} disabled={form.measurementKind === "SEM_PRODUCAO"}>Adicionar</button>
+              {isEditing && form.measurementKind === "COM_PRODUCAO" && form.items.length ? (
+                <button type="button" className={styles.ghostButton} onClick={recalculateItemsWithMeasurementRate}>
+                  Recalcular totais
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className={styles.tableWrapper}>
             <table className={styles.table}>
-              <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th><th>Acoes</th></tr></thead>
+              <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Taxa aplicada</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th><th>Acoes</th></tr></thead>
               <tbody>
                 {form.items.length ? form.items.map((item) => {
                   const voicePoint = parsePositiveNumber(item.voicePoint) ?? 1;
@@ -1885,6 +2292,7 @@ export function MeasurementPageView() {
                     <tr key={item.rowId}>
                       <td>{item.code}</td><td>{item.description}</td><td>{item.unit}</td>
                       <td><input className={styles.tableInput} value={item.voicePoint} readOnly /></td>
+                      <td><input className={styles.tableInput} value={rate.toLocaleString("pt-BR")} readOnly /></td>
                       <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={item.quantity} onChange={(event) => updateRow(item.rowId, "quantity", event.target.value)} /></td>
                       <td><input className={styles.tableInput} type="number" value={item.unitValue} readOnly /></td>
                       <td>{formatCurrency(rowTotal)}</td>
@@ -1892,7 +2300,7 @@ export function MeasurementPageView() {
                       <td><button type="button" className={styles.ghostButton} onClick={() => removeRow(item.rowId)}>Remover</button></td>
                     </tr>
                   );
-                }) : <tr><td colSpan={9} className={styles.emptyRow}>Nenhuma atividade adicionada.</td></tr>}
+                }) : <tr><td colSpan={10} className={styles.emptyRow}>{form.measurementKind === "SEM_PRODUCAO" ? "Ordem sem producao: nenhuma atividade deve ser adicionada." : "Nenhuma atividade adicionada."}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1901,9 +2309,11 @@ export function MeasurementPageView() {
             <button type="submit" form="measurement-order-form" className={styles.primaryButton} disabled={isSubmitting}>
               {isSubmitting ? "Salvando..." : form.id ? "Salvar alteracoes" : "Salvar ordem"}
             </button>
-            <button type="button" className={styles.secondaryButton} onClick={openMassImportModal}>
-              Cadastro em massa
-            </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={openMassImportModal}>
+                Cadastro em massa
+              </button>
+            ) : null}
             {form.id ? <button type="button" className={styles.ghostButton} onClick={resetForm}>Cancelar edicao</button> : null}
           </div>
         </div>
@@ -1929,6 +2339,21 @@ export function MeasurementPageView() {
             />
           </label>
           <label className={styles.field}><span>Status</span><select value={filterDraft.status} onChange={(event) => setFilterDraft((current) => ({ ...current, status: event.target.value as Filters["status"] }))}><option value="TODOS">Todos</option><option value="ABERTA">Aberta</option><option value="FECHADA">Fechada</option><option value="CANCELADA">Cancelada</option></select></label>
+          <label className={styles.field}>
+            <span>Tipo</span>
+            <select value={filterDraft.measurementKind} onChange={(event) => setFilterDraft((current) => ({ ...current, measurementKind: event.target.value as Filters["measurementKind"] }))}>
+              <option value="TODOS">Todos</option>
+              <option value="COM_PRODUCAO">Com producao</option>
+              <option value="SEM_PRODUCAO">Sem producao</option>
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span>Motivo sem producao</span>
+            <select value={filterDraft.noProductionReasonId} onChange={(event) => setFilterDraft((current) => ({ ...current, noProductionReasonId: event.target.value }))}>
+              <option value="">Todos</option>
+              {noProductionReasons.map((reason) => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
+            </select>
+          </label>
           <label className={styles.field}>
             <span>Programacao</span>
             <select value={filterDraft.programmingMatch} onChange={(event) => setFilterDraft((current) => ({ ...current, programmingMatch: event.target.value as Filters["programmingMatch"] }))}>
@@ -1958,7 +2383,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.secondaryButton}
               onClick={() => void exportOrdersCsv()}
-              disabled={isExporting || isExportingDetails || isLoadingOrders || !orders.length}
+              disabled={isExporting || isExportingDetails || isLoadingOrders || total <= 0}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
@@ -1966,7 +2391,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={() => void exportOrdersDetailedCsv()}
-              disabled={isExportingDetails || isExporting || isLoadingOrders || !orders.length}
+              disabled={isExportingDetails || isExporting || isLoadingOrders || total <= 0}
             >
               {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
             </button>
@@ -1984,7 +2409,7 @@ export function MeasurementPageView() {
         </div>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
-            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Encarregado</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
+            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Encarregado</th><th>Tipo</th><th>Motivo sem producao</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
             <tbody>
               {orders.length ? orders.map((order) => (
                 <tr key={order.id} className={order.status === "CANCELADA" ? styles.inactiveRow : ""}>
@@ -1993,6 +2418,8 @@ export function MeasurementPageView() {
                   <td>{formatDate(order.executionDate)}</td>
                   <td>{order.teamName}</td>
                   <td>{order.foremanName || "-"}</td>
+                  <td>{measurementKindLabel(order.measurementKind)}</td>
+                  <td>{order.noProductionReasonName || "-"}</td>
                   <td>{programmingMatchLabel(order.programmingMatchStatus)}</td>
                   <td>
                     {order.programmingCompletionStatus ?? "-"}
@@ -2099,9 +2526,33 @@ export function MeasurementPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={12} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
+              )) : <tr><td colSpan={14} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
             </tbody>
           </table>
+        </div>
+
+        <div className={styles.pagination}>
+          <span>
+            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
+          </span>
+          <div className={styles.paginationActions}>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1 || isLoadingOrders}
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages || isLoadingOrders}
+            >
+              Proxima
+            </button>
+          </div>
         </div>
       </article>
 
@@ -2124,6 +2575,8 @@ export function MeasurementPageView() {
                 <div><strong>Equipe:</strong> {teamMap.get(detailOrder.teamId)?.name ?? "-"}</div>
                 <div><strong>Encarregado:</strong> {teamMap.get(detailOrder.teamId)?.foremanName ?? "-"}</div>
                 <div><strong>Data execucao:</strong> {formatDate(detailOrder.executionDate)}</div>
+                <div><strong>Tipo da medicao:</strong> {measurementKindLabel(detailOrder.measurementKind)}</div>
+                <div><strong>Motivo sem producao:</strong> {detailOrder.noProductionReasonName || "-"}</div>
                 <div><strong>Programacao:</strong> {programmingMatchLabel(detailOrder.programmingMatchStatus)}</div>
                 <div><strong>Status execucao:</strong> {detailOrder.programmingCompletionStatus ?? "-"}</div>
                 <div><strong>Status da ordem:</strong> {detailOrder.status}</div>
@@ -2139,7 +2592,7 @@ export function MeasurementPageView() {
 
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
-                  <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
+                  <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Quantidade</th><th>Taxa</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
                   <tbody>
                     {detailOrder.items.length ? detailOrder.items.map((item) => (
                       <tr key={item.id}>
@@ -2148,11 +2601,12 @@ export function MeasurementPageView() {
                         <td>{item.unit}</td>
                         <td>{item.voicePoint.toLocaleString("pt-BR")}</td>
                         <td>{item.quantity.toLocaleString("pt-BR")}</td>
+                        <td>{item.manualRate.toLocaleString("pt-BR")}</td>
                         <td>{formatCurrency(item.unitValue)}</td>
-                        <td>{formatCurrency(item.voicePoint * item.quantity * detailOrder.manualRate * item.unitValue)}</td>
+                        <td>{formatCurrency(item.totalValue)}</td>
                         <td>{item.observation || "-"}</td>
                       </tr>
-                    )) : <tr><td colSpan={8} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
+                    )) : <tr><td colSpan={9} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -2293,7 +2747,7 @@ export function MeasurementPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas obrigatorias: projeto, data, equipe, voz, quantidade.</p>
+                    <p>Colunas obrigatorias: projeto, data, equipe, tipo_medicao, motivo_sem_producao, voz, quantidade, taxa.</p>
                   </div>
                 </div>
               </section>

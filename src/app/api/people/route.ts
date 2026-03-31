@@ -95,6 +95,19 @@ type PersonSaveRpcResult = {
   updated_at?: string;
 };
 
+type PeopleListFilters = {
+  tenantId: string;
+  name: string;
+  matriculation: string;
+  jobTitleId: string;
+  jobTitleTypeId: string;
+  jobLevel: string;
+  status: string;
+  from: number;
+  to: number;
+  matriculationMatchMode?: "contains" | "exact";
+};
+
 type DbErrorShape = {
   message?: string | null;
   details?: string | null;
@@ -143,6 +156,16 @@ function isMatriculationNumericTypeMismatchError(error: unknown) {
   const details = normalizeDbErrorText(dbError.details);
   const hint = normalizeDbErrorText(dbError.hint);
   const combined = `${message} ${details} ${hint}`.trim();
+  const hasNumericIlikeOperatorError = (
+    combined.includes("operator does not exist")
+    && (combined.includes("~~*") || combined.includes("ilike"))
+    && (
+      combined.includes("numeric")
+      || combined.includes("integer")
+      || combined.includes("bigint")
+      || combined.includes("smallint")
+    )
+  );
 
   const hasNumericColumnMention = (
     combined.includes("column \"matriculation\" is of type numeric")
@@ -156,7 +179,9 @@ function isMatriculationNumericTypeMismatchError(error: unknown) {
   );
 
   return (
-    hasNumericColumnMention
+    hasNumericIlikeOperatorError
+    || combined.includes("invalid input syntax for type numeric")
+    || hasNumericColumnMention
     || (combined.includes("matriculation") && hasTextValueMention)
   );
 }
@@ -630,6 +655,56 @@ async function setPersonStatusViaRpc(params: {
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
+async function listPeople(params: {
+  supabase: SupabaseClient;
+  filters: PeopleListFilters;
+}) {
+  const { supabase, filters } = params;
+  const matriculationMatchMode = filters.matriculationMatchMode ?? "contains";
+
+  let query = supabase
+    .from("people")
+    .select(
+      "id, nome, matriculation, job_title_id, job_title_type_id, job_level, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      { count: "exact" },
+    )
+    .eq("tenant_id", filters.tenantId);
+
+  if (filters.name) {
+    query = query.ilike("nome", `%${filters.name}%`);
+  }
+
+  if (filters.matriculation) {
+    query = matriculationMatchMode === "exact"
+      ? query.eq("matriculation", filters.matriculation)
+      : query.ilike("matriculation", `%${filters.matriculation}%`);
+  }
+
+  if (filters.jobTitleId) {
+    query = query.eq("job_title_id", filters.jobTitleId);
+  }
+
+  if (filters.jobTitleTypeId) {
+    query = query.eq("job_title_type_id", filters.jobTitleTypeId);
+  }
+
+  if (filters.jobLevel) {
+    query = query.eq("job_level", filters.jobLevel);
+  }
+
+  if (filters.status === "ativo") {
+    query = query.eq("ativo", true);
+  } else if (filters.status === "inativo") {
+    query = query.eq("ativo", false);
+  }
+
+  return query
+    .order("ativo", { ascending: false })
+    .order("nome", { ascending: true })
+    .range(filters.from, filters.to)
+    .returns<PeopleRow[]>();
+}
+
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -714,7 +789,7 @@ export async function GET(request: NextRequest) {
     }
 
     const name = normalizeText(params.get("name"));
-    const matriculation = normalizeText(params.get("matriculation"));
+    const matriculation = normalizeMatriculation(params.get("matriculation"));
     const jobTitleId = normalizeText(params.get("jobTitleId"));
     const jobTitleTypeId = normalizeText(params.get("jobTitleTypeId"));
     const jobLevel = normalizeText(params.get("jobLevel"));
@@ -724,45 +799,32 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase
-      .from("people")
-      .select(
-        "id, nome, matriculation, job_title_id, job_title_type_id, job_level, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
-        { count: "exact" },
-      )
-      .eq("tenant_id", appUser.tenant_id);
+    const listFilters: PeopleListFilters = {
+      tenantId: appUser.tenant_id,
+      name,
+      matriculation,
+      jobTitleId,
+      jobTitleTypeId,
+      jobLevel,
+      status,
+      from,
+      to,
+    };
 
-    if (name) {
-      query = query.ilike("nome", `%${name}%`);
+    let { data, error, count } = await listPeople({
+      supabase,
+      filters: listFilters,
+    });
+
+    if (matriculation && error && isMatriculationNumericTypeMismatchError(error)) {
+      ({ data, error, count } = await listPeople({
+        supabase,
+        filters: {
+          ...listFilters,
+          matriculationMatchMode: "exact",
+        },
+      }));
     }
-
-    if (matriculation) {
-      query = query.ilike("matriculation", `%${matriculation}%`);
-    }
-
-    if (jobTitleId) {
-      query = query.eq("job_title_id", jobTitleId);
-    }
-
-    if (jobTitleTypeId) {
-      query = query.eq("job_title_type_id", jobTitleTypeId);
-    }
-
-    if (jobLevel) {
-      query = query.eq("job_level", jobLevel);
-    }
-
-    if (status === "ativo") {
-      query = query.eq("ativo", true);
-    } else if (status === "inativo") {
-      query = query.eq("ativo", false);
-    }
-
-    const { data, error, count } = await query
-      .order("ativo", { ascending: false })
-      .order("nome", { ascending: true })
-      .range(from, to)
-      .returns<PeopleRow[]>();
 
     if (error) {
       return NextResponse.json({ message: "Falha ao listar pessoas." }, { status: 500 });
