@@ -131,6 +131,8 @@ Cadastro
   - Em edicao, se `Ponto eletrico` for apagado e salvo, o valor da equipe editada passa a ficar nulo.
   - Em edicao, quando `Estado Trabalho` for alterado em uma equipe, o sistema sincroniza o mesmo valor para todas as equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
   - Se `Estado Trabalho` for limpo na edicao, a limpeza tambem e replicada para todas as equipes ativas do mesmo `Projeto + Data de execucao`.
+  - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
+  - Para equipes `LV-xx`, a replicacao de documentos tambem alcanca as programacoes ativas do mesmo projeto com `Data de execucao` em ate `+7 dias` da programacao de origem.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
   - Quando `Periodo = Integral`, `Hora termino` volta automaticamente para `17:00`.
   - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e opcional.
@@ -308,6 +310,7 @@ Atualizacao 2026-03
 - Criada a migration `106_move_programming_save_history_into_full_rpcs.sql` para mover o historico de `CREATE`, `UPDATE`, `RESCHEDULE` e `BATCH_CREATE` para dentro das RPCs `save_project_programming_full` e `save_project_programming_batch_full`.
 - Ajustado o feedback de sucesso do cadastro/edicao para informar quando a programacao foi salva, mas ficou fora dos filtros ativos da lista.
 - Removida da API a gravacao complementar de historico depois do commit no save individual e no cadastro em lote.
+- Criada a migration `127_sync_programming_documents_by_project_date_and_lv_window.sql` para sincronizar `SGD/PI/PEP` por `Projeto + Data de execucao` e incluir janela `LV-xx` de ate `7 dias`, com historico automatico por equipe afetada.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
