@@ -2047,11 +2047,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (!form.electricalField.trim()) {
-      flagInvalidFields(["electricalField"], "Ponto eletrico e obrigatorio.");
-      return;
-    }
-
     if (!form.sgdTypeId) {
       flagInvalidFields(["sgdTypeId"], "Tipo de SGD e obrigatorio para salvar a programacao.");
       return;
@@ -2733,14 +2728,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
           <label className={`${styles.field} ${isFieldInvalid("electricalField") ? styles.fieldInvalid : ""}`}>
             <span>
-              Ponto eletrico <span className="requiredMark">*</span>
+              Ponto eletrico
             </span>
             <input
               type="text"
               value={form.electricalField}
               onChange={(event) => updateFormField("electricalField", event.target.value)}
               placeholder="Ex.: 2 RE ou 1 TR"
-              required
             />
           </label>
 
@@ -3041,7 +3035,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 || !form.projectId
                 || !form.teamIds.length
                 || !form.sgdTypeId
-                || !form.electricalField.trim()
               }
             >
               {isSaving ? "Salvando..." : editingScheduleId ? "Salvar edicao" : "Cadastrar programacao"}

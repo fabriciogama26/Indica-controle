@@ -1421,7 +1421,7 @@ async function saveProgrammingFullViaRpc(params: {
   support?: string | null;
   supportItemId?: string | null;
   note?: string | null;
-  electricalField: string;
+  electricalField: string | null;
   serviceDescription?: string | null;
   posteQty: number;
   estruturaQty: number;
@@ -1438,7 +1438,11 @@ async function saveProgrammingFullViaRpc(params: {
   historyReason?: string | null;
   historyMetadata?: Record<string, unknown> | null;
 }) {
-  const { data, error } = await params.supabase.rpc("save_project_programming_full_with_electrical_field", {
+  const useElectricalFieldRpc = Boolean(params.electricalField);
+  const rpcName = useElectricalFieldRpc
+    ? "save_project_programming_full_with_electrical_field"
+    : "save_project_programming_full";
+  const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_project_id: params.projectId,
@@ -1473,16 +1477,20 @@ async function saveProgrammingFullViaRpc(params: {
     p_history_action_override: params.historyActionOverride ?? null,
     p_history_reason: params.historyReason ?? null,
     p_history_metadata: params.historyMetadata ?? {},
-    p_campo_eletrico: params.electricalField,
-  });
+    ...(useElectricalFieldRpc ? { p_campo_eletrico: params.electricalField } : {}),
+  };
+
+  const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
-    if (isMissingRpcFunctionError(error.message, "save_project_programming_full_with_electrical_field")) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) {
       return {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full com Ponto eletrico indisponivel no ambiente atual.",
+        message: useElectricalFieldRpc
+          ? "RPC transacional full com Ponto eletrico indisponivel no ambiente atual."
+          : "RPC transacional full da Programacao indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1490,7 +1498,9 @@ async function saveProgrammingFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? `Falha ao salvar programacao via RPC full com Ponto eletrico: ${error.message}`
+        ? (useElectricalFieldRpc
+            ? `Falha ao salvar programacao via RPC full com Ponto eletrico: ${error.message}`
+            : `Falha ao salvar programacao via RPC full: ${error.message}`)
         : "Falha ao salvar programacao via RPC full.",
     } as const;
   }
@@ -1532,7 +1542,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
   support?: string | null;
   supportItemId?: string | null;
   note?: string | null;
-  electricalField: string;
+  electricalField: string | null;
   serviceDescription?: string | null;
   posteQty: number;
   estruturaQty: number;
@@ -1545,7 +1555,11 @@ async function saveProgrammingBatchFullViaRpc(params: {
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
 }) {
-  const { data, error } = await params.supabase.rpc("save_project_programming_batch_full_with_electrical_field", {
+  const useElectricalFieldRpc = Boolean(params.electricalField);
+  const rpcName = useElectricalFieldRpc
+    ? "save_project_programming_batch_full_with_electrical_field"
+    : "save_project_programming_batch_full";
+  const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
     p_project_id: params.projectId,
@@ -1575,16 +1589,20 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_outage_start_time: params.outageStartTime ?? null,
     p_outage_end_time: params.outageEndTime ?? null,
     p_service_description: params.serviceDescription ?? null,
-    p_campo_eletrico: params.electricalField,
-  });
+    ...(useElectricalFieldRpc ? { p_campo_eletrico: params.electricalField } : {}),
+  };
+
+  const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
-    if (isMissingRpcFunctionError(error.message, "save_project_programming_batch_full_with_electrical_field")) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) {
       return {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full de lote com Ponto eletrico indisponivel no ambiente atual.",
+        message: useElectricalFieldRpc
+          ? "RPC transacional full de lote com Ponto eletrico indisponivel no ambiente atual."
+          : "RPC transacional full de lote da Programacao indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1592,7 +1610,9 @@ async function saveProgrammingBatchFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? `Falha ao salvar programacao em lote via RPC full com Ponto eletrico: ${error.message}`
+        ? (useElectricalFieldRpc
+            ? `Falha ao salvar programacao em lote via RPC full com Ponto eletrico: ${error.message}`
+            : `Falha ao salvar programacao em lote via RPC full: ${error.message}`)
         : "Falha ao salvar programacao em lote via RPC full.",
     } as const;
   }
@@ -2312,7 +2332,7 @@ async function saveProgrammingBatch(request: NextRequest) {
     const support = normalizeNullableText(payload?.support);
     const supportItemId = normalizeNullableText(payload?.supportItemId);
     const note = normalizeNullableText(payload?.note);
-    const electricalField = normalizeText(payload?.electricalField).toUpperCase();
+    const electricalField = normalizeNullableText(payload?.electricalField)?.toUpperCase() ?? null;
     const serviceDescription = normalizeNullableText(payload?.serviceDescription);
     const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
     const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
@@ -2399,13 +2419,6 @@ async function saveProgrammingBatch(request: NextRequest) {
     if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
       return NextResponse.json(
         { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
-        { status: 400 },
-      );
-    }
-
-    if (!electricalField) {
-      return NextResponse.json(
-        { message: "Ponto eletrico e obrigatorio para salvar a programacao." },
         { status: 400 },
       );
     }
@@ -2518,7 +2531,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote com Ponto eletrico. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
+            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2584,7 +2597,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const support = normalizeNullableText(payload?.support);
   const supportItemId = normalizeNullableText(payload?.supportItemId);
   const note = normalizeNullableText(payload?.note);
-  const electricalField = normalizeText(payload?.electricalField).toUpperCase();
+  const electricalField = normalizeNullableText(payload?.electricalField)?.toUpperCase() ?? null;
   const serviceDescription = normalizeNullableText(payload?.serviceDescription);
   const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
   const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
@@ -2654,13 +2667,6 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
     return NextResponse.json(
       { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
-      { status: 400 },
-    );
-  }
-
-  if (!electricalField) {
-    return NextResponse.json(
-      { message: "Ponto eletrico e obrigatorio para salvar a programacao." },
       { status: 400 },
     );
   }
@@ -2841,7 +2847,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao com Ponto eletrico. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
+            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2873,6 +2879,24 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   } as const;
 
   const persistedProgrammingId = saveResult.programmingId;
+
+  if (method === "PUT" && !electricalField) {
+    const { error: clearElectricalFieldError } = await resolution.supabase
+      .from("project_programming")
+      .update({
+        campo_eletrico: null,
+        updated_by: resolution.appUser.id,
+      })
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("id", persistedProgrammingId);
+
+    if (clearElectricalFieldError) {
+      return NextResponse.json(
+        { message: "Programacao salva, mas houve falha ao limpar o campo Ponto eletrico." },
+        { status: 500 },
+      );
+    }
+  }
 
   const savedSchedule = await fetchProgrammingResponseItem(
     resolution.supabase,
