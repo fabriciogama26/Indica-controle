@@ -136,7 +136,7 @@ type SaveMeasurementBatchPayload = {
 
 type UpdateStatusPayload = {
   id?: string;
-  action?: "FECHAR" | "CANCELAR";
+  action?: "FECHAR" | "CANCELAR" | "ABRIR";
   reason?: string;
   expectedUpdatedAt?: string;
 };
@@ -428,7 +428,7 @@ function measurementModuleMigrationHint(message: string | undefined) {
     || normalized.includes("set_project_measurement_order_status")
     || normalized.includes("save_project_measurement_order_batch_partial")
   ) {
-    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql e 123_support_measurement_without_production.sql foram aplicadas.";
+    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql, 123_support_measurement_without_production.sql, 124_add_measurement_reopen_status_action.sql, 125_require_closed_before_measurement_cancel.sql e 126_allow_measurement_cancel_when_open.sql foram aplicadas.";
   }
   return "";
 }
@@ -1002,7 +1002,7 @@ export async function PATCH(request: NextRequest) {
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const reason = normalizeText(payload?.reason) || null;
 
-  if (!orderId || (action !== "FECHAR" && action !== "CANCELAR")) {
+  if (!orderId || (action !== "FECHAR" && action !== "CANCELAR" && action !== "ABRIR")) {
     return NextResponse.json({ message: "Informe ordem e acao valida para atualizar o status." }, { status: 400 });
   }
 
@@ -1010,8 +1010,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ message: "Atualize a lista antes de alterar o status da ordem." }, { status: 409 });
   }
 
-  if (action === "CANCELAR" && (!reason || reason.length < 10)) {
-    return NextResponse.json({ message: "Informe motivo do cancelamento com no minimo 10 caracteres." }, { status: 400 });
+  if ((action === "CANCELAR" || action === "ABRIR") && (!reason || reason.length < 10)) {
+    return NextResponse.json({ message: action === "ABRIR" ? "Informe motivo da reabertura com no minimo 10 caracteres." : "Informe motivo do cancelamento com no minimo 10 caracteres." }, { status: 400 });
   }
 
   const { data, error } = await resolution.supabase.rpc("set_project_measurement_order_status", {

@@ -290,6 +290,9 @@
 - [x] Garantir no cadastro em massa da Medicao a geracao do CSV de erros mesmo quando a API retornar falha geral sem detalhamento por linha.
 - [x] Adicionar na lista da Medicao o somatorio de `Valor total` respeitando os filtros aplicados.
 - [x] Ajustar o resumo da lista da Medicao para considerar o resultado filtrado completo (todas as paginas), e nao apenas a pagina visivel.
+- [x] Ajustar a cor do `Status` na lista da Medicao para exibir `FECHADA` em vermelho (mesma classe de destaque de `CANCELADA`).
+- [x] Implementar acao `Abrir` para ordens `FECHADA` na Medicao, com modal de motivo obrigatorio e registro transacional no banco/historico.
+- [x] Ajustar regra de cancelamento da Medicao para permitir em `ABERTA` e `FECHADA`, mantendo bloqueio apenas para `CANCELADA` e registro de historico no RPC.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
