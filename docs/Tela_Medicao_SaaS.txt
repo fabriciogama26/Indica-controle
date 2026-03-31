@@ -93,6 +93,7 @@ Filtros, auto-complete e listagem
   - Status execucao da programacao + alerta de atualizacao
   - Quantidade de itens
   - Valor total
+  - Somatorio de `Valor total` da lista, recalculado conforme os filtros aplicados
   - Status
   - Atualizado em
   - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela.
@@ -192,6 +193,7 @@ Atualizacao 2026-03
   - Import em massa com anti-sobreposicao por `Projeto + Equipe + Data de execucao`, mantendo processamento parcial e resumo dedicado para `linhas ja cadastradas`.
   - Import em massa migrado para RPC de lote parcial, removendo salvamento linha-a-linha via HTTP e concentrando o processamento no banco com retorno estruturado.
   - Medicao unificada para usar somente `service_activities` como catalogo de atividades, com ajuste de FK/backfill nos itens historicos.
+  - Inclusao de resumo na lista da Medicao com `Ordens (filtro)` e `Somatorio valor total (filtro)` para leitura rapida dos resultados filtrados.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

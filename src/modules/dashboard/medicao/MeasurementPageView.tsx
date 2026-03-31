@@ -659,6 +659,10 @@ export function MeasurementPageView() {
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
   }, [form.items, form.manualRate]);
+  const filteredOrdersTotalAmount = useMemo(
+    () => orders.reduce((sum, order) => sum + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0), 0),
+    [orders],
+  );
   const canSubmitCancelStatus = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
   const historyTotalPages = Math.max(1, Math.ceil(historyEntries.length / HISTORY_PAGE_SIZE));
   const pagedHistoryEntries = useMemo(
@@ -1966,6 +1970,16 @@ export function MeasurementPageView() {
             >
               {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
             </button>
+          </div>
+        </div>
+        <div className={styles.summaryBar}>
+          <div>
+            <span>Ordens</span>
+            <strong>{orders.length}</strong>
+          </div>
+          <div>
+            <span>Valor total</span>
+            <strong>{formatCurrency(filteredOrdersTotalAmount)}</strong>
           </div>
         </div>
         <div className={styles.tableWrapper}>
