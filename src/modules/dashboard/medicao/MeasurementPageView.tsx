@@ -764,6 +764,7 @@ export function MeasurementPageView() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [filteredOrdersTotalAmount, setFilteredOrdersTotalAmount] = useState(0);
   const [detailOrder, setDetailOrder] = useState<OrderDetail | null>(null);
   const [historyOrder, setHistoryOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const [historyEntries, setHistoryEntries] = useState<OrderHistoryEntry[]>([]);
@@ -808,11 +809,6 @@ export function MeasurementPageView() {
       const unitValue = parseNonNegativeNumber(item.unitValue) ?? 0;
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
-  }, [form.items, form.manualRate]);
-  const filteredOrdersTotalAmount = useMemo(
-    () => orders.reduce((sum, order) => sum + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0), 0),
-    [orders],
-  );
   }, [form.items, form.manualRate, form.measurementKind]);
   const canSubmitCancelStatus = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
   const isEditing = Boolean(form.id);
@@ -983,6 +979,35 @@ export function MeasurementPageView() {
       ignore = true;
     };
   }, [accessToken, activeFilters, fetchOrdersPage, page]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setFilteredOrdersTotalAmount(0);
+      return;
+    }
+
+    let ignore = false;
+    async function loadFilteredOrdersTotalAmount() {
+      try {
+        const exportOrders = await loadAllOrdersForExport();
+        if (ignore) return;
+        const sum = exportOrders.reduce(
+          (accumulator, order) => accumulator + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0),
+          0,
+        );
+        setFilteredOrdersTotalAmount(sum);
+      } catch {
+        if (!ignore) {
+          setFilteredOrdersTotalAmount(0);
+        }
+      }
+    }
+
+    void loadFilteredOrdersTotalAmount();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, loadAllOrdersForExport]);
 
   useEffect(() => {
     if (!accessToken || deferredActivitySearch.trim().length < 2) {
@@ -2400,7 +2425,7 @@ export function MeasurementPageView() {
         <div className={styles.summaryBar}>
           <div>
             <span>Ordens</span>
-            <strong>{orders.length}</strong>
+            <strong>{total}</strong>
           </div>
           <div>
             <span>Valor total</span>
