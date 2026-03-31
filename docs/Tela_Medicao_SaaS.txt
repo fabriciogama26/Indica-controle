@@ -115,7 +115,7 @@ Filtros, auto-complete e listagem
   - Status execucao da programacao + alerta de atualizacao
   - Quantidade de itens
   - Valor total
-  - Somatorio de `Valor total` da lista, recalculado conforme os filtros aplicados
+  - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados
   - Tipo da medicao
   - Motivo sem producao
   - Status
