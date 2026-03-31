@@ -119,6 +119,7 @@ Filtros, auto-complete e listagem
   - Tipo da medicao
   - Motivo sem producao
   - Status
+  - Cor do status na lista: `ABERTA` em verde, `FECHADA` e `CANCELADA` em vermelho
   - Atualizado em
   - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
   - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela.
@@ -127,8 +128,9 @@ Filtros, auto-complete e listagem
   - Detalhes
   - Historico
   - Editar (somente quando `ABERTA`)
-  - Cancelar (motivo obrigatorio, bloqueando quando ja cancelada)
+  - Cancelar (permitido em `ABERTA` e `FECHADA`, motivo obrigatorio e bloqueio somente quando `CANCELADA`)
   - Fechar (somente quando `ABERTA`)
+  - Abrir (somente quando `FECHADA`, com modal de motivo obrigatorio e registro no historico)
 - Modal de detalhes:
   - Exibe `Tipo da medicao` e `Motivo sem producao` no cabecalho.
   - Exibe `Taxa manual` no cabecalho e tambem a coluna `Taxa` por item na grade.
@@ -226,6 +228,8 @@ Atualizacao 2026-03
   - Import em massa migrado para RPC de lote parcial, removendo salvamento linha-a-linha via HTTP e concentrando o processamento no banco com retorno estruturado.
   - Medicao unificada para usar somente `service_activities` como catalogo de atividades, com ajuste de FK/backfill nos itens historicos.
   - Inclusao de resumo na lista da Medicao com `Ordens (filtro)` e `Somatorio valor total (filtro)` para leitura rapida dos resultados filtrados.
+  - Acao de status ampliada com `Abrir`: apos fechar uma ordem, o botao vira `Abrir`, abre modal no padrao do cancelamento e exige motivo minimo para registrar historico de reabertura.
+  - Regra de cancelamento ajustada: ordem pode ser cancelada em `ABERTA` ou `FECHADA`, sempre com motivo minimo obrigatorio.
   - Modal `Detalhes` ajustado para mostrar `Taxa` por item e usar o total salvo no banco (`total_value`) na grade.
   - Import em massa endurecido para aceitar apenas match exato/univoco de codigo da atividade, reduzindo erro de pontos por atividade incorreta.
   - Quando houver ambiguidade no codigo da atividade, a linha passa a falhar no import em vez de usar aproximacao por prefixo.

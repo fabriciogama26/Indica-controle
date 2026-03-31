@@ -244,6 +244,8 @@ type MassImportBatchResponse = {
   results?: MassImportBatchResultItem[];
 };
 
+type StatusAction = "FECHAR" | "CANCELAR" | "ABRIR";
+
 const PAGE_SIZE = 20;
 const EXPORT_PAGE_SIZE = 200;
 const HISTORY_PAGE_SIZE = 5;
@@ -770,6 +772,7 @@ export function MeasurementPageView() {
   const [historyEntries, setHistoryEntries] = useState<OrderHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [statusOrder, setStatusOrder] = useState<OrderItem | null>(null);
+  const [statusAction, setStatusAction] = useState<StatusAction>("CANCELAR");
   const [statusReason, setStatusReason] = useState("");
   const [isLoadingSources, setIsLoadingSources] = useState(false);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
@@ -810,7 +813,7 @@ export function MeasurementPageView() {
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
   }, [form.items, form.manualRate, form.measurementKind]);
-  const canSubmitCancelStatus = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
+  const canSubmitStatusReason = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
   const isEditing = Boolean(form.id);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyEntries.length / HISTORY_PAGE_SIZE));
@@ -1803,7 +1806,7 @@ export function MeasurementPageView() {
       }
       setDetailOrder(null);
       closeHistoryModal();
-      closeCancelModal();
+      closeStatusModal();
       scrollDashboardContentToTop();
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar ordem para edicao." });
@@ -1951,19 +1954,27 @@ export function MeasurementPageView() {
 
   function openCancelModal(order: OrderItem) {
     setStatusOrder(order);
+    setStatusAction("CANCELAR");
     setStatusReason("");
   }
 
-  function closeCancelModal() {
+  function openReopenModal(order: OrderItem) {
+    setStatusOrder(order);
+    setStatusAction("ABRIR");
+    setStatusReason("");
+  }
+
+  function closeStatusModal() {
     if (isChangingStatus) return;
     setStatusOrder(null);
+    setStatusAction("CANCELAR");
     setStatusReason("");
   }
 
-  async function submitStatusChange(order: OrderItem, action: "FECHAR" | "CANCELAR", reason = "") {
+  async function submitStatusChange(order: OrderItem, action: StatusAction, reason = "") {
     if (!accessToken) return;
-    if (action === "CANCELAR" && reason.trim().length < 10) {
-      setFeedback({ type: "error", message: "Motivo do cancelamento deve ter no minimo 10 caracteres." });
+    if ((action === "CANCELAR" || action === "ABRIR") && reason.trim().length < 10) {
+      setFeedback({ type: "error", message: action === "ABRIR" ? "Motivo da reabertura deve ter no minimo 10 caracteres." : "Motivo do cancelamento deve ter no minimo 10 caracteres." });
       return false;
     }
 
@@ -1994,11 +2005,11 @@ export function MeasurementPageView() {
     }
   }
 
-  async function confirmCancelStatus() {
+  async function confirmStatusReasonAction() {
     if (!statusOrder) return;
-    const success = await submitStatusChange(statusOrder, "CANCELAR", statusReason);
+    const success = await submitStatusChange(statusOrder, statusAction, statusReason);
     if (success) {
-      closeCancelModal();
+      closeStatusModal();
     }
   }
 
@@ -2452,7 +2463,7 @@ export function MeasurementPageView() {
                   </td>
                   <td>{order.itemCount}</td>
                   <td>{formatCurrency(order.totalAmount)}</td>
-                  <td><span className={order.status === "CANCELADA" ? styles.statusTagDanger : styles.statusTag}>{order.status}</span></td>
+                  <td><span className={order.status === "ABERTA" ? styles.statusTag : styles.statusTagDanger}>{order.status}</span></td>
                   <td>{formatDateTime(order.updatedAt)}</td>
                   <td className={styles.actionsCell}>
                     <div className={styles.tableActions}>
@@ -2514,7 +2525,7 @@ export function MeasurementPageView() {
                       <button
                         type="button"
                         className={`${styles.actionButton} ${styles.actionCancel}`}
-                        disabled={order.status === "CANCELADA"}
+                        disabled={order.status === "CANCELADA" || isChangingStatus}
                         onClick={() => openCancelModal(order)}
                         aria-label={`Cancelar ordem ${order.orderNumber}`}
                         title="Cancelar"
@@ -2532,20 +2543,38 @@ export function MeasurementPageView() {
                       <button
                         type="button"
                         className={`${styles.actionButton} ${styles.actionClose}`}
-                        disabled={order.status !== "ABERTA" || isChangingStatus}
-                        onClick={() => void submitStatusChange(order, "FECHAR")}
-                        aria-label={`Fechar ordem ${order.orderNumber}`}
-                        title="Fechar"
+                        disabled={(order.status !== "ABERTA" && order.status !== "FECHADA") || isChangingStatus}
+                        onClick={() => {
+                          if (order.status === "ABERTA") {
+                            void submitStatusChange(order, "FECHAR");
+                            return;
+                          }
+                          if (order.status === "FECHADA") {
+                            openReopenModal(order);
+                          }
+                        }}
+                        aria-label={`${order.status === "FECHADA" ? "Abrir" : "Fechar"} ordem ${order.orderNumber}`}
+                        title={order.status === "FECHADA" ? "Abrir" : "Fechar"}
                       >
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                           <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
-                          <path
-                            d="m8.5 12 2.2 2.2 4.8-4.8"
-                            stroke="currentColor"
-                            strokeWidth="1.7"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
+                          {order.status === "FECHADA" ? (
+                            <path
+                              d="M12 8v8m-4-4h8"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          ) : (
+                            <path
+                              d="m8.5 12 2.2 2.2 4.8-4.8"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          )}
                         </svg>
                       </button>
                     </div>
@@ -2707,32 +2736,39 @@ export function MeasurementPageView() {
       ) : null}
 
       {statusOrder ? (
-        <div className={styles.modalOverlay} onClick={closeCancelModal}>
+        <div className={styles.modalOverlay} onClick={closeStatusModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Cancelar Ordem de Medicao</h4>
-                <p className={styles.modalSubtitle}>Ordem {statusOrder.orderNumber} sera cancelada.</p>
+                <h4>{statusAction === "ABRIR" ? "Abrir Ordem de Medicao" : "Cancelar Ordem de Medicao"}</h4>
+                <p className={styles.modalSubtitle}>
+                  Ordem {statusOrder.orderNumber} {statusAction === "ABRIR" ? "sera reaberta." : "sera cancelada."}
+                </p>
               </div>
             </header>
 
             <div className={styles.modalBody}>
               <label className={styles.field}>
-                <span>Motivo do cancelamento <span className="requiredMark">*</span></span>
+                <span>{statusAction === "ABRIR" ? "Motivo da reabertura" : "Motivo do cancelamento"} <span className="requiredMark">*</span></span>
                 <textarea
                   rows={4}
                   value={statusReason}
                   onChange={(event) => setStatusReason(event.target.value)}
-                  placeholder="Descreva o motivo do cancelamento (minimo 10 caracteres)"
+                  placeholder={statusAction === "ABRIR" ? "Descreva o motivo da reabertura (minimo 10 caracteres)" : "Descreva o motivo do cancelamento (minimo 10 caracteres)"}
                 />
               </label>
 
               <div className={styles.actions}>
-                <button type="button" className={styles.ghostButton} onClick={closeCancelModal} disabled={isChangingStatus}>
+                <button type="button" className={styles.ghostButton} onClick={closeStatusModal} disabled={isChangingStatus}>
                   Voltar
                 </button>
-                <button type="button" className={styles.dangerButton} onClick={() => void confirmCancelStatus()} disabled={!canSubmitCancelStatus}>
-                  {isChangingStatus ? "Cancelando..." : "Confirmar cancelamento"}
+                <button
+                  type="button"
+                  className={statusAction === "ABRIR" ? styles.primaryButton : styles.dangerButton}
+                  onClick={() => void confirmStatusReasonAction()}
+                  disabled={!canSubmitStatusReason}
+                >
+                  {isChangingStatus ? (statusAction === "ABRIR" ? "Abrindo..." : "Cancelando...") : (statusAction === "ABRIR" ? "Confirmar abertura" : "Confirmar cancelamento")}
                 </button>
               </div>
             </div>
