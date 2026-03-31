@@ -88,6 +88,7 @@ Cadastro
   - Quando o codigo estiver ambiguo no catalogo, a linha falha no import em vez de associar `voice_point` de outra atividade.
   - O modal de importacao em massa exibe resumo de resultado com quantidade de ordens salvas e linhas com erro.
   - Quando houver falha, o modal disponibiliza botao para baixar o CSV de erros.
+  - Em falha geral da API (sem detalhamento por linha), o modal ainda gera CSV de erro com entrada sintetica para nao perder rastreabilidade.
   - O import em massa protege sobreposicao: se ja existir ordem para o mesmo `Projeto + Equipe + Data de execucao`, a linha e ignorada e o resumo exibe `x linhas ja cadastradas`.
   - O import em massa usa RPC de lote parcial (`save_project_measurement_order_batch_partial`) para salvar linhas validas e retornar erros/duplicidades por linha no mesmo fluxo.
   - Na edicao da ordem `ABERTA`, e permitido alterar `Projeto`, `Equipe` e `Data de execucao`.
@@ -215,6 +216,7 @@ Atualizacao 2026-03
   - Import em massa ajustado para nao bloquear salvamento quando nao houver programacao: usa contexto `Projeto + Equipe do formulario + Data`, permitindo carga retroativa e exibicao como `Nao programada`.
   - Lookup do campo `voz` reforcado para pesquisa textual com variantes `0`/`O`, reduzindo falso erro de atividade nao encontrada no CSV.
   - Modal do cadastro em massa atualizado com resumo visual de importacao (`Incluido com sucesso`, `parcial` ou `com erros`) e botao para baixar CSV de erros.
+  - Cadastro em massa ajustado para gerar CSV de erros tambem quando o backend retorna falha geral sem `results` detalhado por linha.
   - API do catalogo de atividades da Medicao reforcada com fallback de busca ampla e match normalizado para codigos/descricao.
   - Modelo de importacao em massa atualizado com coluna obrigatoria `equipe` e validacao textual da equipe por nome/codigo (sem exigir UUID).
   - Modelo de importacao em massa atualizado com coluna obrigatoria `taxa`, usada no frontend para montar o payload do lote e no banco como `manual_rate` oficial da ordem.
