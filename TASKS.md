@@ -185,6 +185,7 @@
 - [x] Ajustar mapeamento do `ENEL-EXCEL` para preencher `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT` com o valor de `Ponto eletrico`, incluindo regra agrupada de tipos (`SGD AT/MT`, `SGD AT`, `SGD MT`, `SGD VyP` -> `SGD AT/MT/VyP`).
 - [x] Renomear no frontend o campo obrigatorio de `Campo eletrico` para `Ponto eletrico`, tornar o filtro de `Projeto` digitavel (`input + datalist`) e alinhar o `ENEL-EXCEL` para coluna `Encarregado` com nome do encarregado da equipe programada.
 - [x] Incluir filtro de `Estado Trabalho` na Programacao Simples, com opcoes `Todos`, `Concluido`, `Parcial` e `Nao informado`, aplicando o filtro na lista e no aviso de registro salvo fora dos filtros.
+- [x] Sincronizar `Estado Trabalho` por `Projeto + Data` na Programacao ativa: ao editar uma equipe e mudar o valor, atualizar automaticamente todas as equipes `PROGRAMADA`/`REPROGRAMADA` do mesmo projeto/data, incluindo limpeza para todas quando o campo ficar vazio.
 - [x] Mover o `Campo eletrico` para o mesmo fluxo transacional das RPCs full da Programacao (sem passo complementar de save na API) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 - [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
 - [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.
@@ -275,6 +276,7 @@
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
 - [x] Unificar Medicao para usar somente `service_activities` (sem dependencia operacional de `measurement_activities`), incluindo ajuste de FK/backfill e catalogo da API.
 - [x] Corrigir ordem da migration `120_unify_measurement_with_service_activities` para remover a FK antiga antes do backfill dos IDs e evitar erro `23503` durante a unificacao.
+- [x] Garantir no cadastro em massa da Medicao a geracao do CSV de erros mesmo quando a API retornar falha geral sem detalhamento por linha.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

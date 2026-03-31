@@ -1224,7 +1224,51 @@ export function MeasurementPageView() {
 
       const batchData = (await batchResponse.json().catch(() => null)) as MassImportBatchResponse | null;
       if (!batchResponse.ok || batchData?.success !== true) {
-        throw new Error(batchData?.message ?? "Falha no cadastro em massa da medicao.");
+        const responseMessage = batchData?.message ?? "Falha no cadastro em massa da medicao.";
+        const alreadyRegisteredRows = Number(batchData?.alreadyRegisteredRows ?? 0);
+        for (const result of batchData?.results ?? []) {
+          if (result.success) continue;
+          const rowIndex = typeof result.rowIndex === "number" && result.rowIndex > 0 ? result.rowIndex - 1 : -1;
+          const source = rowIndex >= 0 ? batchRows[rowIndex] : null;
+          const projectLabel = source?.projectId ? (importProjectLabelById.get(source.projectId) ?? "Projeto") : "Projeto";
+          const contextValue = `${projectLabel} | ${source?.executionDate ?? "-"}`;
+          const rowNumbers = Array.isArray(result.rowNumbers) && result.rowNumbers.length
+            ? result.rowNumbers
+            : source?.rowNumbers ?? [];
+          for (const rowNumber of rowNumbers) {
+            importIssues.push({
+              rowNumber,
+              column: result.alreadyRegistered ? "registro" : "salvamento",
+              value: contextValue,
+              error: result.message || responseMessage,
+            });
+          }
+        }
+
+        if (!importIssues.length) {
+          importIssues.push({
+            rowNumber: 1,
+            column: "salvamento",
+            value: file.name,
+            error: responseMessage,
+          });
+        }
+
+        const report = createMassImportErrorReport(importIssues);
+        const duplicateHint = alreadyRegisteredRows ? ` ${alreadyRegisteredRows} linhas ja cadastradas.` : "";
+        setMassImportErrorReport(report);
+        setMassImportResult({
+          status: "error",
+          message: `${responseMessage}${duplicateHint}`.trim(),
+          successCount: 0,
+          errorRows: report?.errorRows ?? 0,
+          alreadyRegisteredRows,
+        });
+        setFeedback({
+          type: "error",
+          message: `Falha na importacao em massa. Baixe o CSV de erros para corrigir.${duplicateHint}`,
+        });
+        return;
       }
 
       const successCount = Number(batchData.savedCount ?? 0);
@@ -1253,6 +1297,16 @@ export function MeasurementPageView() {
             error: failureMessage,
           });
         }
+      }
+
+      const backendErrorCount = Number(batchData.errorCount ?? 0);
+      if (!importIssues.length && backendErrorCount > 0) {
+        importIssues.push({
+          rowNumber: 1,
+          column: "salvamento",
+          value: file.name,
+          error: `${backendErrorCount} linhas retornaram erro sem detalhamento por linha.`,
+        });
       }
 
       if (successCount) {

@@ -127,6 +127,8 @@ Cadastro
 - Regra principal:
   - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
   - Cada equipe gera uma programacao independente.
+  - Em edicao, quando `Estado Trabalho` for alterado em uma equipe, o sistema sincroniza o mesmo valor para todas as equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
+  - Se `Estado Trabalho` for limpo na edicao, a limpeza tambem e replicada para todas as equipes ativas do mesmo `Projeto + Data de execucao`.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
   - Quando `Periodo = Integral`, `Hora termino` volta automaticamente para `17:00`.
   - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e opcional.
@@ -321,6 +323,7 @@ Atualizacao 2026-03
 - Removido o calendario da rota de cadastro `/programacao-simples` e reposicionado no topo da rota `/programacao-visualizacao`.
 - Ajustada listagem para exibir registros `ADIADA` e `CANCELADA` mesmo fora da data filtrada de execucao.
 - Adicionado filtro de `Estado Trabalho` para combinar a visualizacao por `CONCLUIDO`, `PARCIAL` e registros sem preenchimento.
+- Criada a migration `122_sync_work_completion_status_by_project_date_trigger.sql` para sincronizar `Estado Trabalho` por `Projeto + Data` nas programacoes ativas, com historico automatico das equipes impactadas.
 - Adicionado campo `ETAPA` com persistencia na Programacao e exportacao ENEL em `INFO STATUS` no formato `x ETAPA`.
 - Adicionado campo `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) visivel apenas na edicao, persistido em banco e exportado em `Estado Trabalho`.
 - Ajustada a edicao para nao bloquear salvamento quando a `ETAPA` nao foi alterada.
