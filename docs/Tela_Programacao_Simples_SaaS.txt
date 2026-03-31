@@ -150,6 +150,7 @@ Filtros, auto-complete e listagem
   - Projeto
   - Equipe
   - Status
+  - Estado Trabalho (`Todos`, `Concluido`, `Parcial`, `Nao informado`)
 - Auto-complete:
   - Projeto (SOB) no cadastro com `input + datalist`, no mesmo padrao do SOB da Locacao.
   - Projeto no filtro com `input + datalist` (digitavel e com selecao por SOB).
@@ -319,6 +320,7 @@ Atualizacao 2026-03
 - Adicionada paginacao no modal de historico da Programacao.
 - Removido o calendario da rota de cadastro `/programacao-simples` e reposicionado no topo da rota `/programacao-visualizacao`.
 - Ajustada listagem para exibir registros `ADIADA` e `CANCELADA` mesmo fora da data filtrada de execucao.
+- Adicionado filtro de `Estado Trabalho` para combinar a visualizacao por `CONCLUIDO`, `PARCIAL` e registros sem preenchimento.
 - Adicionado campo `ETAPA` com persistencia na Programacao e exportacao ENEL em `INFO STATUS` no formato `x ETAPA`.
 - Adicionado campo `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) visivel apenas na edicao, persistido em banco e exportado em `Estado Trabalho`.
 - Ajustada a edicao para nao bloquear salvamento quando a `ETAPA` nao foi alterada.

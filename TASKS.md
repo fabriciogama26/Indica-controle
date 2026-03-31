@@ -184,6 +184,7 @@
 - [x] Reordenar as colunas do `ENEL-EXCEL` da Programacao para o layout operacional solicitado, com `ENCARREGADO` apos `Estrutura` e `Mão de obra` mantida no bloco final.
 - [x] Ajustar mapeamento do `ENEL-EXCEL` para preencher `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT` com o valor de `Ponto eletrico`, incluindo regra agrupada de tipos (`SGD AT/MT`, `SGD AT`, `SGD MT`, `SGD VyP` -> `SGD AT/MT/VyP`).
 - [x] Renomear no frontend o campo obrigatorio de `Campo eletrico` para `Ponto eletrico`, tornar o filtro de `Projeto` digitavel (`input + datalist`) e alinhar o `ENEL-EXCEL` para coluna `Encarregado` com nome do encarregado da equipe programada.
+- [x] Incluir filtro de `Estado Trabalho` na Programacao Simples, com opcoes `Todos`, `Concluido`, `Parcial` e `Nao informado`, aplicando o filtro na lista e no aviso de registro salvo fora dos filtros.
 - [x] Mover o `Campo eletrico` para o mesmo fluxo transacional das RPCs full da Programacao (sem passo complementar de save na API) e ajustar a regra de reprogramacao para considerar mudanca de projeto/equipe/data/hora inicio/hora termino/periodo.
 - [x] Implementar adiamento na nova Programacao com botao amarelo, motivo + nova data e geracao de novo registro na data informada (mantendo o antigo como `ADIADA`).
 - [x] Tornar `Tipo de SGD` obrigatorio na nova Programacao, adicionar `Inicio/Termino de desligamento` e ajustar documentos para `Data Aprovada` + `Data Pedido` com persistencia e exportacao ENEL.

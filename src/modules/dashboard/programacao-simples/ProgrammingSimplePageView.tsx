@@ -239,6 +239,7 @@ type FilterState = {
   projectId: string;
   teamId: string;
   status: "TODOS" | ProgrammingStatus;
+  workCompletionStatus: "TODOS" | WorkCompletionStatus | "NAO_INFORMADO";
 };
 
 const PAGE_SIZE = 20;
@@ -824,6 +825,7 @@ function buildSavedOutsideFiltersMessage(params: {
   status: ProgrammingStatus;
   projectId: string;
   teamIds: string[];
+  workCompletionStatus: WorkCompletionStatus | null;
   activeFilters: FilterState;
   projectMap: Map<string, ProjectItem>;
   teamMap: Map<string, TeamItem>;
@@ -851,6 +853,16 @@ function buildSavedOutsideFiltersMessage(params: {
 
   if (params.activeFilters.status !== "TODOS" && params.status !== params.activeFilters.status) {
     reasons.push(`o Status filtrado e ${params.activeFilters.status}`);
+  }
+
+  if (params.activeFilters.workCompletionStatus !== "TODOS") {
+    const savedWorkCompletionStatus = params.workCompletionStatus ?? "NAO_INFORMADO";
+    if (params.activeFilters.workCompletionStatus !== savedWorkCompletionStatus) {
+      const formattedWorkCompletionStatus = params.activeFilters.workCompletionStatus === "NAO_INFORMADO"
+        ? "Nao informado"
+        : params.activeFilters.workCompletionStatus;
+      reasons.push(`o Estado Trabalho filtrado e ${formattedWorkCompletionStatus}`);
+    }
   }
 
   if (!reasons.length) {
@@ -1054,6 +1066,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     projectId: "",
     teamId: "",
     status: "TODOS",
+    workCompletionStatus: "TODOS",
   });
   const [activeFilters, setActiveFilters] = useState<FilterState>({
     startDate: currentYearDateRange.startDate,
@@ -1062,6 +1075,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     projectId: "",
     teamId: "",
     status: "TODOS",
+    workCompletionStatus: "TODOS",
   });
 
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -1154,9 +1168,16 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         return false;
       }
 
+      if (activeFilters.workCompletionStatus !== "TODOS") {
+        const scheduleWorkCompletionStatus = item.workCompletionStatus ?? "NAO_INFORMADO";
+        if (scheduleWorkCompletionStatus !== activeFilters.workCompletionStatus) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [activeFilters.endDate, activeFilters.projectId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, schedules]);
+  }, [activeFilters.endDate, activeFilters.projectId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, activeFilters.workCompletionStatus, schedules]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / PAGE_SIZE));
   const pagedSchedules = useMemo(() => {
@@ -2229,6 +2250,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         status: savedStatus,
         projectId: data.schedule?.projectId ?? form.projectId,
         teamIds: data.schedule ? [data.schedule.teamId] : (editingScheduleId ? [form.teamIds[0]] : form.teamIds),
+        workCompletionStatus: data.schedule?.workCompletionStatus ?? (form.workCompletionStatus || null),
         activeFilters,
         projectMap,
         teamMap,
@@ -2301,6 +2323,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       projectId: "",
       teamId: "",
       status: "TODOS",
+      workCompletionStatus: "TODOS",
     };
     setFilterDraft(reset);
     setActiveFilters(reset);
@@ -3086,6 +3109,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               <option value="REPROGRAMADA">Reprogramada</option>
               <option value="ADIADA">Adiada</option>
               <option value="CANCELADA">Cancelada</option>
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span>Estado Trabalho</span>
+            <select
+              value={filterDraft.workCompletionStatus}
+              onChange={(event) => updateFilterField("workCompletionStatus", event.target.value as FilterState["workCompletionStatus"])}
+            >
+              <option value="TODOS">Todos</option>
+              <option value="CONCLUIDO">Concluido</option>
+              <option value="PARCIAL">Parcial</option>
+              <option value="NAO_INFORMADO">Nao informado</option>
             </select>
           </label>
         </div>
