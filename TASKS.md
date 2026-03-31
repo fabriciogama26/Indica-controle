@@ -287,6 +287,7 @@
 - [x] Unificar Medicao para usar somente `service_activities` (sem dependencia operacional de `measurement_activities`), incluindo ajuste de FK/backfill e catalogo da API.
 - [x] Corrigir ordem da migration `120_unify_measurement_with_service_activities` para remover a FK antiga antes do backfill dos IDs e evitar erro `23503` durante a unificacao.
 - [x] Garantir no cadastro em massa da Medicao a geracao do CSV de erros mesmo quando a API retornar falha geral sem detalhamento por linha.
+- [x] Adicionar na lista da Medicao o somatorio de `Valor total` respeitando os filtros aplicados.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

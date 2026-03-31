@@ -115,6 +115,7 @@ Filtros, auto-complete e listagem
   - Status execucao da programacao + alerta de atualizacao
   - Quantidade de itens
   - Valor total
+  - Somatorio de `Valor total` da lista, recalculado conforme os filtros aplicados
   - Tipo da medicao
   - Motivo sem producao
   - Status
@@ -224,6 +225,7 @@ Atualizacao 2026-03
   - Import em massa com anti-sobreposicao por `Projeto + Equipe + Data de execucao`, mantendo processamento parcial e resumo dedicado para `linhas ja cadastradas`.
   - Import em massa migrado para RPC de lote parcial, removendo salvamento linha-a-linha via HTTP e concentrando o processamento no banco com retorno estruturado.
   - Medicao unificada para usar somente `service_activities` como catalogo de atividades, com ajuste de FK/backfill nos itens historicos.
+  - Inclusao de resumo na lista da Medicao com `Ordens (filtro)` e `Somatorio valor total (filtro)` para leitura rapida dos resultados filtrados.
   - Modal `Detalhes` ajustado para mostrar `Taxa` por item e usar o total salvo no banco (`total_value`) na grade.
   - Import em massa endurecido para aceitar apenas match exato/univoco de codigo da atividade, reduzindo erro de pontos por atividade incorreta.
   - Quando houver ambiguidade no codigo da atividade, a linha passa a falhar no import em vez de usar aproximacao por prefixo.

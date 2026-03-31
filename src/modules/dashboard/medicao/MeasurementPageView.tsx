@@ -808,6 +808,11 @@ export function MeasurementPageView() {
       const unitValue = parseNonNegativeNumber(item.unitValue) ?? 0;
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
+  }, [form.items, form.manualRate]);
+  const filteredOrdersTotalAmount = useMemo(
+    () => orders.reduce((sum, order) => sum + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0), 0),
+    [orders],
+  );
   }, [form.items, form.manualRate, form.measurementKind]);
   const canSubmitCancelStatus = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
   const isEditing = Boolean(form.id);
@@ -2390,6 +2395,16 @@ export function MeasurementPageView() {
             >
               {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
             </button>
+          </div>
+        </div>
+        <div className={styles.summaryBar}>
+          <div>
+            <span>Ordens</span>
+            <strong>{orders.length}</strong>
+          </div>
+          <div>
+            <span>Valor total</span>
+            <strong>{formatCurrency(filteredOrdersTotalAmount)}</strong>
           </div>
         </div>
         <div className={styles.tableWrapper}>
