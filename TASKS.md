@@ -132,6 +132,7 @@
 - [x] Validar a aba principal da `Locacao` com radios obrigatorios, campos numericos iniciando em `0`, bloqueio de negativos e feedback local no `Salvar locacao`.
 - [x] Fazer o `Salvar locacao` retornar ao topo do container principal apos sucesso para recolocar as abas em evidência.
 - [x] Ajustar feedback de sucesso de `Salvar locacao` para aparecer no topo da tela, mantendo erros de validacao no bloco local da aba.
+- [x] Ajustar a tela de `Locacao` para voltar automaticamente aos cards `Filtros` e `Lista de Locacoes` apos `Salvar locacao` com sucesso.
 - [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [x] Centralizar no banco via RPC as regras de bloqueio da `Locacao`, `Materiais previstos` e `Atividades previstas`.
 - [x] Endurecer as RPCs de `Locacao` e dos previstos de `Projetos` com controle de concorrencia por `updated_at`, limites maximos e observacao obrigatoria quando houver revisao/desligamento.
@@ -283,6 +284,7 @@
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
 - [x] Paginar a `Lista de Ordens de Medicao` com `page`, `pageSize` e `total` no backend, navegacao `Anterior/Proxima` na tela e exportacao preservando o resultado filtrado completo.
 - [x] Ampliar a Medicao para suportar `Com producao` e `Sem producao` na mesma tela, com motivo estruturado por tenant, save sem atividades para `Sem producao` e suporte correspondente no cadastro em massa.
+- [x] Restringir `Motivo sem producao` para ficar ativo apenas quando `Tipo da medicao = Sem producao`, limpando no front fora desse tipo e validando na API para bloquear envio em `Com producao`.
 - [x] Ajustar a Medicao para tratar a `taxa` como valor unico por ordem, reaplicando e recalculando todas as atividades ao editar o cabecalho.
 - [x] Ajustar a UX da edicao da Medicao para ocultar `Cadastro em massa`, exibir `Taxa aplicada` na grade e oferecer acao explicita de `Recalcular totais`.
 - [x] Incluir nos filtros da lista da Medicao os campos `Tipo` e `Motivo sem producao`, alinhando frontend e `/api/medicao` com a paginacao server-side.

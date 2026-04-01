@@ -810,6 +810,7 @@ export function LocationPageView() {
       return;
     }
 
+    const selectedProjectId = selectedProject.id;
     const normalizedIntegers = normalizeLocationIntegerFields();
     if (!validateLocationBeforeSave()) {
       return;
@@ -853,12 +854,12 @@ export function LocationPageView() {
     setBusy("notes");
     setFeedback(null);
     try {
-      await requestLocation(
+      const data = await requestLocation(
         "/api/locacao",
         {
           method: "PUT",
           body: JSON.stringify({
-            projectId: selectedProject.id,
+            projectId: selectedProjectId,
             notes,
             questionnaireAnswers,
             risks: riskDraft.map((item) => ({ id: item.id, isActive: item.isActive })),
@@ -868,6 +869,21 @@ export function LocationPageView() {
         "Locacao atualizada com sucesso.",
         "page",
       );
+      const updatedAt = data?.plan?.updatedAt ?? null;
+      setOverviewItems((current) =>
+        current.map((item) =>
+          item.id === selectedProjectId
+            ? {
+                ...item,
+                hasLocacao: true,
+                status: item.isActive ? "LOCADO" : "INATIVO",
+                updatedAt: updatedAt ?? item.updatedAt ?? null,
+                recordedAt: updatedAt ?? item.recordedAt ?? null,
+              }
+            : item,
+        ),
+      );
+      setState(null);
       scrollDashboardContentToTop();
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao salvar locacao.", scope: "location" });

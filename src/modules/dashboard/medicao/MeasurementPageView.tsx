@@ -1908,7 +1908,7 @@ export function MeasurementPageView() {
         measurementDate: order.measurementDate,
         manualRate: String(order.manualRate),
         measurementKind: order.measurementKind,
-        noProductionReasonId: order.noProductionReasonId ?? "",
+        noProductionReasonId: order.measurementKind === "SEM_PRODUCAO" ? (order.noProductionReasonId ?? "") : "",
         notes: order.notes,
         activitySearch: "",
         activityQuantity: "1",
@@ -2449,6 +2449,7 @@ export function MeasurementPageView() {
             <select
               value={form.noProductionReasonId}
               onChange={(event) => setForm((current) => ({ ...current, noProductionReasonId: event.target.value }))}
+              disabled={form.measurementKind !== "SEM_PRODUCAO"}
             >
               <option value="">Selecione</option>
               {noProductionReasons.map((reason) => <option key={reason.id} value={reason.id}>{reason.name}</option>)}

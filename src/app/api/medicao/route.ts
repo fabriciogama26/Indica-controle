@@ -832,6 +832,10 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
   const items = normalizeMeasurementItems(payload?.items);
 
   if (measurementKind === "COM_PRODUCAO") {
+    if (noProductionReasonId) {
+      return NextResponse.json({ message: "Motivo sem producao so pode ser informado para tipo Sem producao." }, { status: 400 });
+    }
+
     if (voicePoint === null || manualRate === null) {
       return NextResponse.json({ message: "Para medicao com producao, pontos e taxa manual sao obrigatorios." }, { status: 400 });
     }
@@ -871,7 +875,7 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     p_manual_rate: manualRate ?? 1,
     p_notes: notes,
     p_measurement_kind: measurementKind,
-    p_no_production_reason_id: noProductionReasonId,
+    p_no_production_reason_id: measurementKind === "SEM_PRODUCAO" ? noProductionReasonId : null,
     p_items: items,
     p_expected_updated_at: expectedUpdatedAt,
   });

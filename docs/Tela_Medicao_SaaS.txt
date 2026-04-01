@@ -44,7 +44,7 @@ Cadastro
   - Equipe
   - Data execucao
   - Tipo da medicao (`Com producao` ou `Sem producao`)
-  - Motivo sem producao (sempre visivel; obrigatorio apenas em `Sem producao`)
+  - Motivo sem producao (visivel no formulario, mas habilitado apenas em `Sem producao`)
   - Encarregado (somente leitura da equipe)
   - Observacoes
 - Itens da ordem:
@@ -59,6 +59,7 @@ Cadastro
   - Toda ordem exige `Tipo da medicao`.
   - `Com producao` exige ao menos uma atividade valida na ordem.
   - `Sem producao` exige `Motivo sem producao` e salva a ordem sem itens.
+  - `Motivo sem producao` nao pode ser informado em ordens `Com producao` (regra reforcada na API).
   - `Sem producao` nao permite atividades na ordem e registra total `0`.
   - O motivo de `Sem producao` vem do catalogo `measurement_no_production_reasons` segregado por tenant.
   - A Programacao deixa de ser obrigatoria para cadastro da medicao.
