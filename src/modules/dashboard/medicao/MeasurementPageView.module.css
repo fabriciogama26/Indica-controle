@@ -161,7 +161,7 @@
 .inlineForm {
   display: grid;
   gap: 12px;
-  grid-template-columns: 2fr 0.65fr 0.65fr auto;
+  grid-template-columns: 2fr repeat(4, 0.65fr) auto;
   align-items: end;
 }
 
@@ -178,7 +178,7 @@
 
 .table {
   width: 100%;
-  min-width: 1020px;
+  min-width: 1220px;
   border-collapse: collapse;
 }
 
