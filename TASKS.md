@@ -132,6 +132,7 @@
 - [x] Validar a aba principal da `Locacao` com radios obrigatorios, campos numericos iniciando em `0`, bloqueio de negativos e feedback local no `Salvar locacao`.
 - [x] Fazer o `Salvar locacao` retornar ao topo do container principal apos sucesso para recolocar as abas em evidência.
 - [x] Ajustar feedback de sucesso de `Salvar locacao` para aparecer no topo da tela, mantendo erros de validacao no bloco local da aba.
+- [x] Ajustar a tela de `Locacao` para voltar automaticamente aos cards `Filtros` e `Lista de Locacoes` apos `Salvar locacao` com sucesso.
 - [x] Bloquear o salvar da `Locacao` quando todas as equipes estiverem zeradas ou quando `ETAPAS PREVISTAS` estiver em `0`.
 - [x] Centralizar no banco via RPC as regras de bloqueio da `Locacao`, `Materiais previstos` e `Atividades previstas`.
 - [x] Endurecer as RPCs de `Locacao` e dos previstos de `Projetos` com controle de concorrencia por `updated_at`, limites maximos e observacao obrigatoria quando houver revisao/desligamento.
