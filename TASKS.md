@@ -283,6 +283,7 @@
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
 - [x] Paginar a `Lista de Ordens de Medicao` com `page`, `pageSize` e `total` no backend, navegacao `Anterior/Proxima` na tela e exportacao preservando o resultado filtrado completo.
 - [x] Ampliar a Medicao para suportar `Com producao` e `Sem producao` na mesma tela, com motivo estruturado por tenant, save sem atividades para `Sem producao` e suporte correspondente no cadastro em massa.
+- [x] Restringir `Motivo sem producao` para ficar ativo apenas quando `Tipo da medicao = Sem producao`, limpando no front fora desse tipo e validando na API para bloquear envio em `Com producao`.
 - [x] Ajustar a Medicao para tratar a `taxa` como valor unico por ordem, reaplicando e recalculando todas as atividades ao editar o cabecalho.
 - [x] Ajustar a UX da edicao da Medicao para ocultar `Cadastro em massa`, exibir `Taxa aplicada` na grade e oferecer acao explicita de `Recalcular totais`.
 - [x] Incluir nos filtros da lista da Medicao os campos `Tipo` e `Motivo sem producao`, alinhando frontend e `/api/medicao` com a paginacao server-side.
