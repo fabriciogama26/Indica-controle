@@ -47,6 +47,8 @@ type MeasurementOrderItemRow = {
   activity_description: string;
   activity_unit: string;
   quantity: number | string;
+  mva_quantity: number | string | null;
+  worked_hours: number | string | null;
   voice_point: number | string;
   manual_rate: number | string;
   unit_value: number | string;
@@ -107,6 +109,8 @@ type SaveMeasurementPayload = {
     programmingActivityId?: string;
     projectActivityForecastId?: string;
     quantity?: string | number;
+    mvaQuantity?: string | number;
+    workedHours?: string | number;
     unitValue?: string | number;
     voicePoint?: string | number;
     manualRate?: string | number;
@@ -250,16 +254,20 @@ function normalizeMeasurementItems(itemsInput: SaveMeasurementPayload["items"] |
       programmingActivityId: normalizeUuid(item.programmingActivityId),
       projectActivityForecastId: normalizeUuid(item.projectActivityForecastId),
       quantity: normalizePositiveNumber(item.quantity),
+      mvaQuantity: normalizePositiveNumber(item.mvaQuantity),
+      workedHours: normalizePositiveNumber(item.workedHours),
       unitValue: normalizeOptionalNonNegativeNumber(item.unitValue),
       voicePoint: normalizeOptionalNonNegativeNumber(item.voicePoint),
       observation: normalizeText(item.observation) || null,
     }))
-    .filter((item) => item.activityId && item.quantity !== null)
+    .filter((item) => item.activityId && (item.quantity !== null || (item.mvaQuantity !== null && item.workedHours !== null)))
     .map((item) => ({
       activityId: item.activityId as string,
       programmingActivityId: item.programmingActivityId,
       projectActivityForecastId: item.projectActivityForecastId,
-      quantity: item.quantity as number,
+      quantity: item.quantity,
+      mvaQuantity: item.mvaQuantity,
+      workedHours: item.workedHours,
       unitValue: item.unitValue,
       voicePoint: item.voicePoint,
       observation: item.observation,
@@ -428,7 +436,7 @@ function measurementModuleMigrationHint(message: string | undefined) {
     || normalized.includes("set_project_measurement_order_status")
     || normalized.includes("save_project_measurement_order_batch_partial")
   ) {
-    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql, 123_support_measurement_without_production.sql, 124_add_measurement_reopen_status_action.sql, 125_require_closed_before_measurement_cancel.sql e 126_allow_measurement_cancel_when_open.sql foram aplicadas.";
+    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql, 123_support_measurement_without_production.sql, 124_add_measurement_reopen_status_action.sql, 125_require_closed_before_measurement_cancel.sql, 126_allow_measurement_cancel_when_open.sql e 127_add_mva_hour_composed_quantity_to_measurement_items.sql foram aplicadas.";
   }
   return "";
 }
@@ -470,7 +478,7 @@ async function fetchMeasurementOrderDetail(params: {
 
   const { data: items } = await params.supabase
     .from("project_measurement_order_items")
-    .select("id, measurement_order_id, service_activity_id, programming_activity_id, project_activity_forecast_id, activity_code, activity_description, activity_unit, quantity, voice_point, manual_rate, unit_value, total_value, observation, is_active, updated_at")
+    .select("id, measurement_order_id, service_activity_id, programming_activity_id, project_activity_forecast_id, activity_code, activity_description, activity_unit, quantity, mva_quantity, worked_hours, voice_point, manual_rate, unit_value, total_value, observation, is_active, updated_at")
     .eq("tenant_id", params.tenantId)
     .eq("measurement_order_id", params.orderId)
     .eq("is_active", true)
@@ -493,6 +501,8 @@ async function fetchMeasurementOrderDetail(params: {
     description: normalizeText(item.activity_description),
     unit: normalizeText(item.activity_unit),
     quantity: Number(item.quantity ?? 0),
+    mvaQuantity: item.mva_quantity === null || item.mva_quantity === undefined ? null : Number(item.mva_quantity),
+    workedHours: item.worked_hours === null || item.worked_hours === undefined ? null : Number(item.worked_hours),
     voicePoint: Number(item.voice_point ?? 0),
     manualRate: Number(item.manual_rate ?? 0),
     unitValue: Number(item.unit_value ?? 0),

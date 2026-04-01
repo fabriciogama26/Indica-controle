@@ -83,6 +83,8 @@ type MeasurementRow = {
   description: string;
   unit: string;
   quantity: string;
+  mvaQuantity: string;
+  workedHours: string;
   voicePoint: string;
   unitValue: string;
   observation: string;
@@ -130,6 +132,8 @@ type OrderDetailItem = {
   description: string;
   unit: string;
   quantity: number;
+  mvaQuantity: number | null;
+  workedHours: number | null;
   voicePoint: number;
   manualRate: number;
   unitValue: number;
@@ -199,6 +203,10 @@ type ParsedMassImportRow = {
   voiceRaw: string;
   quantity: number | null;
   quantityRaw: string;
+  mvaQuantity: number | null;
+  mvaQuantityRaw: string;
+  workedHours: number | null;
+  workedHoursRaw: string;
   manualRate: number | null;
   manualRateRaw: string;
   measurementKind: MeasurementKind;
@@ -287,6 +295,8 @@ type FormState = {
   notes: string;
   activitySearch: string;
   activityQuantity: string;
+  activityMvaQuantity: string;
+  activityWorkedHours: string;
   items: MeasurementRow[];
 };
 
@@ -348,6 +358,8 @@ function createForm(today: string): FormState {
     notes: "",
     activitySearch: "",
     activityQuantity: "1",
+    activityMvaQuantity: "",
+    activityWorkedHours: "",
     items: [],
   };
 }
@@ -386,6 +398,16 @@ function formatCurrency(value: number) {
 
 function measurementKindLabel(value: MeasurementKind) {
   return value === "SEM_PRODUCAO" ? "Sem producao" : "Com producao";
+}
+
+function isMvaHourUnit(value: string) {
+  const normalized = normalizeSearchText(value).replace(/\s+/g, "");
+  return (
+    normalized.includes("mva*hora")
+    || normalized.includes("mva/hora")
+    || normalized.includes("mvahora")
+    || normalized.includes("mva*h")
+  );
 }
 
 function programmingMatchLabel(status: ProgrammingMatchStatus) {
@@ -554,6 +576,10 @@ function findActivityOption(value: string, options: ActivityCatalogItem[]) {
       || label.includes(normalized)
     );
   }) ?? null;
+}
+
+function findActivitySelectionOption(value: string, options: ActivityCatalogItem[]) {
+  return findActivityOption(value, options) ?? findActivityOptionByImportCode(value, options);
 }
 
 function findProjectOption(value: string, options: ProjectItem[]) {
@@ -800,6 +826,25 @@ export function MeasurementPageView() {
     }
     return Array.from(byId.values());
   }, [activityOptions]);
+  const selectedActivityOption = useMemo(
+    () => findActivitySelectionOption(form.activitySearch, resolvedActivityOptions),
+    [form.activitySearch, resolvedActivityOptions],
+  );
+  const selectedActivityIsMvaHour = Boolean(selectedActivityOption && isMvaHourUnit(selectedActivityOption.unit));
+
+  useEffect(() => {
+    if (form.measurementKind === "SEM_PRODUCAO") return;
+    setForm((current) => {
+      if (selectedActivityIsMvaHour) {
+        if (current.activityQuantity === "") return current;
+        return { ...current, activityQuantity: "" };
+      }
+      if (!selectedActivityIsMvaHour && !current.activityQuantity.trim()) {
+        return { ...current, activityQuantity: "1" };
+      }
+      return current;
+    });
+  }, [selectedActivityIsMvaHour, form.measurementKind]);
 
   const totalAmount = useMemo(() => {
     if (form.measurementKind === "SEM_PRODUCAO") {
@@ -1063,6 +1108,8 @@ export function MeasurementPageView() {
       manualRate: nextKind === "SEM_PRODUCAO" ? "1" : current.manualRate,
       activitySearch: "",
       activityQuantity: "1",
+      activityMvaQuantity: "",
+      activityWorkedHours: "",
       items: nextKind === "SEM_PRODUCAO" ? [] : current.items,
     }));
   }
@@ -1079,10 +1126,23 @@ export function MeasurementPageView() {
     setFeedback({ type: "success", message: "Totais recalculados com a taxa unica da medicao." });
   }
 
-  function updateRow(rowId: string, field: "quantity" | "observation", value: string) {
+  function updateRow(rowId: string, field: "quantity" | "mvaQuantity" | "workedHours" | "observation", value: string) {
     setForm((current) => ({
       ...current,
-      items: current.items.map((item) => (item.rowId === rowId ? { ...item, [field]: value } : item)),
+      items: current.items.map((item) => {
+        if (item.rowId !== rowId) return item;
+        const next = { ...item, [field]: value };
+        if (isMvaHourUnit(next.unit) || next.mvaQuantity || next.workedHours) {
+          const mvaQuantity = parsePositiveNumber(next.mvaQuantity);
+          const workedHours = parsePositiveNumber(next.workedHours);
+          if (mvaQuantity && workedHours) {
+            next.quantity = String(Number((mvaQuantity * workedHours).toFixed(6)));
+          } else if (field === "mvaQuantity" || field === "workedHours") {
+            next.quantity = "";
+          }
+        }
+        return next;
+      }),
     }));
   }
 
@@ -1142,9 +1202,19 @@ export function MeasurementPageView() {
       return;
     }
 
-    const quantity = parsePositiveNumber(form.activityQuantity);
+    const isCompositeActivity = isMvaHourUnit(option.unit);
+    const mvaQuantity = parsePositiveNumber(form.activityMvaQuantity);
+    const workedHours = parsePositiveNumber(form.activityWorkedHours);
+    const quantity = isCompositeActivity
+      ? ((mvaQuantity && workedHours) ? Number((mvaQuantity * workedHours).toFixed(6)) : null)
+      : parsePositiveNumber(form.activityQuantity);
     if (!quantity) {
-      setFeedback({ type: "error", message: "Informe quantidade valida para incluir a atividade." });
+      setFeedback({
+        type: "error",
+        message: isCompositeActivity
+          ? "Para unidade MVA*hora informe Potencia (MVA) e Horas validas."
+          : "Informe quantidade valida para incluir a atividade.",
+      });
       return;
     }
 
@@ -1152,6 +1222,8 @@ export function MeasurementPageView() {
       ...current,
       activitySearch: "",
       activityQuantity: "1",
+      activityMvaQuantity: "",
+      activityWorkedHours: "",
       items: [
         ...current.items,
         {
@@ -1163,6 +1235,8 @@ export function MeasurementPageView() {
           description: option.description,
           unit: option.unit,
           quantity: String(quantity),
+          mvaQuantity: isCompositeActivity ? String(mvaQuantity) : "",
+          workedHours: isCompositeActivity ? String(workedHours) : "",
           voicePoint: String(option.voicePoint ?? 1),
           unitValue: String(option.unitValue ?? 0),
           observation: "",
@@ -1173,7 +1247,7 @@ export function MeasurementPageView() {
   }
 
   function downloadMassTemplate() {
-    const model = "\uFEFFprojeto;data;equipe;tipo_medicao;motivo_sem_producao;voz;quantidade;taxa\nA0123456789;2026-03-25;MK-01;COM_PRODUCAO;;TH0108;1;1,00\nA0123456790;2026-03-25;MK-02;SEM_PRODUCAO;Apoio;;;\n";
+    const model = "\uFEFFprojeto;data;equipe;tipo_medicao;motivo_sem_producao;voz;quantidade;mva;horas;taxa\nA0123456789;2026-03-25;MK-01;COM_PRODUCAO;;TH0108;1;;;1,00\nA0123456789;2026-03-25;MK-01;COM_PRODUCAO;;COD_MVAH;;15;2;1,00\nA0123456790;2026-03-25;MK-02;SEM_PRODUCAO;Apoio;;;;;\n";
     const blob = new Blob([model], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -1251,6 +1325,8 @@ export function MeasurementPageView() {
       const noProductionReasonIndex = headerMap.get("motivo_sem_producao") ?? headerMap.get("motivosemproducao") ?? headerMap.get("motivo") ?? headerMap.get("no_production_reason");
       const voiceIndex = headerMap.get("voz") ?? headerMap.get("voice") ?? headerMap.get("codigo") ?? headerMap.get("code");
       const quantityIndex = headerMap.get("quantidade") ?? headerMap.get("qtd") ?? headerMap.get("qty");
+      const mvaQuantityIndex = headerMap.get("mva") ?? headerMap.get("potencia_mva") ?? headerMap.get("potencia");
+      const workedHoursIndex = headerMap.get("horas") ?? headerMap.get("hora") ?? headerMap.get("worked_hours") ?? headerMap.get("hours");
       const manualRateIndex = headerMap.get("taxa") ?? headerMap.get("taxa manual") ?? headerMap.get("manual rate") ?? headerMap.get("manualrate") ?? headerMap.get("rate");
 
       const missingColumns: string[] = [];
@@ -1260,9 +1336,8 @@ export function MeasurementPageView() {
       if (measurementKindIndex === undefined) missingColumns.push("tipo_medicao");
       if (noProductionReasonIndex === undefined) missingColumns.push("motivo_sem_producao");
       if (voiceIndex === undefined) missingColumns.push("voz");
-      if (quantityIndex === undefined) missingColumns.push("quantidade");
       if (manualRateIndex === undefined) missingColumns.push("taxa");
-      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || measurementKindIndex === undefined || noProductionReasonIndex === undefined || voiceIndex === undefined || quantityIndex === undefined || manualRateIndex === undefined) {
+      if (projectIndex === undefined || dateIndex === undefined || teamIndex === undefined || measurementKindIndex === undefined || noProductionReasonIndex === undefined || voiceIndex === undefined || manualRateIndex === undefined) {
         for (const column of missingColumns) {
           importIssues.push({
             rowNumber: 1,
@@ -1275,12 +1350,12 @@ export function MeasurementPageView() {
         setMassImportErrorReport(report);
         setMassImportResult({
           status: "error",
-          message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa.",
+          message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,mva,horas,taxa.",
           successCount: 0,
           errorRows: report?.errorRows ?? 0,
           alreadyRegisteredRows: 0,
         });
-        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa." });
+        setFeedback({ type: "error", message: "Modelo invalido. Use colunas: projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,mva,horas,taxa." });
         return;
       }
 
@@ -1291,11 +1366,15 @@ export function MeasurementPageView() {
         const measurementKindRaw = String(row[measurementKindIndex] ?? "").trim();
         const noProductionReasonRaw = String(row[noProductionReasonIndex] ?? "").trim();
         const voiceRaw = String(row[voiceIndex] ?? "").trim();
-        const quantityRaw = String(row[quantityIndex] ?? "").trim();
+        const quantityRaw = quantityIndex === undefined ? "" : String(row[quantityIndex] ?? "").trim();
+        const mvaQuantityRaw = mvaQuantityIndex === undefined ? "" : String(row[mvaQuantityIndex] ?? "").trim();
+        const workedHoursRaw = workedHoursIndex === undefined ? "" : String(row[workedHoursIndex] ?? "").trim();
         const manualRateRaw = String(row[manualRateIndex] ?? "").trim();
         const executionDate = parseImportDate(dateRaw);
         const measurementKind = normalizeMeasurementKindInput(measurementKindRaw);
         const quantity = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(quantityRaw);
+        const mvaQuantity = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(mvaQuantityRaw);
+        const workedHours = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(workedHoursRaw);
         const manualRate = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(manualRateRaw);
         const matchedNoProductionReason = measurementKind === "SEM_PRODUCAO"
           ? findNoProductionReasonOption(noProductionReasonRaw, noProductionReasons)
@@ -1317,6 +1396,10 @@ export function MeasurementPageView() {
           voiceRaw,
           quantity,
           quantityRaw,
+          mvaQuantity,
+          mvaQuantityRaw,
+          workedHours,
+          workedHoursRaw,
           manualRate,
           manualRateRaw,
         };
@@ -1349,10 +1432,6 @@ export function MeasurementPageView() {
         } else {
           if (!row.voiceCode) {
             importIssues.push({ rowNumber: row.rowNumber, column: "voz", value: row.voiceRaw, error: "Codigo da atividade obrigatorio." });
-            hasError = true;
-          }
-          if (!row.quantity) {
-            importIssues.push({ rowNumber: row.rowNumber, column: "quantidade", value: row.quantityRaw, error: "Quantidade invalida. Informe numero maior que zero." });
             hasError = true;
           }
           if (!row.manualRate) {
@@ -1428,7 +1507,7 @@ export function MeasurementPageView() {
           measurementKind: MeasurementKind;
           noProductionReasonId: string | null;
         };
-        items: Map<string, { activity: ActivityCatalogItem; quantity: number }>;
+        items: Map<string, { activity: ActivityCatalogItem; quantity: number; mvaQuantity: number | null; workedHours: number | null }>;
         rowNumbers: Set<number>;
       }>();
 
@@ -1480,6 +1559,43 @@ export function MeasurementPageView() {
           continue;
         }
 
+        let resolvedQuantity = row.quantity;
+        const resolvedMvaQuantity = row.mvaQuantity;
+        const resolvedWorkedHours = row.workedHours;
+        if (row.measurementKind === "COM_PRODUCAO" && activity) {
+          const requiresMvaHour = isMvaHourUnit(activity.unit);
+          const hasOnlyOneCompositeField = (row.mvaQuantity && !row.workedHours) || (!row.mvaQuantity && row.workedHours);
+          if (hasOnlyOneCompositeField) {
+            importIssues.push({
+              rowNumber: row.rowNumber,
+              column: row.mvaQuantity ? "horas" : "mva",
+              value: row.mvaQuantity ? row.workedHoursRaw : row.mvaQuantityRaw,
+              error: "Informe MVA e Horas juntos para atividade composta.",
+            });
+            continue;
+          }
+
+          if (row.mvaQuantity && row.workedHours) {
+            resolvedQuantity = Number((row.mvaQuantity * row.workedHours).toFixed(6));
+          } else if (requiresMvaHour) {
+            importIssues.push({
+              rowNumber: row.rowNumber,
+              column: "mva/horas",
+              value: `${row.mvaQuantityRaw} | ${row.workedHoursRaw}`,
+              error: "Para unidade MVA*hora informe MVA e Horas. Quantidade nao e permitida.",
+            });
+            continue;
+          } else if (!row.quantity) {
+            importIssues.push({
+              rowNumber: row.rowNumber,
+              column: "quantidade",
+              value: row.quantityRaw,
+              error: "Quantidade invalida. Informe numero maior que zero.",
+            });
+            continue;
+          }
+        }
+
         const projectId = selectedSchedule?.projectId ?? matchedProject.id;
         const teamId = selectedSchedule?.teamId ?? matchedTeam.id;
         const executionDate = selectedSchedule?.date ?? (row.executionDate as string);
@@ -1528,11 +1644,18 @@ export function MeasurementPageView() {
         }
         if (row.measurementKind === "COM_PRODUCAO" && activity) {
           const current = group.items.get(activity.id);
-          const quantity = row.quantity as number;
+          const quantity = resolvedQuantity as number;
           if (current) {
             current.quantity = Number((current.quantity + quantity).toFixed(6));
+            current.mvaQuantity = null;
+            current.workedHours = null;
           } else {
-            group.items.set(activity.id, { activity, quantity });
+            group.items.set(activity.id, {
+              activity,
+              quantity,
+              mvaQuantity: resolvedMvaQuantity,
+              workedHours: resolvedWorkedHours,
+            });
           }
         }
         group.rowNumbers.add(row.rowNumber);
@@ -1569,6 +1692,8 @@ export function MeasurementPageView() {
         items: group.context.measurementKind === "SEM_PRODUCAO" ? [] : Array.from(group.items.values()).map((entry) => ({
           activityId: entry.activity.id,
           quantity: entry.quantity,
+          mvaQuantity: entry.mvaQuantity,
+          workedHours: entry.workedHours,
           voicePoint: entry.activity.voicePoint,
           unitValue: entry.activity.unitValue,
         })),
@@ -1787,6 +1912,8 @@ export function MeasurementPageView() {
         notes: order.notes,
         activitySearch: "",
         activityQuantity: "1",
+        activityMvaQuantity: "",
+        activityWorkedHours: "",
         items: order.items.map((item) => ({
           rowId: createRowId(),
           activityId: item.activityId,
@@ -1796,6 +1923,8 @@ export function MeasurementPageView() {
           description: item.description,
           unit: item.unit,
           quantity: String(item.quantity),
+          mvaQuantity: item.mvaQuantity === null ? "" : String(item.mvaQuantity),
+          workedHours: item.workedHours === null ? "" : String(item.workedHours),
           voicePoint: String(item.voicePoint),
           unitValue: String(item.unitValue),
           observation: item.observation,
@@ -1836,16 +1965,48 @@ export function MeasurementPageView() {
       return;
     }
 
+    const invalidCompositeItem = form.items.find((item) => {
+      const mvaQuantity = parsePositiveNumber(item.mvaQuantity);
+      const workedHours = parsePositiveNumber(item.workedHours);
+      const hasOnlyOneCompositeField = (mvaQuantity && !workedHours) || (!mvaQuantity && workedHours);
+      return hasOnlyOneCompositeField;
+    });
+    if (invalidCompositeItem) {
+      setFeedback({ type: "error", message: `Atividade ${invalidCompositeItem.code} exige MVA e Horas juntos quando preenchidos.` });
+      return;
+    }
+
+    const missingCompositeValuesItem = form.items.find((item) => {
+      if (!isMvaHourUnit(item.unit)) return false;
+      const mvaQuantity = parsePositiveNumber(item.mvaQuantity);
+      const workedHours = parsePositiveNumber(item.workedHours);
+      return !(mvaQuantity && workedHours);
+    });
+    if (missingCompositeValuesItem) {
+      setFeedback({ type: "error", message: `Atividade ${missingCompositeValuesItem.code} com unidade MVA*hora exige MVA e Horas. Quantidade nao e permitida.` });
+      return;
+    }
+
     const items = form.items
-      .map((item) => ({
-        activityId: item.activityId,
-        programmingActivityId: item.programmingActivityId,
-        projectActivityForecastId: item.projectActivityForecastId,
-        quantity: parsePositiveNumber(item.quantity),
-        voicePoint: parsePositiveNumber(item.voicePoint),
-        unitValue: parseNonNegativeNumber(item.unitValue),
-        observation: item.observation,
-      }))
+      .map((item) => {
+        const mvaQuantity = parsePositiveNumber(item.mvaQuantity);
+        const workedHours = parsePositiveNumber(item.workedHours);
+        const derivedQuantity = (mvaQuantity && workedHours)
+          ? Number((mvaQuantity * workedHours).toFixed(6))
+          : null;
+        const isComposite = isMvaHourUnit(item.unit);
+        return {
+          activityId: item.activityId,
+          programmingActivityId: item.programmingActivityId,
+          projectActivityForecastId: item.projectActivityForecastId,
+          quantity: isComposite ? derivedQuantity : (derivedQuantity ?? parsePositiveNumber(item.quantity)),
+          mvaQuantity: mvaQuantity ?? null,
+          workedHours: workedHours ?? null,
+          voicePoint: parsePositiveNumber(item.voicePoint),
+          unitValue: parseNonNegativeNumber(item.unitValue),
+          observation: item.observation,
+        };
+      })
       .filter((item) => item.activityId && item.quantity !== null && item.voicePoint !== null);
 
     if (form.measurementKind === "COM_PRODUCAO" && (!items.length || items.length !== form.items.length)) {
@@ -2140,6 +2301,8 @@ export function MeasurementPageView() {
         "Descricao atividade",
         "Unidade",
         "Pontos",
+        "MVA",
+        "Horas",
         "Quantidade",
         "Taxa manual",
         "Valor unitario",
@@ -2168,6 +2331,8 @@ export function MeasurementPageView() {
           description: "",
           unit: "",
           quantity: 0,
+          mvaQuantity: null,
+          workedHours: null,
           voicePoint: 0,
           manualRate: detail.manualRate,
           unitValue: 0,
@@ -2193,6 +2358,8 @@ export function MeasurementPageView() {
             item.description || "-",
             item.unit || "-",
             item.voicePoint ? item.voicePoint.toLocaleString("pt-BR") : "0",
+            item.mvaQuantity ? item.mvaQuantity.toLocaleString("pt-BR") : "-",
+            item.workedHours ? item.workedHours.toLocaleString("pt-BR") : "-",
             item.quantity ? item.quantity.toLocaleString("pt-BR") : "0",
             itemRate.toLocaleString("pt-BR"),
             formatCurrency(item.unitValue),
@@ -2301,9 +2468,20 @@ export function MeasurementPageView() {
             </span>
           </div>
           <div className={styles.inlineForm}>
-            <label className={styles.field}><span>Atividade</span><input value={form.activitySearch} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activitySearch: event.target.value }))} list="medicao-activity-list" /></label>
+            <label className={styles.field}><span>Atividade</span><input value={form.activitySearch} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => {
+              const nextSearch = event.target.value;
+              const selected = findActivitySelectionOption(nextSearch, resolvedActivityOptions);
+              const nextIsMvaHour = Boolean(selected && isMvaHourUnit(selected.unit));
+              setForm((current) => ({
+                ...current,
+                activitySearch: nextSearch,
+                activityQuantity: nextIsMvaHour ? "" : (current.activityQuantity || "1"),
+              }));
+            }} list="medicao-activity-list" /></label>
             <label className={`${styles.field} ${styles.compactField}`}><span>Taxa unica da medicao {form.measurementKind === "COM_PRODUCAO" ? <span className="requiredMark">*</span> : null}</span><input type="number" min="0.01" step="0.01" value={form.manualRate} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, manualRate: event.target.value }))} /></label>
-            <label className={`${styles.field} ${styles.compactField}`}><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.activityQuantity} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityQuantity: event.target.value }))} /></label>
+            <label className={`${styles.field} ${styles.compactField}`}><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.activityQuantity} placeholder={selectedActivityIsMvaHour ? "Calculada por MVA x Horas" : ""} disabled={form.measurementKind === "SEM_PRODUCAO" || selectedActivityIsMvaHour} onChange={(event) => setForm((current) => ({ ...current, activityQuantity: event.target.value }))} /></label>
+            <label className={`${styles.field} ${styles.compactField}`}><span>Potencia (MVA)</span><input type="number" min="0.01" step="0.01" value={form.activityMvaQuantity} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityMvaQuantity: event.target.value }))} /></label>
+            <label className={`${styles.field} ${styles.compactField}`}><span>Horas</span><input type="number" min="0.01" step="0.01" value={form.activityWorkedHours} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityWorkedHours: event.target.value }))} /></label>
             <div className={styles.actions}>
               <button type="button" className={styles.secondaryButton} onClick={() => void addActivity()} disabled={form.measurementKind === "SEM_PRODUCAO"}>Adicionar</button>
               {isEditing && form.measurementKind === "COM_PRODUCAO" && form.items.length ? (
@@ -2316,27 +2494,40 @@ export function MeasurementPageView() {
 
           <div className={styles.tableWrapper}>
             <table className={styles.table}>
-              <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Taxa aplicada</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th><th>Acoes</th></tr></thead>
+              <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Taxa aplicada</th><th>MVA</th><th>Horas</th><th>Quantidade</th><th>Valor unitario</th><th>Total</th><th>Observacao</th><th>Acoes</th></tr></thead>
               <tbody>
                 {form.items.length ? form.items.map((item) => {
                   const voicePoint = parsePositiveNumber(item.voicePoint) ?? 1;
                   const rate = parsePositiveNumber(form.manualRate) ?? 1;
                   const qty = parsePositiveNumber(item.quantity) ?? 0;
                   const unitValue = parseNonNegativeNumber(item.unitValue) ?? 0;
+                  const isComposite = isMvaHourUnit(item.unit);
+                  const mvaQuantity = parsePositiveNumber(item.mvaQuantity);
+                  const workedHours = parsePositiveNumber(item.workedHours);
                   const rowTotal = voicePoint * rate * qty * unitValue;
                   return (
                     <tr key={item.rowId}>
                       <td>{item.code}</td><td>{item.description}</td><td>{item.unit}</td>
                       <td><input className={styles.tableInput} value={item.voicePoint} readOnly /></td>
                       <td><input className={styles.tableInput} value={rate.toLocaleString("pt-BR")} readOnly /></td>
-                      <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={item.quantity} onChange={(event) => updateRow(item.rowId, "quantity", event.target.value)} /></td>
+                      <td>
+                        {isComposite ? (
+                          <input className={styles.tableInput} type="number" min="0.01" step="0.01" value={item.mvaQuantity} onChange={(event) => updateRow(item.rowId, "mvaQuantity", event.target.value)} />
+                        ) : "-"}
+                      </td>
+                      <td>
+                        {isComposite ? (
+                          <input className={styles.tableInput} type="number" min="0.01" step="0.01" value={item.workedHours} onChange={(event) => updateRow(item.rowId, "workedHours", event.target.value)} />
+                        ) : "-"}
+                      </td>
+                      <td><input className={styles.tableInput} type="number" min="0.01" step="0.01" value={item.quantity} readOnly={isComposite || Boolean(mvaQuantity && workedHours)} onChange={(event) => updateRow(item.rowId, "quantity", event.target.value)} /></td>
                       <td><input className={styles.tableInput} type="number" value={item.unitValue} readOnly /></td>
                       <td>{formatCurrency(rowTotal)}</td>
                       <td><input className={styles.tableInput} value={item.observation} onChange={(event) => updateRow(item.rowId, "observation", event.target.value)} /></td>
                       <td><button type="button" className={styles.ghostButton} onClick={() => removeRow(item.rowId)}>Remover</button></td>
                     </tr>
                   );
-                }) : <tr><td colSpan={10} className={styles.emptyRow}>{form.measurementKind === "SEM_PRODUCAO" ? "Ordem sem producao: nenhuma atividade deve ser adicionada." : "Nenhuma atividade adicionada."}</td></tr>}
+                }) : <tr><td colSpan={12} className={styles.emptyRow}>{form.measurementKind === "SEM_PRODUCAO" ? "Ordem sem producao: nenhuma atividade deve ser adicionada." : "Nenhuma atividade adicionada."}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -2646,7 +2837,7 @@ export function MeasurementPageView() {
 
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
-                  <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>Quantidade</th><th>Taxa</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
+                  <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>MVA</th><th>Horas</th><th>Quantidade</th><th>Taxa</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
                   <tbody>
                     {detailOrder.items.length ? detailOrder.items.map((item) => (
                       <tr key={item.id}>
@@ -2654,13 +2845,15 @@ export function MeasurementPageView() {
                         <td>{item.description}</td>
                         <td>{item.unit}</td>
                         <td>{item.voicePoint.toLocaleString("pt-BR")}</td>
+                        <td>{item.mvaQuantity ? item.mvaQuantity.toLocaleString("pt-BR") : "-"}</td>
+                        <td>{item.workedHours ? item.workedHours.toLocaleString("pt-BR") : "-"}</td>
                         <td>{item.quantity.toLocaleString("pt-BR")}</td>
                         <td>{item.manualRate.toLocaleString("pt-BR")}</td>
                         <td>{formatCurrency(item.unitValue)}</td>
                         <td>{formatCurrency(item.totalValue)}</td>
                         <td>{item.observation || "-"}</td>
                       </tr>
-                    )) : <tr><td colSpan={9} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
+                    )) : <tr><td colSpan={11} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -2808,7 +3001,7 @@ export function MeasurementPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas obrigatorias: projeto, data, equipe, tipo_medicao, motivo_sem_producao, voz, quantidade, taxa.</p>
+                    <p>Colunas obrigatorias: projeto, data, equipe, tipo_medicao, motivo_sem_producao, voz, taxa. Para atividade MVA*hora, informe mva e horas.</p>
                   </div>
                 </div>
               </section>

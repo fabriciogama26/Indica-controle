@@ -8,6 +8,7 @@ Visao geral
 - O usuario registra as atividades executadas e calcula o total da medicao por item.
 - Formula oficial da medicao por item:
   - `Pontos (voice_point) x Quantidade x Taxa manual x Valor unitario`
+  - Para unidade composta `MVA*hora`: `Quantidade = MVA x Horas`
 
 Arquitetura
 -----------
@@ -28,6 +29,11 @@ Arquitetura
   - `supabase/migrations/117_allow_measurement_context_edit_and_history_details.sql`
   - `supabase/migrations/119_create_measurement_batch_import_partial_rpc.sql`
   - `supabase/migrations/120_unify_measurement_with_service_activities.sql`
+  - `supabase/migrations/123_support_measurement_without_production.sql`
+  - `supabase/migrations/124_add_measurement_reopen_status_action.sql`
+  - `supabase/migrations/125_require_closed_before_measurement_cancel.sql`
+  - `supabase/migrations/126_allow_measurement_cancel_when_open.sql`
+  - `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
 
 Cadastro
 --------
@@ -46,6 +52,7 @@ Cadastro
   - Taxa manual (campo no topo do bloco `Atividades da Ordem`, ao lado de Quantidade)
   - Pontos (`voice_point`) por atividade, vindos de `service_activities`
   - Quantidade
+  - Potencia (MVA) e Horas para atividades com unidade `MVA*hora` (o sistema calcula a quantidade pelo produto)
   - Valor unitario (somente leitura na grade)
   - Observacao
 - Regras:
@@ -70,7 +77,7 @@ Cadastro
   - A ordem recalcula os totais no frontend para conferencia.
   - O botao `Salvar ordem` fica no final do bloco `Atividades da Ordem` (fechamento do cadastro apos revisar itens).
   - O botao `Limpar` foi removido do cadastro principal para evitar limpeza acidental ao trocar programacao.
-  - Cadastro em massa por CSV com modelo `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa`.
+  - Cadastro em massa por CSV com modelo `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,mva,horas,taxa`.
   - Cadastro em massa aceita programacoes historicas (nao limita a status `PROGRAMADA/REPROGRAMADA`).
   - No import em massa, a identificacao da programacao e feita por `projeto + equipe + data` com coluna de equipe vinda da propria linha CSV.
   - Quando houver erro no import, a tela gera automaticamente um CSV de retorno com `linha`, `coluna`, `valor` e `erro`.
@@ -79,6 +86,10 @@ Cadastro
   - A coluna `tipo_medicao` do CSV e obrigatoria.
   - A coluna `motivo_sem_producao` e obrigatoria quando `tipo_medicao = SEM_PRODUCAO`.
   - A coluna `taxa` do CSV e obrigatoria apenas para `COM_PRODUCAO`; em `SEM_PRODUCAO` o sistema salva a ordem com taxa tecnica `1`.
+  - Para atividade com unidade `MVA*hora`, o CSV aceita:
+    - `mva + horas` (quantidade calculada automaticamente).
+  - Para unidade `MVA*hora`, `quantidade` direta nao e aceita.
+  - Se apenas um entre `mva` ou `horas` vier preenchido, a linha entra no CSV de erros.
   - Em `SEM_PRODUCAO`, `voz` e `quantidade` podem ficar vazios no CSV.
   - Se o mesmo `Projeto + Equipe + Data de execucao` aparecer no arquivo com taxas diferentes, a linha conflitante entra no CSV de erros e nao e agrupada na mesma ordem.
   - Se o mesmo `Projeto + Equipe + Data de execucao` aparecer no arquivo com `tipo_medicao` ou `motivo_sem_producao` divergente, a linha conflitante entra no CSV de erros.
@@ -161,7 +172,8 @@ Atalhos
   - `GET /api/medicao/activities/catalog` (catalogo de atividades da medicao)
   - `GET /api/medicao/meta` (motivos de sem producao)
 - Modelo cadastro em massa:
-  - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,quantidade,taxa`
+  - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
+  - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
 
 Atualizacao 2026-03
 -------------------
@@ -230,6 +242,7 @@ Atualizacao 2026-03
   - Inclusao de resumo na lista da Medicao com `Ordens (filtro)` e `Somatorio valor total (filtro)` para leitura rapida dos resultados filtrados.
   - Acao de status ampliada com `Abrir`: apos fechar uma ordem, o botao vira `Abrir`, abre modal no padrao do cancelamento e exige motivo minimo para registrar historico de reabertura.
   - Regra de cancelamento ajustada: ordem pode ser cancelada em `ABERTA` ou `FECHADA`, sempre com motivo minimo obrigatorio.
+  - Itens da medicao com suporte a quantidade composta (`MVA*hora`), com persistencia de `mva_quantity` e `worked_hours` no banco.
   - Modal `Detalhes` ajustado para mostrar `Taxa` por item e usar o total salvo no banco (`total_value`) na grade.
   - Import em massa endurecido para aceitar apenas match exato/univoco de codigo da atividade, reduzindo erro de pontos por atividade incorreta.
   - Quando houver ambiguidade no codigo da atividade, a linha passa a falhar no import em vez de usar aproximacao por prefixo.
@@ -266,6 +279,8 @@ Constantes e configuracoes
   - Responsavel por: unificar Medicao em `service_activities`, migrar IDs legados dos itens e restaurar FK para `service_activities`.
 - Caminho: `supabase/migrations/123_support_measurement_without_production.sql`
   - Responsavel por: criar catalogo de motivos de `Sem producao`, ampliar o cabecalho da Medicao com `measurement_kind/no_production_reason` e ajustar as RPCs do save manual e em lote.
+- Caminho: `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
+  - Responsavel por: adicionar `mva_quantity/worked_hours` em `project_measurement_order_items` e ajustar a RPC de save para calcular `quantity` por `MVA x Horas` quando informado.
 - Caminho: `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
   - Responsavel por: permitir que o save da Ordem de Medicao use `programming_id` historico (qualquer status) sem quebrar o fluxo transacional e o historico append.
 - Caminho: `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
