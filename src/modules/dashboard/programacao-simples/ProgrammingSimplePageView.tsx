@@ -788,7 +788,16 @@ function formatHistoryAction(action: string) {
   return action || "-";
 }
 
-function scheduleStatusClassName(status: ProgrammingStatus) {
+function isWorkCompleted(workCompletionStatus: ScheduleItem["workCompletionStatus"] | string | null | undefined) {
+  const normalized = String(workCompletionStatus ?? "").trim().toUpperCase();
+  return normalized === "CONCLUIDO" || normalized === "COMPLETO";
+}
+
+function scheduleCardClassName(status: ProgrammingStatus, workCompletionStatus: ScheduleItem["workCompletionStatus"]) {
+  if (isWorkCompleted(workCompletionStatus)) {
+    return styles.weekCardCompleted;
+  }
+
   if (status === "REPROGRAMADA") {
     return styles.weekCardRescheduled;
   }
@@ -3372,6 +3381,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         <div className={styles.weekLegend}>
           <span className={`${styles.weekLegendItem} ${styles.weekLegendPlanned}`}>Programado</span>
           <span className={`${styles.weekLegendItem} ${styles.weekLegendRescheduled}`}>Reprogramado</span>
+          <span className={`${styles.weekLegendItem} ${styles.weekLegendCompleted}`}>Concluido</span>
           <span className={`${styles.weekLegendItem} ${styles.weekLegendPostponed}`}>Adiado</span>
           <span className={`${styles.weekLegendItem} ${styles.weekLegendCancelled}`}>Cancelado</span>
         </div>
@@ -3412,7 +3422,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                           return (
                             <article
                               key={schedule.id}
-                              className={`${styles.weekCard} ${scheduleStatusClassName(displayStatus)}`}
+                              className={`${styles.weekCard} ${scheduleCardClassName(displayStatus, schedule.workCompletionStatus)}`}
                             >
                               <div className={styles.weekCardTop}>
                                 <strong>{sob}</strong>

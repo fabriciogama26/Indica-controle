@@ -199,6 +199,8 @@
 - [x] Destravar cadastro de novos `Tipo de SGD` removendo a unicidade por `tenant_id + export_column` em `programming_sgd_types` e definindo `AREA_LIVRE` como default de `export_column`.
 - [x] Remover o bloqueio de valores fixos em `programming_sgd_types.export_column`, aceitando qualquer valor nao vazio para permitir novos Tipos de SGD.
 - [x] Ajustar cards da visualizacao semanal da Programacao para mostrar `AREA LIVRE` em verde quando o `Tipo de SGD` for `AREA_LIVRE`, substituindo indicadores `SGD` e `PI`.
+- [x] Ajustar a tela `Visualizacao Programacao` para exibir cartao em `verde escuro` quando `Estado Trabalho` estiver `CONCLUIDO` (`Completo`).
+- [x] Incluir a legenda `Completo` no calendario semanal da tela `Visualizacao Programacao`, alinhada ao cartao em verde escuro.
 - [x] Enxugar historico da nova Programacao para exibir somente mudanca de status (em `Adiamento/Cancelamento`) e campos realmente editados (sem cards de cadastro inicial).
 - [x] Endurecer a Programacao Simples contra gravacao parcial e sobrescrita: validacao de reprogramacao antes do save, `PATCH` com `expectedUpdatedAt` obrigatorio e uso exclusivo das RPCs transacionais full.
 - [x] Garantir compatibilidade da API de Programacao quando a migration `085` ainda nao estiver aplicada (fallback de leitura e de RPC em lote).

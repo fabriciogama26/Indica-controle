@@ -381,6 +381,10 @@
   background: #8f4fd8;
 }
 
+.weekLegendCompleted {
+  background: #0f6a35;
+}
+
 .weekLegendCancelled {
   background: #c53d3d;
 }
@@ -475,6 +479,12 @@
 .weekCardRescheduled {
   background: linear-gradient(180deg, #bb8cf2 0%, #8f4fd8 100%);
   color: #f8f1ff;
+}
+
+.weekCardCompleted {
+  background: linear-gradient(180deg, #1f9e53 0%, #0f6a35 100%);
+  color: #eefcf3;
+  border-color: rgba(8, 79, 38, 0.28);
 }
 
 .weekCardPostponed {

@@ -51,7 +51,9 @@ Filtros, auto-complete e listagem
     - `REPROGRAMADA`: roxo
     - `ADIADA`: amarelo
     - `CANCELADA`: vermelho
+    - `Estado Trabalho = CONCLUIDO/Completo`: verde escuro
   - O texto de status (`Programado`, `Adiado`, `Cancelado`) nao aparece no card; a diferenciacao fica pela cor.
+  - Legenda operacional do calendario: `Programado`, `Reprogramado`, `Completo`, `Adiado`, `Cancelado`.
   - Acoes no card: botoes com icones para `Ver detalhe` e `Historico`.
   - Indicadores `SGD` e `PI` ficam verdes quando a `Data aprovada` do respectivo documento estiver preenchida.
   - Header do calendario inclui botao `Atualizar` para recarregar os dados da agenda.
@@ -87,6 +89,26 @@ Atualizacao 2026-03
 - Ajustado o calendario semanal para exibir `REPROGRAMADA` em roxo quando a programacao estiver salva com status fisico `REPROGRAMADA`.
 - Renomeado o botao de exportacao comum para `Exportar Excel (CSV)` e adicionada trava de `10` segundos entre cliques.
 
+Atualizacao 2026-04
+-------------------
+- Ajustado o card do calendario semanal para aplicar cor `verde escuro` quando `Estado Trabalho` estiver `CONCLUIDO` (equivalente operacional a `Completo`).
+- Incluida a legenda `Completo` no calendario semanal para representar o card em `verde escuro`.
+- Mantida a diferenciacao por cor para os demais estados operacionais (`PROGRAMADA`, `REPROGRAMADA`, `ADIADA`, `CANCELADA`) quando o estado de trabalho nao estiver concluido.
+- Mapeamento desta atualizacao:
+  - Arquivos alterados:
+    - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+    - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+    - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+    - `TASKS.md`
+  - Funcoes/hooks/constantes tocadas:
+    - `isWorkCompleted`
+    - `scheduleCardClassName`
+    - `.weekCardCompleted`
+    - `.weekLegendCompleted`
+  - Comportamento antes/depois:
+    - Antes: card usava somente a cor do `Status` da programacao.
+    - Depois: card passa a usar `verde escuro` quando `Estado Trabalho = CONCLUIDO/Completo`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -102,7 +124,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - `startOfWeekMonday`, `createWeekDates`, `isDateInRange`, `formatWeekRangeLabel`.
-- `scheduleStatusClassName`, `getDisplayProgrammingStatus`, `useExportCooldown`.
+- `isWorkCompleted`, `scheduleCardClassName`, `getDisplayProgrammingStatus`, `useExportCooldown`.
 
 Servicos e integracoes externas
 - `GET /api/programacao` para projetos/equipes/programacoes.
