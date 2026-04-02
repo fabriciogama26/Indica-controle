@@ -1,0 +1,222 @@
+Tela: Movimentacao de Estoque SaaS
+
+Visao geral
+-----------
+- Tela operacional unica para movimentacoes de estoque (`Entrada`, `Saida`, `Transferencia`) no mesmo tenant.
+- Regras de saldo dependem do tipo da operacao e do tipo do centro (`OWN` x `THIRD_PARTY`).
+- Possui cadastro manual, cadastro em massa por CSV, estorno transacional e historico funcional focado em alteracoes operacionais (sem edicao direta da movimentacao).
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/entrada/page.tsx`
+- View: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+- Estilo: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+- API (meta): `src/app/api/stock-transfers/meta/route.ts`
+- API (create/list/history): `src/app/api/stock-transfers/route.ts`
+- API (batch import): `src/app/api/stock-transfers/import/route.ts`
+- API (reversal): `src/app/api/stock-transfers/reversal/route.ts`
+- Helper server: `src/lib/server/stockTransfers.ts`
+- Banco (base estoque): `supabase/migrations/128_create_stock_transfer_module.sql`
+- Banco (evolucao operacao): `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
+- Banco (hardening centro/tipo): `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
+- Banco (estorno): `supabase/migrations/131_add_stock_transfer_reversal.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `movement_type` (`ENTRY`, `EXIT`, `TRANSFER`)
+  - `from_stock_center_id`
+  - `to_stock_center_id`
+  - `project_id`
+  - `material_id` (selecionado por `material_code`)
+  - `quantity`
+  - `entry_date`
+  - `entry_type` (`SUCATA` ou `NOVO`)
+- Campos opcionais:
+  - `serial_number`
+  - `lot_code`
+  - `notes`
+- Regras de validacao:
+  - `movement_type` define combinacao valida de origem/destino:
+    - `ENTRY`: `THIRD_PARTY -> OWN`
+    - `EXIT`: `OWN -> THIRD_PARTY`
+    - `TRANSFER`: `OWN -> OWN`
+  - `from_stock_center_id` e `to_stock_center_id` devem ser diferentes.
+  - `quantity` deve ser maior que zero (`quantity > 0`).
+  - `entry_date` nao pode ser futura.
+  - Quando `materials.is_transformer = true` (material TRAFO), `serial_number` e `lot_code` sao obrigatorios.
+  - Campos `Serial` e `LP` ficam habilitados somente quando o material selecionado for TRAFO.
+  - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
+  - Material precisa estar ativo no tenant.
+  - Projeto precisa estar ativo no tenant.
+  - Edicao direta de movimentacao e bloqueada por regra de negocio; o caminho funcional e `estorno/cancelamento`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Campo `Projeto` no cadastro manual segue padrao digitavel (`input + datalist`), no mesmo comportamento de `Material (codigo)`.
+- Cadastro manual com auto-complete por `material_code` (`input + datalist`).
+- Ao selecionar `material_code`, a `description` e preenchida automaticamente.
+- Campo `Operacao` define o modo da movimentacao (`Entrada`, `Saida`, `Transferencia`).
+- Campos `DE` e `PARA` sao filtrados automaticamente conforme a operacao.
+- Cadastro em massa por CSV com template de colunas em ingles:
+  - `movement_type`
+  - `from_stock_center`
+  - `to_stock_center`
+  - `project_code`
+  - `material_code`
+  - `quantity`
+  - `serial_number`
+  - `lot_code`
+  - `entry_date`
+  - `notes`
+- Tela padronizada com card `Filtros` e card `Lista de Movimentacoes`, incluindo paginacao server-side.
+- Filtro adicional de estorno:
+  - `Todos`
+  - `Estornadas`
+  - `Nao estornadas`
+  - `Somente estornos`
+- Ordem das colunas da lista:
+  - Centro DE
+  - Centro PARA
+  - Projeto
+  - Material (Codigo)
+  - Descricao
+  - Quantidade
+  - Serial
+  - LP
+  - Data entrada
+  - Atualizado em
+- Acoes da lista:
+  - `Exportar Excel (CSV)` (botao no cabecalho da lista)
+  - `Detalhes` (modal)
+  - `Historico` (modal)
+  - `Estornar` (modal, com motivo obrigatorio)
+- `Historico` exibe alteracoes de edicao e estorno em `material_history`:
+  - `_context = STOCK_TRANSFER`
+  - `_context = STOCK_TRANSFER_REVERSAL`
+
+Boas praticas
+-------------
+- Escrever movimentacao somente via RPC transacional (`save_stock_transfer_record`).
+- Validar saldo insuficiente somente quando o centro de origem for `OWN` (`controls_balance = true`).
+- Nao validar saldo insuficiente quando o centro de origem for `THIRD_PARTY` (`controls_balance = false`).
+- Registrar trilha por item em `material_history` para auditoria funcional.
+- Manter nomes de tabela/coluna em ingles no schema e nos contratos da API.
+
+Cancelamento e saldo
+--------------------
+- Edicao direta da movimentacao permanece bloqueada; correcao operacional ocorre via `Estorno`.
+- Estorno cria nova movimentacao inversa e preserva a movimentacao original.
+- Nao permite duplo estorno da mesma movimentacao.
+- Nao permite estornar uma movimentacao que ja e estorno.
+- Modal de estorno exige:
+  - `Motivo do estorno`
+  - `Data do estorno` (nao futura)
+- Estorno permitido apenas para perfil administrativo (`admin/master`).
+- Efeito de saldo:
+  - `ENTRY` (`THIRD_PARTY -> OWN`): soma saldo apenas no destino.
+  - `EXIT` (`OWN -> THIRD_PARTY`): valida e baixa saldo apenas na origem.
+  - `TRANSFER` (`OWN -> OWN`): valida e baixa na origem e soma no destino.
+- O ajuste de saldo ocorre no mesmo commit da criacao do cabecalho e itens.
+
+Atalhos
+-------
+- Rota ativa: `/entrada`.
+- Rota `/saida` redireciona para `/entrada` para manter operacao unificada.
+- Exibida na secao `Almoxarifado` da sidebar.
+
+Atualizacao 2026-04
+-------------------
+- Antes: `/entrada` era placeholder sem operacao real.
+- Depois: tela operacional com formulario real, importacao em massa e listagem transacional.
+- Ajuste visual: lista removeu as colunas `Tipo` e `Operacao`; essas informacoes ficam no modal `Detalhes`.
+- Ajuste funcional: lista recebeu botao `Exportar Excel (CSV)` no mesmo padrao das outras telas.
+- Migration `128_create_stock_transfer_module.sql`:
+  - adiciona `materials.is_transformer`;
+  - cria `stock_centers`, `stock_center_balances`, `stock_transfers`, `stock_transfer_items`;
+  - cria policies RLS e triggers de auditoria;
+  - cria RPC `save_stock_transfer_record` com validacoes de quantidade e transformador.
+- Migration `129_add_stock_movement_types_and_center_roles.sql`:
+  - adiciona `stock_centers.center_type` e `stock_centers.controls_balance`;
+  - adiciona `stock_transfers.movement_type`;
+  - evolui regras de `ENTRY`, `EXIT`, `TRANSFER`;
+  - adiciona regra de `entry_date` nao futura (constraint + validacao na RPC);
+  - padroniza mensagens de validacao em portugues.
+- Migration `130_fix_stock_center_type_and_enforce_movement_rule.sql`:
+  - reforca compatibilidade de `center_type` legado;
+  - reforca validacao de combinacao de centros por operacao no nivel da tabela;
+  - bloqueia update direto de `stock_transfers` (sem edicao direta).
+- Migration `131_add_stock_transfer_reversal.sql`:
+  - cria `stock_transfer_reversals` para mapear `original -> reversal` sem editar o registro original;
+  - cria RPC `reverse_stock_transfer_record` com motivo obrigatorio, bloqueio de duplo estorno e validacao transacional;
+  - reforca consistencia de tenant no nivel da tabela de estorno;
+  - registra auditoria adicional em `material_history` com `_context = STOCK_TRANSFER_REVERSAL`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - Responsavel por: cadastro manual, validacoes de regra por operacao, importacao CSV em modal, filtros, lista e modais de detalhes/historico.
+- Caminho: `src/app/api/stock-transfers/route.ts`
+  - Responsavel por: criar movimentacao, listar movimentacoes e listar historico de alteracoes por transferencia.
+- Caminho: `src/app/api/stock-transfers/import/route.ts`
+  - Responsavel por: processamento em lote de movimentacoes e retorno consolidado por linha.
+- Caminho: `src/app/api/stock-transfers/reversal/route.ts`
+  - Responsavel por: validar payload de estorno e acionar RPC transacional de reversao.
+- Caminho: `src/app/api/stock-transfers/meta/route.ts`
+  - Responsavel por: listar centros, projetos e materiais ativos para os selects/datalists.
+- Caminho: `supabase/migrations/128_create_stock_transfer_module.sql`
+  - Responsavel por: modelagem base e RPC transacional de debito/credito entre centros.
+- Caminho: `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
+  - Responsavel por: modelagem de tipo de centro/tipo de operacao e validacoes de consistencia.
+- Caminho: `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
+  - Responsavel por: hardening de normalizacao de `center_type` e bloqueio de update direto de movimentacao.
+- Caminho: `supabase/migrations/131_add_stock_transfer_reversal.sql`
+  - Responsavel por: modelagem do estorno e RPC `reverse_stock_transfer_record`.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - Responsavel por: `HISTORY_PAGE_SIZE`, `INITIAL_FORM` e mapeamento de labels do historico.
+- Caminho: `src/lib/server/stockTransfers.ts`
+  - Responsavel por: normalizacao de payload e chamada padronizada das RPCs `save_stock_transfer_record` e `reverse_stock_transfer_record`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver usuario autenticado e tenant ativo para as rotas de entrada.
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: fornecer `accessToken` para chamadas autenticadas da tela.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- RPC `save_stock_transfer_record`.
+- Next.js Route Handlers (`/api/stock-transfers/*`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `supabase/migrations/128_create_stock_transfer_module.sql`
+  - `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
+  - `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
+  - `supabase/migrations/131_add_stock_transfer_reversal.sql`
+  - `src/lib/server/stockTransfers.ts`
+  - `src/app/api/stock-transfers/meta/route.ts`
+  - `src/app/api/stock-transfers/route.ts`
+  - `src/app/api/stock-transfers/import/route.ts`
+  - `src/app/api/stock-transfers/reversal/route.ts`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+  - `src/app/(dashboard)/entrada/page.tsx`
+  - `src/app/(dashboard)/saida/page.tsx`
+- Funcoes/hooks/constantes tocadas:
+  - `StockTransfersPageView`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
+  - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
+  - `GET` de `/api/stock-transfers/meta`
+  - `POST` de `/api/stock-transfers/import`
+  - `POST` de `/api/stock-transfers/reversal`
+  - `saveStockTransferViaRpc`, `reverseStockTransferViaRpc`, `normalizeEntryType`, `normalizeMovementType`, `parsePositiveNumber`
+- Comportamento antes/depois:
+  - Antes: movimentacao sem acao de estorno na UI e sem endpoint dedicado para reversao transacional.
+  - Depois: botao `Estornar` com modal (motivo + data), endpoint dedicado e RPC de estorno com bloqueio de duplo estorno.
+  - Antes: historico da tela mostrava apenas edicoes.
+  - Depois: historico passa a incluir eventos de estorno.
+  - Antes: exportacao CSV nao trazia status de estorno.
+  - Depois: exportacao CSV inclui status e vinculos de estorno.

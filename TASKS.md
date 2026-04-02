@@ -115,8 +115,14 @@
 - [x] Endurecer `Pessoas` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
 - [x] Migrar as escritas de `Pessoas` para RPC transacional (`save_person_record` e `set_person_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.
-- [ ] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque.
-- [ ] Implementar tela de `Saida` com validacoes de saldo e integracao ao fluxo de estoque.
+- [x] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque (transferencia entre centros com debito/credito transacional, cadastro em massa CSV e historico em `material_history`).
+- [x] Evoluir estoque para tela unica de movimentacao (`Entrada`, `Saida`, `Transferencia`) com regra de centro `OWN`/`THIRD_PARTY`, filtro automatico de `DE/PARA`, `Tipo` automatico pelo material (nao selecionavel), bloqueio de `DE/PARA` iguais, `Serial/LP` apenas para TRAFO, cadastro em massa modal e lista com modais de `Detalhes`/`Historico`.
+- [x] Integrar rota/menu de `Saida` ao fluxo unificado de movimentacao de estoque (`/entrada`) via redirecionamento.
+- [x] Endurecer migrations de estoque para normalizar `stock_centers.center_type` legados e aplicar validacao transacional de `movement_type` no banco (`ENTRY`, `EXIT`, `TRANSFER`, com `TRANSFER` apenas entre `OWN`).
+- [x] Endurecer movimentacao de estoque com avisos em portugues, bloqueio de edicao direta (`PUT` bloqueado + trigger no banco) e validacao de `entry_date` nao futura.
+- [x] Implementar estorno de movimentacao de estoque com botao na lista, modal de motivo obrigatorio, endpoint dedicado (`/api/stock-transfers/reversal`) e RPC transacional com bloqueio de duplo estorno.
+- [x] Evoluir tela de Movimentacao de Estoque com filtro de estorno, historico de estorno no modal, data de estorno no fluxo de reversao e exportacao CSV com status/vinculos de estorno.
+- [x] Renomear menu/titulo de `/entrada` para `Movimentacao de Estoque`, remover `Tipo/Operacao` da lista e incluir `Exportar Excel (CSV)` no padrao das outras telas.
 - [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.
