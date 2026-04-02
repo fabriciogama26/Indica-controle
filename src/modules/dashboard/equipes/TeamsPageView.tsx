@@ -270,6 +270,9 @@ export function TeamsPageView() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [statusTeam, setStatusTeam] = useState<TeamItem | null>(null);
   const [statusReason, setStatusReason] = useState("");
+  const [statusForemanId, setStatusForemanId] = useState("");
+  const [statusConflictMessage, setStatusConflictMessage] = useState("");
+  const [statusRequiresForemanChange, setStatusRequiresForemanChange] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -278,7 +281,9 @@ export function TeamsPageView() {
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
   const statusAction = statusTeam?.isActive ? "cancel" : "activate";
-  const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
+  const isActivateWithForemanChange = statusAction === "activate" && statusRequiresForemanChange;
+  const canSubmitStatusChange =
+    Boolean(statusReason.trim()) && !isChangingStatus && (!isActivateWithForemanChange || Boolean(statusForemanId));
   const missingTeamMetaReasons = useMemo(() => {
     if (isLoadingMeta) {
       return [] as string[];
@@ -487,11 +492,17 @@ export function TeamsPageView() {
   function openStatusModal(team: TeamItem) {
     setStatusTeam(team);
     setStatusReason("");
+    setStatusForemanId("");
+    setStatusConflictMessage("");
+    setStatusRequiresForemanChange(false);
   }
 
   function closeStatusModal() {
     setStatusTeam(null);
     setStatusReason("");
+    setStatusForemanId("");
+    setStatusConflictMessage("");
+    setStatusRequiresForemanChange(false);
     setIsChangingStatus(false);
   }
 
@@ -596,6 +607,7 @@ export function TeamsPageView() {
           id: statusTeam.id,
           reason: statusReason.trim(),
           action: statusAction,
+          foremanId: statusAction === "activate" && statusForemanId ? statusForemanId : undefined,
           expectedUpdatedAt: statusTeam.updatedAt,
         }),
       });
@@ -603,6 +615,14 @@ export function TeamsPageView() {
       const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
 
       if (!response.ok || !data.success) {
+        if (statusAction === "activate" && data.code === "DUPLICATE_TEAM_FOREMAN") {
+          setStatusRequiresForemanChange(true);
+          setStatusConflictMessage(
+            data.message ?? "Ja existe equipe ativa para este encarregado. Selecione outro encarregado para ativar.",
+          );
+          return;
+        }
+
         if (
           data.code === "CONCURRENT_MODIFICATION"
           || data.code === "RECORD_INACTIVE"
@@ -1258,6 +1278,8 @@ export function TeamsPageView() {
             </header>
 
             <div className={styles.modalBody}>
+              {statusConflictMessage ? <div className={styles.feedbackError}>{statusConflictMessage}</div> : null}
+
               <label className={styles.field}>
                 <span>
                   {statusAction === "cancel" ? "Motivo do cancelamento" : "Motivo da ativacao"}{" "}
@@ -1271,6 +1293,31 @@ export function TeamsPageView() {
                   required
                 />
               </label>
+
+              {isActivateWithForemanChange ? (
+                <label className={styles.field}>
+                  <span>
+                    Novo encarregado <span className="requiredMark">*</span>
+                  </span>
+                  <select
+                    value={statusForemanId}
+                    onChange={(event) => setStatusForemanId(event.target.value)}
+                    disabled={isChangingStatus || isLoadingMeta}
+                    required
+                  >
+                    <option value="" disabled>
+                      {isLoadingMeta ? "Carregando..." : "Selecione o novo encarregado"}
+                    </option>
+                    {foremen
+                      .filter((foreman) => foreman.id !== statusTeam.foremanId)
+                      .map((foreman) => (
+                        <option key={foreman.id} value={foreman.id}>
+                          {foreman.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ) : null}
 
               <div className={styles.actions}>
                 <button

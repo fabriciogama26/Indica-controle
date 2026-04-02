@@ -93,6 +93,7 @@ type UpdateTeamStatusPayload = {
   id: string;
   reason: string;
   action?: "cancel" | "activate";
+  foremanId?: string;
   expectedUpdatedAt?: string | null;
 };
 
@@ -559,9 +560,12 @@ async function setTeamStatusViaRpc(params: {
   teamId: string;
   action: "ACTIVATE" | "CANCEL";
   reason: string;
+  foremanId?: string | null;
   expectedUpdatedAt: string | null;
 }) {
   async function setTeamStatusDirectFallback() {
+    let activateForemanId: string | null = null;
+
     if (params.action === "ACTIVATE") {
       const currentTeam = await fetchTeamById(params.supabase, params.tenantId, params.teamId);
       if (!currentTeam) {
@@ -573,10 +577,12 @@ async function setTeamStatusViaRpc(params: {
         } as const;
       }
 
+      activateForemanId = normalizeText(params.foremanId) || currentTeam.foreman_person_id;
+
       const existingTeamByForeman = await fetchExistingTeamByForeman({
         supabase: params.supabase,
         tenantId: params.tenantId,
-        foremanId: currentTeam.foreman_person_id,
+        foremanId: activateForemanId,
         excludeTeamId: params.teamId,
       });
 
@@ -584,7 +590,7 @@ async function setTeamStatusViaRpc(params: {
         return {
           ok: false,
           status: 409,
-          message: "Ja existe equipe ativa cadastrada para este encarregado. Cancele a equipe ativa antes de reativar esta equipe.",
+          message: "Ja existe equipe ativa cadastrada para este encarregado. Escolha outro encarregado ou cancele a equipe ativa antes de reativar esta equipe.",
           reason: "DUPLICATE_TEAM_FOREMAN",
         } as const;
       }
@@ -594,6 +600,7 @@ async function setTeamStatusViaRpc(params: {
     const payload = params.action === "ACTIVATE"
       ? {
         ativo: true,
+        foreman_person_id: activateForemanId ?? undefined,
         cancellation_reason: null as string | null,
         canceled_at: null as string | null,
         canceled_by: null as string | null,
@@ -633,6 +640,7 @@ async function setTeamStatusViaRpc(params: {
     p_action: params.action,
     p_reason: params.reason,
     p_expected_updated_at: params.expectedUpdatedAt,
+    p_foreman_person_id: params.action === "ACTIVATE" ? (params.foremanId ?? null) : null,
   });
 
   if (error) {
@@ -1125,6 +1133,7 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Partial<UpdateTeamStatusPayload>;
     const teamId = normalizeText(body.id);
     const reason = normalizeText(body.reason);
+    const nextForemanId = normalizeText(body.foremanId);
     const action = normalizeText(body.action).toLowerCase() === "activate" ? "ACTIVATE" : "CANCEL";
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
@@ -1162,6 +1171,18 @@ export async function PATCH(request: NextRequest) {
       return buildConcurrencyConflictResponse(`Equipe ${currentTeam.name} ja esta ativa.`, "STATUS_ALREADY_CHANGED");
     }
 
+    const activationForemanId =
+      action === "ACTIVATE" && nextForemanId && nextForemanId !== currentTeam.foreman_person_id
+        ? nextForemanId
+        : null;
+
+    if (activationForemanId) {
+      const nextForeman = await fetchForemanById(supabase, appUser.tenant_id, activationForemanId);
+      if (!nextForeman) {
+        return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
+      }
+    }
+
     const statusResult = await setTeamStatusViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
@@ -1169,6 +1190,7 @@ export async function PATCH(request: NextRequest) {
       teamId,
       action,
       reason,
+      foremanId: activationForemanId,
       expectedUpdatedAt,
     });
 
