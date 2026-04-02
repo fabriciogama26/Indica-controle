@@ -24,6 +24,24 @@ type MaterialRow = {
   is_active: boolean;
 };
 
+type ReversalReasonRow = {
+  code: string;
+  label_pt: string;
+  requires_notes: boolean;
+  is_active: boolean;
+  sort_order: number;
+};
+
+const DEFAULT_REVERSAL_REASONS = [
+  { code: "DATA_ENTRY_ERROR", label: "Erro de digitacao", requiresNotes: false },
+  { code: "WRONG_STOCK_CENTER", label: "Centro incorreto", requiresNotes: false },
+  { code: "WRONG_MATERIAL", label: "Material incorreto", requiresNotes: false },
+  { code: "WRONG_QUANTITY", label: "Quantidade incorreta", requiresNotes: false },
+  { code: "DUPLICATE_ENTRY", label: "Lancamento duplicado", requiresNotes: false },
+  { code: "OPERATION_CANCELED", label: "Operacao cancelada", requiresNotes: false },
+  { code: "OTHER", label: "Outro", requiresNotes: true },
+] as const;
+
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -37,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
 
-    const [stockCentersResult, projectsResult, materialsResult] = await Promise.all([
+    const [stockCentersResult, projectsResult, materialsResult, reversalReasonsResult] = await Promise.all([
       supabase
         .from("stock_centers")
         .select("id, name, center_type, controls_balance")
@@ -59,6 +77,13 @@ export async function GET(request: NextRequest) {
         .eq("is_active", true)
         .order("codigo", { ascending: true })
         .returns<MaterialRow[]>(),
+      supabase
+        .from("stock_transfer_reversal_reason_catalog")
+        .select("code, label_pt, requires_notes, is_active, sort_order")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("code", { ascending: true })
+        .returns<ReversalReasonRow[]>(),
     ]);
 
     if (stockCentersResult.error || projectsResult.error || materialsResult.error) {
@@ -83,6 +108,13 @@ export async function GET(request: NextRequest) {
         materialType: String(row.tipo ?? "").trim().toUpperCase(),
         isTransformer: Boolean(row.is_transformer),
       })),
+      reversalReasons: reversalReasonsResult.error
+        ? DEFAULT_REVERSAL_REASONS
+        : (reversalReasonsResult.data ?? []).map((row) => ({
+            code: row.code,
+            label: row.label_pt,
+            requiresNotes: Boolean(row.requires_notes),
+          })),
     });
   } catch {
     return NextResponse.json({ message: "Falha ao carregar metadados da movimentacao de estoque." }, { status: 500 });

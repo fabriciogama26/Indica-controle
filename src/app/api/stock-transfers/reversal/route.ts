@@ -9,7 +9,8 @@ import {
 
 type ReversalPayload = {
   transferId?: unknown;
-  reversalReason?: unknown;
+  reversalReasonCode?: unknown;
+  reversalReasonNotes?: unknown;
   reversalDate?: unknown;
 };
 
@@ -33,7 +34,8 @@ export async function POST(request: NextRequest) {
 
     const payload = (await request.json().catch(() => ({}))) as ReversalPayload;
     const transferId = normalizeText(payload.transferId);
-    const reversalReason = normalizeText(payload.reversalReason);
+    const reversalReasonCode = normalizeText(payload.reversalReasonCode).toUpperCase();
+    const reversalReasonNotes = normalizeText(payload.reversalReasonNotes) || null;
     const reversalDateRaw = normalizeText(payload.reversalDate);
     const reversalDate = reversalDateRaw ? normalizeDateInput(reversalDateRaw) : null;
 
@@ -41,8 +43,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "transferId e obrigatorio para estorno." }, { status: 400 });
     }
 
-    if (!reversalReason) {
-      return NextResponse.json({ message: "Motivo do estorno e obrigatorio." }, { status: 400 });
+    if (!reversalReasonCode) {
+      return NextResponse.json({ message: "Motivo padrao do estorno e obrigatorio." }, { status: 400 });
+    }
+
+    if (reversalReasonCode === "OTHER" && !reversalReasonNotes) {
+      return NextResponse.json({ message: "Observacao do motivo e obrigatoria para o motivo Outro." }, { status: 400 });
     }
 
     if (reversalDateRaw && !reversalDate) {
@@ -54,7 +60,8 @@ export async function POST(request: NextRequest) {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
       originalTransferId: transferId,
-      reversalReason,
+      reversalReasonCode,
+      reversalReasonNotes,
       reversalDate,
     });
 

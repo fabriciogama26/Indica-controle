@@ -24,7 +24,8 @@ export type ReverseStockTransferPayload = {
   tenantId: string;
   actorUserId: string;
   originalTransferId: string;
-  reversalReason: string;
+  reversalReasonCode: string;
+  reversalReasonNotes?: string | null;
   reversalDate?: string | null;
 };
 
@@ -102,11 +103,12 @@ export async function reverseStockTransferViaRpc(
   supabase: SupabaseClient,
   payload: ReverseStockTransferPayload,
 ) {
-  const { data, error } = await supabase.rpc("reverse_stock_transfer_record", {
+  const { data, error } = await supabase.rpc("reverse_stock_transfer_record_v2", {
     p_tenant_id: payload.tenantId,
     p_actor_user_id: payload.actorUserId,
     p_original_stock_transfer_id: payload.originalTransferId,
-    p_reversal_reason: payload.reversalReason,
+    p_reversal_reason_code: payload.reversalReasonCode,
+    p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
     p_reversal_date: payload.reversalDate ?? null,
   });
 
@@ -128,8 +130,12 @@ export async function reverseStockTransferViaRpc(
       ? "Esta movimentacao ja foi estornada."
       : normalizedReason === "ORIGINAL_TRANSFER_NOT_FOUND"
         ? "Movimentacao original nao encontrada."
-        : normalizedReason === "REVERSAL_REASON_REQUIRED"
-          ? "Motivo do estorno e obrigatorio."
+        : normalizedReason === "REVERSAL_REASON_CODE_REQUIRED"
+          ? "Motivo padrao do estorno e obrigatorio."
+          : normalizedReason === "INVALID_REVERSAL_REASON_CODE"
+            ? "Motivo padrao do estorno invalido ou inativo."
+            : normalizedReason === "REVERSAL_REASON_NOTES_REQUIRED"
+              ? "Observacao do motivo e obrigatoria para o motivo selecionado."
           : normalizedReason === "REVERSAL_OF_REVERSAL_NOT_ALLOWED"
             ? "Nao e permitido estornar uma movimentacao de estorno."
             : normalizedReason === "INSUFFICIENT_STOCK"
