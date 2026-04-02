@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
           rowNumber,
           success: false,
           message:
-            "Linha invalida. Campos obrigatorios: movementType, fromStockCenterId, toStockCenterId, projectId, entryDate, entryType e quantity valida.",
+            "Linha invalida. Campos obrigatorios: operacao, centro DE, centro PARA, projeto, data da entrada, tipo do material e quantidade valida.",
           reason: "INVALID_IMPORT_ROW",
         });
         continue;
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
         results.push({
           rowNumber,
           success: false,
-          message: "fromStockCenterId e toStockCenterId devem ser diferentes.",
+          message: "Centro DE e centro PARA devem ser diferentes.",
           reason: "DUPLICATE_STOCK_CENTER",
         });
         continue;

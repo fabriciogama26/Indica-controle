@@ -146,16 +146,16 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   notes: "Observacao",
 };
 const IMPORT_TEMPLATE_HEADERS = [
-  "movement_type",
-  "from_stock_center",
-  "to_stock_center",
-  "project_code",
-  "material_code",
-  "quantity",
-  "serial_number",
-  "lot_code",
-  "entry_date",
-  "notes",
+  "operacao",
+  "centro_de",
+  "centro_para",
+  "projeto",
+  "material_codigo",
+  "quantidade",
+  "serial",
+  "lp",
+  "data_entrada",
+  "observacao",
 ] as const;
 const INITIAL_FORM: FormState = {
   movementType: "TRANSFER",
@@ -280,7 +280,12 @@ function downloadCsv(content: string, filename: string) {
 }
 
 function normalizeHeaderName(value: string) {
-  return normalizeText(value).toLowerCase().replace(/\s+/g, "_");
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function parseCsvContent(content: string) {
@@ -305,6 +310,14 @@ function parseCsvContent(content: string) {
     });
     return row;
   });
+}
+
+function readCsvField(row: Record<string, string>, aliases: string[]) {
+  for (const alias of aliases) {
+    const value = normalizeText(row[alias] ?? "");
+    if (value) return value;
+  }
+  return "";
 }
 
 export function StockTransfersPageView() {
@@ -754,16 +767,16 @@ export function StockTransfersPageView() {
 
   function downloadImportTemplate() {
     const sample = [
-      "TRANSFER",
+      "TRANSFERENCIA",
       "CENTRO A",
       "CENTRO B",
       "SOB-001",
       "MAT-001",
       "1",
       "SERIAL-001",
-      "LOT-001",
+      "LP-001",
       new Date().toISOString().slice(0, 10),
-      "Cadastro em massa",
+      "Opcional",
     ];
 
     const csv = `\uFEFF${IMPORT_TEMPLATE_HEADERS.join(";")}\n${sample.map((value) => csvEscape(value)).join(";")}`;
@@ -949,16 +962,18 @@ export function StockTransfersPageView() {
       rows.forEach((row, index) => {
         const today = toIsoDate(new Date());
         const rowNumber = index + 2;
-        const movementType = normalizeMovementType(row.movement_type);
-        const fromCenterName = normalizeText(row.from_stock_center);
-        const toCenterName = normalizeText(row.to_stock_center);
-        const projectCode = normalizeCode(row.project_code);
-        const materialCode = normalizeCode(row.material_code);
-        const quantity = parsePositiveNumber(row.quantity);
-        const serialNumber = normalizeText(row.serial_number) || null;
-        const lotCode = normalizeText(row.lot_code) || null;
-        const entryDate = normalizeText(row.entry_date);
-        const notes = normalizeText(row.notes) || null;
+        const movementType = normalizeMovementType(
+          readCsvField(row, ["operacao", "tipo_movimentacao", "movement_type"]),
+        );
+        const fromCenterName = readCsvField(row, ["centro_de", "from_stock_center", "origem"]);
+        const toCenterName = readCsvField(row, ["centro_para", "to_stock_center", "destino"]);
+        const projectCode = normalizeCode(readCsvField(row, ["projeto", "project_code"]));
+        const materialCode = normalizeCode(readCsvField(row, ["material_codigo", "material_code", "codigo_material"]));
+        const quantity = parsePositiveNumber(readCsvField(row, ["quantidade", "quantity"]));
+        const serialNumber = normalizeText(readCsvField(row, ["serial", "serial_number"])) || null;
+        const lotCode = normalizeText(readCsvField(row, ["lp", "lot_code", "lote"])) || null;
+        const entryDate = normalizeText(readCsvField(row, ["data_entrada", "entry_date", "data_movimentacao"]));
+        const notes = normalizeText(readCsvField(row, ["observacao", "notes", "obs"])) || null;
 
         const fromCenter = stockCenterByName.get(fromCenterName.toLowerCase()) ?? null;
         const toCenter = stockCenterByName.get(toCenterName.toLowerCase()) ?? null;
@@ -994,12 +1009,12 @@ export function StockTransfersPageView() {
           || (movementType === "EXIT" && !isExitPair)
           || (movementType === "TRANSFER" && !isTransferPair)
         ) {
-          localErrors.push(`Linha ${rowNumber}: combinacao de centros invalida para movement_type informado.`);
+          localErrors.push(`Linha ${rowNumber}: combinacao de centros invalida para a operacao informada.`);
           return;
         }
 
         if (material.isTransformer && (!serialNumber || !lotCode)) {
-          localErrors.push(`Linha ${rowNumber}: serial_number e lot_code sao obrigatorios para material TRAFO.`);
+          localErrors.push(`Linha ${rowNumber}: Serial e LP sao obrigatorios para material TRAFO.`);
           return;
         }
 
@@ -1712,9 +1727,11 @@ export function StockTransfersPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>
-                      Colunas obrigatorias: {IMPORT_TEMPLATE_HEADERS.join(", ")}.
-                    </p>
+                    <p>Colunas obrigatorias: operacao, centro_de, centro_para, projeto, material_codigo, quantidade, data_entrada.</p>
+                    <p>Colunas condicionais: serial e lp (obrigatorias quando o material for TRAFO).</p>
+                    <p>Coluna opcional: observacao.</p>
+                    <p>Operacao: ENTRADA, SAIDA ou TRANSFERENCIA (tambem aceita ENTRY, EXIT, TRANSFER).</p>
+                    <p>LP = identificador de lote/plaqueta do material (equivalente ao campo lot_code).</p>
                   </div>
                 </div>
               </section>

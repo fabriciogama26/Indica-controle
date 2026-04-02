@@ -201,7 +201,7 @@ vercel --prod
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
 - `src/modules/dashboard/entrada/`
-  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), `Tipo` automatico por `materials.tipo` (nao selecionavel), `Serial/LP` condicionais para TRAFO, cadastro em massa CSV via modal, filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
+  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), `Tipo` automatico por `materials.tipo` (nao selecionavel), `Serial/LP` condicionais para TRAFO, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
@@ -576,6 +576,7 @@ npm run build
 
 ## Licenca
 - Nao definida no repositorio.
+
 
 
 
