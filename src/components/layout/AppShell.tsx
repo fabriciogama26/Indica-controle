@@ -32,7 +32,7 @@ const menuSections = [
     title: "Almoxarifado",
     items: [
       { href: "/estoque", label: "Estoque Atual", icon: "box" },
-      { href: "/entrada", label: "Entrada Estoque", icon: "arrow-down" },
+      { href: "/entrada", label: "Movimentacao de Estoque", icon: "arrow-down" },
       { href: "/saida", label: "Saida Estoque", icon: "arrow-up" },
     ],
   },
@@ -101,8 +101,8 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Gestao de medicoes operacionais por projeto e periodo.",
   },
   "/entrada": {
-    title: "Entrada Estoque",
-    subtitle: "Lancamentos de entrada no estoque fisico.",
+    title: "Movimentacao de Estoque",
+    subtitle: "Lancamentos de entrada, saida e transferencia de estoque.",
   },
   "/saida": {
     title: "Saida Estoque",
