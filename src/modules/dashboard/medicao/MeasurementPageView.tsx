@@ -147,6 +147,8 @@ type OrderDetail = {
   programmingId: string | null;
   projectId: string;
   teamId: string;
+  teamName: string;
+  foremanName: string;
   executionDate: string;
   measurementDate: string;
   voicePoint: number;

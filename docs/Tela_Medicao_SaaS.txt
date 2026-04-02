@@ -255,6 +255,7 @@ Atualizacao 2026-03
   - Save da Medicao ajustado para aceitar ordem sem itens apenas quando `Tipo da medicao = Sem producao`.
   - Cadastro em massa ampliado para aceitar linhas `SEM_PRODUCAO` com `motivo_sem_producao`, sem `voz/quantidade/taxa`.
   - Modal `Detalhes da Ordem` ajustado para priorizar `team_name_snapshot` e `foreman_name_snapshot`, mantendo fallback para dados atuais da equipe apenas quando snapshot estiver vazio.
+  - Correcao de tipagem em `MeasurementPageView.tsx`: `OrderDetail` passou a declarar `teamName` e `foremanName`, alinhando o tipo com o payload da API e eliminando falha de build TypeScript.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
