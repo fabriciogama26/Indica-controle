@@ -132,6 +132,8 @@ Cadastro
   - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
   - Cada equipe gera uma programacao independente.
   - `Ponto eletrico` e opcional; no cadastro pode ficar vazio.
+  - Os motivos de `Cancelamento`, `Adiamento` e `Reprogramacao` usam `select` unico alimentado por `programming_reason_catalog`.
+  - Quando o motivo selecionado exigir observacao (`requires_notes = true`), o campo complementar de observacao passa a ser obrigatorio.
   - Em edicao, se `Ponto eletrico` for apagado e salvo, o valor da equipe editada passa a ficar nulo.
   - Em edicao, quando `Estado Trabalho` for alterado em uma equipe, o sistema sincroniza o mesmo valor para todas as equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
   - Se `Estado Trabalho` for limpo na edicao, a limpeza tambem e replicada para todas as equipes ativas do mesmo `Projeto + Data de execucao`.
@@ -319,6 +321,7 @@ Atualizacao 2026-03
 - Ajustado o carregamento da lista/exportacoes para manter nome/base/encarregado da equipe em programacoes ligadas a equipes inativas, evitando exibicao de UUID no campo `Equipe`.
 - Ajustada a lista de selecao de equipes para exibir tambem o `Encarregado` em cada opcao, com layout em linhas para evitar colagem visual entre nome/base.
 - Criada a migration `135_create_programming_reason_catalog.sql` com catalogo unico de motivos por tenant (sem separacao por tipo), reutilizado em `CANCELAMENTO`, `ADIAMENTO` e `REPROGRAMACAO`, incluindo seed inicial, RLS e auditoria para apoiar padronizacao por select.
+- Ajustados os modais de `Cancelar Programacao`, `Adiar Programacao` e o campo `Motivo da reprogramacao` para usar `select` do catalogo unico de motivos; quando o motivo exige observacao, a tela mostra campo complementar obrigatorio.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.

@@ -59,6 +59,14 @@ type ProgrammingSgdTypeRow = {
   is_active: boolean;
 };
 
+type ProgrammingReasonCatalogRow = {
+  code: string;
+  label_pt: string;
+  requires_notes: boolean;
+  is_active: boolean;
+  sort_order: number;
+};
+
 type LocationPlanSupportRow = {
   project_id: string;
   questionnaire_answers: Record<string, unknown> | null;
@@ -1226,6 +1234,26 @@ async function fetchProgrammingSgdTypes(
   return data ?? [];
 }
 
+async function fetchProgrammingReasonCatalog(
+  supabase: SupabaseClient,
+  tenantId: string,
+) {
+  const { data, error } = await supabase
+    .from("programming_reason_catalog")
+    .select("code, label_pt, requires_notes, is_active, sort_order")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("label_pt", { ascending: true })
+    .returns<ProgrammingReasonCatalogRow[]>();
+
+  if (error) {
+    return [] as ProgrammingReasonCatalogRow[];
+  }
+
+  return data ?? [];
+}
+
 async function fetchProgrammingById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -2196,13 +2224,14 @@ export async function GET(request: NextRequest) {
     }
 
     const weekStart = startOfWeekMonday(startDate);
-    const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes] = await Promise.all([
+    const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes, reasonOptions] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, startDate, endDate),
       fetchSupportOptions(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingWeekSummary(resolution.supabase, resolution.appUser.tenant_id, weekStart),
       fetchProgrammingSgdTypes(resolution.supabase, resolution.appUser.tenant_id),
+      fetchProgrammingReasonCatalog(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
     const activeTeamIds = new Set(teams.map((item) => item.id));
@@ -2295,6 +2324,11 @@ export async function GET(request: NextRequest) {
         id: item.id,
         description: normalizeText(item.description),
         exportColumn: normalizeText(item.export_column),
+      })),
+      reasonOptions: reasonOptions.map((item) => ({
+        code: normalizeText(item.code),
+        label: normalizeText(item.label_pt),
+        requiresNotes: Boolean(item.requires_notes),
       })),
       teamSummaries: teamSummaries.map((item) => ({
         teamId: item.team_id,
@@ -2876,8 +2910,8 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     )
     : false;
 
-  if (isPotentialReschedule && (!changeReason || changeReason.length < 10)) {
-    return NextResponse.json({ message: "Informe um motivo de reprogramacao com no minimo 10 caracteres." }, { status: 400 });
+  if (isPotentialReschedule && !changeReason) {
+    return NextResponse.json({ message: "Selecione um motivo de reprogramacao." }, { status: 400 });
   }
 
   const fullSaveResult = await saveProgrammingFullViaRpc({
@@ -3073,8 +3107,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ message: "Atualize a grade antes de alterar o status da programacao." }, { status: 409 });
   }
 
-  if (reason.length < 10) {
-    return NextResponse.json({ message: "Informe um motivo com no minimo 10 caracteres." }, { status: 400 });
+  if (!reason) {
+    return NextResponse.json({ message: "Selecione um motivo para continuar." }, { status: 400 });
   }
 
   if (action === "ADIADA" && !newDate) {
