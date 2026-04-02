@@ -128,6 +128,7 @@
 - [x] Evoluir tela de Movimentacao de Estoque com filtro de estorno, historico de estorno no modal, data de estorno no fluxo de reversao e exportacao CSV com status/vinculos de estorno.
 - [x] Renomear menu/titulo de `/entrada` para `Movimentacao de Estoque`, remover `Tipo/Operacao` da lista e incluir `Exportar Excel (CSV)` no padrao das outras telas.
 - [x] Ajustar cadastro em massa da Movimentacao de Estoque para modelo CSV didatico com colunas em portugues, opcoes de `operacao` explicitas, `LP` documentado (equivalente a `lot_code`) e `observacao` opcional com retrocompatibilidade para cabecalhos antigos em ingles.
+- [x] Alinhar cadastro em massa da Movimentacao de Estoque ao padrao da Medicao com geracao/download de `CSV` de erros (`linha;coluna;valor;erro`) para falhas de validacao e salvamento.
 - [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.

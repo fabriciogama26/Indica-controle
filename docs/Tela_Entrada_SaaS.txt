@@ -73,6 +73,12 @@ Filtros, auto-complete e listagem
   - `ENTRADA` (ou `ENTRY`)
   - `SAIDA` (ou `EXIT`)
   - `TRANSFERENCIA` (ou `TRANSFER`)
+- Em caso de erro no cadastro em massa, a tela gera relatorio `CSV` de erros com:
+  - `linha`
+  - `coluna`
+  - `valor`
+  - `erro`
+- O modal exibe botao `Baixar erros (CSV)` no mesmo padrao operacional da tela de Medicao.
 - Tela padronizada com card `Filtros` e card `Lista de Movimentacoes`, incluindo paginacao server-side.
 - Filtro adicional de estorno:
   - `Todos`
@@ -136,6 +142,7 @@ Atualizacao 2026-04
 - Ajuste visual: lista removeu as colunas `Tipo` e `Operacao`; essas informacoes ficam no modal `Detalhes`.
 - Ajuste funcional: lista recebeu botao `Exportar Excel (CSV)` no mesmo padrao das outras telas.
 - Ajuste de importacao: modal de cadastro em massa ficou mais didatico e o modelo CSV passou a usar cabecalhos em portugues (`operacao`, `centro_de`, `centro_para`, `projeto`, `material_codigo`, `quantidade`, `serial`, `lp`, `data_entrada`, `observacao`) com leitura retrocompativel para cabecalhos antigos em ingles.
+- Ajuste de rastreabilidade no cadastro em massa: o modal passou a gerar e permitir download de `CSV` de erros (`linha;coluna;valor;erro`) quando houver pendencias de validacao/salvamento.
 - Migration `128_create_stock_transfer_module.sql`:
   - adiciona `materials.is_transformer`;
   - cria `stock_centers`, `stock_center_balances`, `stock_transfers`, `stock_transfer_items`;

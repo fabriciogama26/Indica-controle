@@ -93,8 +93,30 @@ type ImportResponse = {
     success: boolean;
     message: string;
     reason?: string;
+    details?: unknown;
   }>;
   message?: string;
+};
+
+type MassImportIssue = {
+  rowNumber: number;
+  column: string;
+  value: string;
+  error: string;
+};
+
+type MassImportErrorReportData = {
+  fileName: string;
+  content: string;
+  errorRows: number;
+  totalIssues: number;
+};
+
+type MassImportResultSummary = {
+  status: "success" | "partial" | "error";
+  message: string;
+  successCount: number;
+  errorRows: number;
 };
 
 type FormState = {
@@ -320,6 +342,38 @@ function readCsvField(row: Record<string, string>, aliases: string[]) {
   return "";
 }
 
+function createMassImportErrorReport(issues: MassImportIssue[]): MassImportErrorReportData | null {
+  if (!issues.length) return null;
+
+  const sorted = [...issues].sort((left, right) => {
+    if (left.rowNumber !== right.rowNumber) return left.rowNumber - right.rowNumber;
+    return left.column.localeCompare(right.column);
+  });
+
+  const errorRows = new Set(sorted.map((item) => item.rowNumber)).size;
+  const lines = [
+    "linha;coluna;valor;erro",
+    ...sorted.map((issue) => [
+      csvEscape(issue.rowNumber),
+      csvEscape(issue.column),
+      csvEscape(issue.value),
+      csvEscape(issue.error),
+    ].join(";")),
+  ];
+
+  return {
+    fileName: `movimentacao_estoque_import_erros_${toIsoDate(new Date())}.csv`,
+    content: `\uFEFF${lines.join("\n")}\n`,
+    errorRows,
+    totalIssues: sorted.length,
+  };
+}
+
+function downloadMassImportErrorReport(report: MassImportErrorReportData | null) {
+  if (!report) return;
+  downloadCsv(report.content, report.fileName);
+}
+
 export function StockTransfersPageView() {
   const { session } = useAuth();
   const canReverseStockMovement = useMemo(() => {
@@ -354,6 +408,8 @@ export function StockTransfersPageView() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importErrorReport, setImportErrorReport] = useState<MassImportErrorReportData | null>(null);
+  const [importResult, setImportResult] = useState<MassImportResultSummary | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const selectedMaterial = useMemo(
@@ -790,13 +846,21 @@ export function StockTransfersPageView() {
 
   function openImportModal() {
     setImportFile(null);
+    setImportErrorReport(null);
+    setImportResult(null);
     setIsImportModalOpen(true);
   }
 
   function closeImportModal() {
     if (isImporting) return;
     setImportFile(null);
+    setImportErrorReport(null);
+    setImportResult(null);
     setIsImportModalOpen(false);
+  }
+
+  function downloadLastImportErrorReport() {
+    downloadMassImportErrorReport(importErrorReport);
   }
 
   function applyFilters() {
@@ -942,13 +1006,31 @@ export function StockTransfersPageView() {
     }
 
     setIsImporting(true);
+    setImportErrorReport(null);
+    setImportResult(null);
     setFeedback(null);
 
     try {
       const content = await importFile.text();
       const rows = parseCsvContent(content);
       if (rows.length === 0) {
-        setFeedback({ type: "error", message: "Arquivo CSV vazio ou invalido." });
+        const issues: MassImportIssue[] = [
+          {
+            rowNumber: 1,
+            column: "arquivo",
+            value: importFile.name,
+            error: "Arquivo CSV vazio ou invalido.",
+          },
+        ];
+        const report = createMassImportErrorReport(issues);
+        setImportErrorReport(report);
+        setImportResult({
+          status: "error",
+          message: "Arquivo CSV vazio ou invalido para cadastro em massa.",
+          successCount: 0,
+          errorRows: report?.errorRows ?? 0,
+        });
+        setFeedback({ type: "error", message: "Arquivo CSV vazio ou invalido para cadastro em massa. Baixe o CSV de erros para corrigir." });
         return;
       }
 
@@ -957,21 +1039,25 @@ export function StockTransfersPageView() {
       const materialByCode = new Map(materials.map((material) => [normalizeCode(material.materialCode), material]));
 
       const mappedEntries: Array<Record<string, unknown>> = [];
-      const localErrors: string[] = [];
+      const importIssues: MassImportIssue[] = [];
 
       rows.forEach((row, index) => {
         const today = toIsoDate(new Date());
         const rowNumber = index + 2;
-        const movementType = normalizeMovementType(
-          readCsvField(row, ["operacao", "tipo_movimentacao", "movement_type"]),
-        );
+        const movementTypeRaw = readCsvField(row, ["operacao", "tipo_movimentacao", "movement_type"]);
+        const movementType = normalizeMovementType(movementTypeRaw);
         const fromCenterName = readCsvField(row, ["centro_de", "from_stock_center", "origem"]);
         const toCenterName = readCsvField(row, ["centro_para", "to_stock_center", "destino"]);
-        const projectCode = normalizeCode(readCsvField(row, ["projeto", "project_code"]));
-        const materialCode = normalizeCode(readCsvField(row, ["material_codigo", "material_code", "codigo_material"]));
-        const quantity = parsePositiveNumber(readCsvField(row, ["quantidade", "quantity"]));
-        const serialNumber = normalizeText(readCsvField(row, ["serial", "serial_number"])) || null;
-        const lotCode = normalizeText(readCsvField(row, ["lp", "lot_code", "lote"])) || null;
+        const projectCodeRaw = readCsvField(row, ["projeto", "project_code"]);
+        const materialCodeRaw = readCsvField(row, ["material_codigo", "material_code", "codigo_material"]);
+        const projectCode = normalizeCode(projectCodeRaw);
+        const materialCode = normalizeCode(materialCodeRaw);
+        const quantityRaw = readCsvField(row, ["quantidade", "quantity"]);
+        const quantity = parsePositiveNumber(quantityRaw);
+        const serialNumberRaw = readCsvField(row, ["serial", "serial_number"]);
+        const serialNumber = normalizeText(serialNumberRaw) || null;
+        const lotCodeRaw = readCsvField(row, ["lp", "lot_code", "lote"]);
+        const lotCode = normalizeText(lotCodeRaw) || null;
         const entryDate = normalizeText(readCsvField(row, ["data_entrada", "entry_date", "data_movimentacao"]));
         const notes = normalizeText(readCsvField(row, ["observacao", "notes", "obs"])) || null;
 
@@ -980,24 +1066,52 @@ export function StockTransfersPageView() {
         const project = projectByCode.get(projectCode) ?? null;
         const material = materialByCode.get(materialCode) ?? null;
 
-        if (!movementType || !fromCenter || !toCenter || !project || !material || quantity === null || !entryDate) {
-          localErrors.push(`Linha ${rowNumber}: referencias invalidas ou campos obrigatorios ausentes.`);
+        if (!movementTypeRaw) {
+          importIssues.push({ rowNumber, column: "operacao", value: "", error: "Operacao obrigatoria." });
+          return;
+        }
+        if (!movementType) {
+          importIssues.push({ rowNumber, column: "operacao", value: movementTypeRaw, error: "Operacao invalida. Use ENTRADA, SAIDA ou TRANSFERENCIA." });
+          return;
+        }
+        if (!fromCenter) {
+          importIssues.push({ rowNumber, column: "centro_de", value: fromCenterName, error: "Centro DE nao encontrado." });
+          return;
+        }
+        if (!toCenter) {
+          importIssues.push({ rowNumber, column: "centro_para", value: toCenterName, error: "Centro PARA nao encontrado." });
+          return;
+        }
+        if (!project) {
+          importIssues.push({ rowNumber, column: "projeto", value: projectCodeRaw, error: "Projeto nao encontrado." });
+          return;
+        }
+        if (!material) {
+          importIssues.push({ rowNumber, column: "material_codigo", value: materialCodeRaw, error: "Material nao encontrado." });
+          return;
+        }
+        if (quantity === null) {
+          importIssues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: "Quantidade invalida. Informe valor maior que zero." });
+          return;
+        }
+        if (!entryDate) {
+          importIssues.push({ rowNumber, column: "data_entrada", value: "", error: "Data da entrada obrigatoria." });
           return;
         }
 
         if (entryDate > today) {
-          localErrors.push(`Linha ${rowNumber}: data da movimentacao nao pode ser futura.`);
+          importIssues.push({ rowNumber, column: "data_entrada", value: entryDate, error: "Data da movimentacao nao pode ser futura." });
           return;
         }
 
         if (fromCenter.id === toCenter.id) {
-          localErrors.push(`Linha ${rowNumber}: centro DE e PARA precisam ser diferentes.`);
+          importIssues.push({ rowNumber, column: "centro_de/centro_para", value: `${fromCenterName} -> ${toCenterName}`, error: "Centro DE e centro PARA precisam ser diferentes." });
           return;
         }
 
         const materialEntryType = normalizeMaterialEntryType(material.materialType);
         if (!materialEntryType) {
-          localErrors.push(`Linha ${rowNumber}: tipo do material deve ser NOVO ou SUCATA no cadastro de materiais.`);
+          importIssues.push({ rowNumber, column: "material_codigo", value: materialCodeRaw, error: "Tipo do material deve ser NOVO ou SUCATA no cadastro de materiais." });
           return;
         }
 
@@ -1009,12 +1123,12 @@ export function StockTransfersPageView() {
           || (movementType === "EXIT" && !isExitPair)
           || (movementType === "TRANSFER" && !isTransferPair)
         ) {
-          localErrors.push(`Linha ${rowNumber}: combinacao de centros invalida para a operacao informada.`);
+          importIssues.push({ rowNumber, column: "operacao", value: movementTypeRaw, error: "Combinacao de centros invalida para a operacao informada." });
           return;
         }
 
         if (material.isTransformer && (!serialNumber || !lotCode)) {
-          localErrors.push(`Linha ${rowNumber}: Serial e LP sao obrigatorios para material TRAFO.`);
+          importIssues.push({ rowNumber, column: "serial/lp", value: `${serialNumberRaw} | ${lotCodeRaw}`, error: "Serial e LP sao obrigatorios para material TRAFO." });
           return;
         }
 
@@ -1039,9 +1153,17 @@ export function StockTransfersPageView() {
       });
 
       if (mappedEntries.length === 0) {
+        const report = createMassImportErrorReport(importIssues);
+        setImportErrorReport(report);
+        setImportResult({
+          status: "error",
+          message: "Nenhuma linha valida encontrada para importar.",
+          successCount: 0,
+          errorRows: report?.errorRows ?? 0,
+        });
         setFeedback({
           type: "error",
-          message: `Nenhuma linha valida encontrada para importar. ${localErrors.slice(0, 5).join(" | ")}`,
+          message: "Nenhuma linha valida encontrada para importar. Baixe o CSV de erros para corrigir.",
         });
         return;
       }
@@ -1057,31 +1179,58 @@ export function StockTransfersPageView() {
       });
 
       const data = (await response.json().catch(() => ({}))) as ImportResponse;
-
-      const localErrorText = localErrors.length > 0 ? ` Validacao local: ${localErrors.slice(0, 3).join(" | ")}.` : "";
-      const summary = data.summary;
-      const apiErrors = (data.results ?? [])
+      const apiIssues: MassImportIssue[] = (data.results ?? [])
         .filter((result) => !result.success)
-        .slice(0, 3)
-        .map((result) => `Linha ${result.rowNumber}: ${result.message}`)
-        .join(" | ");
+        .map((result) => ({
+          rowNumber: result.rowNumber,
+          column: "salvamento",
+          value: result.reason ?? "",
+          error: result.message || "Falha ao salvar linha.",
+        }));
+      const allIssues = [...importIssues, ...apiIssues];
+      const report = createMassImportErrorReport(allIssues);
+      setImportErrorReport(report);
+      const summary = data.summary;
 
       if (!response.ok && response.status !== 207) {
+        const errorRows = report?.errorRows ?? 0;
+        setImportResult({
+          status: "error",
+          message: data.message ?? "Falha ao importar cadastro em massa.",
+          successCount: summary?.successCount ?? 0,
+          errorRows,
+        });
         setFeedback({
           type: "error",
-          message: `${data.message ?? "Falha ao importar cadastro em massa."}${localErrorText}`,
+          message: `${data.message ?? "Falha ao importar cadastro em massa."}${errorRows > 0 ? " Baixe o CSV de erros para corrigir." : ""}`,
         });
         return;
       }
 
-      if ((summary?.errorCount ?? 0) > 0 || localErrors.length > 0) {
+      if ((summary?.errorCount ?? 0) > 0 || importIssues.length > 0) {
+        const successCount = summary?.successCount ?? 0;
+        const errorRows = report?.errorRows ?? 0;
+        const status = successCount > 0 ? "partial" as const : "error" as const;
+        const message = successCount > 0
+          ? `Importacao parcial: ${successCount} linhas salvas e ${errorRows} linhas com erro.`
+          : `Importacao sem sucesso: 0 linhas salvas e ${errorRows} linhas com erro.`;
+        setImportResult({
+          status,
+          message,
+          successCount,
+          errorRows,
+        });
         setFeedback({
-          type: "error",
-          message:
-            `Importacao concluida com pendencias. Sucesso: ${summary?.successCount ?? 0}, Erros: ${summary?.errorCount ?? 0}.`
-            + `${apiErrors ? ` ${apiErrors}` : ""}${localErrorText}`,
+          type: successCount > 0 ? "success" : "error",
+          message: `${message} Baixe o CSV de erros para corrigir.`,
         });
       } else {
+        setImportResult({
+          status: "success",
+          message: `Importacao concluida com sucesso. ${summary?.successCount ?? mappedEntries.length} linhas salvas.`,
+          successCount: summary?.successCount ?? mappedEntries.length,
+          errorRows: 0,
+        });
         setFeedback({
           type: "success",
           message: `Importacao concluida com sucesso. ${summary?.successCount ?? mappedEntries.length} linhas salvas.`,
@@ -1091,6 +1240,12 @@ export function StockTransfersPageView() {
       setImportFile(null);
       await loadHistory(1);
     } catch {
+      setImportResult({
+        status: "error",
+        message: "Falha ao importar cadastro em massa.",
+        successCount: 0,
+        errorRows: 0,
+      });
       setFeedback({ type: "error", message: "Falha ao importar cadastro em massa." });
     } finally {
       setIsImporting(false);
@@ -1757,7 +1912,30 @@ export function StockTransfersPageView() {
                   >
                     {isImporting ? "Importando..." : "Importar planilha"}
                   </button>
+                  {importErrorReport ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={downloadLastImportErrorReport}
+                    >
+                      Baixar erros (CSV)
+                    </button>
+                  ) : null}
                 </div>
+                {importResult ? (
+                  <div className={importResult.status === "error" ? styles.errorFeedback : styles.successFeedback}>
+                    <strong>
+                      {importResult.status === "success"
+                        ? "Incluido com sucesso."
+                        : importResult.status === "partial"
+                          ? "Importacao parcial."
+                          : "Importacao com erros."}
+                    </strong>
+                    <div>{importResult.successCount} linhas salvas.</div>
+                    {importResult.errorRows > 0 ? <div>{importResult.errorRows} linhas com erro.</div> : null}
+                    {importResult.message ? <div>{importResult.message}</div> : null}
+                  </div>
+                ) : null}
               </section>
             </div>
           </article>
