@@ -70,6 +70,10 @@ type ScheduleItem = {
   id: string;
   projectId: string;
   teamId: string;
+  teamName?: string;
+  teamServiceCenterName?: string;
+  teamTypeName?: string;
+  teamForemanName?: string;
   status: ProgrammingStatus;
   isReprogrammed?: boolean;
   date: string;
@@ -449,6 +453,21 @@ function resolveTeamStructureCode(team?: TeamItem | null) {
   }
 
   return "";
+}
+
+function resolveScheduleTeamInfo(schedule: ScheduleItem, teamMap: Map<string, TeamItem>) {
+  const activeTeam = teamMap.get(schedule.teamId);
+  if (activeTeam) {
+    return activeTeam;
+  }
+
+  return {
+    id: schedule.teamId,
+    name: schedule.teamName ?? schedule.teamId,
+    serviceCenterName: schedule.teamServiceCenterName ?? "Sem base",
+    teamTypeName: schedule.teamTypeName ?? "",
+    foremanName: schedule.teamForemanName ?? "",
+  } satisfies TeamItem;
 }
 
 function formatStructureSummaryByCode(codeCountMap: Record<string, number>) {
@@ -2389,13 +2408,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       ];
       const rows = filteredSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
-        const team = teamMap.get(schedule.teamId);
+        const team = resolveScheduleTeamInfo(schedule, teamMap);
         const displayStatus = getDisplayProgrammingStatus(schedule);
         return [
           formatDate(schedule.date),
           project?.code ?? schedule.projectId,
-          team?.name ?? schedule.teamId,
-          team?.serviceCenterName ?? "-",
+          team.name,
+          team.serviceCenterName ?? "-",
           schedule.startTime,
           schedule.endTime,
           schedule.period === "integral" ? "Integral" : "Parcial",
@@ -2507,7 +2526,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         const current = structureAccumulator.get(key) ?? { codeCount: {}, teamCount: 0 };
         current.teamCount += 1;
 
-        const teamCode = resolveTeamStructureCode(teamMap.get(schedule.teamId));
+        const teamCode = resolveTeamStructureCode(resolveScheduleTeamInfo(schedule, teamMap));
         if (teamCode) {
           current.codeCount[teamCode] = (current.codeCount[teamCode] ?? 0) + 1;
         }
@@ -2517,7 +2536,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const rows = filteredSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
-        const team = teamMap.get(schedule.teamId);
+        const team = resolveScheduleTeamInfo(schedule, teamMap);
         const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
         const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
         const displayStatus = getDisplayProgrammingStatus(schedule);
@@ -2569,7 +2588,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           infoStatus,
           project?.priority ?? "",
           estruturaValue,
-          team?.foremanName ?? "",
+          team.foremanName ?? "",
           schedule.support ?? "",
           project?.utilityResponsible ?? "",
           project?.partner ?? "",
@@ -2928,9 +2947,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                         onChange={() => toggleTeam(team.id)}
                         disabled={Boolean(editingScheduleId)}
                       />
-                      <div>
+                      <div className={styles.teamOptionMeta}>
                         <strong>{team.name}</strong>
                         <small>{team.serviceCenterName}</small>
+                        <small>Encarregado: {team.foremanName || "Sem encarregado"}</small>
                       </div>
                     </label>
                   ))
@@ -3178,14 +3198,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               {pagedSchedules.length ? (
                 pagedSchedules.map((schedule) => {
                   const project = projectMap.get(schedule.projectId);
-                  const team = teamMap.get(schedule.teamId);
+                  const team = resolveScheduleTeamInfo(schedule, teamMap);
                   const displayStatus = getDisplayProgrammingStatus(schedule);
                   return (
                     <tr key={schedule.id} className={isInactiveProgrammingStatus(displayStatus) ? styles.inactiveRow : undefined}>
                       <td>{formatDate(schedule.date)}</td>
                       <td>{project?.code ?? schedule.projectId}</td>
-                      <td>{team?.name ?? schedule.teamId}</td>
-                      <td>{team?.serviceCenterName ?? "-"}</td>
+                      <td>{team.name}</td>
+                      <td>{team.serviceCenterName ?? "-"}</td>
                       <td>{schedule.startTime} - {schedule.endTime}</td>
                       <td>{schedule.period === "integral" ? "Integral" : "Parcial"}</td>
                       <td>
@@ -3515,7 +3535,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>Atualizado por:</strong> {formatAuditActor(detailsTarget.updatedByName)}</p>
                 <p><strong>Atualizado em:</strong> {formatDateTime(detailsTarget.updatedAt)}</p>
                 <p><strong>Projeto:</strong> {projectMap.get(detailsTarget.projectId)?.code ?? detailsTarget.projectId}</p>
-                <p><strong>Equipe:</strong> {teamMap.get(detailsTarget.teamId)?.name ?? detailsTarget.teamId}</p>
+                <p><strong>Equipe:</strong> {resolveScheduleTeamInfo(detailsTarget, teamMap).name}</p>
                 <p><strong>Data execucao:</strong> {formatDate(detailsTarget.date)}</p>
                 <p><strong>Horario:</strong> {detailsTarget.startTime} - {detailsTarget.endTime}</p>
                 <p><strong>Inicio de desligamento:</strong> {detailsTarget.outageStartTime || "-"}</p>

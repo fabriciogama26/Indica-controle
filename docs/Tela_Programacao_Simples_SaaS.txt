@@ -161,6 +161,7 @@ Filtros, auto-complete e listagem
   - Projeto (SOB) no cadastro com `input + datalist`, no mesmo padrao do SOB da Locacao.
   - Projeto no filtro com `input + datalist` (digitavel e com selecao por SOB).
   - Atividades via `/api/projects/activity-forecast/catalog`.
+  - Selecao de equipes mostra `Equipe`, `Base` e `Encarregado` na mesma opcao para facilitar identificacao operacional.
 - Listagem:
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
   - Quando uma programacao e salva fora do intervalo, projeto, equipe ou status filtrados, a tela avisa no feedback de sucesso que o registro pode nao aparecer na lista atual por causa dos filtros.
@@ -311,6 +312,8 @@ Atualizacao 2026-03
 - Ajustado o feedback de sucesso do cadastro/edicao para informar quando a programacao foi salva, mas ficou fora dos filtros ativos da lista.
 - Removida da API a gravacao complementar de historico depois do commit no save individual e no cadastro em lote.
 - Criada a migration `127_sync_programming_documents_by_project_date_and_lv_window.sql` para sincronizar `SGD/PI/PEP` por `Projeto + Data de execucao` e incluir janela `LV-xx` de ate `7 dias`, com historico automatico por equipe afetada.
+- Ajustado o carregamento da lista/exportacoes para manter nome/base/encarregado da equipe em programacoes ligadas a equipes inativas, evitando exibicao de UUID no campo `Equipe`.
+- Ajustada a lista de selecao de equipes para exibir tambem o `Encarregado` em cada opcao, com layout em linhas para evitar colagem visual entre nome/base.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
