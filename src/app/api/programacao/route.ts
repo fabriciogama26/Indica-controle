@@ -672,6 +672,78 @@ async function fetchTeams(
   }));
 }
 
+async function fetchTeamsByIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  teamIds: string[],
+) {
+  if (!teamIds.length) {
+    return [] as Array<{
+      id: string;
+      name: string;
+      serviceCenterId: string | null;
+      serviceCenterName: string;
+      teamTypeName: string;
+      foremanName: string;
+    }>;
+  }
+
+  const { data: teams, error } = await supabase
+    .from("teams")
+    .select("id, name, service_center_id, team_type_id, foreman_person_id, ativo")
+    .eq("tenant_id", tenantId)
+    .in("id", teamIds)
+    .returns<TeamRow[]>();
+
+  if (error || !teams?.length) {
+    return [];
+  }
+
+  const teamTypeIds = Array.from(new Set(teams.map((item) => item.team_type_id).filter(Boolean)));
+  const foremanIds = Array.from(new Set(teams.map((item) => item.foreman_person_id).filter(Boolean)));
+  const serviceCenterIds = Array.from(new Set(teams.map((item) => item.service_center_id).filter(Boolean)));
+
+  const [{ data: teamTypes }, { data: people }, { data: serviceCenters }] = await Promise.all([
+    teamTypeIds.length
+      ? supabase
+          .from("team_types")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .in("id", teamTypeIds)
+          .returns<TeamTypeRow[]>()
+      : Promise.resolve({ data: [] as TeamTypeRow[] }),
+    foremanIds.length
+      ? supabase
+          .from("people")
+          .select("id, nome")
+          .eq("tenant_id", tenantId)
+          .in("id", foremanIds)
+          .returns<PersonRow[]>()
+      : Promise.resolve({ data: [] as PersonRow[] }),
+    serviceCenterIds.length
+      ? supabase
+          .from("project_service_centers")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .in("id", serviceCenterIds)
+          .returns<ServiceCenterRow[]>()
+      : Promise.resolve({ data: [] as ServiceCenterRow[] }),
+  ]);
+
+  const teamTypeMap = new Map((teamTypes ?? []).map((item) => [item.id, normalizeText(item.name)]));
+  const foremanMap = new Map((people ?? []).map((item) => [item.id, normalizeText(item.nome)]));
+  const serviceCenterMap = new Map((serviceCenters ?? []).map((item) => [item.id, normalizeText(item.name)]));
+
+  return teams.map((team) => ({
+    id: team.id,
+    name: normalizeText(team.name),
+    serviceCenterId: team.service_center_id,
+    serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
+    teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
+    foremanName: foremanMap.get(team.foreman_person_id) ?? "Sem encarregado",
+  }));
+}
+
 async function fetchSupportOptions(
   supabase: SupabaseClient,
   tenantId: string,
@@ -2133,6 +2205,23 @@ export async function GET(request: NextRequest) {
       fetchProgrammingSgdTypes(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
+    const activeTeamIds = new Set(teams.map((item) => item.id));
+    const missingScheduledTeamIds = Array.from(
+      new Set(
+        programmingRows
+          .map((item) => item.team_id)
+          .filter((teamId) => !activeTeamIds.has(teamId)),
+      ),
+    );
+    const extraTeamsForSchedules = await fetchTeamsByIds(
+      resolution.supabase,
+      resolution.appUser.tenant_id,
+      missingScheduledTeamIds,
+    );
+    const teamLookupMap = new Map(
+      [...teams, ...extraTeamsForSchedules].map((item) => [item.id, item]),
+    );
+
     const projectMap = new Map(projects.map((item) => [item.id, item]));
     const sgdTypeMap = new Map(sgdTypes.map((item) => [item.id, item]));
     const supportDefaults = await fetchProjectSupportDefaults({
@@ -2220,6 +2309,7 @@ export async function GET(request: NextRequest) {
       schedules: programmingRows.map((item) => {
         const project = projectMap.get(item.project_id);
         const sgdType = item.sgd_type_id ? sgdTypeMap.get(item.sgd_type_id) : null;
+        const team = teamLookupMap.get(item.team_id);
         const scheduleActivities = activitiesMap.get(item.id) ?? [];
 
         return {
@@ -2255,6 +2345,10 @@ export async function GET(request: NextRequest) {
           note: normalizeText(item.note),
           electricalField: normalizeText(item.campo_eletrico),
           serviceDescription: normalizeText(item.service_description),
+          teamName: normalizeText(team?.name) || item.team_id,
+          teamServiceCenterName: normalizeText(team?.serviceCenterName),
+          teamTypeName: normalizeText(team?.teamTypeName),
+          teamForemanName: normalizeText(team?.foremanName),
           projectBase: normalizeText(project?.service_center_text) || "Sem base",
           statusReason: normalizeText(item.cancellation_reason),
           statusChangedAt: item.canceled_at ?? "",
