@@ -14,6 +14,7 @@ type MaterialItem = {
   descricao: string;
   umb: string | null;
   tipo: string;
+  isTransformer: boolean;
   unitPrice: number;
   isActive: boolean;
   cancellationReason: string | null;
@@ -37,6 +38,7 @@ type FormState = {
   codigo: string;
   descricao: string;
   tipo: string;
+  isTransformer: boolean;
   umb: string;
   unitPrice: string;
   updatedAt: string;
@@ -45,7 +47,7 @@ type FormState = {
 type FilterState = {
   codigo: string;
   descricao: string;
-  tipo: string;
+  tipo: "" | "NOVO" | "SUCATA";
   status: "" | "ativo" | "inativo";
 };
 
@@ -68,8 +70,9 @@ const INITIAL_FORM: FormState = {
   codigo: "",
   descricao: "",
   tipo: "",
+  isTransformer: false,
   umb: "",
-  unitPrice: "0",
+  unitPrice: "",
   updatedAt: "",
 };
 
@@ -84,6 +87,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   codigo: "Codigo",
   descricao: "Descricao",
   tipo: "Tipo",
+  isTransformer: "Trafo",
   umb: "UMB",
   unitPrice: "Preco",
   isActive: "Status",
@@ -102,6 +106,15 @@ function normalizeCode(value: string) {
 
 function normalizeType(value: string) {
   return normalizeText(value).toUpperCase();
+}
+
+function normalizeMaterialType(value: string) {
+  const normalized = normalizeType(value);
+  if (normalized === "NOVO" || normalized === "SUCATA") {
+    return normalized;
+  }
+
+  return "";
 }
 
 function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
@@ -128,6 +141,7 @@ function buildMaterialsCsv(materialItems: MaterialItem[]) {
     "Codigo",
     "Descricao",
     "Tipo",
+    "Trafo",
     "UMB",
     "Preco",
     "Status",
@@ -140,6 +154,7 @@ function buildMaterialsCsv(materialItems: MaterialItem[]) {
     material.codigo,
     material.descricao,
     material.tipo,
+    material.isTransformer ? "Sim" : "Nao",
     material.umb ?? "",
     material.unitPrice.toFixed(2),
     material.isActive ? "Ativo" : "Inativo",
@@ -175,6 +190,11 @@ function formatAuditActor(value: string | null | undefined) {
   return normalized || "Nao identificado";
 }
 
+function formatOptionalText(value: string | null | undefined, fallback = "-") {
+  const normalized = String(value ?? "").trim();
+  return normalized || fallback;
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -195,6 +215,10 @@ function formatHistoryValue(field: string, value: string | null) {
     return value === "true" ? "Ativo" : "Inativo";
   }
 
+  if (field === "isTransformer") {
+    return value === "true" ? "Sim" : "Nao";
+  }
+
   if (field === "canceledAt") {
     return formatDateTime(value);
   }
@@ -207,7 +231,8 @@ function toFormState(material: MaterialItem): FormState {
     codigo: material.codigo,
     descricao: material.descricao,
     tipo: material.tipo,
-    umb: material.umb ?? "",
+    isTransformer: Boolean(material.isTransformer),
+    umb: formatOptionalText(material.umb, ""),
     unitPrice: String(material.unitPrice ?? 0),
     updatedAt: material.updatedAt,
   };
@@ -417,9 +442,10 @@ export function MaterialsPageView() {
         ...(isEditing ? { id: editingMaterialId } : {}),
         codigo: normalizeCode(form.codigo),
         descricao: normalizeText(form.descricao),
-        tipo: normalizeType(form.tipo),
+        tipo: normalizeMaterialType(form.tipo),
+        isTransformer: Boolean(form.isTransformer),
         umb: normalizeText(form.umb) || null,
-        unitPrice: form.unitPrice,
+        unitPrice: normalizeText(form.unitPrice),
         ...(isEditing ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
 
@@ -666,19 +692,19 @@ export function MaterialsPageView() {
             <span>
               Tipo <span className="requiredMark">*</span>
             </span>
-            <input
-              type="text"
+            <select
               value={form.tipo}
-              onChange={(event) => updateFormField("tipo", normalizeType(event.target.value))}
-              placeholder="Digite o tipo"
+              onChange={(event) => updateFormField("tipo", normalizeMaterialType(event.target.value))}
               required
-            />
+            >
+              <option value="">Selecione</option>
+              <option value="NOVO">NOVO</option>
+              <option value="SUCATA">SUCATA</option>
+            </select>
           </label>
 
           <label className={styles.field}>
-            <span>
-              Preco <span className="requiredMark">*</span>
-            </span>
+            <span>Preco</span>
             <input
               type="number"
               min="0"
@@ -686,8 +712,16 @@ export function MaterialsPageView() {
               value={form.unitPrice}
               onChange={(event) => updateFormField("unitPrice", event.target.value)}
               placeholder="0,00"
-              required
             />
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.isTransformer}
+              onChange={(event) => updateFormField("isTransformer", event.target.checked)}
+            />
+            Material TRAFO (exige Serial e LP na movimentacao)
           </label>
 
           <label className={styles.field}>
@@ -739,12 +773,14 @@ export function MaterialsPageView() {
 
           <label className={styles.field}>
             <span>Tipo</span>
-            <input
-              type="text"
+            <select
               value={filterDraft.tipo}
-              onChange={(event) => updateFilterField("tipo", normalizeType(event.target.value))}
-              placeholder="Filtrar por tipo"
-            />
+              onChange={(event) => updateFilterField("tipo", event.target.value as FilterState["tipo"])}
+            >
+              <option value="">Todos</option>
+              <option value="NOVO">NOVO</option>
+              <option value="SUCATA">SUCATA</option>
+            </select>
           </label>
 
           <label className={styles.field}>
@@ -787,6 +823,7 @@ export function MaterialsPageView() {
                 <th>Codigo</th>
                 <th>Descricao</th>
                 <th>Tipo</th>
+                <th>Trafo</th>
                 <th>UMB</th>
                 <th>Preco</th>
                 <th>Registrado por</th>
@@ -806,7 +843,8 @@ export function MaterialsPageView() {
                       </td>
                       <td>{material.descricao}</td>
                       <td>{material.tipo}</td>
-                      <td>{material.umb ?? "-"}</td>
+                      <td>{material.isTransformer ? "Sim" : "Nao"}</td>
+                      <td>{formatOptionalText(material.umb)}</td>
                       <td>{formatCurrency(material.unitPrice)}</td>
                       <td>{material.createdByName}</td>
                       <td>{formatDateTime(material.createdAt)}</td>
@@ -848,7 +886,7 @@ export function MaterialsPageView() {
                   ))
                 : (
                   <tr>
-                    <td colSpan={8} className={styles.emptyRow}>
+                    <td colSpan={9} className={styles.emptyRow}>
                       {isLoadingList ? "Carregando materiais..." : "Nenhum material encontrado para os filtros informados."}
                     </td>
                   </tr>

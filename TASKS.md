@@ -115,6 +115,8 @@
 - [x] Endurecer `Pessoas` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
 - [x] Migrar as escritas de `Pessoas` para RPC transacional (`save_person_record` e `set_person_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.
+- [x] Corrigir exibicao da coluna `UMB` na lista de `Materiais`, normalizando vazio/espacos e aplicando fallback tecnico de `requisicao_itens.umb` quando o cadastro base estiver sem valor.
+- [x] Atualizar cadastro de `Materiais` para permitir `is_transformer`, tornar `Preco` opcional e limitar `Tipo` ao select `NOVO`/`SUCATA` com validacao na API/RPC.
 - [x] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque (transferencia entre centros com debito/credito transacional, cadastro em massa CSV e historico em `material_history`).
 - [x] Evoluir estoque para tela unica de movimentacao (`Entrada`, `Saida`, `Transferencia`) com regra de centro `OWN`/`THIRD_PARTY`, filtro automatico de `DE/PARA`, `Tipo` automatico pelo material (nao selecionavel), bloqueio de `DE/PARA` iguais, `Serial/LP` apenas para TRAFO, cadastro em massa modal e lista com modais de `Detalhes`/`Historico`.
 - [x] Integrar rota/menu de `Saida` ao fluxo unificado de movimentacao de estoque (`/entrada`) via redirecionamento.

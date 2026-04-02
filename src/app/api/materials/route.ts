@@ -14,6 +14,7 @@ type MaterialRow = {
   descricao: string;
   umb: string | null;
   tipo: string;
+  is_transformer: boolean;
   unit_price: number;
   is_active: boolean;
   cancellation_reason: string | null;
@@ -22,6 +23,12 @@ type MaterialRow = {
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
+  updated_at: string;
+};
+
+type MaterialUmbFallbackRow = {
+  material_id: string;
+  umb: string | null;
   updated_at: string;
 };
 
@@ -36,7 +43,8 @@ type CreateMaterialPayload = {
   descricao: string;
   umb?: string | null;
   tipo: string;
-  unitPrice: string | number;
+  unitPrice?: string | number | null;
+  isTransformer?: boolean;
 };
 
 type UpdateMaterialPayload = CreateMaterialPayload & {
@@ -69,7 +77,8 @@ type MaterialInput = {
   descricao: string;
   umb: string | null;
   tipo: string;
-  unitPrice: number | null;
+  unitPrice: number;
+  isTransformer: boolean;
 };
 
 type MaterialCodePrecheckResult = {
@@ -105,11 +114,33 @@ function normalizeType(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
 
+function normalizeMaterialType(value: unknown) {
+  const normalized = normalizeType(value);
+  if (normalized === "NOVO" || normalized === "SUCATA") {
+    return normalized;
+  }
+
+  return "";
+}
+
+function normalizeBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "sim";
+}
+
 function normalizePrice(value: unknown) {
   const raw = String(value ?? "").trim().replace(",", ".");
+  if (!raw) {
+    return 0;
+  }
+
   const numeric = Number(raw);
   if (!Number.isFinite(numeric) || numeric < 0) {
-    return null;
+    return NaN;
   }
 
   return Number(numeric.toFixed(2));
@@ -120,14 +151,23 @@ function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialIn
     codigo: normalizeCode(payload.codigo),
     descricao: normalizeText(payload.descricao),
     umb: normalizeNullableText(payload.umb),
-    tipo: normalizeType(payload.tipo),
+    tipo: normalizeMaterialType(payload.tipo),
     unitPrice: normalizePrice(payload.unitPrice),
+    isTransformer: normalizeBoolean(payload.isTransformer),
   };
 }
 
 function validateRequiredMaterialFields(input: MaterialInput) {
-  if (!input.codigo || !input.descricao || !input.tipo || input.unitPrice === null) {
-    return "Preencha os campos obrigatorios: Codigo, Descricao, Tipo e Preco.";
+  if (!input.codigo || !input.descricao || !input.tipo) {
+    return "Preencha os campos obrigatorios: Codigo, Descricao e Tipo.";
+  }
+
+  if (input.tipo !== "NOVO" && input.tipo !== "SUCATA") {
+    return "Tipo invalido. Selecione NOVO ou SUCATA.";
+  }
+
+  if (!Number.isFinite(input.unitPrice) || input.unitPrice < 0) {
+    return "Preco invalido. Informe valor numerico maior ou igual a zero.";
   }
 
   return null;
@@ -217,7 +257,7 @@ async function fetchMaterialById(
   const { data, error } = await supabase
     .from("materials")
     .select(
-      "id, codigo, descricao, umb, tipo, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, codigo, descricao, umb, tipo, is_transformer, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", materialId)
@@ -282,6 +322,7 @@ async function saveMaterialViaRpc(params: {
   umb: string | null;
   tipo: string;
   unitPrice: number;
+  isTransformer: boolean;
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
@@ -293,6 +334,7 @@ async function saveMaterialViaRpc(params: {
     p_descricao: params.descricao,
     p_umb: params.umb,
     p_tipo: params.tipo,
+    p_is_transformer: params.isTransformer,
     p_unit_price: params.unitPrice,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
@@ -442,7 +484,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("materials")
       .select(
-        "id, codigo, descricao, umb, tipo, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, codigo, descricao, umb, tipo, is_transformer, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id)
@@ -457,7 +499,11 @@ export async function GET(request: NextRequest) {
       query = query.ilike("descricao", `%${descriptionFilter}%`);
     }
     if (typeFilter) {
-      query = query.ilike("tipo", `%${typeFilter}%`);
+      if (typeFilter === "NOVO" || typeFilter === "SUCATA") {
+        query = query.eq("tipo", typeFilter);
+      } else {
+        query = query.ilike("tipo", `%${typeFilter}%`);
+      }
     }
     if (statusFilter === "ativo") {
       query = query.eq("is_active", true);
@@ -469,6 +515,41 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ message: "Falha ao listar materiais." }, { status: 500 });
+    }
+
+    const materialIdsWithoutUmb = Array.from(
+      new Set(
+        (data ?? [])
+          .filter((item) => !normalizeNullableText(item.umb))
+          .map((item) => item.id),
+      ),
+    );
+
+    const umbFallbackByMaterialId = new Map<string, string>();
+    if (materialIdsWithoutUmb.length > 0) {
+      const umbFallbackResult = await supabase
+        .from("requisicao_itens")
+        .select("material_id, umb, updated_at")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("material_id", materialIdsWithoutUmb)
+        .not("umb", "is", null)
+        .order("updated_at", { ascending: false })
+        .returns<MaterialUmbFallbackRow[]>();
+
+      if (!umbFallbackResult.error) {
+        for (const row of umbFallbackResult.data ?? []) {
+          if (umbFallbackByMaterialId.has(row.material_id)) {
+            continue;
+          }
+
+          const normalizedUmb = normalizeNullableText(row.umb);
+          if (!normalizedUmb) {
+            continue;
+          }
+
+          umbFallbackByMaterialId.set(row.material_id, normalizedUmb);
+        }
+      }
     }
 
     const userIds = Array.from(
@@ -501,8 +582,9 @@ export async function GET(request: NextRequest) {
         id: item.id,
         codigo: item.codigo,
         descricao: item.descricao,
-        umb: item.umb,
+        umb: normalizeNullableText(item.umb) ?? umbFallbackByMaterialId.get(item.id) ?? null,
         tipo: item.tipo,
+        isTransformer: Boolean(item.is_transformer),
         unitPrice: item.unit_price,
         isActive: item.is_active,
         cancellationReason: item.cancellation_reason,
@@ -543,7 +625,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: validationError }, { status: 400 });
     }
 
-    const unitPrice = input.unitPrice as number;
+    const unitPrice = input.unitPrice;
 
     const { supabase, appUser } = resolution;
     const precheck = await precheckMaterialCodeConflict(supabase, appUser.tenant_id, null, input.codigo);
@@ -560,6 +642,7 @@ export async function POST(request: NextRequest) {
       descricao: input.descricao,
       umb: input.umb,
       tipo: input.tipo,
+      isTransformer: input.isTransformer,
       unitPrice,
     });
 
@@ -606,7 +689,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: validationError }, { status: 400 });
     }
 
-    const unitPrice = input.unitPrice as number;
+    const unitPrice = input.unitPrice;
 
     const { supabase, appUser } = resolution;
     const currentMaterial = await fetchMaterialById(supabase, appUser.tenant_id, materialId);
@@ -635,6 +718,7 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "descricao", currentMaterial.descricao, input.descricao);
     addChange(changes, "umb", currentMaterial.umb, input.umb);
     addChange(changes, "tipo", currentMaterial.tipo, input.tipo);
+    addChange(changes, "isTransformer", currentMaterial.is_transformer, input.isTransformer);
     addChange(changes, "unitPrice", currentMaterial.unit_price, unitPrice);
 
     if (Object.keys(changes).length === 0) {
@@ -650,6 +734,7 @@ export async function PUT(request: NextRequest) {
       descricao: input.descricao,
       umb: input.umb,
       tipo: input.tipo,
+      isTransformer: input.isTransformer,
       unitPrice,
       changes,
       expectedUpdatedAt,

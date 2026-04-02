@@ -29,15 +29,20 @@ Cadastro
   - `Codigo`
   - `Descricao`
   - `Tipo`
-  - `Preco`
 - Campo opcional:
+  - `Preco`
   - `UMB`
+  - `Material TRAFO` (`is_transformer`)
 - Campos `LP` e `Serial` removidos do cadastro base de `materials`.
 - `LP` e `Serial` permanecem apenas nos fluxos de movimentacao (`Entrada`, `Saida`, `Requisicao`, `Devolucao`).
 - Regra de preco:
   - Deve ser numerico e maior ou igual a zero.
 - Regra de tipo:
   - Obrigatorio e nao pode ficar vazio.
+  - Cadastro/edicao via select fixo: `NOVO` ou `SUCATA`.
+- Regra de material TRAFO:
+  - Campo `is_transformer` editavel no cadastro de materiais.
+  - Quando ativo, o fluxo de movimentacao exige `Serial` e `LP`.
 - Regra de duplicidade de codigo:
   - Cadastro e edicao executam pre-check via RPC (`precheck_material_code_conflict`).
   - Se o codigo ja existir no mesmo tenant, a operacao e bloqueada.
@@ -61,6 +66,7 @@ Filtros, auto-complete e listagem
   - `Codigo`
   - `Descricao`
   - `Tipo`
+  - `Trafo`
   - `UMB`
   - `Preco`
   - `Registrado por`
@@ -122,6 +128,14 @@ Atualizacao 2026-03
 - Atualizacao (2026-03-26):
   - A tela passou a reutilizar os componentes compartilhados `ActionIcon` e `CsvExportButton`.
   - O comportamento funcional nao mudou; o ajuste foi de padronizacao para novas telas.
+- Atualizacao (2026-04):
+  - Corrigida a exibicao de `UMB` na lista para evitar celula em branco quando o valor vier vazio/espacado.
+  - A API `GET /api/materials` agora normaliza `umb` e aplica fallback tecnico usando o ultimo `requisicao_itens.umb` por `material_id` quando `materials.umb` estiver vazio.
+- Atualizacao (2026-04):
+  - Cadastro de `Materiais` passou a permitir marcar `Material TRAFO` (`is_transformer`) no formulario.
+  - `Preco` deixou de ser obrigatorio (quando vazio, o backend grava `0.00`).
+  - `Tipo` passou a ser select fixo (`NOVO`/`SUCATA`) com validacao na API e na RPC de escrita.
+  - A lista de materiais passou a exibir a coluna `Trafo` (`Sim`/`Nao`).
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -206,3 +220,22 @@ Ajuda contextual
 - Comportamento antes/depois (2026-03-26):
   - Antes: icones de acao e botao de exportacao eram declarados inline na propria tela.
   - Depois: a tela usa componentes compartilhados, reduzindo duplicacao e mantendo o mesmo padrao visual para futuras geracoes de tela.
+- Arquivos alterados/criados (2026-04):
+  - `src/app/api/materials/route.ts`
+  - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+  - `src/modules/dashboard/materiais/MaterialsPageView.module.css`
+  - `supabase/migrations/132_update_material_save_rpc_with_transformer_and_type.sql`
+- Funcoes/hooks/constantes tocadas (2026-04):
+  - `GET /api/materials`
+  - `POST /api/materials`
+  - `PUT /api/materials`
+  - `formatOptionalText`
+  - `normalizeMaterialType`
+  - `toFormState`
+- Comportamento antes/depois (2026-04):
+  - Antes: quando `umb` vinha como string vazia/espacos, a coluna `UMB` podia aparecer visualmente em branco.
+  - Depois: a coluna `UMB` exibe `-` para vazio e passa a mostrar fallback de `requisicao_itens.umb` quando o cadastro base estiver sem `umb`.
+  - Antes: `Tipo` era texto livre e `Preco` era obrigatorio no cadastro.
+  - Depois: `Tipo` e selecionado entre `NOVO`/`SUCATA` e `Preco` virou opcional.
+  - Antes: `is_transformer` nao era editavel na tela de Materiais.
+  - Depois: `is_transformer` pode ser definido no cadastro/edicao e aparece na coluna `Trafo`.
