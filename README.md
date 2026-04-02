@@ -163,10 +163,10 @@ vercel --prod
   - `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
   - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a `is_transformer` e `Preco` opcional (default `0.00`).
-  - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos e materiais ativos para a tela de movimentacao.
+  - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos, materiais ativos e catalogo de motivos padrao de estorno para a tela de movimentacao.
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em lote (CSV) para a tela de estoque.
-  - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo obrigatorio, bloqueio de duplo estorno e permissao administrativa.
+  - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
@@ -201,7 +201,7 @@ vercel --prod
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
 - `src/modules/dashboard/entrada/`
-  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), `Tipo` automatico por `materials.tipo` (nao selecionavel), `Serial/LP` condicionais para TRAFO, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
+  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), `Tipo` automatico por `materials.tipo` (nao selecionavel), `Serial/LP` condicionais para TRAFO, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
@@ -576,6 +576,7 @@ npm run build
 
 ## Licenca
 - Nao definida no repositorio.
+
 
 
 

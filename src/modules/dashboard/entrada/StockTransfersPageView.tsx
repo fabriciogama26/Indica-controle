@@ -26,10 +26,17 @@ type MaterialOption = {
   isTransformer: boolean;
 };
 
+type ReversalReasonOption = {
+  code: string;
+  label: string;
+  requiresNotes: boolean;
+};
+
 type MetaResponse = {
   stockCenters?: StockCenterOption[];
   projects?: ProjectOption[];
   materials?: MaterialOption[];
+  reversalReasons?: ReversalReasonOption[];
   message?: string;
 };
 
@@ -159,6 +166,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectCode: "Projeto",
   materialCode: "Material (codigo)",
   description: "Descricao",
+  reversalReasonCode: "Motivo padrao do estorno",
+  reversalReasonNotes: "Observacao do motivo",
   quantity: "Quantidade",
   serialNumber: "Serial",
   lotCode: "LP",
@@ -385,6 +394,7 @@ export function StockTransfersPageView() {
   const [stockCenters, setStockCenters] = useState<StockCenterOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
+  const [reversalReasons, setReversalReasons] = useState<ReversalReasonOption[]>([]);
 
   const [historyItems, setHistoryItems] = useState<TransferListItem[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -395,7 +405,8 @@ export function StockTransfersPageView() {
   const [historyModalItem, setHistoryModalItem] = useState<TransferListItem | null>(null);
   const [historyModalItems, setHistoryModalItems] = useState<TransferEditHistoryEntry[]>([]);
   const [reversalModalItem, setReversalModalItem] = useState<TransferListItem | null>(null);
-  const [reversalReason, setReversalReason] = useState("");
+  const [reversalReasonCode, setReversalReasonCode] = useState("");
+  const [reversalReasonNotes, setReversalReasonNotes] = useState("");
   const [reversalDate, setReversalDate] = useState(toIsoDate(new Date()));
 
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -415,6 +426,10 @@ export function StockTransfersPageView() {
   const selectedMaterial = useMemo(
     () => materials.find((material) => material.id === form.materialId) ?? null,
     [form.materialId, materials],
+  );
+  const selectedReversalReason = useMemo(
+    () => reversalReasons.find((reason) => reason.code === reversalReasonCode) ?? null,
+    [reversalReasons, reversalReasonCode],
   );
   const ownCenters = useMemo(
     () => stockCenters.filter((center) => center.centerType === "OWN"),
@@ -491,12 +506,17 @@ export function StockTransfersPageView() {
       setStockCenters(data.stockCenters ?? []);
       setProjects(data.projects ?? []);
       setMaterials(data.materials ?? []);
+      const fetchedReversalReasons = data.reversalReasons ?? [];
+      setReversalReasons(fetchedReversalReasons);
+      if (!reversalReasonCode && fetchedReversalReasons.length > 0) {
+        setReversalReasonCode(fetchedReversalReasons[0].code);
+      }
     } catch {
       setFeedback({ type: "error", message: "Falha ao carregar metadados da movimentacao de estoque." });
     } finally {
       setIsLoadingMeta(false);
     }
-  }, [session?.accessToken]);
+  }, [reversalReasonCode, session?.accessToken]);
 
   const loadHistory = useCallback(async (targetPage: number) => {
     if (!session?.accessToken) {
@@ -930,15 +950,22 @@ export function StockTransfersPageView() {
       return;
     }
 
+    const defaultReasonCode = reversalReasons[0]?.code ?? "";
+    if (!defaultReasonCode) {
+      setFeedback({ type: "error", message: "Catalogo de motivos de estorno indisponivel." });
+      return;
+    }
     setReversalModalItem(item);
-    setReversalReason("");
+    setReversalReasonCode(defaultReasonCode);
+    setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
   }
 
   function closeReversalModal() {
     if (isReversing) return;
     setReversalModalItem(null);
-    setReversalReason("");
+    setReversalReasonCode(reversalReasons[0]?.code ?? "");
+    setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
   }
 
@@ -948,9 +975,15 @@ export function StockTransfersPageView() {
       return;
     }
 
-    const normalizedReason = normalizeText(reversalReason);
-    if (!normalizedReason) {
-      setFeedback({ type: "error", message: "Motivo do estorno e obrigatorio." });
+    const normalizedReasonCode = normalizeText(reversalReasonCode).toUpperCase();
+    if (!normalizedReasonCode) {
+      setFeedback({ type: "error", message: "Motivo padrao do estorno e obrigatorio." });
+      return;
+    }
+
+    const normalizedReasonNotes = normalizeText(reversalReasonNotes) || null;
+    if (selectedReversalReason?.requiresNotes && !normalizedReasonNotes) {
+      setFeedback({ type: "error", message: "Observacao do motivo e obrigatoria para o motivo selecionado." });
       return;
     }
 
@@ -978,7 +1011,8 @@ export function StockTransfersPageView() {
         },
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
-          reversalReason: normalizedReason,
+          reversalReasonCode: normalizedReasonCode,
+          reversalReasonNotes: normalizedReasonNotes,
           reversalDate: normalizedReversalDate,
         }),
       });
@@ -1807,14 +1841,32 @@ export function StockTransfersPageView() {
 
               <label className={styles.field}>
                 <span>
-                  Motivo do estorno <span className={styles.requiredMark}>*</span>
+                  Motivo padrao do estorno <span className={styles.requiredMark}>*</span>
+                </span>
+                <select
+                  value={reversalReasonCode}
+                  onChange={(event) => setReversalReasonCode(event.target.value)}
+                  disabled={isReversing}
+                >
+                  <option value="">Selecione</option>
+                  {reversalReasons.map((reason) => (
+                    <option key={reason.code} value={reason.code}>
+                      {reason.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Observacao do motivo {selectedReversalReason?.requiresNotes ? <span className={styles.requiredMark}>*</span> : null}
                 </span>
                 <textarea
                   rows={3}
-                  value={reversalReason}
-                  onChange={(event) => setReversalReason(event.target.value)}
+                  value={reversalReasonNotes}
+                  onChange={(event) => setReversalReasonNotes(event.target.value)}
                   disabled={isReversing}
-                  placeholder="Descreva o motivo do estorno"
+                  placeholder={selectedReversalReason?.requiresNotes ? "Descreva o motivo" : "Opcional"}
                 />
               </label>
 
@@ -1838,7 +1890,12 @@ export function StockTransfersPageView() {
                   type="button"
                   className={styles.primaryButton}
                   onClick={() => void handleConfirmReversal()}
-                  disabled={isReversing || !normalizeText(reversalReason) || !normalizeText(reversalDate)}
+                  disabled={
+                    isReversing
+                    || !normalizeText(reversalReasonCode)
+                    || !normalizeText(reversalDate)
+                    || Boolean(selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes))
+                  }
                 >
                   {isReversing ? "Estornando..." : "Confirmar estorno"}
                 </button>

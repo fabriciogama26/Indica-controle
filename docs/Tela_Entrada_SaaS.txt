@@ -20,6 +20,7 @@ Arquitetura
 - Banco (evolucao operacao): `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
 - Banco (hardening centro/tipo): `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
 - Banco (estorno): `supabase/migrations/131_add_stock_transfer_reversal.sql`
+- Banco (catalogo motivo estorno): `supabase/migrations/134_standardize_stock_reversal_reasons.sql`
 
 Cadastro
 --------
@@ -100,7 +101,7 @@ Filtros, auto-complete e listagem
   - `Exportar Excel (CSV)` (botao no cabecalho da lista)
   - `Detalhes` (modal)
   - `Historico` (modal)
-  - `Estornar` (modal, com motivo obrigatorio)
+  - `Estornar` (modal, com motivo padrao obrigatorio)
 - `Historico` exibe alteracoes de edicao e estorno em `material_history`:
   - `_context = STOCK_TRANSFER`
   - `_context = STOCK_TRANSFER_REVERSAL`
@@ -120,7 +121,8 @@ Cancelamento e saldo
 - Nao permite duplo estorno da mesma movimentacao.
 - Nao permite estornar uma movimentacao que ja e estorno.
 - Modal de estorno exige:
-  - `Motivo do estorno`
+  - `Motivo padrao do estorno` (catalogo)
+  - `Observacao do motivo` (obrigatoria apenas para `OTHER`)
   - `Data do estorno` (nao futura)
 - Estorno permitido apenas para perfil administrativo (`admin/master`).
 - Efeito de saldo:
@@ -163,6 +165,11 @@ Atualizacao 2026-04
   - cria RPC `reverse_stock_transfer_record` com motivo obrigatorio, bloqueio de duplo estorno e validacao transacional;
   - reforca consistencia de tenant no nivel da tabela de estorno;
   - registra auditoria adicional em `material_history` com `_context = STOCK_TRANSFER_REVERSAL`.
+- Migration `134_standardize_stock_reversal_reasons.sql`:
+  - cria catalogo `stock_transfer_reversal_reason_catalog` com motivos padrao de estorno;
+  - adiciona `stock_transfer_reversals.reversal_reason_code` e `stock_transfer_reversals.reversal_reason_notes`;
+  - cria RPC `reverse_stock_transfer_record_v2` para estorno padronizado por codigo + observacao;
+  - aplica validacao hard no banco para motivo invalido/inativo e obrigatoriedade de observacao quando `code = OTHER`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -174,9 +181,9 @@ Funcoes principais
 - Caminho: `src/app/api/stock-transfers/import/route.ts`
   - Responsavel por: processamento em lote de movimentacoes e retorno consolidado por linha.
 - Caminho: `src/app/api/stock-transfers/reversal/route.ts`
-  - Responsavel por: validar payload de estorno e acionar RPC transacional de reversao.
+  - Responsavel por: validar payload de estorno (`reversalReasonCode`/`reversalReasonNotes`) e acionar RPC transacional de reversao.
 - Caminho: `src/app/api/stock-transfers/meta/route.ts`
-  - Responsavel por: listar centros, projetos e materiais ativos para os selects/datalists.
+  - Responsavel por: listar centros, projetos, materiais e catalogo de motivos de estorno para os selects/datalists.
 - Caminho: `supabase/migrations/128_create_stock_transfer_module.sql`
   - Responsavel por: modelagem base e RPC transacional de debito/credito entre centros.
 - Caminho: `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
@@ -185,6 +192,8 @@ Funcoes principais
   - Responsavel por: hardening de normalizacao de `center_type` e bloqueio de update direto de movimentacao.
 - Caminho: `supabase/migrations/131_add_stock_transfer_reversal.sql`
   - Responsavel por: modelagem do estorno e RPC `reverse_stock_transfer_record`.
+- Caminho: `supabase/migrations/134_standardize_stock_reversal_reasons.sql`
+  - Responsavel por: catalogo de motivos (`stock_transfer_reversal_reason_catalog`) e RPC `reverse_stock_transfer_record_v2`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
