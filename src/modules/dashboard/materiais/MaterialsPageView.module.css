@@ -114,6 +114,21 @@
   grid-column: span 2;
 }
 
+.checkboxField {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #17347a;
+  font-weight: 700;
+  min-height: 46px;
+}
+
+.checkboxField input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2750a3;
+}
+
 .actions {
   display: flex;
   gap: 10px;
