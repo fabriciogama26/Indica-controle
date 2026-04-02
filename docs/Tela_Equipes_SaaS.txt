@@ -24,6 +24,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
 - Base SQL: `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Base SQL: `supabase/migrations/093_enforce_single_team_per_foreman_rpc.sql`
+- Base SQL: `supabase/migrations/133_allow_foreman_reuse_when_inactive_team.sql`
 
 Cadastro
 --------
@@ -37,7 +38,7 @@ Cadastro
   - Base deve existir no tenant e estar ativa em `project_service_centers`.
   - Encarregado deve existir no tenant e estar ativo em `people`.
   - Encarregado deve ter cargo com correspondencia em `ENCARREGADO` ou `SUPERVISOR`.
-  - Nao permitir cadastrar/editar equipe quando ja existir outra equipe com o mesmo encarregado no tenant.
+  - Nao permitir cadastrar/editar equipe quando ja existir outra equipe ativa com o mesmo encarregado no tenant.
   - Tipo deve existir no tenant e estar ativo em `team_types`.
   - Bloqueio de duplicidade por combinacao (`tenant_id`, `foreman_person_id`, `name`, `vehicle_plate`).
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear escrita concorrente.
@@ -116,6 +117,9 @@ Atualizacao 2026-03
 - Revisao de cadastro (2026-03-20): API de equipes recebeu mapeamento de erro detalhado e fallback de escrita/status quando RPC `save_team_record`/`set_team_record_status` nao estiver disponivel.
 - Revisao de cadastro (2026-03-20): API passou a bloquear `POST/PUT` quando ja existe equipe com o mesmo encarregado no tenant (retorno `409`).
 - Revisao de cadastro (2026-03-20): migration `093_enforce_single_team_per_foreman_rpc.sql` reforca o mesmo bloqueio no nivel da RPC `save_team_record`.
+- Atualizacao (2026-04-02): modal de `Cancelar/Ativar` foi padronizado para usar `modalCard` e `modalCloseButton`, alinhado com o mesmo layout dos modais de outras telas.
+- Atualizacao (2026-04-02): regra de encarregado foi ajustada para permitir novo cadastro quando o encarregado estiver somente em equipe inativa, mantendo bloqueio para duplicidade em equipe ativa.
+- Atualizacao (2026-04-02): migration `133_allow_foreman_reuse_when_inactive_team.sql` atualiza `save_team_record` e `set_team_record_status` para garantir unicidade de encarregado apenas entre equipes ativas.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -142,6 +146,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar `service_center_id` em `teams` e alinhar a base da equipe com a programacao.
 - Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
   - Responsavel por: criar `save_team_record` e `set_team_record_status` para escrita transacional da tela de equipes.
+- Caminho: `supabase/migrations/133_allow_foreman_reuse_when_inactive_team.sql`
+  - Responsavel por: permitir reuso de encarregado em novas equipes quando o vinculo anterior estiver inativo e bloquear reativacao que geraria dois vinculos ativos.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -162,6 +168,7 @@ Ajuda contextual
   - `supabase/migrations/053_create_team_types_and_link_teams.sql` (novo)
   - `supabase/migrations/068_link_teams_service_center_and_harden_programming_rpc.sql`
   - `supabase/migrations/093_enforce_single_team_per_foreman_rpc.sql` (novo)
+  - `supabase/migrations/133_allow_foreman_reuse_when_inactive_team.sql` (novo)
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -172,7 +179,7 @@ Ajuda contextual
   - Depois (2026-03-20): o submit nao e mais tentado sem metadados minimos e a tela orienta exatamente qual cadastro base falta.
   - Depois (2026-03-20): a busca de encarregados fica menos rigida para nao falhar quando o cargo tiver sufixos/prefixos.
   - Depois (2026-03-20): erros de banco em `POST/PUT/PATCH` passam a retornar diagnostico especifico e o backend tenta fallback direto quando as RPCs de equipes ainda nao existem no ambiente.
-  - Depois (2026-03-20): cadastro/edicao recusa encarregado ja vinculado em outra equipe, evitando duplicidade operacional por responsavel.
+  - Depois (2026-03-20): cadastro/edicao recusa encarregado ja vinculado em equipe ativa, evitando duplicidade operacional por responsavel.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios da tela e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Funcoes/hooks/constantes tocadas:
   - `TeamsPageView`, `loadTeams`, `handleSubmit`, `startEdit`, `confirmStatusChange`
@@ -182,11 +189,27 @@ Ajuda contextual
   - `FOREMAN_JOB_TITLE_FILTER` em `/api/teams` e `/api/teams/meta`
   - `save_team_record`, `set_team_record_status`
   - `093_enforce_single_team_per_foreman_rpc.sql` (regra `DUPLICATE_TEAM_FOREMAN` na RPC)
+  - `133_allow_foreman_reuse_when_inactive_team.sql` (encarregado unico apenas entre equipes ativas)
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
   - `buildTeamsCsv` (2026-03-24)
+  - `closeStatusModal` e renderizacao do modal de status (2026-04-02)
 - Arquivos alterados/criados (2026-03-24):
   - `src/modules/dashboard/equipes/TeamsPageView.tsx`
 - Comportamento antes/depois (2026-03-24):
   - Antes: CSV de Equipes nao incluia `Registrado por`, `Atualizado por` e `Atualizado em`.
   - Depois: CSV de Equipes passa a exportar colunas completas para cadastro e rastreabilidade operacional.
   - Depois: modal de detalhes e CSV de Equipes aplicam fallback `Nao identificado` para nomes de auditoria vazios.
+- Arquivos alterados/criados (2026-04-02):
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - `docs/Tela_Equipes_SaaS.txt`
+- Comportamento antes/depois (2026-04-02):
+  - Antes: modal de `Cancelar/Ativar` de Equipes usava `statusModalCard` (classe inexistente no CSS), com apresentacao diferente dos demais modais padrao.
+  - Depois: modal de `Cancelar/Ativar` passa a usar `modalCard`, botao `Fechar` no cabecalho e acoes no mesmo padrao visual/estrutural aplicado nas outras telas de cadastro.
+- Arquivos alterados/criados (2026-04-02 - regra de encarregado):
+  - `src/app/api/teams/route.ts`
+  - `supabase/migrations/133_allow_foreman_reuse_when_inactive_team.sql`
+  - `docs/Tela_Equipes_SaaS.txt`
+- Comportamento antes/depois (2026-04-02 - regra de encarregado):
+  - Antes: qualquer equipe (ativa ou inativa) com o mesmo encarregado bloqueava novo cadastro/edicao.
+  - Depois: apenas equipe ativa com o mesmo encarregado bloqueia novo cadastro/edicao; equipe inativa nao impede novo vinculo.
+  - Depois: ao tentar reativar equipe inativa cujo encarregado ja esteja em equipe ativa, a API/RPC retornam conflito (`DUPLICATE_TEAM_FOREMAN`).

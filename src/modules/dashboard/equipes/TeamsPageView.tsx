@@ -1242,7 +1242,7 @@ export function TeamsPageView() {
 
       {statusTeam ? (
         <div className={styles.modalOverlay} onClick={closeStatusModal}>
-          <article className={styles.statusModalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
                 <h4>{statusAction === "cancel" ? "Cancelar Equipe" : "Ativar Equipe"}</h4>
@@ -1252,6 +1252,9 @@ export function TeamsPageView() {
                     : `Equipe ${statusTeam.name} sera ativada.`}
                 </p>
               </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeStatusModal}>
+                Fechar
+              </button>
             </header>
 
             <div className={styles.modalBody}>
@@ -1270,9 +1273,6 @@ export function TeamsPageView() {
               </label>
 
               <div className={styles.actions}>
-                <button type="button" className={styles.ghostButton} onClick={closeStatusModal} disabled={isChangingStatus}>
-                  Voltar
-                </button>
                 <button
                   type="button"
                   className={statusAction === "cancel" ? styles.dangerButton : styles.primaryButton}
@@ -1286,6 +1286,9 @@ export function TeamsPageView() {
                     : statusAction === "cancel"
                       ? "Confirmar cancelamento"
                       : "Confirmar ativacao"}
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={closeStatusModal} disabled={isChangingStatus}>
+                  Fechar
                 </button>
               </div>
             </div>
