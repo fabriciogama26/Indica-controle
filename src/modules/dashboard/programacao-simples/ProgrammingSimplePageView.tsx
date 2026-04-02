@@ -39,6 +39,12 @@ type SupportOptionItem = {
   description: string;
 };
 
+type ProgrammingReasonOptionItem = {
+  code: string;
+  label: string;
+  requiresNotes: boolean;
+};
+
 type SgdTypeItem = {
   id: string;
   description: string;
@@ -118,6 +124,7 @@ type ProgrammingResponse = {
   teams?: TeamItem[];
   supportOptions?: SupportOptionItem[];
   sgdTypes?: SgdTypeItem[];
+  reasonOptions?: ProgrammingReasonOptionItem[];
   schedules?: ScheduleItem[];
   nextEtapaNumber?: number;
   message?: string;
@@ -248,7 +255,6 @@ type FilterState = {
 
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
-const CANCEL_REASON_MIN_LENGTH = 10;
 const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
   { key: "sgd", label: "SGD" },
   { key: "pi", label: "PI" },
@@ -313,6 +319,7 @@ const VALIDATION_FIELD_LABELS: Record<string, string> = {
   workCompletionStatus: "Estado Trabalho",
   affectedCustomers: "Nº Clientes Afetados",
   sgdTypeId: "Tipo de SGD",
+  changeReason: "Motivo da reprogramacao",
 };
 
 function toIsoDate(date: Date) {
@@ -468,6 +475,53 @@ function resolveScheduleTeamInfo(schedule: ScheduleItem, teamMap: Map<string, Te
     teamTypeName: schedule.teamTypeName ?? "",
     foremanName: schedule.teamForemanName ?? "",
   } satisfies TeamItem;
+}
+
+function resolveReasonOption(
+  reasonOptions: ProgrammingReasonOptionItem[],
+  selectedReasonCode: string,
+) {
+  const normalizedCode = selectedReasonCode.trim().toUpperCase();
+  if (!normalizedCode) {
+    return null;
+  }
+
+  return reasonOptions.find((item) => item.code.toUpperCase() === normalizedCode) ?? null;
+}
+
+function isReasonSelectionValid(
+  reasonOptions: ProgrammingReasonOptionItem[],
+  selectedReasonCode: string,
+  reasonNotes: string,
+) {
+  const selectedOption = resolveReasonOption(reasonOptions, selectedReasonCode);
+  if (!selectedOption) {
+    return false;
+  }
+
+  if (selectedOption.requiresNotes && !reasonNotes.trim()) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildReasonText(
+  reasonOptions: ProgrammingReasonOptionItem[],
+  selectedReasonCode: string,
+  reasonNotes: string,
+) {
+  const selectedOption = resolveReasonOption(reasonOptions, selectedReasonCode);
+  if (!selectedOption) {
+    return "";
+  }
+
+  const notes = reasonNotes.trim();
+  if (selectedOption.requiresNotes && !notes) {
+    return "";
+  }
+
+  return notes ? `${selectedOption.label}: ${notes}` : selectedOption.label;
 }
 
 function formatStructureSummaryByCode(codeCountMap: Record<string, number>) {
@@ -1110,6 +1164,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [supportOptions, setSupportOptions] = useState<SupportOptionItem[]>([]);
   const [sgdTypes, setSgdTypes] = useState<SgdTypeItem[]>([]);
+  const [reasonOptions, setReasonOptions] = useState<ProgrammingReasonOptionItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [page, setPage] = useState(1);
@@ -1121,17 +1176,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingExpectedUpdatedAt, setEditingExpectedUpdatedAt] = useState<string | null>(null);
-  const [editChangeReason, setEditChangeReason] = useState("");
+  const [editChangeReasonCode, setEditChangeReasonCode] = useState("");
+  const [editChangeReasonNotes, setEditChangeReasonNotes] = useState("");
   const [detailsTarget, setDetailsTarget] = useState<ScheduleItem | null>(null);
   const [historyTarget, setHistoryTarget] = useState<ScheduleItem | null>(null);
   const [historyItems, setHistoryItems] = useState<ProgrammingHistoryItem[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<ScheduleItem | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
+  const [cancelReasonCode, setCancelReasonCode] = useState("");
+  const [cancelReasonNotes, setCancelReasonNotes] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
   const [postponeTarget, setPostponeTarget] = useState<ScheduleItem | null>(null);
-  const [postponeReason, setPostponeReason] = useState("");
+  const [postponeReasonCode, setPostponeReasonCode] = useState("");
+  const [postponeReasonNotes, setPostponeReasonNotes] = useState("");
   const [postponeDate, setPostponeDate] = useState("");
   const [isPostponing, setIsPostponing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -1152,7 +1210,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     () => (editingScheduleId ? schedules.find((item) => item.id === editingScheduleId) ?? null : null),
     [editingScheduleId, schedules],
   );
-  const canSubmitCancellation = cancelReason.trim().length >= CANCEL_REASON_MIN_LENGTH && !isCancelling;
+  const canSubmitCancellation = isReasonSelectionValid(reasonOptions, cancelReasonCode, cancelReasonNotes) && !isCancelling;
   const selectedProject = projects.find((item) => item.id === form.projectId) ?? null;
   const availableTeams = useMemo(() => {
     if (!selectedProject) {
@@ -1260,6 +1318,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setTeams(nextTeams);
     setSupportOptions(data.supportOptions ?? []);
     setSgdTypes(data.sgdTypes ?? []);
+    setReasonOptions(data.reasonOptions ?? []);
     setSchedules(nextSchedules);
   }, []);
 
@@ -1670,7 +1729,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setEditingScheduleId(schedule.id);
     setEditingTeamId(schedule.teamId);
     setEditingExpectedUpdatedAt(schedule.updatedAt);
-    setEditChangeReason("");
+    setEditChangeReasonCode("");
+    setEditChangeReasonNotes("");
     setIsEtapaManuallyEdited(true);
     setForm((current) => ({
       ...current,
@@ -1726,7 +1786,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setEditingScheduleId(null);
     setEditingTeamId(null);
     setEditingExpectedUpdatedAt(null);
-    setEditChangeReason("");
+    setEditChangeReasonCode("");
+    setEditChangeReasonNotes("");
     setIsEtapaManuallyEdited(false);
     setForm(createInitialForm(today));
     setFeedback(null);
@@ -1769,8 +1830,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    if (!reasonOptions.length) {
+      setFeedback({
+        type: "error",
+        message: "Catalogo de motivos indisponivel. Aplique a migration 135 para usar cancelamento por select.",
+      });
+      return;
+    }
+
     setCancelTarget(schedule);
-    setCancelReason("");
+    setCancelReasonCode("");
+    setCancelReasonNotes("");
     setFeedback(null);
   }
 
@@ -1783,15 +1853,25 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    if (!reasonOptions.length) {
+      setFeedback({
+        type: "error",
+        message: "Catalogo de motivos indisponivel. Aplique a migration 135 para usar adiamento por select.",
+      });
+      return;
+    }
+
     setPostponeTarget(schedule);
-    setPostponeReason("");
+    setPostponeReasonCode("");
+    setPostponeReasonNotes("");
     setPostponeDate(schedule.date);
     setFeedback(null);
   }
 
   function closeCancelModal() {
     setCancelTarget(null);
-    setCancelReason("");
+    setCancelReasonCode("");
+    setCancelReasonNotes("");
   }
 
   function closePostponeModal() {
@@ -1800,7 +1880,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     }
 
     setPostponeTarget(null);
-    setPostponeReason("");
+    setPostponeReasonCode("");
+    setPostponeReasonNotes("");
     setPostponeDate("");
   }
 
@@ -1840,7 +1921,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }
 
   async function confirmCancellation() {
-    if (!accessToken || !cancelTarget || cancelReason.trim().length < CANCEL_REASON_MIN_LENGTH) {
+    if (!accessToken || !cancelTarget) {
+      return;
+    }
+
+    const selectedReasonText = buildReasonText(reasonOptions, cancelReasonCode, cancelReasonNotes);
+    if (!selectedReasonText) {
       return;
     }
 
@@ -1856,7 +1942,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         body: JSON.stringify({
           id: cancelTarget.id,
           action: "CANCELAR",
-          reason: cancelReason.trim(),
+          reason: selectedReasonText,
           expectedUpdatedAt: cancelTarget.updatedAt,
         }),
       });
@@ -1926,10 +2012,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (postponeReason.trim().length < CANCEL_REASON_MIN_LENGTH) {
+    const selectedReasonText = buildReasonText(reasonOptions, postponeReasonCode, postponeReasonNotes);
+    if (!selectedReasonText) {
       openAlertModal(
         "Motivo do adiamento incompleto",
-        `Informe o motivo do adiamento com no minimo ${CANCEL_REASON_MIN_LENGTH} caracteres.`,
+        "Selecione o motivo do adiamento. Quando o motivo exigir observacao, preencha o campo complementar.",
       );
       return;
     }
@@ -1947,7 +2034,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         body: JSON.stringify({
           id: postponeTarget.id,
           action: "ADIAR",
-          reason: postponeReason.trim(),
+          reason: selectedReasonText,
           newDate: postponeDate,
           expectedUpdatedAt: postponeTarget.updatedAt,
         }),
@@ -2166,6 +2253,31 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       }
     }
 
+    const hasRescheduleChanges = Boolean(
+      isEditing
+      && currentEditingSchedule
+      && (
+        currentEditingSchedule.projectId !== form.projectId
+        || currentEditingSchedule.teamId !== form.teamIds[0]
+        || currentEditingSchedule.date !== form.date
+        || currentEditingSchedule.startTime !== form.startTime
+        || currentEditingSchedule.endTime !== form.endTime
+        || currentEditingSchedule.period !== form.period
+      )
+    );
+    const selectedRescheduleReason = buildReasonText(
+      reasonOptions,
+      editChangeReasonCode,
+      editChangeReasonNotes,
+    );
+    if (hasRescheduleChanges && !selectedRescheduleReason) {
+      flagInvalidFields(
+        ["changeReason"],
+        "Selecione o motivo da reprogramacao. Quando o motivo exigir observacao, preencha o campo complementar.",
+      );
+      return;
+    }
+
     setIsSaving(true);
     setFeedback(null);
     setAlertModal(null);
@@ -2223,7 +2335,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 id: editingScheduleId,
                 teamId: form.teamIds[0],
                 expectedUpdatedAt: editingExpectedUpdatedAt,
-                changeReason: editChangeReason.trim() || undefined,
+                changeReason: hasRescheduleChanges ? selectedRescheduleReason || undefined : undefined,
               }
             : {
                 action: "BATCH_CREATE",
@@ -2286,7 +2398,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       setEditingScheduleId(null);
       setEditingTeamId(null);
       setEditingExpectedUpdatedAt(null);
-      setEditChangeReason("");
+      setEditChangeReasonCode("");
+      setEditChangeReasonNotes("");
       setForm(createInitialForm(today));
       try {
         const boardData = await fetchBoardSnapshot();
@@ -2889,14 +3002,33 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           ) : null}
 
           {editingScheduleId ? (
-            <label className={`${styles.field} ${styles.fieldWide}`}>
+            <label className={`${styles.field} ${styles.fieldWide} ${isFieldInvalid("changeReason") ? styles.fieldInvalid : ""}`}>
               <span>Motivo da reprogramacao (obrigatorio se alterar projeto, equipe, data, horario ou periodo)</span>
-              <input
-                type="text"
-                value={editChangeReason}
-                onChange={(event) => setEditChangeReason(event.target.value)}
-                placeholder="Informe o motivo quando houver reprogramacao."
-              />
+              <select
+                value={editChangeReasonCode}
+                onChange={(event) => setEditChangeReasonCode(event.target.value)}
+                disabled={!reasonOptions.length}
+              >
+                <option value="">Selecione</option>
+                {reasonOptions.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              {!reasonOptions.length ? (
+                <small className={styles.helperText}>
+                  Catalogo de motivos indisponivel. Aplique a migration 135 para habilitar a selecao.
+                </small>
+              ) : null}
+              {resolveReasonOption(reasonOptions, editChangeReasonCode)?.requiresNotes ? (
+                <textarea
+                  value={editChangeReasonNotes}
+                  onChange={(event) => setEditChangeReasonNotes(event.target.value)}
+                  rows={3}
+                  placeholder="Descreva a observacao complementar do motivo."
+                />
+              ) : null}
             </label>
           ) : null}
 
@@ -3696,13 +3828,27 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <span>
                   Motivo do adiamento <span className="requiredMark">*</span>
                 </span>
-                <textarea
-                  value={postponeReason}
-                  onChange={(event) => setPostponeReason(event.target.value)}
-                  rows={4}
-                  placeholder={`Descreva o motivo com no minimo ${CANCEL_REASON_MIN_LENGTH} caracteres`}
+                <select
+                  value={postponeReasonCode}
+                  onChange={(event) => setPostponeReasonCode(event.target.value)}
                   disabled={isPostponing}
-                />
+                >
+                  <option value="">Selecione</option>
+                  {reasonOptions.map((item) => (
+                    <option key={item.code} value={item.code}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                {resolveReasonOption(reasonOptions, postponeReasonCode)?.requiresNotes ? (
+                  <textarea
+                    value={postponeReasonNotes}
+                    onChange={(event) => setPostponeReasonNotes(event.target.value)}
+                    rows={3}
+                    placeholder="Descreva a observacao complementar do motivo."
+                    disabled={isPostponing}
+                  />
+                ) : null}
               </label>
 
               <div className={styles.actions}>
@@ -3735,20 +3881,32 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
             <div className={styles.modalBody}>
               <p>
-                Informe o motivo do cancelamento. O botao validar so fica ativo quando o motivo tiver no minimo{" "}
-                {CANCEL_REASON_MIN_LENGTH} caracteres.
+                Selecione o motivo do cancelamento. Quando o motivo exigir observacao, preencha o campo complementar.
               </p>
 
               <label className={styles.field}>
                 <span>
                   Motivo do cancelamento <span className="requiredMark">*</span>
                 </span>
-                <textarea
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                  rows={4}
-                  placeholder="Descreva o motivo do cancelamento"
-                />
+                <select
+                  value={cancelReasonCode}
+                  onChange={(event) => setCancelReasonCode(event.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  {reasonOptions.map((item) => (
+                    <option key={item.code} value={item.code}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                {resolveReasonOption(reasonOptions, cancelReasonCode)?.requiresNotes ? (
+                  <textarea
+                    value={cancelReasonNotes}
+                    onChange={(event) => setCancelReasonNotes(event.target.value)}
+                    rows={3}
+                    placeholder="Descreva a observacao complementar do motivo."
+                  />
+                ) : null}
               </label>
 
               <div className={styles.actions}>
