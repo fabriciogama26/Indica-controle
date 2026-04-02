@@ -254,6 +254,7 @@ Atualizacao 2026-03
   - API `GET /api/medicao/meta` adicionada para carregar o catalogo de motivos de `Sem producao`.
   - Save da Medicao ajustado para aceitar ordem sem itens apenas quando `Tipo da medicao = Sem producao`.
   - Cadastro em massa ampliado para aceitar linhas `SEM_PRODUCAO` com `motivo_sem_producao`, sem `voz/quantidade/taxa`.
+  - Modal `Detalhes da Ordem` ajustado para priorizar `team_name_snapshot` e `foreman_name_snapshot`, mantendo fallback para dados atuais da equipe apenas quando snapshot estiver vazio.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -321,4 +322,12 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: a tela tentava aproveitar atividades da Programacao/forecast no fluxo de inclusao.
   - Depois: atividades da Medicao usam catalogo unico de `service_activities`; a medicao pode ser cadastrada sem programacao obrigatoria e a tela mostra match de programacao + alerta de atualizacao de `CONCLUIDO/PARCIAL`.
+- Arquivos alterados/criados (2026-04-02):
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+- Hooks/funcoes/constantes tocadas (2026-04-02):
+  - Renderizacao do modal de detalhes da ordem com prioridade de snapshot (`detailOrder.teamName` e `detailOrder.foremanName`).
+- Comportamento antes/depois (2026-04-02):
+  - Antes: o modal de detalhes da Medicao exibia `Equipe` e `Encarregado` sempre a partir do `teamMap` atual.
+  - Depois: o modal de detalhes passa a exibir primeiro os snapshots salvos na ordem, preservando o contexto historico; o `teamMap` atual fica como fallback tecnico.
 

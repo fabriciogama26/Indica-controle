@@ -2818,8 +2818,8 @@ export function MeasurementPageView() {
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
                 <div><strong>Projeto:</strong> {projectMap.get(detailOrder.projectId)?.code ?? "-"}</div>
-                <div><strong>Equipe:</strong> {teamMap.get(detailOrder.teamId)?.name ?? "-"}</div>
-                <div><strong>Encarregado:</strong> {teamMap.get(detailOrder.teamId)?.foremanName ?? "-"}</div>
+                <div><strong>Equipe:</strong> {detailOrder.teamName || teamMap.get(detailOrder.teamId)?.name || "-"}</div>
+                <div><strong>Encarregado:</strong> {detailOrder.foremanName || teamMap.get(detailOrder.teamId)?.foremanName || "-"}</div>
                 <div><strong>Data execucao:</strong> {formatDate(detailOrder.executionDate)}</div>
                 <div><strong>Tipo da medicao:</strong> {measurementKindLabel(detailOrder.measurementKind)}</div>
                 <div><strong>Motivo sem producao:</strong> {detailOrder.noProductionReasonName || "-"}</div>

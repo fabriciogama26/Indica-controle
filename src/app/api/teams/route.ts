@@ -435,6 +435,7 @@ async function fetchExistingTeamByForeman(params: {
     .select("id, name, foreman_person_id")
     .eq("tenant_id", params.tenantId)
     .eq("foreman_person_id", params.foremanId)
+    .eq("ativo", true)
     .limit(1);
 
   if (params.excludeTeamId) {
@@ -561,6 +562,34 @@ async function setTeamStatusViaRpc(params: {
   expectedUpdatedAt: string | null;
 }) {
   async function setTeamStatusDirectFallback() {
+    if (params.action === "ACTIVATE") {
+      const currentTeam = await fetchTeamById(params.supabase, params.tenantId, params.teamId);
+      if (!currentTeam) {
+        return {
+          ok: false,
+          status: 404,
+          message: "Equipe nao encontrada.",
+          reason: "TEAM_NOT_FOUND",
+        } as const;
+      }
+
+      const existingTeamByForeman = await fetchExistingTeamByForeman({
+        supabase: params.supabase,
+        tenantId: params.tenantId,
+        foremanId: currentTeam.foreman_person_id,
+        excludeTeamId: params.teamId,
+      });
+
+      if (existingTeamByForeman) {
+        return {
+          ok: false,
+          status: 409,
+          message: "Ja existe equipe ativa cadastrada para este encarregado. Cancele a equipe ativa antes de reativar esta equipe.",
+          reason: "DUPLICATE_TEAM_FOREMAN",
+        } as const;
+      }
+    }
+
     const nowIso = new Date().toISOString();
     const payload = params.action === "ACTIVATE"
       ? {
@@ -927,7 +956,7 @@ export async function POST(request: NextRequest) {
     });
     if (existingTeamByForeman) {
       return NextResponse.json(
-        { message: "Ja existe equipe cadastrada para este encarregado. Selecione outro encarregado." },
+        { message: "Ja existe equipe ativa cadastrada para este encarregado. Selecione outro encarregado." },
         { status: 409 },
       );
     }
@@ -1035,7 +1064,7 @@ export async function PUT(request: NextRequest) {
     });
     if (existingTeamByForeman) {
       return NextResponse.json(
-        { message: "Ja existe equipe cadastrada para este encarregado. Selecione outro encarregado." },
+        { message: "Ja existe equipe ativa cadastrada para este encarregado. Selecione outro encarregado." },
         { status: 409 },
       );
     }

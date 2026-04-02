@@ -94,6 +94,8 @@
 - [x] Vincular `Equipes` ao `Centro de Servico` e expor a base real em cadastro, filtros, listagem e detalhe.
 - [x] Endurecer `Equipes` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
 - [x] Migrar as escritas de `Equipes` para RPC transacional (`save_team_record` e `set_team_record_status`) para consolidar update + historico + concorrencia no banco.
+- [x] Ajustar regra de `Equipes` para permitir reutilizar `Encarregado` quando o vinculo anterior estiver inativo, mantendo bloqueio de duplicidade apenas entre equipes ativas (API + RPC de cadastro/edicao/reativacao).
+- [x] Padronizar o modal de `Cancelar/Ativar` da tela `Equipes` para o mesmo layout dos modais padrao (`modalCard` + botao `Fechar` no cabecalho e nas acoes).
 - [x] Padronizar todas as listas ativas (`Projetos`, `Materiais`, `Atividades`, `Equipes` e `Materiais previstos`) com botao `Exportar Excel (CSV)` e remover o texto fixo de paginacao no cabecalho.
 - [x] Criar componentes compartilhados de padrao de tela (`ActionIcon` e `CsvExportButton`) e aplicar na tela `Materiais` para reduzir duplicacao e garantir consistencia nas novas telas.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.
@@ -286,6 +288,7 @@
 - [x] Atualizar modelo e parser do cadastro em massa da Medicao para incluir coluna obrigatoria `equipe` e validar equipe por texto (nome/codigo), sem dependencia da equipe selecionada no formulario.
 - [x] Atualizar o cadastro em massa da Medicao para exigir a coluna `taxa` no CSV, usar essa taxa por linha como `manualRate` da ordem e bloquear agrupamento com taxas divergentes para o mesmo `Projeto + Equipe + Data`.
 - [x] Ajustar `Detalhes` da Medicao para exibir a `taxa` por item e usar `total_value` persistido, alem de endurecer o lookup do campo `voz` no import em massa para cruzar atividade por codigo exato.
+- [x] Ajustar o modal `Detalhes` da Medicao para priorizar snapshots de `Equipe/Encarregado` da propria ordem (`team_name_snapshot/foreman_name_snapshot`), mantendo fallback tecnico para o mapa atual da equipe.
 - [x] Endurecer o lookup do campo `voz` no import em massa da Medicao para aceitar apenas match exato/univoco do codigo da atividade e falhar quando houver ambiguidade, evitando puxar `voice_point` de item parecido.
 - [x] Proteger a Medicao contra atividade duplicada na mesma ordem: bloquear repeticao no save da API e avisar na edicao quando uma ordem antiga vier com linhas repetidas.
 - [x] Levar a protecao de atividade duplicada da Medicao para a RPC `save_project_measurement_order`, garantindo a mesma regra no fluxo normal e no cadastro em massa mesmo com bypass da API.
