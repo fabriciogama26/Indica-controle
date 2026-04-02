@@ -289,6 +289,7 @@
 - [x] Atualizar o cadastro em massa da Medicao para exigir a coluna `taxa` no CSV, usar essa taxa por linha como `manualRate` da ordem e bloquear agrupamento com taxas divergentes para o mesmo `Projeto + Equipe + Data`.
 - [x] Ajustar `Detalhes` da Medicao para exibir a `taxa` por item e usar `total_value` persistido, alem de endurecer o lookup do campo `voz` no import em massa para cruzar atividade por codigo exato.
 - [x] Ajustar o modal `Detalhes` da Medicao para priorizar snapshots de `Equipe/Encarregado` da propria ordem (`team_name_snapshot/foreman_name_snapshot`), mantendo fallback tecnico para o mapa atual da equipe.
+- [x] Corrigir falha de build TypeScript na Medicao declarando `teamName` e `foremanName` no tipo `OrderDetail` em `MeasurementPageView.tsx`.
 - [x] Endurecer o lookup do campo `voz` no import em massa da Medicao para aceitar apenas match exato/univoco do codigo da atividade e falhar quando houver ambiguidade, evitando puxar `voice_point` de item parecido.
 - [x] Proteger a Medicao contra atividade duplicada na mesma ordem: bloquear repeticao no save da API e avisar na edicao quando uma ordem antiga vier com linhas repetidas.
 - [x] Levar a protecao de atividade duplicada da Medicao para a RPC `save_project_measurement_order`, garantindo a mesma regra no fluxo normal e no cadastro em massa mesmo com bypass da API.
