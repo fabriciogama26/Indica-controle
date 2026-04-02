@@ -58,17 +58,21 @@ Filtros, auto-complete e listagem
 - Ao selecionar `material_code`, a `description` e preenchida automaticamente.
 - Campo `Operacao` define o modo da movimentacao (`Entrada`, `Saida`, `Transferencia`).
 - Campos `DE` e `PARA` sao filtrados automaticamente conforme a operacao.
-- Cadastro em massa por CSV com template de colunas em ingles:
-  - `movement_type`
-  - `from_stock_center`
-  - `to_stock_center`
-  - `project_code`
-  - `material_code`
-  - `quantity`
-  - `serial_number`
-  - `lot_code`
-  - `entry_date`
-  - `notes`
+- Cadastro em massa por CSV com template em portugues (aceita aliases em ingles para retrocompatibilidade):
+  - `operacao`
+  - `centro_de`
+  - `centro_para`
+  - `projeto`
+  - `material_codigo`
+  - `quantidade`
+  - `serial` (condicional para TRAFO)
+  - `lp` (condicional para TRAFO; equivalente ao antigo `lot_code`)
+  - `data_entrada`
+  - `observacao` (opcional)
+- Opcoes aceitas em `operacao`:
+  - `ENTRADA` (ou `ENTRY`)
+  - `SAIDA` (ou `EXIT`)
+  - `TRANSFERENCIA` (ou `TRANSFER`)
 - Tela padronizada com card `Filtros` e card `Lista de Movimentacoes`, incluindo paginacao server-side.
 - Filtro adicional de estorno:
   - `Todos`
@@ -131,6 +135,7 @@ Atualizacao 2026-04
 - Depois: tela operacional com formulario real, importacao em massa e listagem transacional.
 - Ajuste visual: lista removeu as colunas `Tipo` e `Operacao`; essas informacoes ficam no modal `Detalhes`.
 - Ajuste funcional: lista recebeu botao `Exportar Excel (CSV)` no mesmo padrao das outras telas.
+- Ajuste de importacao: modal de cadastro em massa ficou mais didatico e o modelo CSV passou a usar cabecalhos em portugues (`operacao`, `centro_de`, `centro_para`, `projeto`, `material_codigo`, `quantidade`, `serial`, `lp`, `data_entrada`, `observacao`) com leitura retrocompativel para cabecalhos antigos em ingles.
 - Migration `128_create_stock_transfer_module.sql`:
   - adiciona `materials.is_transformer`;
   - cria `stock_centers`, `stock_center_balances`, `stock_transfers`, `stock_transfer_items`;
