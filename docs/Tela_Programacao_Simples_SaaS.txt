@@ -70,6 +70,10 @@ Arquitetura
 - Migration de desbloqueio de novos valores tecnicos de Tipo de SGD:
   - `supabase/migrations/121_relax_programming_sgd_export_column_check.sql`
   - Remove o bloqueio de valores fixos em `export_column`, exigindo apenas valor nao vazio.
+- Migration de catalogo de motivos padronizados:
+  - `supabase/migrations/135_create_programming_reason_catalog.sql`
+  - Tabela: `programming_reason_catalog`
+  - Objetivo: criar um catalogo unico de motivos, reutilizado em `CANCELAMENTO`, `ADIAMENTO` e `REPROGRAMACAO` para consumo por select.
 - Migration de endurecimento da RPC full:
   - `supabase/migrations/100_harden_programming_full_self_contained.sql`
   - A RPC `save_project_programming_full` passa a ser autocontida.
@@ -314,6 +318,7 @@ Atualizacao 2026-03
 - Criada a migration `127_sync_programming_documents_by_project_date_and_lv_window.sql` para sincronizar `SGD/PI/PEP` por `Projeto + Data de execucao` e incluir janela `LV-xx` de ate `7 dias`, com historico automatico por equipe afetada.
 - Ajustado o carregamento da lista/exportacoes para manter nome/base/encarregado da equipe em programacoes ligadas a equipes inativas, evitando exibicao de UUID no campo `Equipe`.
 - Ajustada a lista de selecao de equipes para exibir tambem o `Encarregado` em cada opcao, com layout em linhas para evitar colagem visual entre nome/base.
+- Criada a migration `135_create_programming_reason_catalog.sql` com catalogo unico de motivos por tenant (sem separacao por tipo), reutilizado em `CANCELAMENTO`, `ADIAMENTO` e `REPROGRAMACAO`, incluindo seed inicial, RLS e auditoria para apoiar padronizacao por select.
 - Adicionados campos `Inicio de desligamento` e `Termino de desligamento`, com persistencia em banco e exportacao `ENEL-EXCEL`.
 - Adicionado campo `Descricao do servico` na Programacao com persistencia em banco e uso na coluna `Descricao do servico` do `ENEL-EXCEL`.
 - Tornado obrigatorio o campo `Tipo de SGD` no cadastro/edicao e na persistencia via RPC ENEL.
