@@ -1801,8 +1801,6 @@ export function StockTransfersPageView() {
                 <th className={styles.tableDescriptionCell}>Descricao</th>
                 <th className={styles.tableQuantityCell}>Quantidade</th>
                 <th className={styles.tableSignalCell}>Sinalizacao</th>
-                <th>Serial</th>
-                <th>LP</th>
                 <th>Data da movimentacao</th>
                 <th>Atualizado em</th>
                 <th>Acoes</th>
@@ -1811,7 +1809,7 @@ export function StockTransfersPageView() {
             <tbody>
               {!isLoadingHistory && historyItems.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className={styles.emptyRow}>
+                  <td colSpan={10} className={styles.emptyRow}>
                     Nenhuma movimentacao encontrada.
                   </td>
                 </tr>
@@ -1852,8 +1850,6 @@ export function StockTransfersPageView() {
                       ) : null}
                     </div>
                   </td>
-                  <td>{item.serialNumber ?? "-"}</td>
-                  <td>{item.lotCode ?? "-"}</td>
                   <td>{formatDate(item.entryDate)}</td>
                   <td>{formatDateTime(item.updatedAt)}</td>
                   <td className={styles.actionsCell}>
