@@ -173,7 +173,7 @@ export async function reverseStockTransferViaRpc(
         : normalizedReason === "REVERSAL_REASON_CODE_REQUIRED"
           ? "Motivo padrao do estorno e obrigatorio."
           : normalizedReason === "INVALID_REVERSAL_REASON_CODE"
-            ? "Motivo padrao do estorno invalido ou inativo."
+            ? "Motivo padrao do estorno invalido, bloqueado ou inativo."
             : normalizedReason === "REVERSAL_REASON_NOTES_REQUIRED"
               ? "Observacao do motivo e obrigatoria para o motivo selecionado."
           : normalizedReason === "REVERSAL_OF_REVERSAL_NOT_ALLOWED"

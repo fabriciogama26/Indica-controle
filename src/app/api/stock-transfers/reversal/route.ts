@@ -14,6 +14,8 @@ type ReversalPayload = {
   reversalDate?: unknown;
 };
 
+const BLOCKED_REVERSAL_REASON_CODES = new Set(["OPERATION_CANCELED", "OTHER"]);
+
 export async function POST(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -45,6 +47,13 @@ export async function POST(request: NextRequest) {
 
     if (!reversalReasonCode) {
       return NextResponse.json({ message: "Motivo padrao do estorno e obrigatorio." }, { status: 400 });
+    }
+
+    if (BLOCKED_REVERSAL_REASON_CODES.has(reversalReasonCode)) {
+      return NextResponse.json(
+        { message: "Motivo padrao do estorno invalido para este fluxo operacional." },
+        { status: 400 },
+      );
     }
 
     if (reversalReasonCode === "OTHER" && !reversalReasonNotes) {
