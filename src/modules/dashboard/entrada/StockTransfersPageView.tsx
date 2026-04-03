@@ -217,7 +217,7 @@ const INITIAL_FILTERS: FilterState = {
   reversalStatus: "TODOS",
 };
 
-function normalizeText(value: string) {
+function normalizeText(value: string | null | undefined) {
   return String(value ?? "").trim();
 }
 
