@@ -110,7 +110,7 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/estoque": {
     title: "Estoque Atual",
-    subtitle: "Consulta de saldo fisico consolidado.",
+    subtitle: "Consulta de saldo fisico atual por centro de estoque.",
   },
   "/cargo": {
     title: "Cargo",

@@ -171,7 +171,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   quantity: "Quantidade",
   serialNumber: "Serial",
   lotCode: "LP",
-  entryDate: "Data da entrada",
+  entryDate: "Data da movimentacao",
   entryType: "Tipo",
   reversalReason: "Motivo do estorno",
   notes: "Observacao",
@@ -283,6 +283,14 @@ function movementTypeLabel(value: string | null | undefined) {
   if (normalized === "EXIT") return "Saida";
   if (normalized === "TRANSFER") return "Transferencia";
   return "-";
+}
+
+function movementDateLabel(value: string | null | undefined) {
+  const normalized = normalizeMovementType(value);
+  if (normalized === "ENTRY") return "Data da entrada";
+  if (normalized === "EXIT") return "Data da saida";
+  if (normalized === "TRANSFER") return "Data da transferencia";
+  return "Data da movimentacao";
 }
 
 function parsePositiveNumber(value: string) {
@@ -454,6 +462,7 @@ export function StockTransfersPageView() {
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const requiresTransformerFields = Boolean(selectedMaterial?.isTransformer);
+  const formEntryDateLabel = movementDateLabel(form.movementType);
   const firstRowByTransferId = useMemo(() => {
     const seen = new Set<string>();
     const map = new Map<string, boolean>();
@@ -1390,7 +1399,7 @@ export function StockTransfersPageView() {
             </datalist>
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${styles.fieldSpan2}`}>
             <span>Descricao</span>
             <input type="text" value={form.description} readOnly placeholder="Preenchido automaticamente ao selecionar o codigo" />
           </label>
@@ -1443,7 +1452,7 @@ export function StockTransfersPageView() {
 
           <label className={styles.field}>
             <span>
-              Data da entrada <span className={styles.requiredMark}>*</span>
+              {formEntryDateLabel} <span className={styles.requiredMark}>*</span>
             </span>
             <input
               type="date"
@@ -1606,11 +1615,11 @@ export function StockTransfersPageView() {
                 <th>Centro PARA</th>
                 <th>Projeto</th>
                 <th>Material (Codigo)</th>
-                <th>Descricao</th>
-                <th>Quantidade</th>
+                <th className={styles.tableDescriptionCell}>Descricao</th>
+                <th className={styles.tableQuantityCell}>Quantidade</th>
                 <th>Serial</th>
                 <th>LP</th>
-                <th>Data entrada</th>
+                <th>Data da movimentacao</th>
                 <th>Atualizado em</th>
                 <th>Acoes</th>
               </tr>
@@ -1630,8 +1639,8 @@ export function StockTransfersPageView() {
                   <td>{item.toStockCenterName}</td>
                   <td>{item.projectCode}</td>
                   <td>{item.materialCode}</td>
-                  <td>{item.description}</td>
-                  <td>{item.quantity}</td>
+                  <td className={styles.tableDescriptionCell}>{item.description}</td>
+                  <td className={styles.tableQuantityCell}>{item.quantity}</td>
                   <td>{item.serialNumber ?? "-"}</td>
                   <td>{item.lotCode ?? "-"}</td>
                   <td>{formatDate(item.entryDate)}</td>
@@ -1757,7 +1766,7 @@ export function StockTransfersPageView() {
                 <div><strong>Quantidade:</strong> {detailItem.quantity.toLocaleString("pt-BR")}</div>
                 <div><strong>Serial:</strong> {detailItem.serialNumber ?? "-"}</div>
                 <div><strong>LP:</strong> {detailItem.lotCode ?? "-"}</div>
-                <div><strong>Data da entrada:</strong> {formatDate(detailItem.entryDate)}</div>
+                <div><strong>{movementDateLabel(detailItem.movementType)}:</strong> {formatDate(detailItem.entryDate)}</div>
                 <div><strong>Transferencia de estorno:</strong> {detailItem.reversalTransferId ?? "-"}</div>
                 <div><strong>Transferencia original:</strong> {detailItem.originalTransferId ?? "-"}</div>
                 <div><strong>Motivo do estorno:</strong> {detailItem.reversalReason ?? "-"}</div>
@@ -1835,7 +1844,7 @@ export function StockTransfersPageView() {
                 <div><strong>Centro PARA:</strong> {reversalModalItem.toStockCenterName}</div>
                 <div><strong>Material:</strong> {reversalModalItem.materialCode}</div>
                 <div><strong>Quantidade:</strong> {reversalModalItem.quantity.toLocaleString("pt-BR")}</div>
-                <div><strong>Data da entrada:</strong> {formatDate(reversalModalItem.entryDate)}</div>
+                <div><strong>{movementDateLabel(reversalModalItem.movementType)}:</strong> {formatDate(reversalModalItem.entryDate)}</div>
                 <div><strong>Tipo:</strong> {reversalModalItem.entryType}</div>
               </div>
 

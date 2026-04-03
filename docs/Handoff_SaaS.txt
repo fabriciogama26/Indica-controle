@@ -19,8 +19,11 @@ Cadastro
 
 Filtros, auto-complete e listagem
 ---------------------------------
-- Ainda nao implementados no SaaS.
-- Estao planejados para Pessoas, Materiais e Estoque Atual.
+- Ja implementados no SaaS:
+  - `Pessoas`
+  - `Materiais`
+  - `Estoque Atual`
+- Pendencias de CRUD real permanecem para `Cargo` e telas de `Cadastro Base`.
 
 Boas praticas
 -------------
@@ -58,6 +61,7 @@ Atualizacao 2026-03
 - A tela `/permissoes` passou a salvar historico e a oferecer envio de convite de primeiro acesso a partir do pre-cadastro em `app_users`.
 - Navegacao lateral reorganizada em `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`, com novas rotas de `Medicao`, `Cargo` e dominios base.
 - A tela `/projetos` passou a operar com cadastro, filtros e listagem paginada persistindo na tabela `project`.
+- A tela `/estoque` passou a operar com consulta real de saldo por centro/material, filtros, exportacao CSV e paginacao server-side.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

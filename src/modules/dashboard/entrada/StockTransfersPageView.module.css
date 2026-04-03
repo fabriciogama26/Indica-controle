@@ -67,6 +67,10 @@
   gap: 8px;
 }
 
+.fieldSpan2 {
+  grid-column: span 2;
+}
+
 .field span {
   color: #17347a;
   font-weight: 700;
@@ -249,6 +253,16 @@
   background: rgba(23, 52, 122, 0.06);
   color: #17347a;
   font-weight: 800;
+}
+
+.tableDescriptionCell {
+  min-width: 260px;
+  white-space: normal !important;
+}
+
+.tableQuantityCell {
+  min-width: 120px;
+  width: 120px;
 }
 
 .actionsCell {
@@ -528,6 +542,10 @@
   }
 
   .detailWide {
+    grid-column: span 1;
+  }
+
+  .fieldSpan2 {
     grid-column: span 1;
   }
 }
