@@ -22,7 +22,7 @@ type MaterialRow = {
   id: string;
   codigo: string;
   descricao: string;
-  is_transformer: boolean;
+  is_transformer?: boolean | null;
 };
 
 type StockTransferHeaderRow = {
@@ -466,19 +466,20 @@ async function loadTransferList(request: NextRequest) {
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
   ]);
 
-  if (
-    materialsResult.error
-    || stockCentersResult.error
-    || projectsResult.error
-    || usersResult.error
-    || reversalsFromOriginalResult.error
-    || reversalsByReversalResult.error
-  ) {
-    return NextResponse.json({ message: "Falha ao carregar detalhes das movimentacoes de estoque." }, { status: 500 });
+  let materialsData = materialsResult.data ?? [];
+  if (materialsResult.error && materialIds.length) {
+    const legacyMaterialsResult = await supabase
+      .from("materials")
+      .select("id, codigo, descricao")
+      .eq("tenant_id", appUser.tenant_id)
+      .in("id", materialIds)
+      .returns<MaterialRow[]>();
+
+    materialsData = legacyMaterialsResult.data ?? [];
   }
 
   const transferMap = new Map((transferHeaders ?? []).map((row) => [row.id, row]));
-  const materialMap = new Map((materialsResult.data ?? []).map((row) => [row.id, row]));
+  const materialMap = new Map(materialsData.map((row) => [row.id, row]));
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map(
@@ -488,7 +489,7 @@ async function loadTransferList(request: NextRequest) {
     ]),
   );
   const reversalByOriginalMap = new Map(
-    (reversalsFromOriginalResult.data ?? []).map((row) => [
+    ((reversalsFromOriginalResult.error ? [] : reversalsFromOriginalResult.data) ?? []).map((row) => [
       row.original_stock_transfer_id,
       {
         reversalTransferId: row.reversal_stock_transfer_id,
@@ -498,7 +499,7 @@ async function loadTransferList(request: NextRequest) {
     ]),
   );
   const originalByReversalMap = new Map(
-    (reversalsByReversalResult.data ?? []).map((row) => [
+    ((reversalsByReversalResult.error ? [] : reversalsByReversalResult.data) ?? []).map((row) => [
       row.reversal_stock_transfer_id,
       {
         originalTransferId: row.original_stock_transfer_id,
