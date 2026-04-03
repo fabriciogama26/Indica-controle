@@ -126,6 +126,7 @@ Filtros, auto-complete e listagem
   - `Estornada`
 - O modal `Historico` traduz `projectId`, `fromStockCenterId` e `toStockCenterId` para valores legiveis do negocio.
 - O primeiro registro operacional passa a ser apresentado como `Cadastro` quando o historico representar criacao inicial da movimentacao.
+- A lista de movimentacoes faz fallback defensivo quando consultas auxiliares de material/usuario/reversao falham, evitando erro generico no carregamento da tela.
 
 Boas praticas
 -------------

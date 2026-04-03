@@ -140,6 +140,7 @@
 - [x] Implementar botao `Movimentar este TRAFO` nas acoes da Movimentacao de Estoque com pre-preenchimento de `material + serial + lp + centro` e modo dedicado de `Saida/Transferencia`.
 - [x] Remover `Serial` e `LP` da grade da Movimentacao de Estoque, mantendo esses campos apenas em `Detalhes` e no fluxo operacional de TRAFO.
 - [x] Remover `Operacao cancelada` e `Outro` do catalogo de motivo padrao do estorno e bloquear esses codigos tambem no backend/RPC.
+- [x] Endurecer `GET /api/stock-transfers` para nao derrubar a lista quando consultas auxiliares de detalhes/metadados falharem.
 - [x] Criar tela/consulta de posicao unitaria de TRAFO consumindo `trafo_instances`.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.
