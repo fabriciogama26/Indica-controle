@@ -38,8 +38,6 @@ const DEFAULT_REVERSAL_REASONS = [
   { code: "WRONG_MATERIAL", label: "Material incorreto", requiresNotes: false },
   { code: "WRONG_QUANTITY", label: "Quantidade incorreta", requiresNotes: false },
   { code: "DUPLICATE_ENTRY", label: "Lancamento duplicado", requiresNotes: false },
-  { code: "OPERATION_CANCELED", label: "Operacao cancelada", requiresNotes: false },
-  { code: "OTHER", label: "Outro", requiresNotes: true },
 ] as const;
 
 export async function GET(request: NextRequest) {

@@ -144,8 +144,10 @@ Cancelamento e saldo
 - Nao permite estornar uma movimentacao que ja e estorno.
 - Modal de estorno exige:
   - `Motivo padrao do estorno` (catalogo)
-  - `Observacao do motivo` (obrigatoria apenas para `OTHER`)
   - `Data do estorno` (nao futura)
+- Motivos bloqueados para este fluxo:
+  - `Operacao cancelada`
+  - `Outro`
 - Estorno permitido apenas para perfil administrativo (`admin/master`).
 - Efeito de saldo:
   - `ENTRY` (`THIRD_PARTY -> OWN`): soma saldo apenas no destino.
@@ -214,6 +216,8 @@ Atualizacao 2026-04
   - adiciona `stock_transfer_reversals.reversal_reason_code` e `stock_transfer_reversals.reversal_reason_notes`;
   - cria RPC `reverse_stock_transfer_record_v2` para estorno padronizado por codigo + observacao;
   - aplica validacao hard no banco para motivo invalido/inativo e obrigatoriedade de observacao quando `code = OTHER`.
+- Migration `139_deactivate_blocked_stock_reversal_reasons.sql`:
+  - desativa `OPERATION_CANCELED` e `OTHER` no catalogo do estorno para a Movimentacao de Estoque.
 - Migration `136_enforce_transformer_unit_rules_on_stock_transfer.sql`:
   - adiciona indice por `tenant + material + serial + lp` em `stock_transfer_items`;
   - endurece a RPC `save_stock_transfer_record` para bloquear `quantity <> 1` em TRAFO;
