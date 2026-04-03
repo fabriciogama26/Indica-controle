@@ -7,7 +7,7 @@ Frontend web do SaaS para login, shell principal, operacao de estoque e cadastro
 ## Visao geral
 - Problema resolvido: separar o frontend web do app Android e manter o contexto tecnico do SaaS em uma estrutura propria.
 - Solucao proposta: projeto Next.js publicado no Vercel para servir a interface web, mantendo Auth, banco, RLS e Edge Functions no Supabase.
-- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Operacao, Almoxarifado, Cadastros e Cadastro Base, acessado por dominio web publico.
+- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Operacao, Almoxarifado, Cadastros e Cadastro Base, incluindo rastreio unitario de TRAFO, acessado por dominio web publico.
 
 ---
 
@@ -126,6 +126,7 @@ vercel --prod
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
+  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Posicao Unitaria TRAFO com consulta por `Serial + LP` e atalho de movimentacao para a mesma unidade.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
   - `(dashboard)/saida/page.tsx`: redireciona para `/entrada` (tela unica de movimentacao de estoque).
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
@@ -169,6 +170,8 @@ vercel --prod
   - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
   - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side e `ultima movimentacao` baseada em `stock_center_balances.updated_at`.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` ativos usados no filtro da tela de Estoque Atual.
+  - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada TRAFO a partir de `trafo_instances`, com filtros, paginacao e enriquecimento de projeto/usuario.
+  - `api/trafo-positions/meta/route.ts`: carrega os centros `OWN` ativos usados nos filtros da tela de posicao unitaria de TRAFO.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
@@ -211,6 +214,12 @@ vercel --prod
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
   - `CurrentStockPageView.tsx`: tela de Estoque Atual com `Filtros + Lista`, exportacao CSV, resumo da pagina e consulta read-only por centro/material.
   - `CurrentStockPageView.module.css`: estilos da tela de Estoque Atual.
+- `src/modules/dashboard/posicao-trafo/`
+  - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de posicao unitaria.
+  - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
+  - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
+  - `TrafoPositionPageView.tsx`: tela de Posicao Unitaria TRAFO com filtros, lista paginada, detalhes e acao `Movimentar este TRAFO`.
+  - `TrafoPositionPageView.module.css`: estilos da tela de Posicao Unitaria TRAFO.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - `ActivitiesPageView.module.css`: estilos da tela de atividades.
@@ -272,6 +281,7 @@ vercel --prod
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada e exportacao CSV.
+  - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Posicao Unitaria TRAFO com consulta em `trafo_instances` e atalho de movimentacao.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Padrao_Cadastros_SaaS.txt`: referencia obrigatoria de padrao visual/comportamental para telas de cadastro.
@@ -417,7 +427,7 @@ npm run build
 - `foi alterado por outro usuario. Recarregue os dados...`:
   - Causa: outro usuario salvou o mesmo registro antes do envio atual em `Projetos`, `Materiais`, `Atividades`, `Equipes`, `Pessoas` ou `Permissoes`.
   - Solucao: revisar os dados recarregados na tela e repetir a alteracao a partir da versao mais recente.
-- Validacao do adiamento, cadastro ou edicao da `Programacao Simples` parece ìnao fazer nadaî:
+- Validacao do adiamento, cadastro ou edicao da `Programacao Simples` parece ‚Äúnao fazer nada‚Äù:
   - Causa: o fluxo agora usa modal de alerta para concentrar erros de validacao e conflitos operacionais, alem do feedback no topo.
   - Solucao: revisar o modal aberto, corrigir os campos indicados e tentar novamente.
 - O modal de `Adiamento` mostra apenas `Falha ao adiar programacao.`:

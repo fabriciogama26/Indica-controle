@@ -9,6 +9,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/programacao", pageKey: "programacao-simples" },
   { prefix: "/medicao", pageKey: "medicao" },
   { prefix: "/estoque", pageKey: "estoque" },
+  { prefix: "/posicao-trafo", pageKey: "posicao-trafo" },
   { prefix: "/entrada", pageKey: "entrada" },
   { prefix: "/saida", pageKey: "saida" },
   { prefix: "/materiais", pageKey: "materiais" },
@@ -53,6 +54,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
     "programacao-visualizacao",
     "medicao",
     "estoque",
+    "posicao-trafo",
     "entrada",
     "saida",
     "materiais",
@@ -81,7 +83,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   }
 
   if (normalized === "viewer") {
-    return ["home", "estoque"];
+    return ["home", "estoque", "posicao-trafo"];
   }
 
   return defaultPageAccess;

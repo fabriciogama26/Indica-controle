@@ -13,6 +13,11 @@
   gap: 14px;
 }
 
+.editingCard {
+  border: 2px solid #f1c21b;
+  box-shadow: 0 0 0 3px rgba(241, 194, 27, 0.18), 0 18px 38px rgba(15, 32, 74, 0.08);
+}
+
 .cardHeader {
   display: grid;
   gap: 4px;
@@ -28,6 +33,13 @@
   margin: 0;
   color: #5b6a85;
   font-size: 0.88rem;
+}
+
+.prefillModeHint {
+  margin: 0;
+  color: #8a5a00 !important;
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .tableHeader {
@@ -265,8 +277,69 @@
   width: 120px;
 }
 
+.tableSignalCell {
+  min-width: 180px;
+}
+
+.tableRowReversed {
+  background: rgba(255, 238, 178, 0.34);
+}
+
+.tableRowReversal {
+  background: rgba(255, 228, 196, 0.34);
+}
+
+.signalStack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.signalChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.signalChipEntry {
+  background: rgba(25, 118, 210, 0.12);
+  border-color: rgba(25, 118, 210, 0.16);
+  color: #0d47a1;
+}
+
+.signalChipExit {
+  background: rgba(198, 40, 40, 0.12);
+  border-color: rgba(198, 40, 40, 0.16);
+  color: #9b1f1f;
+}
+
+.signalChipTransfer {
+  background: rgba(2, 136, 209, 0.12);
+  border-color: rgba(2, 136, 209, 0.16);
+  color: #0b5f91;
+}
+
+.signalChipReversed {
+  background: rgba(251, 192, 45, 0.18);
+  border-color: rgba(251, 192, 45, 0.24);
+  color: #7a5a00;
+}
+
+.signalChipReversal {
+  background: rgba(255, 167, 38, 0.18);
+  border-color: rgba(255, 167, 38, 0.24);
+  color: #8d4b00;
+}
+
 .actionsCell {
-  min-width: 138px;
+  min-width: 176px;
 }
 
 .tableActions {
@@ -312,6 +385,11 @@
 .actionReversal {
   color: #ab5a08;
   background: #fff0db;
+}
+
+.actionTransfer {
+  color: #155a38;
+  background: #ddf4e6;
 }
 
 .emptyRow {

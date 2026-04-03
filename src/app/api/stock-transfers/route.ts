@@ -22,6 +22,7 @@ type MaterialRow = {
   id: string;
   codigo: string;
   descricao: string;
+  is_transformer: boolean;
 };
 
 type StockTransferHeaderRow = {
@@ -101,6 +102,7 @@ type TransferListItem = {
   materialId: string;
   materialCode: string;
   description: string;
+  isTransformer: boolean;
   quantity: number;
   serialNumber: string | null;
   lotCode: string | null;
@@ -119,6 +121,11 @@ type TransferListItem = {
   originalTransferId: string | null;
   reversalReason: string | null;
   reversedAt: string | null;
+};
+
+type HistoryValueMaps = {
+  stockCenters: Map<string, string>;
+  projects: Map<string, string>;
 };
 
 function parsePositiveInteger(value: string | null, fallback: number) {
@@ -190,6 +197,84 @@ function normalizeHistoryChangeSet(rawChanges: Record<string, unknown>) {
   });
 
   return changes;
+}
+
+function translateMovementTypeValue(value: unknown) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "ENTRY") return "Entrada";
+  if (normalized === "EXIT") return "Saida";
+  if (normalized === "TRANSFER") return "Transferencia";
+  return value;
+}
+
+function translateEntryTypeValue(value: unknown) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "NOVO" || normalized === "SUCATA") {
+    return normalized;
+  }
+  return value;
+}
+
+function translateHistoryFieldValue(field: string, value: unknown, maps: HistoryValueMaps) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return value;
+  }
+
+  if (field === "movementType") {
+    return translateMovementTypeValue(value);
+  }
+
+  if (field === "entryType") {
+    return translateEntryTypeValue(value);
+  }
+
+  if (field === "projectId") {
+    return maps.projects.get(normalized) ?? value;
+  }
+
+  if (field === "fromStockCenterId" || field === "toStockCenterId") {
+    return maps.stockCenters.get(normalized) ?? value;
+  }
+
+  return value;
+}
+
+function normalizeResolvedHistoryChangeSet(rawChanges: Record<string, unknown>, maps: HistoryValueMaps) {
+  const baseChanges = normalizeHistoryChangeSet(rawChanges);
+  const resolvedChanges: Record<string, { from?: unknown; to?: unknown }> = {};
+
+  Object.entries(baseChanges).forEach(([field, change]) => {
+    if (field === "reversalReasonCode") {
+      return;
+    }
+
+    resolvedChanges[field] = {
+      from: translateHistoryFieldValue(field, change.from, maps),
+      to: translateHistoryFieldValue(field, change.to, maps),
+    };
+  });
+
+  return resolvedChanges;
+}
+
+function resolveHistoryAction(rawChanges: Record<string, unknown>, normalizedChanges: Record<string, { from?: unknown; to?: unknown }>) {
+  const explicitAction = String(rawChanges["_action"] ?? "").trim().toUpperCase();
+  if (explicitAction) {
+    return explicitAction;
+  }
+
+  const entries = Object.values(normalizedChanges);
+  const isCreate = entries.length > 0 && entries.every((change) => {
+    const fromValue = String(change.from ?? "").trim();
+    return fromValue === "";
+  });
+
+  if (isCreate) {
+    return "CREATE";
+  }
+
+  return "UPDATE";
 }
 
 function buildTransferItems(payload: TransferPayload) {
@@ -334,7 +419,7 @@ async function loadTransferList(request: NextRequest) {
     materialIds.length
       ? supabase
           .from("materials")
-          .select("id, codigo, descricao")
+          .select("id, codigo, descricao, is_transformer")
           .eq("tenant_id", appUser.tenant_id)
           .in("id", materialIds)
           .returns<MaterialRow[]>()
@@ -445,6 +530,7 @@ async function loadTransferList(request: NextRequest) {
         materialId: item.material_id,
         materialCode: material?.codigo ?? "-",
         description: material?.descricao ?? "-",
+        isTransformer: Boolean(material?.is_transformer),
         quantity: Number(item.quantity ?? 0),
         serialNumber: item.serial_number,
         lotCode: item.lot_code,
@@ -604,11 +690,51 @@ async function loadTransferEditHistory(request: NextRequest) {
       String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
     ]),
   );
+  const historyStockCenterIds = new Set<string>();
+  const historyProjectIds = new Set<string>();
+
+  historyRows.forEach((row) => {
+    const rawChanges = parseHistoryChanges(row.changes);
+    const fromStockCenterId = String((rawChanges.fromStockCenterId as { from?: unknown; to?: unknown } | undefined)?.to ?? "").trim();
+    const toStockCenterId = String((rawChanges.toStockCenterId as { from?: unknown; to?: unknown } | undefined)?.to ?? "").trim();
+    const projectId = String((rawChanges.projectId as { from?: unknown; to?: unknown } | undefined)?.to ?? "").trim();
+    if (fromStockCenterId) historyStockCenterIds.add(fromStockCenterId);
+    if (toStockCenterId) historyStockCenterIds.add(toStockCenterId);
+    if (projectId) historyProjectIds.add(projectId);
+  });
+
+  const [historyStockCentersResult, historyProjectsResult] = await Promise.all([
+    historyStockCenterIds.size
+      ? supabase
+          .from("stock_centers")
+          .select("id, name")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", Array.from(historyStockCenterIds))
+          .returns<StockCenterRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: StockCenterRow[]; error: null }),
+    historyProjectIds.size
+      ? supabase
+          .from("projects")
+          .select("id, sob")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", Array.from(historyProjectIds))
+          .returns<ProjectRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
+  ]);
+
+  if (historyStockCentersResult.error || historyProjectsResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar detalhes do historico da movimentacao." }, { status: 500 });
+  }
+
+  const historyValueMaps: HistoryValueMaps = {
+    stockCenters: new Map((historyStockCentersResult.data ?? []).map((row) => [row.id, row.name])),
+    projects: new Map((historyProjectsResult.data ?? []).map((row) => [row.id, row.sob])),
+  };
 
   const entries = (historyRows ?? []).map((row) => {
     const rawChanges = parseHistoryChanges(row.changes);
-    const normalizedChanges = normalizeHistoryChangeSet(rawChanges);
-    const action = String(rawChanges["_action"] ?? "").trim().toUpperCase() || "UPDATE";
+    const normalizedChanges = normalizeResolvedHistoryChangeSet(rawChanges, historyValueMaps);
+    const action = resolveHistoryAction(rawChanges, normalizedChanges);
 
     return {
       id: row.id,

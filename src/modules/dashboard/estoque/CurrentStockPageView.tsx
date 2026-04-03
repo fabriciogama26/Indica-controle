@@ -27,6 +27,27 @@ import {
 } from "./utils";
 import styles from "./CurrentStockPageView.module.css";
 
+function movementTypeLabel(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "ENTRY") return "Entrada";
+  if (normalized === "EXIT") return "Saida";
+  if (normalized === "TRANSFER") return "Transferencia";
+  return "-";
+}
+
+function currentStockHistoryTitle(entry: CurrentStockHistoryEntry) {
+  if (entry.isReversal) {
+    return "Estorno";
+  }
+  return movementTypeLabel(entry.movementType);
+}
+
+function currentStockStatusLabel(entry: CurrentStockHistoryEntry) {
+  if (entry.isReversal) return "Movimentacao de estorno";
+  if (entry.isReversed) return "Movimentacao original estornada";
+  return "Movimentacao ativa";
+}
+
 export function CurrentStockPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("estoque_atual");
@@ -635,10 +656,41 @@ export function CurrentStockPageView() {
               {!isLoadingHistory && historyEntries.length === 0 ? <p>Nenhuma movimentacao encontrada para este material neste centro.</p> : null}
 
               {!isLoadingHistory && historyEntries.length > 0 ? historyEntries.map((entry) => (
-                <article key={entry.id} className={styles.historyCard}>
+                <article
+                  key={entry.id}
+                  className={`${styles.historyCard} ${
+                    entry.isReversal
+                      ? styles.historyCardReversal
+                      : entry.isReversed
+                        ? styles.historyCardReversed
+                        : ""
+                  }`.trim()}
+                >
                   <header className={styles.historyCardHeader}>
-                    <strong>{entry.transferId}</strong>
-                    <span>{formatDateTime(entry.changedAt)} | {entry.updatedByName}</span>
+                    <div className={styles.historyHeaderMain}>
+                      <strong>{currentStockHistoryTitle(entry)}</strong>
+                      <div className={styles.historyBadgeRow}>
+                        <span className={`${styles.historyBadge} ${
+                          entry.movementType === "ENTRY"
+                            ? styles.historyBadgeEntry
+                            : entry.movementType === "EXIT"
+                              ? styles.historyBadgeExit
+                              : styles.historyBadgeTransfer
+                        }`}>
+                          {movementTypeLabel(entry.movementType)}
+                        </span>
+                        <span className={`${styles.historyBadge} ${
+                          entry.isReversal
+                            ? styles.historyBadgeReversal
+                            : entry.isReversed
+                              ? styles.historyBadgeReversed
+                              : styles.historyBadgeNeutral
+                        }`}>
+                          {currentStockStatusLabel(entry)}
+                        </span>
+                      </div>
+                    </div>
+                    <span>{formatDateTime(entry.changedAt)} | {entry.updatedByName} | Transferencia: {entry.transferId}</span>
                   </header>
                   <div className={styles.historyMeta}>
                     <div>
@@ -647,15 +699,15 @@ export function CurrentStockPageView() {
                         {formatSignedInteger(entry.signedQuantity)}
                       </span>
                     </div>
-                    <div><strong>Operacao:</strong> {entry.movementType}</div>
+                    <div><strong>Operacao:</strong> {movementTypeLabel(entry.movementType)}</div>
                     <div><strong>Projeto:</strong> {entry.projectCode}</div>
                     <div><strong>Centro DE:</strong> {entry.fromStockCenterName}</div>
                     <div><strong>Centro PARA:</strong> {entry.toStockCenterName}</div>
-                    <div><strong>Data entrada:</strong> {formatDateTime(`${entry.entryDate}T00:00:00`)}</div>
+                    <div><strong>Data da movimentacao:</strong> {formatDateTime(`${entry.entryDate}T00:00:00`)}</div>
                     <div><strong>Quantidade original:</strong> {formatInteger(entry.quantity)}</div>
                     <div><strong>Serial:</strong> {entry.serialNumber || "-"}</div>
                     <div><strong>LP:</strong> {entry.lotCode || "-"}</div>
-                    <div><strong>Estorno:</strong> {entry.isReversal ? "Movimentacao de estorno" : entry.isReversed ? "Movimentacao original estornada" : "Nao"}</div>
+                    <div><strong>Status:</strong> {currentStockStatusLabel(entry)}</div>
                     <div><strong>Motivo do estorno:</strong> {entry.reversalReason || "-"}</div>
                     <div><strong>Observacao:</strong> {entry.notes || "-"}</div>
                   </div>

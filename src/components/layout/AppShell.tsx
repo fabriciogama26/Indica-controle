@@ -32,6 +32,7 @@ const menuSections = [
     title: "Almoxarifado",
     items: [
       { href: "/estoque", label: "Estoque Atual", icon: "box" },
+      { href: "/posicao-trafo", label: "Posicao Unitaria TRAFO", icon: "box" },
       { href: "/entrada", label: "Movimentacao de Estoque", icon: "arrow-down" },
       { href: "/saida", label: "Saida Estoque", icon: "arrow-up" },
     ],
@@ -111,6 +112,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/estoque": {
     title: "Estoque Atual",
     subtitle: "Consulta de saldo fisico atual por centro de estoque.",
+  },
+  "/posicao-trafo": {
+    title: "Posicao Unitaria TRAFO",
+    subtitle: "Consulta da posicao atual de cada TRAFO por Serial e LP.",
   },
   "/cargo": {
     title: "Cargo",

@@ -62,6 +62,7 @@ const permissionCatalog = [
   },
   { pageKey: "medicao", label: "Medicao", path: "/medicao", section: "Operacao" },
   { pageKey: "estoque", label: "Estoque Atual", path: "/estoque", section: "Almoxarifado" },
+  { pageKey: "posicao-trafo", label: "Posicao Unitaria TRAFO", path: "/posicao-trafo", section: "Almoxarifado" },
   { pageKey: "entrada", label: "Movimentacao de Estoque", path: "/entrada", section: "Almoxarifado" },
   { pageKey: "saida", label: "Saida Estoque", path: "/saida", section: "Almoxarifado" },
   { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },
@@ -95,6 +96,7 @@ function createPermissionSet(role: string): PermissionCard[] {
     "programacao-visualizacao",
     "medicao",
     "estoque",
+    "posicao-trafo",
     "entrada",
     "saida",
     "materiais",
@@ -126,7 +128,7 @@ function createPermissionSet(role: string): PermissionCard[] {
     if (role === "viewer") {
       return {
         ...item,
-        enabled: ["home", "estoque"].includes(item.pageKey),
+        enabled: ["home", "estoque", "posicao-trafo"].includes(item.pageKey),
       };
     }
 

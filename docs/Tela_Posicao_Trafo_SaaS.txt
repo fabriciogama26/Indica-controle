@@ -1,0 +1,182 @@
+Tela: Posicao Unitaria TRAFO SaaS
+
+Visao geral
+-----------
+- Tela operacional read-only para consultar a localizacao atual de cada unidade de TRAFO.
+- Usa `trafo_instances` como fonte unitaria de verdade, sem reconstruir estado no frontend.
+- Complementa `Movimentacao de Estoque` e `Estoque Atual` com foco na identidade da unidade (`material + Serial + LP`).
+- Permite acionar movimentacao da propria unidade, com pre-preenchimento do formulario de `/entrada`.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/posicao-trafo/page.tsx`
+- View principal: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.module.css`
+- Tipos do modulo: `src/modules/dashboard/posicao-trafo/types.ts`
+- Constantes do modulo: `src/modules/dashboard/posicao-trafo/constants.ts`
+- Utilitarios do modulo: `src/modules/dashboard/posicao-trafo/utils.ts`
+- Hook de erro usado pela tela: `src/hooks/useErrorLogger.ts`
+- API da tela:
+  - `src/app/api/trafo-positions/route.ts`
+  - `src/app/api/trafo-positions/meta/route.ts`
+- Navegacao/permissao:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Banco:
+  - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
+  - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
+
+Cadastro
+--------
+- Nao se aplica.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Centro atual`
+  - `Situacao` (`Todos`, `Em estoque proprio`, `Fora do estoque proprio`)
+  - `Material (codigo)`
+  - `Serial`
+  - `LP`
+- Listagem:
+  - `Centro atual`
+  - `Situacao`
+  - `Projeto ultimo`
+  - `Material (codigo)`
+  - `Descricao`
+  - `Serial`
+  - `LP`
+  - `Ultima operacao`
+  - `Data ultima movimentacao`
+  - `Atualizado em`
+  - `Acoes`
+- Regras de exibicao:
+  - A consulta traz somente materiais com `materials.is_transformer = true`.
+  - `Situacao` deriva de `trafo_instances.current_stock_center_id`.
+  - `Em estoque proprio` significa unidade atualmente vinculada a um centro `OWN`.
+  - `Fora do estoque proprio` significa unidade sem posicao atual em centro `OWN`.
+  - `Ultima operacao` traduz `ENTRY`, `EXIT` e `TRANSFER` para leitura operacional.
+  - A lista e paginada no backend (`page`, `pageSize`, `total`).
+  - O cabecalho exibe `Registros filtrados`, `Em estoque proprio` e `Fora do estoque proprio`.
+  - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos.
+- Acoes:
+  - `Detalhes`
+  - `Movimentar este TRAFO`
+- A acao `Movimentar este TRAFO`:
+  - fica habilitada apenas quando a unidade estiver em centro `OWN`;
+  - redireciona para `/entrada`;
+  - pre-preenche o modo dedicado de movimentacao da unidade com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1`;
+  - permite concluir `Saida` ou `Transferencia`.
+
+Boas praticas
+-------------
+- Manter a tela read-only segregada por `tenant_id`.
+- Consultar a posicao unitaria somente via `trafo_instances`.
+- Nao tentar inferir posicao atual pela lista historica de `stock_transfers`.
+- Usar `/entrada` apenas como tela de acao; a fonte da posicao atual continua sendo `trafo_instances`.
+- Erros da tela devem ser registrados com tag `posicao_trafo` via `useErrorLogger`.
+
+Cancelamento e saldo
+--------------------
+- A tela nao grava saldo diretamente.
+- A transferencia acionada pela tela continua sendo concluida na RPC `save_stock_transfer_record`.
+- `stock_center_balances` continua como saldo agregado por `centro + material`.
+- `trafo_instances` continua como rastreio unitario da unidade de TRAFO.
+
+Atalhos
+-------
+- Rota ativa: `/posicao-trafo`
+- Endpoints:
+  - `GET /api/trafo-positions`
+  - `GET /api/trafo-positions/meta`
+- Exibida na secao `Almoxarifado` da sidebar.
+
+Atualizacao 2026-04
+-------------------
+- Arquivos criados:
+  - `src/app/(dashboard)/posicao-trafo/page.tsx`
+  - `src/app/api/trafo-positions/route.ts`
+  - `src/app/api/trafo-positions/meta/route.ts`
+  - `src/modules/dashboard/posicao-trafo/types.ts`
+  - `src/modules/dashboard/posicao-trafo/constants.ts`
+  - `src/modules/dashboard/posicao-trafo/utils.ts`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.module.css`
+  - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
+  - `docs/Tela_Posicao_Trafo_SaaS.txt`
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `src/components/ui/ActionIcon.tsx`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+  - `src/app/api/stock-transfers/route.ts`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - O SaaS nao tinha uma consulta unitaria da posicao atual de TRAFO.
+  - A transferencia dependia do preenchimento manual integral em `/entrada`.
+- Depois:
+  - O SaaS passou a expor a tela `/posicao-trafo` como consulta operacional da unidade.
+  - A lista de movimentacao ganhou atalho `Movimentar este TRAFO` por linha elegivel.
+  - A navegacao e a matriz de permissoes passaram a reconhecer a nova `page_key = posicao-trafo`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
+  - Responsavel por: carregar metadados, aplicar filtros, buscar a lista paginada, exportar CSV, exibir detalhes e redirecionar para movimentacao pre-preenchida.
+- Caminho: `src/app/api/trafo-positions/route.ts`
+  - Responsavel por: listar a posicao unitaria de TRAFO por tenant a partir de `trafo_instances`, com filtros, paginacao e enriquecimento de projeto/usuario.
+- Caminho: `src/app/api/trafo-positions/meta/route.ts`
+  - Responsavel por: listar centros ativos `OWN` para os filtros da tela.
+- Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - Responsavel por: consumir o prefill de transferencia de TRAFO vindo da tela unitaria e da lista de movimentacao.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/posicao-trafo/constants.ts`
+  - Responsavel por: `PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `EXPORT_COOLDOWN_MS` e filtros iniciais.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear a rota `/posicao-trafo` para `page_key = posicao-trafo` e incluir o acesso padrao por perfil.
+- Caminho: `supabase/migrations/138_add_trafo_position_page_permissions.sql`
+  - Responsavel por: cadastrar a tela em `app_pages` e fazer backfill de permissao por role e por usuario.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/posicao-trafo/utils.ts`
+  - Responsavel por: montar query string, formatar datas e exportar CSV.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas do modulo em `log_error`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Edge Function `log_error`.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/posicao-trafo/page.tsx`
+  - `src/app/api/trafo-positions/route.ts`
+  - `src/app/api/trafo-positions/meta/route.ts`
+  - `src/modules/dashboard/posicao-trafo/types.ts`
+  - `src/modules/dashboard/posicao-trafo/constants.ts`
+  - `src/modules/dashboard/posicao-trafo/utils.ts`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `src/components/ui/ActionIcon.tsx`
+  - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
+  - `docs/Tela_Posicao_Trafo_SaaS.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `TrafoPositionPageView`
+  - `buildTrafoPositionQuery`
+  - `openTransferPrefill`
+  - `GET /api/trafo-positions`
+  - `GET /api/trafo-positions/meta`
+  - `resolveDefaultPageAccess`
+  - `permissionCatalog`
+- Comportamento antes/depois:
+  - Antes: a rastreabilidade unitaria de TRAFO ficava difusa entre `Movimentacao de Estoque` e a leitura agregada do saldo.
+  - Depois: a rastreabilidade unitaria passou a ter tela propria baseada em `trafo_instances`, com acao direta de movimentacao para a mesma unidade.

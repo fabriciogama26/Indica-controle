@@ -16,13 +16,13 @@
 .cardTitle {
   margin: 0;
   color: #17347a;
-  font-size: 1.42rem;
+  font-size: 1.3rem;
 }
 
 .filterGrid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .field {
@@ -52,10 +52,6 @@
   outline: none;
   border-color: #2b4fa8;
   box-shadow: 0 0 0 3px rgba(43, 79, 168, 0.12);
-}
-
-.fieldWide {
-  grid-column: span 2;
 }
 
 .actions {
@@ -96,7 +92,7 @@
 .statsGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .statCard {
@@ -141,6 +137,7 @@
 .tableHint {
   color: #5b6a85;
   font-size: 0.88rem;
+  margin: 0;
 }
 
 .tableWrapper {
@@ -152,7 +149,7 @@
 
 .table {
   width: 100%;
-  min-width: 940px;
+  min-width: 1180px;
   border-collapse: collapse;
 }
 
@@ -163,6 +160,7 @@
   text-align: left;
   font-size: 0.9rem;
   color: #1f2f54;
+  white-space: nowrap;
 }
 
 .table th {
@@ -171,8 +169,73 @@
   font-weight: 800;
 }
 
+.descriptionCell {
+  min-width: 240px;
+  white-space: normal !important;
+}
+
+.statusCell {
+  min-width: 148px;
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.statusChipOwn {
+  background: rgba(34, 139, 94, 0.14);
+  border-color: rgba(34, 139, 94, 0.16);
+  color: #155a38;
+}
+
+.statusChipExternal {
+  background: rgba(198, 40, 40, 0.12);
+  border-color: rgba(198, 40, 40, 0.14);
+  color: #8b1e1e;
+}
+
+.movementChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.movementChipEntry {
+  background: rgba(25, 118, 210, 0.12);
+  border-color: rgba(25, 118, 210, 0.16);
+  color: #0d47a1;
+}
+
+.movementChipExit {
+  background: rgba(198, 40, 40, 0.12);
+  border-color: rgba(198, 40, 40, 0.16);
+  color: #9b1f1f;
+}
+
+.movementChipTransfer {
+  background: rgba(2, 136, 209, 0.12);
+  border-color: rgba(2, 136, 209, 0.16);
+  color: #0b5f91;
+}
+
 .actionsCell {
-  min-width: 108px;
+  min-width: 116px;
 }
 
 .tableActions {
@@ -203,19 +266,20 @@
   filter: brightness(0.97);
 }
 
+.actionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .actionView {
   color: #1d77b8;
   background: #dce8f5;
 }
 
-.actionHistory {
-  color: #2a86bd;
-  background: #dce8f5;
-}
-
-.quantityCell {
-  font-weight: 800;
-  color: #17347a !important;
+.actionTransfer {
+  color: #155a38;
+  background: #ddf4e6;
 }
 
 .emptyRow {
@@ -269,7 +333,7 @@
 }
 
 .modalCard {
-  width: min(920px, 100%);
+  width: min(860px, 100%);
   max-height: calc(100vh - 36px);
   overflow: auto;
   border-radius: 18px;
@@ -337,139 +401,24 @@
   font-size: 0.9rem;
 }
 
-.historyCard {
-  border: 1px solid rgba(23, 52, 122, 0.14);
-  border-radius: 14px;
-  padding: 12px;
-  display: grid;
-  gap: 10px;
+.detailWide {
+  grid-column: 1 / -1;
 }
 
-.historyCardReversed {
-  background: rgba(255, 238, 178, 0.26);
-}
-
-.historyCardReversal {
-  background: rgba(255, 228, 196, 0.28);
-}
-
-.historyCardHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  color: #17347a;
-}
-
-.historyHeaderMain {
-  display: grid;
-  gap: 8px;
-}
-
-.historyCardHeader span {
-  color: #5b6a85;
-  font-size: 0.84rem;
-}
-
-.historyBadgeRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.historyBadge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 0.76rem;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.historyBadgeEntry {
-  background: rgba(25, 118, 210, 0.12);
-  border-color: rgba(25, 118, 210, 0.16);
-  color: #0d47a1;
-}
-
-.historyBadgeExit {
-  background: rgba(198, 40, 40, 0.12);
-  border-color: rgba(198, 40, 40, 0.16);
-  color: #9b1f1f;
-}
-
-.historyBadgeTransfer {
-  background: rgba(2, 136, 209, 0.12);
-  border-color: rgba(2, 136, 209, 0.16);
-  color: #0b5f91;
-}
-
-.historyBadgeReversed {
-  background: rgba(251, 192, 45, 0.18);
-  border-color: rgba(251, 192, 45, 0.24);
-  color: #7a5a00;
-}
-
-.historyBadgeReversal {
-  background: rgba(255, 167, 38, 0.18);
-  border-color: rgba(255, 167, 38, 0.24);
-  color: #8d4b00;
-}
-
-.historyBadgeNeutral {
-  background: rgba(23, 52, 122, 0.08);
-  border-color: rgba(23, 52, 122, 0.12);
-  color: #17347a;
-}
-
-.historyMeta {
-  display: grid;
-  gap: 6px;
-  color: #1f2f54;
-  font-size: 0.9rem;
-}
-
-.historySignedPositive {
-  color: #1f8d45;
-  font-weight: 800;
-}
-
-.historySignedNegative {
-  color: #c62828;
-  font-weight: 800;
-}
-
-@media (max-width: 1260px) {
+@media (max-width: 1100px) {
   .filterGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 780px) {
+@media (max-width: 860px) {
   .filterGrid,
   .statsGrid,
   .detailGrid {
     grid-template-columns: 1fr;
   }
 
-  .historyCardHeader {
-    flex-direction: column;
-  }
-
-  .fieldWide {
-    grid-column: span 1;
-  }
-
-  .modalOverlay {
-    padding: 10px;
-  }
-
-  .modalCard {
-    max-height: calc(100vh - 20px);
-    padding: 14px;
+  .table {
+    min-width: 980px;
   }
 }
