@@ -106,10 +106,9 @@ Filtros, auto-complete e listagem
   - Descricao
   - Quantidade
   - Sinalizacao
-  - Serial
-  - LP
   - Data da movimentacao
   - Atualizado em
+- `Serial` e `LP` deixam de aparecer na grade mista e ficam disponiveis apenas nos modais de `Detalhes` e nos fluxos operacionais do TRAFO.
 - Acoes da lista:
   - `Exportar Excel (CSV)` (botao no cabecalho da lista)
   - `Detalhes` (modal)

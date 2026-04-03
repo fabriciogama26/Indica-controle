@@ -138,6 +138,7 @@
 - [x] Bloquear duplicidade funcional de TRAFO por `material + serial + lp` em centros `OWN` e antecipar erro de repeticao no mesmo arquivo CSV/importacao.
 - [x] Criar `trafo_instances` como fonte unitaria de verdade de TRAFO, com backfill inicial e migracao da RPC de estoque para validar a unidade pela tabela atual em vez de reconstruir o estado a cada chamada.
 - [x] Implementar botao `Movimentar este TRAFO` nas acoes da Movimentacao de Estoque com pre-preenchimento de `material + serial + lp + centro` e modo dedicado de `Saida/Transferencia`.
+- [x] Remover `Serial` e `LP` da grade da Movimentacao de Estoque, mantendo esses campos apenas em `Detalhes` e no fluxo operacional de TRAFO.
 - [x] Criar tela/consulta de posicao unitaria de TRAFO consumindo `trafo_instances`.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.
