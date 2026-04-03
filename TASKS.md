@@ -131,7 +131,8 @@
 - [x] Ajustar cadastro em massa da Movimentacao de Estoque para modelo CSV didatico com colunas em portugues, opcoes de `operacao` explicitas, `LP` documentado (equivalente a `lot_code`) e `observacao` opcional com retrocompatibilidade para cabecalhos antigos em ingles.
 - [x] Alinhar cadastro em massa da Movimentacao de Estoque ao padrao da Medicao com geracao/download de `CSV` de erros (`linha;coluna;valor;erro`) para falhas de validacao e salvamento.
 - [x] Padronizar motivo de estorno da Movimentacao de Estoque com catalogo (`reason_code` + `reason_notes`), criando tabela seed de motivos e validacao hard no banco para exigir observacao quando `reason_code = OTHER`.
-- [ ] Implementar tela de `Estoque Atual` com filtros, paginacao e resumo consumindo `get_inventory_balance`.
+- [x] Implementar tela de `Estoque Atual` com filtros, paginacao, resumo, exportacao CSV e consulta read-only por `stock_center_balances`/`stock_centers`.
+- [x] Ajustar a Movimentacao de Estoque para rotular `entry_date` conforme a operacao no formulario/modais (`entrada`, `saida`, `transferencia`) e rebalancear o layout de `Descricao`/`Quantidade` na UI.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.
 - [x] Adicionar flag operacional `project.has_locacao` para marcar projetos com salvamento real na tela de `Locacao`.

@@ -1,0 +1,154 @@
+Tela: Estoque Atual SaaS
+
+Visao geral
+-----------
+- Tela read-only no padrao `filtros + lista`.
+- Consulta o saldo fisico atual por `Centro de estoque + Material`.
+- O saldo ja vem calculado no backend e a tela apenas exibe o valor.
+- `Ultima movimentacao` mostra a ultima alteracao registrada no saldo daquele `material` naquele `centro`, usando `stock_center_balances.updated_at`.
+- A tela trabalha somente com centros `OWN`, sem recalculo no frontend.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/estoque/page.tsx`
+- View principal: `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/estoque/CurrentStockPageView.module.css`
+- Tipos do modulo: `src/modules/dashboard/estoque/types.ts`
+- Constantes do modulo: `src/modules/dashboard/estoque/constants.ts`
+- Utilitarios do modulo: `src/modules/dashboard/estoque/utils.ts`
+- Hook de erro usado pela tela: `src/hooks/useErrorLogger.ts`
+- API da tela:
+  - `src/app/api/stock-balance/route.ts`
+  - `src/app/api/stock-balance/meta/route.ts`
+- Banco:
+  - `supabase/migrations/128_create_stock_transfer_module.sql`
+  - `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
+  - `supabase/migrations/131_add_stock_transfer_reversal.sql`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Centro de estoque` (somente centros `OWN`)
+  - `Material (codigo)`
+  - `Descricao`
+  - `Saldo minimo`
+  - `Saldo maximo`
+  - `Exibir saldo zero`
+- Listagem:
+  - `Centro`
+  - `Material`
+  - `Descricao`
+  - `UMB`
+  - `Tipo`
+  - `Saldo`
+  - `Ultima movimentacao`
+  - `Acoes`
+- Regras de exibicao:
+  - `Saldo` exibido como numero inteiro.
+  - `Ultima movimentacao` usa o timestamp da ultima escrita em `stock_center_balances`.
+  - A lista e paginada no backend (`page`, `pageSize`, `total`).
+  - O cabecalho da lista exibe `Registros filtrados` e `Saldo total da pagina`.
+  - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos.
+  - A coluna `Acoes` exibe:
+    - `Detalhes`
+    - `Historico`
+
+Boas praticas
+-------------
+- Manter a consulta read-only segregada por `tenant_id`.
+- Nao recalcular saldo no frontend.
+- Limitar a tela a centros `OWN` (`controls_balance = true` / `center_type = OWN`).
+- Se o volume crescer de forma relevante, avaliar cache materializado por `centro + material` antes de expandir a consulta.
+- Erros da tela devem ser registrados com tag `estoque_atual` via `useErrorLogger`.
+
+Cancelamento e saldo
+--------------------
+- A tela nao grava movimentacao, cancelamento ou estorno.
+- O saldo apresentado depende da tabela `stock_center_balances`.
+- Transferencias continuam seguindo a regra operacional:
+  - `DE` debita.
+  - `PARA` credita.
+- Estorno continua sendo inversao da movimentacao original, sem criar tipo novo no frontend desta tela.
+
+Atalhos
+-------
+- Rota ativa: `/estoque`
+- Endpoints:
+  - `GET /api/stock-balance`
+  - `GET /api/stock-balance/meta`
+
+Atualizacao 2026-04
+-------------------
+- Arquivos criados:
+  - `src/app/api/stock-balance/route.ts`
+  - `src/app/api/stock-balance/meta/route.ts`
+  - `src/modules/dashboard/estoque/types.ts`
+  - `src/modules/dashboard/estoque/constants.ts`
+  - `src/modules/dashboard/estoque/utils.ts`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.module.css`
+  - `src/hooks/useErrorLogger.ts`
+  - `docs/Tela_Estoque_SaaS.txt`
+- Arquivos alterados:
+  - `src/app/(dashboard)/estoque/page.tsx`
+  - `src/app/api/stock-balance/route.ts`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.module.css`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - `/estoque` era um placeholder sem consulta real.
+- Depois:
+  - `/estoque` passou a exibir saldo atual por centro/material com filtros, lista paginada, exportacao CSV, modal de detalhes e historico operacional por `centro + material`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
+  - Responsavel por: carregar centros, aplicar filtros, buscar a lista paginada, exportar CSV e exibir o saldo atual.
+- Caminho: `src/app/api/stock-balance/route.ts`
+  - Responsavel por: listar saldo atual por `tenant + centro + material`, com filtros e paginacao.
+- Caminho: `src/app/api/stock-balance/meta/route.ts`
+  - Responsavel por: listar centros ativos `OWN` para o filtro da tela.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/estoque/constants.ts`
+  - Responsavel por: `PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `EXPORT_COOLDOWN_MS` e filtros iniciais.
+- Caminho: `supabase/migrations/128_create_stock_transfer_module.sql`
+  - Responsavel por: criar `stock_centers`, `stock_center_balances`, `stock_transfers` e `stock_transfer_items`.
+- Caminho: `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
+  - Responsavel por: definir `center_type`, `controls_balance` e regras de `movement_type`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/estoque/utils.ts`
+  - Responsavel por: montar query string, formatar datas/inteiros e exportar CSV.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas do modulo em `log_error`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Edge Function `log_error`.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/estoque/page.tsx`
+  - `src/app/api/stock-balance/route.ts`
+  - `src/app/api/stock-balance/meta/route.ts`
+  - `src/modules/dashboard/estoque/types.ts`
+  - `src/modules/dashboard/estoque/constants.ts`
+  - `src/modules/dashboard/estoque/utils.ts`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.module.css`
+  - `src/hooks/useErrorLogger.ts`
+  - `docs/Tela_Estoque_SaaS.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `CurrentStockPageView`
+  - `buildCurrentStockQuery`
+  - `formatDateTime`
+  - `formatInteger`
+  - `useErrorLogger`
+  - `GET /api/stock-balance`
+  - `GET /api/stock-balance/meta`
+- Comportamento antes/depois:
+  - Antes: a rota `/estoque` mostrava apenas um placeholder.
+  - Depois: a rota `/estoque` passou a consumir dados reais por tenant, com filtros operacionais e listagem paginada.

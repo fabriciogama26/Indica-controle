@@ -31,7 +31,7 @@ Cadastro
   - `project_id`
   - `material_id` (selecionado por `material_code`)
   - `quantity`
-  - `entry_date`
+  - `entry_date` (campo unico de data da movimentacao)
   - `entry_type` (`SUCATA` ou `NOVO`)
 - Campos opcionais:
   - `serial_number`
@@ -58,6 +58,10 @@ Filtros, auto-complete e listagem
 - Cadastro manual com auto-complete por `material_code` (`input + datalist`).
 - Ao selecionar `material_code`, a `description` e preenchida automaticamente.
 - Campo `Operacao` define o modo da movimentacao (`Entrada`, `Saida`, `Transferencia`).
+- No cadastro manual, o rotulo da data acompanha a operacao selecionada:
+  - `ENTRY` -> `Data da entrada`
+  - `EXIT` -> `Data da saida`
+  - `TRANSFER` -> `Data da transferencia`
 - Campos `DE` e `PARA` sao filtrados automaticamente conforme a operacao.
 - Cadastro em massa por CSV com template em portugues (aceita aliases em ingles para retrocompatibilidade):
   - `operacao`
@@ -95,7 +99,7 @@ Filtros, auto-complete e listagem
   - Quantidade
   - Serial
   - LP
-  - Data entrada
+  - Data da movimentacao
   - Atualizado em
 - Acoes da lista:
   - `Exportar Excel (CSV)` (botao no cabecalho da lista)
@@ -145,6 +149,8 @@ Atualizacao 2026-04
 - Ajuste funcional: lista recebeu botao `Exportar Excel (CSV)` no mesmo padrao das outras telas.
 - Ajuste de importacao: modal de cadastro em massa ficou mais didatico e o modelo CSV passou a usar cabecalhos em portugues (`operacao`, `centro_de`, `centro_para`, `projeto`, `material_codigo`, `quantidade`, `serial`, `lp`, `data_entrada`, `observacao`) com leitura retrocompativel para cabecalhos antigos em ingles.
 - Ajuste de rastreabilidade no cadastro em massa: o modal passou a gerar e permitir download de `CSV` de erros (`linha;coluna;valor;erro`) quando houver pendencias de validacao/salvamento.
+- Ajuste de semantica visual: `entry_date` continua unico no banco/API, mas o formulario e os modais passaram a exibir `Data da entrada`, `Data da saida` ou `Data da transferencia` conforme a operacao; a lista mista usa o rotulo generico `Data da movimentacao`.
+- Ajuste de layout: `Descricao` ocupa area maior no cadastro e na tabela; `Quantidade` ficou mais compacta.
 - Migration `128_create_stock_transfer_module.sql`:
   - adiciona `materials.is_transformer`;
   - cria `stock_centers`, `stock_center_balances`, `stock_transfers`, `stock_transfer_items`;
@@ -228,7 +234,7 @@ Ajuda contextual
   - `src/app/(dashboard)/entrada/page.tsx`
   - `src/app/(dashboard)/saida/page.tsx`
 - Funcoes/hooks/constantes tocadas:
-  - `StockTransfersPageView`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
+  - `StockTransfersPageView`, `movementDateLabel`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
   - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
   - `GET` de `/api/stock-transfers/meta`
   - `POST` de `/api/stock-transfers/import`
@@ -241,3 +247,5 @@ Ajuda contextual
   - Depois: historico passa a incluir eventos de estorno.
   - Antes: exportacao CSV nao trazia status de estorno.
   - Depois: exportacao CSV inclui status e vinculos de estorno.
+  - Antes: a UI chamava `entry_date` sempre de `Data da entrada`, inclusive para `Saida` e `Transferencia`.
+  - Depois: o formulario e os modais usam rotulo contextual por operacao, mantendo um unico campo persistido no schema.

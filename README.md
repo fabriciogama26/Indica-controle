@@ -125,7 +125,7 @@ vercel --prod
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem, incluindo `Tipo` por select (`NOVO`/`SUCATA`), flag `Material TRAFO` (`is_transformer`) e `Preco` opcional.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
-  - `(dashboard)/estoque/page.tsx`: placeholder de Estoque Atual.
+  - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
   - `(dashboard)/saida/page.tsx`: redireciona para `/entrada` (tela unica de movimentacao de estoque).
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
@@ -167,6 +167,8 @@ vercel --prod
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em lote (CSV) para a tela de estoque.
   - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
+  - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side e `ultima movimentacao` baseada em `stock_center_balances.updated_at`.
+  - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` ativos usados no filtro da tela de Estoque Atual.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
@@ -203,6 +205,12 @@ vercel --prod
 - `src/modules/dashboard/entrada/`
   - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), `Tipo` automatico por `materials.tipo` (nao selecionavel), `Serial/LP` condicionais para TRAFO, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
+- `src/modules/dashboard/estoque/`
+  - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual.
+  - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
+  - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
+  - `CurrentStockPageView.tsx`: tela de Estoque Atual com `Filtros + Lista`, exportacao CSV, resumo da pagina e consulta read-only por centro/material.
+  - `CurrentStockPageView.module.css`: estilos da tela de Estoque Atual.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - `ActivitiesPageView.module.css`: estilos da tela de atividades.
@@ -219,6 +227,7 @@ vercel --prod
   - `AuthContext.tsx`: hidrata e gerencia a sessao.
 - `src/hooks/`
   - `useAuth.ts`: acesso ao contexto de autenticacao.
+  - `useErrorLogger.ts`: hook client-side para registrar falhas de tela na Edge Function `log_error`.
 - `src/lib/react-query/`
   - `provider.tsx`: provider do React Query.
 - `src/lib/supabase/`
@@ -262,6 +271,7 @@ vercel --prod
   - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
+  - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada e exportacao CSV.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Padrao_Cadastros_SaaS.txt`: referencia obrigatoria de padrao visual/comportamental para telas de cadastro.

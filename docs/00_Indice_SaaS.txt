@@ -16,6 +16,7 @@ Arquivos principais para nova task
 - docs/Tela_Programacao_Simples_SaaS.txt
 - docs/Tela_Visualizacao_Programacao_SaaS.txt
 - docs/Tela_Medicao_SaaS.txt
+- docs/Tela_Estoque_SaaS.txt
 - docs/Tela_Cargo_SaaS.txt
 - docs/Tela_Pessoas_SaaS.txt
 - docs/Tela_Equipes_SaaS.txt
@@ -42,5 +43,6 @@ Estado atual resumido
 - Home inicial implementada
 - Tela de Projetos com cadastro/filtros/lista implementada
 - Navegacao lateral reorganizada em Visao Geral, Operacao, Almoxarifado, Cadastros e Cadastro Base
-- Modulos de cadastro e estoque ainda em placeholder (exceto Projetos)
+- Tela de Estoque Atual com filtros/lista paginada implementada
+- Modulos ainda em placeholder: `Cargo` e parte de `Cadastro Base`
 - Backend minimo de login web mapeado no Supabase
