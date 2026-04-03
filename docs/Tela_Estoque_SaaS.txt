@@ -24,6 +24,7 @@ Arquitetura
   - `supabase/migrations/128_create_stock_transfer_module.sql`
   - `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
   - `supabase/migrations/131_add_stock_transfer_reversal.sql`
+  - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -52,6 +53,11 @@ Filtros, auto-complete e listagem
   - A coluna `Acoes` exibe:
     - `Detalhes`
     - `Historico`
+  - O modal `Historico` mostra cada movimentacao que afetou o saldo do `material` no `centro`, com:
+    - `Saldo aplicado` assinado
+    - operacao traduzida (`Entrada`, `Saida`, `Transferencia`)
+    - status visual para `Movimentacao ativa`, `Movimentacao original estornada` e `Movimentacao de estorno`
+    - `Transferencia: <id>` apenas como referencia secundaria
 
 Boas praticas
 -------------
@@ -65,6 +71,7 @@ Cancelamento e saldo
 --------------------
 - A tela nao grava movimentacao, cancelamento ou estorno.
 - O saldo apresentado depende da tabela `stock_center_balances`.
+- O rastreio unitario de TRAFO passa a depender de `trafo_instances`; esta tela continua listando o saldo agregado por centro/material.
 - Transferencias continuam seguindo a regra operacional:
   - `DE` debita.
   - `PARA` credita.
@@ -76,6 +83,7 @@ Atalhos
 - Endpoints:
   - `GET /api/stock-balance`
   - `GET /api/stock-balance/meta`
+- Tela complementar relacionada: `/posicao-trafo` para consulta unitaria de TRAFO por `Serial + LP`.
 
 Atualizacao 2026-04
 -------------------
@@ -100,6 +108,9 @@ Atualizacao 2026-04
   - `/estoque` era um placeholder sem consulta real.
 - Depois:
   - `/estoque` passou a exibir saldo atual por centro/material com filtros, lista paginada, exportacao CSV, modal de detalhes e historico operacional por `centro + material`.
+  - O historico passou a priorizar rotulo funcional do evento em vez de usar o `transferId` como titulo principal.
+  - O historico recebeu chips de operacao/status e destaque visual para `Estorno` e `Estornada`.
+  - A arquitetura de TRAFO passou a manter a posicao unitaria atual em `trafo_instances`, e a consulta unitaria agora fica na tela dedicada `/posicao-trafo` sem mudar a listagem agregada atual.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -146,9 +157,14 @@ Ajuda contextual
   - `buildCurrentStockQuery`
   - `formatDateTime`
   - `formatInteger`
+  - `movementTypeLabel`
+  - `currentStockHistoryTitle`
+  - `currentStockStatusLabel`
   - `useErrorLogger`
   - `GET /api/stock-balance`
   - `GET /api/stock-balance/meta`
 - Comportamento antes/depois:
   - Antes: a rota `/estoque` mostrava apenas um placeholder.
   - Depois: a rota `/estoque` passou a consumir dados reais por tenant, com filtros operacionais e listagem paginada.
+  - Antes: o modal de historico usava o `transferId` como titulo principal e mostrava `ENTRY/EXIT/TRANSFER` sem destaque visual.
+  - Depois: o modal usa titulo funcional, operacao traduzida e chips/status para facilitar leitura operacional.

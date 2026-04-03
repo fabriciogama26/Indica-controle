@@ -43,7 +43,7 @@ Atalhos
 - Links de navegacao laterais para:
   - `Visao Geral`: Home (`Dashboard Estoque`)
   - `Operacao`: Projetos, Locacao, Programacao e Medicao
-  - `Almoxarifado`: Estoque Atual, Movimentacao de Estoque e Saida Estoque
+  - `Almoxarifado`: Estoque Atual, Posicao Unitaria TRAFO, Movimentacao de Estoque e Saida Estoque
   - `Cadastros`: Materiais, Pessoas e Cargo
   - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Atividades, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 - Botao de engrenagem no topo direito abre `/permissoes` apenas para `admin` e `master`.
@@ -72,6 +72,7 @@ Atualizacao 2026-03
 - `Atividades` adicionada em `Cadastro Base` com rota dedicada `/atividades`.
 - Ajustado o shell para scroll interno no `mainContent`, com sidebar e topbar fixos no desktop.
 - Bloco `Conectado` ajustado para priorizar somente `display` no nome do usuario.
+- `Posicao Unitaria TRAFO` adicionada em `Almoxarifado`, com titulo dedicado no shell e bloqueio por `pageAccess`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -107,3 +108,4 @@ Ajuda contextual
 - Antes: as opcoes de estoque e cadastros estavam concentradas em secoes menos granulares.
 - Depois: a navegacao separa explicitamente operacao, almoxarifado, cadastros e cadastro base, com permissao por pagina.
 - Estado atual: a tela `Permissoes` fica acessivel pelo icone de engrenagem no topo e nao participa da navegacao principal.
+- Estado atual: a sidebar passa a expor a rota `/posicao-trafo` quando a `page_key = posicao-trafo` estiver liberada para o usuario.

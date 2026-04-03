@@ -133,6 +133,12 @@
 - [x] Padronizar motivo de estorno da Movimentacao de Estoque com catalogo (`reason_code` + `reason_notes`), criando tabela seed de motivos e validacao hard no banco para exigir observacao quando `reason_code = OTHER`.
 - [x] Implementar tela de `Estoque Atual` com filtros, paginacao, resumo, exportacao CSV e consulta read-only por `stock_center_balances`/`stock_centers`.
 - [x] Ajustar a Movimentacao de Estoque para rotular `entry_date` conforme a operacao no formulario/modais (`entrada`, `saida`, `transferencia`) e rebalancear o layout de `Descricao`/`Quantidade` na UI.
+- [x] Melhorar leitura operacional de `Movimentacao de Estoque` e `Estoque Atual` com sinalizacao visual por `Entrada/Saida/Transferencia/Estorno`, destaque de linhas estornadas e historicos com titulos/valores legiveis em vez de IDs brutos.
+- [x] Endurecer TRAFO na `Movimentacao de Estoque` com `quantity = 1`, `Serial + LP` obrigatorios em todos os fluxos e validacao transacional da unidade exata no centro de origem via RPC.
+- [x] Bloquear duplicidade funcional de TRAFO por `material + serial + lp` em centros `OWN` e antecipar erro de repeticao no mesmo arquivo CSV/importacao.
+- [x] Criar `trafo_instances` como fonte unitaria de verdade de TRAFO, com backfill inicial e migracao da RPC de estoque para validar a unidade pela tabela atual em vez de reconstruir o estado a cada chamada.
+- [x] Implementar botao `Movimentar este TRAFO` nas acoes da Movimentacao de Estoque com pre-preenchimento de `material + serial + lp + centro` e modo dedicado de `Saida/Transferencia`.
+- [x] Criar tela/consulta de posicao unitaria de TRAFO consumindo `trafo_instances`.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.
 - [x] Adicionar flag operacional `project.has_locacao` para marcar projetos com salvamento real na tela de `Locacao`.

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
@@ -49,6 +50,7 @@ type TransferListItem = {
   materialId: string;
   materialCode: string;
   description: string;
+  isTransformer: boolean;
   quantity: number;
   serialNumber: string | null;
   lotCode: string | null;
@@ -163,6 +165,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   toStockCenter: "Centro PARA",
   originalTransferId: "Transferencia original",
   reversalTransferId: "Transferencia de estorno",
+  projectId: "Projeto",
   projectCode: "Projeto",
   materialCode: "Material (codigo)",
   description: "Descricao",
@@ -245,6 +248,7 @@ function toIsoDate(value: Date) {
 
 function formatHistoryActionLabel(value: string) {
   const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "CREATE") return "Cadastro";
   if (normalized === "REVERSAL") return "Estorno";
   if (normalized === "UPDATE") return "Edicao";
   return normalized || "Atualizacao";
@@ -291,6 +295,21 @@ function movementDateLabel(value: string | null | undefined) {
   if (normalized === "EXIT") return "Data da saida";
   if (normalized === "TRANSFER") return "Data da transferencia";
   return "Data da movimentacao";
+}
+
+function movementSignalLabel(value: string | null | undefined) {
+  return movementTypeLabel(value);
+}
+
+function rowStatusLabel(item: Pick<TransferListItem, "isReversal" | "isReversed">) {
+  if (item.isReversal) return "Estorno";
+  if (item.isReversed) return "Estornada";
+  return null;
+}
+
+function isTransformerQuantityValid(quantity: number | null) {
+  if (quantity === null) return false;
+  return quantity === 1;
 }
 
 function parsePositiveNumber(value: string) {
@@ -393,6 +412,8 @@ function downloadMassImportErrorReport(report: MassImportErrorReportData | null)
 
 export function StockTransfersPageView() {
   const { session } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const canReverseStockMovement = useMemo(() => {
     const normalizedRole = String(session?.user.role ?? "").trim().toUpperCase();
     return normalizedRole === "ADMIN" || normalizedRole === "MASTER";
@@ -430,6 +451,12 @@ export function StockTransfersPageView() {
   const [importErrorReport, setImportErrorReport] = useState<MassImportErrorReportData | null>(null);
   const [importResult, setImportResult] = useState<MassImportResultSummary | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [prefillApplied, setPrefillApplied] = useState(false);
+  const [transformerMovementMode, setTransformerMovementMode] = useState<{
+    materialCode: string;
+    serialNumber: string;
+    lotCode: string;
+  } | null>(null);
 
   const selectedMaterial = useMemo(
     () => materials.find((material) => material.id === form.materialId) ?? null,
@@ -462,7 +489,16 @@ export function StockTransfersPageView() {
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const requiresTransformerFields = Boolean(selectedMaterial?.isTransformer);
+  const isTransformerMovementMode = Boolean(transformerMovementMode);
   const formEntryDateLabel = movementDateLabel(form.movementType);
+  const transferPrefill = useMemo(() => ({
+    mode: normalizeText(searchParams.get("prefillMode")),
+    fromStockCenterId: normalizeText(searchParams.get("fromStockCenterId")),
+    materialId: normalizeText(searchParams.get("materialId")),
+    materialCode: normalizeCode(searchParams.get("materialCode") ?? ""),
+    serialNumber: normalizeText(searchParams.get("serialNumber")),
+    lotCode: normalizeText(searchParams.get("lotCode")),
+  }), [searchParams]);
   const firstRowByTransferId = useMemo(() => {
     const seen = new Set<string>();
     const map = new Map<string, boolean>();
@@ -670,11 +706,69 @@ export function StockTransfersPageView() {
   }, [loadMeta]);
 
   useEffect(() => {
+    setPrefillApplied(false);
+  }, [transferPrefill.fromStockCenterId, transferPrefill.lotCode, transferPrefill.materialCode, transferPrefill.materialId, transferPrefill.mode, transferPrefill.serialNumber]);
+
+  useEffect(() => {
+    if (prefillApplied || transferPrefill.mode !== "transformer-transfer" || materials.length === 0 || stockCenters.length === 0) {
+      return;
+    }
+
+    const matchedMaterial = materials.find((material) =>
+      (transferPrefill.materialId && material.id === transferPrefill.materialId)
+      || (transferPrefill.materialCode && normalizeCode(material.materialCode) === transferPrefill.materialCode),
+    ) ?? null;
+
+    if (!matchedMaterial || !matchedMaterial.isTransformer) {
+      setPrefillApplied(true);
+      return;
+    }
+
+    const matchedFromCenter = stockCenters.find((center) => center.id === transferPrefill.fromStockCenterId && center.centerType === "OWN") ?? null;
+
+    setForm((current) => ({
+      ...current,
+      movementType: "TRANSFER",
+      fromStockCenterId: matchedFromCenter?.id ?? "",
+      toStockCenterId: "",
+      projectCode: "",
+      projectId: "",
+      materialCode: matchedMaterial.materialCode,
+      materialId: matchedMaterial.id,
+      description: matchedMaterial.description,
+      quantity: "1",
+      serialNumber: transferPrefill.serialNumber,
+      lotCode: transferPrefill.lotCode,
+      entryType: normalizeMaterialEntryType(matchedMaterial.materialType ?? ""),
+    }));
+    setTransformerMovementMode({
+      materialCode: matchedMaterial.materialCode,
+      serialNumber: transferPrefill.serialNumber,
+      lotCode: transferPrefill.lotCode,
+    });
+    setFeedback({
+      type: "success",
+      message: "Modo de movimentacao do TRAFO ativado. Escolha Saida ou Transferencia e conclua os campos variaveis.",
+    });
+    setPrefillApplied(true);
+  }, [materials, prefillApplied, stockCenters, transferPrefill]);
+
+  useEffect(() => {
     void loadHistory(1);
   }, [filters, loadHistory]);
 
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function clearTransformerMovementMode() {
+    setTransformerMovementMode(null);
+    setPrefillApplied(false);
+    setForm({
+      ...INITIAL_FORM,
+      entryDate: toIsoDate(new Date()),
+    });
+    router.replace("/entrada", { scroll: false });
   }
 
   function handleMaterialCodeChange(value: string) {
@@ -687,6 +781,7 @@ export function StockTransfersPageView() {
       materialId: matchedMaterial?.id ?? "",
       description: matchedMaterial?.description ?? "",
       entryType: normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
+      quantity: matchedMaterial?.isTransformer ? "1" : current.quantity,
       serialNumber: matchedMaterial?.isTransformer ? current.serialNumber : "",
       lotCode: matchedMaterial?.isTransformer ? current.lotCode : "",
     }));
@@ -704,10 +799,14 @@ export function StockTransfersPageView() {
   }
 
   function handleMovementTypeChange(value: FormState["movementType"]) {
+    if (isTransformerMovementMode && value === "ENTRY") {
+      return;
+    }
+
     setForm((current) => ({
       ...current,
       movementType: value,
-      fromStockCenterId: "",
+      fromStockCenterId: isTransformerMovementMode ? current.fromStockCenterId : "",
       toStockCenterId: "",
     }));
   }
@@ -762,6 +861,9 @@ export function StockTransfersPageView() {
     }
 
     if (requiresTransformerFields) {
+      if (!isTransformerQuantityValid(quantity)) {
+        return "Material TRAFO permite somente quantidade 1 por movimentacao.";
+      }
       if (!normalizeText(form.serialNumber) || !normalizeText(form.lotCode)) {
         return "Serial e LP sao obrigatorios para material TRAFO.";
       }
@@ -840,8 +942,13 @@ export function StockTransfersPageView() {
         return;
       }
 
-      setFeedback({ type: "success", message: data.message ?? "Movimentacao salva com sucesso." });
-      resetItemFields();
+      if (isTransformerMovementMode) {
+        clearTransformerMovementMode();
+        setFeedback({ type: "success", message: data.message ?? "Movimentacao do TRAFO salva com sucesso." });
+      } else {
+        setFeedback({ type: "success", message: data.message ?? "Movimentacao salva com sucesso." });
+        resetItemFields();
+      }
       await loadHistory(1);
     } catch {
       setFeedback({ type: "error", message: "Falha ao salvar movimentacao de estoque." });
@@ -888,6 +995,31 @@ export function StockTransfersPageView() {
     setIsImportModalOpen(false);
   }
 
+  function openTransferPrefill(item: TransferListItem) {
+    if (!item.isTransformer || !item.serialNumber || !item.lotCode) {
+      return;
+    }
+
+    const inferredFromStockCenterId =
+      item.movementType === "ENTRY" || item.movementType === "TRANSFER"
+        ? item.toStockCenterId
+        : "";
+
+    if (!inferredFromStockCenterId) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("prefillMode", "transformer-transfer");
+    params.set("fromStockCenterId", inferredFromStockCenterId);
+    params.set("materialId", item.materialId);
+    params.set("materialCode", item.materialCode);
+    params.set("serialNumber", item.serialNumber);
+    params.set("lotCode", item.lotCode);
+
+    router.push(`/entrada?${params.toString()}`);
+  }
+
   function downloadLastImportErrorReport() {
     downloadMassImportErrorReport(importErrorReport);
   }
@@ -908,6 +1040,18 @@ export function StockTransfersPageView() {
     setFilterDraft(INITIAL_FILTERS);
     setFilters(INITIAL_FILTERS);
   }
+
+  const formCardTitle = isTransformerMovementMode
+    ? "Movimentacao de TRAFO pre-preenchida"
+    : "Cadastro de Movimentacao de Estoque";
+  const formCardDescription = isTransformerMovementMode
+    ? "Use este modo para Saida ou Transferencia da mesma unidade. Material, Serial, LP, quantidade e centro DE ficam travados."
+    : "Selecione a operacao: Entrada, Saida ou Transferencia.";
+  const submitButtonLabel = isSubmitting
+    ? "Salvando..."
+    : isTransformerMovementMode
+      ? "Confirmar movimentacao"
+      : "Salvar operacao";
 
   async function openHistoryModal(item: TransferListItem) {
     setHistoryModalItem(item);
@@ -1080,6 +1224,7 @@ export function StockTransfersPageView() {
       const stockCenterByName = new Map(stockCenters.map((center) => [normalizeText(center.name).toLowerCase(), center]));
       const projectByCode = new Map(projects.map((project) => [normalizeCode(project.projectCode), project]));
       const materialByCode = new Map(materials.map((material) => [normalizeCode(material.materialCode), material]));
+      const seenTransformerUnits = new Map<string, number>();
 
       const mappedEntries: Array<Record<string, unknown>> = [];
       const importIssues: MassImportIssue[] = [];
@@ -1173,6 +1318,26 @@ export function StockTransfersPageView() {
         if (material.isTransformer && (!serialNumber || !lotCode)) {
           importIssues.push({ rowNumber, column: "serial/lp", value: `${serialNumberRaw} | ${lotCodeRaw}`, error: "Serial e LP sao obrigatorios para material TRAFO." });
           return;
+        }
+
+        if (material.isTransformer && quantity !== 1) {
+          importIssues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: "Material TRAFO permite somente quantidade 1 por movimentacao." });
+          return;
+        }
+
+        if (material.isTransformer) {
+          const transformerUnitKey = `${material.id}::${serialNumber ?? ""}::${lotCode ?? ""}`;
+          const firstSeenRow = seenTransformerUnits.get(transformerUnitKey);
+          if (firstSeenRow) {
+            importIssues.push({
+              rowNumber,
+              column: "serial/lp",
+              value: `${materialCode} | ${serialNumberRaw} | ${lotCodeRaw}`,
+              error: `Ja existe outra linha no CSV com o mesmo material, Serial e LP (linha ${firstSeenRow}).`,
+            });
+            return;
+          }
+          seenTransformerUnits.set(transformerUnitKey, rowNumber);
         }
 
         mappedEntries.push({
@@ -1301,10 +1466,15 @@ export function StockTransfersPageView() {
         <p className={feedback.type === "success" ? styles.successFeedback : styles.errorFeedback}>{feedback.message}</p>
       ) : null}
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${isTransformerMovementMode ? styles.editingCard : ""}`}>
         <header className={styles.cardHeader}>
-          <h3 className={styles.cardTitle}>Cadastro de Movimentacao de Estoque</h3>
-          <p>Selecione a operacao: Entrada, Saida ou Transferencia.</p>
+          <h3 className={styles.cardTitle}>{formCardTitle}</h3>
+          <p>{formCardDescription}</p>
+          {transformerMovementMode ? (
+            <p className={styles.prefillModeHint}>
+              Unidade selecionada: {transformerMovementMode.materialCode} | Serial {transformerMovementMode.serialNumber} | LP {transformerMovementMode.lotCode}
+            </p>
+          ) : null}
         </header>
 
         <form className={styles.form} onSubmit={handleSubmit}>
@@ -1317,7 +1487,7 @@ export function StockTransfersPageView() {
               onChange={(event) => handleMovementTypeChange(event.target.value as FormState["movementType"])}
               disabled={isSubmitting || isLoadingMeta}
             >
-              <option value="ENTRY">Entrada</option>
+              {!isTransformerMovementMode ? <option value="ENTRY">Entrada</option> : null}
               <option value="EXIT">Saida</option>
               <option value="TRANSFER">Transferencia</option>
             </select>
@@ -1330,7 +1500,7 @@ export function StockTransfersPageView() {
             <select
               value={form.fromStockCenterId}
               onChange={(event) => updateFormField("fromStockCenterId", event.target.value)}
-              disabled={isSubmitting || isLoadingMeta}
+              disabled={isSubmitting || isLoadingMeta || isTransformerMovementMode}
             >
               <option value="">Selecione</option>
               {fromCenterOptions.map((center) => (
@@ -1388,7 +1558,7 @@ export function StockTransfersPageView() {
               onChange={(event) => handleMaterialCodeChange(event.target.value)}
               list="material-code-list"
               placeholder="Digite o codigo do material"
-              disabled={isSubmitting || isLoadingMeta}
+              disabled={isSubmitting || isLoadingMeta || isTransformerMovementMode}
             />
             <datalist id="material-code-list">
               {materials.map((material) => (
@@ -1410,11 +1580,13 @@ export function StockTransfersPageView() {
             </span>
             <input
               type="number"
-              step="0.001"
-              min="0.001"
+              step={requiresTransformerFields ? "1" : "0.001"}
+              min={requiresTransformerFields ? "1" : "0.001"}
+              max={requiresTransformerFields ? "1" : undefined}
               value={form.quantity}
-              onChange={(event) => updateFormField("quantity", event.target.value)}
-              disabled={isSubmitting}
+              onChange={(event) => updateFormField("quantity", requiresTransformerFields ? "1" : event.target.value)}
+              disabled={isSubmitting || isTransformerMovementMode}
+              readOnly={requiresTransformerFields || isTransformerMovementMode}
             />
           </label>
 
@@ -1427,7 +1599,7 @@ export function StockTransfersPageView() {
               type="text"
               value={form.serialNumber}
               onChange={(event) => updateFormField("serialNumber", event.target.value)}
-              disabled={isSubmitting || !requiresTransformerFields}
+              disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
               placeholder={requiresTransformerFields ? "Informe o serial" : "Disponivel apenas para material TRAFO"}
             />
           </label>
@@ -1441,13 +1613,13 @@ export function StockTransfersPageView() {
               type="text"
               value={form.lotCode}
               onChange={(event) => updateFormField("lotCode", event.target.value)}
-              disabled={isSubmitting || !requiresTransformerFields}
+              disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
               placeholder={requiresTransformerFields ? "Informe o LP" : "Disponivel apenas para material TRAFO"}
             />
           </label>
 
           <p className={`${styles.fieldHint} ${styles.fullWidth}`}>
-            Campos Serial e LP so pode ser ativo se o material selecionado for True para trafo.
+            Material TRAFO exige Serial, LP e quantidade fixa igual a 1.
           </p>
 
           <label className={styles.field}>
@@ -1487,16 +1659,27 @@ export function StockTransfersPageView() {
 
           <div className={`${styles.actions} ${styles.fullWidth}`}>
             <button type="submit" className={styles.primaryButton} disabled={isSubmitting || isLoadingMeta}>
-              {isSubmitting ? "Salvando..." : "Salvar operacao"}
+              {submitButtonLabel}
             </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={openImportModal}
-              disabled={isSubmitting || isLoadingMeta}
-            >
-              Cadastro em massa
-            </button>
+            {isTransformerMovementMode ? (
+              <button
+                type="button"
+                className={styles.ghostButton}
+                onClick={clearTransformerMovementMode}
+                disabled={isSubmitting}
+              >
+                Cancelar movimentacao
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={openImportModal}
+                disabled={isSubmitting || isLoadingMeta}
+              >
+                Cadastro em massa
+              </button>
+            )}
           </div>
         </form>
       </article>
@@ -1617,6 +1800,7 @@ export function StockTransfersPageView() {
                 <th>Material (Codigo)</th>
                 <th className={styles.tableDescriptionCell}>Descricao</th>
                 <th className={styles.tableQuantityCell}>Quantidade</th>
+                <th className={styles.tableSignalCell}>Sinalizacao</th>
                 <th>Serial</th>
                 <th>LP</th>
                 <th>Data da movimentacao</th>
@@ -1627,20 +1811,47 @@ export function StockTransfersPageView() {
             <tbody>
               {!isLoadingHistory && historyItems.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className={styles.emptyRow}>
+                  <td colSpan={12} className={styles.emptyRow}>
                     Nenhuma movimentacao encontrada.
                   </td>
                 </tr>
               ) : null}
 
               {historyItems.map((item) => (
-                <tr key={item.id}>
+                <tr
+                  key={item.id}
+                  className={
+                    item.isReversal
+                      ? styles.tableRowReversal
+                      : item.isReversed
+                        ? styles.tableRowReversed
+                        : undefined
+                  }
+                >
                   <td>{item.fromStockCenterName}</td>
                   <td>{item.toStockCenterName}</td>
                   <td>{item.projectCode}</td>
                   <td>{item.materialCode}</td>
                   <td className={styles.tableDescriptionCell}>{item.description}</td>
                   <td className={styles.tableQuantityCell}>{item.quantity}</td>
+                  <td className={styles.tableSignalCell}>
+                    <div className={styles.signalStack}>
+                      <span className={`${styles.signalChip} ${
+                        item.movementType === "ENTRY"
+                          ? styles.signalChipEntry
+                          : item.movementType === "EXIT"
+                            ? styles.signalChipExit
+                            : styles.signalChipTransfer
+                      }`}>
+                        {movementSignalLabel(item.movementType)}
+                      </span>
+                      {rowStatusLabel(item) ? (
+                        <span className={`${styles.signalChip} ${item.isReversal ? styles.signalChipReversal : styles.signalChipReversed}`}>
+                          {rowStatusLabel(item)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
                   <td>{item.serialNumber ?? "-"}</td>
                   <td>{item.lotCode ?? "-"}</td>
                   <td>{formatDate(item.entryDate)}</td>
@@ -1675,6 +1886,34 @@ export function StockTransfersPageView() {
                             strokeLinejoin="round"
                           />
                           <path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.actionButton} ${styles.actionTransfer}`}
+                        onClick={() => openTransferPrefill(item)}
+                        disabled={!item.isTransformer || !item.serialNumber || !item.lotCode || item.isReversal || item.isReversed || item.movementType === "EXIT"}
+                        aria-label={`Movimentar o TRAFO ${item.materialCode} serial ${item.serialNumber ?? "-"}`}
+                        title={
+                          !item.isTransformer
+                            ? "Acao disponivel somente para material TRAFO"
+                            : item.isReversal
+                              ? "Use a movimentacao original para pre-preencher a movimentacao"
+                              : item.isReversed
+                                ? "Movimentacao original estornada"
+                                : item.movementType === "EXIT"
+                                  ? "Saida para terceiro nao define centro atual proprio para nova movimentacao"
+                                  : "Movimentar este TRAFO"
+                        }
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path
+                            d="M4.75 8.5h9.75m0 0-2.75-2.75M14.5 8.5l-2.75 2.75M19.25 15.5H9.5m0 0 2.75-2.75M9.5 15.5l2.75 2.75"
+                            stroke="currentColor"
+                            strokeWidth="1.7"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
                         </svg>
                       </button>
                       <button

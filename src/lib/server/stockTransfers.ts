@@ -38,6 +38,38 @@ type StockTransferRpcResult = {
   details?: unknown;
 };
 
+function mapStockTransferValidationMessage(details: unknown) {
+  if (!Array.isArray(details) || details.length === 0) {
+    return "";
+  }
+
+  const firstDetail = details[0];
+  if (!firstDetail || typeof firstDetail !== "object") {
+    return "";
+  }
+
+  const normalizedReason = String((firstDetail as { reason?: unknown }).reason ?? "").trim().toUpperCase();
+  if (normalizedReason === "TRANSFORMER_SERIAL_OR_LOT_REQUIRED") {
+    return "Serial e LP sao obrigatorios para material TRAFO.";
+  }
+  if (normalizedReason === "TRANSFORMER_QUANTITY_MUST_BE_ONE") {
+    return "Material TRAFO permite somente quantidade 1 por movimentacao.";
+  }
+  if (normalizedReason === "DUPLICATE_TRANSFORMER_UNIT_IN_PAYLOAD") {
+    return "A mesma unidade de TRAFO nao pode ser enviada mais de uma vez na mesma movimentacao.";
+  }
+  if (normalizedReason === "TRANSFORMER_UNIT_ALREADY_IN_OWN_STOCK") {
+    return "Ja existe um TRAFO com o mesmo material, Serial e LP registrado em um centro OWN.";
+  }
+  if (normalizedReason === "TRANSFORMER_UNIT_BALANCE_INCONSISTENT") {
+    return "A unidade de TRAFO informada esta com saldo inconsistente. Revise o historico antes de movimentar.";
+  }
+  if (normalizedReason === "DUPLICATE_TRANSFORMER_UNIT_IN_IMPORT") {
+    return "Ja existe outra linha na importacao com o mesmo material, Serial e LP.";
+  }
+  return "";
+}
+
 export async function saveStockTransferViaRpc(
   supabase: SupabaseClient,
   payload: SaveStockTransferPayload,
@@ -71,6 +103,12 @@ export async function saveStockTransferViaRpc(
   const mappedErrorMessage =
     normalizedReason === "INSUFFICIENT_STOCK"
       ? "Saldo insuficiente no centro de estoque de origem."
+      : normalizedReason === "TRANSFORMER_UNIT_NOT_IN_FROM_CENTER"
+        ? "O TRAFO informado nao esta disponivel no centro de origem com o Serial e LP informados."
+        : normalizedReason === "TRANSFORMER_UNIT_ALREADY_IN_OWN_STOCK"
+          ? "Ja existe um TRAFO com o mesmo material, Serial e LP registrado em um centro OWN."
+          : normalizedReason === "TRANSFORMER_UNIT_BALANCE_INCONSISTENT"
+            ? "A unidade de TRAFO informada esta com saldo inconsistente. Revise o historico antes de movimentar."
       : normalizedReason === "DUPLICATE_STOCK_CENTER"
         ? "Centro DE e Centro PARA devem ser diferentes."
         : normalizedReason === "INVALID_MOVEMENT_RULE"
@@ -79,6 +117,8 @@ export async function saveStockTransferViaRpc(
             ? "Data da movimentacao nao pode ser futura."
             : normalizedReason === "EDIT_BLOCKED"
               ? "Edicao direta bloqueada por regra de negocio. Utilize estorno."
+        : normalizedReason === "VALIDATION_ERROR"
+          ? mapStockTransferValidationMessage(result.details)
         : "";
   const fallbackErrorMessage = "Falha ao salvar movimentacao de estoque.";
 

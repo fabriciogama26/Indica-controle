@@ -36,6 +36,12 @@ type ImportPayload = {
   entries?: ImportEntryPayload[];
 };
 
+type MaterialLookupRow = {
+  id: string;
+  is_transformer: boolean;
+  is_active: boolean;
+};
+
 function toIsoDate(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -110,6 +116,28 @@ export async function POST(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
     const today = toIsoDate(new Date());
+    const materialIds = Array.from(new Set(
+      entries.flatMap((entry) => normalizeImportItems(entry).map((item) => item.materialId)).filter(Boolean),
+    ));
+
+    const materialResult = materialIds.length
+      ? await supabase
+          .from("materials")
+          .select("id, is_transformer, is_active")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", materialIds)
+          .returns<MaterialLookupRow[]>()
+      : { data: [], error: null };
+
+    if (materialResult.error) {
+      return NextResponse.json({ message: "Falha ao validar materiais da importacao em massa." }, { status: 500 });
+    }
+
+    const materialMap = new Map((materialResult.data ?? []).map((row) => [
+      row.id,
+      { isTransformer: Boolean(row.is_transformer), isActive: Boolean(row.is_active) },
+    ]));
+    const seenTransformerUnits = new Map<string, number>();
 
     const results: Array<{
       rowNumber: number;
@@ -148,6 +176,29 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      const invalidTransformerItem = items.find((item) => {
+        const material = materialMap.get(item.materialId);
+        if (!material?.isTransformer) {
+          return false;
+        }
+        return item.quantity !== 1 || !normalizeText(item.serialNumber) || !normalizeText(item.lotCode);
+      });
+
+      if (invalidTransformerItem) {
+        errorCount += 1;
+        results.push({
+          rowNumber,
+          success: false,
+          message: invalidTransformerItem.quantity !== 1
+            ? "Material TRAFO permite somente quantidade 1 por movimentacao."
+            : "Serial e LP sao obrigatorios para material TRAFO.",
+          reason: invalidTransformerItem.quantity !== 1
+            ? "TRANSFORMER_QUANTITY_MUST_BE_ONE"
+            : "TRANSFORMER_SERIAL_OR_LOT_REQUIRED",
+        });
+        continue;
+      }
+
       if (entryDate > today) {
         errorCount += 1;
         results.push({
@@ -166,6 +217,35 @@ export async function POST(request: NextRequest) {
           success: false,
           message: "Centro DE e centro PARA devem ser diferentes.",
           reason: "DUPLICATE_STOCK_CENTER",
+        });
+        continue;
+      }
+
+      const duplicateTransformerItem = items.find((item) => {
+        const material = materialMap.get(item.materialId);
+        if (!material?.isTransformer) {
+          return false;
+        }
+
+        const unitKey = `${item.materialId}::${normalizeText(item.serialNumber)}::${normalizeText(item.lotCode)}`;
+        const firstSeenRow = seenTransformerUnits.get(unitKey);
+        if (firstSeenRow) {
+          return true;
+        }
+
+        seenTransformerUnits.set(unitKey, rowNumber);
+        return false;
+      });
+
+      if (duplicateTransformerItem) {
+        const unitKey = `${duplicateTransformerItem.materialId}::${normalizeText(duplicateTransformerItem.serialNumber)}::${normalizeText(duplicateTransformerItem.lotCode)}`;
+        const firstSeenRow = seenTransformerUnits.get(unitKey);
+        errorCount += 1;
+        results.push({
+          rowNumber,
+          success: false,
+          message: `Ja existe outra linha na importacao com o mesmo material, Serial e LP (linha ${firstSeenRow ?? "-"})`,
+          reason: "DUPLICATE_TRANSFORMER_UNIT_IN_IMPORT",
         });
         continue;
       }

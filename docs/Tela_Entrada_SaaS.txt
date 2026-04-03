@@ -21,6 +21,8 @@ Arquitetura
 - Banco (hardening centro/tipo): `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
 - Banco (estorno): `supabase/migrations/131_add_stock_transfer_reversal.sql`
 - Banco (catalogo motivo estorno): `supabase/migrations/134_standardize_stock_reversal_reasons.sql`
+- Banco (TRAFO unitario): `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
+- Banco (instancia unitaria TRAFO): `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
 
 Cadastro
 --------
@@ -44,9 +46,14 @@ Cadastro
     - `TRANSFER`: `OWN -> OWN`
   - `from_stock_center_id` e `to_stock_center_id` devem ser diferentes.
   - `quantity` deve ser maior que zero (`quantity > 0`).
+  - Quando `materials.is_transformer = true` (material TRAFO), `quantity` deve ser exatamente `1`.
   - `entry_date` nao pode ser futura.
   - Quando `materials.is_transformer = true` (material TRAFO), `serial_number` e `lot_code` sao obrigatorios.
+  - A combinacao `material_id + serial_number + lot_code` de TRAFO nao pode ficar duplicada em centros `OWN`.
+  - Para `EXIT` e `TRANSFER` de TRAFO, o backend valida a unidade pelo conjunto `material_id + serial_number + lot_code` no centro de origem usando `trafo_instances`.
+  - Para `ENTRY` de TRAFO, o backend bloqueia nova entrada da mesma unidade quando ela ja estiver registrada em algum centro `OWN`.
   - Campos `Serial` e `LP` ficam habilitados somente quando o material selecionado for TRAFO.
+  - Campo `Quantidade` fica travado em `1` quando o material selecionado for TRAFO.
   - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
   - Material precisa estar ativo no tenant.
   - Projeto precisa estar ativo no tenant.
@@ -83,6 +90,7 @@ Filtros, auto-complete e listagem
   - `coluna`
   - `valor`
   - `erro`
+- O parser do CSV bloqueia linhas repetidas de TRAFO com o mesmo `material + serial + lp` no mesmo arquivo.
 - O modal exibe botao `Baixar erros (CSV)` no mesmo padrao operacional da tela de Medicao.
 - Tela padronizada com card `Filtros` e card `Lista de Movimentacoes`, incluindo paginacao server-side.
 - Filtro adicional de estorno:
@@ -97,6 +105,7 @@ Filtros, auto-complete e listagem
   - Material (Codigo)
   - Descricao
   - Quantidade
+  - Sinalizacao
   - Serial
   - LP
   - Data da movimentacao
@@ -105,10 +114,19 @@ Filtros, auto-complete e listagem
   - `Exportar Excel (CSV)` (botao no cabecalho da lista)
   - `Detalhes` (modal)
   - `Historico` (modal)
+  - `Movimentar este TRAFO` (pre-preenchimento do formulario em modo dedicado)
   - `Estornar` (modal, com motivo padrao obrigatorio)
 - `Historico` exibe alteracoes de edicao e estorno em `material_history`:
   - `_context = STOCK_TRANSFER`
   - `_context = STOCK_TRANSFER_REVERSAL`
+- A lista aplica sinalizacao visual por linha e por chip:
+  - `Entrada`
+  - `Saida`
+  - `Transferencia`
+  - `Estorno`
+  - `Estornada`
+- O modal `Historico` traduz `projectId`, `fromStockCenterId` e `toStockCenterId` para valores legiveis do negocio.
+- O primeiro registro operacional passa a ser apresentado como `Cadastro` quando o historico representar criacao inicial da movimentacao.
 
 Boas praticas
 -------------
@@ -116,6 +134,7 @@ Boas praticas
 - Validar saldo insuficiente somente quando o centro de origem for `OWN` (`controls_balance = true`).
 - Nao validar saldo insuficiente quando o centro de origem for `THIRD_PARTY` (`controls_balance = false`).
 - Registrar trilha por item em `material_history` para auditoria funcional.
+- Usar `trafo_instances` como fonte unitaria de verdade para rastrear a posicao atual de cada TRAFO; `stock_center_balances` continua agregado por material.
 - Manter nomes de tabela/coluna em ingles no schema e nos contratos da API.
 
 Cancelamento e saldo
@@ -140,6 +159,20 @@ Atalhos
 - Rota ativa: `/entrada`.
 - Rota `/saida` redireciona para `/entrada` para manter operacao unificada.
 - Exibida na secao `Almoxarifado` da sidebar.
+- Aceita pre-preenchimento por query string para transferencia unitaria de TRAFO:
+  - `prefillMode=transformer-transfer`
+  - `fromStockCenterId`
+  - `materialId`
+  - `materialCode`
+  - `serialNumber`
+  - `lotCode`
+- Quando o pre-preenchimento de TRAFO e ativado:
+  - o card do formulario recebe destaque amarelo no padrao de edicao;
+  - o titulo passa a indicar `Movimentacao de TRAFO pre-preenchida`;
+  - a operacao fica limitada a `Saida` e `Transferencia`;
+  - `Centro DE`, `Material`, `Quantidade`, `Serial` e `LP` ficam travados;
+  - o botao principal vira `Confirmar movimentacao`;
+  - o botao `Cadastro em massa` some e e substituido por `Cancelar movimentacao`.
 
 Atualizacao 2026-04
 -------------------
@@ -151,6 +184,12 @@ Atualizacao 2026-04
 - Ajuste de rastreabilidade no cadastro em massa: o modal passou a gerar e permitir download de `CSV` de erros (`linha;coluna;valor;erro`) quando houver pendencias de validacao/salvamento.
 - Ajuste de semantica visual: `entry_date` continua unico no banco/API, mas o formulario e os modais passaram a exibir `Data da entrada`, `Data da saida` ou `Data da transferencia` conforme a operacao; a lista mista usa o rotulo generico `Data da movimentacao`.
 - Ajuste de layout: `Descricao` ocupa area maior no cadastro e na tabela; `Quantidade` ficou mais compacta.
+- Ajuste de rastreabilidade visual: a lista passou a destacar linhas estornadas/estornos com chips de status e chips de operacao.
+- Ajuste de leitura do historico: o modal deixa de exibir IDs brutos de projeto/centro quando houver mapeamento disponivel e passa a rotular criacao inicial como `Cadastro`.
+- Ajuste de integridade para TRAFO: a RPC passou a bloquear `quantity <> 1`, exigir `serial + LP` e validar `EXIT/TRANSFER` pela unidade exata (`material + serial + LP`) no centro de origem com trava transacional por unidade.
+- Ajuste de duplicidade para TRAFO: o fluxo bloqueia duplicidade funcional da mesma unidade em centros `OWN` e a importacao barra repeticao da mesma unidade dentro do mesmo arquivo.
+- Ajuste de arquitetura para TRAFO: a posicao atual da unidade passou a ser persistida em `trafo_instances`, com backfill inicial pelo ledger historico apenas na migration e validacao operacional corrente toda em cima da tabela unitaria.
+- Ajuste de UX para TRAFO: a lista de movimentacoes passou a expor o botao `Movimentar este TRAFO`, que abre `/entrada` em modo dedicado para `Saida` ou `Transferencia`, com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1` ja preenchidos para a mesma unidade.
 - Migration `128_create_stock_transfer_module.sql`:
   - adiciona `materials.is_transformer`;
   - cria `stock_centers`, `stock_center_balances`, `stock_transfers`, `stock_transfer_items`;
@@ -176,6 +215,14 @@ Atualizacao 2026-04
   - adiciona `stock_transfer_reversals.reversal_reason_code` e `stock_transfer_reversals.reversal_reason_notes`;
   - cria RPC `reverse_stock_transfer_record_v2` para estorno padronizado por codigo + observacao;
   - aplica validacao hard no banco para motivo invalido/inativo e obrigatoriedade de observacao quando `code = OTHER`.
+- Migration `136_enforce_transformer_unit_rules_on_stock_transfer.sql`:
+  - adiciona indice por `tenant + material + serial + lp` em `stock_transfer_items`;
+  - endurece a RPC `save_stock_transfer_record` para bloquear `quantity <> 1` em TRAFO;
+  - valida `ENTRY`/`EXIT`/`TRANSFER` de TRAFO pela unidade exata e serializa concorrencia por unidade com `pg_advisory_xact_lock`.
+- Migration `137_create_trafo_instances_stock_unit_ledger.sql`:
+  - cria `trafo_instances` como fonte unitaria de verdade por `tenant + material + serial + lp`;
+  - faz backfill inicial da localizacao atual do TRAFO a partir do ledger existente, com bloqueio da migration se encontrar dados inconsistentes;
+  - republica a RPC `save_stock_transfer_record` para validar `ENTRY`/`EXIT`/`TRANSFER` pela tabela `trafo_instances`, mantendo `stock_center_balances` apenas como saldo agregado.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -200,6 +247,10 @@ Funcoes principais
   - Responsavel por: modelagem do estorno e RPC `reverse_stock_transfer_record`.
 - Caminho: `supabase/migrations/134_standardize_stock_reversal_reasons.sql`
   - Responsavel por: catalogo de motivos (`stock_transfer_reversal_reason_catalog`) e RPC `reverse_stock_transfer_record_v2`.
+- Caminho: `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
+  - Responsavel por: endurecer validacao unitario de TRAFO na RPC `save_stock_transfer_record`.
+- Caminho: `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
+  - Responsavel por: criar `trafo_instances`, fazer backfill da posicao unitaria e migrar a validacao de TRAFO para a nova fonte de verdade.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
@@ -224,17 +275,23 @@ Ajuda contextual
   - `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
   - `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
   - `supabase/migrations/131_add_stock_transfer_reversal.sql`
+  - `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
+  - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
   - `src/lib/server/stockTransfers.ts`
   - `src/app/api/stock-transfers/meta/route.ts`
   - `src/app/api/stock-transfers/route.ts`
   - `src/app/api/stock-transfers/import/route.ts`
   - `src/app/api/stock-transfers/reversal/route.ts`
+  - `src/app/api/trafo-positions/route.ts`
   - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
   - `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.module.css`
   - `src/app/(dashboard)/entrada/page.tsx`
   - `src/app/(dashboard)/saida/page.tsx`
+  - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
 - Funcoes/hooks/constantes tocadas:
-  - `StockTransfersPageView`, `movementDateLabel`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
+  - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
   - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
   - `GET` de `/api/stock-transfers/meta`
   - `POST` de `/api/stock-transfers/import`
@@ -249,3 +306,11 @@ Ajuda contextual
   - Depois: exportacao CSV inclui status e vinculos de estorno.
   - Antes: a UI chamava `entry_date` sempre de `Data da entrada`, inclusive para `Saida` e `Transferencia`.
   - Depois: o formulario e os modais usam rotulo contextual por operacao, mantendo um unico campo persistido no schema.
+  - Antes: a lista nao destacava bem `Estorno` x `Estornada` e o historico podia expor UUIDs de projeto/centro.
+  - Depois: a lista usa sinalizacao visual funcional e o historico prioriza nomes/codigos legiveis.
+  - Antes: TRAFO aceitava quantidade maior que `1` e `EXIT/TRANSFER` nao confirmavam a unidade exata por `Serial + LP`.
+  - Depois: TRAFO fica unitario e a RPC valida a unidade exata no centro de origem antes de concluir a movimentacao.
+  - Antes: o CSV podia repetir a mesma unidade de TRAFO no mesmo lote sem feedback antecipado.
+  - Depois: o CSV bloqueia repeticao da mesma combinacao `material + serial + lp` no proprio arquivo.
+  - Antes: a validacao corrente de TRAFO dependia de reconstruir saldo unitario pelo ledger de `stock_transfer_items`.
+  - Depois: a validacao corrente usa `trafo_instances` como estado atual da unidade, deixando o ledger apenas para backfill/auditoria.
