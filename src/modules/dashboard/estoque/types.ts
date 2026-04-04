@@ -45,6 +45,9 @@ export type CurrentStockHistoryEntry = {
   id: string;
   transferId: string;
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  operationKind?: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN";
+  teamName?: string | null;
+  foremanName?: string | null;
   signedQuantity: number;
   quantity: number;
   entryDate: string;

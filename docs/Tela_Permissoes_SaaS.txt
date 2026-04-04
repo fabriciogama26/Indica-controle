@@ -60,7 +60,7 @@ Filtros, auto-complete e listagem
 - A listagem atual considera as telas do SaaS web:
   - Visao Geral: Home
   - Operacao: Projetos, Locacao, Programacao, Medicao
-  - Almoxarifado: Estoque Atual, Posicao Unitaria TRAFO, Movimentacao de Estoque, Saida Estoque
+  - Almoxarifado: Estoque Atual, Posicao Unitaria TRAFO, Movimentacao de Estoque, Operacoes de Equipe
   - Cadastros: Materiais, Pessoas, Cargo, Equipes
   - Cadastro Base: Prioridade, Centro de Servico, Contrato, Atividades, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 
@@ -128,7 +128,7 @@ Atualizacao 2026-03
   - a permissao de visualizar a tela passa a representar o pacote inteiro da pagina
 - Catalogo frontend de permissao atualizado para refletir o novo desenho de navegacao:
   - `Medicao` adicionada em `Operacao`
-  - `Estoque Atual`, `Movimentacao de Estoque` e `Saida Estoque` agrupadas em `Almoxarifado`
+  - `Estoque Atual`, `Movimentacao de Estoque` e `Operacoes de Equipe` agrupadas em `Almoxarifado`
   - `Materiais` movido para `Cadastros`
   - `Cargo` adicionado em `Cadastros`
   - `Equipes` adicionada em `Cadastros`

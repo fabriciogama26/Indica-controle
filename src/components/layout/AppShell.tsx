@@ -34,7 +34,7 @@ const menuSections = [
       { href: "/estoque", label: "Estoque Atual", icon: "box" },
       { href: "/posicao-trafo", label: "Posicao Unitaria TRAFO", icon: "box" },
       { href: "/entrada", label: "Movimentacao de Estoque", icon: "arrow-down" },
-      { href: "/saida", label: "Saida Estoque", icon: "arrow-up" },
+      { href: "/saida", label: "Operacoes de Equipe", icon: "arrow-up" },
     ],
   },
   {
@@ -106,8 +106,8 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Lancamentos de entrada, saida e transferencia de estoque.",
   },
   "/saida": {
-    title: "Saida Estoque",
-    subtitle: "Lancamentos de saida do estoque fisico.",
+    title: "Operacoes de Equipe",
+    subtitle: "Requisicoes e devolucoes entre o estoque proprio e as equipes.",
   },
   "/estoque": {
     title: "Estoque Atual",

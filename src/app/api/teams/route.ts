@@ -13,6 +13,7 @@ type TeamRow = {
   name: string;
   vehicle_plate: string;
   service_center_id: string | null;
+  stock_center_id: string | null;
   team_type_id: string;
   foreman_person_id: string;
   ativo: boolean;
@@ -56,6 +57,12 @@ type ServiceCenterRow = {
   name: string;
 };
 
+type StockCenterRow = {
+  id: string;
+  name: string;
+  center_type?: string | null;
+};
+
 type ExistingTeamByForemanRow = {
   id: string;
   name: string;
@@ -80,6 +87,7 @@ type CreateTeamPayload = {
   name: string;
   vehiclePlate: string;
   serviceCenterId: string;
+  stockCenterId?: string | null;
   teamTypeId: string;
   foremanId: string;
 };
@@ -191,6 +199,25 @@ function mapTeamDbError(error: unknown, fallbackMessage: string) {
       status: 422,
       message: "Encarregado invalido para o tenant atual.",
       reason: "INVALID_FOREMAN",
+    } as const;
+  }
+
+  if (combined.includes("invalid_stock_center")) {
+    return {
+      status: 422,
+      message: "Centro de estoque proprio invalido para a equipe.",
+      reason: "INVALID_STOCK_CENTER",
+    } as const;
+  }
+
+  if (
+    combined.includes("stock_center_already_linked")
+    || combined.includes("idx_teams_unique_stock_center")
+  ) {
+    return {
+      status: 409,
+      message: "Este centro de estoque proprio ja esta vinculado a outra equipe.",
+      reason: "STOCK_CENTER_ALREADY_LINKED",
     } as const;
   }
 
@@ -404,6 +431,33 @@ async function fetchServiceCenterById(
   };
 }
 
+async function fetchStockCenterById(
+  supabase: SupabaseClient,
+  tenantId: string,
+  stockCenterId: string,
+) {
+  const { data, error } = await supabase
+    .from("stock_centers")
+    .select("id, name, center_type")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .eq("id", stockCenterId)
+    .maybeSingle<StockCenterRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  if (String(data.center_type ?? "").trim().toUpperCase() !== "OWN") {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: normalizeText(data.name),
+  };
+}
+
 async function fetchTeamById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -412,7 +466,7 @@ async function fetchTeamById(
   const { data, error } = await supabase
     .from("teams")
     .select(
-      "id, name, vehicle_plate, service_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", teamId)
@@ -459,45 +513,191 @@ async function saveTeamViaRpc(params: {
   name: string;
   vehiclePlate: string;
   serviceCenterId: string;
+  stockCenterId: string | null;
   teamTypeId: string;
   foremanId: string;
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
   async function saveTeamDirectFallback() {
-    const basePayload = {
-      tenant_id: params.tenantId,
-      name: params.name,
-      vehicle_plate: params.vehiclePlate,
-      service_center_id: params.serviceCenterId,
-      team_type_id: params.teamTypeId,
-      foreman_person_id: params.foremanId,
-      ativo: true,
-      cancellation_reason: null as string | null,
-      canceled_at: null as string | null,
-      canceled_by: null as string | null,
-      created_by: params.actorUserId,
-      updated_by: params.actorUserId,
-    };
+    async function createAutomaticStockCenter() {
+      const baseName = normalizeText(params.name) || "Equipe";
+      const nameCandidates = [
+        `EQUIPE - ${baseName}`,
+        `EQUIPE - ${baseName} [${Math.random().toString(36).slice(2, 8).toUpperCase()}]`,
+      ];
 
-    const operation = !params.teamId
-      ? params.supabase.from("teams").insert(basePayload)
-      : params.supabase
+      for (const candidate of nameCandidates) {
+        const { data, error } = await params.supabase
+          .from("stock_centers")
+          .insert({
+            tenant_id: params.tenantId,
+            name: candidate,
+            description: `Centro de estoque proprio da equipe ${baseName}.`,
+            is_active: true,
+            center_type: "OWN",
+            controls_balance: true,
+            created_by: params.actorUserId,
+            updated_by: params.actorUserId,
+          })
+          .select("id")
+          .maybeSingle<{ id: string }>();
+
+        if (!error && data?.id) {
+          return { id: data.id } as const;
+        }
+
+        const mappedError = mapTeamDbError(error, "Falha ao criar centro de estoque proprio da equipe.");
+        if (mappedError.reason !== "DUPLICATE_TEAM_COMBINATION") {
+          if (!String(error?.message ?? "").toLowerCase().includes("duplicate key")) {
+            return {
+              error: {
+                status: mappedError.status,
+                message: mappedError.message,
+                reason: mappedError.reason,
+              },
+            } as const;
+          }
+        }
+      }
+
+      return {
+        error: {
+          status: 500,
+          message: "Falha ao criar centro de estoque proprio da equipe.",
+          reason: "TEAM_STOCK_CENTER_CREATE_FAILED",
+        },
+      } as const;
+    }
+
+    if (!params.teamId) {
+      const { data: createdTeam, error: createError } = await params.supabase
         .from("teams")
-        .update({
+        .insert({
+          tenant_id: params.tenantId,
           name: params.name,
           vehicle_plate: params.vehiclePlate,
           service_center_id: params.serviceCenterId,
+          stock_center_id: params.stockCenterId,
           team_type_id: params.teamTypeId,
           foreman_person_id: params.foremanId,
+          ativo: true,
+          cancellation_reason: null,
+          canceled_at: null,
+          canceled_by: null,
+          created_by: params.actorUserId,
           updated_by: params.actorUserId,
         })
-        .eq("tenant_id", params.tenantId)
-        .eq("id", params.teamId);
+        .select("id, updated_at, stock_center_id")
+        .maybeSingle<{ id: string; updated_at: string | null; stock_center_id: string | null }>();
 
-    const { error } = await operation;
-    if (error) {
-      const mappedError = mapTeamDbError(error, "Falha ao salvar equipe.");
+      if (createError || !createdTeam?.id) {
+        const mappedError = mapTeamDbError(createError, "Falha ao salvar equipe.");
+        return {
+          ok: false,
+          status: mappedError.status,
+          message: mappedError.message,
+          reason: mappedError.reason,
+        } as const;
+      }
+
+      let effectiveStockCenterId = createdTeam.stock_center_id;
+      if (!effectiveStockCenterId) {
+        const stockCenterResult = await createAutomaticStockCenter();
+        const stockCenterError = "error" in stockCenterResult ? stockCenterResult.error : null;
+        if (stockCenterError) {
+          return {
+            ok: false,
+            status: stockCenterError.status,
+            message: stockCenterError.message,
+            reason: stockCenterError.reason,
+          } as const;
+        }
+
+        effectiveStockCenterId = "id" in stockCenterResult ? stockCenterResult.id ?? null : null;
+        if (!effectiveStockCenterId) {
+          return {
+            ok: false,
+            status: 500,
+            message: "Falha ao criar centro de estoque proprio da equipe.",
+            reason: "TEAM_STOCK_CENTER_CREATE_FAILED",
+          } as const;
+        }
+
+        const { data: updatedTeam, error: updateError } = await params.supabase
+          .from("teams")
+          .update({
+            stock_center_id: effectiveStockCenterId,
+            updated_by: params.actorUserId,
+          })
+          .eq("tenant_id", params.tenantId)
+          .eq("id", createdTeam.id)
+          .select("updated_at")
+          .maybeSingle<{ updated_at: string | null }>();
+
+        if (updateError) {
+          const mappedError = mapTeamDbError(updateError, "Falha ao vincular centro de estoque proprio da equipe.");
+          return {
+            ok: false,
+            status: mappedError.status,
+            message: mappedError.message,
+            reason: mappedError.reason,
+          } as const;
+        }
+
+        return { ok: true, updatedAt: updatedTeam?.updated_at ?? null } as const;
+      }
+
+      return { ok: true, updatedAt: createdTeam.updated_at ?? null } as const;
+    }
+
+    let effectiveStockCenterId = params.stockCenterId;
+    if (!effectiveStockCenterId) {
+      const currentTeam = await fetchTeamById(params.supabase, params.tenantId, params.teamId);
+      effectiveStockCenterId = currentTeam?.stock_center_id ?? null;
+
+      if (!effectiveStockCenterId) {
+        const stockCenterResult = await createAutomaticStockCenter();
+        const stockCenterError = "error" in stockCenterResult ? stockCenterResult.error : null;
+        if (stockCenterError) {
+          return {
+            ok: false,
+            status: stockCenterError.status,
+            message: stockCenterError.message,
+            reason: stockCenterError.reason,
+          } as const;
+        }
+
+        effectiveStockCenterId = "id" in stockCenterResult ? stockCenterResult.id ?? null : null;
+        if (!effectiveStockCenterId) {
+          return {
+            ok: false,
+            status: 500,
+            message: "Falha ao criar centro de estoque proprio da equipe.",
+            reason: "TEAM_STOCK_CENTER_CREATE_FAILED",
+          } as const;
+        }
+      }
+    }
+
+    const { data: updatedTeam, error: updateError } = await params.supabase
+      .from("teams")
+      .update({
+        name: params.name,
+        vehicle_plate: params.vehiclePlate,
+        service_center_id: params.serviceCenterId,
+        stock_center_id: effectiveStockCenterId,
+        team_type_id: params.teamTypeId,
+        foreman_person_id: params.foremanId,
+        updated_by: params.actorUserId,
+      })
+      .eq("tenant_id", params.tenantId)
+      .eq("id", params.teamId)
+      .select("updated_at")
+      .maybeSingle<{ updated_at: string | null }>();
+
+    if (updateError) {
+      const mappedError = mapTeamDbError(updateError, "Falha ao salvar equipe.");
       return {
         ok: false,
         status: mappedError.status,
@@ -506,7 +706,7 @@ async function saveTeamViaRpc(params: {
       } as const;
     }
 
-    return { ok: true, updatedAt: null } as const;
+    return { ok: true, updatedAt: updatedTeam?.updated_at ?? null } as const;
   }
 
   const { data, error } = await params.supabase.rpc("save_team_record", {
@@ -518,6 +718,7 @@ async function saveTeamViaRpc(params: {
     p_service_center_id: params.serviceCenterId,
     p_team_type_id: params.teamTypeId,
     p_foreman_person_id: params.foremanId,
+    p_stock_center_id: params.stockCenterId,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
@@ -770,7 +971,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("teams")
       .select(
-        "id, name, vehicle_plate, service_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -821,6 +1022,9 @@ export async function GET(request: NextRequest) {
     );
     const serviceCenterIds = Array.from(
       new Set((data ?? []).map((item) => item.service_center_id).filter((value): value is string => Boolean(value))),
+    );
+    const stockCenterIds = Array.from(
+      new Set((data ?? []).map((item) => item.stock_center_id).filter((value): value is string => Boolean(value))),
     );
 
     let users: AppUserRow[] = [];
@@ -879,11 +1083,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let stockCenters: StockCenterRow[] = [];
+    if (stockCenterIds.length > 0) {
+      const stockCentersResult = await supabase
+        .from("stock_centers")
+        .select("id, name, center_type")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("id", stockCenterIds)
+        .returns<StockCenterRow[]>();
+
+      if (!stockCentersResult.error) {
+        stockCenters = stockCentersResult.data ?? [];
+      }
+    }
+
     const userDisplayMap = buildUserDisplayMap(users);
     const userLoginNameMap = buildUserLoginNameMap(users);
     const foremanMap = buildForemanMap(foremen);
     const teamTypeMap = buildTeamTypeMap(teamTypes);
     const serviceCenterMap = new Map(serviceCenters.map((item) => [item.id, normalizeText(item.name)]));
+    const stockCenterMap = new Map(stockCenters.map((item) => [item.id, normalizeText(item.name)]));
 
     return NextResponse.json({
       teams: (data ?? []).map((row) => ({
@@ -892,6 +1111,8 @@ export async function GET(request: NextRequest) {
         vehiclePlate: row.vehicle_plate,
         serviceCenterId: row.service_center_id,
         serviceCenterName: row.service_center_id ? serviceCenterMap.get(row.service_center_id) ?? "Nao identificado" : "Sem base",
+        stockCenterId: row.stock_center_id,
+        stockCenterName: row.stock_center_id ? stockCenterMap.get(row.stock_center_id) ?? "Nao identificado" : "Sem centro proprio",
         teamTypeId: row.team_type_id,
         teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
         foremanId: row.foreman_person_id,
@@ -933,6 +1154,7 @@ export async function POST(request: NextRequest) {
       name: normalizeText(body.name),
       vehiclePlate: normalizePlate(body.vehiclePlate),
       serviceCenterId: normalizeText(body.serviceCenterId),
+      stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
       foremanId: normalizeText(body.foremanId),
     };
@@ -956,6 +1178,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
     }
 
+    if (input.stockCenterId) {
+      const stockCenter = await fetchStockCenterById(supabase, appUser.tenant_id, input.stockCenterId);
+      if (!stockCenter) {
+        return NextResponse.json({ message: "Centro de estoque proprio invalido para a equipe." }, { status: 422 });
+      }
+    }
+
     const existingTeamByForeman = await fetchExistingTeamByForeman({
       supabase,
       tenantId: appUser.tenant_id,
@@ -977,6 +1206,7 @@ export async function POST(request: NextRequest) {
       name: input.name,
       vehiclePlate: input.vehiclePlate,
       serviceCenterId: input.serviceCenterId,
+      stockCenterId: input.stockCenterId,
       teamTypeId: input.teamTypeId,
       foremanId: input.foremanId,
     });
@@ -1013,6 +1243,7 @@ export async function PUT(request: NextRequest) {
       name: normalizeText(body.name),
       vehiclePlate: normalizePlate(body.vehiclePlate),
       serviceCenterId: normalizeText(body.serviceCenterId),
+      stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
       foremanId: normalizeText(body.foremanId),
     };
@@ -1048,6 +1279,9 @@ export async function PUT(request: NextRequest) {
     const currentServiceCenter = currentTeam.service_center_id
       ? await fetchServiceCenterById(supabase, appUser.tenant_id, currentTeam.service_center_id)
       : null;
+    const currentStockCenter = currentTeam.stock_center_id
+      ? await fetchStockCenterById(supabase, appUser.tenant_id, currentTeam.stock_center_id)
+      : null;
     const nextServiceCenter = await fetchServiceCenterById(supabase, appUser.tenant_id, input.serviceCenterId);
     if (!nextServiceCenter) {
       return NextResponse.json({ message: "Base invalida para o tenant atual." }, { status: 422 });
@@ -1055,6 +1289,12 @@ export async function PUT(request: NextRequest) {
     const nextTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId);
     if (!nextTeamType) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
+    }
+    const nextStockCenter = input.stockCenterId
+      ? await fetchStockCenterById(supabase, appUser.tenant_id, input.stockCenterId)
+      : null;
+    if (input.stockCenterId && !nextStockCenter) {
+      return NextResponse.json({ message: "Centro de estoque proprio invalido para a equipe." }, { status: 422 });
     }
 
     const currentForeman = await fetchForemanById(supabase, appUser.tenant_id, currentTeam.foreman_person_id);
@@ -1081,6 +1321,7 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "name", currentTeam.name, input.name);
     addChange(changes, "vehiclePlate", currentTeam.vehicle_plate, input.vehiclePlate);
     addChange(changes, "serviceCenterName", currentServiceCenter?.name ?? null, nextServiceCenter.name);
+    addChange(changes, "stockCenterName", currentStockCenter?.name ?? null, nextStockCenter?.name ?? null);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "foremanName", currentForeman?.name ?? null, nextForeman.name);
 
@@ -1099,6 +1340,7 @@ export async function PUT(request: NextRequest) {
       name: input.name,
       vehiclePlate: input.vehiclePlate,
       serviceCenterId: input.serviceCenterId,
+      stockCenterId: input.stockCenterId,
       teamTypeId: input.teamTypeId,
       foremanId: input.foremanId,
       changes,

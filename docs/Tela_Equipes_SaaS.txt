@@ -4,6 +4,7 @@ Visao geral
 -----------
 - Tela para cadastro e manutencao de equipes operacionais por tenant.
 - Cada equipe possui: nome, placa do veiculo, base, tipo e encarregado.
+- Cada equipe passa a receber automaticamente um `Centro de estoque proprio` (`stock_center_id`) no mesmo salvamento do cadastro.
 - O encarregado e vinculado a `people`, filtrando cargos com correspondencia em `ENCARREGADO` ou `SUPERVISOR`.
 - O tipo e vinculado ao catalogo `team_types` por tenant.
 - A base corresponde ao catalogo `project_service_centers` do tenant.
@@ -26,6 +27,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/093_enforce_single_team_per_foreman_rpc.sql`
 - Base SQL: `supabase/migrations/133_allow_foreman_reuse_when_inactive_team.sql`
 - Base SQL: `supabase/migrations/134_allow_foreman_change_during_team_activation.sql`
+- Base SQL: `supabase/migrations/140_create_team_stock_operations.sql`
 
 Cadastro
 --------
@@ -35,6 +37,8 @@ Cadastro
   - `Base`
   - `Tipo`
   - `Encarregado`
+- Campo opcional:
+  - `Centro de estoque proprio` gerado automaticamente pelo sistema no save
 - Regras:
   - Base deve existir no tenant e estar ativa em `project_service_centers`.
   - Encarregado deve existir no tenant e estar ativo em `people`.
@@ -42,6 +46,8 @@ Cadastro
   - Nao permitir cadastrar/editar equipe quando ja existir outra equipe ativa com o mesmo encarregado no tenant.
   - Tipo deve existir no tenant e estar ativo em `team_types`.
   - Bloqueio de duplicidade por combinacao (`tenant_id`, `foreman_person_id`, `name`, `vehicle_plate`).
+  - O `stock_center_id` da equipe deve apontar para um centro `OWN` ativo do mesmo tenant.
+  - No fluxo atual, esse centro proprio e criado automaticamente junto com a equipe e mantido exclusivo por equipe.
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear escrita concorrente.
 - Fluxos de acao:
   - `Cadastrar`
@@ -61,7 +67,7 @@ Filtros, auto-complete e listagem
   - Paginacao server-side (`page`, `pageSize`, `total`)
   - Botao `Exportar Excel (CSV)` para exportar equipes filtradas
   - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
-  - Colunas: Nome da equipe, Placa, Base, Tipo, Encarregado, Registrado em, Acoes
+  - Colunas: Nome da equipe, Placa, Base, Centro de estoque proprio, Tipo, Encarregado, Registrado em, Acoes
 - Acoes por linha:
   - `Detalhes`
   - `Editar`
@@ -75,6 +81,7 @@ Boas praticas
 -------------
 - Sempre validar o escopo por `tenant_id` em todas as queries de equipes.
 - Manter o vinculo de base da equipe preenchido para permitir programacao consistente da obra.
+- Quando a equipe participar de requisicao/devolucao, o `Centro de estoque proprio` ja deve existir por criacao automatica no cadastro da equipe.
 - Nao permitir salvar encarregado fora do cargo `ENCARREGADO`.
 - Registrar alteracoes em `app_entity_history` para update/cancel/activate.
 - Manter consistencia de permissao em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
@@ -124,6 +131,8 @@ Atualizacao 2026-03
 - Atualizacao (2026-04-02): migration `133_allow_foreman_reuse_when_inactive_team.sql` atualiza `save_team_record` e `set_team_record_status` para garantir unicidade de encarregado apenas entre equipes ativas.
 - Atualizacao (2026-04-02): modal de `Ativar` ganhou fluxo de resolucao de conflito: ao receber `DUPLICATE_TEAM_FOREMAN`, permite escolher novo encarregado no proprio modal e reenviar a ativacao.
 - Atualizacao (2026-04-02): migration `134_allow_foreman_change_during_team_activation.sql` amplia `set_team_record_status` para aceitar `p_foreman_person_id` na ativacao.
+- Atualizacao (2026-04-04): `Equipes` deixa de exigir selecao manual de `Centro de estoque proprio`; o centro passa a ser criado automaticamente no mesmo save e continua visivel na lista/detalhes/exportacao.
+- Atualizacao (2026-04-04): migration `140_create_team_stock_operations.sql` adiciona `teams.stock_center_id`, e a migration `141_auto_create_team_stock_centers_and_foreman_snapshots.sql` passa a auto-criar/backfill do centro proprio por equipe.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -133,7 +142,7 @@ Funcoes principais
 - Caminho: `src/app/api/teams/route.ts`
   - Responsavel por: validar payload, paginar listagem/historico e delegar cadastro, edicao e status para as RPCs `save_team_record` e `set_team_record_status`.
 - Caminho: `src/app/api/teams/meta/route.ts`
-  - Responsavel por: retornar encarregados, bases e tipos validos para selecao na tela.
+  - Responsavel por: retornar encarregados, bases, tipos e centros de estoque proprios validos para selecao na tela.
 
 Constantes e configuracoes
 - Caminho: `src/lib/auth/authorization.ts`
@@ -154,6 +163,10 @@ Constantes e configuracoes
   - Responsavel por: permitir reuso de encarregado em novas equipes quando o vinculo anterior estiver inativo e bloquear reativacao que geraria dois vinculos ativos.
 - Caminho: `supabase/migrations/134_allow_foreman_change_during_team_activation.sql`
   - Responsavel por: permitir reativacao de equipe com troca de encarregado no mesmo comando transacional, mantendo bloqueio de encarregado duplicado entre equipes ativas.
+- Caminho: `supabase/migrations/140_create_team_stock_operations.sql`
+  - Responsavel por: adicionar `stock_center_id` em `teams`, indice unico parcial por centro proprio e nova versao da RPC `save_team_record`.
+- Caminho: `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
+  - Responsavel por: auto-criar/backfill do centro proprio por equipe e republicar `save_team_record` para manter o vinculo automatico.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -176,6 +189,8 @@ Ajuda contextual
   - `supabase/migrations/093_enforce_single_team_per_foreman_rpc.sql` (novo)
   - `supabase/migrations/133_allow_foreman_reuse_when_inactive_team.sql` (novo)
   - `supabase/migrations/134_allow_foreman_change_during_team_activation.sql` (novo)
+  - `supabase/migrations/140_create_team_stock_operations.sql`
+  - `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -186,7 +201,8 @@ Ajuda contextual
   - Depois (2026-03-20): o submit nao e mais tentado sem metadados minimos e a tela orienta exatamente qual cadastro base falta.
   - Depois (2026-03-20): a busca de encarregados fica menos rigida para nao falhar quando o cargo tiver sufixos/prefixos.
   - Depois (2026-03-20): erros de banco em `POST/PUT/PATCH` passam a retornar diagnostico especifico e o backend tenta fallback direto quando as RPCs de equipes ainda nao existem no ambiente.
-  - Depois (2026-03-20): cadastro/edicao recusa encarregado ja vinculado em equipe ativa, evitando duplicidade operacional por responsavel.
+- Depois (2026-03-20): cadastro/edicao recusa encarregado ja vinculado em equipe ativa, evitando duplicidade operacional por responsavel.
+- Depois (2026-04-04): cadastro de `Equipes` salva nome/placa/base/tipo/encarregado e o backend cria o `Centro de estoque proprio` automaticamente, mantendo o vinculo pronto para o fluxo `/saida`.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios da tela e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`).
   - Atualizacao (2026-04-02): ao ativar uma equipe com encarregado em conflito, o modal passa a oferecer selecao de novo encarregado para concluir a reativacao sem precisar sair do fluxo.
 - Funcoes/hooks/constantes tocadas:

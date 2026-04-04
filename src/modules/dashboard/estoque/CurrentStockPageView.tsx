@@ -32,6 +32,8 @@ function movementTypeLabel(value: string | null | undefined) {
   if (normalized === "ENTRY") return "Entrada";
   if (normalized === "EXIT") return "Saida";
   if (normalized === "TRANSFER") return "Transferencia";
+  if (normalized === "REQUISITION") return "Requisicao";
+  if (normalized === "RETURN") return "Devolucao";
   return "-";
 }
 
@@ -39,7 +41,7 @@ function currentStockHistoryTitle(entry: CurrentStockHistoryEntry) {
   if (entry.isReversal) {
     return "Estorno";
   }
-  return movementTypeLabel(entry.movementType);
+  return movementTypeLabel(entry.operationKind ?? entry.movementType);
 }
 
 function currentStockStatusLabel(entry: CurrentStockHistoryEntry) {
@@ -677,7 +679,7 @@ export function CurrentStockPageView() {
                               ? styles.historyBadgeExit
                               : styles.historyBadgeTransfer
                         }`}>
-                          {movementTypeLabel(entry.movementType)}
+                        {movementTypeLabel(entry.operationKind ?? entry.movementType)}
                         </span>
                         <span className={`${styles.historyBadge} ${
                           entry.isReversal
@@ -699,7 +701,9 @@ export function CurrentStockPageView() {
                         {formatSignedInteger(entry.signedQuantity)}
                       </span>
                     </div>
-                    <div><strong>Operacao:</strong> {movementTypeLabel(entry.movementType)}</div>
+                    <div><strong>Operacao:</strong> {movementTypeLabel(entry.operationKind ?? entry.movementType)}</div>
+                    {entry.teamName ? <div><strong>Equipe:</strong> {entry.teamName}</div> : null}
+                    {entry.foremanName ? <div><strong>Encarregado:</strong> {entry.foremanName}</div> : null}
                     <div><strong>Projeto:</strong> {entry.projectCode}</div>
                     <div><strong>Centro DE:</strong> {entry.fromStockCenterName}</div>
                     <div><strong>Centro PARA:</strong> {entry.toStockCenterName}</div>

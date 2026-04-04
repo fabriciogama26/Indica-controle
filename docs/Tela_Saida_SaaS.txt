@@ -1,0 +1,227 @@
+Tela: Operacoes de Equipe SaaS
+
+Visao geral
+-----------
+- Tela operacional dedicada a `Requisicao` e `Devolucao` entre um `Centro de estoque` proprio e o `Centro de estoque proprio` vinculado a uma `Equipe`.
+- Reaproveita o mesmo ledger de estoque (`stock_transfers`, `stock_transfer_items`, `stock_center_balances`) para manter saldo, historico e estorno consistentes.
+- O fluxo exige `Projeto`, `Equipe`, `Centro de estoque`, `Material`, `Quantidade`, `Data da operacao` e respeita as mesmas regras de TRAFO da movimentacao de estoque.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/saida/page.tsx`
+- View: `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+- Estilo: `src/modules/dashboard/saida/TeamStockOperationsPageView.module.css`
+- Tipos: `src/modules/dashboard/saida/types.ts`
+- Constantes: `src/modules/dashboard/saida/constants.ts`
+- Utilitarios: `src/modules/dashboard/saida/utils.ts`
+- API (meta): `src/app/api/team-stock-operations/meta/route.ts`
+- API (create/list/history): `src/app/api/team-stock-operations/route.ts`
+- API (batch import): `src/app/api/team-stock-operations/import/route.ts`
+- API (reversal): `src/app/api/team-stock-operations/reversal/route.ts`
+- Helper server: `src/lib/server/teamStockOperations.ts`
+- Integracao em equipes: `src/app/api/teams/route.ts`
+- Integracao em estoque atual: `src/app/api/stock-balance/route.ts`
+- Banco: `supabase/migrations/140_create_team_stock_operations.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `operationKind` (`REQUISITION` ou `RETURN`)
+  - `stockCenterId`
+  - `teamId`
+  - `projectId`
+  - `materialId`
+  - `quantity`
+  - `entryDate`
+  - `entryType`
+- Campos opcionais:
+  - `serialNumber`
+  - `lotCode`
+  - `notes`
+- Regras operacionais:
+- `REQUISITION`: `Centro de estoque -> Centro da equipe`
+- `RETURN`: `Centro da equipe -> Centro de estoque`
+- A equipe precisa ter `teams.stock_center_id` preenchido e ativo.
+- O `Centro de estoque` da tela e sempre um centro `OWN` principal, diferente do centro proprio da equipe e tambem diferente de qualquer outro centro vinculado a equipe.
+- O centro da equipe nao e selecionado manualmente na tela; ele e resolvido automaticamente a partir da equipe escolhida.
+- Cada operacao salva snapshot de `Equipe` e `Encarregado` no momento do registro, evitando que o historico mude quando o encarregado atual da equipe for alterado depois.
+  - `Projeto` e obrigatorio mesmo sendo campo informativo do fluxo.
+  - `Tipo` e preenchido automaticamente a partir de `materials.tipo`.
+  - `quantity` deve ser maior que zero.
+  - Quando `materials.is_transformer = true`, `quantity` deve ser exatamente `1`.
+  - Quando `materials.is_transformer = true`, `serialNumber` e `lotCode` sao obrigatorios.
+  - `entryDate` nao pode ser futura.
+  - O save ocorre via RPC transacional, sem fallback de gravacao parcial.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Cadastro manual:
+  - `Projeto` usa `input + datalist`.
+  - `Material (codigo)` usa `input + datalist`.
+  - `Descricao` e `Tipo` sao preenchidos automaticamente a partir do material.
+- `Centro de estoque` e `Equipe` usam `select`.
+- O select de `Equipe` lista as equipes ativas do cadastro `teams`.
+- O select de `Centro de estoque` nao lista centros vinculados a equipes, ativas ou inativas.
+- Equipes novas ja nascem com `Centro de estoque proprio` automatico; se existir alguma equipe legada sem esse vinculo, o save continua bloqueado com aviso operacional.
+- Cadastro em massa por CSV:
+  - Cabecalhos do modelo:
+    - `operacao`
+    - `centro_estoque`
+    - `equipe`
+    - `projeto`
+    - `material_codigo`
+    - `quantidade`
+    - `serial`
+    - `lp`
+    - `data_operacao`
+    - `observacao`
+  - Alias aceitos para retrocompatibilidade:
+    - `operation`, `stock_center`, `team`, `project_code`, `material_code`, `quantity`, `serial_number`, `lot_code`, `entry_date`, `notes`
+  - O import bloqueia unidade TRAFO repetida no mesmo arquivo.
+  - Em caso de erro, a tela gera `CSV` com `linha;coluna;valor;erro`.
+- Filtros da lista:
+  - `Data inicial`
+  - `Data final`
+  - `Operacao`
+  - `Equipe`
+  - `Projeto`
+  - `Material (codigo)`
+  - `Tipo`
+  - `Status de estorno`
+- Lista:
+  - `Centro estoque`
+  - `Equipe`
+  - `Centro equipe`
+  - `Projeto`
+  - `Material`
+  - `Descricao`
+  - `Quantidade`
+  - `Sinalizacao`
+  - `Data da operacao`
+  - `Atualizado em`
+  - `Acoes`
+- Acoes por linha:
+  - `Detalhes`
+  - `Historico`
+  - `Estornar`
+
+Boas praticas
+-------------
+- Manter todo o escopo filtrado por `tenant_id`.
+- Escrever via RPC `save_team_stock_operation_record`, nunca com inserts avulsos de cabecalho/itens/saldo.
+- Manter o vinculo `teams.stock_center_id` exclusivo por equipe para evitar ambiguidade operacional.
+- Usar `stock_transfer_team_operations` apenas como mapeamento funcional `transfer -> team`, sem duplicar o ledger principal.
+- Registrar erros da tela com `useErrorLogger("operacoes_equipe")`.
+- Respeitar cooldown de `10` segundos na exportacao.
+
+Cancelamento e saldo
+--------------------
+- A correcao operacional e feita por `Estorno`, nao por edicao direta.
+- O estorno cria nova movimentacao inversa dentro do mesmo ledger.
+- O estorno exige:
+  - `Motivo padrao do estorno`
+  - `Data do estorno`
+  - `Observacao` quando o motivo exigir
+- O estorno e restrito a `admin/master`.
+- Impacto no saldo:
+  - `REQUISITION`: baixa no centro de estoque e credita no centro da equipe.
+  - `RETURN`: baixa no centro da equipe e credita no centro de estoque.
+- O `Estoque Atual` passa a ler essas operacoes e exibir `Requisicao`/`Devolucao` no historico.
+
+Atalhos
+-------
+- Rota ativa: `/saida`
+- Exibida na secao `Almoxarifado` da sidebar como `Operacoes de Equipe`
+- Endpoints:
+  - `GET/POST /api/team-stock-operations`
+  - `GET /api/team-stock-operations?mode=history`
+  - `POST /api/team-stock-operations/import`
+  - `POST /api/team-stock-operations/reversal`
+
+Atualizacao 2026-04
+-------------------
+- Antes: `/saida` apenas redirecionava para `/entrada`.
+- Depois: `/saida` passa a operar como modulo proprio para `Requisicao` e `Devolucao`.
+- A tela ganhou formulario manual, filtros, lista paginada, detalhes, historico, estorno e cadastro em massa.
+- Ajuste de UX: os textos auxiliares abaixo dos campos `Centro de estoque`, `Equipe` e `Tipo` foram removidos para alinhar o formulario ao padrao visual da Movimentacao de Estoque.
+- Ajuste de UX: o botao `Limpar formulario` foi removido e o select de `Equipe` passou a listar todas as equipes ativas, sinalizando quando a equipe ainda esta sem centro proprio.
+- Ajuste de UX: o frontend da `/saida` agora reforca o filtro para aceitar somente equipes ativas no formulario e no cadastro em massa, mesmo que algum dado legado escape do backend.
+- Ajuste de regra: o campo `Centro de estoque` passou a excluir qualquer centro vinculado a equipe e o centro da equipe ficou 100% implicito pela equipe selecionada.
+- `Equipes` passa a gerar automaticamente o `Centro de estoque proprio` no mesmo save do cadastro.
+- `Operacoes de Equipe` passa a registrar `team_name_snapshot` e `foreman_name_snapshot` para preservar o historico operacional.
+- `Estoque Atual` passa a distinguir `Requisicao` e `Devolucao` no historico do saldo.
+- Migration `140_create_team_stock_operations.sql`:
+  - adiciona `teams.stock_center_id`
+  - cria `stock_transfer_team_operations`
+  - republica `save_team_record` com suporte ao centro proprio
+- Migration `141_auto_create_team_stock_centers_and_foreman_snapshots.sql`:
+  - cria/backfill automatico do centro proprio por equipe
+  - adiciona snapshot de equipe/encarregado em `stock_transfer_team_operations`
+  - republica as RPCs do fluxo para usar os snapshots no historico e no estorno
+  - republica `save_team_stock_operation_record`, `reverse_team_stock_operation_record_v2` e `save_team_record`
+- Migration `142_block_team_stock_center_as_main_operation_center.sql`:
+  - bloqueia no banco o uso de centro vinculado a equipe como `Centro de estoque` principal da operacao
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - Responsavel por: formulario, filtros, importacao CSV, lista, detalhes, historico e estorno da tela.
+- Caminho: `src/app/api/team-stock-operations/route.ts`
+  - Responsavel por: criar operacoes, listar historico operacional e montar o historico funcional por transferencia.
+- Caminho: `src/app/api/team-stock-operations/import/route.ts`
+  - Responsavel por: processar importacao em lote de requisicoes/devolucoes.
+- Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
+  - Responsavel por: validar payload de estorno e chamar a RPC transacional de reversao.
+- Caminho: `src/lib/server/teamStockOperations.ts`
+  - Responsavel por: encapsular chamadas para `save_team_stock_operation_record` e `reverse_team_stock_operation_record_v2`.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/saida/constants.ts`
+  - Responsavel por: filtros iniciais, labels do historico e template CSV da tela.
+- Caminho: `supabase/migrations/140_create_team_stock_operations.sql`
+  - Responsavel por: modelo relacional, politicas RLS e RPCs do fluxo operacional por equipe.
+- Caminho: `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
+  - Responsavel por: auto-criar/backfill do centro proprio da equipe e persistir snapshot de equipe/encarregado nas operacoes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/saida/utils.ts`
+  - Responsavel por: formatacao de datas, parser CSV, normalizacao da operacao e geracao do relatorio de erros.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas do modulo.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS
+- RPC `save_team_stock_operation_record`
+- RPC `reverse_team_stock_operation_record_v2`
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/saida/page.tsx`
+  - `src/modules/dashboard/saida/types.ts`
+  - `src/modules/dashboard/saida/constants.ts`
+  - `src/modules/dashboard/saida/utils.ts`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.module.css`
+  - `src/app/api/team-stock-operations/meta/route.ts`
+  - `src/app/api/team-stock-operations/route.ts`
+  - `src/app/api/team-stock-operations/import/route.ts`
+  - `src/app/api/team-stock-operations/reversal/route.ts`
+  - `src/lib/server/teamStockOperations.ts`
+  - `src/app/api/teams/route.ts`
+  - `src/app/api/teams/meta/route.ts`
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - `src/app/api/stock-balance/route.ts`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
+  - `src/modules/dashboard/estoque/types.ts`
+  - `supabase/migrations/140_create_team_stock_operations.sql`
+  - `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
+- Funcoes/hooks/constantes tocadas:
+  - `TeamStockOperationsPageView`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `openHistoryModal`, `handleConfirmReversal`
+  - `GET/POST` de `/api/team-stock-operations`
+  - `POST` de `/api/team-stock-operations/import`
+  - `POST` de `/api/team-stock-operations/reversal`
+  - `saveTeamStockOperationViaRpc`, `reverseTeamStockOperationViaRpc`
+- Comportamento antes/depois:
+  - Antes: `/saida` nao tinha fluxo proprio.
+  - Depois: `/saida` passa a registrar requisicoes/devolucoes reais com saldo, historico, snapshot de `Equipe/Encarregado` e estorno no mesmo padrao operacional do almoxarifado.

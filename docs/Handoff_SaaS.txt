@@ -14,7 +14,7 @@ Arquitetura
 
 Cadastro
 --------
-- Ja previstos no fluxo: Operacao (Projetos, Locacao, Programacao, Medicao), Almoxarifado (Estoque, Entrada, Saida), Cadastros (Materiais, Pessoas, Cargo) e Cadastro Base.
+- Ja previstos no fluxo: Operacao (Projetos, Locacao, Programacao, Medicao), Almoxarifado (Estoque, Entrada e Operacoes de Equipe), Cadastros (Materiais, Pessoas, Cargo) e Cadastro Base.
 - Ainda nao implementados como CRUD real.
 
 Filtros, auto-complete e listagem

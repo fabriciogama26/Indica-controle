@@ -43,7 +43,7 @@ Atalhos
 - Links de navegacao laterais para:
   - `Visao Geral`: Home (`Dashboard Estoque`)
   - `Operacao`: Projetos, Locacao, Programacao e Medicao
-  - `Almoxarifado`: Estoque Atual, Posicao Unitaria TRAFO, Movimentacao de Estoque e Saida Estoque
+  - `Almoxarifado`: Estoque Atual, Posicao Unitaria TRAFO, Movimentacao de Estoque e Operacoes de Equipe
   - `Cadastros`: Materiais, Pessoas e Cargo
   - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Atividades, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 - Botao de engrenagem no topo direito abre `/permissoes` apenas para `admin` e `master`.

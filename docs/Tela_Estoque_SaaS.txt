@@ -55,7 +55,7 @@ Filtros, auto-complete e listagem
     - `Historico`
   - O modal `Historico` mostra cada movimentacao que afetou o saldo do `material` no `centro`, com:
     - `Saldo aplicado` assinado
-    - operacao traduzida (`Entrada`, `Saida`, `Transferencia`)
+    - operacao traduzida (`Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`)
     - status visual para `Movimentacao ativa`, `Movimentacao original estornada` e `Movimentacao de estorno`
     - `Transferencia: <id>` apenas como referencia secundaria
 
@@ -75,7 +75,7 @@ Cancelamento e saldo
 - Transferencias continuam seguindo a regra operacional:
   - `DE` debita.
   - `PARA` credita.
-- Estorno continua sendo inversao da movimentacao original, sem criar tipo novo no frontend desta tela.
+- Estorno continua sendo inversao da movimentacao original, e o frontend agora tambem diferencia `Requisicao` e `Devolucao` quando a movimentacao vier do fluxo de equipes.
 
 Atalhos
 -------
@@ -108,6 +108,7 @@ Atualizacao 2026-04
   - `/estoque` era um placeholder sem consulta real.
 - Depois:
   - `/estoque` passou a exibir saldo atual por centro/material com filtros, lista paginada, exportacao CSV, modal de detalhes e historico operacional por `centro + material`.
+- O historico passou a reconhecer operacoes da rota `/saida`, exibindo `Equipe`, `Encarregado`, `Requisicao` e `Devolucao` quando o ledger vier do fluxo operacional por equipe.
   - O historico passou a priorizar rotulo funcional do evento em vez de usar o `transferId` como titulo principal.
   - O historico recebeu chips de operacao/status e destaque visual para `Estorno` e `Estornada`.
   - A arquitetura de TRAFO passou a manter a posicao unitaria atual em `trafo_instances`, e a consulta unitaria agora fica na tela dedicada `/posicao-trafo` sem mudar a listagem agregada atual.
