@@ -26,6 +26,24 @@ export type ReverseTeamStockOperationPayload = {
   reversalDate?: string | null;
 };
 
+export type SaveTeamStockOperationBatchEntry = {
+  rowNumber: number;
+  operationKind: TeamOperationKind;
+  stockCenterId: string;
+  teamId: string;
+  projectId: string;
+  entryDate: string;
+  entryType: "SUCATA" | "NOVO";
+  notes?: string | null;
+  items: StockTransferItemInput[];
+};
+
+export type SaveTeamStockOperationBatchPayload = {
+  tenantId: string;
+  actorUserId: string;
+  entries: SaveTeamStockOperationBatchEntry[];
+};
+
 type TeamOperationRpcResult = {
   success?: boolean;
   status?: number;
@@ -33,6 +51,26 @@ type TeamOperationRpcResult = {
   message?: string;
   transfer_id?: string;
   details?: unknown;
+};
+
+type TeamOperationBatchRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  failed_row_number?: number;
+  details?: unknown;
+  summary?: {
+    total?: number;
+    successCount?: number;
+    errorCount?: number;
+  };
+  results?: Array<{
+    rowNumber?: number;
+    success?: boolean;
+    transferId?: string;
+    message?: string;
+  }>;
 };
 
 function mapTeamOperationErrorMessage(reason: string) {
@@ -102,6 +140,59 @@ export async function saveTeamStockOperationViaRpc(
     ok: true,
     transferId: String(result.transfer_id ?? ""),
     message: normalizedMessage || "Operacao de equipe salva com sucesso.",
+  } as const;
+}
+
+export async function saveTeamStockOperationBatchViaRpc(
+  supabase: SupabaseClient,
+  payload: SaveTeamStockOperationBatchPayload,
+) {
+  const { data, error } = await supabase.rpc("save_team_stock_operation_batch_full", {
+    p_tenant_id: payload.tenantId,
+    p_actor_user_id: payload.actorUserId,
+    p_entries: payload.entries,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      reason: "RPC_ERROR",
+      message: "Falha ao salvar o cadastro em massa das operacoes de equipe.",
+      details: error.message,
+      failedRowNumber: null,
+    } as const;
+  }
+
+  const result = (data ?? {}) as TeamOperationBatchRpcResult;
+  const normalizedReason = String(result.reason ?? "").trim().toUpperCase();
+  const normalizedMessage = String(result.message ?? "").trim();
+
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      reason: normalizedReason || "UNKNOWN_ERROR",
+      message: normalizedMessage || "Falha ao salvar o cadastro em massa das operacoes de equipe.",
+      details: result.details,
+      failedRowNumber: Number(result.failed_row_number ?? 0) || null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    message: normalizedMessage || "Cadastro em massa concluido com sucesso.",
+    summary: {
+      total: Number(result.summary?.total ?? payload.entries.length),
+      successCount: Number(result.summary?.successCount ?? payload.entries.length),
+      errorCount: Number(result.summary?.errorCount ?? 0),
+    },
+    results: (result.results ?? []).map((item) => ({
+      rowNumber: Number(item.rowNumber ?? 0),
+      success: Boolean(item.success),
+      transferId: String(item.transferId ?? "").trim(),
+      message: String(item.message ?? "").trim(),
+    })),
   } as const;
 }
 

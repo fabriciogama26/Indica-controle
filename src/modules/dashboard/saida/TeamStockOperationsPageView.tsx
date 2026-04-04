@@ -1039,7 +1039,6 @@ export function TeamStockOperationsPageView() {
       );
 
       const issues: MassImportIssue[] = [];
-      const seenTransformerUnits = new Set<string>();
       const entries = rows.flatMap((row, index) => {
         const rowNumber = index + 2;
         const operationKindRaw = readCsvField(row, ["operacao", "operation", "tipo_operacao"]);
@@ -1097,14 +1096,6 @@ export function TeamStockOperationsPageView() {
             issues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: "Material TRAFO permite somente quantidade 1." });
           }
 
-          if (material.id && serialRaw && lotRaw) {
-            const transformerKey = `${material.id}::${serialRaw.toUpperCase()}::${lotRaw.toUpperCase()}`;
-            if (seenTransformerUnits.has(transformerKey)) {
-              issues.push({ rowNumber, column: "material_codigo", value: materialRaw, error: "Unidade TRAFO repetida no mesmo arquivo." });
-            } else {
-              seenTransformerUnits.add(transformerKey);
-            }
-          }
         }
 
         if (
@@ -1148,6 +1139,7 @@ export function TeamStockOperationsPageView() {
           successCount: 0,
           errorRows: new Set(issues.map((item) => item.rowNumber)).size,
         });
+        showError("Nenhuma linha valida foi encontrada no CSV. Revise o arquivo e baixe o relatorio de erros.");
         return;
       }
 
@@ -1164,20 +1156,26 @@ export function TeamStockOperationsPageView() {
       const resultSummary = summarizeImportResponse(data);
       setImportResult(resultSummary);
 
-      const serverIssues: MassImportIssue[] = (data.results ?? [])
-        .filter((item) => !item.success)
-        .map((item) => ({
-          rowNumber: item.rowNumber,
-          column: "linha",
-          value: "",
-          error: item.message,
-        }));
+      const serverIssues: MassImportIssue[] = data.validationIssues?.length
+        ? data.validationIssues
+        : (data.results ?? [])
+            .filter((item) => !item.success)
+            .map((item) => ({
+              rowNumber: item.rowNumber,
+              column: "linha",
+              value: "",
+              error: item.message,
+            }));
 
       const report = createMassImportErrorReport([...issues, ...serverIssues], "operacoes_equipe_import_erros");
       setImportErrorReport(report);
 
       if (!response.ok && response.status !== 207) {
-        showError(data.message ?? "Falha ao importar operacoes de equipe em massa.");
+        showError(
+          report
+            ? `${data.message ?? "Falha ao importar operacoes de equipe em massa."} Baixe o CSV de erros para revisar linha e coluna.`
+            : (data.message ?? "Falha ao importar operacoes de equipe em massa."),
+        );
         await logError("Falha ao importar operacoes de equipe em massa.", undefined, {
           responseStatus: response.status,
           responseMessage: data.message ?? null,
@@ -1189,6 +1187,15 @@ export function TeamStockOperationsPageView() {
         type: resultSummary.status === "error" ? "error" : "success",
         message: resultSummary.message,
       });
+
+      if (serverIssues.length > 0 || resultSummary.status !== "success") {
+        showError(
+          report
+            ? `${resultSummary.message} Baixe o CSV de erros para revisar linha e coluna.`
+            : resultSummary.message,
+        );
+      }
+
       setHistoryPage(1);
       setFilters((current) => ({ ...current }));
     } catch (error) {

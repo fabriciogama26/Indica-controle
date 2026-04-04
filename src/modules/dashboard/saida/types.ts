@@ -97,6 +97,7 @@ export type TeamOperationHistoryResponse = {
 };
 
 export type ImportResponse = {
+  success?: boolean;
   summary?: {
     total: number;
     successCount: number;
@@ -105,10 +106,12 @@ export type ImportResponse = {
   results?: Array<{
     rowNumber: number;
     success: boolean;
+    transferId?: string;
     message: string;
     reason?: string;
     details?: unknown;
   }>;
+  validationIssues?: MassImportIssue[];
   message?: string;
 };
 
