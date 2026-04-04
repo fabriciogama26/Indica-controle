@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { TeamStockOperationsPageView } from "@/modules/dashboard/saida/TeamStockOperationsPageView";
 
 export default function SaidaPage() {
-  redirect("/entrada");
+  return <TeamStockOperationsPageView />;
 }

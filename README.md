@@ -128,7 +128,7 @@ vercel --prod
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Posicao Unitaria TRAFO com consulta por `Serial + LP` e atalho de movimentacao para a mesma unidade.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
-  - `(dashboard)/saida/page.tsx`: redireciona para `/entrada` (tela unica de movimentacao de estoque).
+- `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao` e `Devolucao` entre centro de estoque proprio e centro proprio da equipe, preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
   - `(dashboard)/centro-servico/page.tsx`: placeholder de Centro de Servico.
@@ -140,7 +140,7 @@ vercel --prod
   - `(dashboard)/responsavel-distribuidora/page.tsx`: placeholder de Responsavel Distribuidora.
   - `(dashboard)/municipio/page.tsx`: placeholder de Municipio.
   - `(dashboard)/pessoas/page.tsx`: rota da tela de Pessoas com cadastro, filtros, listagem, historico, exportacao e troca de status.
-  - `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, filtros, historico e troca de status.
+- `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, filtros, historico, troca de status e criacao automatica do centro de estoque proprio.
   - `(dashboard)/permissoes/page.tsx`: tela administrativa base para permissoes por pagina.
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
@@ -160,15 +160,19 @@ vercel --prod
   - `api/medicao/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa ordens de medicao, incluindo os modos `Com producao` e `Sem producao`.
   - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao` da Medicao por tenant.
   - `api/medicao/activities/catalog/route.ts`: pesquisa atividades ativas para inclusao manual ou importacao da Medicao.
-  - `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico.
-  - `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
+- `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico e a geracao automatica do centro de estoque proprio.
+- `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
   - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a `is_transformer` e `Preco` opcional (default `0.00`).
   - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos, materiais ativos e catalogo de motivos padrao de estorno para a tela de movimentacao.
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em lote (CSV) para a tela de estoque.
   - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
-  - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side e `ultima movimentacao` baseada em `stock_center_balances.updated_at`.
+- `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais e motivos de estorno da tela `Operacoes de Equipe`.
+- `api/team-stock-operations/route.ts`: cria requisicoes/devolucoes por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
+  - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV).
+  - `api/team-stock-operations/reversal/route.ts`: executa estorno transacional das operacoes de equipe com permissao administrativa.
+- `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, `ultima movimentacao` baseada em `stock_center_balances.updated_at` e historico enriquecido com `Equipe`/`Encarregado` nas operacoes de equipe.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` ativos usados no filtro da tela de Estoque Atual.
   - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada TRAFO a partir de `trafo_instances`, com filtros, paginacao e enriquecimento de projeto/usuario.
   - `api/trafo-positions/meta/route.ts`: carrega os centros `OWN` ativos usados nos filtros da tela de posicao unitaria de TRAFO.
@@ -200,7 +204,7 @@ vercel --prod
   - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, lista paginada, modos `Com producao` e `Sem producao`, motivo estruturado por tenant, inclusao de atividades da medicao, taxa unica por ordem com coluna `Taxa aplicada` na edicao, cadastro em massa CSV com suporte aos dois tipos, detalhe por item com `taxa` visivel, importacao reforcada por match exato/univoco do codigo da atividade e bloqueio de atividade duplicada na mesma ordem com validacao tambem na RPC.
   - `MeasurementPageView.module.css`: estilos da tela de medicao.
 - `src/modules/dashboard/equipes/`
-  - `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, historico e cancelamento/ativacao.
+- `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, centro de estoque proprio automatico, historico e cancelamento/ativacao.
   - `TeamsPageView.module.css`: estilos da tela de equipes.
 - `src/modules/dashboard/materiais/`
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
@@ -208,6 +212,12 @@ vercel --prod
 - `src/modules/dashboard/entrada/`
   - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), `Tipo` automatico por `materials.tipo` (nao selecionavel), `Serial/LP` condicionais para TRAFO, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
+- `src/modules/dashboard/saida/`
+  - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
+  - `constants.ts`: configuracoes de pagina, labels de historico e template CSV da tela `Operacoes de Equipe`.
+  - `utils.ts`: formatadores, parser CSV e geracao de relatorio de erros do cadastro em massa.
+- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`, selecao de centro proprio principal, equipe ativa, projeto, material, regras de TRAFO, cadastro em massa, estorno, historico e exibicao do encarregado snapshot por operacao.
+  - `TeamStockOperationsPageView.module.css`: estilo local da tela, reaproveitando o mesmo visual operacional da movimentacao de estoque.
 - `src/modules/dashboard/estoque/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.

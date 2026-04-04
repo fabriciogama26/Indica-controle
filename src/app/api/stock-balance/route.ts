@@ -74,6 +74,18 @@ type StockTransferReversalRow = {
   created_at: string;
 };
 
+type TeamOperationRow = {
+  transfer_id: string;
+  team_id: string;
+  team_name_snapshot: string;
+  foreman_name_snapshot: string;
+};
+
+type TeamRow = {
+  id: string;
+  stock_center_id: string | null;
+};
+
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value ?? "");
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -115,6 +127,20 @@ function unwrapRelation<T>(value: T | T[] | null) {
   }
 
   return value ?? null;
+}
+
+function resolveOperationKind(
+  movementType: "ENTRY" | "EXIT" | "TRANSFER",
+  transferId: string,
+  toStockCenterId: string,
+  teamOperationMap: Map<string, { teamStockCenterId: string | null }>,
+) {
+  const team = teamOperationMap.get(transferId);
+  if (!team || !team.teamStockCenterId) {
+    return movementType;
+  }
+
+  return toStockCenterId === team.teamStockCenterId ? "REQUISITION" : "RETURN";
 }
 
 async function loadStockHistory(request: NextRequest) {
@@ -194,6 +220,7 @@ async function loadStockHistory(request: NextRequest) {
     ),
   );
   const projectIds = Array.from(new Set(transferHeaders.map((row) => row.project_id).filter(Boolean)));
+  const transferIdsWithItems = Array.from(new Set(itemRows.map((row) => row.stock_transfer_id).filter(Boolean)));
   const userIds = Array.from(
     new Set(
       transferHeaders.flatMap((row) => [row.updated_by, row.created_by]).filter((value): value is string => Boolean(value)),
@@ -204,6 +231,8 @@ async function loadStockHistory(request: NextRequest) {
     stockCentersResult,
     projectsResult,
     usersResult,
+    teamOperationsResult,
+    teamsResult,
     reversalsFromOriginalResult,
     reversalsByReversalResult,
   ] = await Promise.all([
@@ -231,6 +260,21 @@ async function loadStockHistory(request: NextRequest) {
           .in("id", userIds)
           .returns<AppUserRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+    transferIdsWithItems.length
+      ? supabase
+          .from("stock_transfer_team_operations")
+          .select("transfer_id, team_id, team_name_snapshot, foreman_name_snapshot")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("transfer_id", transferIdsWithItems)
+          .returns<TeamOperationRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: TeamOperationRow[]; error: null }),
+    transferIdsWithItems.length
+      ? supabase
+          .from("teams")
+          .select("id, stock_center_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .returns<TeamRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: TeamRow[]; error: null }),
     transferIds.length
       ? supabase
           .from("stock_transfer_reversals")
@@ -253,6 +297,8 @@ async function loadStockHistory(request: NextRequest) {
     stockCentersResult.error
     || projectsResult.error
     || usersResult.error
+    || teamOperationsResult.error
+    || teamsResult.error
     || reversalsFromOriginalResult.error
     || reversalsByReversalResult.error
   ) {
@@ -264,6 +310,18 @@ async function loadStockHistory(request: NextRequest) {
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map(
     (usersResult.data ?? []).map((row) => [row.id, String(row.display ?? row.login_name ?? "").trim() || "Nao informado"]),
+  );
+  const teamById = new Map((teamsResult.data ?? []).map((row) => [row.id, row]));
+  const teamOperationMap = new Map(
+    (teamOperationsResult.data ?? [])
+      .map((row) => [
+        row.transfer_id,
+        {
+          teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
+          teamName: row.team_name_snapshot,
+          foremanName: row.foreman_name_snapshot,
+        },
+      ] as const),
   );
   const reversalByOriginalMap = new Map(
     (reversalsFromOriginalResult.data ?? []).map((row) => [
@@ -295,6 +353,8 @@ async function loadStockHistory(request: NextRequest) {
     const signedQuantity = affectsAsTarget ? Number(item.quantity ?? 0) : Number(item.quantity ?? 0) * -1;
     const reversalFromOriginal = reversalByOriginalMap.get(transfer.id) ?? null;
     const reversalFromReversal = originalByReversalMap.get(transfer.id) ?? null;
+    const team = teamOperationMap.get(transfer.id) ?? null;
+    const operationKind = resolveOperationKind(transfer.movement_type, transfer.id, transfer.to_stock_center_id, teamOperationMap);
 
     return [
       {
@@ -305,6 +365,9 @@ async function loadStockHistory(request: NextRequest) {
         quantity: Number(item.quantity ?? 0),
         entryDate: transfer.entry_date,
         changedAt: transfer.updated_at ?? transfer.created_at,
+        operationKind,
+        teamName: team?.teamName ?? null,
+        foremanName: team?.foremanName ?? null,
         projectCode: projectMap.get(transfer.project_id) ?? "-",
         fromStockCenterName: stockCenterMap.get(transfer.from_stock_center_id) ?? "-",
         toStockCenterName: stockCenterMap.get(transfer.to_stock_center_id) ?? "-",

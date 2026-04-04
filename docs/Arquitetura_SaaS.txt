@@ -15,7 +15,7 @@ Arquitetura
 
 Cadastro
 --------
-- Modulos previstos: Operacao (Projetos, Locacao, Programacao, Medicao), Almoxarifado (Estoque, Entrada, Saida), Cadastros (Materiais, Pessoas, Cargo, Equipes) e Cadastro Base.
+- Modulos previstos: Operacao (Projetos, Locacao, Programacao, Medicao), Almoxarifado (Estoque, Entrada e Operacoes de Equipe), Cadastros (Materiais, Pessoas, Cargo, Equipes) e Cadastro Base.
 
 Filtros, auto-complete e listagem
 ---------------------------------

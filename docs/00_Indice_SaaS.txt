@@ -17,6 +17,7 @@ Arquivos principais para nova task
 - docs/Tela_Visualizacao_Programacao_SaaS.txt
 - docs/Tela_Medicao_SaaS.txt
 - docs/Tela_Estoque_SaaS.txt
+- docs/Tela_Saida_SaaS.txt
 - docs/Tela_Posicao_Trafo_SaaS.txt
 - docs/Tela_Cargo_SaaS.txt
 - docs/Tela_Pessoas_SaaS.txt

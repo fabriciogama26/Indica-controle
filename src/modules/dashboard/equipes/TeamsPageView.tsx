@@ -12,6 +12,8 @@ type TeamItem = {
   vehiclePlate: string;
   serviceCenterId: string | null;
   serviceCenterName: string;
+  stockCenterId: string | null;
+  stockCenterName: string;
   teamTypeId: string;
   teamTypeName: string;
   foremanId: string;
@@ -95,6 +97,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome da equipe",
   vehiclePlate: "Placa do veiculo",
   serviceCenterName: "Base",
+  stockCenterName: "Centro de estoque proprio",
   teamTypeName: "Tipo",
   foremanName: "Encarregado",
   isActive: "Status",
@@ -164,6 +167,7 @@ function buildTeamsCsv(teamItems: TeamItem[]) {
     "Nome da equipe",
     "Placa do veiculo",
     "Base",
+    "Centro de estoque proprio",
     "Tipo",
     "Encarregado",
     "Status",
@@ -176,6 +180,7 @@ function buildTeamsCsv(teamItems: TeamItem[]) {
     team.name,
     team.vehiclePlate,
     team.serviceCenterName,
+    team.stockCenterName,
     team.teamTypeName,
     team.foremanName,
     team.isActive ? "Ativo" : "Inativo",
@@ -963,6 +968,7 @@ export function TeamsPageView() {
                 <th>Nome da equipe</th>
                 <th>Placa do veiculo</th>
                 <th>Base</th>
+                <th>Centro de estoque proprio</th>
                 <th>Tipo</th>
                 <th>Encarregado</th>
                 <th>Registrado em</th>
@@ -981,6 +987,7 @@ export function TeamsPageView() {
                     </td>
                     <td>{team.vehiclePlate}</td>
                     <td>{team.serviceCenterName}</td>
+                    <td>{team.stockCenterName}</td>
                     <td>{team.teamTypeName}</td>
                     <td>{team.foremanName}</td>
                     <td>{formatDateTime(team.createdAt)}</td>
@@ -1075,7 +1082,7 @@ export function TeamsPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className={styles.emptyRow}>
+                  <td colSpan={8} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando equipes..." : "Nenhuma equipe encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1136,6 +1143,9 @@ export function TeamsPageView() {
                 </div>
                 <div>
                   <strong>Base:</strong> {detailTeam.serviceCenterName}
+                </div>
+                <div>
+                  <strong>Centro de estoque proprio:</strong> {detailTeam.stockCenterName}
                 </div>
                 <div>
                   <strong>Tipo:</strong> {detailTeam.teamTypeName}

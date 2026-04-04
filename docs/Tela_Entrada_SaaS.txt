@@ -159,7 +159,7 @@ Cancelamento e saldo
 Atalhos
 -------
 - Rota ativa: `/entrada`.
-- Rota `/saida` redireciona para `/entrada` para manter operacao unificada.
+- Tela complementar relacionada: `/saida` (`Operacoes de Equipe`) para requisicao/devolucao entre estoque proprio e equipe.
 - Exibida na secao `Almoxarifado` da sidebar.
 - Aceita pre-preenchimento por query string para transferencia unitaria de TRAFO:
   - `prefillMode=transformer-transfer`

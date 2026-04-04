@@ -122,7 +122,12 @@
 - [x] Atualizar cadastro de `Materiais` para permitir `is_transformer`, tornar `Preco` opcional e limitar `Tipo` ao select `NOVO`/`SUCATA` com validacao na API/RPC.
 - [x] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque (transferencia entre centros com debito/credito transacional, cadastro em massa CSV e historico em `material_history`).
 - [x] Evoluir estoque para tela unica de movimentacao (`Entrada`, `Saida`, `Transferencia`) com regra de centro `OWN`/`THIRD_PARTY`, filtro automatico de `DE/PARA`, `Tipo` automatico pelo material (nao selecionavel), bloqueio de `DE/PARA` iguais, `Serial/LP` apenas para TRAFO, cadastro em massa modal e lista com modais de `Detalhes`/`Historico`.
-- [x] Integrar rota/menu de `Saida` ao fluxo unificado de movimentacao de estoque (`/entrada`) via redirecionamento.
+- [x] Implementar a rota `/saida` como tela operacional propria de `Operacoes de Equipe`, com `Requisicao`/`Devolucao`, cadastro manual, cadastro em massa, historico e estorno.
+- [x] Vincular `Equipes` a um `Centro de estoque proprio` e reutilizar esse vinculo no fluxo operacional de requisicao/devolucao.
+- [x] Integrar `Operacoes de Equipe` ao `Estoque Atual`, refletindo requisicoes/devolucoes no historico consolidado do saldo.
+- [x] Automatizar a criacao/backfill do `Centro de estoque proprio` no cadastro de `Equipes`, removendo a selecao manual no frontend.
+- [x] Persistir snapshot de `Equipe` e `Encarregado` nas `Operacoes de Equipe` e refletir esse dado tambem no historico do `Estoque Atual`.
+- [x] Restringir `Operacoes de Equipe` para usar apenas equipes ativas e impedir que `Centro de estoque` aceite centros vinculados a equipes.
 - [x] Endurecer migrations de estoque para normalizar `stock_centers.center_type` legados e aplicar validacao transacional de `movement_type` no banco (`ENTRY`, `EXIT`, `TRANSFER`, com `TRANSFER` apenas entre `OWN`).
 - [x] Endurecer movimentacao de estoque com avisos em portugues, bloqueio de edicao direta (`PUT` bloqueado + trigger no banco) e validacao de `entry_date` nao futura.
 - [x] Implementar estorno de movimentacao de estoque com botao na lista, modal de motivo obrigatorio, endpoint dedicado (`/api/stock-transfers/reversal`) e RPC transacional com bloqueio de duplo estorno.
@@ -349,7 +354,7 @@
 - [x] Endurecer `Permissoes` com controle de concorrencia por `app_users.updated_at`, bloqueando salvamento concorrente de role/status/telas para o mesmo usuario.
 - [x] Migrar o save de `Permissoes` para RPC transacional (`save_user_permissions`) para consolidar `app_users`, `app_user_page_permissions` e historico em uma unica operacao.
 - [x] Migrar a auditoria do `Invite` em `Permissoes` para RPC (`append_user_invite_history`), removendo `insert` direto de historico da route.
-- [ ] Aplicar a regra de escrita via RPC transacional sempre que possivel nos modulos futuros (`Entrada`, `Saida`, `Medicao`, `Cargo` e `Cadastro Base`) conforme cada fluxo sair do placeholder.
+- [ ] Aplicar a regra de escrita via RPC transacional sempre que possivel nos modulos futuros (`Entrada`, `Medicao`, `Cargo` e `Cadastro Base`) conforme cada fluxo sair do placeholder.
 - [ ] Implementar seletor de tenant/contrato no frontend e enviar `x-tenant-id` nas chamadas autenticadas para troca de contexto.
 - [ ] Implementar gestao de sessao web com expiracao por inatividade, touch/revoke e tratamento de token expirado.
 - [x] Implementar fluxo de "esqueci minha senha" no frontend web consumindo `auth-recover` e tela unica para definicao da senha.
