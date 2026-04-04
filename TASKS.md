@@ -128,6 +128,7 @@
 - [x] Automatizar a criacao/backfill do `Centro de estoque proprio` no cadastro de `Equipes`, removendo a selecao manual no frontend.
 - [x] Persistir snapshot de `Equipe` e `Encarregado` nas `Operacoes de Equipe` e refletir esse dado tambem no historico do `Estoque Atual`.
 - [x] Restringir `Operacoes de Equipe` para usar apenas equipes ativas e impedir que `Centro de estoque` aceite centros vinculados a equipes.
+- [x] Endurecer o cadastro em massa de `Operacoes de Equipe` com pre-validacao sequencial de saldo/TRAFO, rollback total do lote, modal de alerta e `CSV` de erros por linha/coluna.
 - [x] Endurecer migrations de estoque para normalizar `stock_centers.center_type` legados e aplicar validacao transacional de `movement_type` no banco (`ENTRY`, `EXIT`, `TRANSFER`, com `TRANSFER` apenas entre `OWN`).
 - [x] Endurecer movimentacao de estoque com avisos em portugues, bloqueio de edicao direta (`PUT` bloqueado + trigger no banco) e validacao de `entry_date` nao futura.
 - [x] Implementar estorno de movimentacao de estoque com botao na lista, modal de motivo obrigatorio, endpoint dedicado (`/api/stock-transfers/reversal`) e RPC transacional com bloqueio de duplo estorno.

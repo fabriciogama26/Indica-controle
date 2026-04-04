@@ -10,7 +10,8 @@ import {
 } from "@/lib/server/stockTransfers";
 import {
   normalizeTeamOperationKind,
-  saveTeamStockOperationViaRpc,
+  saveTeamStockOperationBatchViaRpc,
+  SaveTeamStockOperationBatchEntry,
 } from "@/lib/server/teamStockOperations";
 
 type ImportEntryPayload = {
@@ -40,8 +41,60 @@ type ImportPayload = {
 
 type MaterialLookupRow = {
   id: string;
+  codigo: string;
   is_transformer: boolean;
   is_active: boolean;
+};
+
+type TeamLookupRow = {
+  id: string;
+  name: string;
+  stock_center_id: string | null;
+  ativo: boolean;
+};
+
+type StockCenterLookupRow = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  center_type: "OWN" | "THIRD_PARTY";
+};
+
+type ProjectLookupRow = {
+  id: string;
+  sob: string;
+  is_active: boolean;
+};
+
+type BalanceLookupRow = {
+  stock_center_id: string;
+  material_id: string;
+  quantity: number | string | null;
+};
+
+type TrafoInstanceLookupRow = {
+  material_id: string;
+  serial_number: string;
+  lot_code: string;
+  current_stock_center_id: string | null;
+};
+
+type ImportValidationIssue = {
+  rowNumber: number;
+  column: string;
+  value: string;
+  error: string;
+};
+
+type PreparedImportEntry = SaveTeamStockOperationBatchEntry & {
+  isTransformer: boolean;
+  materialCode: string;
+  quantity: number;
+  serialNumber: string | null;
+  lotCode: string | null;
+  sourceStockCenterId: string;
+  sourceStockCenterName: string;
+  destinationStockCenterId: string;
 };
 
 function toIsoDate(value: Date) {
@@ -91,6 +144,60 @@ function normalizeImportItems(entry: ImportEntryPayload) {
   ];
 }
 
+function makeIssue(rowNumber: number, column: string, value: unknown, error: string): ImportValidationIssue {
+  return {
+    rowNumber,
+    column,
+    value: String(value ?? "").trim(),
+    error,
+  };
+}
+
+function buildErrorResults(issues: ImportValidationIssue[]) {
+  const grouped = new Map<number, string[]>();
+
+  for (const issue of issues) {
+    const current = grouped.get(issue.rowNumber) ?? [];
+    current.push(issue.error);
+    grouped.set(issue.rowNumber, current);
+  }
+
+  return Array.from(grouped.entries())
+    .sort((left, right) => left[0] - right[0])
+    .map(([rowNumber, messages]) => ({
+      rowNumber,
+      success: false,
+      message: Array.from(new Set(messages)).join(" | "),
+    }));
+}
+
+function buildValidationErrorResponse(issues: ImportValidationIssue[], total: number, message: string, status = 409) {
+  const errorRows = new Set(issues.map((issue) => issue.rowNumber)).size;
+
+  return NextResponse.json(
+    {
+      success: false,
+      message,
+      summary: {
+        total,
+        successCount: 0,
+        errorCount: errorRows,
+      },
+      results: buildErrorResults(issues),
+      validationIssues: issues,
+    },
+    { status },
+  );
+}
+
+function makeBalanceKey(stockCenterId: string, materialId: string) {
+  return `${stockCenterId}::${materialId}`;
+}
+
+function makeTrafoKey(materialId: string, serialNumber: string | null, lotCode: string | null) {
+  return `${materialId}::${String(serialNumber ?? "").trim().toUpperCase()}::${String(lotCode ?? "").trim().toUpperCase()}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -121,37 +228,106 @@ export async function POST(request: NextRequest) {
     const materialIds = Array.from(
       new Set(entries.flatMap((entry) => normalizeImportItems(entry).map((item) => item.materialId)).filter(Boolean)),
     );
+    const teamIds = Array.from(new Set(entries.map((entry) => normalizeText(entry.teamId)).filter(Boolean)));
+    const stockCenterIds = Array.from(new Set(entries.map((entry) => normalizeText(entry.stockCenterId)).filter(Boolean)));
+    const projectIds = Array.from(new Set(entries.map((entry) => normalizeText(entry.projectId)).filter(Boolean)));
 
-    const materialResult = materialIds.length
-      ? await supabase
-          .from("materials")
-          .select("id, is_transformer, is_active")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", materialIds)
-          .returns<MaterialLookupRow[]>()
-      : { data: [], error: null };
+    const [
+      materialResult,
+      teamResult,
+      allTeamCenterResult,
+      projectResult,
+    ] = await Promise.all([
+      materialIds.length
+        ? supabase
+            .from("materials")
+            .select("id, codigo, is_transformer, is_active")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", materialIds)
+            .returns<MaterialLookupRow[]>()
+        : Promise.resolve({ data: [], error: null } as { data: MaterialLookupRow[]; error: null }),
+      teamIds.length
+        ? supabase
+            .from("teams")
+            .select("id, name, stock_center_id, ativo")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", teamIds)
+            .returns<TeamLookupRow[]>()
+        : Promise.resolve({ data: [], error: null } as { data: TeamLookupRow[]; error: null }),
+      supabase
+        .from("teams")
+        .select("stock_center_id")
+        .eq("tenant_id", appUser.tenant_id),
+      projectIds.length
+        ? supabase
+            .from("project")
+            .select("id, sob, is_active")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", projectIds)
+            .returns<ProjectLookupRow[]>()
+        : Promise.resolve({ data: [], error: null } as { data: ProjectLookupRow[]; error: null }),
+    ]);
 
-    if (materialResult.error) {
-      return NextResponse.json({ message: "Falha ao validar materiais da importacao em massa." }, { status: 500 });
+    if (materialResult.error || teamResult.error || allTeamCenterResult.error || projectResult.error) {
+      return NextResponse.json({ message: "Falha ao validar catalogos da importacao em massa." }, { status: 500 });
+    }
+
+    const teamStockCenterIds = new Set(
+      (allTeamCenterResult.data ?? [])
+        .map((row) => String((row as { stock_center_id?: string | null }).stock_center_id ?? "").trim())
+        .filter(Boolean),
+    );
+    const teamCenterIds = Array.from(
+      new Set((teamResult.data ?? []).map((row) => String(row.stock_center_id ?? "").trim()).filter(Boolean)),
+    );
+    const stockCenterLookupIds = Array.from(new Set([...stockCenterIds, ...teamCenterIds]));
+
+    const [stockCenterResult, balanceResult, trafoResult] = await Promise.all([
+      stockCenterLookupIds.length
+        ? supabase
+            .from("stock_centers")
+            .select("id, name, is_active, center_type")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", stockCenterLookupIds)
+            .returns<StockCenterLookupRow[]>()
+        : Promise.resolve({ data: [], error: null } as { data: StockCenterLookupRow[]; error: null }),
+      stockCenterLookupIds.length && materialIds.length
+        ? supabase
+            .from("stock_center_balances")
+            .select("stock_center_id, material_id, quantity")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("stock_center_id", stockCenterLookupIds)
+            .in("material_id", materialIds)
+            .returns<BalanceLookupRow[]>()
+        : Promise.resolve({ data: [], error: null } as { data: BalanceLookupRow[]; error: null }),
+      materialIds.length
+        ? supabase
+            .from("trafo_instances")
+            .select("material_id, serial_number, lot_code, current_stock_center_id")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("material_id", materialIds)
+            .returns<TrafoInstanceLookupRow[]>()
+        : Promise.resolve({ data: [], error: null } as { data: TrafoInstanceLookupRow[]; error: null }),
+    ]);
+
+    if (stockCenterResult.error || balanceResult.error || trafoResult.error) {
+      return NextResponse.json({ message: "Falha ao validar saldo/posicao da importacao em massa." }, { status: 500 });
     }
 
     const materialMap = new Map((materialResult.data ?? []).map((row) => [
       row.id,
-      { isTransformer: Boolean(row.is_transformer), isActive: Boolean(row.is_active) },
+      {
+        materialCode: row.codigo,
+        isTransformer: Boolean(row.is_transformer),
+        isActive: Boolean(row.is_active),
+      },
     ]));
-    const seenTransformerUnits = new Map<string, number>();
+    const teamMap = new Map((teamResult.data ?? []).map((row) => [row.id, row]));
+    const projectMap = new Map((projectResult.data ?? []).map((row) => [row.id, row]));
+    const stockCenterMap = new Map((stockCenterResult.data ?? []).map((row) => [row.id, row]));
 
-    const results: Array<{
-      rowNumber: number;
-      success: boolean;
-      transferId?: string;
-      message: string;
-      reason?: string;
-      details?: unknown;
-    }> = [];
-
-    let successCount = 0;
-    let errorCount = 0;
+    const issues: ImportValidationIssue[] = [];
+    const preparedEntries: PreparedImportEntry[] = [];
 
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
@@ -165,126 +341,244 @@ export async function POST(request: NextRequest) {
       const notes = normalizeText(entry.notes) || null;
       const items = normalizeImportItems(entry);
 
-      if (!operationKind || !stockCenterId || !teamId || !projectId || !entryDate || !entryType || items.length === 0) {
-        errorCount += 1;
-        results.push({
-          rowNumber,
-          success: false,
-          message:
-            "Linha invalida. Campos obrigatorios: operacao, centro de estoque, equipe, projeto, data, tipo do material e quantidade valida.",
-          reason: "INVALID_IMPORT_ROW",
-        });
+      if (!operationKind) {
+        issues.push(makeIssue(rowNumber, "operacao", entry.operationKind, "Operacao deve ser REQUISICAO ou DEVOLUCAO."));
+      }
+      if (!stockCenterId) {
+        issues.push(makeIssue(rowNumber, "centro_estoque", entry.stockCenterId, "Centro de estoque e obrigatorio."));
+      }
+      if (!teamId) {
+        issues.push(makeIssue(rowNumber, "equipe", entry.teamId, "Equipe e obrigatoria."));
+      }
+      if (!projectId) {
+        issues.push(makeIssue(rowNumber, "projeto", entry.projectId, "Projeto e obrigatorio."));
+      }
+      if (!entryDate) {
+        issues.push(makeIssue(rowNumber, "data_operacao", entry.entryDate, "Data da operacao e obrigatoria."));
+      }
+      if (!entryType) {
+        issues.push(makeIssue(rowNumber, "tipo", entry.entryType, "Tipo do material deve ser NOVO ou SUCATA."));
+      }
+      if (items.length !== 1) {
+        issues.push(makeIssue(rowNumber, "material_codigo", entry.materialId, "Cada linha deve conter exatamente um material valido."));
         continue;
       }
 
-      const invalidTransformerItem = items.find((item) => {
-        const material = materialMap.get(item.materialId);
-        if (!material?.isTransformer) {
-          return false;
-        }
-        return item.quantity !== 1 || !normalizeText(item.serialNumber) || !normalizeText(item.lotCode);
-      });
+      const item = items[0];
+      const material = materialMap.get(item.materialId);
+      const team = teamMap.get(teamId);
+      const project = projectMap.get(projectId);
+      const mainStockCenter = stockCenterMap.get(stockCenterId);
+      const teamStockCenter = team?.stock_center_id ? stockCenterMap.get(team.stock_center_id) ?? null : null;
 
-      if (invalidTransformerItem) {
-        errorCount += 1;
-        results.push({
-          rowNumber,
-          success: false,
-          message: invalidTransformerItem.quantity !== 1
-            ? "Material TRAFO permite somente quantidade 1 por movimentacao."
-            : "Serial e LP sao obrigatorios para material TRAFO.",
-          reason: invalidTransformerItem.quantity !== 1
-            ? "TRANSFORMER_QUANTITY_MUST_BE_ONE"
-            : "TRANSFORMER_SERIAL_OR_LOT_REQUIRED",
-        });
+      if (!material?.isActive) {
+        issues.push(makeIssue(rowNumber, "material_codigo", item.materialId, "Material nao encontrado ou inativo."));
+      }
+      if (!project || !project.is_active) {
+        issues.push(makeIssue(rowNumber, "projeto", projectId, "Projeto nao encontrado ou inativo."));
+      }
+      if (!team || !team.ativo) {
+        issues.push(makeIssue(rowNumber, "equipe", teamId, "Equipe nao encontrada ou inativa."));
+      }
+      if (team && !team.stock_center_id) {
+        issues.push(makeIssue(rowNumber, "equipe", team.name, "Equipe sem centro de estoque proprio vinculado."));
+      }
+      if (team?.stock_center_id && !teamStockCenter) {
+        issues.push(makeIssue(rowNumber, "equipe", team.name, "Centro de estoque proprio da equipe nao foi encontrado."));
+      }
+      if (teamStockCenter && (!teamStockCenter.is_active || teamStockCenter.center_type !== "OWN")) {
+        issues.push(makeIssue(rowNumber, "equipe", team?.name ?? teamId, "Centro de estoque proprio da equipe esta inativo ou invalido."));
+      }
+      if (!mainStockCenter || !mainStockCenter.is_active || mainStockCenter.center_type !== "OWN") {
+        issues.push(makeIssue(rowNumber, "centro_estoque", stockCenterId, "Centro de estoque principal nao encontrado ou inativo."));
+      }
+      if (stockCenterId && teamStockCenterIds.has(stockCenterId)) {
+        issues.push(makeIssue(rowNumber, "centro_estoque", stockCenterId, "Centro de estoque principal nao pode ser um centro vinculado a equipe."));
+      }
+      if (team?.stock_center_id && stockCenterId === team.stock_center_id) {
+        issues.push(makeIssue(rowNumber, "centro_estoque", stockCenterId, "Centro de estoque principal e centro da equipe devem ser diferentes."));
+      }
+      if (item.quantity <= 0) {
+        issues.push(makeIssue(rowNumber, "quantidade", item.quantity, "Quantidade deve ser maior que zero."));
+      }
+      if (entryDate && entryDate > today) {
+        issues.push(makeIssue(rowNumber, "data_operacao", entryDate, "Data da movimentacao nao pode ser futura."));
+      }
+      if (material?.isTransformer && item.quantity !== 1) {
+        issues.push(makeIssue(rowNumber, "quantidade", item.quantity, "Material TRAFO permite somente quantidade 1 por movimentacao."));
+      }
+      if (material?.isTransformer && !normalizeText(item.serialNumber)) {
+        issues.push(makeIssue(rowNumber, "serial", item.serialNumber, "Serial e obrigatorio para material TRAFO."));
+      }
+      if (material?.isTransformer && !normalizeText(item.lotCode)) {
+        issues.push(makeIssue(rowNumber, "lp", item.lotCode, "LP e obrigatorio para material TRAFO."));
+      }
+
+      const hasBlockingIssues = issues.some((issue) => issue.rowNumber === rowNumber);
+      if (hasBlockingIssues || !material || !team || !team.stock_center_id || !project || !entryDate || !entryType || !mainStockCenter || !teamStockCenter) {
         continue;
       }
 
-      if (entryDate > today) {
-        errorCount += 1;
-        results.push({
-          rowNumber,
-          success: false,
-          message: "Data da movimentacao nao pode ser futura.",
-          reason: "ENTRY_DATE_IN_FUTURE",
-        });
-        continue;
-      }
+      const validatedOperationKind = operationKind as "REQUISITION" | "RETURN";
+      const sourceStockCenterId = validatedOperationKind === "REQUISITION" ? stockCenterId : team.stock_center_id;
+      const sourceStockCenterName = validatedOperationKind === "REQUISITION" ? mainStockCenter.name : teamStockCenter.name;
+      const destinationStockCenterId = validatedOperationKind === "REQUISITION" ? team.stock_center_id : stockCenterId;
 
-      const duplicateTransformerItem = items.find((item) => {
-        const material = materialMap.get(item.materialId);
-        if (!material?.isTransformer) {
-          return false;
-        }
-
-        const unitKey = `${item.materialId}::${normalizeText(item.serialNumber)}::${normalizeText(item.lotCode)}`;
-        const firstSeenRow = seenTransformerUnits.get(unitKey);
-        if (firstSeenRow) {
-          return true;
-        }
-
-        seenTransformerUnits.set(unitKey, rowNumber);
-        return false;
-      });
-
-      if (duplicateTransformerItem) {
-        const unitKey = `${duplicateTransformerItem.materialId}::${normalizeText(duplicateTransformerItem.serialNumber)}::${normalizeText(duplicateTransformerItem.lotCode)}`;
-        const firstSeenRow = seenTransformerUnits.get(unitKey);
-        errorCount += 1;
-        results.push({
-          rowNumber,
-          success: false,
-          message: `Ja existe outra linha na importacao com o mesmo material, Serial e LP (linha ${firstSeenRow ?? "-"})`,
-          reason: "DUPLICATE_TRANSFORMER_UNIT_IN_IMPORT",
-        });
-        continue;
-      }
-
-      const saveResult = await saveTeamStockOperationViaRpc(supabase, {
-        tenantId: appUser.tenant_id,
-        actorUserId: appUser.id,
-        operationKind,
+      preparedEntries.push({
+        rowNumber,
+        operationKind: validatedOperationKind,
         stockCenterId,
         teamId,
         projectId,
         entryDate,
         entryType,
         notes,
-        items,
+        items: [item],
+        isTransformer: material.isTransformer,
+        materialCode: material.materialCode,
+        quantity: item.quantity,
+        serialNumber: item.serialNumber ?? null,
+        lotCode: item.lotCode ?? null,
+        sourceStockCenterId,
+        sourceStockCenterName,
+        destinationStockCenterId,
       });
+    }
 
-      if (!saveResult.ok) {
-        errorCount += 1;
-        results.push({
-          rowNumber,
-          success: false,
-          message: saveResult.message,
-          reason: saveResult.reason,
-          details: saveResult.details,
-        });
+    if (issues.length > 0) {
+      return buildValidationErrorResponse(
+        issues,
+        entries.length,
+        "Cadastro em massa bloqueado por erros de validacao. Corrija o arquivo e tente novamente.",
+        400,
+      );
+    }
+
+    const projectedBalances = new Map<string, number>();
+    for (const row of balanceResult.data ?? []) {
+      projectedBalances.set(
+        makeBalanceKey(row.stock_center_id, row.material_id),
+        Number(row.quantity ?? 0),
+      );
+    }
+
+    const projectedTrafoPositions = new Map<string, string | null>();
+    for (const row of trafoResult.data ?? []) {
+      projectedTrafoPositions.set(
+        makeTrafoKey(row.material_id, row.serial_number, row.lot_code),
+        row.current_stock_center_id,
+      );
+    }
+
+    for (const entry of preparedEntries) {
+      const item = entry.items[0];
+      const balanceSourceKey = makeBalanceKey(entry.sourceStockCenterId, item.materialId);
+      const balanceDestinationKey = makeBalanceKey(entry.destinationStockCenterId, item.materialId);
+
+      if (entry.isTransformer) {
+        const unitKey = makeTrafoKey(item.materialId, item.serialNumber ?? null, item.lotCode ?? null);
+        const currentStockCenterId = projectedTrafoPositions.get(unitKey) ?? null;
+
+        if (currentStockCenterId !== entry.sourceStockCenterId) {
+          issues.push(
+            makeIssue(
+              entry.rowNumber,
+              "serial",
+              `${item.serialNumber ?? ""}/${item.lotCode ?? ""}`,
+              `A unidade TRAFO informada nao esta no estoque de origem (${entry.sourceStockCenterName}). Confira Material, Serial e LP.`,
+            ),
+          );
+          continue;
+        }
+
+        projectedTrafoPositions.set(unitKey, entry.destinationStockCenterId);
+      }
+
+      const sourceBalance = projectedBalances.get(balanceSourceKey) ?? 0;
+      if (sourceBalance < entry.quantity) {
+        issues.push(
+          makeIssue(
+            entry.rowNumber,
+            "quantidade",
+            entry.quantity,
+            sourceBalance <= 0
+              ? `O material ${entry.materialCode} nao existe com saldo disponivel no estoque de origem (${entry.sourceStockCenterName}).`
+              : `Saldo insuficiente no estoque de origem (${entry.sourceStockCenterName}). Saldo atual: ${sourceBalance.toLocaleString("pt-BR")}.`,
+          ),
+        );
         continue;
       }
 
-      successCount += 1;
-      results.push({
-        rowNumber,
-        success: true,
-        transferId: saveResult.transferId,
-        message: saveResult.message,
-      });
+      projectedBalances.set(balanceSourceKey, sourceBalance - entry.quantity);
+      projectedBalances.set(
+        balanceDestinationKey,
+        (projectedBalances.get(balanceDestinationKey) ?? 0) + entry.quantity,
+      );
+    }
+
+    if (issues.length > 0) {
+      return buildValidationErrorResponse(
+        issues,
+        entries.length,
+        "Cadastro em massa bloqueado por saldo/posicao inconsistente. Nenhuma linha foi salva.",
+        409,
+      );
+    }
+
+    const saveResult = await saveTeamStockOperationBatchViaRpc(supabase, {
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      entries: preparedEntries.map((entry) => ({
+        rowNumber: entry.rowNumber,
+        operationKind: entry.operationKind,
+        stockCenterId: entry.stockCenterId,
+        teamId: entry.teamId,
+        projectId: entry.projectId,
+        entryDate: entry.entryDate,
+        entryType: entry.entryType,
+        notes: entry.notes,
+        items: entry.items,
+      })),
+    });
+
+    if (!saveResult.ok) {
+      const failedRowNumber = saveResult.failedRowNumber ?? 0;
+      const failedIssue = failedRowNumber > 0
+        ? [makeIssue(failedRowNumber, "linha", "", saveResult.message)]
+        : [];
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: saveResult.message,
+          summary: {
+            total: entries.length,
+            successCount: 0,
+            errorCount: failedIssue.length > 0 ? 1 : entries.length,
+          },
+          results: failedIssue.length > 0
+            ? buildErrorResults(failedIssue)
+            : [{
+                rowNumber: 0,
+                success: false,
+                message: saveResult.message,
+              }],
+          validationIssues: failedIssue,
+          details: saveResult.details,
+        },
+        { status: Math.max(409, saveResult.status) },
+      );
     }
 
     return NextResponse.json(
       {
-        success: errorCount === 0,
-        summary: {
-          total: entries.length,
-          successCount,
-          errorCount,
-        },
-        results,
+        success: true,
+        message: saveResult.message,
+        summary: saveResult.summary,
+        results: saveResult.results,
+        validationIssues: [],
       },
-      { status: errorCount > 0 ? 207 : 200 },
+      { status: 200 },
     );
   } catch {
     return NextResponse.json({ message: "Falha ao importar operacoes de equipe em massa." }, { status: 500 });

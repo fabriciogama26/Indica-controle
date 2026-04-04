@@ -170,7 +170,7 @@ vercel --prod
   - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
 - `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais e motivos de estorno da tela `Operacoes de Equipe`.
 - `api/team-stock-operations/route.ts`: cria requisicoes/devolucoes por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
-  - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV).
+  - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV), com pre-validacao sequencial de saldo/TRAFO, rollback total do lote e retorno de erros por linha/coluna.
   - `api/team-stock-operations/reversal/route.ts`: executa estorno transacional das operacoes de equipe com permissao administrativa.
 - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, `ultima movimentacao` baseada em `stock_center_balances.updated_at` e historico enriquecido com `Equipe`/`Encarregado` nas operacoes de equipe.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` ativos usados no filtro da tela de Estoque Atual.
@@ -216,7 +216,7 @@ vercel --prod
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
   - `constants.ts`: configuracoes de pagina, labels de historico e template CSV da tela `Operacoes de Equipe`.
   - `utils.ts`: formatadores, parser CSV e geracao de relatorio de erros do cadastro em massa.
-- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`, selecao de centro proprio principal, equipe ativa, projeto, material, regras de TRAFO, cadastro em massa, estorno, historico e exibicao do encarregado snapshot por operacao.
+- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`, selecao de centro proprio principal, equipe ativa, projeto, material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno, historico e exibicao do encarregado snapshot por operacao.
   - `TeamStockOperationsPageView.module.css`: estilo local da tela, reaproveitando o mesmo visual operacional da movimentacao de estoque.
 - `src/modules/dashboard/estoque/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual.
