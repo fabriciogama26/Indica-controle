@@ -7,8 +7,8 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   operationKind: "Operacao",
   teamName: "Equipe",
   foremanName: "Encarregado",
-  fromStockCenterId: "Centro de estoque",
-  toStockCenterId: "Centro da equipe",
+  fromStockCenterId: "Centro DE",
+  toStockCenterId: "Centro PARA",
   originalTransferId: "Transferencia original",
   reversalTransferId: "Transferencia de estorno",
   projectId: "Projeto",
@@ -22,6 +22,7 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   lotCode: "LP",
   entryDate: "Data da operacao",
   entryType: "Tipo",
+  technicalOriginStockCenterId: "Origem tecnica",
   reversalReason: "Motivo do estorno",
   notes: "Observacao",
 };

@@ -2,7 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 import { StockTransferItemInput } from "@/lib/server/stockTransfers";
 
-export type TeamOperationKind = "REQUISITION" | "RETURN";
+export type TeamOperationKind = "REQUISITION" | "RETURN" | "FIELD_RETURN";
 
 export type SaveTeamStockOperationPayload = {
   tenantId: string;
@@ -87,6 +87,8 @@ function mapTeamOperationErrorMessage(reason: string) {
       return "Centro de estoque principal nao pode ser um centro vinculado a equipe.";
     case "INVALID_TEAM_OPERATION_KIND":
       return "Operacao de equipe invalida.";
+    case "FIELD_RETURN_CENTER_UNAVAILABLE":
+      return "Nao foi possivel preparar o centro tecnico CAMPO / INSTALADO.";
     case "TEAM_OPERATION_REQUIRED_FIELDS":
       return "Centro de estoque e equipe sao obrigatorios para a operacao.";
     default:
@@ -253,6 +255,16 @@ export function normalizeTeamOperationKind(value: unknown) {
 
   if (normalized === "RETURN" || normalized === "DEVOLUCAO") {
     return "RETURN" as const;
+  }
+
+  if (
+    normalized === "FIELD_RETURN"
+    || normalized === "RETORNO_DE_CAMPO"
+    || normalized === "RETORNO_CAMPO"
+    || normalized === "RETORNO DE CAMPO"
+    || normalized === "RETORNOCAMPO"
+  ) {
+    return "FIELD_RETURN" as const;
   }
 
   return null;

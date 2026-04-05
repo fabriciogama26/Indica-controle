@@ -70,6 +70,7 @@ type TrafoPositionLookupResponse = {
     serialNumber: string;
     lotCode: string;
     currentStockCenterId: string | null;
+    currentStatus?: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE";
   }>;
   message?: string;
 };
@@ -78,7 +79,16 @@ function operationSignalClass(value: TeamOperationKind | string | null | undefin
   const normalized = normalizeTeamOperationKind(value);
   if (normalized === "REQUISITION") return styles.signalChipExit;
   if (normalized === "RETURN") return styles.signalChipEntry;
+  if (normalized === "FIELD_RETURN") return styles.signalChipEntry;
   return styles.signalChipTransfer;
+}
+
+function resolvePrimaryStockCenterName(item: Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">) {
+  return item.operationKind === "REQUISITION" ? item.fromStockCenterName : item.toStockCenterName;
+}
+
+function resolveSupportCenterName(item: Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">) {
+  return item.operationKind === "REQUISITION" ? item.toStockCenterName : item.fromStockCenterName;
 }
 
 function createRowId() {
@@ -163,6 +173,7 @@ export function TeamStockOperationsPageView() {
   const [projects, setProjects] = useState<MetaResponse["projects"]>([]);
   const [materials, setMaterials] = useState<MetaResponse["materials"]>([]);
   const [reversalReasons, setReversalReasons] = useState<MetaResponse["reversalReasons"]>([]);
+  const [fieldReturnOriginName, setFieldReturnOriginName] = useState("CAMPO / INSTALADO");
 
   const [historyItems, setHistoryItems] = useState<TeamOperationListItem[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -218,14 +229,18 @@ export function TeamStockOperationsPageView() {
   const requiresTransformerFields = Boolean(selectedMaterial?.isTransformer);
   const formDateLabel = operationDateLabel(form.operationKind);
   const formCardTitle = "Cadastro de Operacoes de Equipe";
-  const formCardDescription = "Selecione a operacao: Requisicao ou Devolucao.";
+  const formCardDescription = `Selecione a operacao: Requisicao, Devolucao ou Retorno de campo via ${fieldReturnOriginName}.`;
   const submitButtonLabel = isSubmitting ? "Salvando..." : "Salvar operacao";
   const sourceStockCenterId = form.operationKind === "REQUISITION"
     ? form.stockCenterId
-    : (selectedTeam?.stockCenterId ?? "");
+    : form.operationKind === "RETURN"
+      ? (selectedTeam?.stockCenterId ?? "")
+      : "";
   const sourceStockCenterName = form.operationKind === "REQUISITION"
     ? (selectedStockCenter?.name ?? "centro selecionado")
-    : (selectedTeam?.stockCenterName ?? "centro da equipe");
+    : form.operationKind === "RETURN"
+      ? (selectedTeam?.stockCenterName ?? "centro da equipe")
+      : fieldReturnOriginName;
   const firstRowByTransferId = useMemo(() => {
     const seen = new Set<string>();
     const map = new Map<string, boolean>();
@@ -260,7 +275,7 @@ export function TeamStockOperationsPageView() {
     setForm((current) => ({
       ...current,
       description: selectedMaterial.description,
-      entryType: nextEntryType,
+      entryType: current.operationKind === "FIELD_RETURN" ? "SUCATA" : nextEntryType,
       quantity: selectedMaterial.isTransformer ? "1" : current.quantity,
     }));
   }, [selectedMaterial]);
@@ -343,13 +358,14 @@ export function TeamStockOperationsPageView() {
           return;
         }
 
-        const nextReversalReasons = data.reversalReasons ?? [];
-        setStockCenters(data.stockCenters ?? []);
-        setTeams((data.teams ?? []).filter((team) => team.isActive));
-        setProjects(data.projects ?? []);
-        setMaterials(data.materials ?? []);
-        setReversalReasons(nextReversalReasons);
-        setFeedback(null);
+    const nextReversalReasons = data.reversalReasons ?? [];
+    setStockCenters(data.stockCenters ?? []);
+    setTeams((data.teams ?? []).filter((team) => team.isActive));
+    setProjects(data.projects ?? []);
+    setMaterials(data.materials ?? []);
+    setReversalReasons(nextReversalReasons);
+    setFieldReturnOriginName(String(data.fieldReturnOriginName ?? "CAMPO / INSTALADO"));
+    setFeedback(null);
 
         if (!reversalReasonCode && nextReversalReasons.length > 0) {
           setReversalReasonCode(nextReversalReasons[0].code);
@@ -480,7 +496,9 @@ export function TeamStockOperationsPageView() {
       materialCode: value,
       materialId: matchedMaterial?.id ?? "",
       description: matchedMaterial?.description ?? "",
-      entryType: normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
+      entryType: current.operationKind === "FIELD_RETURN"
+        ? (matchedMaterial ? "SUCATA" : "")
+        : normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
       quantity: matchedMaterial?.isTransformer ? "1" : current.quantity,
       serialNumber: matchedMaterial?.isTransformer ? current.serialNumber : "",
       lotCode: matchedMaterial?.isTransformer ? current.lotCode : "",
@@ -488,9 +506,17 @@ export function TeamStockOperationsPageView() {
   }
 
   function handleOperationKindChange(value: TeamOperationKind) {
+    if (form.items.length > 0) {
+      showError("Remova os itens adicionados antes de trocar o tipo da operacao.");
+      return;
+    }
+
     setForm((current) => ({
       ...current,
       operationKind: value,
+      entryType: value === "FIELD_RETURN"
+        ? (current.materialId ? "SUCATA" : "")
+        : normalizeMaterialEntryType(selectedMaterial?.materialType ?? ""),
     }));
   }
 
@@ -525,7 +551,9 @@ export function TeamStockOperationsPageView() {
       return;
     }
 
-    const normalizedEntryType = normalizeMaterialEntryType(form.entryType);
+    const normalizedEntryType = form.operationKind === "FIELD_RETURN"
+      ? "SUCATA"
+      : normalizeMaterialEntryType(form.entryType);
     if (!normalizedEntryType) {
       showError("Tipo do material deve ser NOVO ou SUCATA no cadastro de materiais.");
       return;
@@ -613,7 +641,54 @@ export function TeamStockOperationsPageView() {
     lotCode: string | null;
     isTransformer: boolean;
   }) {
-    if (!accessToken || !sourceStockCenterId) {
+    if (!accessToken) {
+      return { ok: false, message: "Sessao invalida para validar a operacao." } as const;
+    }
+
+    if (form.operationKind === "FIELD_RETURN") {
+      if (!params.isTransformer) {
+        return { ok: true } as const;
+      }
+
+      const searchParams = new URLSearchParams();
+      searchParams.set("page", "1");
+      searchParams.set("pageSize", "10");
+      searchParams.set("materialCode", params.materialCode);
+      searchParams.set("serialNumber", params.serialNumber ?? "");
+      searchParams.set("lotCode", params.lotCode ?? "");
+
+      const response = await fetch(`/api/trafo-positions?${searchParams.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as TrafoPositionLookupResponse;
+      if (!response.ok) {
+        return {
+          ok: false,
+          message: data.message ?? "Falha ao validar a unidade TRAFO para retorno de campo.",
+        } as const;
+      }
+
+      const matchedUnit = (data.items ?? []).find((item) =>
+        item.materialId === params.materialId
+        && String(item.serialNumber ?? "").trim().toUpperCase() === String(params.serialNumber ?? "").trim().toUpperCase()
+        && String(item.lotCode ?? "").trim().toUpperCase() === String(params.lotCode ?? "").trim().toUpperCase(),
+      );
+
+      if (matchedUnit && matchedUnit.currentStatus !== "FORA_ESTOQUE") {
+        return {
+          ok: false,
+          message: `Material ${params.materialCode}: a unidade TRAFO informada ja esta registrada no estoque ou vinculada a uma equipe. Utilize outra operacao em vez de Retorno de campo.`,
+        } as const;
+      }
+
+      return { ok: true } as const;
+    }
+
+    if (!sourceStockCenterId) {
       return { ok: false, message: "Selecione um centro de origem valido antes de salvar." } as const;
     }
 
@@ -725,7 +800,9 @@ export function TeamStockOperationsPageView() {
       return;
     }
 
-    const operationEntryType = form.items[0]?.entryType ?? "";
+    const operationEntryType = form.operationKind === "FIELD_RETURN"
+      ? "SUCATA"
+      : (form.items[0]?.entryType ?? "");
     if (!operationEntryType) {
       showError("Nao foi possivel determinar o tipo dos itens da operacao.");
       return;
@@ -890,17 +967,17 @@ export function TeamStockOperationsPageView() {
       }
 
       const lines = [
-        "operacao;centro_estoque;equipe;encarregado;centro_equipe;projeto;material_codigo;descricao;quantidade;serial;lp;data_operacao;tipo;status;observacao",
+        "operacao;centro_estoque;equipe;encarregado;origem_apoio;projeto;material_codigo;descricao;quantidade;serial;lp;data_operacao;tipo;status;observacao",
         ...exportedItems.map((item) => {
-          const stockCenterName = item.operationKind === "REQUISITION" ? item.fromStockCenterName : item.toStockCenterName;
-          const teamCenterName = item.operationKind === "REQUISITION" ? item.toStockCenterName : item.fromStockCenterName;
+          const stockCenterName = resolvePrimaryStockCenterName(item);
+          const supportCenterName = resolveSupportCenterName(item);
 
           return [
             item.isReversal ? "ESTORNO" : operationKindLabel(item.operationKind),
             stockCenterName,
             item.teamName,
             item.foremanName ?? "",
-            teamCenterName,
+            supportCenterName,
             item.projectCode,
             item.materialCode,
             item.description,
@@ -1057,6 +1134,7 @@ export function TeamStockOperationsPageView() {
       headerLine,
       "REQUISICAO;CENTRO-A;Equipe Norte;PROJ-001;MAT-001;5;;;2026-04-04;Requisicao operacional",
       "DEVOLUCAO;CENTRO-A;Equipe Norte;PROJ-001;TRAFO-001;1;SER-001;LP-001;2026-04-04;Devolucao de unidade",
+      "RETORNO_DE_CAMPO;CENTRO-A;Equipe Norte;PROJ-001;TRAFO-RET-001;1;SER-RET-001;LP-RET-001;2026-04-04;Retirada de campo",
     ];
     downloadCsv(`\uFEFF${sampleLines.join("\n")}\n`, "operacoes_equipe_modelo.csv");
   }
@@ -1144,10 +1222,12 @@ export function TeamStockOperationsPageView() {
         const project = projectMap.get(normalizeHeaderName(projectRaw)) ?? null;
         const material = materialMap.get(normalizeHeaderName(materialRaw)) ?? null;
         const quantity = parsePositiveNumber(quantityRaw);
-        const entryType = normalizeMaterialEntryType(material?.materialType ?? "");
+        const entryType = operationKind === "FIELD_RETURN"
+          ? "SUCATA"
+          : normalizeMaterialEntryType(material?.materialType ?? "");
 
         if (!operationKind) {
-          issues.push({ rowNumber, column: "operacao", value: operationKindRaw, error: "Operacao deve ser REQUISICAO ou DEVOLUCAO." });
+          issues.push({ rowNumber, column: "operacao", value: operationKindRaw, error: "Operacao deve ser REQUISICAO, DEVOLUCAO ou RETORNO_DE_CAMPO." });
         }
         if (!stockCenter) {
           issues.push({ rowNumber, column: "centro_estoque", value: stockCenterRaw, error: "Centro de estoque nao encontrado." });
@@ -1312,6 +1392,7 @@ export function TeamStockOperationsPageView() {
             >
               <option value="REQUISITION">Requisicao</option>
               <option value="RETURN">Devolucao</option>
+              <option value="FIELD_RETURN">Retorno de campo</option>
             </select>
           </label>
 
@@ -1398,7 +1479,7 @@ export function TeamStockOperationsPageView() {
               <div>
                 <h3 className={localStyles.subCardTitle}>Materiais da Operacao</h3>
                 <p className={localStyles.subCardHint}>
-                  Adicione os materiais antes de salvar a requisicao ou devolucao.
+                  Adicione os materiais antes de salvar a requisicao, devolucao ou retorno de campo.
                 </p>
               </div>
               <span className={localStyles.subCardBadge}>
@@ -1583,6 +1664,7 @@ export function TeamStockOperationsPageView() {
               <option value="TODOS">Todos</option>
               <option value="REQUISITION">Requisicao</option>
               <option value="RETURN">Devolucao</option>
+              <option value="FIELD_RETURN">Retorno de campo</option>
             </select>
           </label>
 
@@ -1667,7 +1749,7 @@ export function TeamStockOperationsPageView() {
         <div className={styles.tableHeader}>
           <div>
             <h3 className={styles.cardTitle}>Lista de Operacoes de Equipe</h3>
-            <p className={styles.tableHint}>Historico operacional de requisicoes, devolucoes, estornos e registros estornados.</p>
+            <p className={styles.tableHint}>Historico operacional de requisicoes, devolucoes, retornos de campo, estornos e registros estornados.</p>
           </div>
 
           <div className={styles.tableHeaderActions}>
@@ -1687,7 +1769,7 @@ export function TeamStockOperationsPageView() {
                 <th>Centro estoque</th>
                 <th>Equipe</th>
                 <th>Encarregado</th>
-                <th>Centro equipe</th>
+                <th>Origem apoio</th>
                 <th>Projeto</th>
                 <th>Material</th>
                 <th>Descricao</th>
@@ -1700,8 +1782,8 @@ export function TeamStockOperationsPageView() {
             </thead>
             <tbody>
               {historyItems.length > 0 ? historyItems.map((item) => {
-                const stockCenterName = item.operationKind === "REQUISITION" ? item.fromStockCenterName : item.toStockCenterName;
-                const teamCenterName = item.operationKind === "REQUISITION" ? item.toStockCenterName : item.fromStockCenterName;
+                const stockCenterName = resolvePrimaryStockCenterName(item);
+                const supportCenterName = resolveSupportCenterName(item);
                 const statusLabel = rowStatusLabel(item);
 
                 return (
@@ -1712,7 +1794,7 @@ export function TeamStockOperationsPageView() {
                     <td>{stockCenterName}</td>
                     <td>{item.teamName}</td>
                     <td>{item.foremanName ?? "-"}</td>
-                    <td>{teamCenterName}</td>
+                    <td>{supportCenterName}</td>
                     <td>{item.projectCode}</td>
                     <td>{item.materialCode}</td>
                     <td className={styles.tableDescriptionCell}>{item.description}</td>
@@ -1819,8 +1901,8 @@ export function TeamStockOperationsPageView() {
                 <div><strong>Operacao:</strong> {operationKindLabel(detailItem.operationKind)}</div>
                 <div><strong>Equipe:</strong> {detailItem.teamName}</div>
                 <div><strong>Encarregado:</strong> {detailItem.foremanName ?? "-"}</div>
-                <div><strong>Centro estoque:</strong> {detailItem.operationKind === "REQUISITION" ? detailItem.fromStockCenterName : detailItem.toStockCenterName}</div>
-                <div><strong>Centro equipe:</strong> {detailItem.operationKind === "REQUISITION" ? detailItem.toStockCenterName : detailItem.fromStockCenterName}</div>
+                <div><strong>Centro estoque:</strong> {resolvePrimaryStockCenterName(detailItem)}</div>
+                <div><strong>Origem apoio:</strong> {resolveSupportCenterName(detailItem)}</div>
                 <div><strong>Projeto:</strong> {detailItem.projectCode}</div>
                 <div><strong>Material:</strong> {detailItem.materialCode}</div>
                 <div><strong>Descricao:</strong> {detailItem.description}</div>
@@ -1982,7 +2064,7 @@ export function TeamStockOperationsPageView() {
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
                 <h4>Cadastro em massa</h4>
-                <p className={styles.modalSubtitle}>Importe um CSV para registrar requisicoes e devolucoes em lote.</p>
+                <p className={styles.modalSubtitle}>Importe um CSV para registrar requisicoes, devolucoes e retornos de campo em lote.</p>
               </div>
               <button type="button" className={styles.modalCloseButton} onClick={closeImportModal}>
                 Fechar
@@ -2013,7 +2095,7 @@ export function TeamStockOperationsPageView() {
                     <p>Colunas obrigatorias: operacao, centro_estoque, equipe, projeto, material_codigo, quantidade, data_operacao.</p>
                     <p>Colunas condicionais: serial e lp para material TRAFO.</p>
                     <p>Coluna opcional: observacao.</p>
-                    <p>Operacao aceita: REQUISICAO/REQUISITION ou DEVOLUCAO/RETURN.</p>
+                    <p>Operacao aceita: REQUISICAO/REQUISITION, DEVOLUCAO/RETURN ou RETORNO_DE_CAMPO/FIELD_RETURN.</p>
                   </div>
                 </div>
               </section>

@@ -30,6 +30,12 @@ export function normalizeTeamOperationKind(value: unknown) {
 
   if (normalized === "REQUISITION" || normalized === "REQUISICAO") return "REQUISITION" as const;
   if (normalized === "RETURN" || normalized === "DEVOLUCAO") return "RETURN" as const;
+  if (
+    normalized === "FIELD_RETURN"
+    || normalized === "RETORNO_DE_CAMPO"
+    || normalized === "RETORNO_CAMPO"
+    || normalized === "RETORNO DE CAMPO"
+  ) return "FIELD_RETURN" as const;
   return null;
 }
 
@@ -37,6 +43,7 @@ export function operationKindLabel(value: TeamOperationKind | string | null | un
   const normalized = normalizeTeamOperationKind(value);
   if (normalized === "REQUISITION") return "Requisicao";
   if (normalized === "RETURN") return "Devolucao";
+  if (normalized === "FIELD_RETURN") return "Retorno de campo";
   return "-";
 }
 
@@ -44,6 +51,7 @@ export function operationDateLabel(value: TeamOperationKind | string | null | un
   const normalized = normalizeTeamOperationKind(value);
   if (normalized === "REQUISITION") return "Data da requisicao";
   if (normalized === "RETURN") return "Data da devolucao";
+  if (normalized === "FIELD_RETURN") return "Data do retorno de campo";
   return "Data da operacao";
 }
 

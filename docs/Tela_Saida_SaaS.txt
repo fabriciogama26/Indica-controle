@@ -2,7 +2,7 @@ Tela: Operacoes de Equipe SaaS
 
 Visao geral
 -----------
-- Tela operacional dedicada a `Requisicao` e `Devolucao` entre um `Centro de estoque` proprio e o `Centro de estoque proprio` vinculado a uma `Equipe`.
+- Tela operacional dedicada a `Requisicao`, `Devolucao` e `Retorno de campo` entre um `Centro de estoque` proprio, o `Centro de estoque proprio` vinculado a uma `Equipe` e o centro tecnico `CAMPO / INSTALADO`.
 - Reaproveita o mesmo ledger de estoque (`stock_transfers`, `stock_transfer_items`, `stock_center_balances`) para manter saldo, historico e estorno consistentes.
 - O fluxo exige `Projeto`, `Equipe`, `Centro de estoque`, `Material`, `Quantidade`, `Data da operacao` e respeita as mesmas regras de TRAFO da movimentacao de estoque.
 
@@ -24,11 +24,12 @@ Arquitetura
 - Banco:
   - `supabase/migrations/140_create_team_stock_operations.sql`
   - `supabase/migrations/143_create_team_stock_operation_batch_full.sql`
+  - `supabase/migrations/144_add_field_return_team_operations.sql`
 
 Cadastro
 --------
 - Campos obrigatorios:
-  - `operationKind` (`REQUISITION` ou `RETURN`)
+  - `operationKind` (`REQUISITION`, `RETURN` ou `FIELD_RETURN`)
   - `stockCenterId`
   - `teamId`
   - `projectId`
@@ -43,9 +44,12 @@ Cadastro
 - Regras operacionais:
 - `REQUISITION`: `Centro de estoque -> Centro da equipe`
 - `RETURN`: `Centro da equipe -> Centro de estoque`
+- `FIELD_RETURN`: `CAMPO / INSTALADO -> Centro de estoque`
 - A equipe precisa ter `teams.stock_center_id` preenchido e ativo.
 - O `Centro de estoque` da tela e sempre um centro `OWN` principal, diferente do centro proprio da equipe e tambem diferente de qualquer outro centro vinculado a equipe.
 - O centro da equipe nao e selecionado manualmente na tela; ele e resolvido automaticamente a partir da equipe escolhida.
+- O `Retorno de campo` usa o centro tecnico `CAMPO / INSTALADO` como origem tecnica, sem consumir saldo da equipe.
+- No `Retorno de campo`, o `Tipo` e forçado para `SUCATA` e o motivo operacional fixo e `Retirada de campo`.
 - Cada operacao salva snapshot de `Equipe` e `Encarregado` no momento do registro, evitando que o historico mude quando o encarregado atual da equipe for alterado depois.
   - `Projeto` e obrigatorio mesmo sendo campo informativo do fluxo.
   - `Tipo` e preenchido automaticamente a partir de `materials.tipo`.
@@ -64,6 +68,8 @@ Filtros, auto-complete e listagem
   - O bloco de material funciona com `Adicionar material`, montando uma lista local antes do `Salvar operacao`, no mesmo raciocinio operacional da tela de `Medicao`.
   - A mesma operacao manual aceita varios itens, mas todos precisam compartilhar o mesmo `Tipo` (`NOVO` ou `SUCATA`) porque o ledger grava `entry_type` no cabecalho da transferencia.
   - Material comum nao pode repetir na mesma operacao manual; para TRAFO a unicidade e por `material + serial + LP`.
+  - Em `Retorno de campo`, o frontend nao exige saldo previo no centro da equipe.
+  - Em `Retorno de campo`, `TRAFO` aceita unidade nova ou unidade previamente `Fora do estoque proprio`, mas bloqueia unidade ja registrada em centro proprio/equipe.
 - `Centro de estoque` e `Equipe` usam `select`.
 - O select de `Equipe` lista as equipes ativas do cadastro `teams`.
 - O select de `Centro de estoque` nao lista centros vinculados a equipes, ativas ou inativas.
@@ -87,6 +93,7 @@ Filtros, auto-complete e listagem
   - O import e atomico: se qualquer linha falhar na pre-validacao ou no save transacional, nenhuma linha e salva.
   - Erros do lote sobem em modal e tambem geram `CSV` detalhado.
   - Em caso de erro, a tela gera `CSV` com `linha;coluna;valor;erro`.
+  - O CSV aceita `RETORNO_DE_CAMPO`/`FIELD_RETURN` e, nesse caso, grava `entry_type = SUCATA`.
 - Filtros da lista:
   - `Data inicial`
   - `Data final`
@@ -99,7 +106,7 @@ Filtros, auto-complete e listagem
 - Lista:
   - `Centro estoque`
   - `Equipe`
-  - `Centro equipe`
+  - `Origem apoio`
   - `Projeto`
   - `Material`
   - `Descricao`
@@ -135,7 +142,8 @@ Cancelamento e saldo
 - Impacto no saldo:
   - `REQUISITION`: baixa no centro de estoque e credita no centro da equipe.
   - `RETURN`: baixa no centro da equipe e credita no centro de estoque.
-- O `Estoque Atual` passa a ler essas operacoes e exibir `Requisicao`/`Devolucao` no historico.
+- `FIELD_RETURN`: credita o centro de estoque fisico a partir de `CAMPO / INSTALADO`, sem criar saldo previo na equipe.
+- O `Estoque Atual` passa a ler essas operacoes e exibir `Requisicao`, `Devolucao` e `Retorno de campo` no historico.
 - A validacao da `/saida` continua podendo consultar centro de equipe em modo tecnico para `Devolucao`, sem expor esses centros na tela publica de `Estoque Atual`.
 
 Atalhos
@@ -151,7 +159,7 @@ Atalhos
 Atualizacao 2026-04
 -------------------
 - Antes: `/saida` apenas redirecionava para `/entrada`.
-- Depois: `/saida` passa a operar como modulo proprio para `Requisicao` e `Devolucao`.
+- Depois: `/saida` passa a operar como modulo proprio para `Requisicao`, `Devolucao` e `Retorno de campo`.
 - A tela ganhou formulario manual, filtros, lista paginada, detalhes, historico, estorno e cadastro em massa.
 - Ajuste de UX: o cadastro manual agora monta uma lista de itens (`Material + Descricao + Tipo + Serial + LP + Quantidade`) antes do submit final, no mesmo padrao mental de `adicionar e depois salvar` usado na `Medicao`.
 - Ajuste de UX: o bloco de materiais passou a ficar visualmente separado do cabecalho da operacao, em um sub-card proprio no mesmo estilo de leitura da `Medicao`.
@@ -178,6 +186,11 @@ Atualizacao 2026-04
   - bloqueia no banco o uso de centro vinculado a equipe como `Centro de estoque` principal da operacao
 - Migration `143_create_team_stock_operation_batch_full.sql`:
   - cria a RPC atomica `save_team_stock_operation_batch_full` para o cadastro em massa da `/saida`
+- Migration `144_add_field_return_team_operations.sql`:
+  - adiciona `operation_kind` explicito em `stock_transfer_team_operations`
+  - cria o centro tecnico `CAMPO / INSTALADO` por tenant quando necessario
+  - adiciona `FIELD_RETURN` na RPC transacional de operacoes de equipe
+  - preserva `Retorno de campo` e origem tecnica tambem nos estornos e historicos
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -202,6 +215,8 @@ Constantes e configuracoes
   - Responsavel por: auto-criar/backfill do centro proprio da equipe e persistir snapshot de equipe/encarregado nas operacoes.
 - Caminho: `supabase/migrations/143_create_team_stock_operation_batch_full.sql`
   - Responsavel por: garantir save atomico no cadastro em massa da tela.
+- Caminho: `supabase/migrations/144_add_field_return_team_operations.sql`
+  - Responsavel por: abrir `Retorno de campo`, centro tecnico e persistencia explicita do tipo operacional.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/saida/utils.ts`
@@ -244,4 +259,4 @@ Ajuda contextual
   - `saveTeamStockOperationViaRpc`, `saveTeamStockOperationBatchViaRpc`, `reverseTeamStockOperationViaRpc`
 - Comportamento antes/depois:
   - Antes: `/saida` nao tinha fluxo proprio.
-  - Depois: `/saida` passa a registrar requisicoes/devolucoes reais com saldo, historico, snapshot de `Equipe/Encarregado` e estorno no mesmo padrao operacional do almoxarifado.
+  - Depois: `/saida` passa a registrar requisicoes, devolucoes e retornos de campo reais com saldo, historico, snapshot de `Equipe/Encarregado` e estorno no mesmo padrao operacional do almoxarifado.

@@ -6,7 +6,7 @@ Visao geral
 - Usa `trafo_instances` como fonte unitaria de verdade, mas a leitura principal da tela prioriza o centro fisico de referencia e nao expoe centros de equipe como posicao principal.
 - Complementa `Movimentacao de Estoque` e `Estoque Atual` com foco na identidade da unidade (`material + Serial + LP`).
 - Permite acionar movimentacao da propria unidade, com pre-preenchimento do formulario de `/entrada`.
-- Exibe a cadeia completa de movimentacoes da unidade em modal de `Historico`, incluindo `Requisicao` e `Devolucao` por equipe.
+- Exibe a cadeia completa de movimentacoes da unidade em modal de `Historico`, incluindo `Requisicao`, `Devolucao` e `Retorno de campo`.
 
 Arquitetura
 -----------
@@ -61,7 +61,7 @@ Filtros, auto-complete e listagem
     - `Com equipe`: unidade atualmente entregue para equipe, mantendo o centro fisico de referencia na lista.
     - `Fora do estoque proprio`: unidade sem posicao atual em centro fisico `OWN`.
   - O filtro `Centro fisico` e a coluna principal excluem centros vinculados a equipes.
-  - `Ultima operacao` traduz `ENTRY`, `EXIT`, `TRANSFER`, `REQUISITION` e `RETURN` para leitura operacional.
+  - `Ultima operacao` traduz `ENTRY`, `EXIT`, `TRANSFER`, `REQUISITION`, `RETURN` e `FIELD_RETURN` para leitura operacional.
   - A lista e paginada no backend (`page`, `pageSize`, `total`).
   - O cabecalho exibe `Registros filtrados`, `Em estoque proprio`, `Com equipe` e `Fora do estoque proprio`.
   - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos.
@@ -75,7 +75,7 @@ Filtros, auto-complete e listagem
   - pre-preenche o modo dedicado de movimentacao da unidade com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1`;
   - permite concluir `Saida` ou `Transferencia`.
 - O modal `Historico`:
-  - mostra a cadeia de movimentos da unidade, incluindo `Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao` e `Estorno`;
+  - mostra a cadeia de movimentos da unidade, incluindo `Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo` e `Estorno`;
   - mostra `Centro DE`, `Centro PARA`, `Equipe`, `Encarregado`, `Projeto`, `Data da movimentacao` e `Observacao`.
 
 Boas praticas
@@ -134,7 +134,8 @@ Atualizacao 2026-04
   - A lista de movimentacao ganhou atalho `Movimentar este TRAFO` por linha elegivel.
   - A navegacao e a matriz de permissoes passaram a reconhecer a nova `page_key = posicao-trafo`.
   - A tela passou a manter uma unica linha por TRAFO, usando o centro fisico de referencia como leitura principal.
-  - `Requisicao` e `Devolucao` deixaram de aparecer como troca de centro principal e passaram para o `Historico` da unidade.
+- `Requisicao` e `Devolucao` deixaram de aparecer como troca de centro principal e passaram para o `Historico` da unidade.
+- `Retorno de campo` tambem passa a aparecer apenas no historico da unidade, mantendo o centro fisico como leitura principal quando a unidade reentra no estoque.
   - A tela passou a mostrar `Com equipe` como situacao propria e a bloquear o atalho de movimentacao enquanto a unidade nao estiver em estoque fisico.
 
 Mapa de Codigo (funcoes, hooks e constantes)

@@ -71,6 +71,8 @@ type AppUserRow = {
 type TeamOperationMapRow = {
   transfer_id: string;
   team_id: string;
+  operation_kind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null;
+  technical_origin_stock_center_id: string | null;
   team_name_snapshot: string;
   foreman_name_snapshot: string;
 };
@@ -290,7 +292,15 @@ function resolveHistoryAction(rawChanges: Record<string, unknown>, normalizedCha
   return "UPDATE";
 }
 
-function resolveOperationKind(header: TransferHeaderRow, teamStockCenterId: string | null): TeamOperationKind {
+function resolveOperationKind(
+  header: TransferHeaderRow,
+  teamStockCenterId: string | null,
+  explicitOperationKind: TeamOperationKind | null,
+): TeamOperationKind {
+  if (explicitOperationKind) {
+    return explicitOperationKind;
+  }
+
   if (teamStockCenterId && header.to_stock_center_id === teamStockCenterId) {
     return "REQUISITION";
   }
@@ -325,7 +335,7 @@ async function loadTeamOperationList(request: NextRequest) {
 
   let teamOperationQuery = supabase
     .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id, team_name_snapshot, foreman_name_snapshot")
+    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
     .eq("tenant_id", appUser.tenant_id);
 
   if (teamIdFilter) {
@@ -492,7 +502,7 @@ async function loadTeamOperationList(request: NextRequest) {
     const teamOperation = teamOperationByTransferId.get(item.stock_transfer_id);
     if (!transfer || !teamOperation) return [];
 
-    const operationKind = resolveOperationKind(transfer, team?.stock_center_id ?? null);
+    const operationKind = resolveOperationKind(transfer, team?.stock_center_id ?? null, teamOperation.operation_kind);
     const reversalFromOriginal = reversalByOriginalMap.get(transfer.id) ?? null;
     const reversalFromReversal = originalByReversalMap.get(transfer.id) ?? null;
     const material = materialMap.get(item.material_id);
@@ -530,6 +540,7 @@ async function loadTeamOperationList(request: NextRequest) {
         originalTransferId: reversalFromReversal?.originalTransferId ?? null,
         reversalReason: reversalFromOriginal?.reversalReason ?? reversalFromReversal?.reversalReason ?? null,
         reversedAt: reversalFromOriginal?.reversedAt ?? reversalFromReversal?.reversedAt ?? null,
+        technicalOriginStockCenterId: teamOperation.technical_origin_stock_center_id ?? null,
       },
     ];
   });
@@ -596,7 +607,7 @@ async function loadTeamOperationHistory(request: NextRequest) {
 
   const { data: teamOperation, error: teamOperationError } = await supabase
     .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id, team_name_snapshot, foreman_name_snapshot")
+    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
     .eq("tenant_id", appUser.tenant_id)
     .eq("transfer_id", transferId)
     .maybeSingle<TeamOperationMapRow>();
@@ -692,7 +703,7 @@ async function loadTeamOperationHistory(request: NextRequest) {
   ]));
   const transferRow = transferResult.data;
   const teamRow = teamResult.data;
-  const operationKind = resolveOperationKind(transferRow, teamRow.stock_center_id);
+  const operationKind = resolveOperationKind(transferRow, teamRow.stock_center_id, teamOperation.operation_kind);
 
   const entries = historyRows.map((row) => {
     const rawChanges = parseHistoryChanges(row.changes);
@@ -707,6 +718,12 @@ async function loadTeamOperationHistory(request: NextRequest) {
     }
     if (!normalizedChanges.operationKind) {
       normalizedChanges.operationKind = { from: null, to: operationKind };
+    }
+    if (!normalizedChanges.technicalOriginStockCenterId && teamOperation.technical_origin_stock_center_id) {
+      normalizedChanges.technicalOriginStockCenterId = {
+        from: null,
+        to: historyValueMaps.stockCenters.get(teamOperation.technical_origin_stock_center_id) ?? teamOperation.technical_origin_stock_center_id,
+      };
     }
 
     return {
@@ -764,12 +781,21 @@ export async function POST(request: NextRequest) {
     const items = buildTransferItems(payload);
     const today = toIsoDate(new Date());
 
-    if (!operationKind || !stockCenterId || !teamId || !projectId || !entryDate || !entryType) {
+    if (!operationKind || !stockCenterId || !teamId || !projectId || !entryDate) {
       return NextResponse.json(
         {
           message:
-            "Campos obrigatorios: operationKind, stockCenterId, teamId, projectId, entryDate e entryType.",
+            "Campos obrigatorios: operationKind, stockCenterId, teamId, projectId e entryDate.",
         },
+        { status: 400 },
+      );
+    }
+
+    const effectiveEntryType = operationKind === "FIELD_RETURN" ? "SUCATA" : entryType;
+
+    if (!effectiveEntryType) {
+      return NextResponse.json(
+        { message: "Tipo do material deve ser NOVO ou SUCATA." },
         { status: 400 },
       );
     }
@@ -794,7 +820,7 @@ export async function POST(request: NextRequest) {
       teamId,
       projectId,
       entryDate,
-      entryType,
+      entryType: effectiveEntryType,
       notes,
       items,
     });

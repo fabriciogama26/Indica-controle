@@ -28,7 +28,7 @@ export type TrafoPositionListItem = {
   lastTransferId: string | null;
   lastProjectId: string | null;
   lastProjectCode: string | null;
-  lastOperationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN";
+  lastOperationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
   lastEntryDate: string;
   updatedAt: string | null;
   updatedByName: string;
@@ -52,7 +52,7 @@ export type TrafoPositionMetaResponse = {
 export type TrafoPositionHistoryEntry = {
   id: string;
   transferId: string;
-  operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN";
+  operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
   quantity: number;
   entryDate: string;

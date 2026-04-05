@@ -90,6 +90,8 @@ type StockTransferReversalRow = {
 type TeamOperationRow = {
   transfer_id: string;
   team_id: string;
+  operation_kind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null;
+  technical_origin_stock_center_id: string | null;
   team_name_snapshot: string;
   foreman_name_snapshot: string;
 };
@@ -122,6 +124,14 @@ function normalizeCode(value: string | null) {
 
 function normalizeOnlyPositive(value: string | null) {
   return String(value ?? "").trim().toUpperCase() === "TODOS" ? "TODOS" : "SIM";
+}
+
+function normalizeHistoryOperationKind(value: string | null) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (["ENTRY", "EXIT", "TRANSFER", "REQUISITION", "RETURN", "FIELD_RETURN"].includes(normalized)) {
+    return normalized as "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
+  }
+  return null;
 }
 
 function parseNonNegativeInteger(value: string | null) {
@@ -160,10 +170,18 @@ function resolveOperationKind(
   movementType: "ENTRY" | "EXIT" | "TRANSFER",
   transferId: string,
   toStockCenterId: string,
-  teamOperationMap: Map<string, { teamStockCenterId: string | null }>,
+  teamOperationMap: Map<string, { teamStockCenterId: string | null; operationKind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null }>,
 ) {
   const team = teamOperationMap.get(transferId);
-  if (!team || !team.teamStockCenterId) {
+  if (!team) {
+    return movementType;
+  }
+
+  if (team.operationKind) {
+    return team.operationKind;
+  }
+
+  if (!team.teamStockCenterId) {
     return movementType;
   }
 
@@ -183,6 +201,8 @@ async function loadStockHistory(request: NextRequest) {
   const { supabase, appUser } = resolution;
   const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
   const materialId = normalizeText(request.nextUrl.searchParams.get("materialId"));
+  const historyOperationKind = normalizeHistoryOperationKind(request.nextUrl.searchParams.get("historyOperationKind"));
+  const historyOrigin = normalizeCode(request.nextUrl.searchParams.get("historyOrigin"));
   const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
   const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 5), 50);
 
@@ -290,7 +310,7 @@ async function loadStockHistory(request: NextRequest) {
     transferIdsWithItems.length
       ? supabase
           .from("stock_transfer_team_operations")
-          .select("transfer_id, team_id, team_name_snapshot, foreman_name_snapshot")
+          .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
           .eq("tenant_id", appUser.tenant_id)
           .in("transfer_id", transferIdsWithItems)
           .returns<TeamOperationRow[]>()
@@ -345,6 +365,7 @@ async function loadStockHistory(request: NextRequest) {
         row.transfer_id,
         {
           teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
+          operationKind: row.operation_kind,
           teamName: row.team_name_snapshot,
           foremanName: row.foreman_name_snapshot,
         },
@@ -409,16 +430,28 @@ async function loadStockHistory(request: NextRequest) {
     ];
   });
 
-  allEntries.sort((left, right) => new Date(right.changedAt).getTime() - new Date(left.changedAt).getTime());
+  const filteredEntries = allEntries.filter((entry) => {
+    if (historyOperationKind && entry.operationKind !== historyOperationKind) {
+      return false;
+    }
+
+    if (historyOrigin && !String(entry.fromStockCenterName ?? "").trim().toUpperCase().includes(historyOrigin)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  filteredEntries.sort((left, right) => new Date(right.changedAt).getTime() - new Date(left.changedAt).getTime());
   const from = (page - 1) * pageSize;
-  const pagedEntries = allEntries.slice(from, from + pageSize);
+  const pagedEntries = filteredEntries.slice(from, from + pageSize);
 
   return NextResponse.json({
     history: pagedEntries,
     pagination: {
       page,
       pageSize,
-      total: allEntries.length,
+      total: filteredEntries.length,
     },
   });
 }

@@ -35,12 +35,13 @@ function movementTypeLabel(value: string | null | undefined) {
   if (normalized === "TRANSFER") return "Transferencia";
   if (normalized === "REQUISITION") return "Requisicao";
   if (normalized === "RETURN") return "Devolucao";
+  if (normalized === "FIELD_RETURN") return "Retorno de campo";
   return "-";
 }
 
 function movementChipClass(value: string | null | undefined) {
   const normalized = String(value ?? "").trim().toUpperCase();
-  if (normalized === "ENTRY" || normalized === "RETURN") {
+  if (normalized === "ENTRY" || normalized === "RETURN" || normalized === "FIELD_RETURN") {
     return `${styles.movementChip} ${styles.movementChipEntry}`;
   }
   if (normalized === "EXIT" || normalized === "REQUISITION") {
@@ -51,7 +52,7 @@ function movementChipClass(value: string | null | undefined) {
 
 function historyBadgeClass(value: string | null | undefined) {
   const normalized = String(value ?? "").trim().toUpperCase();
-  if (normalized === "ENTRY" || normalized === "RETURN") return `${styles.historyBadge} ${styles.historyBadgeEntry}`;
+  if (normalized === "ENTRY" || normalized === "RETURN" || normalized === "FIELD_RETURN") return `${styles.historyBadge} ${styles.historyBadgeEntry}`;
   if (normalized === "EXIT") return `${styles.historyBadge} ${styles.historyBadgeExit}`;
   if (normalized === "REQUISITION") return `${styles.historyBadge} ${styles.historyBadgeTeam}`;
   return `${styles.historyBadge} ${styles.historyBadgeTransfer}`;

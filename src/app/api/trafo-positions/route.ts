@@ -48,6 +48,8 @@ type TeamRow = {
 type TeamOperationRow = {
   transfer_id: string;
   team_id: string;
+  operation_kind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null;
+  technical_origin_stock_center_id: string | null;
   team_name_snapshot: string;
   foreman_name_snapshot: string;
 };
@@ -96,6 +98,7 @@ type StockTransferReversalRow = {
 
 type TeamStockCenterState = {
   teamStockCenterId: string | null;
+  operationKind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null;
   teamName: string | null;
   foremanName: string | null;
 };
@@ -174,7 +177,15 @@ function resolveOperationKind(
   transfer: Pick<StockTransferHeaderRow, "movement_type" | "to_stock_center_id">,
   teamState: TeamStockCenterState | null,
 ) {
-  if (!teamState || !teamState.teamStockCenterId) {
+  if (!teamState) {
+    return transfer.movement_type;
+  }
+
+  if (teamState.operationKind) {
+    return teamState.operationKind;
+  }
+
+  if (!teamState.teamStockCenterId) {
     return transfer.movement_type;
   }
 
@@ -296,7 +307,7 @@ async function loadTrafoHistory(request: NextRequest) {
     transferIds.length
       ? supabase
           .from("stock_transfer_team_operations")
-          .select("transfer_id, team_id, team_name_snapshot, foreman_name_snapshot")
+          .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
           .eq("tenant_id", appUser.tenant_id)
           .in("transfer_id", transferIds)
           .returns<TeamOperationRow[]>()
@@ -344,14 +355,15 @@ async function loadTrafoHistory(request: NextRequest) {
     (usersResult.data ?? []).map((row) => [row.id, String(row.display ?? row.login_name ?? "").trim() || "Nao informado"]),
   );
   const teamById = new Map((teamsResult.data ?? []).map((row) => [row.id, row]));
-  const teamOperationMap = new Map(
-    (teamOperationsResult.data ?? []).map((row) => [
-      row.transfer_id,
-      {
-        teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
-        teamName: row.team_name_snapshot,
-        foremanName: row.foreman_name_snapshot,
-      },
+    const teamOperationMap = new Map(
+      (teamOperationsResult.data ?? []).map((row) => [
+        row.transfer_id,
+        {
+          teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
+          operationKind: row.operation_kind,
+          teamName: row.team_name_snapshot,
+          foremanName: row.foreman_name_snapshot,
+        },
     ] as const),
   );
   const reversalByOriginalMap = new Map(
@@ -535,7 +547,7 @@ export async function GET(request: NextRequest) {
       lastTransferIds.length
         ? supabase
             .from("stock_transfer_team_operations")
-            .select("transfer_id, team_id, team_name_snapshot, foreman_name_snapshot")
+            .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
             .eq("tenant_id", appUser.tenant_id)
             .in("transfer_id", lastTransferIds)
             .returns<TeamOperationRow[]>()
@@ -594,6 +606,7 @@ export async function GET(request: NextRequest) {
         row.transfer_id,
         {
           teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
+          operationKind: row.operation_kind,
           teamName: row.team_name_snapshot,
           foremanName: row.foreman_name_snapshot,
         },

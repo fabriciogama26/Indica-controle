@@ -37,10 +37,11 @@ export type MetaResponse = {
   projects?: ProjectOption[];
   materials?: MaterialOption[];
   reversalReasons?: ReversalReasonOption[];
+  fieldReturnOriginName?: string;
   message?: string;
 };
 
-export type TeamOperationKind = "REQUISITION" | "RETURN";
+export type TeamOperationKind = "REQUISITION" | "RETURN" | "FIELD_RETURN";
 
 export type TeamOperationListItem = {
   id: string;
@@ -74,6 +75,7 @@ export type TeamOperationListItem = {
   originalTransferId: string | null;
   reversalReason: string | null;
   reversedAt: string | null;
+  technicalOriginStockCenterId?: string | null;
 };
 
 export type TeamOperationHistoryEntry = {

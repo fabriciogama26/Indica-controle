@@ -58,9 +58,10 @@ Filtros, auto-complete e listagem
     - `Historico`
   - O modal `Historico` mostra cada movimentacao que afetou o saldo do `material` no `centro`, com:
     - `Saldo aplicado` assinado
-    - operacao traduzida (`Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`)
+    - operacao traduzida (`Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo`)
     - status visual para `Movimentacao ativa`, `Movimentacao original estornada` e `Movimentacao de estorno`
     - `Transferencia: <id>` apenas como referencia secundaria
+    - filtros locais por `Operacao` e `Origem` para localizar eventos como `CAMPO / INSTALADO`
 
 Boas praticas
 -------------
@@ -80,7 +81,7 @@ Cancelamento e saldo
 - Transferencias continuam seguindo a regra operacional:
   - `DE` debita.
   - `PARA` credita.
-- Estorno continua sendo inversao da movimentacao original, e o frontend agora tambem diferencia `Requisicao` e `Devolucao` quando a movimentacao vier do fluxo de equipes.
+- Estorno continua sendo inversao da movimentacao original, e o frontend agora diferencia `Requisicao`, `Devolucao` e `Retorno de campo` quando a movimentacao vier do fluxo de equipes.
 
 Atalhos
 -------
@@ -114,6 +115,7 @@ Atualizacao 2026-04
 - Depois:
   - `/estoque` passou a exibir saldo atual por centro/material com filtros, lista paginada, exportacao CSV, modal de detalhes e historico operacional por `centro + material`.
 - O historico passou a reconhecer operacoes da rota `/saida`, exibindo `Equipe`, `Encarregado`, `Requisicao` e `Devolucao` quando o ledger vier do fluxo operacional por equipe.
+- O historico passou a reconhecer tambem `Retorno de campo`, permitindo localizar `CAMPO / INSTALADO` pelo filtro de origem dentro do modal.
 - Ajuste de regra: a lista principal do `Estoque Atual` passou a mostrar apenas estoque fisico proprio, sem centros de equipe; quando houver requisicao para equipe, o centro fisico continua aparecendo com saldo `0` quando aplicavel.
 - Ajuste adicional: a API passou a reconstruir linhas historicas zeradas de centros fisicos a partir de `stock_transfers` quando necessario, evitando que o material desapareca da lista principal apos requisicoes para equipe.
   - O historico passou a priorizar rotulo funcional do evento em vez de usar o `transferId` como titulo principal.
@@ -167,7 +169,9 @@ Ajuda contextual
   - `formatInteger`
   - `movementTypeLabel`
   - `currentStockHistoryTitle`
-  - `currentStockStatusLabel`
+- `currentStockStatusLabel`
+- `handleApplyHistoryFilters`
+- `handleClearHistoryFilters`
   - `useErrorLogger`
   - `GET /api/stock-balance`
   - `GET /api/stock-balance/meta`
