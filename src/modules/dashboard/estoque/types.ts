@@ -45,7 +45,7 @@ export type CurrentStockHistoryEntry = {
   id: string;
   transferId: string;
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
-  operationKind?: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN";
+  operationKind?: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
   teamName?: string | null;
   foremanName?: string | null;
   signedQuantity: number;
@@ -62,6 +62,11 @@ export type CurrentStockHistoryEntry = {
   isReversal: boolean;
   isReversed: boolean;
   reversalReason: string | null;
+};
+
+export type CurrentStockHistoryFilters = {
+  operationKind: "TODOS" | "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
+  originText: string;
 };
 
 export type CurrentStockHistoryResponse = {

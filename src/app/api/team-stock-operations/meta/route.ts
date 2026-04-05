@@ -127,6 +127,7 @@ export async function GET(request: NextRequest) {
     const foremanMap = new Map((foremenResult.data ?? []).map((row) => [row.id, row.nome]));
 
     return NextResponse.json({
+      fieldReturnOriginName: "CAMPO / INSTALADO",
       stockCenters: (stockCentersResult.data ?? [])
         .filter((row) => !teamStockCenterIds.has(row.id))
         .map((row) => ({

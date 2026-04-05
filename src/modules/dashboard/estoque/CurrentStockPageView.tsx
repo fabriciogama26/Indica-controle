@@ -9,6 +9,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { EXPORT_COOLDOWN_MS, EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
 import type {
   CurrentStockFilters,
+  CurrentStockHistoryFilters,
   CurrentStockHistoryEntry,
   CurrentStockHistoryResponse,
   CurrentStockListItem,
@@ -34,6 +35,7 @@ function movementTypeLabel(value: string | null | undefined) {
   if (normalized === "TRANSFER") return "Transferencia";
   if (normalized === "REQUISITION") return "Requisicao";
   if (normalized === "RETURN") return "Devolucao";
+  if (normalized === "FIELD_RETURN") return "Retorno de campo";
   return "-";
 }
 
@@ -72,6 +74,14 @@ export function CurrentStockPageView() {
   const [historyEntries, setHistoryEntries] = useState<CurrentStockHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyFilterDraft, setHistoryFilterDraft] = useState<CurrentStockHistoryFilters>({
+    operationKind: "TODOS",
+    originText: "",
+  });
+  const [historyFilters, setHistoryFilters] = useState<CurrentStockHistoryFilters>({
+    operationKind: "TODOS",
+    originText: "",
+  });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
@@ -203,6 +213,15 @@ export function CurrentStockPageView() {
     };
   }, [accessToken, filters, logError, page]);
 
+  useEffect(() => {
+    if (!historyItem) {
+      return;
+    }
+
+    void loadHistory(historyItem, 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyFilters]);
+
   function updateFilterDraft<K extends keyof CurrentStockFilters>(key: K, value: CurrentStockFilters[K]) {
     setFilterDraft((current) => ({
       ...current,
@@ -230,6 +249,23 @@ export function CurrentStockPageView() {
     setHistoryPage(1);
     setHistoryTotal(0);
     setIsLoadingHistory(false);
+    setHistoryFilterDraft({ operationKind: "TODOS", originText: "" });
+    setHistoryFilters({ operationKind: "TODOS", originText: "" });
+  }
+
+  function handleApplyHistoryFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHistoryPage(1);
+    setHistoryFilters({
+      operationKind: historyFilterDraft.operationKind,
+      originText: historyFilterDraft.originText.trim(),
+    });
+  }
+
+  function handleClearHistoryFilters() {
+    setHistoryPage(1);
+    setHistoryFilterDraft({ operationKind: "TODOS", originText: "" });
+    setHistoryFilters({ operationKind: "TODOS", originText: "" });
   }
 
   async function loadHistory(targetItem: CurrentStockListItem, targetPage: number) {
@@ -246,6 +282,12 @@ export function CurrentStockPageView() {
       params.set("materialId", targetItem.materialId);
       params.set("page", String(targetPage));
       params.set("pageSize", String(HISTORY_PAGE_SIZE));
+      if (historyFilters.operationKind !== "TODOS") {
+        params.set("historyOperationKind", historyFilters.operationKind);
+      }
+      if (historyFilters.originText) {
+        params.set("historyOrigin", historyFilters.originText);
+      }
 
       const response = await fetch(`/api/stock-balance?${params.toString()}`, {
         cache: "no-store",
@@ -268,6 +310,7 @@ export function CurrentStockPageView() {
           responseMessage: data.message ?? null,
           stockCenterId: targetItem.stockCenterId,
           materialId: targetItem.materialId,
+          historyFilters,
           page: targetPage,
         });
         return;
@@ -283,6 +326,7 @@ export function CurrentStockPageView() {
       await logError("Falha ao carregar o historico do estoque atual.", error, {
         stockCenterId: targetItem.stockCenterId,
         materialId: targetItem.materialId,
+        historyFilters,
         page: targetPage,
       });
     } finally {
@@ -295,6 +339,8 @@ export function CurrentStockPageView() {
     setHistoryEntries([]);
     setHistoryPage(1);
     setHistoryTotal(0);
+    setHistoryFilterDraft({ operationKind: "TODOS", originText: "" });
+    setHistoryFilters({ operationKind: "TODOS", originText: "" });
     await loadHistory(targetItem, 1);
   }
 
@@ -497,7 +543,7 @@ export function CurrentStockPageView() {
           <div>
             <h3 className={styles.cardTitle}>Lista de Estoque Atual</h3>
             <p className={styles.tableHint}>
-              O saldo exibido ja vem calculado do backend. A ultima movimentacao usa o timestamp mais recente do saldo por centro e material.
+              O saldo exibido ja vem calculado do backend e considera apenas estoques fisicos/proprios. Materiais que ja passaram pelo centro fisico continuam visiveis com saldo `0`, preservando o acesso ao historico operacional.
             </p>
           </div>
 
@@ -654,6 +700,51 @@ export function CurrentStockPageView() {
             </header>
 
             <div className={styles.modalBody}>
+              <form className={styles.filterGrid} onSubmit={handleApplyHistoryFilters}>
+                <label className={styles.field}>
+                  <span>Operacao</span>
+                  <select
+                    value={historyFilterDraft.operationKind}
+                    onChange={(event) => setHistoryFilterDraft((current) => ({
+                      ...current,
+                      operationKind: event.target.value as CurrentStockHistoryFilters["operationKind"],
+                    }))}
+                    disabled={isLoadingHistory}
+                  >
+                    <option value="TODOS">Todos</option>
+                    <option value="ENTRY">Entrada</option>
+                    <option value="EXIT">Saida</option>
+                    <option value="TRANSFER">Transferencia</option>
+                    <option value="REQUISITION">Requisicao</option>
+                    <option value="RETURN">Devolucao</option>
+                    <option value="FIELD_RETURN">Retorno de campo</option>
+                  </select>
+                </label>
+
+                <label className={styles.field}>
+                  <span>Origem</span>
+                  <input
+                    type="text"
+                    value={historyFilterDraft.originText}
+                    onChange={(event) => setHistoryFilterDraft((current) => ({
+                      ...current,
+                      originText: event.target.value,
+                    }))}
+                    placeholder="Ex.: CAMPO"
+                    disabled={isLoadingHistory}
+                  />
+                </label>
+
+                <div className={styles.actions}>
+                  <button type="submit" className={styles.secondaryButton} disabled={isLoadingHistory}>
+                    Aplicar
+                  </button>
+                  <button type="button" className={styles.ghostButton} onClick={handleClearHistoryFilters} disabled={isLoadingHistory}>
+                    Limpar
+                  </button>
+                </div>
+              </form>
+
               {isLoadingHistory ? <p>Carregando historico...</p> : null}
               {!isLoadingHistory && historyEntries.length === 0 ? <p>Nenhuma movimentacao encontrada para este material neste centro.</p> : null}
 

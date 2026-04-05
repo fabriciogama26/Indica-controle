@@ -2,10 +2,11 @@ Tela: Posicao Unitaria TRAFO SaaS
 
 Visao geral
 -----------
-- Tela operacional read-only para consultar a localizacao atual de cada unidade de TRAFO.
-- Usa `trafo_instances` como fonte unitaria de verdade, sem reconstruir estado no frontend.
+- Tela operacional read-only para consultar a posicao atual de cada unidade de TRAFO, mantendo uma unica linha por unidade.
+- Usa `trafo_instances` como fonte unitaria de verdade, mas a leitura principal da tela prioriza o centro fisico de referencia e nao expoe centros de equipe como posicao principal.
 - Complementa `Movimentacao de Estoque` e `Estoque Atual` com foco na identidade da unidade (`material + Serial + LP`).
 - Permite acionar movimentacao da propria unidade, com pre-preenchimento do formulario de `/entrada`.
+- Exibe a cadeia completa de movimentacoes da unidade em modal de `Historico`, incluindo `Requisicao`, `Devolucao` e `Retorno de campo`.
 
 Arquitetura
 -----------
@@ -34,14 +35,15 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
-  - `Centro atual`
-  - `Situacao` (`Todos`, `Em estoque proprio`, `Fora do estoque proprio`)
+  - `Centro fisico`
+  - `Situacao` (`Todos`, `Em estoque proprio`, `Com equipe`, `Fora do estoque proprio`)
   - `Material (codigo)`
   - `Serial`
   - `LP`
 - Listagem:
-  - `Centro atual`
+  - `Centro fisico`
   - `Situacao`
+  - `Equipe atual`
   - `Projeto ultimo`
   - `Material (codigo)`
   - `Descricao`
@@ -53,28 +55,36 @@ Filtros, auto-complete e listagem
   - `Acoes`
 - Regras de exibicao:
   - A consulta traz somente materiais com `materials.is_transformer = true`.
-  - `Situacao` deriva de `trafo_instances.current_stock_center_id`.
-  - `Em estoque proprio` significa unidade atualmente vinculada a um centro `OWN`.
-  - `Fora do estoque proprio` significa unidade sem posicao atual em centro `OWN`.
-  - `Ultima operacao` traduz `ENTRY`, `EXIT` e `TRANSFER` para leitura operacional.
+  - A linha principal continua unica por `material + Serial + LP`.
+  - `Situacao` deriva do estado atual da unidade:
+    - `Em estoque proprio`: unidade em centro fisico `OWN`.
+    - `Com equipe`: unidade atualmente entregue para equipe, mantendo o centro fisico de referencia na lista.
+    - `Fora do estoque proprio`: unidade sem posicao atual em centro fisico `OWN`.
+  - O filtro `Centro fisico` e a coluna principal excluem centros vinculados a equipes.
+  - `Ultima operacao` traduz `ENTRY`, `EXIT`, `TRANSFER`, `REQUISITION`, `RETURN` e `FIELD_RETURN` para leitura operacional.
   - A lista e paginada no backend (`page`, `pageSize`, `total`).
-  - O cabecalho exibe `Registros filtrados`, `Em estoque proprio` e `Fora do estoque proprio`.
+  - O cabecalho exibe `Registros filtrados`, `Em estoque proprio`, `Com equipe` e `Fora do estoque proprio`.
   - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos.
 - Acoes:
   - `Detalhes`
+  - `Historico`
   - `Movimentar este TRAFO`
 - A acao `Movimentar este TRAFO`:
-  - fica habilitada apenas quando a unidade estiver em centro `OWN`;
+  - fica habilitada apenas quando a unidade estiver efetivamente em centro fisico `OWN`;
   - redireciona para `/entrada`;
   - pre-preenche o modo dedicado de movimentacao da unidade com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1`;
   - permite concluir `Saida` ou `Transferencia`.
+- O modal `Historico`:
+  - mostra a cadeia de movimentos da unidade, incluindo `Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo` e `Estorno`;
+  - mostra `Centro DE`, `Centro PARA`, `Equipe`, `Encarregado`, `Projeto`, `Data da movimentacao` e `Observacao`.
 
 Boas praticas
 -------------
 - Manter a tela read-only segregada por `tenant_id`.
 - Consultar a posicao unitaria somente via `trafo_instances`.
-- Nao tentar inferir posicao atual pela lista historica de `stock_transfers`.
+- Nao duplicar linhas da grade para representar entregas por equipe; essa cadeia deve ficar no `Historico`.
 - Usar `/entrada` apenas como tela de acao; a fonte da posicao atual continua sendo `trafo_instances`.
+- Bloquear a acao `Movimentar este TRAFO` quando a unidade estiver `Com equipe` ou `Fora do estoque proprio`.
 - Erros da tela devem ser registrados com tag `posicao_trafo` via `useErrorLogger`.
 
 Cancelamento e saldo
@@ -83,6 +93,7 @@ Cancelamento e saldo
 - A transferencia acionada pela tela continua sendo concluida na RPC `save_stock_transfer_record`.
 - `stock_center_balances` continua como saldo agregado por `centro + material`.
 - `trafo_instances` continua como rastreio unitario da unidade de TRAFO.
+- O backend da tela passa a reinterpretar `Requisicao` para equipe como status `Com equipe`, sem trocar a leitura principal para o centro de equipe.
 
 Atalhos
 -------
@@ -90,6 +101,7 @@ Atalhos
 - Endpoints:
   - `GET /api/trafo-positions`
   - `GET /api/trafo-positions/meta`
+  - `GET /api/trafo-positions?mode=history`
 - Exibida na secao `Almoxarifado` da sidebar.
 
 Atualizacao 2026-04
@@ -106,13 +118,12 @@ Atualizacao 2026-04
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
   - `docs/Tela_Posicao_Trafo_SaaS.txt`
 - Arquivos alterados:
-  - `src/components/layout/AppShell.tsx`
-  - `src/lib/auth/authorization.ts`
-  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - `src/components/ui/ActionIcon.tsx`
-  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
-  - `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
-  - `src/app/api/stock-transfers/route.ts`
+  - `src/app/api/trafo-positions/route.ts`
+  - `src/app/api/trafo-positions/meta/route.ts`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.module.css`
+  - `src/modules/dashboard/posicao-trafo/types.ts`
+  - `src/modules/dashboard/posicao-trafo/constants.ts`
   - `README.md`
   - `TASKS.md`
 - Antes:
@@ -122,16 +133,20 @@ Atualizacao 2026-04
   - O SaaS passou a expor a tela `/posicao-trafo` como consulta operacional da unidade.
   - A lista de movimentacao ganhou atalho `Movimentar este TRAFO` por linha elegivel.
   - A navegacao e a matriz de permissoes passaram a reconhecer a nova `page_key = posicao-trafo`.
+  - A tela passou a manter uma unica linha por TRAFO, usando o centro fisico de referencia como leitura principal.
+- `Requisicao` e `Devolucao` deixaram de aparecer como troca de centro principal e passaram para o `Historico` da unidade.
+- `Retorno de campo` tambem passa a aparecer apenas no historico da unidade, mantendo o centro fisico como leitura principal quando a unidade reentra no estoque.
+  - A tela passou a mostrar `Com equipe` como situacao propria e a bloquear o atalho de movimentacao enquanto a unidade nao estiver em estoque fisico.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
-  - Responsavel por: carregar metadados, aplicar filtros, buscar a lista paginada, exportar CSV, exibir detalhes e redirecionar para movimentacao pre-preenchida.
+  - Responsavel por: carregar metadados, aplicar filtros, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade e redirecionar para movimentacao pre-preenchida quando elegivel.
 - Caminho: `src/app/api/trafo-positions/route.ts`
-  - Responsavel por: listar a posicao unitaria de TRAFO por tenant a partir de `trafo_instances`, com filtros, paginacao e enriquecimento de projeto/usuario.
+  - Responsavel por: listar a posicao unitaria de TRAFO por tenant a partir de `trafo_instances`, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal e expor o historico por unidade.
 - Caminho: `src/app/api/trafo-positions/meta/route.ts`
-  - Responsavel por: listar centros ativos `OWN` para os filtros da tela.
+  - Responsavel por: listar centros ativos `OWN` fisicos para os filtros da tela, excluindo centros vinculados a equipes.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
   - Responsavel por: consumir o prefill de transferencia de TRAFO vindo da tela unitaria e da lista de movimentacao.
 
@@ -173,10 +188,14 @@ Ajuda contextual
   - `TrafoPositionPageView`
   - `buildTrafoPositionQuery`
   - `openTransferPrefill`
+  - `openHistoryModal`
+  - `loadHistory`
   - `GET /api/trafo-positions`
   - `GET /api/trafo-positions/meta`
-  - `resolveDefaultPageAccess`
-  - `permissionCatalog`
+  - `loadTrafoHistory`
+  - `resolvePhysicalReferenceCenterId`
 - Comportamento antes/depois:
   - Antes: a rastreabilidade unitaria de TRAFO ficava difusa entre `Movimentacao de Estoque` e a leitura agregada do saldo.
   - Depois: a rastreabilidade unitaria passou a ter tela propria baseada em `trafo_instances`, com acao direta de movimentacao para a mesma unidade.
+  - Antes: uma `Requisicao` para equipe podia trocar a leitura principal da unidade para o centro da equipe.
+  - Depois: a leitura principal continua no centro fisico de referencia, enquanto a cadeia de `Requisicao/Devolucao` fica visivel no historico da unidade.

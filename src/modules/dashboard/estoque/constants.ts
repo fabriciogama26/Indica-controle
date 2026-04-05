@@ -11,5 +11,5 @@ export const INITIAL_FILTERS: CurrentStockFilters = {
   description: "",
   qtyMin: "",
   qtyMax: "",
-  onlyPositive: "SIM",
+  onlyPositive: "TODOS",
 };

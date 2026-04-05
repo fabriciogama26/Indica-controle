@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
       const items = normalizeImportItems(entry);
 
       if (!operationKind) {
-        issues.push(makeIssue(rowNumber, "operacao", entry.operationKind, "Operacao deve ser REQUISICAO ou DEVOLUCAO."));
+        issues.push(makeIssue(rowNumber, "operacao", entry.operationKind, "Operacao deve ser REQUISICAO, DEVOLUCAO ou RETORNO_DE_CAMPO."));
       }
       if (!stockCenterId) {
         issues.push(makeIssue(rowNumber, "centro_estoque", entry.stockCenterId, "Centro de estoque e obrigatorio."));
@@ -356,7 +356,7 @@ export async function POST(request: NextRequest) {
       if (!entryDate) {
         issues.push(makeIssue(rowNumber, "data_operacao", entry.entryDate, "Data da operacao e obrigatoria."));
       }
-      if (!entryType) {
+      if (!entryType && operationKind !== "FIELD_RETURN") {
         issues.push(makeIssue(rowNumber, "tipo", entry.entryType, "Tipo do material deve ser NOVO ou SUCATA."));
       }
       if (items.length !== 1) {
@@ -415,13 +415,31 @@ export async function POST(request: NextRequest) {
       }
 
       const hasBlockingIssues = issues.some((issue) => issue.rowNumber === rowNumber);
-      if (hasBlockingIssues || !material || !team || !team.stock_center_id || !project || !entryDate || !entryType || !mainStockCenter || !teamStockCenter) {
+      if (
+        hasBlockingIssues
+        || !material
+        || !team
+        || !team.stock_center_id
+        || !project
+        || !entryDate
+        || !mainStockCenter
+        || !teamStockCenter
+      ) {
         continue;
       }
 
-      const validatedOperationKind = operationKind as "REQUISITION" | "RETURN";
-      const sourceStockCenterId = validatedOperationKind === "REQUISITION" ? stockCenterId : team.stock_center_id;
-      const sourceStockCenterName = validatedOperationKind === "REQUISITION" ? mainStockCenter.name : teamStockCenter.name;
+      const validatedOperationKind = operationKind as "REQUISITION" | "RETURN" | "FIELD_RETURN";
+      const effectiveEntryType = validatedOperationKind === "FIELD_RETURN" ? "SUCATA" : (entryType as "NOVO" | "SUCATA");
+      const sourceStockCenterId = validatedOperationKind === "REQUISITION"
+        ? stockCenterId
+        : validatedOperationKind === "RETURN"
+          ? team.stock_center_id
+          : "__FIELD_RETURN__";
+      const sourceStockCenterName = validatedOperationKind === "REQUISITION"
+        ? mainStockCenter.name
+        : validatedOperationKind === "RETURN"
+          ? teamStockCenter.name
+          : "CAMPO / INSTALADO";
       const destinationStockCenterId = validatedOperationKind === "REQUISITION" ? team.stock_center_id : stockCenterId;
 
       preparedEntries.push({
@@ -431,7 +449,7 @@ export async function POST(request: NextRequest) {
         teamId,
         projectId,
         entryDate,
-        entryType,
+        entryType: effectiveEntryType,
         notes,
         items: [item],
         isTransformer: material.isTransformer,
@@ -479,7 +497,21 @@ export async function POST(request: NextRequest) {
         const unitKey = makeTrafoKey(item.materialId, item.serialNumber ?? null, item.lotCode ?? null);
         const currentStockCenterId = projectedTrafoPositions.get(unitKey) ?? null;
 
-        if (currentStockCenterId !== entry.sourceStockCenterId) {
+        if (entry.operationKind === "FIELD_RETURN") {
+          if (currentStockCenterId !== null) {
+            issues.push(
+              makeIssue(
+                entry.rowNumber,
+                "serial",
+                `${item.serialNumber ?? ""}/${item.lotCode ?? ""}`,
+                `A unidade TRAFO informada ja esta registrada no estoque com o material ${entry.materialCode}. Utilize Devolucao ou outra movimentacao compativel em vez de Retorno de campo.`,
+              ),
+            );
+            continue;
+          }
+
+          projectedTrafoPositions.set(unitKey, entry.destinationStockCenterId);
+        } else if (currentStockCenterId !== entry.sourceStockCenterId) {
           issues.push(
             makeIssue(
               entry.rowNumber,
@@ -489,27 +521,30 @@ export async function POST(request: NextRequest) {
             ),
           );
           continue;
+        } else {
+          projectedTrafoPositions.set(unitKey, entry.destinationStockCenterId);
+        }
+      }
+
+      if (entry.operationKind !== "FIELD_RETURN") {
+        const sourceBalance = projectedBalances.get(balanceSourceKey) ?? 0;
+        if (sourceBalance < entry.quantity) {
+          issues.push(
+            makeIssue(
+              entry.rowNumber,
+              "quantidade",
+              entry.quantity,
+              sourceBalance <= 0
+                ? `O material ${entry.materialCode} nao existe com saldo disponivel no estoque de origem (${entry.sourceStockCenterName}).`
+                : `Saldo insuficiente no estoque de origem (${entry.sourceStockCenterName}). Saldo atual: ${sourceBalance.toLocaleString("pt-BR")}.`,
+            ),
+          );
+          continue;
         }
 
-        projectedTrafoPositions.set(unitKey, entry.destinationStockCenterId);
+        projectedBalances.set(balanceSourceKey, sourceBalance - entry.quantity);
       }
 
-      const sourceBalance = projectedBalances.get(balanceSourceKey) ?? 0;
-      if (sourceBalance < entry.quantity) {
-        issues.push(
-          makeIssue(
-            entry.rowNumber,
-            "quantidade",
-            entry.quantity,
-            sourceBalance <= 0
-              ? `O material ${entry.materialCode} nao existe com saldo disponivel no estoque de origem (${entry.sourceStockCenterName}).`
-              : `Saldo insuficiente no estoque de origem (${entry.sourceStockCenterName}). Saldo atual: ${sourceBalance.toLocaleString("pt-BR")}.`,
-          ),
-        );
-        continue;
-      }
-
-      projectedBalances.set(balanceSourceKey, sourceBalance - entry.quantity);
       projectedBalances.set(
         balanceDestinationKey,
         (projectedBalances.get(balanceDestinationKey) ?? 0) + entry.quantity,

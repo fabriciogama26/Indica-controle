@@ -126,9 +126,9 @@ vercel --prod
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
-  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Posicao Unitaria TRAFO com consulta por `Serial + LP` e atalho de movimentacao para a mesma unidade.
+  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Posicao Unitaria TRAFO com consulta por `Serial + LP`, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos e atalho de movimentacao apenas quando a unidade estiver em estoque fisico.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
-- `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao` e `Devolucao` entre centro de estoque proprio e centro proprio da equipe, preservando snapshot do encarregado por movimentacao.
+- `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
   - `(dashboard)/centro-servico/page.tsx`: placeholder de Centro de Servico.
@@ -168,14 +168,14 @@ vercel --prod
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em lote (CSV) para a tela de estoque.
   - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
-- `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais e motivos de estorno da tela `Operacoes de Equipe`.
-- `api/team-stock-operations/route.ts`: cria requisicoes/devolucoes por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
+- `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
+- `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
   - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV), com pre-validacao sequencial de saldo/TRAFO, rollback total do lote e retorno de erros por linha/coluna.
   - `api/team-stock-operations/reversal/route.ts`: executa estorno transacional das operacoes de equipe com permissao administrativa.
-- `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, `ultima movimentacao` baseada em `stock_center_balances.updated_at` e historico enriquecido com `Equipe`/`Encarregado` nas operacoes de equipe.
-  - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` ativos usados no filtro da tela de Estoque Atual.
-  - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada TRAFO a partir de `trafo_instances`, com filtros, paginacao e enriquecimento de projeto/usuario.
-  - `api/trafo-positions/meta/route.ts`: carrega os centros `OWN` ativos usados nos filtros da tela de posicao unitaria de TRAFO.
+- `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, exclui centros de equipe da tela de Estoque Atual, recompõe materiais historicos com saldo `0` nos centros fisicos quando necessario e mantem historico enriquecido com `Equipe`/`Encarregado`, incluindo filtro por operacao/origem para localizar `Retorno de campo` via `CAMPO / INSTALADO`.
+  - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` fisicos/principais usados no filtro da tela de Estoque Atual.
+  - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada TRAFO a partir de `trafo_instances`, mantem o centro fisico de referencia na leitura principal, expõe historico por unidade com `Requisicao`, `Devolucao` e `Retorno de campo` e bloqueia o atalho de movimentacao quando a unidade estiver com equipe ou fora do estoque proprio.
+  - `api/trafo-positions/meta/route.ts`: carrega os centros `OWN` fisicos ativos usados nos filtros da tela de posicao unitaria de TRAFO, excluindo centros vinculados a equipes.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado e paginacao.
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
@@ -216,19 +216,19 @@ vercel --prod
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
   - `constants.ts`: configuracoes de pagina, labels de historico e template CSV da tela `Operacoes de Equipe`.
   - `utils.ts`: formatadores, parser CSV e geracao de relatorio de erros do cadastro em massa.
-- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`, selecao de centro proprio principal, equipe ativa, projeto, material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno, historico e exibicao do encarregado snapshot por operacao.
+- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno, historico e exibicao do encarregado snapshot por operacao.
   - `TeamStockOperationsPageView.module.css`: estilo local da tela, reaproveitando o mesmo visual operacional da movimentacao de estoque.
 - `src/modules/dashboard/estoque/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
-  - `CurrentStockPageView.tsx`: tela de Estoque Atual com `Filtros + Lista`, exportacao CSV, resumo da pagina e consulta read-only por centro/material.
+  - `CurrentStockPageView.tsx`: tela de Estoque Atual com `Filtros + Lista`, exportacao CSV, resumo da pagina e consulta read-only por centro/material, mantendo materiais historicos dos centros fisicos visiveis com saldo `0`.
   - `CurrentStockPageView.module.css`: estilos da tela de Estoque Atual.
 - `src/modules/dashboard/posicao-trafo/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de posicao unitaria.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
-  - `TrafoPositionPageView.tsx`: tela de Posicao Unitaria TRAFO com filtros, lista paginada, detalhes e acao `Movimentar este TRAFO`.
+  - `TrafoPositionPageView.tsx`: tela de Posicao Unitaria TRAFO com filtros, lista paginada, detalhes, historico da unidade, status `Com equipe` e acao `Movimentar este TRAFO` apenas quando a unidade estiver em estoque fisico.
   - `TrafoPositionPageView.module.css`: estilos da tela de Posicao Unitaria TRAFO.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.

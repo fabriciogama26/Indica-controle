@@ -2,14 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 
-type StockCenterRelation = {
-  id: string;
-  name: string;
-  center_type: "OWN" | "THIRD_PARTY";
-  controls_balance: boolean;
-  is_active: boolean;
-};
-
 type MaterialRelation = {
   id: string;
   codigo: string;
@@ -24,7 +16,28 @@ type BalanceQueryRow = {
   material_id: string;
   quantity: number | string | null;
   updated_at: string | null;
-  stock_centers: StockCenterRelation | StockCenterRelation[] | null;
+  materials: MaterialRelation | MaterialRelation[] | null;
+};
+
+type CurrentStockCenterRow = {
+  id: string;
+  name: string;
+  center_type: "OWN" | "THIRD_PARTY";
+  controls_balance: boolean;
+  is_active: boolean;
+};
+
+type HistoricalTransferSummaryRow = {
+  id: string;
+  from_stock_center_id: string;
+  to_stock_center_id: string;
+  created_at: string;
+  updated_at: string | null;
+};
+
+type HistoricalTransferItemRow = {
+  stock_transfer_id: string;
+  material_id: string;
   materials: MaterialRelation | MaterialRelation[] | null;
 };
 
@@ -77,12 +90,18 @@ type StockTransferReversalRow = {
 type TeamOperationRow = {
   transfer_id: string;
   team_id: string;
+  operation_kind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null;
+  technical_origin_stock_center_id: string | null;
   team_name_snapshot: string;
   foreman_name_snapshot: string;
 };
 
 type TeamRow = {
   id: string;
+  stock_center_id: string | null;
+};
+
+type TeamStockCenterRow = {
   stock_center_id: string | null;
 };
 
@@ -107,6 +126,14 @@ function normalizeOnlyPositive(value: string | null) {
   return String(value ?? "").trim().toUpperCase() === "TODOS" ? "TODOS" : "SIM";
 }
 
+function normalizeHistoryOperationKind(value: string | null) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (["ENTRY", "EXIT", "TRANSFER", "REQUISITION", "RETURN", "FIELD_RETURN"].includes(normalized)) {
+    return normalized as "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
+  }
+  return null;
+}
+
 function parseNonNegativeInteger(value: string | null) {
   const normalized = normalizeText(value);
   if (!normalized) {
@@ -129,14 +156,32 @@ function unwrapRelation<T>(value: T | T[] | null) {
   return value ?? null;
 }
 
+function toTimestamp(value: string | null) {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function pickLatestDate(currentValue: string | null, nextValue: string | null) {
+  return toTimestamp(nextValue) > toTimestamp(currentValue) ? nextValue : currentValue;
+}
+
 function resolveOperationKind(
   movementType: "ENTRY" | "EXIT" | "TRANSFER",
   transferId: string,
   toStockCenterId: string,
-  teamOperationMap: Map<string, { teamStockCenterId: string | null }>,
+  teamOperationMap: Map<string, { teamStockCenterId: string | null; operationKind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null }>,
 ) {
   const team = teamOperationMap.get(transferId);
-  if (!team || !team.teamStockCenterId) {
+  if (!team) {
+    return movementType;
+  }
+
+  if (team.operationKind) {
+    return team.operationKind;
+  }
+
+  if (!team.teamStockCenterId) {
     return movementType;
   }
 
@@ -156,6 +201,8 @@ async function loadStockHistory(request: NextRequest) {
   const { supabase, appUser } = resolution;
   const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
   const materialId = normalizeText(request.nextUrl.searchParams.get("materialId"));
+  const historyOperationKind = normalizeHistoryOperationKind(request.nextUrl.searchParams.get("historyOperationKind"));
+  const historyOrigin = normalizeCode(request.nextUrl.searchParams.get("historyOrigin"));
   const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
   const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 5), 50);
 
@@ -263,7 +310,7 @@ async function loadStockHistory(request: NextRequest) {
     transferIdsWithItems.length
       ? supabase
           .from("stock_transfer_team_operations")
-          .select("transfer_id, team_id, team_name_snapshot, foreman_name_snapshot")
+          .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
           .eq("tenant_id", appUser.tenant_id)
           .in("transfer_id", transferIdsWithItems)
           .returns<TeamOperationRow[]>()
@@ -318,6 +365,7 @@ async function loadStockHistory(request: NextRequest) {
         row.transfer_id,
         {
           teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
+          operationKind: row.operation_kind,
           teamName: row.team_name_snapshot,
           foremanName: row.foreman_name_snapshot,
         },
@@ -382,16 +430,28 @@ async function loadStockHistory(request: NextRequest) {
     ];
   });
 
-  allEntries.sort((left, right) => new Date(right.changedAt).getTime() - new Date(left.changedAt).getTime());
+  const filteredEntries = allEntries.filter((entry) => {
+    if (historyOperationKind && entry.operationKind !== historyOperationKind) {
+      return false;
+    }
+
+    if (historyOrigin && !String(entry.fromStockCenterName ?? "").trim().toUpperCase().includes(historyOrigin)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  filteredEntries.sort((left, right) => new Date(right.changedAt).getTime() - new Date(left.changedAt).getTime());
   const from = (page - 1) * pageSize;
-  const pagedEntries = allEntries.slice(from, from + pageSize);
+  const pagedEntries = filteredEntries.slice(from, from + pageSize);
 
   return NextResponse.json({
     history: pagedEntries,
     pagination: {
       page,
       pageSize,
-      total: allEntries.length,
+      total: filteredEntries.length,
     },
   });
 }
@@ -422,6 +482,7 @@ export async function GET(request: NextRequest) {
     const qtyMin = parseNonNegativeInteger(request.nextUrl.searchParams.get("qtyMin"));
     const qtyMax = parseNonNegativeInteger(request.nextUrl.searchParams.get("qtyMax"));
     const onlyPositive = normalizeOnlyPositive(request.nextUrl.searchParams.get("onlyPositive"));
+    const includeTeamCenters = normalizeText(request.nextUrl.searchParams.get("includeTeamCenters")) === "1";
 
     if (qtyMin !== null && qtyMax !== null && qtyMin > qtyMax) {
       return NextResponse.json(
@@ -430,10 +491,67 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const teamCenterResult = includeTeamCenters
+      ? ({ data: [], error: null } as { data: TeamStockCenterRow[]; error: null })
+      : await supabase
+          .from("teams")
+          .select("stock_center_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .returns<TeamStockCenterRow[]>();
 
-    let query = supabase
+    if (teamCenterResult.error) {
+      return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });
+    }
+
+    const blockedCenterIds = Array.from(
+      new Set(
+        (teamCenterResult.data ?? [])
+          .map((row) => String(row.stock_center_id ?? "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    const stockCentersResult = await supabase
+      .from("stock_centers")
+      .select("id, name, center_type, controls_balance, is_active")
+      .eq("tenant_id", appUser.tenant_id)
+      .eq("is_active", true)
+      .eq("center_type", "OWN")
+      .order("name", { ascending: true })
+      .returns<CurrentStockCenterRow[]>();
+
+    if (stockCentersResult.error) {
+      return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });
+    }
+
+    const availableStockCenters = (stockCentersResult.data ?? []).filter((row) => {
+      if (!includeTeamCenters && blockedCenterIds.includes(row.id)) {
+        return false;
+      }
+
+      if (stockCenterId && row.id !== stockCenterId) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (availableStockCenters.length === 0) {
+      return NextResponse.json({
+        items: [],
+        pagination: {
+          page,
+          pageSize,
+          total: 0,
+        },
+      });
+    }
+
+    const availableStockCenterIds = availableStockCenters.map((row) => row.id);
+    const stockCenterMap = new Map(availableStockCenters.map((row) => [row.id, row.name]));
+    const shouldHydrateHistoricalZeros = !includeTeamCenters && onlyPositive !== "SIM" && (qtyMin === null || qtyMin <= 0);
+
+    let balanceQuery = supabase
       .from("stock_center_balances")
       .select(
         [
@@ -441,75 +559,180 @@ export async function GET(request: NextRequest) {
           "material_id",
           "quantity",
           "updated_at",
-          "stock_centers!inner(id, name, center_type, controls_balance, is_active)",
           "materials!inner(id, codigo, descricao, umb, tipo, is_active)",
         ].join(", "),
-        { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id)
-      .eq("stock_centers.is_active", true)
-      .eq("stock_centers.center_type", "OWN")
       .eq("materials.is_active", true)
-      .order("updated_at", { ascending: false })
-      .range(from, to);
-
-    if (stockCenterId) {
-      query = query.eq("stock_center_id", stockCenterId);
-    }
+      .in("stock_center_id", availableStockCenterIds);
 
     if (materialCode) {
-      query = query.ilike("materials.codigo", `%${materialCode}%`);
+      balanceQuery = balanceQuery.ilike("materials.codigo", `%${materialCode}%`);
     }
 
     if (description) {
-      query = query.ilike("materials.descricao", `%${description}%`);
+      balanceQuery = balanceQuery.ilike("materials.descricao", `%${description}%`);
     }
 
-    if (qtyMin !== null) {
-      query = query.gte("quantity", qtyMin);
-    }
+    const { data: balanceRows, error: balanceError } = await balanceQuery.returns<BalanceQueryRow[]>();
 
-    if (qtyMax !== null) {
-      query = query.lte("quantity", qtyMax);
-    }
-
-    if (onlyPositive === "SIM") {
-      query = query.gt("quantity", 0);
-    }
-
-    const { data, error, count } = await query.returns<BalanceQueryRow[]>();
-
-    if (error) {
+    if (balanceError) {
       return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });
     }
 
-    return NextResponse.json({
-      items: (data ?? []).flatMap((row) => {
-        const stockCenter = unwrapRelation(row.stock_centers);
-        const material = unwrapRelation(row.materials);
+    const itemMap = new Map<
+      string,
+      {
+        stockCenterId: string;
+        stockCenterName: string;
+        materialId: string;
+        materialCode: string;
+        description: string;
+        unit: string;
+        materialType: string;
+        balanceQuantity: number;
+        lastMovementAt: string | null;
+      }
+    >();
 
-        if (!stockCenter || !material) {
-          return [];
+    (balanceRows ?? []).forEach((row) => {
+      const material = unwrapRelation(row.materials);
+      const stockCenterName = stockCenterMap.get(row.stock_center_id);
+
+      if (!material || !stockCenterName) {
+        return;
+      }
+
+      const itemKey = `${row.stock_center_id}:${row.material_id}`;
+      itemMap.set(itemKey, {
+        stockCenterId: row.stock_center_id,
+        stockCenterName,
+        materialId: row.material_id,
+        materialCode: material.codigo,
+        description: material.descricao,
+        unit: String(material.umb ?? "").trim(),
+        materialType: String(material.tipo ?? "").trim().toUpperCase(),
+        balanceQuantity: Math.round(Number(row.quantity ?? 0)),
+        lastMovementAt: row.updated_at,
+      });
+    });
+
+    if (shouldHydrateHistoricalZeros) {
+      const transferFilter = availableStockCenterIds.length === 1
+        ? `from_stock_center_id.eq.${availableStockCenterIds[0]},to_stock_center_id.eq.${availableStockCenterIds[0]}`
+        : `from_stock_center_id.in.(${availableStockCenterIds.join(",")}),to_stock_center_id.in.(${availableStockCenterIds.join(",")})`;
+
+      const { data: historicalTransfers, error: historicalTransfersError } = await supabase
+        .from("stock_transfers")
+        .select("id, from_stock_center_id, to_stock_center_id, created_at, updated_at")
+        .eq("tenant_id", appUser.tenant_id)
+        .or(transferFilter)
+        .returns<HistoricalTransferSummaryRow[]>();
+
+      if (historicalTransfersError) {
+        return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });
+      }
+
+      const transferIds = Array.from(new Set((historicalTransfers ?? []).map((row) => row.id).filter(Boolean)));
+      const historicalTransferMap = new Map((historicalTransfers ?? []).map((row) => [row.id, row]));
+
+      if (transferIds.length > 0) {
+        let historicalItemsQuery = supabase
+          .from("stock_transfer_items")
+          .select("stock_transfer_id, material_id, materials!inner(id, codigo, descricao, umb, tipo, is_active)")
+          .in("stock_transfer_id", transferIds)
+          .eq("materials.is_active", true);
+
+        if (materialCode) {
+          historicalItemsQuery = historicalItemsQuery.ilike("materials.codigo", `%${materialCode}%`);
         }
 
-        return [
-          {
-            stockCenterId: row.stock_center_id,
-            stockCenterName: stockCenter.name,
-            materialId: row.material_id,
-            materialCode: material.codigo,
-            description: material.descricao,
-            unit: String(material.umb ?? "").trim(),
-            materialType: String(material.tipo ?? "").trim().toUpperCase(),
-            balanceQuantity: Math.round(Number(row.quantity ?? 0)),
-            lastMovementAt: row.updated_at,
-          },
-        ];
-      }),
+        if (description) {
+          historicalItemsQuery = historicalItemsQuery.ilike("materials.descricao", `%${description}%`);
+        }
+
+        const { data: historicalItems, error: historicalItemsError } = await historicalItemsQuery.returns<HistoricalTransferItemRow[]>();
+
+        if (historicalItemsError) {
+          return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });
+        }
+
+        (historicalItems ?? []).forEach((row) => {
+          const transfer = historicalTransferMap.get(row.stock_transfer_id);
+          const material = unwrapRelation(row.materials);
+          const changedAt = transfer?.updated_at ?? transfer?.created_at ?? null;
+
+          if (!transfer || !material) {
+            return;
+          }
+
+          [transfer.from_stock_center_id, transfer.to_stock_center_id].forEach((centerId) => {
+            if (!stockCenterMap.has(centerId)) {
+              return;
+            }
+
+            const itemKey = `${centerId}:${row.material_id}`;
+            const existingItem = itemMap.get(itemKey);
+
+            if (existingItem) {
+              existingItem.lastMovementAt = pickLatestDate(existingItem.lastMovementAt, changedAt);
+              return;
+            }
+
+            itemMap.set(itemKey, {
+              stockCenterId: centerId,
+              stockCenterName: stockCenterMap.get(centerId) ?? "-",
+              materialId: row.material_id,
+              materialCode: material.codigo,
+              description: material.descricao,
+              unit: String(material.umb ?? "").trim(),
+              materialType: String(material.tipo ?? "").trim().toUpperCase(),
+              balanceQuantity: 0,
+              lastMovementAt: changedAt,
+            });
+          });
+        });
+      }
+    }
+
+    const filteredItems = Array.from(itemMap.values())
+      .filter((item) => {
+        if (qtyMin !== null && item.balanceQuantity < qtyMin) {
+          return false;
+        }
+
+        if (qtyMax !== null && item.balanceQuantity > qtyMax) {
+          return false;
+        }
+
+        if (onlyPositive === "SIM" && item.balanceQuantity <= 0) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((left, right) => {
+        const timestampDiff = toTimestamp(right.lastMovementAt) - toTimestamp(left.lastMovementAt);
+        if (timestampDiff !== 0) {
+          return timestampDiff;
+        }
+
+        const centerDiff = left.stockCenterName.localeCompare(right.stockCenterName, "pt-BR");
+        if (centerDiff !== 0) {
+          return centerDiff;
+        }
+
+        return left.materialCode.localeCompare(right.materialCode, "pt-BR");
+      });
+
+    const from = (page - 1) * pageSize;
+
+    return NextResponse.json({
+      items: filteredItems.slice(from, from + pageSize),
       pagination: {
         page,
         pageSize,
-        total: count ?? 0,
+        total: filteredItems.length,
       },
     });
   } catch {
