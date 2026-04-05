@@ -125,7 +125,7 @@
 - [x] Implementar a rota `/saida` como tela operacional propria de `Operacoes de Equipe`, com `Requisicao`/`Devolucao`, cadastro manual, cadastro em massa, historico e estorno.
 - [x] Vincular `Equipes` a um `Centro de estoque proprio` e reutilizar esse vinculo no fluxo operacional de requisicao/devolucao.
 - [x] Integrar `Operacoes de Equipe` ao `Estoque Atual`, refletindo requisicoes/devolucoes no historico consolidado do saldo.
-- [x] Adicionar `Retorno de campo` em `Operacoes de Equipe`, com centro tecnico `CAMPO / INSTALADO`, `entry_type = SUCATA`, historico filtravel no `Estoque Atual` e leitura correspondente na `Posicao Unitaria TRAFO`.
+- [x] Adicionar `Retorno de campo` em `Operacoes de Equipe`, com centro tecnico `CAMPO / INSTALADO`, `entry_type = SUCATA`, historico filtravel no `Estoque Atual` e leitura correspondente no `Rastreio de TRAFO`.
 - [x] Automatizar a criacao/backfill do `Centro de estoque proprio` no cadastro de `Equipes`, removendo a selecao manual no frontend.
 - [x] Persistir snapshot de `Equipe` e `Encarregado` nas `Operacoes de Equipe` e refletir esse dado tambem no historico do `Estoque Atual`.
 - [x] Restringir `Operacoes de Equipe` para usar apenas equipes ativas e impedir que `Centro de estoque` aceite centros vinculados a equipes.
@@ -150,6 +150,10 @@
 - [x] Criar `trafo_instances` como fonte unitaria de verdade de TRAFO, com backfill inicial e migracao da RPC de estoque para validar a unidade pela tabela atual em vez de reconstruir o estado a cada chamada.
 - [x] Implementar botao `Movimentar este TRAFO` nas acoes da Movimentacao de Estoque com pre-preenchimento de `material + serial + lp + centro` e modo dedicado de `Saida/Transferencia`.
 - [x] Remover `Serial` e `LP` da grade da Movimentacao de Estoque, mantendo esses campos apenas em `Detalhes` e no fluxo operacional de TRAFO.
+- [x] Separar a `Movimentacao de Estoque` com sub-card `Materiais da Movimentacao`, mantendo o padrao visual das `Operacoes de Equipe`.
+- [x] Evoluir a `Movimentacao de Estoque` para lista local em `Materiais da Movimentacao`, com `Adicionar material`, resumo por itens e save unico com `items[]`.
+- [x] Padronizar os alertas manuais da `Movimentacao de Estoque` com modal operacional e mensagens por `material_code`, no mesmo modelo da tela `Operacoes de Equipe`.
+- [x] Renomear a tela `Rastreio de TRAFO` no shell, catalogo de permissao e documentacao, substituindo o nome anterior `Posicao Unitaria TRAFO`.
 - [x] Remover `Operacao cancelada` e `Outro` do catalogo de motivo padrao do estorno e bloquear esses codigos tambem no backend/RPC.
 - [x] Endurecer `GET /api/stock-transfers` para nao derrubar a lista quando consultas auxiliares de detalhes/metadados falharem.
 - [x] Criar tela/consulta de posicao unitaria de TRAFO consumindo `trafo_instances`, mantendo uma linha por unidade, centro fisico de referencia, status `Com equipe`, historico proprio da cadeia de movimentos e bloqueio do atalho de movimentacao fora do estoque fisico.

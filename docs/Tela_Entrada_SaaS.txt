@@ -31,13 +31,14 @@ Cadastro
   - `from_stock_center_id`
   - `to_stock_center_id`
   - `project_id`
-  - `material_id` (selecionado por `material_code`)
-  - `quantity`
   - `entry_date` (campo unico de data da movimentacao)
-  - `entry_type` (`SUCATA` ou `NOVO`)
+  - Bloco `Materiais da Movimentacao` com:
+    - `material_id` (selecionado por `material_code`)
+    - `quantity`
+    - `entry_type` (`SUCATA` ou `NOVO`)
 - Campos opcionais:
-  - `serial_number`
-  - `lot_code`
+  - `serial_number` (no bloco `Material da Operacao`)
+  - `lot_code` (no bloco `Material da Operacao`)
   - `notes`
 - Regras de validacao:
   - `movement_type` define combinacao valida de origem/destino:
@@ -64,6 +65,12 @@ Filtros, auto-complete e listagem
 - Campo `Projeto` no cadastro manual segue padrao digitavel (`input + datalist`), no mesmo comportamento de `Material (codigo)`.
 - Cadastro manual com auto-complete por `material_code` (`input + datalist`).
 - Ao selecionar `material_code`, a `description` e preenchida automaticamente.
+- O formulario manual separa os campos do item em um sub-card `Materiais da Movimentacao`, no mesmo padrao visual da tela `Operacoes de Equipe`.
+- O cadastro manual agora funciona por lista local de itens:
+  - adicionar material
+  - revisar tabela local
+  - remover linha quando necessario
+  - salvar a movimentacao completa ao final
 - Campo `Operacao` define o modo da movimentacao (`Entrada`, `Saida`, `Transferencia`).
 - No cadastro manual, o rotulo da data acompanha a operacao selecionada:
   - `ENTRY` -> `Data da entrada`
@@ -92,6 +99,7 @@ Filtros, auto-complete e listagem
   - `erro`
 - O parser do CSV bloqueia linhas repetidas de TRAFO com o mesmo `material + serial + lp` no mesmo arquivo.
 - O modal exibe botao `Baixar erros (CSV)` no mesmo padrao operacional da tela de Medicao.
+- Erros operacionais do cadastro manual passam a abrir modal de alerta com mensagem objetiva e identificacao do `material_code` afetado quando aplicavel.
 - Tela padronizada com card `Filtros` e card `Lista de Movimentacoes`, incluindo paginacao server-side.
 - Filtro adicional de estorno:
   - `Todos`
@@ -133,6 +141,10 @@ Boas praticas
 - Escrever movimentacao somente via RPC transacional (`save_stock_transfer_record`).
 - Validar saldo insuficiente somente quando o centro de origem for `OWN` (`controls_balance = true`).
 - Nao validar saldo insuficiente quando o centro de origem for `THIRD_PARTY` (`controls_balance = false`).
+- Para `EXIT` e `TRANSFER`, validar cada item da lista local antes do save:
+  - material comum por saldo em `stock_center_balances`
+  - TRAFO por `material + serial + lp` em `trafo_instances`
+- Para `ENTRY` de TRAFO, bloquear unidade ja registrada em estoque proprio ou vinculada a outra operacao ativa.
 - Registrar trilha por item em `material_history` para auditoria funcional.
 - Usar `trafo_instances` como fonte unitaria de verdade para rastrear a posicao atual de cada TRAFO; `stock_center_balances` continua agregado por material.
 - Manter nomes de tabela/coluna em ingles no schema e nos contratos da API.

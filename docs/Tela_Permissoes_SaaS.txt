@@ -60,7 +60,7 @@ Filtros, auto-complete e listagem
 - A listagem atual considera as telas do SaaS web:
   - Visao Geral: Home
   - Operacao: Projetos, Locacao, Programacao, Medicao
-  - Almoxarifado: Estoque Atual, Posicao Unitaria TRAFO, Movimentacao de Estoque, Operacoes de Equipe
+  - Almoxarifado: Estoque Atual, Rastreio de TRAFO, Movimentacao de Estoque, Operacoes de Equipe
   - Cadastros: Materiais, Pessoas, Cargo, Equipes
   - Cadastro Base: Prioridade, Centro de Servico, Contrato, Atividades, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 
@@ -136,7 +136,7 @@ Atualizacao 2026-03
 - Regra operacional consolidada:
   - Toda nova tela deve sair com permissao completa (migration + backfill + frontend) no mesmo pacote.
 - Migration `138_add_trafo_position_page_permissions.sql` criada para incluir `posicao-trafo` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
-- Catalogo frontend de permissao atualizado para incluir `Posicao Unitaria TRAFO` na secao `Almoxarifado`.
+- Catalogo frontend de permissao atualizado para incluir `Rastreio de TRAFO` na secao `Almoxarifado`.
 - `authorization.ts` passou a reconhecer a rota `/posicao-trafo` e o fallback padrao da role `viewer` tambem passou a considerar essa consulta unitaria.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -217,7 +217,7 @@ Ajuda contextual
 - Estado atual: o save passa a ser serializado por `app_users.updated_at`, recusando sobrescrita concorrente e recarregando os dados atuais do usuario no frontend.
 - Estado atual: o save de `role`, `status` e matriz de paginas passa a ser executado por RPC transacional no banco.
 - Estado atual: a auditoria do `Invite` tambem passa a ser executada por RPC, mesmo com o envio do email permanecendo no backend do Next.
-- Estado atual: a tela passou a incluir a pagina `Posicao Unitaria TRAFO` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
+- Estado atual: a tela passou a incluir a pagina `Rastreio de TRAFO` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.
 - Antes: parte das tabelas de cadastro/permissao ainda usava policy `FOR ALL`, que tambem permitia caminho de `DELETE`.
 - Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.

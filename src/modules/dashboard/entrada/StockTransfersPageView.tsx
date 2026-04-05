@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
+import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./StockTransfersPageView.module.css";
 
 type StockCenterOption = {
@@ -128,6 +129,18 @@ type MassImportResultSummary = {
   errorRows: number;
 };
 
+type TransferFormItem = {
+  rowId: string;
+  materialId: string;
+  materialCode: string;
+  description: string;
+  quantity: number;
+  serialNumber: string;
+  lotCode: string;
+  entryType: "SUCATA" | "NOVO";
+  isTransformer: boolean;
+};
+
 type FormState = {
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
   fromStockCenterId: string;
@@ -143,6 +156,7 @@ type FormState = {
   entryDate: string;
   entryType: "SUCATA" | "NOVO" | "";
   notes: string;
+  items: TransferFormItem[];
 };
 
 type FilterState = {
@@ -206,6 +220,7 @@ const INITIAL_FORM: FormState = {
   entryDate: new Date().toISOString().slice(0, 10),
   entryType: "",
   notes: "",
+  items: [],
 };
 const INITIAL_FILTERS: FilterState = {
   startDate: "",
@@ -258,6 +273,10 @@ function formatHistoryValue(value: unknown) {
   if (value === null || value === undefined) return "-";
   const normalized = String(value).trim();
   return normalized || "-";
+}
+
+function createRowId() {
+  return `stock-transfer-item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function normalizeMaterialEntryType(value: string) {
@@ -412,6 +431,7 @@ function downloadMassImportErrorReport(report: MassImportErrorReportData | null)
 
 export function StockTransfersPageView() {
   const { session } = useAuth();
+  const logError = useErrorLogger("movimentacao_estoque");
   const router = useRouter();
   const searchParams = useSearchParams();
   const canReverseStockMovement = useMemo(() => {
@@ -437,6 +457,7 @@ export function StockTransfersPageView() {
   const [reversalReasonCode, setReversalReasonCode] = useState("");
   const [reversalReasonNotes, setReversalReasonNotes] = useState("");
   const [reversalDate, setReversalDate] = useState(toIsoDate(new Date()));
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -761,6 +782,11 @@ export function StockTransfersPageView() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function showError(message: string) {
+    setFeedback({ type: "error", message });
+    setAlertMessage(message);
+  }
+
   function clearTransformerMovementMode() {
     setTransformerMovementMode(null);
     setPrefillApplied(false);
@@ -831,7 +857,7 @@ export function StockTransfersPageView() {
   function validateManualForm() {
     const today = toIsoDate(new Date());
 
-    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || !form.projectId || !form.entryDate || !form.entryType) {
+    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || !form.projectId || !form.entryDate) {
       return "Preencha todos os campos obrigatorios do cabecalho.";
     }
 
@@ -872,37 +898,351 @@ export function StockTransfersPageView() {
     return null;
   }
 
-  function resetItemFields() {
+  function resetOperationForm() {
+    setForm({
+      ...INITIAL_FORM,
+      entryDate: toIsoDate(new Date()),
+    });
+  }
+
+  function handleAddFormItem() {
+    const validationError = validateManualForm();
+    if (validationError) {
+      showError(validationError);
+      return;
+    }
+
+    if (!selectedMaterial) {
+      showError("Selecione um codigo de material valido antes de adicionar.");
+      return;
+    }
+
+    const normalizedEntryType = normalizeMaterialEntryType(selectedMaterial.materialType ?? "");
+    if (!normalizedEntryType) {
+      showError(`Material ${selectedMaterial.materialCode}: tipo do cadastro deve ser NOVO ou SUCATA.`);
+      return;
+    }
+
+    const quantity = parsePositiveNumber(form.quantity);
+    if (quantity === null) {
+      showError(`Material ${selectedMaterial.materialCode}: quantidade deve ser maior que zero.`);
+      return;
+    }
+
+    if (selectedMaterial.isTransformer) {
+      if (!isTransformerQuantityValid(quantity)) {
+        showError(`Material TRAFO ${selectedMaterial.materialCode}: quantidade deve ser exatamente 1.`);
+        return;
+      }
+
+      if (!normalizeText(form.serialNumber) || !normalizeText(form.lotCode)) {
+        showError(`Material TRAFO ${selectedMaterial.materialCode}: Serial e LP sao obrigatorios.`);
+        return;
+      }
+    }
+
+    if (form.items.length > 0 && form.items[0].entryType !== normalizedEntryType) {
+      showError(`Todos os itens da mesma movimentacao devem ter o mesmo tipo (${form.items[0].entryType}).`);
+      return;
+    }
+
+    if (isTransformerMovementMode && form.items.length > 0) {
+      showError("O modo de movimentacao de TRAFO pre-preenchido aceita apenas a unidade selecionada.");
+      return;
+    }
+
+    const normalizedSerial = normalizeText(form.serialNumber);
+    const normalizedLot = normalizeText(form.lotCode);
+    const hasDuplicate = form.items.some((item) => {
+      if (item.isTransformer || selectedMaterial.isTransformer) {
+        return item.materialId === selectedMaterial.id
+          && normalizeText(item.serialNumber).toUpperCase() === normalizedSerial.toUpperCase()
+          && normalizeText(item.lotCode).toUpperCase() === normalizedLot.toUpperCase();
+      }
+
+      return item.materialId === selectedMaterial.id;
+    });
+
+    if (hasDuplicate) {
+      showError(
+        selectedMaterial.isTransformer
+          ? `Material TRAFO ${selectedMaterial.materialCode}: esta unidade ja foi adicionada na movimentacao.`
+          : `Material ${selectedMaterial.materialCode}: este item ja foi adicionado na movimentacao.`,
+      );
+      return;
+    }
+
     setForm((current) => ({
       ...current,
       materialCode: "",
       materialId: "",
       description: "",
-      entryType: "",
       quantity: "",
       serialNumber: "",
       lotCode: "",
-      notes: "",
+      entryType: "",
+      items: [
+        ...current.items,
+        {
+          rowId: createRowId(),
+          materialId: selectedMaterial.id,
+          materialCode: selectedMaterial.materialCode,
+          description: selectedMaterial.description,
+          quantity,
+          serialNumber: normalizedSerial,
+          lotCode: normalizedLot,
+          entryType: normalizedEntryType,
+          isTransformer: Boolean(selectedMaterial.isTransformer),
+        },
+      ],
     }));
+    setFeedback(null);
+  }
+
+  function removeFormItem(rowId: string) {
+    setForm((current) => ({
+      ...current,
+      items: current.items.filter((item) => item.rowId !== rowId),
+    }));
+  }
+
+  async function ensureSourceStockAvailability(item: TransferFormItem) {
+    if (!session?.accessToken) {
+      return { ok: false, message: "Sessao invalida para validar a movimentacao de estoque." } as const;
+    }
+
+    if (form.movementType === "ENTRY") {
+      if (!item.isTransformer) {
+        return { ok: true } as const;
+      }
+
+      const searchParams = new URLSearchParams();
+      searchParams.set("page", "1");
+      searchParams.set("pageSize", "10");
+      searchParams.set("materialCode", item.materialCode);
+      searchParams.set("serialNumber", item.serialNumber ?? "");
+      searchParams.set("lotCode", item.lotCode ?? "");
+
+      const response = await fetch(`/api/trafo-positions?${searchParams.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        items?: Array<{
+          materialId: string;
+          serialNumber: string;
+          lotCode: string;
+          currentStatus?: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE";
+        }>;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          message: data.message ?? `Material ${item.materialCode}: falha ao validar a unidade TRAFO para entrada.`,
+        } as const;
+      }
+
+      const matchedUnit = (data.items ?? []).find((candidate) =>
+        candidate.materialId === item.materialId
+        && String(candidate.serialNumber ?? "").trim().toUpperCase() === String(item.serialNumber ?? "").trim().toUpperCase()
+        && String(candidate.lotCode ?? "").trim().toUpperCase() === String(item.lotCode ?? "").trim().toUpperCase(),
+      );
+
+      if (matchedUnit && matchedUnit.currentStatus !== "FORA_ESTOQUE") {
+        return {
+          ok: false,
+          message: `Material ${item.materialCode}: a unidade TRAFO informada ja esta registrada em estoque proprio ou vinculada a outra operacao.`,
+        } as const;
+      }
+
+      return { ok: true } as const;
+    }
+
+    if (!form.fromStockCenterId) {
+      return { ok: false, message: "Selecione um centro DE valido antes de salvar." } as const;
+    }
+
+    const fromCenter = centerMap.get(form.fromStockCenterId);
+    const fromCenterName = fromCenter?.name ?? "centro de origem";
+
+    if (item.isTransformer) {
+      const searchParams = new URLSearchParams();
+      searchParams.set("page", "1");
+      searchParams.set("pageSize", "10");
+      searchParams.set("stockCenterId", form.fromStockCenterId);
+      searchParams.set("materialCode", item.materialCode);
+      searchParams.set("serialNumber", item.serialNumber ?? "");
+      searchParams.set("lotCode", item.lotCode ?? "");
+
+      const response = await fetch(`/api/trafo-positions?${searchParams.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        items?: Array<{
+          materialId: string;
+          serialNumber: string;
+          lotCode: string;
+          currentStockCenterId: string | null;
+        }>;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          message: data.message ?? `Material ${item.materialCode}: falha ao validar a unidade TRAFO no centro DE.`,
+        } as const;
+      }
+
+      const matchedUnit = (data.items ?? []).find((candidate) =>
+        candidate.materialId === item.materialId
+        && String(candidate.serialNumber ?? "").trim().toUpperCase() === String(item.serialNumber ?? "").trim().toUpperCase()
+        && String(candidate.lotCode ?? "").trim().toUpperCase() === String(item.lotCode ?? "").trim().toUpperCase()
+        && candidate.currentStockCenterId === form.fromStockCenterId,
+      );
+
+      if (!matchedUnit) {
+        return {
+          ok: false,
+          message: `Material ${item.materialCode}: a unidade TRAFO informada nao esta no centro DE (${fromCenterName}). Confira Material, Serial e LP.`,
+        } as const;
+      }
+
+      return { ok: true } as const;
+    }
+
+    const searchParams = new URLSearchParams();
+    searchParams.set("page", "1");
+    searchParams.set("pageSize", "100");
+    searchParams.set("stockCenterId", form.fromStockCenterId);
+    searchParams.set("materialCode", item.materialCode);
+    searchParams.set("onlyPositive", "TODOS");
+
+    const response = await fetch(`/api/stock-balance?${searchParams.toString()}`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+    });
+
+    const data = (await response.json().catch(() => ({}))) as {
+      items?: Array<{
+        stockCenterId: string;
+        materialId: string;
+        balanceQuantity: number;
+      }>;
+      message?: string;
+    };
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: data.message ?? `Material ${item.materialCode}: falha ao validar o saldo do centro DE.`,
+      } as const;
+    }
+
+    const matchedBalance = (data.items ?? []).find((candidate) =>
+      candidate.stockCenterId === form.fromStockCenterId && candidate.materialId === item.materialId,
+    );
+
+    if (!matchedBalance || Number(matchedBalance.balanceQuantity ?? 0) <= 0) {
+      return {
+        ok: false,
+        message: `Material ${item.materialCode}: nao existe saldo disponivel no centro DE (${fromCenterName}).`,
+      } as const;
+    }
+
+    if (Number(matchedBalance.balanceQuantity ?? 0) < item.quantity) {
+      return {
+        ok: false,
+        message: `Material ${item.materialCode}: saldo insuficiente no centro DE (${fromCenterName}). Saldo atual: ${Number(matchedBalance.balanceQuantity ?? 0).toLocaleString("pt-BR")}.`,
+      } as const;
+    }
+
+    return { ok: true } as const;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!session?.accessToken) {
-      setFeedback({ type: "error", message: "Sessao invalida para salvar movimentacao de estoque." });
+      showError("Sessao invalida para salvar movimentacao de estoque.");
       return;
     }
 
-    const validationError = validateManualForm();
-    if (validationError) {
-      setFeedback({ type: "error", message: validationError });
+    const today = toIsoDate(new Date());
+    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || !form.projectId || !form.entryDate) {
+      showError("Preencha operacao, centros, projeto e data antes de salvar.");
       return;
     }
 
-    const quantity = parsePositiveNumber(form.quantity);
-    if (quantity === null) {
-      setFeedback({ type: "error", message: "Quantidade deve ser maior que zero." });
+    if (form.fromStockCenterId === form.toStockCenterId) {
+      showError("Centro de estoque DE e PARA precisam ser diferentes.");
+      return;
+    }
+
+    if (!isValidCenterPairByMovementType()) {
+      showError("Combinacao de centro DE/PARA invalida para o tipo de operacao selecionado.");
+      return;
+    }
+
+    if (form.entryDate > today) {
+      showError("Data da movimentacao nao pode ser futura.");
+      return;
+    }
+
+    if (form.items.length === 0) {
+      showError("Adicione ao menos um material na movimentacao antes de salvar.");
+      return;
+    }
+
+    const operationEntryType = form.items[0]?.entryType ?? "";
+    if (!operationEntryType) {
+      showError("Nao foi possivel determinar o tipo dos itens da movimentacao.");
+      return;
+    }
+
+    if (form.items.some((item) => item.entryType !== operationEntryType)) {
+      showError(`Todos os itens da mesma movimentacao devem ter o mesmo tipo (${operationEntryType}).`);
+      return;
+    }
+
+    for (const item of form.items) {
+      if (item.quantity <= 0) {
+        showError(`Material ${item.materialCode}: quantidade invalida.`);
+        return;
+      }
+
+      if (item.isTransformer) {
+        if (!isTransformerQuantityValid(item.quantity)) {
+          showError(`Material TRAFO ${item.materialCode}: quantidade deve ser exatamente 1.`);
+          return;
+        }
+
+        if (!normalizeText(item.serialNumber) || !normalizeText(item.lotCode)) {
+          showError(`Material TRAFO ${item.materialCode}: Serial e LP sao obrigatorios.`);
+          return;
+        }
+      }
+
+      const sourceAvailability = await ensureSourceStockAvailability(item);
+      if (!sourceAvailability.ok) {
+        showError(sourceAvailability.message);
+        return;
+      }
+    }
+
+    if (isTransformerMovementMode && form.items.length !== 1) {
+      showError("O modo de movimentacao de TRAFO pre-preenchido exige exatamente um item na lista.");
       return;
     }
 
@@ -923,22 +1263,29 @@ export function StockTransfersPageView() {
           toStockCenterId: form.toStockCenterId,
           projectId: form.projectId,
           entryDate: form.entryDate,
-          entryType: form.entryType,
+          entryType: operationEntryType,
           notes: normalizeText(form.notes) || null,
-          items: [
-            {
-              materialId: form.materialId,
-              quantity,
-              serialNumber: normalizeText(form.serialNumber) || null,
-              lotCode: normalizeText(form.lotCode) || null,
-            },
-          ],
+          items: form.items.map((item) => ({
+            materialId: item.materialId,
+            quantity: item.quantity,
+            serialNumber: normalizeText(item.serialNumber) || null,
+            lotCode: normalizeText(item.lotCode) || null,
+          })),
         }),
       });
 
       const data = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
-        setFeedback({ type: "error", message: data.message ?? "Falha ao salvar movimentacao de estoque." });
+        showError(data.message ?? "Falha ao salvar movimentacao de estoque.");
+        await logError("Falha ao salvar movimentacao de estoque.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          movementType: form.movementType,
+          fromStockCenterId: form.fromStockCenterId,
+          toStockCenterId: form.toStockCenterId,
+          projectId: form.projectId,
+          itemCount: form.items.length,
+        });
         return;
       }
 
@@ -947,11 +1294,18 @@ export function StockTransfersPageView() {
         setFeedback({ type: "success", message: data.message ?? "Movimentacao do TRAFO salva com sucesso." });
       } else {
         setFeedback({ type: "success", message: data.message ?? "Movimentacao salva com sucesso." });
-        resetItemFields();
+        resetOperationForm();
       }
       await loadHistory(1);
-    } catch {
-      setFeedback({ type: "error", message: "Falha ao salvar movimentacao de estoque." });
+    } catch (error) {
+      showError("Falha ao salvar movimentacao de estoque.");
+      await logError("Falha ao salvar movimentacao de estoque.", error, {
+        movementType: form.movementType,
+        fromStockCenterId: form.fromStockCenterId,
+        toStockCenterId: form.toStockCenterId,
+        projectId: form.projectId,
+        itemCount: form.items.length,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1550,80 +1904,6 @@ export function StockTransfersPageView() {
 
           <label className={styles.field}>
             <span>
-              Material (codigo) <span className={styles.requiredMark}>*</span>
-            </span>
-            <input
-              type="text"
-              value={form.materialCode}
-              onChange={(event) => handleMaterialCodeChange(event.target.value)}
-              list="material-code-list"
-              placeholder="Digite o codigo do material"
-              disabled={isSubmitting || isLoadingMeta || isTransformerMovementMode}
-            />
-            <datalist id="material-code-list">
-              {materials.map((material) => (
-                <option key={material.id} value={material.materialCode}>
-                  {material.description}
-                </option>
-              ))}
-            </datalist>
-          </label>
-
-          <label className={`${styles.field} ${styles.fieldSpan2}`}>
-            <span>Descricao</span>
-            <input type="text" value={form.description} readOnly placeholder="Preenchido automaticamente ao selecionar o codigo" />
-          </label>
-
-          <label className={styles.field}>
-            <span>
-              Quantidade <span className={styles.requiredMark}>*</span>
-            </span>
-            <input
-              type="number"
-              step={requiresTransformerFields ? "1" : "0.001"}
-              min={requiresTransformerFields ? "1" : "0.001"}
-              max={requiresTransformerFields ? "1" : undefined}
-              value={form.quantity}
-              onChange={(event) => updateFormField("quantity", requiresTransformerFields ? "1" : event.target.value)}
-              disabled={isSubmitting || isTransformerMovementMode}
-              readOnly={requiresTransformerFields || isTransformerMovementMode}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>
-              Serial
-              {requiresTransformerFields ? <span className={styles.requiredMark}>*</span> : null}
-            </span>
-            <input
-              type="text"
-              value={form.serialNumber}
-              onChange={(event) => updateFormField("serialNumber", event.target.value)}
-              disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
-              placeholder={requiresTransformerFields ? "Informe o serial" : "Disponivel apenas para material TRAFO"}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>
-              LP
-              {requiresTransformerFields ? <span className={styles.requiredMark}>*</span> : null}
-            </span>
-            <input
-              type="text"
-              value={form.lotCode}
-              onChange={(event) => updateFormField("lotCode", event.target.value)}
-              disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
-              placeholder={requiresTransformerFields ? "Informe o LP" : "Disponivel apenas para material TRAFO"}
-            />
-          </label>
-
-          <p className={`${styles.fieldHint} ${styles.fullWidth}`}>
-            Material TRAFO exige Serial, LP e quantidade fixa igual a 1.
-          </p>
-
-          <label className={styles.field}>
-            <span>
               {formEntryDateLabel} <span className={styles.requiredMark}>*</span>
             </span>
             <input
@@ -1634,18 +1914,174 @@ export function StockTransfersPageView() {
             />
           </label>
 
-          <label className={styles.field}>
-            <span>
-              Tipo <span className={styles.requiredMark}>*</span>
-            </span>
-            <input
-              type="text"
-              value={form.entryType}
-              readOnly
-              disabled
-              placeholder="Preenchido automaticamente pelo tipo do material"
-            />
-          </label>
+          <div className={`${styles.fullWidth} ${styles.subCard}`}>
+            <div className={styles.subCardHeader}>
+              <div>
+                <h3 className={styles.subCardTitle}>Materiais da Movimentacao</h3>
+                <p className={styles.subCardHint}>
+                  Adicione os materiais antes de salvar a entrada, saida ou transferencia.
+                </p>
+              </div>
+              <span className={styles.subCardBadge}>
+                {form.items.length} {form.items.length === 1 ? "item" : "itens"}
+              </span>
+            </div>
+
+            <div className={styles.subCardGrid}>
+              <label className={styles.field}>
+                <span>
+                  Material (codigo) <span className={styles.requiredMark}>*</span>
+                </span>
+                <input
+                  type="text"
+                  value={form.materialCode}
+                  onChange={(event) => handleMaterialCodeChange(event.target.value)}
+                  list="material-code-list"
+                  placeholder="Digite o codigo do material"
+                  disabled={isSubmitting || isLoadingMeta || isTransformerMovementMode}
+                />
+                <datalist id="material-code-list">
+                  {materials.map((material) => (
+                    <option key={material.id} value={material.materialCode}>
+                      {material.description}
+                    </option>
+                  ))}
+                </datalist>
+              </label>
+
+              <label className={`${styles.field} ${styles.fieldSpan2}`}>
+                <span>Descricao</span>
+                <input type="text" value={form.description} readOnly placeholder="Preenchido automaticamente ao selecionar o codigo" />
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Quantidade <span className={styles.requiredMark}>*</span>
+                </span>
+                <input
+                  type="number"
+                  step={requiresTransformerFields ? "1" : "0.001"}
+                  min={requiresTransformerFields ? "1" : "0.001"}
+                  max={requiresTransformerFields ? "1" : undefined}
+                  value={form.quantity}
+                  onChange={(event) => updateFormField("quantity", requiresTransformerFields ? "1" : event.target.value)}
+                  disabled={isSubmitting || isTransformerMovementMode}
+                  readOnly={requiresTransformerFields || isTransformerMovementMode}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Tipo <span className={styles.requiredMark}>*</span>
+                </span>
+                <input
+                  type="text"
+                  value={form.entryType}
+                  readOnly
+                  disabled
+                  placeholder="Preenchido automaticamente pelo tipo do material"
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Serial
+                  {requiresTransformerFields ? <span className={styles.requiredMark}>*</span> : null}
+                </span>
+                <input
+                  type="text"
+                  value={form.serialNumber}
+                  onChange={(event) => updateFormField("serialNumber", event.target.value)}
+                  disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
+                  placeholder={requiresTransformerFields ? "Informe o serial" : "Disponivel apenas para material TRAFO"}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  LP
+                  {requiresTransformerFields ? <span className={styles.requiredMark}>*</span> : null}
+                </span>
+                <input
+                  type="text"
+                  value={form.lotCode}
+                  onChange={(event) => updateFormField("lotCode", event.target.value)}
+                  disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
+                  placeholder={requiresTransformerFields ? "Informe o LP" : "Disponivel apenas para material TRAFO"}
+                />
+              </label>
+
+              <div className={styles.subCardActionRow}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={handleAddFormItem}
+                  disabled={isSubmitting || isLoadingMeta}
+                >
+                  Adicionar material
+                </button>
+              </div>
+            </div>
+
+            <p className={styles.fieldHint}>
+              Material TRAFO exige Serial, LP e quantidade fixa igual a 1.
+            </p>
+
+            <div className={styles.tableWrapper}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Codigo</th>
+                    <th>Descricao</th>
+                    <th>Tipo</th>
+                    <th>Serial</th>
+                    <th>LP</th>
+                    <th>Quantidade</th>
+                    <th>Acoes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {form.items.length ? form.items.map((item) => (
+                    <tr key={item.rowId}>
+                      <td>{item.materialCode}</td>
+                      <td className={styles.tableDescriptionCell}>{item.description}</td>
+                      <td>{item.entryType}</td>
+                      <td>{item.serialNumber || "-"}</td>
+                      <td>{item.lotCode || "-"}</td>
+                      <td className={styles.tableQuantityCell}>{item.quantity.toLocaleString("pt-BR")}</td>
+                      <td className={styles.actionsCell}>
+                        <button
+                          type="button"
+                          className={styles.ghostButton}
+                          onClick={() => removeFormItem(item.rowId)}
+                          disabled={isSubmitting}
+                        >
+                          Remover
+                        </button>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={7} className={styles.emptyRow}>
+                        Nenhum material adicionado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className={styles.summaryBar}>
+              <div>
+                <span>Itens</span>
+                <strong>{form.items.length}</strong>
+              </div>
+              <div>
+                <span>Tipo da operacao</span>
+                <strong>{form.items[0]?.entryType ?? "-"}</strong>
+              </div>
+            </div>
+          </div>
 
           <label className={`${styles.field} ${styles.fullWidth}`}>
             <span>Observacao</span>
@@ -1658,7 +2094,7 @@ export function StockTransfersPageView() {
           </label>
 
           <div className={`${styles.actions} ${styles.fullWidth}`}>
-            <button type="submit" className={styles.primaryButton} disabled={isSubmitting || isLoadingMeta}>
+            <button type="submit" className={styles.primaryButton} disabled={isSubmitting || isLoadingMeta || form.items.length === 0}>
               {submitButtonLabel}
             </button>
             {isTransformerMovementMode ? (
@@ -1973,6 +2409,29 @@ export function StockTransfersPageView() {
           </div>
         </div>
       </article>
+
+      {alertMessage ? (
+        <div className={styles.modalOverlay} onClick={() => setAlertMessage(null)}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4 className={styles.alertTitle}>Alerta operacional</h4>
+                <p className={`${styles.modalSubtitle} ${styles.alertSubtitle}`}>Revise a validacao antes de continuar.</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={() => setAlertMessage(null)}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.alertBox}>
+                <span className={styles.alertLabel}>Erro identificado</span>
+                <p className={styles.alertMessageText}>{alertMessage}</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
 
       {detailItem ? (
         <div className={styles.modalOverlay} onClick={() => setDetailItem(null)}>
