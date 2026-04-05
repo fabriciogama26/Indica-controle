@@ -497,7 +497,7 @@ export function CurrentStockPageView() {
           <div>
             <h3 className={styles.cardTitle}>Lista de Estoque Atual</h3>
             <p className={styles.tableHint}>
-              O saldo exibido ja vem calculado do backend. A ultima movimentacao usa o timestamp mais recente do saldo por centro e material.
+              O saldo exibido ja vem calculado do backend e considera apenas estoques fisicos/proprios. Materiais que ja passaram pelo centro fisico continuam visiveis com saldo `0`, preservando o acesso ao historico operacional.
             </p>
           </div>
 

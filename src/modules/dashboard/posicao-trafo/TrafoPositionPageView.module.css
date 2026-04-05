@@ -92,7 +92,7 @@
 .statsGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .statCard {
@@ -197,6 +197,12 @@
   color: #155a38;
 }
 
+.statusChipTeam {
+  background: rgba(205, 127, 50, 0.14);
+  border-color: rgba(205, 127, 50, 0.16);
+  color: #8b4f13;
+}
+
 .statusChipExternal {
   background: rgba(198, 40, 40, 0.12);
   border-color: rgba(198, 40, 40, 0.14);
@@ -275,6 +281,11 @@
 .actionView {
   color: #1d77b8;
   background: #dce8f5;
+}
+
+.actionHistory {
+  color: #4a5fb3;
+  background: #e6ebfb;
 }
 
 .actionTransfer {
@@ -405,6 +416,120 @@
   grid-column: 1 / -1;
 }
 
+.historyCard {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #f8faff;
+}
+
+.historyCardReversal {
+  background: #fff5f5;
+  border-color: rgba(180, 30, 30, 0.16);
+}
+
+.historyCardReversed {
+  background: #fff9ef;
+  border-color: rgba(185, 117, 22, 0.18);
+}
+
+.historyCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.historyHeaderMain {
+  display: grid;
+  gap: 8px;
+}
+
+.historyHeaderMeta {
+  color: #5b6a85;
+  font-size: 0.84rem;
+  text-align: right;
+}
+
+.historyBadgeRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.historyBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.historyBadgeEntry {
+  background: rgba(25, 118, 210, 0.12);
+  border-color: rgba(25, 118, 210, 0.16);
+  color: #0d47a1;
+}
+
+.historyBadgeExit {
+  background: rgba(198, 40, 40, 0.12);
+  border-color: rgba(198, 40, 40, 0.16);
+  color: #9b1f1f;
+}
+
+.historyBadgeTransfer {
+  background: rgba(2, 136, 209, 0.12);
+  border-color: rgba(2, 136, 209, 0.16);
+  color: #0b5f91;
+}
+
+.historyBadgeTeam {
+  background: rgba(205, 127, 50, 0.14);
+  border-color: rgba(205, 127, 50, 0.16);
+  color: #8b4f13;
+}
+
+.historyBadgeNeutral {
+  background: rgba(91, 106, 133, 0.12);
+  border-color: rgba(91, 106, 133, 0.14);
+  color: #46566f;
+}
+
+.historyBadgeReversal {
+  background: rgba(180, 30, 30, 0.14);
+  border-color: rgba(180, 30, 30, 0.18);
+  color: #8b1e1e;
+}
+
+.historyBadgeReversed {
+  background: rgba(185, 117, 22, 0.14);
+  border-color: rgba(185, 117, 22, 0.18);
+  color: #8b5d18;
+}
+
+.historyMeta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.historyMeta div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #ffffff;
+  color: #1f2f54;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 1100px) {
   .filterGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -414,7 +539,8 @@
 @media (max-width: 860px) {
   .filterGrid,
   .statsGrid,
-  .detailGrid {
+  .detailGrid,
+  .historyMeta {
     grid-template-columns: 1fr;
   }
 

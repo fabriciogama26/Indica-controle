@@ -61,6 +61,9 @@ Filtros, auto-complete e listagem
   - `Projeto` usa `input + datalist`.
   - `Material (codigo)` usa `input + datalist`.
   - `Descricao` e `Tipo` sao preenchidos automaticamente a partir do material.
+  - O bloco de material funciona com `Adicionar material`, montando uma lista local antes do `Salvar operacao`, no mesmo raciocinio operacional da tela de `Medicao`.
+  - A mesma operacao manual aceita varios itens, mas todos precisam compartilhar o mesmo `Tipo` (`NOVO` ou `SUCATA`) porque o ledger grava `entry_type` no cabecalho da transferencia.
+  - Material comum nao pode repetir na mesma operacao manual; para TRAFO a unicidade e por `material + serial + LP`.
 - `Centro de estoque` e `Equipe` usam `select`.
 - O select de `Equipe` lista as equipes ativas do cadastro `teams`.
 - O select de `Centro de estoque` nao lista centros vinculados a equipes, ativas ou inativas.
@@ -133,6 +136,7 @@ Cancelamento e saldo
   - `REQUISITION`: baixa no centro de estoque e credita no centro da equipe.
   - `RETURN`: baixa no centro da equipe e credita no centro de estoque.
 - O `Estoque Atual` passa a ler essas operacoes e exibir `Requisicao`/`Devolucao` no historico.
+- A validacao da `/saida` continua podendo consultar centro de equipe em modo tecnico para `Devolucao`, sem expor esses centros na tela publica de `Estoque Atual`.
 
 Atalhos
 -------
@@ -149,6 +153,9 @@ Atualizacao 2026-04
 - Antes: `/saida` apenas redirecionava para `/entrada`.
 - Depois: `/saida` passa a operar como modulo proprio para `Requisicao` e `Devolucao`.
 - A tela ganhou formulario manual, filtros, lista paginada, detalhes, historico, estorno e cadastro em massa.
+- Ajuste de UX: o cadastro manual agora monta uma lista de itens (`Material + Descricao + Tipo + Serial + LP + Quantidade`) antes do submit final, no mesmo padrao mental de `adicionar e depois salvar` usado na `Medicao`.
+- Ajuste de UX: o bloco de materiais passou a ficar visualmente separado do cabecalho da operacao, em um sub-card proprio no mesmo estilo de leitura da `Medicao`.
+- Ajuste de UX: o modal de alerta operacional passou a destacar erros em vermelho e as mensagens de saldo/TRAFO passaram a citar explicitamente o codigo do material afetado.
 - Ajuste de UX: os textos auxiliares abaixo dos campos `Centro de estoque`, `Equipe` e `Tipo` foram removidos para alinhar o formulario ao padrao visual da Movimentacao de Estoque.
 - Ajuste de UX: o botao `Limpar formulario` foi removido e o select de `Equipe` passou a listar todas as equipes ativas, sinalizando quando a equipe ainda esta sem centro proprio.
 - Ajuste de UX: o frontend da `/saida` agora reforca o filtro para aceitar somente equipes ativas no formulario e no cadastro em massa, mesmo que algum dado legado escape do backend.

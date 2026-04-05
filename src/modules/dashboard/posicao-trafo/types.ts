@@ -8,7 +8,7 @@ export type TrafoPositionFilters = {
   materialCode: string;
   serialNumber: string;
   lotCode: string;
-  currentStatus: "TODOS" | "EM_ESTOQUE" | "FORA_ESTOQUE";
+  currentStatus: "TODOS" | "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE";
 };
 
 export type TrafoPositionListItem = {
@@ -21,11 +21,14 @@ export type TrafoPositionListItem = {
   lotCode: string;
   currentStockCenterId: string | null;
   currentStockCenterName: string | null;
-  currentStatus: "EM_ESTOQUE" | "FORA_ESTOQUE";
+  currentStatus: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE";
+  currentTeamName: string | null;
+  currentForemanName: string | null;
+  canMove: boolean;
   lastTransferId: string | null;
   lastProjectId: string | null;
   lastProjectCode: string | null;
-  lastMovementType: "ENTRY" | "EXIT" | "TRANSFER";
+  lastOperationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN";
   lastEntryDate: string;
   updatedAt: string | null;
   updatedByName: string;
@@ -43,5 +46,35 @@ export type TrafoPositionListResponse = {
 
 export type TrafoPositionMetaResponse = {
   stockCenters?: StockCenterOption[];
+  message?: string;
+};
+
+export type TrafoPositionHistoryEntry = {
+  id: string;
+  transferId: string;
+  operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN";
+  movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  quantity: number;
+  entryDate: string;
+  changedAt: string;
+  projectCode: string;
+  fromStockCenterName: string;
+  toStockCenterName: string;
+  updatedByName: string;
+  teamName: string | null;
+  foremanName: string | null;
+  notes: string | null;
+  isReversal: boolean;
+  isReversed: boolean;
+  reversalReason: string | null;
+};
+
+export type TrafoPositionHistoryResponse = {
+  history?: TrafoPositionHistoryEntry[];
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
   message?: string;
 };

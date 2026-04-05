@@ -56,6 +56,7 @@ export const INITIAL_FORM: FormState = {
   entryDate: new Date().toISOString().slice(0, 10),
   entryType: "",
   notes: "",
+  items: [],
 };
 
 export const INITIAL_FILTERS: FilterState = {

@@ -129,6 +129,9 @@
 - [x] Persistir snapshot de `Equipe` e `Encarregado` nas `Operacoes de Equipe` e refletir esse dado tambem no historico do `Estoque Atual`.
 - [x] Restringir `Operacoes de Equipe` para usar apenas equipes ativas e impedir que `Centro de estoque` aceite centros vinculados a equipes.
 - [x] Endurecer o cadastro em massa de `Operacoes de Equipe` com pre-validacao sequencial de saldo/TRAFO, rollback total do lote, modal de alerta e `CSV` de erros por linha/coluna.
+- [x] Ajustar o cadastro manual da `/saida` para o padrao de itens adicionados da `Medicao`, permitindo montar uma lista local de materiais antes do save final da operacao.
+- [x] Separar visualmente o bloco de materiais da `/saida` em um sub-card proprio, no mesmo padrao de leitura da `Medicao`.
+- [x] Especificar melhor os alertas da `/saida`, citando o codigo do material afetado e destacando o erro visualmente no modal.
 - [x] Endurecer migrations de estoque para normalizar `stock_centers.center_type` legados e aplicar validacao transacional de `movement_type` no banco (`ENTRY`, `EXIT`, `TRANSFER`, com `TRANSFER` apenas entre `OWN`).
 - [x] Endurecer movimentacao de estoque com avisos em portugues, bloqueio de edicao direta (`PUT` bloqueado + trigger no banco) e validacao de `entry_date` nao futura.
 - [x] Implementar estorno de movimentacao de estoque com botao na lista, modal de motivo obrigatorio, endpoint dedicado (`/api/stock-transfers/reversal`) e RPC transacional com bloqueio de duplo estorno.
@@ -138,6 +141,7 @@
 - [x] Alinhar cadastro em massa da Movimentacao de Estoque ao padrao da Medicao com geracao/download de `CSV` de erros (`linha;coluna;valor;erro`) para falhas de validacao e salvamento.
 - [x] Padronizar motivo de estorno da Movimentacao de Estoque com catalogo (`reason_code` + `reason_notes`), criando tabela seed de motivos e validacao hard no banco para exigir observacao quando `reason_code = OTHER`.
 - [x] Implementar tela de `Estoque Atual` com filtros, paginacao, resumo, exportacao CSV e consulta read-only por `stock_center_balances`/`stock_centers`.
+- [x] Ajustar `Estoque Atual` para mostrar apenas estoques fisicos/proprios, excluir centros de equipe da tela, exibir saldo zero por padrao e manter materiais historicos visiveis no centro fisico mesmo com saldo atual `0`.
 - [x] Ajustar a Movimentacao de Estoque para rotular `entry_date` conforme a operacao no formulario/modais (`entrada`, `saida`, `transferencia`) e rebalancear o layout de `Descricao`/`Quantidade` na UI.
 - [x] Melhorar leitura operacional de `Movimentacao de Estoque` e `Estoque Atual` com sinalizacao visual por `Entrada/Saida/Transferencia/Estorno`, destaque de linhas estornadas e historicos com titulos/valores legiveis em vez de IDs brutos.
 - [x] Endurecer TRAFO na `Movimentacao de Estoque` com `quantity = 1`, `Serial + LP` obrigatorios em todos os fluxos e validacao transacional da unidade exata no centro de origem via RPC.
@@ -147,7 +151,7 @@
 - [x] Remover `Serial` e `LP` da grade da Movimentacao de Estoque, mantendo esses campos apenas em `Detalhes` e no fluxo operacional de TRAFO.
 - [x] Remover `Operacao cancelada` e `Outro` do catalogo de motivo padrao do estorno e bloquear esses codigos tambem no backend/RPC.
 - [x] Endurecer `GET /api/stock-transfers` para nao derrubar a lista quando consultas auxiliares de detalhes/metadados falharem.
-- [x] Criar tela/consulta de posicao unitaria de TRAFO consumindo `trafo_instances`.
+- [x] Criar tela/consulta de posicao unitaria de TRAFO consumindo `trafo_instances`, mantendo uma linha por unidade, centro fisico de referencia, status `Com equipe`, historico proprio da cadeia de movimentos e bloqueio do atalho de movimentacao fora do estoque fisico.
 - [ ] Evoluir modulo de `Projetos` com status operacional e vinculo de materiais ao estoque.
 - [x] Implementar primeira versao funcional de `Locacao` com filtro por `Municipio`, busca por `SOB`, observacoes gerais, materiais previstos e atividades previstas com persistencia propria.
 - [x] Adicionar flag operacional `project.has_locacao` para marcar projetos com salvamento real na tela de `Locacao`.

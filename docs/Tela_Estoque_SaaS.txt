@@ -5,8 +5,9 @@ Visao geral
 - Tela read-only no padrao `filtros + lista`.
 - Consulta o saldo fisico atual por `Centro de estoque + Material`.
 - O saldo ja vem calculado no backend e a tela apenas exibe o valor.
-- `Ultima movimentacao` mostra a ultima alteracao registrada no saldo daquele `material` naquele `centro`, usando `stock_center_balances.updated_at`.
-- A tela trabalha somente com centros `OWN`, sem recalculo no frontend.
+- `Ultima movimentacao` mostra a ultima alteracao operacional conhecida daquele `material` naquele `centro`; quando a linha ainda existe em `stock_center_balances`, usa o `updated_at` do saldo, e quando o saldo fisico zera e a linha nao existe mais, a API recompõe a visibilidade a partir do historico de `stock_transfers`.
+- A tela trabalha somente com centros `OWN` fisicos/principais, sem recalculo no frontend.
+- Centros vinculados a equipes nao aparecem na lista nem no filtro principal do `Estoque Atual`.
 
 Arquitetura
 -----------
@@ -29,7 +30,7 @@ Arquitetura
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
-  - `Centro de estoque` (somente centros `OWN`)
+  - `Centro de estoque` (somente centros `OWN` fisicos/principais)
   - `Material (codigo)`
   - `Descricao`
   - `Saldo minimo`
@@ -46,7 +47,9 @@ Filtros, auto-complete e listagem
   - `Acoes`
 - Regras de exibicao:
   - `Saldo` exibido como numero inteiro.
-  - `Ultima movimentacao` usa o timestamp da ultima escrita em `stock_center_balances`.
+  - `Exibir saldo zero` inicia em `Sim`, para manter o saldo fisico visivel mesmo apos requisicoes para equipe.
+  - Materiais que ja passaram pelo centro fisico continuam aparecendo com saldo `0`, mesmo quando o saldo atual nao possui mais linha persistida em `stock_center_balances`.
+  - `Ultima movimentacao` usa o timestamp mais recente entre o saldo atual e o historico de `stock_transfers` do centro fisico.
   - A lista e paginada no backend (`page`, `pageSize`, `total`).
   - O cabecalho da lista exibe `Registros filtrados` e `Saldo total da pagina`.
   - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos.
@@ -64,6 +67,7 @@ Boas praticas
 - Manter a consulta read-only segregada por `tenant_id`.
 - Nao recalcular saldo no frontend.
 - Limitar a tela a centros `OWN` (`controls_balance = true` / `center_type = OWN`).
+- Excluir da tela os centros `OWN` vinculados a equipes, mantendo esses centros apenas para validacoes tecnicas dos fluxos operacionais.
 - Se o volume crescer de forma relevante, avaliar cache materializado por `centro + material` antes de expandir a consulta.
 - Erros da tela devem ser registrados com tag `estoque_atual` via `useErrorLogger`.
 
@@ -71,6 +75,7 @@ Cancelamento e saldo
 --------------------
 - A tela nao grava movimentacao, cancelamento ou estorno.
 - O saldo apresentado depende da tabela `stock_center_balances`.
+- Quando uma requisicao para equipe zera o saldo do centro fisico e a linha deixa de existir em `stock_center_balances`, a API complementa a listagem com base no historico de `stock_transfers` para manter o material visivel com saldo `0`.
 - O rastreio unitario de TRAFO passa a depender de `trafo_instances`; esta tela continua listando o saldo agregado por centro/material.
 - Transferencias continuam seguindo a regra operacional:
   - `DE` debita.
@@ -109,6 +114,8 @@ Atualizacao 2026-04
 - Depois:
   - `/estoque` passou a exibir saldo atual por centro/material com filtros, lista paginada, exportacao CSV, modal de detalhes e historico operacional por `centro + material`.
 - O historico passou a reconhecer operacoes da rota `/saida`, exibindo `Equipe`, `Encarregado`, `Requisicao` e `Devolucao` quando o ledger vier do fluxo operacional por equipe.
+- Ajuste de regra: a lista principal do `Estoque Atual` passou a mostrar apenas estoque fisico proprio, sem centros de equipe; quando houver requisicao para equipe, o centro fisico continua aparecendo com saldo `0` quando aplicavel.
+- Ajuste adicional: a API passou a reconstruir linhas historicas zeradas de centros fisicos a partir de `stock_transfers` quando necessario, evitando que o material desapareca da lista principal apos requisicoes para equipe.
   - O historico passou a priorizar rotulo funcional do evento em vez de usar o `transferId` como titulo principal.
   - O historico recebeu chips de operacao/status e destaque visual para `Estorno` e `Estornada`.
   - A arquitetura de TRAFO passou a manter a posicao unitaria atual em `trafo_instances`, e a consulta unitaria agora fica na tela dedicada `/posicao-trafo` sem mudar a listagem agregada atual.
@@ -119,9 +126,9 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
   - Responsavel por: carregar centros, aplicar filtros, buscar a lista paginada, exportar CSV e exibir o saldo atual.
 - Caminho: `src/app/api/stock-balance/route.ts`
-  - Responsavel por: listar saldo atual por `tenant + centro + material`, com filtros e paginacao.
+  - Responsavel por: listar saldo atual por `tenant + centro + material`, com filtros, paginacao, exclusao de centros vinculados a equipes no modo da tela e recomposicao de linhas com saldo `0` via historico operacional quando o centro fisico ja movimentou aquele material.
 - Caminho: `src/app/api/stock-balance/meta/route.ts`
-  - Responsavel por: listar centros ativos `OWN` para o filtro da tela.
+  - Responsavel por: listar centros ativos `OWN` fisicos/principais para o filtro da tela.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/estoque/constants.ts`
@@ -169,3 +176,5 @@ Ajuda contextual
   - Depois: a rota `/estoque` passou a consumir dados reais por tenant, com filtros operacionais e listagem paginada.
   - Antes: o modal de historico usava o `transferId` como titulo principal e mostrava `ENTRY/EXIT/TRANSFER` sem destaque visual.
   - Depois: o modal usa titulo funcional, operacao traduzida e chips/status para facilitar leitura operacional.
+  - Antes: material zerado podia desaparecer da lista principal quando a linha do saldo nao estivesse mais persistida.
+  - Depois: o material continua visivel no centro fisico com saldo `0`, preservando a consulta do historico pelo proprio `Estoque Atual`.

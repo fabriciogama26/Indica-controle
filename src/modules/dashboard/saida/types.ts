@@ -136,6 +136,18 @@ export type MassImportResultSummary = {
   errorRows: number;
 };
 
+export type TeamOperationFormItem = {
+  rowId: string;
+  materialId: string;
+  materialCode: string;
+  description: string;
+  quantity: number;
+  serialNumber: string;
+  lotCode: string;
+  entryType: "SUCATA" | "NOVO";
+  isTransformer: boolean;
+};
+
 export type FormState = {
   operationKind: TeamOperationKind;
   stockCenterId: string;
@@ -153,6 +165,7 @@ export type FormState = {
   entryDate: string;
   entryType: "SUCATA" | "NOVO" | "";
   notes: string;
+  items: TeamOperationFormItem[];
 };
 
 export type FilterState = {
