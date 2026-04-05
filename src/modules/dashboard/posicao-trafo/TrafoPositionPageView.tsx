@@ -502,7 +502,7 @@ export function TrafoPositionPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <div>
-            <h3 className={styles.cardTitle}>Posicao Unitaria de TRAFO</h3>
+            <h3 className={styles.cardTitle}>Rastreio de TRAFO</h3>
             <p className={styles.tableHint}>
               A lista mantem uma linha por unidade e mostra o centro fisico de referencia. Requisicoes e devolucoes por equipe aparecem no historico da unidade, sem trocar a leitura principal para centro de equipe.
             </p>
@@ -652,7 +652,7 @@ export function TrafoPositionPageView() {
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Detalhes da Posicao Unitaria</h4>
+                <h4>Detalhes do Rastreio</h4>
                 <p className={styles.modalSubtitle}>
                   {detailItem.materialCode} | Serial {detailItem.serialNumber} | LP {detailItem.lotCode}
                 </p>

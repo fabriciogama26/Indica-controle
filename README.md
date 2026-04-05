@@ -126,8 +126,8 @@ vercel --prod
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros, listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
-  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Posicao Unitaria TRAFO com consulta por `Serial + LP`, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos e atalho de movimentacao apenas quando a unidade estiver em estoque fisico.
-  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
+  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de TRAFO com consulta por `Serial + LP`, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos e atalho de movimentacao apenas quando a unidade estiver em estoque fisico.
+  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
 - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
@@ -210,7 +210,7 @@ vercel --prod
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
 - `src/modules/dashboard/entrada/`
-  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), `Tipo` automatico por `materials.tipo` (nao selecionavel), `Serial/LP` condicionais para TRAFO, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
+  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), sub-card `Materiais da Movimentacao` com lista local de itens antes do save final, `Tipo` automatico por `materials.tipo`, `Serial/LP` condicionais para TRAFO, alertas operacionais em modal com mensagem por material, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
 - `src/modules/dashboard/saida/`
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
@@ -228,8 +228,8 @@ vercel --prod
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de posicao unitaria.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
-  - `TrafoPositionPageView.tsx`: tela de Posicao Unitaria TRAFO com filtros, lista paginada, detalhes, historico da unidade, status `Com equipe` e acao `Movimentar este TRAFO` apenas quando a unidade estiver em estoque fisico.
-  - `TrafoPositionPageView.module.css`: estilos da tela de Posicao Unitaria TRAFO.
+  - `TrafoPositionPageView.tsx`: tela de Rastreio de TRAFO com filtros, lista paginada, detalhes, historico da unidade, status `Com equipe` e acao `Movimentar este TRAFO` apenas quando a unidade estiver em estoque fisico.
+  - `TrafoPositionPageView.module.css`: estilos da tela de Rastreio de TRAFO.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `valor`, `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - `ActivitiesPageView.module.css`: estilos da tela de atividades.
@@ -291,7 +291,7 @@ vercel --prod
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada e exportacao CSV.
-  - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Posicao Unitaria TRAFO com consulta em `trafo_instances` e atalho de movimentacao.
+  - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de TRAFO com consulta em `trafo_instances` e atalho de movimentacao.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Padrao_Cadastros_SaaS.txt`: referencia obrigatoria de padrao visual/comportamental para telas de cadastro.

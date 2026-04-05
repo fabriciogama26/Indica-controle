@@ -46,6 +46,6 @@ Estado atual resumido
 - Tela de Projetos com cadastro/filtros/lista implementada
 - Navegacao lateral reorganizada em Visao Geral, Operacao, Almoxarifado, Cadastros e Cadastro Base
 - Tela de Estoque Atual com filtros/lista paginada implementada
-- Tela de Posicao Unitaria TRAFO implementada com consulta em `trafo_instances`
+- Tela de Rastreio de TRAFO implementada com consulta em `trafo_instances`
 - Modulos ainda em placeholder: `Cargo` e parte de `Cadastro Base`
 - Backend minimo de login web mapeado no Supabase
