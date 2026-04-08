@@ -98,6 +98,7 @@ Filtros, auto-complete e listagem
   - `valor`
   - `erro`
 - O parser do CSV bloqueia linhas repetidas de TRAFO com o mesmo `material + serial + lp` no mesmo arquivo.
+- A data do CSV aceita `YYYY-MM-DD`, `YYYY-M-D`, `DD/MM/YYYY` ou `DD/MM/AAAA` (com ou sem sufixo de hora), e a validacao normaliza para `YYYY-MM-DD` antes das regras de negocio.
 - O modal exibe botao `Baixar erros (CSV)` no mesmo padrao operacional da tela de Medicao.
 - Erros operacionais do cadastro manual passam a abrir modal de alerta com mensagem objetiva e identificacao do `material_code` afetado quando aplicavel.
 - Tela padronizada com card `Filtros` e card `Lista de Movimentacoes`, incluindo paginacao server-side.
@@ -161,7 +162,7 @@ Cancelamento e saldo
 - Motivos bloqueados para este fluxo:
   - `Operacao cancelada`
   - `Outro`
-- Estorno permitido apenas para perfil administrativo (`admin/master`).
+- Estorno permitido para `admin/master/user` (mantendo bloqueios de motivo, duplo estorno e estorno de estorno).
 - Efeito de saldo:
   - `ENTRY` (`THIRD_PARTY -> OWN`): soma saldo apenas no destino.
   - `EXIT` (`OWN -> THIRD_PARTY`): valida e baixa saldo apenas na origem.
@@ -204,6 +205,8 @@ Atualizacao 2026-04
 - Ajuste de duplicidade para TRAFO: o fluxo bloqueia duplicidade funcional da mesma unidade em centros `OWN` e a importacao barra repeticao da mesma unidade dentro do mesmo arquivo.
 - Ajuste de arquitetura para TRAFO: a posicao atual da unidade passou a ser persistida em `trafo_instances`, com backfill inicial pelo ledger historico apenas na migration e validacao operacional corrente toda em cima da tabela unitaria.
 - Ajuste de UX para TRAFO: a lista de movimentacoes passou a expor o botao `Movimentar este TRAFO`, que abre `/entrada` em modo dedicado para `Saida` ou `Transferencia`, com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1` ja preenchidos para a mesma unidade.
+- Ajuste de importacao em massa: normalizacao de data em frontend/backend para evitar falso bloqueio ao receber datas com formato reduzido (`YYYY-M-D`), formato brasileiro (`DD/MM/YYYY`) ou sufixo de hora.
+- Ajuste de permissao: o estorno deixou de ser exclusivo de perfil administrativo na UI/API e passou a aceitar tambem perfil `user`.
 - Migration `128_create_stock_transfer_module.sql`:
   - adiciona `materials.is_transformer`;
   - cria `stock_centers`, `stock_center_balances`, `stock_transfers`, `stock_transfer_items`;
@@ -326,7 +329,11 @@ Ajuda contextual
   - Depois: a lista usa sinalizacao visual funcional e o historico prioriza nomes/codigos legiveis.
   - Antes: TRAFO aceitava quantidade maior que `1` e `EXIT/TRANSFER` nao confirmavam a unidade exata por `Serial + LP`.
   - Depois: TRAFO fica unitario e a RPC valida a unidade exata no centro de origem antes de concluir a movimentacao.
-  - Antes: o CSV podia repetir a mesma unidade de TRAFO no mesmo lote sem feedback antecipado.
-  - Depois: o CSV bloqueia repeticao da mesma combinacao `material + serial + lp` no proprio arquivo.
-  - Antes: a validacao corrente de TRAFO dependia de reconstruir saldo unitario pelo ledger de `stock_transfer_items`.
-  - Depois: a validacao corrente usa `trafo_instances` como estado atual da unidade, deixando o ledger apenas para backfill/auditoria.
+- Antes: o CSV podia repetir a mesma unidade de TRAFO no mesmo lote sem feedback antecipado.
+- Depois: o CSV bloqueia repeticao da mesma combinacao `material + serial + lp` no proprio arquivo.
+- Antes: a validacao corrente de TRAFO dependia de reconstruir saldo unitario pelo ledger de `stock_transfer_items`.
+- Depois: a validacao corrente usa `trafo_instances` como estado atual da unidade, deixando o ledger apenas para backfill/auditoria.
+- Antes: datas de importacao com variacoes de formato podiam gerar validacao incorreta por comparacao textual.
+- Depois: a data de importacao passa por normalizacao forte (`YYYY-MM-DD`) antes da comparacao com a data atual.
+- Antes: o botao/endpoint de estorno aceitava apenas perfil administrativo.
+- Depois: o estorno passa a aceitar tambem perfil `user`, mantendo os bloqueios operacionais existentes.

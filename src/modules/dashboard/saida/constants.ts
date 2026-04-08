@@ -1,4 +1,5 @@
 import type { FilterState, FormState } from "./types";
+import { toIsoDate } from "./utils";
 
 export const HISTORY_PAGE_SIZE = 15;
 export const HISTORY_EXPORT_PAGE_SIZE = 100;
@@ -54,7 +55,7 @@ export const INITIAL_FORM: FormState = {
   quantity: "",
   serialNumber: "",
   lotCode: "",
-  entryDate: new Date().toISOString().slice(0, 10),
+  entryDate: toIsoDate(new Date()),
   entryType: "",
   notes: "",
   items: [],
