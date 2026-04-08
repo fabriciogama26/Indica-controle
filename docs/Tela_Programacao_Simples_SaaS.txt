@@ -172,6 +172,7 @@ Filtros, auto-complete e listagem
   - Acima de `Cadastro de Programacao`, a tela mostra um painel de prazos das obras baseado em `Projeto (SOB) + Data limite`.
   - O painel traz cards-resumo com prioridade visual (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`) e cards por `SOB` em carrossel horizontal (6 por pagina), para obras com data limite `<= hoje + 15 dias`.
   - Projetos com qualquer programacao no periodo carregado com `Estado Trabalho = CONCLUIDO` sao removidos da contagem e dos cards de prazo.
+  - Hierarquia visual dos cards SOB: `Muito atrasado (>=30 dias)` em vermelho escuro, `Pouco atrasado` em vermelho, `Vence hoje` em vermelho com destaque de borda e `Vence em breve` em laranja.
   - Cada card de `SOB` exibe `SOB`, `Data limite` e `Status do prazo` (`Vencida ha X dias`, `Vence hoje` ou `Vence em X dias`), com cor por criticidade.
   - Navegacao do carrossel por setas (`esquerda/direita`), avancando ou voltando 1 pagina de 6 cards por clique.
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
@@ -527,6 +528,7 @@ Atualizacao adicional 2026-04-08
   - `calculateDateDiffInDays`
   - `formatDeadlineStatusLabel`
   - `resolveDeadlineStatus`
+  - `resolveDeadlineVisualVariant`
   - `deadlineProjects`, `deadlineSummary`, `deadlineSobCards`
 - Comportamento antes/depois:
   - Antes: o topo da tela de cadastro da Programacao nao trazia nenhum resumo de prazo das obras.
