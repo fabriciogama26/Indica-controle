@@ -140,6 +140,8 @@
 - [x] Renomear menu/titulo de `/entrada` para `Movimentacao de Estoque`, remover `Tipo/Operacao` da lista e incluir `Exportar Excel (CSV)` no padrao das outras telas.
 - [x] Ajustar cadastro em massa da Movimentacao de Estoque para modelo CSV didatico com colunas em portugues, opcoes de `operacao` explicitas, `LP` documentado (equivalente a `lot_code`) e `observacao` opcional com retrocompatibilidade para cabecalhos antigos em ingles.
 - [x] Alinhar cadastro em massa da Movimentacao de Estoque ao padrao da Medicao com geracao/download de `CSV` de erros (`linha;coluna;valor;erro`) para falhas de validacao e salvamento.
+- [x] Corrigir validacao de data no cadastro em massa da `Movimentacao de Estoque` e `Operacoes de Equipe` com normalizacao para `YYYY-MM-DD` (aceitando `YYYY-M-D`, `DD/MM/YYYY` e data com hora), evitando falso bloqueio de data.
+- [x] Liberar estorno para perfil `user` na UI e nas rotas `/api/stock-transfers/reversal` e `/api/team-stock-operations/reversal`, mantendo validacoes de motivo e integridade.
 - [x] Padronizar motivo de estorno da Movimentacao de Estoque com catalogo (`reason_code` + `reason_notes`), criando tabela seed de motivos e validacao hard no banco para exigir observacao quando `reason_code = OTHER`.
 - [x] Implementar tela de `Estoque Atual` com filtros, paginacao, resumo, exportacao CSV e consulta read-only por `stock_center_balances`/`stock_centers`.
 - [x] Ajustar `Estoque Atual` para mostrar apenas estoques fisicos/proprios, excluir centros de equipe da tela, exibir saldo zero por padrao e manter materiais historicos visiveis no centro fisico mesmo com saldo atual `0`.

@@ -31,6 +31,7 @@ import {
   formatHistoryActionLabel,
   formatHistoryValue,
   isTransformerQuantityValid,
+  normalizeDateInput,
   normalizeHeaderName,
   normalizeMaterialEntryType,
   normalizeTeamOperationKind,
@@ -164,7 +165,7 @@ export function TeamStockOperationsPageView() {
   const exportCooldown = useExportCooldown();
   const canReverseTeamOperation = useMemo(() => {
     const normalizedRole = String(session?.user.role ?? "").trim().toUpperCase();
-    return normalizedRole === "ADMIN" || normalizedRole === "MASTER";
+    return normalizedRole === "ADMIN" || normalizedRole === "MASTER" || normalizedRole === "USER";
   }, [session?.user.role]);
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -1203,6 +1204,7 @@ export function TeamStockOperationsPageView() {
       );
 
       const issues: MassImportIssue[] = [];
+      const today = toIsoDate(new Date());
       const entries = rows.flatMap((row, index) => {
         const rowNumber = index + 2;
         const operationKindRaw = readCsvField(row, ["operacao", "operation", "tipo_operacao"]);
@@ -1214,6 +1216,7 @@ export function TeamStockOperationsPageView() {
         const serialRaw = readCsvField(row, ["serial", "serial_number"]);
         const lotRaw = readCsvField(row, ["lp", "lot", "lot_code"]);
         const entryDateRaw = readCsvField(row, ["data_operacao", "data", "entry_date", "data_entrada"]);
+        const entryDate = normalizeDateInput(entryDateRaw);
         const notesRaw = readCsvField(row, ["observacao", "observation", "notes"]);
 
         const operationKind = normalizeTeamOperationKind(operationKindRaw);
@@ -1247,6 +1250,12 @@ export function TeamStockOperationsPageView() {
         if (!entryDateRaw) {
           issues.push({ rowNumber, column: "data_operacao", value: entryDateRaw, error: "Data da operacao e obrigatoria." });
         }
+        if (entryDateRaw && !entryDate) {
+          issues.push({ rowNumber, column: "data_operacao", value: entryDateRaw, error: "Data invalida. Use YYYY-MM-DD ou DD/MM/YYYY." });
+        }
+        if (entryDate && entryDate > today) {
+          issues.push({ rowNumber, column: "data_operacao", value: entryDate, error: "Data da movimentacao nao pode ser futura." });
+        }
         if (material && !entryType) {
           issues.push({ rowNumber, column: "material_codigo", value: materialRaw, error: "Tipo do material deve ser NOVO ou SUCATA no cadastro de materiais." });
         }
@@ -1271,7 +1280,7 @@ export function TeamStockOperationsPageView() {
           || !project
           || !material
           || quantity === null
-          || !entryDateRaw
+          || !entryDate
           || !entryType
           || (material.isTransformer && (!serialRaw || !lotRaw || !isTransformerQuantityValid(quantity)))
         ) {
@@ -1285,7 +1294,7 @@ export function TeamStockOperationsPageView() {
             stockCenterId: stockCenter.id,
             teamId: team.id,
             projectId: project.id,
-            entryDate: entryDateRaw,
+            entryDate,
             entryType,
             notes: notesRaw || null,
             materialId: material.id,

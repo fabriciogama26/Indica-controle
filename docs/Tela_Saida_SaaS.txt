@@ -94,6 +94,7 @@ Filtros, auto-complete e listagem
   - Erros do lote sobem em modal e tambem geram `CSV` detalhado.
   - Em caso de erro, a tela gera `CSV` com `linha;coluna;valor;erro`.
   - O CSV aceita `RETORNO_DE_CAMPO`/`FIELD_RETURN` e, nesse caso, grava `entry_type = SUCATA`.
+  - A data do CSV aceita `YYYY-MM-DD`, `YYYY-M-D`, `DD/MM/YYYY` ou `DD/MM/AAAA` (com ou sem sufixo de hora), e o frontend normaliza para `YYYY-MM-DD` antes do envio.
 - Filtros da lista:
   - `Data inicial`
   - `Data final`
@@ -138,7 +139,7 @@ Cancelamento e saldo
   - `Motivo padrao do estorno`
   - `Data do estorno`
   - `Observacao` quando o motivo exigir
-- O estorno e restrito a `admin/master`.
+- O estorno e permitido para `admin/master/user`.
 - Impacto no saldo:
   - `REQUISITION`: baixa no centro de estoque e credita no centro da equipe.
   - `RETURN`: baixa no centro da equipe e credita no centro de estoque.
@@ -173,6 +174,8 @@ Atualizacao 2026-04
 - `Estoque Atual` passa a distinguir `Requisicao` e `Devolucao` no historico do saldo.
 - Ajuste de integridade: o cadastro em massa passou a fazer pre-validacao sequencial de saldo/TRAFO e a gravar via RPC atomica, evitando sucesso parcial no lote.
 - Ajuste de UX: erros de importacao com falha operacional agora tambem disparam modal, alem do `CSV` de erros por linha/coluna.
+- Ajuste de importacao em massa: validacao de data no frontend com normalizacao para `YYYY-MM-DD`, evitando falso bloqueio com formatos variados (`YYYY-M-D`, `DD/MM/YYYY` e data com hora).
+- Ajuste de permissao: o estorno da tela/API passou a aceitar tambem perfil `user`.
 - Migration `140_create_team_stock_operations.sql`:
   - adiciona `teams.stock_center_id`
   - cria `stock_transfer_team_operations`
@@ -258,5 +261,9 @@ Ajuda contextual
   - `POST` de `/api/team-stock-operations/reversal`
   - `saveTeamStockOperationViaRpc`, `saveTeamStockOperationBatchViaRpc`, `reverseTeamStockOperationViaRpc`
 - Comportamento antes/depois:
-  - Antes: `/saida` nao tinha fluxo proprio.
-  - Depois: `/saida` passa a registrar requisicoes, devolucoes e retornos de campo reais com saldo, historico, snapshot de `Equipe/Encarregado` e estorno no mesmo padrao operacional do almoxarifado.
+- Antes: `/saida` nao tinha fluxo proprio.
+- Depois: `/saida` passa a registrar requisicoes, devolucoes e retornos de campo reais com saldo, historico, snapshot de `Equipe/Encarregado` e estorno no mesmo padrao operacional do almoxarifado.
+- Antes: o import podia encaminhar data sem normalizacao, delegando toda validacao ao backend.
+- Depois: o import ja normaliza/valida data na tela e envia `entryDate` no formato canonico (`YYYY-MM-DD`).
+- Antes: o estorno era restrito a perfil administrativo.
+- Depois: o estorno passa a aceitar tambem perfil `user`, mantendo os mesmos bloqueios de integridade do fluxo.

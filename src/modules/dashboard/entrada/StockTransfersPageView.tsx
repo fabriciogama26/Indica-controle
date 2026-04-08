@@ -217,7 +217,7 @@ const INITIAL_FORM: FormState = {
   quantity: "",
   serialNumber: "",
   lotCode: "",
-  entryDate: new Date().toISOString().slice(0, 10),
+  entryDate: toIsoDate(new Date()),
   entryType: "",
   notes: "",
   items: [],
@@ -259,6 +259,53 @@ function toIsoDate(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function buildIsoDateFromParts(year: number, month: number, day: number) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  if (year < 1900 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function normalizeDateInput(value: string | null | undefined) {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+
+  const normalized = raw.replace(/\s+/g, " ");
+  const isoPattern = normalized.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/);
+  if (isoPattern) {
+    return buildIsoDateFromParts(
+      Number(isoPattern[1]),
+      Number(isoPattern[2]),
+      Number(isoPattern[3]),
+    );
+  }
+
+  const brPattern = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[T\s].*)?$/);
+  if (brPattern) {
+    return buildIsoDateFromParts(
+      Number(brPattern[3]),
+      Number(brPattern[2]),
+      Number(brPattern[1]),
+    );
+  }
+
+  return null;
 }
 
 function formatHistoryActionLabel(value: string) {
@@ -436,7 +483,7 @@ export function StockTransfersPageView() {
   const searchParams = useSearchParams();
   const canReverseStockMovement = useMemo(() => {
     const normalizedRole = String(session?.user.role ?? "").trim().toUpperCase();
-    return normalizedRole === "ADMIN" || normalizedRole === "MASTER";
+    return normalizedRole === "ADMIN" || normalizedRole === "MASTER" || normalizedRole === "USER";
   }, [session?.user.role]);
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -1321,7 +1368,7 @@ export function StockTransfersPageView() {
       "1",
       "SERIAL-001",
       "LP-001",
-      new Date().toISOString().slice(0, 10),
+      toIsoDate(new Date()),
       "Opcional",
     ];
 
@@ -1582,9 +1629,9 @@ export function StockTransfersPageView() {
 
       const mappedEntries: Array<Record<string, unknown>> = [];
       const importIssues: MassImportIssue[] = [];
+      const today = toIsoDate(new Date());
 
       rows.forEach((row, index) => {
-        const today = toIsoDate(new Date());
         const rowNumber = index + 2;
         const movementTypeRaw = readCsvField(row, ["operacao", "tipo_movimentacao", "movement_type"]);
         const movementType = normalizeMovementType(movementTypeRaw);
@@ -1600,7 +1647,8 @@ export function StockTransfersPageView() {
         const serialNumber = normalizeText(serialNumberRaw) || null;
         const lotCodeRaw = readCsvField(row, ["lp", "lot_code", "lote"]);
         const lotCode = normalizeText(lotCodeRaw) || null;
-        const entryDate = normalizeText(readCsvField(row, ["data_entrada", "entry_date", "data_movimentacao"]));
+        const entryDateRaw = readCsvField(row, ["data_entrada", "entry_date", "data_movimentacao"]);
+        const entryDate = normalizeDateInput(entryDateRaw);
         const notes = normalizeText(readCsvField(row, ["observacao", "notes", "obs"])) || null;
 
         const fromCenter = stockCenterByName.get(fromCenterName.toLowerCase()) ?? null;
@@ -1636,8 +1684,12 @@ export function StockTransfersPageView() {
           importIssues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: "Quantidade invalida. Informe valor maior que zero." });
           return;
         }
-        if (!entryDate) {
+        if (!normalizeText(entryDateRaw)) {
           importIssues.push({ rowNumber, column: "data_entrada", value: "", error: "Data da entrada obrigatoria." });
+          return;
+        }
+        if (!entryDate) {
+          importIssues.push({ rowNumber, column: "data_entrada", value: entryDateRaw, error: "Data invalida. Use YYYY-MM-DD ou DD/MM/YYYY." });
           return;
         }
 
@@ -2356,7 +2408,7 @@ export function StockTransfersPageView() {
                         aria-label={`Estornar movimentacao ${item.transferId ?? item.id}`}
                         title={
                           !canReverseStockMovement
-                            ? "Apenas usuarios administrativos podem estornar"
+                            ? "Perfil sem permissao para estornar"
                             : item.isReversed
                             ? "Movimentacao ja estornada"
                             : item.isReversal

@@ -27,9 +27,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    if (!resolution.role.isAdmin) {
+    const normalizedRoleKey = String(resolution.role.roleKey ?? "").trim().toLowerCase();
+    const canReverse = resolution.role.isAdmin || normalizedRoleKey === "user";
+    if (!canReverse) {
       return NextResponse.json(
-        { message: "Apenas usuarios administrativos podem estornar movimentacoes de estoque." },
+        { message: "Perfil sem permissao para estornar movimentacoes de estoque." },
         { status: 403 },
       );
     }

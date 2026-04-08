@@ -201,16 +201,51 @@ export async function reverseStockTransferViaRpc(
   } as const;
 }
 
+function buildIsoDateFromParts(year: number, month: number, day: number) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  if (year < 1900 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 export function normalizeDateInput(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
 
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
+  const normalized = raw.replace(/\s+/g, " ");
+  const isoPattern = normalized.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/);
+  if (isoPattern) {
+    return buildIsoDateFromParts(
+      Number(isoPattern[1]),
+      Number(isoPattern[2]),
+      Number(isoPattern[3]),
+    );
   }
 
-  return raw.slice(0, 10);
+  const brPattern = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[T\s].*)?$/);
+  if (brPattern) {
+    return buildIsoDateFromParts(
+      Number(brPattern[3]),
+      Number(brPattern[2]),
+      Number(brPattern[1]),
+    );
+  }
+
+  return null;
 }
 
 export function normalizeEntryType(value: unknown) {
