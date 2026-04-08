@@ -3,6 +3,132 @@
   gap: 20px;
 }
 
+.deadlineSummaryGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.deadlineSummaryCard {
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #ffffff;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.deadlineSummaryCard strong {
+  color: #17347a;
+  font-size: 0.88rem;
+}
+
+.deadlineSummaryCard span {
+  color: #1f2f54;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.deadlineSummaryOverdue {
+  border-color: rgba(183, 28, 28, 0.28);
+  background: #ffe3e3;
+}
+
+.deadlineSummaryToday,
+.deadlineSummarySoon {
+  border-color: rgba(245, 124, 0, 0.3);
+  background: #fff1df;
+}
+
+.deadlineSummaryNormal {
+  border-color: rgba(23, 52, 122, 0.18);
+  background: #f4f8ff;
+}
+
+.deadlineCarouselWrapper {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.deadlineCarouselButton {
+  border-radius: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.22);
+  background: #f3f6ff;
+  color: #17347a;
+  font-weight: 800;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+}
+
+.deadlineCarouselButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.deadlineCarouselViewport {
+  overflow: hidden;
+}
+
+.deadlineCarouselTrack {
+  display: flex;
+  transition: transform 260ms ease;
+}
+
+.deadlineCarouselPage {
+  min-width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.deadlineCarouselPage > .deadlineSobCard {
+  flex: 0 0 calc((100% - 50px) / 6);
+}
+
+.deadlineCarouselPageInfo {
+  margin: 0;
+  color: #5d6f95;
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.deadlineSobCard {
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.14);
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  background: #ffffff;
+}
+
+.deadlineSobCard strong {
+  color: #17347a;
+  font-size: 0.95rem;
+}
+
+.deadlineSobCard span {
+  color: #2b3d66;
+  font-size: 0.86rem;
+}
+
+.deadlineSobCardOverdue {
+  border-color: rgba(183, 28, 28, 0.38);
+  background: #ffd8d8;
+}
+
+.deadlineSobCardWarning {
+  border-color: rgba(245, 124, 0, 0.35);
+  background: #ffe9d1;
+}
+
+.deadlineSobCardNormal {
+  border-color: rgba(23, 52, 122, 0.16);
+  background: #f7fbff;
+}
+
 .card {
   border-radius: 24px;
   border: 1px solid rgba(20, 41, 97, 0.1);
@@ -855,6 +981,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .deadlineSummaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .documentsGrid {
     grid-template-columns: 1fr;
   }
@@ -887,6 +1017,19 @@
   .formGrid,
   .filterGrid {
     grid-template-columns: 1fr;
+  }
+
+  .deadlineSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .deadlineCarouselButton {
+    width: 34px;
+    height: 34px;
+  }
+
+  .deadlineCarouselPageInfo {
+    text-align: center;
   }
 
   .actions {
