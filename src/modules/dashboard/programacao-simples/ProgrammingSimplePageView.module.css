@@ -30,11 +30,17 @@
 }
 
 .deadlineSummaryOverdue {
-  border-color: rgba(183, 28, 28, 0.28);
-  background: #ffe3e3;
+  border-color: rgba(183, 28, 28, 0.4);
+  background: #ffd9d9;
 }
 
-.deadlineSummaryToday,
+.deadlineSummaryToday {
+  border-color: rgba(183, 28, 28, 0.55);
+  border-width: 2px;
+  background: #ffe0e0;
+  box-shadow: 0 0 0 2px rgba(183, 28, 28, 0.14);
+}
+
 .deadlineSummarySoon {
   border-color: rgba(245, 124, 0, 0.3);
   background: #fff1df;
@@ -114,13 +120,26 @@
   font-size: 0.86rem;
 }
 
-.deadlineSobCardOverdue {
-  border-color: rgba(183, 28, 28, 0.38);
-  background: #ffd8d8;
+.deadlineSobCardOverdueCritical {
+  border-color: rgba(122, 18, 18, 0.66);
+  border-width: 2px;
+  background: #ffbfc0;
 }
 
-.deadlineSobCardWarning {
-  border-color: rgba(245, 124, 0, 0.35);
+.deadlineSobCardOverdue {
+  border-color: rgba(183, 28, 28, 0.38);
+  background: #ffd7d7;
+}
+
+.deadlineSobCardToday {
+  border-color: rgba(183, 28, 28, 0.58);
+  border-width: 2px;
+  background: #ffe3e3;
+  box-shadow: 0 0 0 2px rgba(183, 28, 28, 0.16);
+}
+
+.deadlineSobCardSoon {
+  border-color: rgba(245, 124, 0, 0.42);
   background: #ffe9d1;
 }
 

@@ -255,6 +255,7 @@ type FilterState = {
 };
 
 type DeadlineStatus = "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
+type DeadlineVisualVariant = "OVERDUE_CRITICAL" | "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
 
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
@@ -368,6 +369,26 @@ function formatDeadlineStatusLabel(daysDiff: number) {
 }
 
 function resolveDeadlineStatus(daysDiff: number): DeadlineStatus {
+  if (daysDiff < 0) {
+    return "OVERDUE";
+  }
+
+  if (daysDiff === 0) {
+    return "TODAY";
+  }
+
+  if (daysDiff <= DEADLINE_WINDOW_DAYS) {
+    return "SOON";
+  }
+
+  return "NORMAL";
+}
+
+function resolveDeadlineVisualVariant(daysDiff: number): DeadlineVisualVariant {
+  if (daysDiff <= -30) {
+    return "OVERDUE_CRITICAL";
+  }
+
   if (daysDiff < 0) {
     return "OVERDUE";
   }
@@ -1375,12 +1396,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
         const daysDiff = calculateDateDiffInDays(executionDeadline, today);
         const deadlineStatus = resolveDeadlineStatus(daysDiff);
+        const visualVariant = resolveDeadlineVisualVariant(daysDiff);
         return {
           id: project.id,
           sob: project.code,
           executionDeadline,
           daysDiff,
           deadlineStatus,
+          visualVariant,
           statusLabel: formatDeadlineStatusLabel(daysDiff),
         };
       })
@@ -1390,6 +1413,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         executionDeadline: string;
         daysDiff: number;
         deadlineStatus: DeadlineStatus;
+        visualVariant: DeadlineVisualVariant;
         statusLabel: string;
       } => Boolean(item));
   }, [concludedProjectIds, projects, today]);
@@ -2976,11 +3000,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                         <article
                           key={item.id}
                           className={`${styles.deadlineSobCard} ${
-                            item.deadlineStatus === "OVERDUE"
-                              ? styles.deadlineSobCardOverdue
-                              : item.deadlineStatus === "TODAY" || item.deadlineStatus === "SOON"
-                                ? styles.deadlineSobCardWarning
-                                : styles.deadlineSobCardNormal
+                            item.visualVariant === "OVERDUE_CRITICAL"
+                              ? styles.deadlineSobCardOverdueCritical
+                              : item.visualVariant === "OVERDUE"
+                                ? styles.deadlineSobCardOverdue
+                                : item.visualVariant === "TODAY"
+                                  ? styles.deadlineSobCardToday
+                                  : item.visualVariant === "SOON"
+                                    ? styles.deadlineSobCardSoon
+                                    : styles.deadlineSobCardNormal
                           }`}
                         >
                           <strong>SOB {item.sob}</strong>
