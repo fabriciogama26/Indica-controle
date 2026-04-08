@@ -6,6 +6,7 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 type BoardProjectRow = {
   id: string;
   sob: string;
+  execution_deadline: string | null;
   service_center_text: string | null;
   service_type_text: string | null;
   city_text: string | null;
@@ -606,7 +607,7 @@ async function fetchProjects(
 ) {
   const { data, error } = await supabase
     .from("project_with_labels")
-    .select("id, sob, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active")
+    .select("id, sob, execution_deadline, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("execution_deadline", { ascending: true })
@@ -2300,6 +2301,7 @@ export async function GET(request: NextRequest) {
       projects: projects.map((item) => ({
           id: item.id,
           code: normalizeText(item.sob),
+          executionDeadline: item.execution_deadline,
           serviceName: normalizeText(item.service_description) || normalizeText(item.service_type_text) || "Sem descricao",
           city: normalizeText(item.city_text) || "Sem municipio",
           base: normalizeText(item.service_center_text) || "Sem base",

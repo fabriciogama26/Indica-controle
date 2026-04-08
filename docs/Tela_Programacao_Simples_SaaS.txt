@@ -169,6 +169,11 @@ Filtros, auto-complete e listagem
   - Atividades via `/api/projects/activity-forecast/catalog`.
   - Selecao de equipes mostra `Equipe`, `Base` e `Encarregado` na mesma opcao para facilitar identificacao operacional.
 - Listagem:
+  - Acima de `Cadastro de Programacao`, a tela mostra um painel de prazos das obras baseado em `Projeto (SOB) + Data limite`.
+  - O painel traz cards-resumo com prioridade visual (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`) e cards por `SOB` em carrossel horizontal (6 por pagina), para obras com data limite `<= hoje + 15 dias`.
+  - Projetos com qualquer programacao no periodo carregado com `Estado Trabalho = CONCLUIDO` sao removidos da contagem e dos cards de prazo.
+  - Cada card de `SOB` exibe `SOB`, `Data limite` e `Status do prazo` (`Vencida ha X dias`, `Vence hoje` ou `Vence em X dias`), com cor por criticidade.
+  - Navegacao do carrossel por setas (`esquerda/direita`), avancando ou voltando 1 pagina de 6 cards por clique.
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
   - Quando uma programacao e salva fora do intervalo, projeto, equipe ou status filtrados, a tela avisa no feedback de sucesso que o registro pode nao aparecer na lista atual por causa dos filtros.
 - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Adiar` e `Cancelar`.
@@ -376,6 +381,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - `calculateExpectedMinutes`, `findActivityOption`, `downloadCsvFile`.
+- `calculateDateDiffInDays`, `formatDeadlineStatusLabel`, `resolveDeadlineStatus`.
 - `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`.
 - `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`.
 - `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`.
@@ -507,3 +513,23 @@ Atualizacao adicional 2026-03-27
 - Comportamento antes/depois:
   - Antes: mesmo com a remoção da unicidade por coluna, o banco ainda bloqueava `export_column` fora da lista fixa (`SGD_AT_MT_VYP`, `SGD_BT`, `SGD_TET`, `AREA_LIVRE`).
   - Depois: `export_column` passa a aceitar qualquer valor nao vazio, destravando cadastro de novos Tipos de SGD.
+
+Atualizacao adicional 2026-04-08
+--------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProjects` (`execution_deadline` no payload da Programacao)
+  - `calculateDateDiffInDays`
+  - `formatDeadlineStatusLabel`
+  - `resolveDeadlineStatus`
+  - `deadlineProjects`, `deadlineSummary`, `deadlineSobCards`
+- Comportamento antes/depois:
+  - Antes: o topo da tela de cadastro da Programacao nao trazia nenhum resumo de prazo das obras.
+  - Depois: a tela passa a exibir um bloco de cards acima de `Cadastro de Programacao` com contadores por status de vencimento em prioridade (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`) e cards de `SOB` em carrossel horizontal (`6` por pagina) para obras com data limite `<= hoje + 15 dias`, ignorando projetos com `Estado Trabalho = CONCLUIDO`.
+  - Antes: o usuario precisava inferir urgencia de prazo fora da tela de Programacao.
+  - Depois: os cards por `SOB` destacam `Data limite` e `Status do prazo` com cor (vermelho forte para vencida, alerta para hoje/proximo e neutro para no prazo), com navegacao por setas para avancar/voltar os proximos `6` cards.
