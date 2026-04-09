@@ -256,11 +256,13 @@ type FilterState = {
 
 type DeadlineStatus = "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
 type DeadlineVisualVariant = "OVERDUE_CRITICAL" | "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
+type DeadlineViewMode = "15" | "30";
 
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const DEADLINE_CAROUSEL_PAGE_SIZE = 6;
-const DEADLINE_WINDOW_DAYS = 15;
+const DEADLINE_WINDOW_SHORT_DAYS = 15;
+const DEADLINE_WINDOW_LONG_DAYS = 30;
 const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
   { key: "sgd", label: "SGD" },
   { key: "pi", label: "PI" },
@@ -351,7 +353,7 @@ function calculateDateDiffInDays(targetDate: string, referenceDate: string) {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
 
-function formatDeadlineStatusLabel(daysDiff: number) {
+function formatDeadlineStatusLabel(daysDiff: number, windowDays: number) {
   if (daysDiff < 0) {
     const absDays = Math.abs(daysDiff);
     return `Vencida ha ${absDays} dia${absDays === 1 ? "" : "s"}`;
@@ -361,14 +363,14 @@ function formatDeadlineStatusLabel(daysDiff: number) {
     return "Vence hoje";
   }
 
-  if (daysDiff <= DEADLINE_WINDOW_DAYS) {
+  if (daysDiff <= windowDays) {
     return `Vence em ${daysDiff} dia${daysDiff === 1 ? "" : "s"}`;
   }
 
   return "Ainda no prazo";
 }
 
-function resolveDeadlineStatus(daysDiff: number): DeadlineStatus {
+function resolveDeadlineStatus(daysDiff: number, windowDays: number): DeadlineStatus {
   if (daysDiff < 0) {
     return "OVERDUE";
   }
@@ -377,14 +379,14 @@ function resolveDeadlineStatus(daysDiff: number): DeadlineStatus {
     return "TODAY";
   }
 
-  if (daysDiff <= DEADLINE_WINDOW_DAYS) {
+  if (daysDiff <= windowDays) {
     return "SOON";
   }
 
   return "NORMAL";
 }
 
-function resolveDeadlineVisualVariant(daysDiff: number): DeadlineVisualVariant {
+function resolveDeadlineVisualVariant(daysDiff: number, windowDays: number): DeadlineVisualVariant {
   if (daysDiff <= -30) {
     return "OVERDUE_CRITICAL";
   }
@@ -397,7 +399,7 @@ function resolveDeadlineVisualVariant(daysDiff: number): DeadlineVisualVariant {
     return "TODAY";
   }
 
-  if (daysDiff <= DEADLINE_WINDOW_DAYS) {
+  if (daysDiff <= windowDays) {
     return "SOON";
   }
 
@@ -1251,7 +1253,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [historyItems, setHistoryItems] = useState<ProgrammingHistoryItem[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [deadlineViewMode, setDeadlineViewMode] = useState<DeadlineViewMode>("15");
   const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
+  const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
+  const [isExportingDeadlineModal, setIsExportingDeadlineModal] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<ScheduleItem | null>(null);
   const [cancelReasonCode, setCancelReasonCode] = useState("");
   const [cancelReasonNotes, setCancelReasonNotes] = useState("");
@@ -1272,6 +1277,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   } | null>(null);
   const commonExportCooldown = useExportCooldown();
   const enelExportCooldown = useExportCooldown();
+  const deadlineModalExportCooldown = useExportCooldown();
 
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
   const isEditing = Boolean(editingScheduleId);
@@ -1382,6 +1388,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     return ids;
   }, [schedules]);
 
+  const deadlineWindowDays = useMemo(
+    () => (deadlineViewMode === "15" ? DEADLINE_WINDOW_SHORT_DAYS : DEADLINE_WINDOW_LONG_DAYS),
+    [deadlineViewMode],
+  );
+
   const deadlineProjects = useMemo(() => {
     return projects
       .map((project) => {
@@ -1395,16 +1406,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         }
 
         const daysDiff = calculateDateDiffInDays(executionDeadline, today);
-        const deadlineStatus = resolveDeadlineStatus(daysDiff);
-        const visualVariant = resolveDeadlineVisualVariant(daysDiff);
         return {
           id: project.id,
           sob: project.code,
           executionDeadline,
           daysDiff,
-          deadlineStatus,
-          visualVariant,
-          statusLabel: formatDeadlineStatusLabel(daysDiff),
         };
       })
       .filter((item): item is {
@@ -1412,20 +1418,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         sob: string;
         executionDeadline: string;
         daysDiff: number;
-        deadlineStatus: DeadlineStatus;
-        visualVariant: DeadlineVisualVariant;
-        statusLabel: string;
       } => Boolean(item));
   }, [concludedProjectIds, projects, today]);
 
   const deadlineSummary = useMemo(() => {
-    const overdue = deadlineProjects.filter((item) => item.deadlineStatus === "OVERDUE").length;
-    const dueToday = deadlineProjects.filter((item) => item.deadlineStatus === "TODAY").length;
-    const dueSoon = deadlineProjects.filter((item) => item.deadlineStatus === "SOON").length;
-    const normal = deadlineProjects.filter((item) => item.deadlineStatus === "NORMAL").length;
+    const overdue = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "OVERDUE").length;
+    const dueToday = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "TODAY").length;
+    const dueSoon = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "SOON").length;
+    const normal = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "NORMAL").length;
 
     return { overdue, dueToday, dueSoon, normal };
-  }, [deadlineProjects]);
+  }, [deadlineProjects, deadlineWindowDays]);
 
   const deadlineSobCards = useMemo(() => {
     const priorityByStatus: Record<DeadlineStatus, number> = {
@@ -1436,7 +1439,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     };
 
     return deadlineProjects
-      .filter((item) => item.daysDiff <= DEADLINE_WINDOW_DAYS)
+      .filter((item) => item.daysDiff <= deadlineWindowDays)
+      .map((item) => {
+        const deadlineStatus = resolveDeadlineStatus(item.daysDiff, deadlineWindowDays);
+        return {
+          ...item,
+          deadlineStatus,
+          visualVariant: resolveDeadlineVisualVariant(item.daysDiff, deadlineWindowDays),
+          statusLabel: formatDeadlineStatusLabel(item.daysDiff, deadlineWindowDays),
+          rangeLabel: item.daysDiff < 0 ? "Vencida" : item.daysDiff <= DEADLINE_WINDOW_SHORT_DAYS ? "Ate 15 dias" : "16 a 30 dias",
+        };
+      })
       .sort((left, right) => {
         const priorityDiff = priorityByStatus[left.deadlineStatus] - priorityByStatus[right.deadlineStatus];
         if (priorityDiff !== 0) {
@@ -1467,7 +1480,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
         return left.daysDiff - right.daysDiff;
       });
-  }, [deadlineProjects]);
+  }, [deadlineProjects, deadlineWindowDays]);
 
   const deadlineSobPages = useMemo(() => {
     const pages: Array<typeof deadlineSobCards> = [];
@@ -1478,6 +1491,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }, [deadlineSobCards]);
 
   const totalDeadlineCarouselPages = Math.max(1, deadlineSobPages.length);
+  const deadlineWindowHeading = deadlineViewMode === "15"
+    ? "SOB com vencimento ate 15 dias"
+    : "SOB com vencimento ate 30 dias";
 
   const applyBoardSnapshot = useCallback((data: ProgrammingResponse) => {
     const nextProjects = data.projects ?? [];
@@ -1601,6 +1617,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   useEffect(() => {
     setPage(1);
   }, [activeFilters.projectId, activeFilters.status, activeFilters.teamId, schedules]);
+
+  useEffect(() => {
+    setDeadlineCarouselPage(0);
+  }, [deadlineViewMode]);
 
   useEffect(() => {
     setDeadlineCarouselPage((current) => {
@@ -2662,6 +2682,44 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setFeedback(null);
   }
 
+  async function handleExportDeadlineModalCsv() {
+    if (!deadlineSobCards.length) {
+      setFeedback({
+        type: "error",
+        message: "Nenhum prazo encontrado para exportar na janela selecionada.",
+      });
+      return;
+    }
+
+    if (!deadlineModalExportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${deadlineModalExportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
+    setIsExportingDeadlineModal(true);
+    try {
+      const header = ["SOB", "Data limite", "Status do prazo", "Dias para vencimento", "Faixa", "Janela selecionada"];
+      const rows = deadlineSobCards.map((item) => [
+        item.sob,
+        formatDate(item.executionDeadline),
+        item.statusLabel,
+        item.daysDiff,
+        item.rangeLabel,
+        `${deadlineWindowDays} dias`,
+      ]);
+
+      const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+      const csv = `\uFEFF${csvLines.join("\n")}`;
+      const exportDate = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(csv, `prazos_obras_${deadlineWindowDays}dias_${exportDate}.csv`);
+    } finally {
+      setIsExportingDeadlineModal(false);
+    }
+  }
+
   async function handleExportCsv() {
     if (!filteredSchedules.length) {
       setFeedback({
@@ -2973,9 +3031,34 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             </article>
           </div>
 
-          <div className={styles.sectionHeader}>
-            <h4>SOB com vencimento ate 15 dias</h4>
-            <p>Cards por obra com data limite, status do prazo e alerta visual.</p>
+          <div className={`${styles.sectionHeader} ${styles.deadlineSectionHeader}`}>
+            <div>
+              <h4>{deadlineWindowHeading}</h4>
+              <p>Cards por obra com data limite, status do prazo e alerta visual.</p>
+            </div>
+            <div className={styles.deadlineViewToggle} role="group" aria-label="Janela de prazo dos cards SOB">
+              <button
+                type="button"
+                className={`${styles.deadlineViewToggleButton} ${deadlineViewMode === "15" ? styles.deadlineViewToggleButtonActive : ""}`}
+                onClick={() => setDeadlineViewMode("15")}
+              >
+                15 dias
+              </button>
+              <button
+                type="button"
+                className={`${styles.deadlineViewToggleButton} ${deadlineViewMode === "30" ? styles.deadlineViewToggleButtonActive : ""}`}
+                onClick={() => setDeadlineViewMode("30")}
+              >
+                30 dias
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setIsDeadlineModalOpen(true)}
+              >
+                Ver todos
+              </button>
+            </div>
           </div>
 
           {deadlineSobPages.length ? (
@@ -3031,7 +3114,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               </button>
             </div>
           ) : (
-            <p className={styles.emptyHint}>Nenhuma obra com data limite ate 15 dias a frente.</p>
+            <p className={styles.emptyHint}>
+              Nenhuma obra com data limite ate {deadlineWindowDays} dias a frente.
+            </p>
           )}
 
           {deadlineSobPages.length ? (
@@ -3931,6 +4016,70 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           )}
         </div>
         </article>
+      ) : null}
+
+      {isDeadlineModalOpen ? (
+        <div className={styles.modalOverlay} onClick={() => setIsDeadlineModalOpen(false)}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Todos os prazos das obras ({deadlineWindowDays} dias)</h4>
+                <p className={styles.modalSubtitle}>
+                  Total: {deadlineSobCards.length} | Janela: ate {deadlineWindowDays} dias | Concluidas nao entram.
+                </p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={() => setIsDeadlineModalOpen(false)}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.deadlineModalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => void handleExportDeadlineModalCsv()}
+                  disabled={isExportingDeadlineModal || !deadlineSobCards.length}
+                >
+                  {isExportingDeadlineModal ? "Exportando..." : "Exportar Excel (CSV)"}
+                </button>
+              </div>
+
+              <div className={styles.tableWrapper}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>SOB</th>
+                      <th>Data limite</th>
+                      <th>Status do prazo</th>
+                      <th>Dias para vencimento</th>
+                      <th>Faixa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deadlineSobCards.length ? (
+                      deadlineSobCards.map((item) => (
+                        <tr key={`deadline-modal-${item.id}`}>
+                          <td>{item.sob}</td>
+                          <td>{formatDate(item.executionDeadline)}</td>
+                          <td>{item.statusLabel}</td>
+                          <td>{item.daysDiff}</td>
+                          <td>{item.rangeLabel}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className={styles.emptyRow} colSpan={5}>
+                          Nenhuma obra encontrada para a janela selecionada.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+        </div>
       ) : null}
 
       {detailsTarget ? (
