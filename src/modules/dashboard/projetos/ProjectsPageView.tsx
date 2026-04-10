@@ -101,9 +101,15 @@ type ProjectHistoryResponse = {
   message?: string;
 };
 
+type ProjectListSummary = {
+  totalProjects: number;
+  completed: number;
+};
+
 type ProjectListResponse = {
   projects?: ProjectItem[];
   pagination?: { page: number; pageSize: number; total: number };
+  summary?: ProjectListSummary;
   message?: string;
 };
 
@@ -245,6 +251,11 @@ const INITIAL_FILTERS: FilterState = {
   executionDate: "",
   priority: "",
   city: "",
+};
+
+const INITIAL_PROJECT_LIST_SUMMARY: ProjectListSummary = {
+  totalProjects: 0,
+  completed: 0,
 };
 
 const INITIAL_FORECAST_FILTERS: ForecastFilterState = {
@@ -536,6 +547,7 @@ function formatHistoryValue(field: string, value: string | null) {
 
   return value;
 }
+
 export function ProjectsPageView() {
   const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<"project" | "forecast" | "activityForecast">("project");
@@ -607,6 +619,7 @@ export function ProjectsPageView() {
   const [cancelReason, setCancelReason] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [projectListSummary, setProjectListSummary] = useState<ProjectListSummary>(INITIAL_PROJECT_LIST_SUMMARY);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const deferredForecastSearch = useDeferredValue(forecastSearch);
@@ -766,6 +779,7 @@ export function ProjectsPageView() {
         if (!response.ok) {
           setProjects([]);
           setTotal(0);
+          setProjectListSummary(INITIAL_PROJECT_LIST_SUMMARY);
           setFeedback({
             type: "error",
             message: data.message ?? "Falha ao carregar projetos.",
@@ -775,11 +789,14 @@ export function ProjectsPageView() {
 
         const nextProjects = data.projects ?? [];
         setProjects(nextProjects);
-        setTotal(data.pagination?.total ?? 0);
+        const nextTotal = data.pagination?.total ?? 0;
+        setTotal(nextTotal);
+        setProjectListSummary(data.summary ?? { totalProjects: nextTotal, completed: 0 });
         return nextProjects;
       } catch {
         setProjects([]);
         setTotal(0);
+        setProjectListSummary(INITIAL_PROJECT_LIST_SUMMARY);
         setFeedback({
           type: "error",
           message: "Falha ao carregar projetos.",
@@ -2155,6 +2172,24 @@ export function ProjectsPageView() {
       ) : null}
 
       {isLoadingMeta ? <div className={styles.loadingHint}>Atualizando opcoes de cadastro e filtros...</div> : null}
+
+      {activeTab === "project" ? (
+        <article className={styles.card}>
+          <h3 className={styles.cardTitle}>Status da Carteira de Projetos</h3>
+          <div className={styles.projectSummaryGrid}>
+            <article className={`${styles.projectSummaryCard} ${styles.projectSummaryTotal}`}>
+              <strong>Total de projetos</strong>
+              <span>{projectListSummary.totalProjects}</span>
+              <small>Todos os projetos na carteira.</small>
+            </article>
+            <article className={`${styles.projectSummaryCard} ${styles.projectSummaryCompleted}`}>
+              <strong>Concluidas</strong>
+              <span>{projectListSummary.completed}</span>
+              <small>Projetos CONCLUIDO na Programacao.</small>
+            </article>
+          </div>
+        </article>
+      ) : null}
 
       <article className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
         <div className={styles.tabHeader}>

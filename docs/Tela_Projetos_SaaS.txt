@@ -139,6 +139,9 @@ Filtros, auto-complete e listagem
 - Colunas `Prioridade` e `Responsavel Contratada` removidas da lista.
 - Coluna `Registrado por` exibida com `app_users.login_name` do `created_by`.
 - Coluna de data na lista padronizada como `Registrado em` (com base em `created_at`).
+- Bloco `Status da Carteira de Projetos` adicionado no topo da tela (acima de `Cadastro de Projeto`) com 2 cards:
+  - `Total de projetos` (todos os `SOB` unicos ativos retornados pelos filtros atuais).
+  - `Concluidas` (projetos ativos por `SOB` unico com `Estado Trabalho = CONCLUIDO` na `Programacao`; nao soma por equipe).
 - Chamadas autenticadas da tela usam `cache: no-store` para evitar exibir dados de sessao antiga apos troca de usuario.
 - Quando a aba `Materiais previstos` esta ativa, os blocos de `Filtros` e `Lista de Projetos` ficam ocultos e a tela mostra:
   - `Filtros de Materiais Previstos` (codigo, descricao, tipo).
@@ -371,7 +374,11 @@ Ajuda contextual
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
   - `saveProjectViaRpc`
   - `setProjectStatusViaRpc`
+  - `fetchProjectsSummaryCompat`
   - Mapeamento de `hasLocacao` no retorno de `/api/projects`
+  - Mapeamento de `summary.totalProjects` e `summary.completed` no retorno de `/api/projects`
+  - `projectListSummary`
+  - `INITIAL_PROJECT_LIST_SUMMARY`
   - `GET`, `POST` e `PUT` de `/api/projects/forecast`
   - `GET` de `/api/projects/forecast/catalog`
   - `GET`, `POST` e `PUT` de `/api/projects/activity-forecast`
@@ -416,3 +423,21 @@ Atualizacao adicional 2026-03-26
   - Antes: `Projeto (SOB)` era bloqueado por formato baseado em `Prioridade` (ex.: `A`, `ZX`, `FS`) e por limite de `10` caracteres no frontend/API.
   - Depois: `Projeto (SOB)` aceita texto livre (normalizado para maiusculas), sem validacao de prefixo por prioridade e sem limite fixo de 10 caracteres na tela/API.
   - Depois: a constraint de banco `chk_project_sob_priority_format` foi removida para manter o comportamento consistente ponta a ponta.
+
+Atualizacao adicional 2026-04
+-----------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+  - `src/app/api/projects/route.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProjectsSummaryCompat`
+  - `projectListSummary`
+  - `INITIAL_PROJECT_LIST_SUMMARY`
+- Comportamento antes/depois:
+  - Antes: a tela de `Projetos` nao mostrava consolidado visual de carteira x concluidas.
+  - Depois: a tela passa a exibir o bloco `Status da Carteira de Projetos` no topo (acima de `Cadastro de Projeto`) com 2 cards (`Total de projetos` e `Concluidas`).
+  - Antes: o frontend so tinha acesso a lista paginada e ao total geral.
+  - Depois: `GET /api/projects` retorna `summary.totalProjects` e `summary.completed`; ambos contam apenas projetos ativos por `SOB` unico, e `Concluidas` considera `work_completion_status = CONCLUIDO` na tabela `project_programming`.

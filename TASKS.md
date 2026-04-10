@@ -29,6 +29,7 @@
 - [x] Atualizar lista de `Projetos` removendo colunas `Prioridade` e `Responsavel Contratada` e adicionando `Registrado por`.
 - [x] Ajustar `Registrado por` da lista de `Projetos` para exibir `app_users.login_name`.
 - [x] Adicionar botao de exportacao `Exportar Excel (CSV)` na lista de `Projetos` com base nos filtros ativos.
+- [x] Adicionar bloco `Status da Carteira de Projetos` no topo da tela de `Projetos` com 2 cards (`Total de projetos` e `Concluidas`) e resumo agregado por filtros no `GET /api/projects`, contando apenas projetos ativos por `SOB` unico e `Concluidas` baseado em `Estado Trabalho = CONCLUIDO` na programacao.
 - [x] Desabilitar cache nas chamadas autenticadas de `Projetos` para evitar dados antigos apos troca de sessao.
 - [x] Aplicar regra de SOB por prioridade em `Projetos` (frontend + API + constraint SQL).
 - [x] Mover `Prioridade` para antes de `Projeto (SOB)` no formulario de cadastro.
