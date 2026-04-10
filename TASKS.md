@@ -86,6 +86,13 @@
 - [x] Migrar as escritas de `Atividades` para RPC transacional (`save_service_activity_record` e `set_service_activity_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Padronizar modais de `Historico` para paginacao de `5` registros por pagina (`Projetos`, `Materiais` e `Atividades`).
 - [x] Incluir campo obrigatorio `Tipo` na tela de `Atividades`, consumindo `team_types` (mesmo cadastro base de `Equipes`) em formulario, filtro, lista e exportacao.
+- [x] Criar catalogo `types_service_activities` e coluna `service_activities.type_service` com vinculo por tenant (migration `145_create_types_service_activities_and_link_service_activities.sql`), incluindo seed dos tipos `POSTE`, `ESTRUTURA`, `CONDUTOR(REDE)`, `EMENDA`, `EQUIPAMENTO`, `MQS CHAVES/PARA-RAIO`, `MANUTENÇÃO`, `RAMAL / CAIXA DAE`, `GERADOR`, `PODA` e `OUTROS`.
+- [x] Incluir campo obrigatorio `Categoria` na tela de `Atividades`, consumindo `types_service_activities` em formulario, filtro, lista, detalhes e exportacao, com persistencia via RPC (migration `146_require_service_activity_category_and_update_rpc.sql`).
+- [x] Gerar script SQL de carga de `atividades.xlsx` para `service_activities` com upsert por `code`, atualizando `description/group_name/type_service` e inserindo codigos faltantes (migration `147_upsert_service_activities_from_atividades_xlsx.sql`).
+- [x] Endurecer a migration `147_upsert_service_activities_from_atividades_xlsx.sql` para resolver `type_service` por UUID ou nome normalizado (sem acento/pontuacao) e detalhar no erro os codigos/categorias nao resolvidos.
+- [x] Corrigir compatibilidade da migration `147_upsert_service_activities_from_atividades_xlsx.sql` com ambientes Postgres sem `min(uuid)`, trocando a inferencia de tenant para `array_agg(order by)[1]`.
+- [x] Criar migration `148_update_service_activities_voice_fields_ja10183409.sql` para atualizar `unit`, `voice_point` (Pontos da Voz) e `unit_value` (Valor do Ponto por `group_name`) para os codigos informados do JA10183409.
+- [x] Criar migration `149_deactivate_service_activities_not_in_147.sql` para desativar atividades fora da lista de codigos da migration `147` (com motivo de cancelamento e historico em `app_entity_history`).
 - [x] Formalizar checklist obrigatorio de permissao para nova tela (migration + backfill + `permissionCatalog` + `AppShell`).
 - [x] Criar tela `Equipes` em `Cadastros` com campos `Nome da equipe`, `Placa do veiculo` e `Encarregado` (filtro por cargo `ENCARREGADO`).
 - [x] Criar migration `052_create_teams_and_page_permissions.sql` para tabela `teams` e para incluir a pagina `equipes` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
