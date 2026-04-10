@@ -86,6 +86,8 @@
 - [x] Migrar as escritas de `Atividades` para RPC transacional (`save_service_activity_record` e `set_service_activity_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Padronizar modais de `Historico` para paginacao de `5` registros por pagina (`Projetos`, `Materiais` e `Atividades`).
 - [x] Incluir campo obrigatorio `Tipo` na tela de `Atividades`, consumindo `team_types` (mesmo cadastro base de `Equipes`) em formulario, filtro, lista e exportacao.
+- [x] Criar catalogo `types_service_activities` e coluna `service_activities.type_service` com vinculo por tenant (migration `145_create_types_service_activities_and_link_service_activities.sql`), incluindo seed dos tipos `POSTE`, `ESTRUTURA`, `CONDUTOR(REDE)`, `EMENDA`, `EQUIPAMENTO`, `MQS CHAVES/PARA-RAIO`, `MANUTENÇÃO`, `RAMAL / CAIXA DAE`, `GERADOR`, `PODA` e `OUTROS`.
+- [x] Incluir campo obrigatorio `Categoria` na tela de `Atividades`, consumindo `types_service_activities` em formulario, filtro, lista, detalhes e exportacao, com persistencia via RPC (migration `146_require_service_activity_category_and_update_rpc.sql`).
 - [x] Formalizar checklist obrigatorio de permissao para nova tela (migration + backfill + `permissionCatalog` + `AppShell`).
 - [x] Criar tela `Equipes` em `Cadastros` com campos `Nome da equipe`, `Placa do veiculo` e `Encarregado` (filtro por cargo `ENCARREGADO`).
 - [x] Criar migration `052_create_teams_and_page_permissions.sql` para tabela `teams` e para incluir a pagina `equipes` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.

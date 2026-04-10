@@ -12,6 +12,8 @@ type ActivityItem = {
   description: string;
   teamTypeId: string;
   teamTypeName: string;
+  categoryId: string;
+  categoryName: string;
   group: string;
   value: number;
   unit: string;
@@ -40,6 +42,7 @@ type ActivityFormState = {
   code: string;
   description: string;
   teamTypeId: string;
+  categoryId: string;
   group: string;
   value: string;
   unit: string;
@@ -51,9 +54,15 @@ type ActivityFilterState = {
   code: string;
   description: string;
   teamTypeId: string;
+  categoryId: string;
 };
 
 type TeamTypeOption = {
+  id: string;
+  name: string;
+};
+
+type CategoryOption = {
   id: string;
   name: string;
 };
@@ -72,6 +81,7 @@ type ActivityHistoryResponse = {
 
 type ActivitiesMetaResponse = {
   teamTypes?: TeamTypeOption[];
+  categories?: CategoryOption[];
   message?: string;
 };
 
@@ -83,6 +93,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   code: "Codigo",
   description: "Descricao",
   teamTypeName: "Tipo",
+  categoryName: "Categoria",
   group: "Grupo",
   value: "Valor",
   unit: "Unidade",
@@ -98,6 +109,7 @@ const INITIAL_FORM: ActivityFormState = {
   code: "",
   description: "",
   teamTypeId: "",
+  categoryId: "",
   group: "",
   value: "",
   unit: "",
@@ -109,6 +121,7 @@ const INITIAL_FILTERS: ActivityFilterState = {
   code: "",
   description: "",
   teamTypeId: "",
+  categoryId: "",
 };
 
 function normalizeText(value: string) {
@@ -130,6 +143,9 @@ function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_
   if (filters.teamTypeId.trim()) {
     params.set("teamTypeId", filters.teamTypeId.trim());
   }
+  if (filters.categoryId.trim()) {
+    params.set("categoryId", filters.categoryId.trim());
+  }
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
@@ -148,6 +164,7 @@ function buildActivitiesCsv(activityItems: ActivityItem[]) {
     "Codigo",
     "Descricao",
     "Tipo",
+    "Categoria",
     "Grupo",
     "Valor",
     "Unidade",
@@ -162,6 +179,7 @@ function buildActivitiesCsv(activityItems: ActivityItem[]) {
     activity.code,
     activity.description,
     activity.teamTypeName,
+    activity.categoryName,
     activity.group || "",
     activity.value.toFixed(2),
     activity.unit,
@@ -257,6 +275,7 @@ export function ActivitiesPageView() {
   const [filterDraft, setFilterDraft] = useState<ActivityFilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<ActivityFilterState>(INITIAL_FILTERS);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -299,6 +318,7 @@ export function ActivitiesPageView() {
       const data = (await response.json().catch(() => ({}))) as ActivitiesMetaResponse;
       if (!response.ok) {
         setTeamTypes([]);
+        setCategories([]);
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao carregar metadados de atividades.",
@@ -307,8 +327,10 @@ export function ActivitiesPageView() {
       }
 
       setTeamTypes(data.teamTypes ?? []);
+      setCategories(data.categories ?? []);
     } catch {
       setTeamTypes([]);
+      setCategories([]);
       setFeedback({
         type: "error",
         message: "Falha ao carregar metadados de atividades.",
@@ -446,6 +468,7 @@ export function ActivitiesPageView() {
       code: activity.code,
       description: activity.description,
       teamTypeId: activity.teamTypeId,
+      categoryId: activity.categoryId,
       group: activity.group,
       value: toInputMoney(activity.value),
       unit: activity.unit,
@@ -503,6 +526,7 @@ export function ActivitiesPageView() {
         code: normalizeCode(form.code),
         description: normalizeText(form.description),
         teamTypeId: normalizeText(form.teamTypeId),
+        categoryId: normalizeText(form.categoryId),
         group: normalizeText(form.group) || null,
         value: form.value,
         unit: normalizeText(form.unit),
@@ -756,6 +780,27 @@ export function ActivitiesPageView() {
 
           <label className={styles.field}>
             <span>
+              Categoria <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={form.categoryId}
+              onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}
+              required
+              disabled={isLoadingMeta}
+            >
+              <option value="" disabled>
+                {isLoadingMeta ? "Carregando..." : "Selecione"}
+              </option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
               Valor <span className="requiredMark">*</span>
             </span>
             <input
@@ -834,6 +879,22 @@ export function ActivitiesPageView() {
               ))}
             </select>
           </label>
+
+          <label className={styles.field}>
+            <span>Categoria</span>
+            <select
+              value={filterDraft.categoryId}
+              onChange={(event) => updateFilterField("categoryId", event.target.value)}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Todas</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className={styles.actions}>
@@ -866,6 +927,7 @@ export function ActivitiesPageView() {
                 <th>Codigo</th>
                 <th>Descricao</th>
                 <th>Tipo</th>
+                <th>Categoria</th>
                 <th>Valor</th>
                 <th>Unidade</th>
                 <th>Registrado em</th>
@@ -884,6 +946,7 @@ export function ActivitiesPageView() {
                     </td>
                     <td>{activity.description}</td>
                     <td>{activity.teamTypeName}</td>
+                    <td>{activity.categoryName}</td>
                     <td>{formatMoney(activity.value)}</td>
                     <td>{activity.unit}</td>
                     <td>{formatDateTime(activity.createdAt)}</td>
@@ -978,7 +1041,7 @@ export function ActivitiesPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className={styles.emptyRow}>
+                  <td colSpan={8} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando atividades..." : "Nenhuma atividade encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1032,6 +1095,7 @@ export function ActivitiesPageView() {
                 <div><strong>Codigo:</strong> {detailActivity.code}</div>
                 <div><strong>Descricao:</strong> {detailActivity.description}</div>
                 <div><strong>Tipo:</strong> {detailActivity.teamTypeName}</div>
+                <div><strong>Categoria:</strong> {detailActivity.categoryName}</div>
                 <div><strong>Grupo:</strong> {detailActivity.group || "-"}</div>
                 <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
                 <div><strong>Unidade:</strong> {detailActivity.unit}</div>
