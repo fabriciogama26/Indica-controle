@@ -22,6 +22,8 @@ Arquitetura
 - Banco (tipo de equipe em atividades): `supabase/migrations/057_add_team_type_to_service_activities.sql`
 - Banco (tipo de servico em atividades): `supabase/migrations/145_create_types_service_activities_and_link_service_activities.sql`
 - Banco (categoria obrigatoria em atividades): `supabase/migrations/146_require_service_activity_category_and_update_rpc.sql`
+- Banco (ajuste de voz/unidade por planilha JA10183409): `supabase/migrations/148_update_service_activities_voice_fields_ja10183409.sql`
+- Banco (desativacao por escopo da carga 147): `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
@@ -115,6 +117,15 @@ Atualizacao 2026-04
   - tornar `service_activities.type_service` obrigatoria;
   - atualizar RPC `save_service_activity_record` para persistir `type_service`;
   - validar categoria ativa do tenant dentro da propria RPC.
+- Migration `148_update_service_activities_voice_fields_ja10183409.sql` criada para:
+  - atualizar `voice_point` com base na coluna `Pontos da Voz` de `anexos_JA10183409_as_total.xlsx`;
+  - atualizar `unit` com base na planilha `VOZES_JA10183409.xlsx`;
+  - atualizar `unit_value` pela regra de `VALOR DO PONTO` por `group_name` (`SOT AEREA`, `SOC`, `PODA`, `LLEE/LINHA VIVA`, `SEGURANCA`) para os codigos informados.
+- Migration `149_deactivate_service_activities_not_in_147.sql` criada para:
+  - considerar a lista de codigos da migration `147_upsert_service_activities_from_atividades_xlsx.sql` como escopo oficial;
+  - desativar (`ativo = false`) atividades ativas fora dessa lista no tenant alvo;
+  - preencher `cancellation_reason` e `canceled_at` para manter consistencia da constraint de status;
+  - registrar historico em `app_entity_history` com `change_type = CANCEL`.
 - Tela/API de `Atividades` atualizadas para:
   - exibir o campo obrigatorio `Categoria` no formulario;
   - retornar opcoes de categoria em `GET /api/activities/meta`;
@@ -182,6 +193,10 @@ Constantes e configuracoes
   - Responsavel por: criar o catalogo de tipos de servico por tenant e vincular `service_activities.type_service` com consistencia de tenant.
 - Caminho: `supabase/migrations/146_require_service_activity_category_and_update_rpc.sql`
   - Responsavel por: exigir `type_service` em atividades e atualizar `save_service_activity_record` com validacao de categoria ativa por tenant.
+- Caminho: `supabase/migrations/148_update_service_activities_voice_fields_ja10183409.sql`
+  - Responsavel por: atualizar `unit`, `voice_point` e `unit_value` para codigos da carga JA10183409, com validacao de codigos e de grupos mapeados.
+- Caminho: `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
+  - Responsavel por: desativar atividades fora do escopo de codigos da migration 147 no tenant alvo e registrar auditoria em `app_entity_history`.
 - Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
   - Responsavel por: criar `save_service_activity_record` e `set_service_activity_record_status` para escrita transacional da tela de atividades.
 - Caminho: `src/lib/auth/authorization.ts`
@@ -211,6 +226,8 @@ Ajuda contextual
   - `supabase/migrations/057_add_team_type_to_service_activities.sql`
   - `supabase/migrations/145_create_types_service_activities_and_link_service_activities.sql`
   - `supabase/migrations/146_require_service_activity_category_and_update_rpc.sql`
+  - `supabase/migrations/148_update_service_activities_voice_fields_ja10183409.sql`
+  - `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -222,6 +239,8 @@ Ajuda contextual
   - `save_service_activity_record`, `set_service_activity_record_status`
   - `categoryId`, `categoryName`
   - `service_activities.type_service`, `types_service_activities`
+  - `service_activities.voice_point`, `service_activities.unit`, `service_activities.unit_value`
+  - `service_activities.ativo`, `service_activities.cancellation_reason`, `service_activities.canceled_at`
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
   - `ROUTE_PAGE_KEYS`, `resolveDefaultPageAccess`, `permissionCatalog`
 - Comportamento antes/depois:
@@ -231,6 +250,8 @@ Ajuda contextual
   - Depois: atividade passa a exigir tipo de equipe valido por tenant (`team_types`).
   - Antes: atividade nao possuia catalogo dedicado de tipo de servico.
   - Depois: atividade passa a exigir `type_service` (categoria) no cadastro/edicao, com validacao por tenant em API + RPC.
+  - Depois: carga JA10183409 ajusta, para codigos especificos, `voice_point` (Pontos da Voz), `unit` (VOZES) e `unit_value` por regra do `VALOR DO PONTO` conforme `group_name`.
+  - Depois: atividades fora do escopo de codigos da carga 147 passam a ser desativadas em lote (tenant alvo), com motivo tecnico e historico de cancelamento.
   - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios do cadastro e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`) alem de `Grupo` e `Alcance`.
 - Arquivos alterados/criados (2026-03-24):
