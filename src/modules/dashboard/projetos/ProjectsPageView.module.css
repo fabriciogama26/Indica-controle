@@ -27,6 +27,47 @@
   font-size: 1.42rem;
 }
 
+.projectSummaryGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.projectSummaryCard {
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #ffffff;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.projectSummaryCard strong {
+  color: #17347a;
+  font-size: 0.92rem;
+}
+
+.projectSummaryCard span {
+  color: #1f2f54;
+  font-size: 1.34rem;
+  font-weight: 800;
+}
+
+.projectSummaryCard small {
+  color: #4c5f85;
+  font-size: 0.8rem;
+}
+
+.projectSummaryTotal {
+  border-color: rgba(23, 52, 122, 0.18);
+  background: #f4f8ff;
+}
+
+.projectSummaryCompleted {
+  border-color: rgba(31, 159, 79, 0.34);
+  background: #e9f9ef;
+}
+
 .tabHeader {
   display: flex;
   gap: 8px;
@@ -564,6 +605,7 @@
 @media (max-width: 780px) {
   .formGrid,
   .filterGrid,
+  .projectSummaryGrid,
   .detailGrid {
     grid-template-columns: 1fr;
   }

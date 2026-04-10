@@ -55,6 +55,11 @@ type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob"> & {
   fob?: string | null;
 };
 
+type ProjectListSummary = {
+  totalProjects: number;
+  completed: number;
+};
+
 type ProjectUserRow = {
   id: string;
   display: string | null;
@@ -432,6 +437,113 @@ async function fetchProjectsPageCompat(params: {
   return {
     data: fallbackRows.map((item) => ({ ...item, fob: null, has_locacao: false })) as ProjectRow[],
     count: fallback.count ?? 0,
+    error: null,
+  };
+}
+
+async function fetchProjectsSummaryCompat(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  sob: string;
+  executionDate: string;
+  priority: string;
+  city: string;
+}) {
+  const projectIds: string[] = [];
+  const projectSobById = new Map<string, string>();
+  const totalSobKeys = new Set<string>();
+  const pageSize = 1000;
+  let from = 0;
+
+  while (true) {
+    let projectIdsQuery = params.supabase
+      .from("project_with_labels")
+      .select("id, sob")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (params.sob) {
+      projectIdsQuery = projectIdsQuery.ilike("sob", `%${params.sob}%`);
+    }
+    if (params.executionDate && isIsoDate(params.executionDate)) {
+      projectIdsQuery = projectIdsQuery.eq("execution_deadline", params.executionDate);
+    }
+    if (params.priority) {
+      projectIdsQuery = projectIdsQuery.eq("priority_text", params.priority);
+    }
+    if (params.city) {
+      projectIdsQuery = projectIdsQuery.eq("city_text", params.city);
+    }
+
+    const { data: projectRows, error: projectRowsError } = await projectIdsQuery.returns<{ id: string; sob: string | null }[]>();
+    if (projectRowsError) {
+      return { data: null, error: projectRowsError };
+    }
+
+    for (const item of projectRows ?? []) {
+      const projectId = normalizeText(item.id);
+      if (!projectId) {
+        continue;
+      }
+
+      projectIds.push(projectId);
+      const sobKey = normalizeSob(item.sob);
+      const normalizedSobKey = sobKey || projectId;
+      projectSobById.set(projectId, normalizedSobKey);
+      totalSobKeys.add(normalizedSobKey);
+    }
+
+    if ((projectRows ?? []).length < pageSize) {
+      break;
+    }
+    from += pageSize;
+  }
+
+  if (projectIds.length === 0) {
+    return {
+      data: {
+        totalProjects: 0,
+        completed: 0,
+      } as ProjectListSummary,
+      error: null,
+    };
+  }
+
+  const completedSobKeys = new Set<string>();
+  const chunkSize = 200;
+
+  for (let index = 0; index < projectIds.length; index += chunkSize) {
+    const chunk = projectIds.slice(index, index + chunkSize);
+    const { data: programmingRows, error: programmingRowsError } = await params.supabase
+      .from("project_programming")
+      .select("project_id")
+      .eq("tenant_id", params.tenantId)
+      .eq("work_completion_status", "CONCLUIDO")
+      .in("project_id", chunk)
+      .returns<{ project_id: string }[]>();
+
+    if (programmingRowsError) {
+      return { data: null, error: programmingRowsError };
+    }
+
+    for (const row of programmingRows ?? []) {
+      const projectId = normalizeText(row.project_id);
+      if (!projectId) {
+        continue;
+      }
+
+      const sobKey = projectSobById.get(projectId);
+      completedSobKeys.add(sobKey ?? projectId);
+    }
+  }
+
+  return {
+    data: {
+      totalProjects: totalSobKeys.size,
+      completed: completedSobKeys.size,
+    } as ProjectListSummary,
     error: null,
   };
 }
@@ -905,6 +1017,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao listar projetos." }, { status: 500 });
     }
 
+    const summaryResult = await fetchProjectsSummaryCompat({
+      supabase,
+      tenantId: appUser.tenant_id,
+      sob,
+      executionDate,
+      priority,
+      city,
+    });
+
+    if (summaryResult.error || !summaryResult.data) {
+      return NextResponse.json({ message: "Falha ao consolidar resumo de projetos." }, { status: 500 });
+    }
+
     const userIds = Array.from(
       new Set(
         (data ?? [])
@@ -963,6 +1088,7 @@ export async function GET(request: NextRequest) {
         pageSize,
         total: count ?? 0,
       },
+      summary: summaryResult.data,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao listar projetos." }, { status: 500 });
