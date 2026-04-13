@@ -40,6 +40,7 @@ type ProjectRow = {
   service_description: string | null;
   observation: string | null;
   is_active: boolean;
+  is_test: boolean;
   has_locacao: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
@@ -50,9 +51,10 @@ type ProjectRow = {
   updated_at: string;
 };
 
-type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob"> & {
+type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob" | "is_test"> & {
   has_locacao?: boolean | null;
   fob?: string | null;
+  is_test?: boolean | null;
 };
 
 type ProjectListSummary = {
@@ -104,6 +106,7 @@ type CreateProjectPayload = {
   city: string;
   serviceDescription?: string | null;
   observation?: string | null;
+  isTest?: boolean;
 };
 
 type UpdateProjectPayload = CreateProjectPayload & {
@@ -148,7 +151,10 @@ type ProjectInput = {
   city: string;
   serviceDescription: string | null;
   observation: string | null;
+  isTest: boolean;
 };
+
+type ProjectStatusFilter = "TODOS" | "CANCELADO" | "ATIVO" | "CONCLUIDO";
 
 type ResolvedProjectLookups = {
   partner: ContractRow;
@@ -202,6 +208,29 @@ function normalizeEstimatedValue(value: unknown) {
   return numeric;
 }
 
+function normalizeBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "sim";
+}
+
+function normalizeProjectStatusFilter(value: unknown): ProjectStatusFilter {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "CANCELADO") {
+    return "CANCELADO";
+  }
+  if (normalized === "ATIVO") {
+    return "ATIVO";
+  }
+  if (normalized === "CONCLUIDO") {
+    return "CONCLUIDO";
+  }
+  return "TODOS";
+}
+
 function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -224,6 +253,7 @@ function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput
     city: normalizeText(payload.city),
     serviceDescription: normalizeNullableText(payload.serviceDescription),
     observation: normalizeNullableText(payload.observation),
+    isTest: normalizeBoolean(payload.isTest),
   };
 }
 
@@ -320,14 +350,14 @@ function buildUserLoginNameMap(users: ProjectUserRow[]) {
 }
 
 const PROJECT_SELECT_WITH_LOCATION =
-  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
+  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
 const PROJECT_SELECT_LEGACY =
   "id, sob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
 function isMissingOptionalProjectColumns(message: string) {
   const normalized = normalizeText(message).toLowerCase();
-  return normalized.includes("has_locacao") || normalized.includes("fob");
+  return normalized.includes("has_locacao") || normalized.includes("fob") || normalized.includes("is_test");
 }
 
 async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string, projectId: string) {
@@ -343,6 +373,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
       data: {
         ...primary.data,
         fob: normalizeNullableText(primary.data.fob),
+        is_test: Boolean(primary.data.is_test),
         has_locacao: Boolean(primary.data.has_locacao),
       } as ProjectRow,
       error: null,
@@ -368,6 +399,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
     data: {
       ...fallback.data,
       fob: null,
+      is_test: false,
       has_locacao: false,
     } as ProjectRow,
     error: null,
@@ -381,6 +413,8 @@ async function fetchProjectsPageCompat(params: {
   executionDate: string;
   priority: string;
   city: string;
+  status: ProjectStatusFilter;
+  completedProjectIds: string[];
   from: number;
   to: number;
 }) {
@@ -402,6 +436,21 @@ async function fetchProjectsPageCompat(params: {
     if (params.city) {
       query = query.eq("city_text", params.city);
     }
+    if (params.status === "ATIVO") {
+      query = query.eq("is_active", true);
+    }
+    if (params.status === "CANCELADO") {
+      query = query.eq("is_active", false);
+    }
+    if (params.status === "CONCLUIDO") {
+      query = query.eq("is_active", true);
+      query = query.in(
+        "id",
+        params.completedProjectIds.length > 0
+          ? params.completedProjectIds
+          : ["00000000-0000-0000-0000-000000000000"],
+      );
+    }
 
     return query
       .order("is_active", { ascending: false })
@@ -417,6 +466,7 @@ async function fetchProjectsPageCompat(params: {
       data: primaryRows.map((item) => ({
         ...item,
         fob: normalizeNullableText(item.fob),
+        is_test: Boolean(item.is_test),
         has_locacao: Boolean(item.has_locacao),
       })) as ProjectRow[],
       count: primary.count ?? 0,
@@ -435,7 +485,7 @@ async function fetchProjectsPageCompat(params: {
 
   const fallbackRows = (fallback.data ?? []) as unknown as ProjectBaseRow[];
   return {
-    data: fallbackRows.map((item) => ({ ...item, fob: null, has_locacao: false })) as ProjectRow[],
+    data: fallbackRows.map((item) => ({ ...item, fob: null, is_test: false, has_locacao: false })) as ProjectRow[],
     count: fallback.count ?? 0,
     error: null,
   };
@@ -448,6 +498,8 @@ async function fetchProjectsSummaryCompat(params: {
   executionDate: string;
   priority: string;
   city: string;
+  status: ProjectStatusFilter;
+  completedProjectIds: string[];
 }) {
   const projectIds: string[] = [];
   const projectSobById = new Map<string, string>();
@@ -460,7 +512,7 @@ async function fetchProjectsSummaryCompat(params: {
       .from("project_with_labels")
       .select("id, sob")
       .eq("tenant_id", params.tenantId)
-      .eq("is_active", true)
+      .eq("is_test", false)
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
 
@@ -476,8 +528,62 @@ async function fetchProjectsSummaryCompat(params: {
     if (params.city) {
       projectIdsQuery = projectIdsQuery.eq("city_text", params.city);
     }
+    if (params.status === "CANCELADO") {
+      projectIdsQuery = projectIdsQuery.eq("is_active", false);
+    } else {
+      projectIdsQuery = projectIdsQuery.eq("is_active", true);
+    }
+    if (params.status === "CONCLUIDO") {
+      projectIdsQuery = projectIdsQuery.eq("is_active", true);
+      projectIdsQuery = projectIdsQuery.in(
+        "id",
+        params.completedProjectIds.length > 0
+          ? params.completedProjectIds
+          : ["00000000-0000-0000-0000-000000000000"],
+      );
+    }
 
-    const { data: projectRows, error: projectRowsError } = await projectIdsQuery.returns<{ id: string; sob: string | null }[]>();
+    let { data: projectRows, error: projectRowsError } = await projectIdsQuery.returns<{ id: string; sob: string | null }[]>();
+    if (projectRowsError && isMissingOptionalProjectColumns(String(projectRowsError.message ?? ""))) {
+      let fallbackQuery = params.supabase
+        .from("project_with_labels")
+        .select("id, sob")
+        .eq("tenant_id", params.tenantId)
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (params.sob) {
+        fallbackQuery = fallbackQuery.ilike("sob", `%${params.sob}%`);
+      }
+      if (params.executionDate && isIsoDate(params.executionDate)) {
+        fallbackQuery = fallbackQuery.eq("execution_deadline", params.executionDate);
+      }
+      if (params.priority) {
+        fallbackQuery = fallbackQuery.eq("priority_text", params.priority);
+      }
+      if (params.city) {
+        fallbackQuery = fallbackQuery.eq("city_text", params.city);
+      }
+      if (params.status === "CANCELADO") {
+        fallbackQuery = fallbackQuery.eq("is_active", false);
+      } else {
+        fallbackQuery = fallbackQuery.eq("is_active", true);
+      }
+      if (params.status === "CONCLUIDO") {
+        fallbackQuery = fallbackQuery.eq("is_active", true);
+        fallbackQuery = fallbackQuery.in(
+          "id",
+          params.completedProjectIds.length > 0
+            ? params.completedProjectIds
+            : ["00000000-0000-0000-0000-000000000000"],
+        );
+      }
+
+      const fallbackResult = await fallbackQuery.returns<{ id: string; sob: string | null }[]>();
+      projectRows = fallbackResult.data;
+      projectRowsError = fallbackResult.error;
+    }
+
     if (projectRowsError) {
       return { data: null, error: projectRowsError };
     }
@@ -761,6 +867,7 @@ function buildProjectWritePayload(
     city: lookups.municipality.id,
     service_description: input.serviceDescription,
     observation: input.observation,
+    is_test: input.isTest,
   };
 }
 
@@ -784,6 +891,7 @@ function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, loo
   addChange(changes, "serviceDescription", current.service_description, input.serviceDescription);
   addChange(changes, "observation", current.observation, input.observation);
   addChange(changes, "partner", current.partner_text, lookups.partner.name);
+  addChange(changes, "isTest", current.is_test, input.isTest);
 
   return changes;
 }
@@ -829,6 +937,7 @@ async function saveProjectViaRpc(params: {
     p_city: params.payload.city,
     p_service_description: params.payload.service_description,
     p_observation: params.payload.observation,
+    p_is_test: params.payload.is_test,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   };
@@ -839,7 +948,7 @@ async function saveProjectViaRpc(params: {
   let { data, error } = await executeSaveProjectRpc(rpcPayload);
   if (error) {
     const legacyPayload = Object.fromEntries(
-      Object.entries(rpcPayload).filter(([key]) => key !== "p_fob"),
+      Object.entries(rpcPayload).filter(([key]) => key !== "p_fob" && key !== "p_is_test"),
     );
 
     const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
@@ -997,10 +1106,28 @@ export async function GET(request: NextRequest) {
     const executionDate = normalizeText(params.get("executionDate"));
     const priority = normalizeText(params.get("priority"));
     const city = normalizeText(params.get("city"));
+    const status = normalizeProjectStatusFilter(params.get("status"));
     const page = Math.max(1, Number(params.get("page") ?? 1));
     const pageSize = Math.min(100, Math.max(1, Number(params.get("pageSize") ?? 20)));
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
+    let completedProjectIds: string[] = [];
+    if (status === "CONCLUIDO") {
+      const { data: completedRows, error: completedRowsError } = await supabase
+        .from("project_programming")
+        .select("project_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("work_completion_status", "CONCLUIDO")
+        .returns<{ project_id: string }[]>();
+
+      if (completedRowsError) {
+        return NextResponse.json({ message: "Falha ao consolidar status concluido dos projetos." }, { status: 500 });
+      }
+
+      completedProjectIds = Array.from(
+        new Set((completedRows ?? []).map((item) => normalizeText(item.project_id)).filter(Boolean)),
+      );
+    }
 
     const { data, error, count } = await fetchProjectsPageCompat({
       supabase,
@@ -1009,6 +1136,8 @@ export async function GET(request: NextRequest) {
       executionDate,
       priority,
       city,
+      status,
+      completedProjectIds,
       from,
       to,
     });
@@ -1024,6 +1153,8 @@ export async function GET(request: NextRequest) {
       executionDate,
       priority,
       city,
+      status,
+      completedProjectIds,
     });
 
     if (summaryResult.error || !summaryResult.data) {
@@ -1072,6 +1203,7 @@ export async function GET(request: NextRequest) {
         serviceDescription: item.service_description,
         observation: item.observation,
         isActive: Boolean(item.is_active),
+        isTest: Boolean(item.is_test),
         hasLocacao: Boolean(item.has_locacao),
         cancellationReason: item.cancellation_reason,
         canceledAt: item.canceled_at,

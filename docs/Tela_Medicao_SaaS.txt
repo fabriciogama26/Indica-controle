@@ -6,6 +6,7 @@ Visao geral
 - A ordem pode nascer independente da `Programacao`.
 - O sistema tenta identificar automaticamente se existe programacao para a medicao por `Projeto + Equipe + Data de execucao`.
 - O usuario registra as atividades executadas e calcula o total da medicao por item.
+- Obras marcadas como teste em `Projetos` nao entram nas consolidacoes operacionais da lista de Medicao (`Ordens` e `Valor total`).
 - Formula oficial da medicao por item:
   - `Pontos (voice_point) x Quantidade x Taxa manual x Valor unitario`
   - Para unidade composta `MVA*hora`: `Quantidade = MVA x Horas`
@@ -331,4 +332,19 @@ Ajuda contextual
 - Comportamento antes/depois (2026-04-02):
   - Antes: o modal de detalhes da Medicao exibia `Equipe` e `Encarregado` sempre a partir do `teamMap` atual.
   - Depois: o modal de detalhes passa a exibir primeiro os snapshots salvos na ordem, preservando o contexto historico; o `teamMap` atual fica como fallback tecnico.
+
+Atualizacao 2026-04-13
+----------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProjectIsTestMap`
+  - `isMissingProjectTestColumn`
+  - `GET /api/medicao` (pipeline de filtros e consolidacao)
+- Comportamento antes/depois:
+  - Antes: ordens vinculadas a obras de teste entravam no total de ordens e no valor total consolidado da Medicao.
+  - Depois: ordens vinculadas a obras de teste sao removidas da consolidacao da listagem (`Ordens` e `Valor total`) no backend.
 

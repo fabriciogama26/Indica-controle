@@ -157,6 +157,51 @@
   grid-column: span 2;
 }
 
+.checkboxField {
+  grid-column: span 2;
+  align-content: start;
+}
+
+.checkboxControl {
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #1b294c;
+  padding: 11px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkboxControl input {
+  appearance: auto;
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  min-height: auto;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.checkboxControl input:focus {
+  box-shadow: none;
+}
+
+.checkboxControl span {
+  margin: 0;
+  font-weight: 600;
+  color: #1f2f54;
+}
+
+.checkboxHelp {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.8rem;
+}
+
 .actions {
   display: flex;
   gap: 10px;
@@ -314,6 +359,16 @@
   color: #8b1e1e;
   background: #ffe7e7;
   border: 1px solid #f4b0b0;
+}
+
+.testTag {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #0f5937;
+  background: #dcf9e7;
+  border: 1px solid #9cdeba;
 }
 
 .inactiveRow {
@@ -611,6 +666,10 @@
   }
 
   .fieldWide {
+    grid-column: span 1;
+  }
+
+  .checkboxField {
     grid-column: span 1;
   }
 

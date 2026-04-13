@@ -30,6 +30,8 @@
 - [x] Ajustar `Registrado por` da lista de `Projetos` para exibir `app_users.login_name`.
 - [x] Adicionar botao de exportacao `Exportar Excel (CSV)` na lista de `Projetos` com base nos filtros ativos.
 - [x] Adicionar bloco `Status da Carteira de Projetos` no topo da tela de `Projetos` com 2 cards (`Total de projetos` e `Concluidas`) e resumo agregado por filtros no `GET /api/projects`, contando apenas projetos ativos por `SOB` unico e `Concluidas` baseado em `Estado Trabalho = CONCLUIDO` na programacao.
+- [x] Adicionar no cadastro de `Projetos` o marcador `Obra de teste`, com persistencia em `project.is_test`, tag visual na lista/detalhes e exclusao dessa obra dos cards de carteira.
+- [x] Adicionar filtro de `Status` na tela de `Projetos` com opcoes `Cancelado`, `Ativo` e `Concluido`.
 - [x] Desabilitar cache nas chamadas autenticadas de `Projetos` para evitar dados antigos apos troca de sessao.
 - [x] Aplicar regra de SOB por prioridade em `Projetos` (frontend + API + constraint SQL).
 - [x] Mover `Prioridade` para antes de `Projeto (SOB)` no formulario de cadastro.
@@ -350,6 +352,7 @@
 - [x] Corrigir ordem da migration `120_unify_measurement_with_service_activities` para remover a FK antiga antes do backfill dos IDs e evitar erro `23503` durante a unificacao.
 - [x] Garantir no cadastro em massa da Medicao a geracao do CSV de erros mesmo quando a API retornar falha geral sem detalhamento por linha.
 - [x] Adicionar na lista da Medicao o somatorio de `Valor total` respeitando os filtros aplicados.
+- [x] Excluir obras marcadas como teste das consolidacoes da `Medicao` (contagem de ordens e somatorio de valor total).
 - [x] Ajustar o resumo da lista da Medicao para considerar o resultado filtrado completo (todas as paginas), e nao apenas a pagina visivel.
 - [x] Ajustar a cor do `Status` na lista da Medicao para exibir `FECHADA` em vermelho (mesma classe de destaque de `CANCELADA`).
 - [x] Implementar acao `Abrir` para ordens `FECHADA` na Medicao, com modal de motivo obrigatorio e registro transacional no banco/historico.

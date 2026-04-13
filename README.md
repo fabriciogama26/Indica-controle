@@ -117,7 +117,7 @@ vercel --prod
   - `(public)/recuperar-senha/page.tsx`: wrapper fino da rota publica de recuperacao de senha.
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
-  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas por projeto.
+  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros (incluindo status), marcador de obra de teste, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
   - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote e exportacao `ENEL-EXCEL`.
@@ -145,7 +145,7 @@ vercel --prod
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
   - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users` e registra auditoria do invite via RPC.
-  - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, bloqueando inativacao quando houver agenda operacional pendente.
+  - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, com filtro de status (`Cancelado`, `Ativo`, `Concluido`), marcador `is_test` e bloqueio de inativacao quando houver agenda operacional pendente.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
   - `api/projects/forecast/route.ts`: lista, adiciona e edita materiais previstos por projeto com controle de concorrencia por `updated_at` na edicao.
   - `api/projects/forecast/catalog/route.ts`: pesquisa materiais ativos para inclusao manual no previsto do projeto.
@@ -157,12 +157,12 @@ vercel --prod
   - `api/locacao/materials/catalog/route.ts`: pesquisa materiais ativos por codigo/descricao para inclusao na locacao.
   - `api/locacao/activities/route.ts`: adiciona e edita atividades previstas da locacao via RPC com bloqueio de quantidade invalida e controle de concorrencia por `updated_at`.
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
-  - `api/medicao/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa ordens de medicao, incluindo os modos `Com producao` e `Sem producao`.
+  - `api/medicao/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa ordens de medicao, incluindo os modos `Com producao` e `Sem producao`, com exclusao de obras de teste das consolidacoes de ordens/valor.
   - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao` da Medicao por tenant.
   - `api/medicao/activities/catalog/route.ts`: pesquisa atividades ativas para inclusao manual ou importacao da Medicao.
 - `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico e a geracao automatica do centro de estoque proprio.
 - `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
-  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo, resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
+  - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo (ignorando obras de teste), resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a `is_transformer` e `Preco` opcional (default `0.00`).
   - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos, materiais ativos e catalogo de motivos padrao de estorno para a tela de movimentacao.
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.

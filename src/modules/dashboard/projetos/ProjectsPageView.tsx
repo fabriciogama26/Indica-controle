@@ -27,6 +27,7 @@ type ProjectItem = {
   serviceDescription: string | null;
   observation: string | null;
   isActive: boolean;
+  isTest: boolean;
   hasLocacao: boolean;
   cancellationReason: string | null;
   canceledAt: string | null;
@@ -62,6 +63,7 @@ type FormState = {
   city: string;
   serviceDescription: string;
   observation: string;
+  isTest: boolean;
 };
 
 type FilterState = {
@@ -69,6 +71,7 @@ type FilterState = {
   executionDate: string;
   priority: string;
   city: string;
+  status: "TODOS" | "CANCELADO" | "ATIVO" | "CONCLUIDO";
 };
 
 type ForecastFilterState = {
@@ -222,6 +225,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   observation: "Observacao",
   partner: "Parceira",
   isActive: "Status",
+  isTest: "Obra de teste",
   cancellationReason: "Motivo do cancelamento",
   canceledAt: "Data do cancelamento",
   activationReason: "Motivo da ativacao",
@@ -244,6 +248,7 @@ const INITIAL_FORM: FormState = {
   city: "",
   serviceDescription: "",
   observation: "",
+  isTest: false,
 };
 
 const INITIAL_FILTERS: FilterState = {
@@ -251,6 +256,7 @@ const INITIAL_FILTERS: FilterState = {
   executionDate: "",
   priority: "",
   city: "",
+  status: "TODOS",
 };
 
 const INITIAL_PROJECT_LIST_SUMMARY: ProjectListSummary = {
@@ -318,6 +324,9 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   if (filters.city) {
     params.set("city", filters.city);
   }
+  if (filters.status && filters.status !== "TODOS") {
+    params.set("status", filters.status);
+  }
 
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
@@ -352,6 +361,7 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     "Descricao do servico",
     "Observacao",
     "Status",
+    "Obra de teste",
     "Registrado por",
     "Registrado em",
     "Atualizado por",
@@ -377,6 +387,7 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     project.serviceDescription ?? "",
     project.observation ?? "",
     project.isActive ? "Ativo" : "Inativo",
+    project.isTest ? "Sim" : "Nao",
     formatAuditActor(project.createdByName),
     formatDateTime(project.createdAt),
     formatAuditActor(project.updatedByName),
@@ -520,6 +531,7 @@ function toFormState(project: ProjectItem): FormState {
     city: project.city,
     serviceDescription: project.serviceDescription ?? "",
     observation: project.observation ?? "",
+    isTest: Boolean(project.isTest),
   };
 }
 
@@ -535,6 +547,10 @@ function formatHistoryValue(field: string, value: string | null) {
 
   if (field === "isActive") {
     return value === "true" ? "Ativo" : "Inativo";
+  }
+
+  if (field === "isTest") {
+    return value === "true" ? "Sim" : "Nao";
   }
 
   if (field === "executionDeadline") {
@@ -2180,12 +2196,12 @@ export function ProjectsPageView() {
             <article className={`${styles.projectSummaryCard} ${styles.projectSummaryTotal}`}>
               <strong>Total de projetos</strong>
               <span>{projectListSummary.totalProjects}</span>
-              <small>Todos os projetos na carteira.</small>
+              <small>Projetos ativos da carteira, sem obras de teste.</small>
             </article>
             <article className={`${styles.projectSummaryCard} ${styles.projectSummaryCompleted}`}>
               <strong>Concluidas</strong>
               <span>{projectListSummary.completed}</span>
-              <small>Projetos CONCLUIDO na Programacao.</small>
+              <small>Projetos CONCLUIDO na Programacao, sem obras de teste.</small>
             </article>
           </div>
         </article>
@@ -2450,6 +2466,22 @@ export function ProjectsPageView() {
                   placeholder="Digite observacoes complementares"
                   rows={3}
                 />
+              </label>
+
+              <label className={`${styles.field} ${styles.checkboxField}`}>
+                <span>Classificacao</span>
+                <div className={styles.checkboxControl}>
+                  <input
+                    id="project-is-test"
+                    type="checkbox"
+                    checked={form.isTest}
+                    onChange={(event) => updateFormField("isTest", event.target.checked)}
+                  />
+                  <span>Marcar obra como teste (ignorar em cards/resumos de medicao)</span>
+                </div>
+                <small className={styles.checkboxHelp}>
+                  Obras de teste continuam editaveis, mas nao entram em consolidacoes operacionais.
+                </small>
               </label>
 
               <div className={`${styles.actions} ${styles.formActions}`}>
@@ -2732,6 +2764,19 @@ export function ProjectsPageView() {
               ))}
             </select>
           </label>
+
+          <label className={styles.field}>
+            <span>Status</span>
+            <select
+              value={filterDraft.status}
+              onChange={(event) => updateFilterField("status", event.target.value as FilterState["status"])}
+            >
+              <option value="TODOS">Todos</option>
+              <option value="CANCELADO">Cancelado</option>
+              <option value="ATIVO">Ativo</option>
+              <option value="CONCLUIDO">Concluido</option>
+            </select>
+          </label>
         </div>
 
         <div className={styles.actions}>
@@ -2782,6 +2827,7 @@ export function ProjectsPageView() {
                         <div className={styles.sobCell}>
                           <span>{project.sob}</span>
                           {!project.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
+                          {project.isTest ? <span className={styles.testTag}>Teste</span> : null}
                         </div>
                       </td>
                       <td>{project.serviceCenter}</td>
@@ -3453,6 +3499,7 @@ export function ProjectsPageView() {
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
                 <div><strong>Status:</strong> {detailProject.isActive ? "Ativo" : "Inativo"}</div>
+                <div><strong>Obra de teste:</strong> {detailProject.isTest ? "Sim" : "Nao"}</div>
                 <div><strong>Prioridade:</strong> {detailProject.priority}</div>
                 <div><strong>Centro de Servico:</strong> {detailProject.serviceCenter}</div>
                 <div><strong>Parceira:</strong> {detailProject.partner}</div>
