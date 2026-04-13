@@ -117,6 +117,17 @@ function normalizeCode(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
 
+function parseActivityStatusFilter(value: string | null) {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "ATIVO") {
+    return true;
+  }
+  if (normalized === "INATIVO") {
+    return false;
+  }
+  return null;
+}
+
 function normalizeDecimal(value: unknown) {
   const raw = String(value ?? "").trim().replace(",", ".");
   const numeric = Number(raw);
@@ -471,6 +482,7 @@ export async function GET(request: NextRequest) {
     const teamTypeId = normalizeText(params.get("teamTypeId"));
     const categoryId = normalizeText(params.get("categoryId"));
     const groupName = normalizeText(params.get("group"));
+    const statusFilter = parseActivityStatusFilter(params.get("status"));
     const page = parsePositiveInteger(params.get("page"), 1);
     const pageSize = Math.min(parsePositiveInteger(params.get("pageSize"), 20), 100);
     const from = (page - 1) * pageSize;
@@ -502,6 +514,10 @@ export async function GET(request: NextRequest) {
 
     if (groupName) {
       query = query.ilike("group_name", `%${groupName}%`);
+    }
+
+    if (statusFilter !== null) {
+      query = query.eq("ativo", statusFilter);
     }
 
     const { data, error, count } = await query

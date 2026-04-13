@@ -55,6 +55,7 @@ type ActivityFilterState = {
   description: string;
   teamTypeId: string;
   categoryId: string;
+  status: "" | "ATIVO" | "INATIVO";
 };
 
 type TeamTypeOption = {
@@ -122,6 +123,7 @@ const INITIAL_FILTERS: ActivityFilterState = {
   description: "",
   teamTypeId: "",
   categoryId: "",
+  status: "",
 };
 
 function normalizeText(value: string) {
@@ -145,6 +147,9 @@ function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_
   }
   if (filters.categoryId.trim()) {
     params.set("categoryId", filters.categoryId.trim());
+  }
+  if (filters.status) {
+    params.set("status", filters.status);
   }
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
@@ -893,6 +898,18 @@ export function ActivitiesPageView() {
                   {category.name}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Status</span>
+            <select
+              value={filterDraft.status}
+              onChange={(event) => updateFilterField("status", event.target.value as ActivityFilterState["status"])}
+            >
+              <option value="">Todos</option>
+              <option value="ATIVO">Ativo</option>
+              <option value="INATIVO">Inativo</option>
             </select>
           </label>
         </div>

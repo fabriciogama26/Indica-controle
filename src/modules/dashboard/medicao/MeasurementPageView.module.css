@@ -251,6 +251,18 @@
   border: 1px solid #f4b0b0;
 }
 
+.executionStatusStack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  line-height: 1.15;
+}
+
+.executionStatusAlert {
+  white-space: nowrap;
+}
+
 .inactiveRow {
   background: rgba(170, 183, 210, 0.1);
 }

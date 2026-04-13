@@ -2652,8 +2652,12 @@ export function MeasurementPageView() {
                   <td>{order.noProductionReasonName || "-"}</td>
                   <td>{programmingMatchLabel(order.programmingMatchStatus)}</td>
                   <td>
-                    {order.programmingCompletionStatus ?? "-"}
-                    {order.programmingCompletionStatusChangedAfterMeasurement ? <span className={styles.statusTagDanger}>Atualizado apos medicao</span> : null}
+                    <div className={styles.executionStatusStack}>
+                      <span>{order.programmingCompletionStatus ?? "-"}</span>
+                      {order.programmingCompletionStatusChangedAfterMeasurement ? (
+                        <span className={`${styles.statusTagDanger} ${styles.executionStatusAlert}`}>Atualizado apos medicao</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td>{order.itemCount}</td>
                   <td>{formatCurrency(order.totalAmount)}</td>

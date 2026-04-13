@@ -125,7 +125,7 @@ Filtros, auto-complete e listagem
   - Equipe
   - Encarregado
   - Programacao (`Programada` ou `Nao programada`)
-  - Status execucao da programacao + alerta de atualizacao
+  - Status execucao da programacao + alerta de atualizacao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados
@@ -337,6 +337,8 @@ Atualizacao 2026-04-13
 ----------------------
 - Arquivos alterados/criados:
   - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
   - `docs/Tela_Medicao_SaaS.txt`
   - `README.md`
   - `TASKS.md`
@@ -344,7 +346,11 @@ Atualizacao 2026-04-13
   - `fetchProjectIsTestMap`
   - `isMissingProjectTestColumn`
   - `GET /api/medicao` (pipeline de filtros e consolidacao)
+  - `executionStatusStack`
+  - `executionStatusAlert`
 - Comportamento antes/depois:
   - Antes: ordens vinculadas a obras de teste entravam no total de ordens e no valor total consolidado da Medicao.
   - Depois: ordens vinculadas a obras de teste sao removidas da consolidacao da listagem (`Ordens` e `Valor total`) no backend.
+  - Antes: o campo `Status execucao` podia ficar comprimido, com `CONCLUIDO` e `Atualizado apos medicao` na mesma linha visual.
+  - Depois: o campo `Status execucao` exibe status e alerta em linhas separadas, com melhor leitura na grade.
 

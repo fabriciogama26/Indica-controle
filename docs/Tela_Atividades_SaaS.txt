@@ -5,7 +5,7 @@ Visao geral
 - Tela de cadastro de atividades para contratos e servicos por tenant.
 - Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `tipo`, `categoria`, `valor` e `unidade`.
 - `grupo` e `alcance` permanecem opcionais para compatibilidade de dados.
-- Lista atividades cadastradas com filtro por codigo, descricao, tipo e categoria.
+- Lista atividades cadastradas com filtro por codigo, descricao, tipo, categoria e status (`Ativo/Inativo`).
 - Lista atividades com paginacao no servidor e botao `Exportar Excel (CSV)`.
 - Lista com acoes de linha: `Detalhes`, `Editar`, `Historico` e `Cancelar/Ativar`.
 
@@ -59,6 +59,7 @@ Filtros, auto-complete e listagem
   - `Descricao`
   - `Tipo`
   - `Categoria`
+  - `Status` (`Todos`, `Ativo`, `Inativo`)
 - Listagem em tabela com colunas:
   - `Codigo`
   - `Descricao`
@@ -69,6 +70,7 @@ Filtros, auto-complete e listagem
   - `Registrado em`
   - `Acoes` (`Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`)
 - Filtro e listagem via `GET /api/activities`.
+- `GET /api/activities` aceita `status=ATIVO` e `status=INATIVO` para restringir a listagem.
 - Historico via `GET /api/activities?historyActivityId=<id>`.
 - Query params de paginacao:
   - `page`
@@ -133,6 +135,23 @@ Atualizacao 2026-04
 - Antes: `service_activities` nao possuia classificacao de tipo de servico dedicada.
 - Depois: `service_activities` passa a exigir vinculo de categoria ao catalogo `types_service_activities`, com backfill inicial em `OUTROS`.
 
+Atualizacao 2026-04-13
+----------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `src/app/api/activities/route.ts`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ActivityFilterState.status`
+  - `buildQuery`
+  - `parseActivityStatusFilter`
+  - `GET /api/activities` (filtro por status)
+- Comportamento antes/depois:
+  - Antes: a tela de Atividades nao tinha filtro dedicado por status.
+  - Depois: a tela passa a filtrar por `Status` com opcoes `Todos`, `Ativo` e `Inativo`, refletindo no backend e na exportacao filtrada.
+
 Atualizacao 2026-03
 -------------------
 - Tela `Atividades` criada com formulario funcional e listagem.
@@ -172,9 +191,9 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao, filtros, listagem paginada, detalhes, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
+  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao, filtros (incluindo `Status`), listagem paginada, detalhes, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
 - Caminho: `src/app/api/activities/route.ts`
-  - Responsavel por: validar payload, validar `team_type_id` e `category_id`, listar com paginacao/historico, executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
+  - Responsavel por: validar payload, validar `team_type_id` e `category_id`, listar com paginacao/historico e filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 - Caminho: `src/app/api/activities/meta/route.ts`
   - Responsavel por: retornar opcoes de `Tipo` (`team_types`) e `Categoria` (`types_service_activities`) ativas do tenant.
 
