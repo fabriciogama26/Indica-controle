@@ -1306,6 +1306,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
+  const originalEditingTeamName = editingTeamId ? teamMap.get(editingTeamId)?.name ?? editingTeamId : "";
+  const selectedEditingTeamId = isEditing ? form.teamIds[0] ?? "" : "";
+  const selectedEditingTeamName = selectedEditingTeamId ? teamMap.get(selectedEditingTeamId)?.name ?? selectedEditingTeamId : "";
+  const hasEditingTeamChanged = Boolean(isEditing && editingTeamId && selectedEditingTeamId && selectedEditingTeamId !== editingTeamId);
   const weekDates = useMemo(() => createWeekDates(weekStartDate), [weekStartDate]);
   const weekEndDate = weekDates[weekDates.length - 1] ?? weekStartDate;
 
@@ -1831,6 +1835,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }
 
   function toggleTeam(teamId: string) {
+    if (editingScheduleId) {
+      setForm((current) => ({ ...current, teamIds: [teamId] }));
+      setInvalidFields((current) => current.filter((item) => item !== "teamIds"));
+      return;
+    }
+
     setForm((current) => ({
       ...current,
       teamIds: current.teamIds.includes(teamId)
@@ -1849,6 +1859,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }
 
   function clearSelectedTeams() {
+    if (editingScheduleId) {
+      return;
+    }
+
     setForm((current) => ({ ...current, teamIds: [] }));
   }
 
@@ -2336,8 +2350,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (editingScheduleId && (form.teamIds.length !== 1 || form.teamIds[0] !== editingTeamId)) {
-      flagInvalidFields(["teamIds"], "Na edicao desta tela, a equipe original deve ser mantida.");
+    if (editingScheduleId && form.teamIds.length !== 1) {
+      flagInvalidFields(["teamIds"], "Na edicao, selecione exatamente uma equipe.");
       return;
     }
 
@@ -3429,7 +3443,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
               {editingScheduleId ? (
                 <p className={styles.helperText}>
-                  Modo edicao ativo: esta tela mantem a equipe original da programacao selecionada.
+                  Modo edicao ativo: voce pode trocar a equipe da programacao, mantendo apenas 1 equipe selecionada.
                 </p>
               ) : selectedProject ? (
                 <p className={styles.helperText}>
@@ -3438,6 +3452,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               ) : (
                 <p className={styles.helperText}>Selecione um projeto para limitar as equipes pela base.</p>
               )}
+              {hasEditingTeamChanged ? (
+                <div className={styles.warningCard}>
+                  <p>
+                    Reprogramacao com troca de equipe detectada.
+                  </p>
+                  <p>
+                    Equipe original: <strong>{originalEditingTeamName}</strong> | Nova equipe: <strong>{selectedEditingTeamName}</strong>
+                  </p>
+                  <p>
+                    Para salvar, mantenha o motivo de reprogramacao preenchido.
+                  </p>
+                </div>
+              ) : null}
 
               <div className={styles.teamList}>
                 {visibleTeamOptions.length ? (
@@ -3447,7 +3474,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                         type="checkbox"
                         checked={form.teamIds.includes(team.id)}
                         onChange={() => toggleTeam(team.id)}
-                        disabled={Boolean(editingScheduleId)}
                       />
                       <div className={styles.teamOptionMeta}>
                         <strong>{team.name}</strong>
@@ -3565,6 +3591,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 isSaving
                 || !form.projectId
                 || !form.teamIds.length
+                || (isEditing && form.teamIds.length !== 1)
                 || !form.sgdTypeId
               }
             >
