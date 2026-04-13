@@ -32,6 +32,7 @@
 - [x] Adicionar bloco `Status da Carteira de Projetos` no topo da tela de `Projetos` com 2 cards (`Total de projetos` e `Concluidas`) e resumo agregado por filtros no `GET /api/projects`, contando apenas projetos ativos por `SOB` unico e `Concluidas` baseado em `Estado Trabalho = CONCLUIDO` na programacao.
 - [x] Adicionar no cadastro de `Projetos` o marcador `Obra de teste`, com persistencia em `project.is_test`, tag visual na lista/detalhes e exclusao dessa obra dos cards de carteira.
 - [x] Adicionar filtro de `Status` na tela de `Projetos` com opcoes `Cancelado`, `Ativo` e `Concluido`.
+- [x] Adicionar filtro de `Status` na tela de `Atividades` com opcoes `Todos`, `Ativo` e `Inativo`, com suporte correspondente no `GET /api/activities`.
 - [x] Desabilitar cache nas chamadas autenticadas de `Projetos` para evitar dados antigos apos troca de sessao.
 - [x] Aplicar regra de SOB por prioridade em `Projetos` (frontend + API + constraint SQL).
 - [x] Mover `Prioridade` para antes de `Projeto (SOB)` no formulario de cadastro.
@@ -355,6 +356,7 @@
 - [x] Excluir obras marcadas como teste das consolidacoes da `Medicao` (contagem de ordens e somatorio de valor total).
 - [x] Ajustar o resumo da lista da Medicao para considerar o resultado filtrado completo (todas as paginas), e nao apenas a pagina visivel.
 - [x] Ajustar a cor do `Status` na lista da Medicao para exibir `FECHADA` em vermelho (mesma classe de destaque de `CANCELADA`).
+- [x] Ajustar o layout de `Status execucao` na lista da Medicao para exibir `CONCLUIDO` e `Atualizado apos medicao` em linhas separadas.
 - [x] Implementar acao `Abrir` para ordens `FECHADA` na Medicao, com modal de motivo obrigatorio e registro transacional no banco/historico.
 - [x] Ajustar regra de cancelamento da Medicao para permitir em `ABERTA` e `FECHADA`, mantendo bloqueio apenas para `CANCELADA` e registro de historico no RPC.
 - [x] Adicionar suporte a quantidade composta (`MVA*hora`) na Medicao: campos `MVA` e `Horas` na tela/importacao, persistencia em `project_measurement_order_items` e calculo automatico de `quantity`.
