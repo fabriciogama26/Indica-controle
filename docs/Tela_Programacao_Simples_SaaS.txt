@@ -135,6 +135,9 @@ Cadastro
   - Os motivos de `Cancelamento`, `Adiamento` e `Reprogramacao` usam `select` unico alimentado por `programming_reason_catalog`.
   - Quando o motivo selecionado exigir observacao (`requires_notes = true`), o campo complementar de observacao passa a ser obrigatorio.
   - Em edicao, se `Ponto eletrico` for apagado e salvo, o valor da equipe editada passa a ficar nulo.
+  - Em edicao, a equipe da programacao pode ser trocada na propria tela, mantendo exatamente uma equipe selecionada.
+  - Quando houver troca de equipe na edicao, a tela exibe aviso visual com `Equipe original` e `Nova equipe`.
+  - Troca de equipe na edicao continua sendo tratada como reprogramacao e exige `Motivo da reprogramacao`.
   - Em edicao, quando `Estado Trabalho` for alterado em uma equipe, o sistema sincroniza o mesmo valor para todas as equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
   - Se `Estado Trabalho` for limpo na edicao, a limpeza tambem e replicada para todas as equipes ativas do mesmo `Projeto + Data de execucao`.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
@@ -538,3 +541,19 @@ Atualizacao adicional 2026-04-08
   - Depois: a tela passa a exibir um bloco de cards acima de `Cadastro de Programacao` com contadores por status de vencimento em prioridade (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`), cards de `SOB` em carrossel horizontal (`6` por pagina), alternancia de janela (`15 dias`, `30 dias`), botao `Ver todos` com modal e exportacao CSV, e exclusao de projetos com `Estado Trabalho = CONCLUIDO`.
   - Antes: o usuario precisava inferir urgencia de prazo fora da tela de Programacao.
   - Depois: os cards por `SOB` destacam `Data limite` e `Status do prazo` com cor (vermelho forte para vencida, alerta para hoje/proximo e neutro para no prazo), com navegacao por setas para avancar/voltar os proximos `6` cards.
+
+Atualizacao adicional 2026-04-13
+--------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `toggleTeam`
+  - `clearSelectedTeams`
+  - `handleSubmit` (validacao de equipe na edicao)
+  - `hasEditingTeamChanged`, `originalEditingTeamName`, `selectedEditingTeamName`
+- Comportamento antes/depois:
+  - Antes: no modo de edicao, a tela bloqueava a troca de equipe e exigia manter a equipe original.
+  - Depois: no modo de edicao, a tela permite trocar a equipe com selecao unica, exibe aviso visual da troca (original x nova) e mantem a obrigatoriedade de motivo quando caracterizar reprogramacao.
