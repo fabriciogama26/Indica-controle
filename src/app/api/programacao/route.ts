@@ -20,6 +20,11 @@ type BoardProjectRow = {
   observation: string | null;
   has_locacao: boolean | null;
   is_active: boolean;
+  is_test: boolean;
+};
+
+type BoardProjectBaseRow = Omit<BoardProjectRow, "is_test"> & {
+  is_test?: boolean | null;
 };
 
 type TeamRow = {
@@ -601,23 +606,56 @@ function buildHistoryChangesWithDerivedExecutionDate(
   return normalizedChanges;
 }
 
+const BOARD_PROJECT_SELECT_WITH_TEST =
+  "id, sob, execution_deadline, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active, is_test";
+
+const BOARD_PROJECT_SELECT_LEGACY =
+  "id, sob, execution_deadline, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active";
+
+function isMissingProjectTestColumn(message: string) {
+  return normalizeText(message).toLowerCase().includes("is_test");
+}
+
 async function fetchProjects(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
-  const { data, error } = await supabase
+  const primary = await supabase
     .from("project_with_labels")
-    .select("id, sob, execution_deadline, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active")
+    .select(BOARD_PROJECT_SELECT_WITH_TEST)
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
+    .eq("is_test", false)
     .order("execution_deadline", { ascending: true })
-    .returns<BoardProjectRow[]>();
+    .returns<BoardProjectBaseRow[]>();
 
-  if (error) {
+  if (!primary.error) {
+    return (primary.data ?? []).map((item) => ({
+      ...item,
+      is_test: Boolean(item.is_test),
+    })) as BoardProjectRow[];
+  }
+
+  if (!isMissingProjectTestColumn(primary.error.message ?? "")) {
     return [] as BoardProjectRow[];
   }
 
-  return data ?? [];
+  const fallback = await supabase
+    .from("project_with_labels")
+    .select(BOARD_PROJECT_SELECT_LEGACY)
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("execution_deadline", { ascending: true })
+    .returns<BoardProjectBaseRow[]>();
+
+  if (fallback.error) {
+    return [] as BoardProjectRow[];
+  }
+
+  return (fallback.data ?? []).map((item) => ({
+    ...item,
+    is_test: false,
+  })) as BoardProjectRow[];
 }
 
 async function fetchTeams(
@@ -2253,6 +2291,7 @@ export async function GET(request: NextRequest) {
     );
 
     const projectMap = new Map(projects.map((item) => [item.id, item]));
+    const filteredProgrammingRows = programmingRows.filter((item) => projectMap.has(item.project_id));
     const sgdTypeMap = new Map(sgdTypes.map((item) => [item.id, item]));
     const supportDefaults = await fetchProjectSupportDefaults({
       supabase: resolution.supabase,
@@ -2263,9 +2302,9 @@ export async function GET(request: NextRequest) {
     const activitiesMap = await fetchProgrammingActivities(
       resolution.supabase,
       resolution.appUser.tenant_id,
-      programmingRows.map((item) => item.id),
+      filteredProgrammingRows.map((item) => item.id),
     );
-    const programmingIds = programmingRows.map((item) => item.id);
+    const programmingIds = filteredProgrammingRows.map((item) => item.id);
     const [rescheduleHistoryMap] = await Promise.all([
       fetchRescheduledProgrammingIds(
         resolution.supabase,
@@ -2275,7 +2314,7 @@ export async function GET(request: NextRequest) {
     ]);
     const programmingUserIds = Array.from(
       new Set(
-        programmingRows
+        filteredProgrammingRows
           .flatMap((item) => [item.created_by, item.updated_by])
           .filter((value): value is string => Boolean(value)),
       ),
@@ -2342,7 +2381,7 @@ export async function GET(request: NextRequest) {
         loadPercent: Number(item.load_percent ?? 0),
         loadStatus: item.load_status ?? "FREE",
       })),
-      schedules: programmingRows.map((item) => {
+      schedules: filteredProgrammingRows.map((item) => {
         const project = projectMap.get(item.project_id);
         const sgdType = item.sgd_type_id ? sgdTypeMap.get(item.sgd_type_id) : null;
         const team = teamLookupMap.get(item.team_id);

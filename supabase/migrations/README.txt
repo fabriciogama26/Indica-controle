@@ -350,6 +350,9 @@ Resumo por arquivo
 
 086_add_service_activities_is_active_compat.sql
 - Adiciona coluna de compatibilidade `service_activities.is_active`, sincroniza com `ativo` e cria trigger/check para manter ambas alinhadas.
+
+150_add_project_is_test_and_status_filters.sql
+- Adiciona `project.is_test`, republica a view `project_with_labels` com o novo campo e evolui a RPC `save_project_record` para persistir o marcador de obra de teste.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

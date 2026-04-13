@@ -5,6 +5,7 @@ Visao geral
 - Tela operacional para programar obras por equipe e por data.
 - A tela agora consome dados reais de projetos, equipes, atividades e programacoes ja persistidas no tenant autenticado.
 - O backlog pendente continua visual no painel esquerdo e a agenda continua em timeline semanal/diaria no painel direito.
+- O catalogo de projetos e a grade operacional ignoram obras marcadas como teste (`project.is_test = true`), evitando impacto em consolidacoes operacionais.
 
 Arquitetura
 -----------
@@ -365,3 +366,17 @@ Ajuda contextual
   - Antes: a obra sumia da lateral assim que era programada no periodo, o card lateral exibia informacao demais e a grade nao destacava diferenca entre programacao original e reprogramacao.
   - Depois: a obra continua visivel na lateral mesmo ja programada, o card lateral ficou mais enxuto, a lateral mostra no maximo 5 cards filtrados, a grade pode ser filtrada por subconjunto explicito de equipes e a reprogramacao recebe cor propria na agenda.
   - Depois: o historico operacional da agenda passa a usar somente `project_programming_history`, `REPROGRAMADA` deixa de ser derivada para virar status fisico salvo em `project_programming` e o save deixa de depender de historico complementar apos o commit da API.
+
+Atualizacao 2026-04-13
+----------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProjects`
+  - `isMissingProjectTestColumn`
+- Comportamento antes/depois:
+  - Antes: o retorno de `GET /api/programacao` incluia projetos e agendas de obras marcadas para teste.
+  - Depois: o retorno passa a excluir obras de teste (`is_test = true`) do catalogo de projetos e da grade de agendas entregue para as telas operacionais.

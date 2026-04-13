@@ -90,6 +90,11 @@ type ProgrammingMatchRow = {
   updated_at: string;
 };
 
+type ProjectTestRow = {
+  id: string;
+  is_test: boolean | null;
+};
+
 type SaveMeasurementPayload = {
   action?: string;
   id?: string;
@@ -441,6 +446,45 @@ function measurementModuleMigrationHint(message: string | undefined) {
   return "";
 }
 
+function isMissingProjectTestColumn(message: string | undefined) {
+  return normalizeText(message).toLowerCase().includes("is_test");
+}
+
+async function fetchProjectIsTestMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projectIds: string[];
+}) {
+  if (!params.projectIds.length) {
+    return new Map<string, boolean>();
+  }
+
+  const uniqueProjectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
+  const primary = await params.supabase
+    .from("project")
+    .select("id, is_test")
+    .eq("tenant_id", params.tenantId)
+    .in("id", uniqueProjectIds)
+    .returns<ProjectTestRow[]>();
+
+  if (!primary.error) {
+    return new Map((primary.data ?? []).map((item) => [item.id, Boolean(item.is_test)]));
+  }
+
+  if (!isMissingProjectTestColumn(primary.error.message)) {
+    return new Map<string, boolean>();
+  }
+
+  const fallback = await params.supabase
+    .from("project")
+    .select("id")
+    .eq("tenant_id", params.tenantId)
+    .in("id", uniqueProjectIds)
+    .returns<Array<{ id: string }>>();
+
+  return new Map((fallback.data ?? []).map((item) => [item.id, false]));
+}
+
 async function fetchAppUserMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -687,6 +731,11 @@ export async function GET(request: NextRequest) {
     tenantId: resolution.appUser.tenant_id,
     orders: orders ?? [],
   });
+  const projectIsTestMap = await fetchProjectIsTestMap({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectIds: (orders ?? []).map((item) => item.project_id),
+  });
 
   const baseOrders = (orders ?? []).map((item) => {
       const programmingMatch = programmingMatchMap.get(item.id) ?? {
@@ -719,6 +768,7 @@ export async function GET(request: NextRequest) {
         updatedAt: item.updated_at,
         createdByName: resolveAppUserName(userMap.get(item.created_by ?? "")),
         updatedByName: resolveAppUserName(userMap.get(item.updated_by ?? "")),
+        projectIsTest: Boolean(projectIsTestMap.get(item.project_id)),
         programmingMatchStatus: programmingMatch.status,
         matchedProgrammingId: programmingMatch.programmingId,
         programmingCompletionStatus: programmingMatch.completionStatus,
@@ -726,9 +776,11 @@ export async function GET(request: NextRequest) {
       };
     });
 
+  const filteredByProjectType = baseOrders.filter((item) => !item.projectIsTest);
+
   const filteredByProgrammingMatch = (programmingMatchFilter === "PROGRAMADA" || programmingMatchFilter === "NAO_PROGRAMADA")
-    ? baseOrders.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
-    : baseOrders;
+    ? filteredByProjectType.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
+    : filteredByProjectType;
 
   const filteredByCompletionAlert = (completionAlertFilter === "SIM" || completionAlertFilter === "NAO")
     ? filteredByProgrammingMatch.filter((item) =>
