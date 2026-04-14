@@ -410,3 +410,8 @@
 - [ ] Pendencia de dependencia registrada em 2026-03-11: `react-dom` `19.2.3 -> 19.2.4`.
 - [ ] Pendencia de dependencia registrada em 2026-03-11: `@types/node` `20.19.37 -> 25.4.0`.
 - [ ] Pendencia de dependencia registrada em 2026-03-11: `eslint` `9.39.4 -> 10.0.3`.
+- [x] Criar catalogo de Nº EQ (RE, CO, CF, CC ou TR) na Programacao, com coluna em project_programming, persistencia em fluxo full RPC e historico operacional por alteracao.
+- [x] Adicionar botao Extracao ENEL NOVO na Programacao Simples, mantendo Extracao ENEL, com novo layout de colunas e mapeamentos operacionais (Placa, Responsáveis Ampla, AREA LIVRE, Número SGD normalizado, Nº EQ composto, Periodo por horario e STATUS combinado com Estado Trabalho).
+- [x] Ajustar Extracao ENEL NOVO com formato operacional final: BASE apos  - , Data Execucao dd-mmm-yy, Dia da semana abreviado, INFO STATUS ordinal (xª ETAPA), Tempo previsto HH:MM:SS, Estrutura por equipes (|), Parceira antes de  - , Responsavel Execucao por encarregado, SOLICITACAO/AREA LIVRE por Tipo de SGD, TIPO DE SGD textual e fallback de Descricao do servico (Programacao > Projeto).
+- [x] Corrigir falha de cadastro em lote apos suporte a Nº EQ removendo overload recursivo de RPC full e criando wrappers estaveis (save_project_programming_full_with_electrical_and_eq e save_project_programming_batch_full_with_electrical_and_eq) na migration 152.
+- [x] Separar No EQ em dois campos obrigatorios na Programacao (No EQ - Numero + No EQ - Tipo), com validacao de digitos no numero e bloqueio de save quando qualquer um estiver ausente.
