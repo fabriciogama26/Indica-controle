@@ -60,6 +60,18 @@ Arquitetura
   - `supabase/migrations/111_move_electrical_field_into_full_rpcs_and_adjust_reschedule_rule.sql`
   - RPCs: `save_project_programming_full_with_electrical_field`, `save_project_programming_batch_full_with_electrical_field`
   - Objetivo: salvar Programacao + Campo eletrico no mesmo fluxo transacional e ajustar regra de reprogramacao (projeto/equipe/data/hora inicio/hora termino/periodo).
+- Migration de catalogo de Nº EQ e suporte full transacional:
+  - `supabase/migrations/151_add_programming_eq_catalog_and_full_rpc_support.sql`
+  - Tabela: `programming_eq_catalog`
+  - Campo em `project_programming`: `electrical_eq_catalog_id`
+  - RPC: `set_project_programming_electrical_eq_catalog`
+  - Overloads full: `save_project_programming_full` e `save_project_programming_batch_full` com suporte a `p_campo_eletrico` e `p_electrical_eq_catalog_id` no mesmo commit.
+- Migration corretiva de recursao dos overloads e wrappers estaveis:
+  - `supabase/migrations/152_fix_programming_full_overload_recursion_and_add_eq_wrappers.sql`
+  - Remove overloads recursivos de `save_project_programming_full` e `save_project_programming_batch_full`.
+  - Cria wrappers:
+    - `save_project_programming_full_with_electrical_and_eq`
+    - `save_project_programming_batch_full_with_electrical_and_eq`
 - Migration de compatibilidade do tipo SGD:
   - `supabase/migrations/108_allow_area_livre_programming_sgd_types.sql`
   - Catalogo `programming_sgd_types` passa a aceitar `AREA_LIVRE` em `export_column`.
@@ -112,9 +124,10 @@ Cadastro
   - Hora termino
   - ETAPA (somente no cadastro novo)
   - Tipo de SGD
+  - Nº EQ - Numero (RE, CO, CF, CC ou TR)
+  - Nº EQ - Tipo (RE, CO, CF, CC ou TR)
   - Equipes (multi-selecao)
 - Campos opcionais:
-  - Ponto eletrico
   - Descricao do servico
   - Inicio de desligamento
   - Termino de desligamento
@@ -131,10 +144,10 @@ Cadastro
 - Regra principal:
   - Ao salvar, todos os campos preenchidos no formulario sao replicados para cada equipe selecionada.
   - Cada equipe gera uma programacao independente.
-  - `Ponto eletrico` e opcional; no cadastro pode ficar vazio.
+  - `Nº EQ - Numero` e obrigatorio e aceita apenas digitos (sem espacos/letras).
+  - `Nº EQ - Tipo` e obrigatorio e vem do catalogo por tenant (`programming_eq_catalog`).
   - Os motivos de `Cancelamento`, `Adiamento` e `Reprogramacao` usam `select` unico alimentado por `programming_reason_catalog`.
   - Quando o motivo selecionado exigir observacao (`requires_notes = true`), o campo complementar de observacao passa a ser obrigatorio.
-  - Em edicao, se `Ponto eletrico` for apagado e salvo, o valor da equipe editada passa a ficar nulo.
   - Em edicao, a equipe da programacao pode ser trocada na propria tela, mantendo exatamente uma equipe selecionada.
   - Quando houver troca de equipe na edicao, a tela exibe aviso visual com `Equipe original` e `Nova equipe`.
   - Troca de equipe na edicao continua sendo tratada como reprogramacao e exige `Motivo da reprogramacao`.
@@ -147,8 +160,8 @@ Cadastro
   - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e opcional.
 - Persistencia:
   - Frontend envia `POST /api/programacao` com `action = BATCH_CREATE`.
-  - Backend exige `save_project_programming_batch_full_with_electrical_field`.
-  - `POST/PUT` usam `save_project_programming_full_with_electrical_field`.
+  - `POST/PUT` usam `save_project_programming_full` (overload com suporte a `p_campo_eletrico` e `p_electrical_eq_catalog_id`).
+  - `BATCH_CREATE` usa `save_project_programming_batch_full` (overload com suporte a `p_campo_eletrico` e `p_electrical_eq_catalog_id`).
   - O fluxo em lote nao usa mais fallback parcial para RPC legada.
   - A RPC em lote faz rollback total se qualquer equipe falhar.
   - A sugestao automatica da `ETAPA` preenche o campo apenas enquanto ele nao tiver sido alterado manualmente pelo usuario no contexto atual.
@@ -192,6 +205,7 @@ Filtros, auto-complete e listagem
   - Botoes de extracao na lista:
     - `Exportar Excel (CSV)` (CSV da lista filtrada)
     - `Extracao ENEL` (layout operacional ENEL)
+    - `Extracao ENEL NOVO` (layout operacional novo)
   - Todos os botoes de exportacao da lista passam a ter trava de novo clique por `10` segundos para evitar exportacoes repetidas.
   - Mapeamentos ENEL:
     - Ordem de colunas segue exatamente o layout operacional solicitado para `ENEL excel` (incluindo `ENCARREGADO` apos `Estrutura` e `Mão de obra` no bloco final).
@@ -201,13 +215,13 @@ Filtros, auto-complete e listagem
     - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
     - `Tipo de SGD` = selecao do formulario da Programacao.
     - `AREA_LIVRE` em `Tipo de SGD` nao preenche `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT`.
-    - `SGD AT/MT/VyP`, `SGD AT/MT`, `SGD AT`, `SGD MT` e `SGD VyP` preenchem a coluna `SGD AT/MT/VyP` com o valor de `Ponto eletrico`.
-    - `SGD BT` preenche a coluna `SGD BT` com o valor de `Ponto eletrico`.
-    - `SGD TeT` preenche a coluna `SGD TeT` com o valor de `Ponto eletrico`.
+    - `SGD AT/MT/VyP`, `SGD AT/MT`, `SGD AT`, `SGD MT` e `SGD VyP` preenchem a coluna `SGD AT/MT/VyP` com o valor de `Nº EQ - Numero`.
+    - `SGD BT` preenche a coluna `SGD BT` com o valor de `Nº EQ - Numero`.
+    - `SGD TeT` preenche a coluna `SGD TeT` com o valor de `Nº EQ - Numero`.
     - `Numero de Clientes Afetados` = campo do formulario da Programacao.
     - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
     - `Estrutura` = composicao de equipes por tipo (ex.: `2 MK`, `1 MK + 1 CETO`, `1 LV`) por `Projeto + Data de execucao`.
-    - `Nº EQ (RE, CO, CF, CC ou TR)` = valor do campo `Ponto eletrico` informado na programacao.
+    - `Nº EQ (RE, CO, CF, CC ou TR)` = `Nº EQ - Numero + Nº EQ - Tipo`.
     - `INFO STATUS` = campo `ETAPA` no formato `x ETAPA`.
     - `PerÃ­odo` exportado sempre em maiusculas (`INTEGRAL`/`PARCIAL`).
     - `Tempo Previsto` exportado em horas.
@@ -216,7 +230,26 @@ Filtros, auto-complete e listagem
     - `Inic deslig` = `Inicio de desligamento` da Programacao.
     - `Term deslig` = `Termino de desligamento` da Programacao.
     - `Estado Trabalho` = campo de edicao `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`).
-    - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o valor de `Ponto eletrico` conforme o `Tipo de SGD` selecionado.
+    - `SGD AT/MT/VyP`, `SGD BT`, `SGD TeT` recebem o valor de `Nº EQ - Numero` conforme o `Tipo de SGD` selecionado.
+  - Mapeamentos ENEL NOVO:
+    - `BASE` = texto apos ` - ` (ex.: `BASE - ANGRA` -> `ANGRA`).
+    - `Data Execução` = `dd-mmm-yy` (ex.: `11-dez-23`).
+    - `Dia da semana` = abreviado (`seg`, `ter`, `qua`, `qui`, `sex`, `sab`, `dom`).
+    - `INFO STATUS` = `${ETAPA}ª ETAPA` (ordinal + palavra ETAPA).
+    - `Tempo previsto` = `HH:MM:SS` (ex.: `09:00:00`).
+    - `Estrutura` = equipes do mesmo `Projeto + Data` separadas por `|` (ex.: `MK-02|CESTO-00|LV-00`).
+    - `Placa` = placas das equipes do mesmo `Projeto + Data`, separadas por ` - `.
+    - `Parceira` = texto antes de ` - `.
+    - `Responsável Execução` = nome do encarregado da equipe.
+    - `SOLICITAÇÃO` = `SIM` quando nao for `AREA LIVRE`, `NAO` quando for `AREA LIVRE`.
+    - `Responsáveis Ampla` = `Gestor de campo Distribuidora` do Projeto.
+    - `AREA LIVRE` = `SIM`/`NAO` conforme `Tipo de SGD`.
+    - `TIPO DE SGD` = texto do campo `Tipo de SGD`.
+    - `NÚMERO SGD` = numero do `SGD` normalizado com separador ` / `.
+    - `Nº EQ (RE, CO,CF, CC ou TR)` = `Nº EQ - Numero + codigo do Nº EQ` (ex.: `12345678#FACA`).
+    - `Período` no export novo = `MANHÃ` (`07:00` a `12:00`), `TARDE` (inicio `>= 13:00`) ou `INTEGRAL`.
+    - `STATUS` no export novo = prioridade para `Estado Trabalho` (`CONCLUÍDO`/`PARCIAL`); sem `Estado Trabalho`, usa status operacional (`PROGRAMADO`, `REPROGRAMADA`, `ADIADO`, `CANCELADO`).
+    - `Descrição do serviço` prioriza o valor da Programacao e, se vazio, usa o valor de Projetos.
   - Paginacao local com `Anterior/Proxima`.
 - Calendario semanal de visualizacao (somente na rota `/programacao-visualizacao`):
   - Grade fixa de `segunda a domingo` por equipe.
@@ -360,12 +393,12 @@ Atualizacao 2026-03
 - Criada a migration `109_make_programming_stage_optional_on_edit.sql` para permitir ETAPA nula na RPC `set_project_programming_execution_result`.
 - Ajustado padrao inicial dos filtros para cobrir o ano vigente completo (`01/01` a `31/12`).
 - Ajustado export `ENEL-EXCEL`: `Estrutura` passa a refletir a composicao de equipes por tipo (`MK`, `CETO`, `LV`) por projeto/data.
-- Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido pelo campo `Ponto eletrico`.
+- Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido por `Nº EQ - Numero + Nº EQ - Tipo` (ex.: `12345678#FUSIVEL`).
 - Ajustado export `ENEL-EXCEL`: coluna `ENCARREGADO` (apos `Estrutura`) passa a usar o nome do encarregado da equipe programada.
 - Ajustado export `ENEL-EXCEL`: mantida a coluna `Mão de obra` no bloco final do layout.
 - Ajustado export `ENEL-EXCEL`: `Data da programaÃ§Ã£o` passa a usar a data de registro (`created_at`) da programacao.
 - Ajustado export `ENEL-EXCEL`: `ResponsÃ¡vel ExecuÃ§Ã£o` fixo como `INDICA`, `Tempo Previsto` em horas e `PerÃ­odo` em maiusculas.
-- Tornado opcional o campo `Ponto eletrico` no formulario da Programacao simples e no backend de salvamento.
+- Ajustado formulario para separar `Nº EQ` em dois campos obrigatorios: `Nº EQ - Numero` (digitos) e `Nº EQ - Tipo` (catalogo).
 - Renomeado no frontend o rotulo do campo `Campo eletrico` para `Ponto eletrico` (mantendo persistencia em `campo_eletrico`).
 - Ajustado filtro de `Projeto` para modo digitavel com selecao (`input + datalist`).
 - Criada a migration `110_add_programming_electrical_field_and_history_rpc.sql` para persistir `campo_eletrico` em `project_programming` e refletir a mudanca no historico.
@@ -558,3 +591,30 @@ Atualizacao adicional 2026-04-13
 - Comportamento antes/depois:
   - Antes: no modo de edicao, a tela bloqueava a troca de equipe e exigia manter a equipe original.
   - Depois: no modo de edicao, a tela permite trocar a equipe com selecao unica, exibe aviso visual da troca (original x nova) e mantem a obrigatoriedade de motivo quando caracterizar reprogramacao.
+
+Atualizacao adicional 2026-04-14
+--------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/151_add_programming_eq_catalog_and_full_rpc_support.sql`
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProgrammingEqCatalog`
+  - `resolveProgrammingEqCatalog`
+  - `saveProgrammingFullViaRpc`
+  - `saveProgrammingBatchFullViaRpc`
+  - `normalizeProgrammingDocuments`
+  - `normalizeSgdNumber`
+  - `handleExportEnelExcelNovo`
+  - `resolveEnelNovoPeriod`
+  - `resolveEnelNovoStatus`
+  - `resolveTipoSgdNovoLabel`
+- Comportamento antes/depois:
+  - Antes: nao existia catalogo de `Nº EQ`, o formulario nao tinha select dedicado e a Programacao nao persistia esse dado com historico.
+  - Depois: a Programacao passa a usar catalogo de `Nº EQ` por tenant, com campo no formulario, persistencia em `project_programming` e historico operacional.
+  - Antes: havia apenas o botao `Extracao ENEL`.
+  - Depois: passa a existir tambem `Extracao ENEL NOVO`, mantendo o export antigo sem alteracao.
+  - Antes: o export nao atendia o layout novo com `Placa`, `Responsáveis Ampla`, `AREA LIVRE`, `NÚMERO SGD` normalizado e `Nº EQ` composto.
+  - Depois: o `Extracao ENEL NOVO` aplica esse mapeamento e preenche as colunas novas conforme regra operacional.

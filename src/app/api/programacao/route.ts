@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
@@ -30,6 +30,7 @@ type BoardProjectBaseRow = Omit<BoardProjectRow, "is_test"> & {
 type TeamRow = {
   id: string;
   name: string;
+  vehicle_plate: string | null;
   service_center_id: string | null;
   team_type_id: string;
   foreman_person_id: string;
@@ -63,6 +64,14 @@ type ProgrammingSgdTypeRow = {
   description: string;
   export_column: string;
   is_active: boolean;
+};
+
+type ProgrammingEqCatalogRow = {
+  id: string;
+  code: string;
+  label_pt: string;
+  is_active: boolean;
+  sort_order: number;
 };
 
 type ProgrammingReasonCatalogRow = {
@@ -115,6 +124,7 @@ type ProgrammingRow = {
   work_completion_status: "CONCLUIDO" | "PARCIAL" | null;
   affected_customers: number | null;
   sgd_type_id: string | null;
+  electrical_eq_catalog_id: string | null;
   sgd_number: string | null;
   sgd_included_at: string | null;
   sgd_delivered_at: string | null;
@@ -197,6 +207,7 @@ type SaveProgrammingPayload = {
   workCompletionStatus?: string;
   affectedCustomers?: number | string;
   sgdTypeId?: string;
+  electricalEqCatalogId?: string;
   changeReason?: string;
   expectedUpdatedAt?: string;
   documents?: {
@@ -243,6 +254,7 @@ type BatchCreateProgrammingPayload = {
   workCompletionStatus?: string;
   affectedCustomers?: number | string;
   sgdTypeId?: string;
+  electricalEqCatalogId?: string;
   documents?: {
     sgd?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
     pi?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
@@ -391,10 +403,10 @@ const PROGRAMMING_SELECT_WITH_STRUCTURE =
   "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -440,6 +452,33 @@ function getInvalidRequestedDateLabel(
 function normalizeNullableText(value: unknown) {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function normalizeElectricalEqNumber(value: unknown) {
+  const normalized = normalizeText(value).replace(/[^\d]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  return /^\d+$/.test(normalized) ? normalized : null;
+}
+
+function normalizeSgdNumber(value: unknown) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const segments = normalized
+    .split("/")
+    .map((segment) => normalizeText(segment))
+    .filter(Boolean);
+
+  if (!segments.length) {
+    return null;
+  }
+
+  return segments.join(" / ");
 }
 
 function isIsoDate(value: string) {
@@ -536,6 +575,7 @@ function normalizeProgrammingStructureFields<T extends Record<string, unknown>>(
     work_completion_status: normalizeWorkCompletionStatus(row.work_completion_status),
     affected_customers: Number(row.affected_customers ?? 0),
     sgd_type_id: normalizeNullableText(row.sgd_type_id),
+    electrical_eq_catalog_id: normalizeNullableText(row.electrical_eq_catalog_id),
   };
 
   return normalized as unknown as ProgrammingRow;
@@ -557,6 +597,28 @@ function normalizeNonNegativeInteger(value: unknown) {
 
 function normalizeUniqueTextArray(value: unknown) {
   return Array.from(new Set(normalizeStringArray(value)));
+}
+
+function normalizeProgrammingDocuments(
+  documents: SaveProgrammingPayload["documents"] | BatchCreateProgrammingPayload["documents"] | undefined,
+) {
+  return {
+    sgd: {
+      number: normalizeSgdNumber(documents?.sgd?.number) ?? undefined,
+      approvedAt: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt) ?? undefined,
+      requestedAt: normalizeIsoDate(documents?.sgd?.requestedAt ?? documents?.sgd?.deliveredAt) ?? undefined,
+    },
+    pi: {
+      number: normalizeNullableText(documents?.pi?.number) ?? undefined,
+      approvedAt: normalizeIsoDate(documents?.pi?.approvedAt ?? documents?.pi?.includedAt) ?? undefined,
+      requestedAt: normalizeIsoDate(documents?.pi?.requestedAt ?? documents?.pi?.deliveredAt) ?? undefined,
+    },
+    pep: {
+      number: normalizeNullableText(documents?.pep?.number) ?? undefined,
+      approvedAt: normalizeIsoDate(documents?.pep?.approvedAt ?? documents?.pep?.includedAt) ?? undefined,
+      requestedAt: normalizeIsoDate(documents?.pep?.requestedAt ?? documents?.pep?.deliveredAt) ?? undefined,
+    },
+  };
 }
 
 function startOfWeekMonday(value: string) {
@@ -664,7 +726,7 @@ async function fetchTeams(
 ) {
   const { data: teams, error } = await supabase
     .from("teams")
-    .select("id, name, service_center_id, team_type_id, foreman_person_id, ativo")
+    .select("id, name, vehicle_plate, service_center_id, team_type_id, foreman_person_id, ativo")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .order("name", { ascending: true })
@@ -712,6 +774,7 @@ async function fetchTeams(
   return teams.map((team) => ({
     id: team.id,
     name: normalizeText(team.name),
+    vehiclePlate: normalizeText(team.vehicle_plate),
     serviceCenterId: team.service_center_id,
     serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
     teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
@@ -728,6 +791,7 @@ async function fetchTeamsByIds(
     return [] as Array<{
       id: string;
       name: string;
+      vehiclePlate: string;
       serviceCenterId: string | null;
       serviceCenterName: string;
       teamTypeName: string;
@@ -737,7 +801,7 @@ async function fetchTeamsByIds(
 
   const { data: teams, error } = await supabase
     .from("teams")
-    .select("id, name, service_center_id, team_type_id, foreman_person_id, ativo")
+    .select("id, name, vehicle_plate, service_center_id, team_type_id, foreman_person_id, ativo")
     .eq("tenant_id", tenantId)
     .in("id", teamIds)
     .returns<TeamRow[]>();
@@ -784,6 +848,7 @@ async function fetchTeamsByIds(
   return teams.map((team) => ({
     id: team.id,
     name: normalizeText(team.name),
+    vehiclePlate: normalizeText(team.vehicle_plate),
     serviceCenterId: team.service_center_id,
     serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
     teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
@@ -1273,6 +1338,26 @@ async function fetchProgrammingSgdTypes(
   return data ?? [];
 }
 
+async function fetchProgrammingEqCatalog(
+  supabase: SupabaseClient,
+  tenantId: string,
+) {
+  const { data, error } = await supabase
+    .from("programming_eq_catalog")
+    .select("id, code, label_pt, is_active, sort_order")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("label_pt", { ascending: true })
+    .returns<ProgrammingEqCatalogRow[]>();
+
+  if (error) {
+    return [] as ProgrammingEqCatalogRow[];
+  }
+
+  return data ?? [];
+}
+
 async function fetchProgrammingReasonCatalog(
   supabase: SupabaseClient,
   tenantId: string,
@@ -1447,7 +1532,7 @@ async function fetchProgrammingResponseItem(
     return null;
   }
 
-  const [activitiesMap, projectRows, sgdTypes, rescheduleHistoryMap] = await Promise.all([
+  const [activitiesMap, projectRows, sgdTypes, eqCatalog, rescheduleHistoryMap, teamRows] = await Promise.all([
     fetchProgrammingActivities(supabase, tenantId, [programmingId]),
     supabase
       .from("project_with_labels")
@@ -1456,12 +1541,18 @@ async function fetchProgrammingResponseItem(
       .eq("id", row.project_id)
       .returns<Array<{ id: string; service_center_text: string | null }>>(),
     fetchProgrammingSgdTypes(supabase, tenantId),
+    fetchProgrammingEqCatalog(supabase, tenantId),
     fetchRescheduledProgrammingIds(supabase, tenantId, [programmingId]),
+    fetchTeamsByIds(supabase, tenantId, [row.team_id]),
   ]);
 
   const projectBase =
     normalizeText(projectRows.data?.[0]?.service_center_text) || "Sem base";
   const sgdType = row.sgd_type_id ? sgdTypes.find((item) => item.id === row.sgd_type_id) ?? null : null;
+  const eqType = row.electrical_eq_catalog_id
+    ? eqCatalog.find((item) => item.id === row.electrical_eq_catalog_id) ?? null
+    : null;
+  const team = teamRows[0] ?? null;
   const scheduleActivities = activitiesMap.get(programmingId) ?? [];
 
   return {
@@ -1487,6 +1578,8 @@ async function fetchProgrammingResponseItem(
     workCompletionStatus: normalizeWorkCompletionStatus(row.work_completion_status),
     affectedCustomers: Number(row.affected_customers ?? 0),
     sgdTypeId: row.sgd_type_id,
+    electricalEqCatalogId: row.electrical_eq_catalog_id,
+    electricalEqCode: normalizeText(eqType?.code),
     sgdTypeDescription: normalizeText(sgdType?.description),
     sgdExportColumn: normalizeText(sgdType?.export_column),
     feeder: normalizeText(row.feeder),
@@ -1495,6 +1588,11 @@ async function fetchProgrammingResponseItem(
     note: normalizeText(row.note),
     electricalField: normalizeText(row.campo_eletrico),
     serviceDescription: normalizeText(row.service_description),
+    teamName: normalizeText(team?.name) || row.team_id,
+    teamVehiclePlate: normalizeText(team?.vehiclePlate),
+    teamServiceCenterName: normalizeText(team?.serviceCenterName),
+    teamTypeName: normalizeText(team?.teamTypeName),
+    teamForemanName: normalizeText(team?.foremanName),
     projectBase,
     statusReason: normalizeText(row.cancellation_reason),
     statusChangedAt: row.canceled_at ?? "",
@@ -1518,7 +1616,7 @@ async function fetchProgrammingResponseItem(
     })),
     documents: {
       sgd: {
-        number: normalizeText(row.sgd_number),
+        number: normalizeSgdNumber(row.sgd_number) ?? "",
         approvedAt: row.sgd_included_at ?? "",
         requestedAt: row.sgd_delivered_at ?? "",
         includedAt: row.sgd_included_at ?? "",
@@ -1570,6 +1668,7 @@ async function saveProgrammingFullViaRpc(params: {
   workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
   affectedCustomers: number;
   sgdTypeId: string;
+  electricalEqCatalogId: string | null;
   documents: NonNullable<SaveProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
   expectedUpdatedAt?: string | null;
@@ -1577,10 +1676,7 @@ async function saveProgrammingFullViaRpc(params: {
   historyReason?: string | null;
   historyMetadata?: Record<string, unknown> | null;
 }) {
-  const useElectricalFieldRpc = Boolean(params.electricalField);
-  const rpcName = useElectricalFieldRpc
-    ? "save_project_programming_full_with_electrical_field"
-    : "save_project_programming_full";
+  const rpcName = "save_project_programming_full_with_electrical_and_eq";
   const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -1616,7 +1712,8 @@ async function saveProgrammingFullViaRpc(params: {
     p_history_action_override: params.historyActionOverride ?? null,
     p_history_reason: params.historyReason ?? null,
     p_history_metadata: params.historyMetadata ?? {},
-    ...(useElectricalFieldRpc ? { p_campo_eletrico: params.electricalField } : {}),
+    p_campo_eletrico: params.electricalField ?? null,
+    p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
   };
 
   const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
@@ -1627,9 +1724,7 @@ async function saveProgrammingFullViaRpc(params: {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: useElectricalFieldRpc
-          ? "RPC transacional full com Ponto eletrico indisponivel no ambiente atual."
-          : "RPC transacional full da Programacao indisponivel no ambiente atual.",
+        message: "RPC transacional full da Programacao indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1637,9 +1732,7 @@ async function saveProgrammingFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? (useElectricalFieldRpc
-            ? `Falha ao salvar programacao via RPC full com Ponto eletrico: ${error.message}`
-            : `Falha ao salvar programacao via RPC full: ${error.message}`)
+        ? `Falha ao salvar programacao via RPC full: ${error.message}`
         : "Falha ao salvar programacao via RPC full.",
     } as const;
   }
@@ -1691,13 +1784,11 @@ async function saveProgrammingBatchFullViaRpc(params: {
   workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
   affectedCustomers: number;
   sgdTypeId: string;
+  electricalEqCatalogId: string | null;
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
 }) {
-  const useElectricalFieldRpc = Boolean(params.electricalField);
-  const rpcName = useElectricalFieldRpc
-    ? "save_project_programming_batch_full_with_electrical_field"
-    : "save_project_programming_batch_full";
+  const rpcName = "save_project_programming_batch_full_with_electrical_and_eq";
   const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -1728,7 +1819,8 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_outage_start_time: params.outageStartTime ?? null,
     p_outage_end_time: params.outageEndTime ?? null,
     p_service_description: params.serviceDescription ?? null,
-    ...(useElectricalFieldRpc ? { p_campo_eletrico: params.electricalField } : {}),
+    p_campo_eletrico: params.electricalField ?? null,
+    p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
   };
 
   const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
@@ -1739,9 +1831,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: useElectricalFieldRpc
-          ? "RPC transacional full de lote com Ponto eletrico indisponivel no ambiente atual."
-          : "RPC transacional full de lote da Programacao indisponivel no ambiente atual.",
+        message: "RPC transacional full de lote da Programacao indisponivel no ambiente atual.",
       } as const;
     }
 
@@ -1749,9 +1839,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
       ok: false,
       status: 500,
       message: error.message
-        ? (useElectricalFieldRpc
-            ? `Falha ao salvar programacao em lote via RPC full com Ponto eletrico: ${error.message}`
-            : `Falha ao salvar programacao em lote via RPC full: ${error.message}`)
+        ? `Falha ao salvar programacao em lote via RPC full: ${error.message}`
         : "Falha ao salvar programacao em lote via RPC full.",
     } as const;
   }
@@ -1804,6 +1892,26 @@ async function resolveProgrammingSgdType(params: {
   return data;
 }
 
+async function resolveProgrammingEqCatalog(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  electricalEqCatalogId: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("programming_eq_catalog")
+    .select("id, code, label_pt, is_active, sort_order")
+    .eq("tenant_id", params.tenantId)
+    .eq("id", params.electricalEqCatalogId)
+    .eq("is_active", true)
+    .maybeSingle<ProgrammingEqCatalogRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data;
+}
+
 // Legacy compatibility helper kept for staged rollback support in partially migrated environments.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function setProgrammingEnelFieldsViaRpc(params: {
@@ -1830,7 +1938,7 @@ async function setProgrammingEnelFieldsViaRpc(params: {
         ok: false,
         status: 409,
         message:
-          "Seu ambiente ainda nao suporta os campos ENEL obrigatorios (Tipo de SGD e Nº Clientes Afetados). Aplique a migration 089 e tente novamente.",
+          "Seu ambiente ainda nao suporta os campos ENEL obrigatorios (Tipo de SGD e NÂº Clientes Afetados). Aplique a migration 089 e tente novamente.",
       } as const;
     }
 
@@ -2263,7 +2371,7 @@ export async function GET(request: NextRequest) {
     }
 
     const weekStart = startOfWeekMonday(startDate);
-    const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes, reasonOptions] = await Promise.all([
+    const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes, reasonOptions, eqCatalog] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, startDate, endDate),
@@ -2271,6 +2379,7 @@ export async function GET(request: NextRequest) {
       fetchProgrammingWeekSummary(resolution.supabase, resolution.appUser.tenant_id, weekStart),
       fetchProgrammingSgdTypes(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingReasonCatalog(resolution.supabase, resolution.appUser.tenant_id),
+      fetchProgrammingEqCatalog(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
     const activeTeamIds = new Set(teams.map((item) => item.id));
@@ -2293,6 +2402,7 @@ export async function GET(request: NextRequest) {
     const projectMap = new Map(projects.map((item) => [item.id, item]));
     const filteredProgrammingRows = programmingRows.filter((item) => projectMap.has(item.project_id));
     const sgdTypeMap = new Map(sgdTypes.map((item) => [item.id, item]));
+    const eqCatalogMap = new Map(eqCatalog.map((item) => [item.id, item]));
     const supportDefaults = await fetchProjectSupportDefaults({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -2366,6 +2476,11 @@ export async function GET(request: NextRequest) {
         description: normalizeText(item.description),
         exportColumn: normalizeText(item.export_column),
       })),
+      electricalEqCatalog: eqCatalog.map((item) => ({
+        id: item.id,
+        code: normalizeText(item.code),
+        label: normalizeText(item.label_pt) || normalizeText(item.code),
+      })),
       reasonOptions: reasonOptions.map((item) => ({
         code: normalizeText(item.code),
         label: normalizeText(item.label_pt),
@@ -2384,6 +2499,7 @@ export async function GET(request: NextRequest) {
       schedules: filteredProgrammingRows.map((item) => {
         const project = projectMap.get(item.project_id);
         const sgdType = item.sgd_type_id ? sgdTypeMap.get(item.sgd_type_id) : null;
+        const eqCatalog = item.electrical_eq_catalog_id ? eqCatalogMap.get(item.electrical_eq_catalog_id) : null;
         const team = teamLookupMap.get(item.team_id);
         const scheduleActivities = activitiesMap.get(item.id) ?? [];
 
@@ -2412,6 +2528,8 @@ export async function GET(request: NextRequest) {
           workCompletionStatus: normalizeWorkCompletionStatus(item.work_completion_status),
           affectedCustomers: Number(item.affected_customers ?? 0),
           sgdTypeId: item.sgd_type_id,
+          electricalEqCatalogId: item.electrical_eq_catalog_id,
+          electricalEqCode: normalizeText(eqCatalog?.code),
           sgdTypeDescription: normalizeText(sgdType?.description),
           sgdExportColumn: normalizeText(sgdType?.export_column),
           feeder: normalizeText(item.feeder),
@@ -2421,6 +2539,7 @@ export async function GET(request: NextRequest) {
           electricalField: normalizeText(item.campo_eletrico),
           serviceDescription: normalizeText(item.service_description),
           teamName: normalizeText(team?.name) || item.team_id,
+          teamVehiclePlate: normalizeText(team?.vehiclePlate),
           teamServiceCenterName: normalizeText(team?.serviceCenterName),
           teamTypeName: normalizeText(team?.teamTypeName),
           teamForemanName: normalizeText(team?.foremanName),
@@ -2447,7 +2566,7 @@ export async function GET(request: NextRequest) {
           })),
           documents: {
             sgd: {
-              number: normalizeText(item.sgd_number),
+              number: normalizeSgdNumber(item.sgd_number) ?? "",
               approvedAt: item.sgd_included_at ?? "",
               requestedAt: item.sgd_delivered_at ?? "",
               includedAt: item.sgd_included_at ?? "",
@@ -2501,7 +2620,8 @@ async function saveProgrammingBatch(request: NextRequest) {
     const support = normalizeNullableText(payload?.support);
     const supportItemId = normalizeNullableText(payload?.supportItemId);
     const note = normalizeNullableText(payload?.note);
-    const electricalField = normalizeNullableText(payload?.electricalField)?.toUpperCase() ?? null;
+    const electricalFieldRaw = normalizeNullableText(payload?.electricalField);
+    const electricalField = normalizeElectricalEqNumber(payload?.electricalField);
     const serviceDescription = normalizeNullableText(payload?.serviceDescription);
     const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
     const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
@@ -2512,7 +2632,8 @@ async function saveProgrammingBatch(request: NextRequest) {
     const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
     const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
     const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
-    const documents = payload?.documents ?? {};
+    const electricalEqCatalogId = normalizeNullableText(payload?.electricalEqCatalogId);
+    const documents = normalizeProgrammingDocuments(payload?.documents);
     const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
     const activities = activitiesInput
       .map((item) => ({
@@ -2651,6 +2772,27 @@ async function saveProgrammingBatch(request: NextRequest) {
       );
     }
 
+    if (!electricalFieldRaw) {
+      return NextResponse.json(
+        { message: "Informe o numero do Nº EQ (RE, CO, CF, CC ou TR)." },
+        { status: 400 },
+      );
+    }
+
+    if (!electricalField) {
+      return NextResponse.json(
+        { message: "O numero do Nº EQ deve conter apenas digitos." },
+        { status: 400 },
+      );
+    }
+
+    if (!electricalEqCatalogId) {
+      return NextResponse.json(
+        { message: "Selecione o tipo do Nº EQ (RE, CO, CF, CC ou TR)." },
+        { status: 400 },
+      );
+    }
+
     const selectedSgdType = await resolveProgrammingSgdType({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -2660,6 +2802,19 @@ async function saveProgrammingBatch(request: NextRequest) {
     if (!selectedSgdType) {
       return NextResponse.json(
         { message: "Tipo de SGD invalido para o tenant atual." },
+        { status: 400 },
+      );
+    }
+
+    const selectedEqCatalog = await resolveProgrammingEqCatalog({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      electricalEqCatalogId,
+    });
+
+    if (!selectedEqCatalog) {
+      return NextResponse.json(
+        { message: "Nº EQ invalido para o tenant atual." },
         { status: 400 },
       );
     }
@@ -2691,6 +2846,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       workCompletionStatus: null,
       affectedCustomers: affectedCustomers ?? 0,
       sgdTypeId,
+      electricalEqCatalogId,
       documents,
       activities,
     });
@@ -2700,7 +2856,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
+            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations 091, 094, 095, 099, 100, 106, 111, 151 e 152 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2717,7 +2873,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 099, 100, 106 e 111 e tente novamente.",
+            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 099, 100, 106, 111, 151 e 152 e tente novamente.",
         },
         { status: 409 },
       );
@@ -2766,7 +2922,8 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const support = normalizeNullableText(payload?.support);
   const supportItemId = normalizeNullableText(payload?.supportItemId);
   const note = normalizeNullableText(payload?.note);
-  const electricalField = normalizeNullableText(payload?.electricalField)?.toUpperCase() ?? null;
+  const electricalFieldRaw = normalizeNullableText(payload?.electricalField);
+  const electricalField = normalizeElectricalEqNumber(payload?.electricalField);
   const serviceDescription = normalizeNullableText(payload?.serviceDescription);
   const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
   const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
@@ -2778,6 +2935,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const workCompletionStatus = normalizeWorkCompletionStatus(workCompletionStatusRaw);
   const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
   const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
+  const electricalEqCatalogId = normalizeNullableText(payload?.electricalEqCatalogId);
   const changeReason = normalizeNullableText(payload?.changeReason);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
@@ -2787,7 +2945,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       quantity: normalizePositiveNumber(item.quantity),
     }))
     .filter((item): item is { catalogId: string; quantity: number } => Boolean(item.catalogId) && item.quantity !== null);
-  const documents = payload?.documents ?? {};
+  const documents = normalizeProgrammingDocuments(payload?.documents);
 
   if (method === "PUT" && !programmingId) {
     return NextResponse.json({ message: "Programacao invalida para edicao." }, { status: 400 });
@@ -2922,6 +3080,27 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
+  if (!electricalFieldRaw) {
+    return NextResponse.json(
+      { message: "Informe o numero do Nº EQ (RE, CO, CF, CC ou TR)." },
+      { status: 400 },
+    );
+  }
+
+  if (!electricalField) {
+    return NextResponse.json(
+      { message: "O numero do Nº EQ deve conter apenas digitos." },
+      { status: 400 },
+    );
+  }
+
+  if (!electricalEqCatalogId) {
+    return NextResponse.json(
+      { message: "Selecione o tipo do Nº EQ (RE, CO, CF, CC ou TR)." },
+      { status: 400 },
+    );
+  }
+
   const selectedSgdType = await resolveProgrammingSgdType({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
@@ -2931,6 +3110,19 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   if (!selectedSgdType) {
     return NextResponse.json(
       { message: "Tipo de SGD invalido para o tenant atual." },
+      { status: 400 },
+    );
+  }
+
+  const selectedEqCatalog = await resolveProgrammingEqCatalog({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    electricalEqCatalogId,
+  });
+
+  if (!selectedEqCatalog) {
+    return NextResponse.json(
+      { message: "Nº EQ invalido para o tenant atual." },
       { status: 400 },
     );
   }
@@ -2983,6 +3175,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     workCompletionStatus: normalizedWorkCompletionStatus,
     affectedCustomers: affectedCustomers ?? 0,
     sgdTypeId,
+    electricalEqCatalogId,
     documents,
     activities,
     expectedUpdatedAt,
@@ -3016,7 +3209,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
+            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations 091, 094, 095, 100, 106, 111, 151 e 152 e tente novamente.",
         },
         { status: 409 },
       );
@@ -3029,7 +3222,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Falha ao salvar programacao no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 100, 106 e 111 e tente novamente.",
+            "Falha ao salvar programacao no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 100, 106, 111, 151 e 152 e tente novamente.",
         },
         { status: 409 },
       );
@@ -3311,3 +3504,6 @@ export async function PATCH(request: NextRequest) {
     message: warning ? `${cancelResult.message} ${warning}` : cancelResult.message,
   });
 }
+
+
+

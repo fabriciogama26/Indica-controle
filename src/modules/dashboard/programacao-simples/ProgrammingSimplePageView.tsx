@@ -30,6 +30,7 @@ type ProjectItem = {
 type TeamItem = {
   id: string;
   name: string;
+  vehiclePlate?: string;
   serviceCenterName: string;
   teamTypeName?: string;
   foremanName?: string;
@@ -50,6 +51,12 @@ type SgdTypeItem = {
   id: string;
   description: string;
   exportColumn: "SGD_AT_MT_VYP" | "SGD_BT" | "SGD_TET" | string;
+};
+
+type ElectricalEqCatalogItem = {
+  id: string;
+  code: string;
+  label: string;
 };
 
 type DocumentEntry = {
@@ -81,6 +88,7 @@ type ScheduleItem = {
   teamServiceCenterName?: string;
   teamTypeName?: string;
   teamForemanName?: string;
+  teamVehiclePlate?: string;
   status: ProgrammingStatus;
   isReprogrammed?: boolean;
   date: string;
@@ -110,6 +118,8 @@ type ScheduleItem = {
   workCompletionStatus: WorkCompletionStatus | null;
   affectedCustomers: number;
   sgdTypeId: string | null;
+  electricalEqCatalogId: string | null;
+  electricalEqCode?: string;
   sgdTypeDescription?: string;
   sgdExportColumn?: string;
   activities: ActivityItem[];
@@ -125,6 +135,7 @@ type ProgrammingResponse = {
   teams?: TeamItem[];
   supportOptions?: SupportOptionItem[];
   sgdTypes?: SgdTypeItem[];
+  electricalEqCatalog?: ElectricalEqCatalogItem[];
   reasonOptions?: ProgrammingReasonOptionItem[];
   schedules?: ScheduleItem[];
   nextEtapaNumber?: number;
@@ -236,6 +247,7 @@ type FormState = {
   workCompletionStatus: WorkCompletionStatus | "";
   affectedCustomers: string;
   sgdTypeId: string;
+  electricalEqCatalogId: string;
   teamIds: string[];
   teamSearch: string;
   activitySearch: string;
@@ -281,7 +293,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   feeder: "Alimentador",
   support: "Apoio",
   note: "Anotacao",
-  electricalField: "Ponto eletrico",
+  electricalField: "Nº EQ (numero)",
   serviceDescription: "Descricao do servico",
   posteQty: "POSTE",
   estruturaQty: "ESTRUTURA",
@@ -290,6 +302,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   etapaNumber: "ETAPA",
   workCompletionStatus: "Estado Trabalho",
   affectedCustomers: "Nº Clientes Afetados",
+  electricalEq: "Nº EQ",
   sgdType: "Tipo de SGD",
   sgdNumber: "SGD",
   sgdApprovedAt: "SGD Data Aprovada",
@@ -318,7 +331,7 @@ const VALIDATION_FIELD_LABELS: Record<string, string> = {
   outageStartTime: "Inicio de desligamento",
   outageEndTime: "Termino de desligamento",
   feeder: "Alimentador",
-  electricalField: "Ponto eletrico",
+  electricalField: "Nº EQ (numero)",
   posteQty: "POSTE",
   estruturaQty: "ESTRUTURA",
   trafoQty: "TRAFO",
@@ -326,6 +339,7 @@ const VALIDATION_FIELD_LABELS: Record<string, string> = {
   etapaNumber: "ETAPA",
   workCompletionStatus: "Estado Trabalho",
   affectedCustomers: "Nº Clientes Afetados",
+  electricalEqCatalogId: "Nº EQ",
   sgdTypeId: "Tipo de SGD",
   changeReason: "Motivo da reprogramacao",
 };
@@ -507,6 +521,199 @@ function formatExpectedHours(value: number) {
   return totalHours.toFixed(2);
 }
 
+function parseTimeToMinutes(value: string) {
+  const normalized = String(value ?? "").trim();
+  if (!/^\d{2}:\d{2}$/.test(normalized)) {
+    return null;
+  }
+
+  const [hours, minutes] = normalized.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return (hours * 60) + minutes;
+}
+
+function resolveEnelNovoPeriod(startTime: string, endTime: string) {
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+  const morningStart = 7 * 60;
+  const morningEnd = 12 * 60;
+  const afternoonStart = 13 * 60;
+
+  if (
+    startMinutes !== null
+    && endMinutes !== null
+    && startMinutes >= morningStart
+    && endMinutes <= morningEnd
+  ) {
+    return "MANHÃ";
+  }
+
+  if (startMinutes !== null && startMinutes >= afternoonStart) {
+    return "TARDE";
+  }
+
+  return "INTEGRAL";
+}
+
+function normalizeSgdNumberForExport(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const segments = normalized
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  return segments.join(" / ");
+}
+
+function formatExpectedTimeAsClock(value: number) {
+  const minutes = Number(value ?? 0);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return "";
+  }
+
+  const safeMinutes = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(safeMinutes / 60);
+  const remainderMinutes = safeMinutes % 60;
+
+  return `${String(hours).padStart(2, "0")}:${String(remainderMinutes).padStart(2, "0")}:00`;
+}
+
+function formatDateExecutionEnelNovo(value: string) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return normalized;
+  }
+
+  const monthMap = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const day = match[3];
+  const monthIndex = Number(match[2]) - 1;
+  const year = match[1].slice(-2);
+  const month = monthMap[monthIndex] ?? match[2];
+
+  return `${day}-${month}-${year}`;
+}
+
+function formatWeekdayExecutionEnelNovo(value: string) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const parsed = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const weekday = parsed.getDay();
+  const map = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"];
+  return map[weekday] ?? "";
+}
+
+function formatInfoStatusEtapa(etapaNumber: number | null | undefined) {
+  const stage = Number(etapaNumber ?? 0);
+  if (!Number.isFinite(stage) || stage <= 0) {
+    return "";
+  }
+
+  return `${stage}ª ETAPA`;
+}
+
+function extractTextAfterDash(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const parts = normalized.split("-");
+  if (parts.length < 2) {
+    return normalized;
+  }
+
+  const last = parts[parts.length - 1]?.trim();
+  return last || normalized;
+}
+
+function extractTextBeforeDash(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const parts = normalized.split("-");
+  if (parts.length < 2) {
+    return normalized;
+  }
+
+  const first = parts[0]?.trim();
+  return first || normalized;
+}
+
+function resolveEnelNovoStatus(schedule: ScheduleItem) {
+  if (schedule.workCompletionStatus === "CONCLUIDO") {
+    return "CONCLUÍDO";
+  }
+
+  if (schedule.workCompletionStatus === "PARCIAL") {
+    return "PARCIAL";
+  }
+
+  const displayStatus = getDisplayProgrammingStatus(schedule);
+  switch (displayStatus) {
+    case "ADIADA":
+      return "ADIADO";
+    case "CANCELADA":
+      return "CANCELADO";
+    case "REPROGRAMADA":
+      return "REPROGRAMADA";
+    case "PROGRAMADA":
+    default:
+      return "PROGRAMADO";
+  }
+}
+
+function isAreaLivreSgd(
+  sgdExportColumn: string | null | undefined,
+  sgdTypeDescription: string | null | undefined,
+) {
+  const exportColumn = String(sgdExportColumn ?? "").trim().toUpperCase();
+  const description = String(sgdTypeDescription ?? "").trim().toUpperCase();
+
+  return (
+    exportColumn === "AREA_LIVRE"
+    || exportColumn === "AREA LIVRE"
+    || description === "AREA_LIVRE"
+    || description === "AREA LIVRE"
+  );
+}
+
+function resolveTipoSgdNovoLabel(
+  sgdExportColumn: string | null | undefined,
+  sgdTypeDescription: string | null | undefined,
+) {
+  if (isAreaLivreSgd(sgdExportColumn, sgdTypeDescription)) {
+    return "AREA LIVRE";
+  }
+
+  const cleaned = String(sgdTypeDescription ?? "")
+    .replace(/\bSGD\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned;
+}
+
 function resolveTeamStructureCode(team?: TeamItem | null) {
   if (!team) {
     return "";
@@ -541,6 +748,7 @@ function resolveScheduleTeamInfo(schedule: ScheduleItem, teamMap: Map<string, Te
   return {
     id: schedule.teamId,
     name: schedule.teamName ?? schedule.teamId,
+    vehiclePlate: schedule.teamVehiclePlate ?? "",
     serviceCenterName: schedule.teamServiceCenterName ?? "Sem base",
     teamTypeName: schedule.teamTypeName ?? "",
     foremanName: schedule.teamForemanName ?? "",
@@ -694,6 +902,7 @@ function createInitialForm(initialDate: string): FormState {
     workCompletionStatus: "",
     affectedCustomers: "0",
     sgdTypeId: "",
+    electricalEqCatalogId: "",
     teamIds: [],
     teamSearch: "",
     activitySearch: "",
@@ -1234,6 +1443,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [supportOptions, setSupportOptions] = useState<SupportOptionItem[]>([]);
   const [sgdTypes, setSgdTypes] = useState<SgdTypeItem[]>([]);
+  const [electricalEqCatalog, setElectricalEqCatalog] = useState<ElectricalEqCatalogItem[]>([]);
   const [reasonOptions, setReasonOptions] = useState<ProgrammingReasonOptionItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
@@ -1243,6 +1453,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingEnel, setIsExportingEnel] = useState(false);
+  const [isExportingEnelNovo, setIsExportingEnelNovo] = useState(false);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingExpectedUpdatedAt, setEditingExpectedUpdatedAt] = useState<string | null>(null);
@@ -1530,6 +1741,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setTeams(nextTeams);
     setSupportOptions(data.supportOptions ?? []);
     setSgdTypes(data.sgdTypes ?? []);
+    setElectricalEqCatalog(data.electricalEqCatalog ?? []);
     setReasonOptions(data.reasonOptions ?? []);
     setSchedules(nextSchedules);
   }, []);
@@ -1579,6 +1791,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       setSchedules([]);
       setSupportOptions([]);
       setSgdTypes([]);
+      setElectricalEqCatalog([]);
       setFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "Falha ao carregar programacao.",
@@ -2000,6 +2213,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       workCompletionStatus: schedule.workCompletionStatus ?? "",
       affectedCustomers: String(schedule.affectedCustomers ?? 0),
       sgdTypeId: schedule.sgdTypeId ?? "",
+      electricalEqCatalogId: schedule.electricalEqCatalogId ?? "",
       teamIds: [schedule.teamId],
       activities: schedule.activities ?? [],
       documents: {
@@ -2356,6 +2570,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    const electricalEqNumber = form.electricalField.replace(/[^\d]/g, "").trim();
+
     if (!form.projectId) {
       flagInvalidFields(["projectId"], "Selecione um Projeto (SOB) valido da lista.");
       return;
@@ -2409,6 +2625,21 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     if (!form.sgdTypeId) {
       flagInvalidFields(["sgdTypeId"], "Tipo de SGD e obrigatorio para salvar a programacao.");
+      return;
+    }
+
+    if (!electricalEqNumber) {
+      flagInvalidFields(["electricalField"], "Informe o numero do Nº EQ (RE, CO, CF, CC ou TR).");
+      return;
+    }
+
+    if (!/^\d+$/.test(electricalEqNumber)) {
+      flagInvalidFields(["electricalField"], "O numero do Nº EQ deve conter apenas digitos.");
+      return;
+    }
+
+    if (!form.electricalEqCatalogId) {
+      flagInvalidFields(["electricalEqCatalogId"], "Selecione o tipo do Nº EQ (RE, CO, CF, CC ou TR).");
       return;
     }
 
@@ -2541,7 +2772,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         feeder: form.feeder.trim(),
         supportItemId: form.supportItemId || undefined,
         note: form.note.trim(),
-        electricalField: form.electricalField.trim(),
+        electricalField: electricalEqNumber,
         serviceDescription: form.serviceDescription.trim(),
         posteQty,
         estruturaQty,
@@ -2551,10 +2782,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         workCompletionStatus: isEditing ? form.workCompletionStatus : undefined,
         affectedCustomers,
         sgdTypeId: form.sgdTypeId || undefined,
+        electricalEqCatalogId: form.electricalEqCatalogId || undefined,
         documents: DOCUMENT_KEYS.reduce(
           (accumulator, item) => {
+            const normalizedNumber = item.key === "sgd"
+              ? normalizeSgdNumberForExport(form.documents[item.key].number)
+              : form.documents[item.key].number.trim();
             accumulator[item.key] = {
-              number: form.documents[item.key].number.trim(),
+              number: normalizedNumber,
               approvedAt: form.documents[item.key].approvedAt || undefined,
               requestedAt: form.documents[item.key].requestedAt || undefined,
             };
@@ -2777,7 +3012,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         "Hora inicio",
         "Hora termino",
         "Periodo",
-        "Ponto eletrico",
+        "Nº EQ - Numero",
         "Tipo de SGD",
         "Alimentador",
         "Inicio de desligamento",
@@ -3027,6 +3262,180 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     }
   }
 
+  async function handleExportEnelExcelNovo() {
+    if (!filteredSchedules.length) {
+      setFeedback({
+        type: "error",
+        message: "Nenhuma programacao encontrada para exportar no layout EXTRACAO ENEL NOVO.",
+      });
+      return;
+    }
+
+    if (!enelExportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${enelExportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
+    setIsExportingEnelNovo(true);
+    try {
+      const header = [
+        "BASE",
+        "Tipo de Serviço",
+        "SOB",
+        "Data Execução",
+        "Dia da semana",
+        "Período",
+        "Hor Inic obra",
+        "Hor Térm obra",
+        "Tempo previsto",
+        "STATUS",
+        "INFO STATUS",
+        "PRIORIDADE",
+        "Estrutura",
+        "Placa",
+        "Anotação",
+        "Apoio",
+        "Responsáveis Ampla",
+        "Parceira",
+        "Responsável Execução",
+        "AREA LIVRE",
+        "SOLICITAÇÃO",
+        "TIPO DE SGD",
+        "NÚMERO SGD",
+        "Nº Clientes Afetados",
+        "Nº EQ (RE, CO,CF, CC ou TR)",
+        "Inic deslig",
+        "Térm deslig",
+        "Alim",
+        "Logradouro",
+        "Bairro",
+        "Município",
+        "Descrição do serviço",
+        "Motivo do cancelamento / Parcial / Adiamento",
+        "Responsável cancelamento / Parcial / Adiamento",
+        "Data da programação",
+        "Tipo de avanço",
+        "BT / MT",
+        "Tipo de rede",
+        "Tipo de serviço",
+        "Tipo de cabo",
+        "Status rede",
+        "km",
+        "Tipo de equipamento",
+        "Status equipamento",
+        "Potência equipamento",
+        "Qtd equipamentos",
+        "Status poste",
+        "Tipo poste",
+        "Qtd Postes",
+        "Qtd Clandestinos",
+      ];
+
+      const structureAccumulator = new Map<string, { teamLabels: Set<string>; plates: Set<string> }>();
+      for (const schedule of filteredSchedules) {
+        const key = `${schedule.projectId}__${schedule.date}`;
+        const current = structureAccumulator.get(key) ?? { teamLabels: new Set<string>(), plates: new Set<string>() };
+
+        const team = resolveScheduleTeamInfo(schedule, teamMap);
+        const teamLabel = String(team.name ?? "").trim();
+        if (teamLabel) {
+          current.teamLabels.add(teamLabel);
+        }
+
+        const vehiclePlate = (team.vehiclePlate ?? "").trim();
+        if (vehiclePlate) {
+          current.plates.add(vehiclePlate);
+        }
+
+        structureAccumulator.set(key, current);
+      }
+
+      const rows = filteredSchedules.map((schedule) => {
+        const project = projectMap.get(schedule.projectId);
+        const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
+        const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
+        const team = resolveScheduleTeamInfo(schedule, teamMap);
+        const sgdTypeDescription = (schedule.sgdTypeDescription ?? "").trim();
+        const isAreaLivre = isAreaLivreSgd(schedule.sgdExportColumn, schedule.sgdTypeDescription);
+        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber);
+        const createdDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
+        const estruturaValue = structureSummaryGroup
+          ? Array.from(structureSummaryGroup.teamLabels).sort((a, b) => a.localeCompare(b)).join("|")
+          : "";
+        const plateValue = structureSummaryGroup
+          ? Array.from(structureSummaryGroup.plates).sort((a, b) => a.localeCompare(b)).join(" - ")
+          : "";
+        const numEqValue = `${(schedule.electricalField ?? "").trim()}${(schedule.electricalEqCode ?? "").trim()}`;
+        const serviceDescriptionValue = (schedule.serviceDescription ?? "").trim()
+          || (project?.serviceName ?? "").trim();
+
+        return [
+          extractTextAfterDash(project?.base ?? ""),
+          project?.serviceType ?? "",
+          project?.code ?? "",
+          formatDateExecutionEnelNovo(schedule.date),
+          formatWeekdayExecutionEnelNovo(schedule.date),
+          resolveEnelNovoPeriod(schedule.startTime, schedule.endTime),
+          schedule.startTime ?? "",
+          schedule.endTime ?? "",
+          formatExpectedTimeAsClock(schedule.expectedMinutes ?? 0),
+          resolveEnelNovoStatus(schedule),
+          infoStatus,
+          project?.priority ?? "",
+          estruturaValue,
+          plateValue,
+          schedule.note ?? "",
+          schedule.support ?? "",
+          project?.utilityFieldManager ?? "",
+          extractTextBeforeDash(project?.partner ?? ""),
+          team.foremanName ?? "",
+          isAreaLivre ? "SIM" : "NAO",
+          isAreaLivre ? "NAO" : "SIM",
+          sgdTypeDescription,
+          normalizeSgdNumberForExport(schedule.documents?.sgd?.number),
+          schedule.affectedCustomers ?? "",
+          numEqValue,
+          schedule.outageStartTime ?? "",
+          schedule.outageEndTime ?? "",
+          schedule.feeder ?? "",
+          project?.street ?? "",
+          project?.district ?? "",
+          project?.city ?? "",
+          serviceDescriptionValue,
+          schedule.statusReason ?? "",
+          formatAuditActor(schedule.updatedByName),
+          formatDate(createdDate),
+          schedule.workCompletionStatus ?? "",
+          "",
+          "",
+          "",
+          project?.serviceType ?? "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          schedule.posteQty ?? "",
+          "",
+        ];
+      });
+
+      const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+      const csv = `\uFEFF${csvLines.join("\n")}`;
+      const exportDate = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(csv, `extracao_enel_novo_${exportDate}.csv`);
+    } finally {
+      setIsExportingEnelNovo(false);
+    }
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -3269,13 +3678,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
           <label className={`${styles.field} ${isFieldInvalid("electricalField") ? styles.fieldInvalid : ""}`}>
             <span>
-              Ponto eletrico
+              Nº EQ - Numero <span className="requiredMark">*</span>
             </span>
             <input
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={form.electricalField}
-              onChange={(event) => updateFormField("electricalField", event.target.value)}
-              placeholder="Ex.: 2 RE ou 1 TR"
+              onChange={(event) => updateFormField("electricalField", event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Ex.: 12345678"
             />
           </label>
 
@@ -3362,6 +3773,24 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               {sgdTypes.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.description}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={`${styles.field} ${isFieldInvalid("electricalEqCatalogId") ? styles.fieldInvalid : ""}`}>
+            <span>
+              Nº EQ - Tipo (RE, CO, CF, CC ou TR) <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={form.electricalEqCatalogId}
+              onChange={(event) => updateFormField("electricalEqCatalogId", event.target.value)}
+              required
+            >
+              <option value="">Selecione</option>
+              {electricalEqCatalog.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
                 </option>
               ))}
             </select>
@@ -3609,6 +4038,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 || !form.teamIds.length
                 || (isEditing && form.teamIds.length !== 1)
                 || !form.sgdTypeId
+                || !form.electricalField.trim()
+                || !form.electricalEqCatalogId
               }
             >
               {isSaving ? "Salvando..." : editingScheduleId ? "Salvar edicao" : "Cadastrar programacao"}
@@ -3710,7 +4141,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               type="button"
               className={styles.ghostButton}
               onClick={() => void handleExportCsv()}
-              disabled={isExporting || isExportingEnel || isLoadingList || !filteredSchedules.length || commonExportCooldown.isCoolingDown}
+              disabled={isExporting || isExportingEnel || isExportingEnelNovo || isLoadingList || !filteredSchedules.length || commonExportCooldown.isCoolingDown}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
@@ -3718,9 +4149,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               type="button"
               className={styles.secondaryButton}
               onClick={() => void handleExportEnelExcel()}
-              disabled={isExportingEnel || isExporting || isLoadingList || !filteredSchedules.length || enelExportCooldown.isCoolingDown}
+              disabled={isExportingEnel || isExporting || isExportingEnelNovo || isLoadingList || !filteredSchedules.length || enelExportCooldown.isCoolingDown}
             >
               {isExportingEnel ? "Gerando..." : "Extracao ENEL"}
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => void handleExportEnelExcelNovo()}
+              disabled={isExportingEnelNovo || isExportingEnel || isExporting || isLoadingList || !filteredSchedules.length || enelExportCooldown.isCoolingDown}
+            >
+              {isExportingEnelNovo ? "Gerando..." : "Extracao ENEL NOVO"}
             </button>
           </div>
         </div>
@@ -4158,9 +4597,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>Estado Trabalho:</strong> {detailsTarget.workCompletionStatus || "-"}</p>
                 <p><strong>Nº Clientes Afetados:</strong> {detailsTarget.affectedCustomers}</p>
                 <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>
+                <p><strong>Nº EQ (tipo):</strong> {detailsTarget.electricalEqCode || "-"}</p>
                 <p><strong>Apoio:</strong> {detailsTarget.support || "-"}</p>
                 <p><strong>Alimentador:</strong> {detailsTarget.feeder || "-"}</p>
-                <p><strong>Ponto eletrico:</strong> {detailsTarget.electricalField || "-"}</p>
+                <p><strong>Nº EQ (numero):</strong> {detailsTarget.electricalField || "-"}</p>
                 <p className={styles.detailWide}><strong>Descricao do servico:</strong> {detailsTarget.serviceDescription || "-"}</p>
                 <p className={styles.detailWide}><strong>Anotacao:</strong> {detailsTarget.note || "-"}</p>
                 {isInactiveProgrammingStatus(getDisplayProgrammingStatus(detailsTarget)) ? (
