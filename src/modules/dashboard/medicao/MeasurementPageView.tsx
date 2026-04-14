@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./MeasurementPageView.module.css";
@@ -71,6 +71,15 @@ type NoProductionReasonItem = {
 
 type MeasurementMetaResponse = {
   noProductionReasons?: NoProductionReasonItem[];
+  message?: string;
+};
+
+type RateSuggestionSource = "ELECTRICAL_FIELD" | "PREVIOUS_MEASUREMENT" | "MANUAL";
+
+type RateSuggestionResponse = {
+  projectId?: string;
+  rate?: number | null;
+  source?: RateSuggestionSource;
   message?: string;
 };
 
@@ -400,6 +409,12 @@ function formatCurrency(value: number) {
 
 function measurementKindLabel(value: MeasurementKind) {
   return value === "SEM_PRODUCAO" ? "Sem producao" : "Com producao";
+}
+
+function rateSuggestionSourceLabel(source: RateSuggestionSource) {
+  if (source === "ELECTRICAL_FIELD") return "Taxa vinculada ao ponto eletrico desta programacao.";
+  if (source === "PREVIOUS_MEASUREMENT") return "Taxa sugerida com base na ultima medicao deste projeto.";
+  return "Taxa em preenchimento manual.";
 }
 
 function isMvaHourUnit(value: string) {
@@ -785,7 +800,7 @@ export function MeasurementPageView() {
   const [formProjectSearch, setFormProjectSearch] = useState("");
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
-  const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
+  const [, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
@@ -814,7 +829,10 @@ export function MeasurementPageView() {
   const [massImportFile, setMassImportFile] = useState<File | null>(null);
   const [massImportErrorReport, setMassImportErrorReport] = useState<MassImportErrorReportData | null>(null);
   const [massImportResult, setMassImportResult] = useState<MassImportResultSummary | null>(null);
+  const [isLoadingRateSuggestion, setIsLoadingRateSuggestion] = useState(false);
+  const [rateSuggestionSource, setRateSuggestionSource] = useState<RateSuggestionSource | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const hasManualRateUserOverrideRef = useRef(false);
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
@@ -860,6 +878,18 @@ export function MeasurementPageView() {
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
   }, [form.items, form.manualRate, form.measurementKind]);
+  const shouldShowRateSuggestionHint = !form.id && form.measurementKind === "COM_PRODUCAO" && Boolean(form.projectId);
+  const rateSuggestionHint = shouldShowRateSuggestionHint
+    ? (
+      isLoadingRateSuggestion
+        ? "Buscando taxa sugerida..."
+        : (
+          rateSuggestionSource === "MANUAL" && !hasManualRateUserOverrideRef.current && !form.manualRate.trim()
+            ? "Nenhuma taxa anterior encontrada para este projeto. Preencha manualmente."
+            : (rateSuggestionSource ? rateSuggestionSourceLabel(rateSuggestionSource) : "")
+        )
+    )
+    : "";
   const canSubmitStatusReason = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
   const isEditing = Boolean(form.id);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -1090,6 +1120,62 @@ export function MeasurementPageView() {
   }, [form.projectId, formProjectSearch, projectMap]);
 
   useEffect(() => {
+    if (!accessToken || form.id || form.measurementKind === "SEM_PRODUCAO" || !form.projectId) {
+      setIsLoadingRateSuggestion(false);
+      setRateSuggestionSource(null);
+      return;
+    }
+
+    let ignore = false;
+    async function loadRateSuggestion() {
+      setIsLoadingRateSuggestion(true);
+      try {
+        const response = await fetch(`/api/medicao/rate-suggestion?projectId=${form.projectId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => null)) as RateSuggestionResponse | null;
+        if (!response.ok) {
+          throw new Error(data?.message ?? "Falha ao buscar taxa sugerida.");
+        }
+        if (ignore) return;
+
+        const source = data?.source ?? "MANUAL";
+        const suggestedRate = parsePositiveNumber(data?.rate ?? "");
+        setRateSuggestionSource(source);
+
+        if (hasManualRateUserOverrideRef.current) return;
+        setForm((current) => {
+          if (current.id || current.projectId !== form.projectId || current.measurementKind === "SEM_PRODUCAO") {
+            return current;
+          }
+
+          const nextManualRate = suggestedRate !== null ? String(suggestedRate) : "";
+          if (current.manualRate === nextManualRate) {
+            return current;
+          }
+
+          return { ...current, manualRate: nextManualRate };
+        });
+      } catch (error) {
+        if (!ignore) {
+          setRateSuggestionSource(null);
+          setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao buscar taxa sugerida." });
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingRateSuggestion(false);
+        }
+      }
+    }
+
+    void loadRateSuggestion();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, form.id, form.measurementKind, form.projectId]);
+
+  useEffect(() => {
     if (!filterDraft.projectId) return;
     const projectCode = projectMap.get(filterDraft.projectId)?.code ?? "";
     if (projectCode && projectCode !== filterProjectSearch) {
@@ -1098,6 +1184,8 @@ export function MeasurementPageView() {
   }, [filterDraft.projectId, filterProjectSearch, projectMap]);
 
   function resetForm() {
+    hasManualRateUserOverrideRef.current = false;
+    setRateSuggestionSource(null);
     setForm(createForm(today));
     setFormProjectSearch("");
   }
@@ -1898,6 +1986,8 @@ export function MeasurementPageView() {
     try {
       const order = await loadOrderDetail(orderId);
       if (!order) return;
+      hasManualRateUserOverrideRef.current = true;
+      setRateSuggestionSource(null);
       setForm({
         id: order.id,
         expectedUpdatedAt: order.updatedAt,
@@ -2409,6 +2499,8 @@ export function MeasurementPageView() {
                 const nextValue = event.target.value;
                 const matched = findProjectOption(nextValue, projects);
                 setFormProjectSearch(nextValue);
+                hasManualRateUserOverrideRef.current = false;
+                setRateSuggestionSource(null);
                 setForm((current) => ({
                   ...current,
                   projectId: matched?.id ?? "",
@@ -2481,7 +2573,22 @@ export function MeasurementPageView() {
                 activityQuantity: nextIsMvaHour ? "" : (current.activityQuantity || "1"),
               }));
             }} list="medicao-activity-list" /></label>
-            <label className={`${styles.field} ${styles.compactField}`}><span>Taxa unica da medicao {form.measurementKind === "COM_PRODUCAO" ? <span className="requiredMark">*</span> : null}</span><input type="number" min="0.01" step="0.01" value={form.manualRate} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, manualRate: event.target.value }))} /></label>
+            <label className={`${styles.field} ${styles.compactField}`}>
+              <span>Taxa unica da medicao {form.measurementKind === "COM_PRODUCAO" ? <span className="requiredMark">*</span> : null}</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.manualRate}
+                disabled={form.measurementKind === "SEM_PRODUCAO"}
+                onChange={(event) => {
+                  hasManualRateUserOverrideRef.current = true;
+                  setRateSuggestionSource("MANUAL");
+                  setForm((current) => ({ ...current, manualRate: event.target.value }));
+                }}
+              />
+              {rateSuggestionHint ? <small className={styles.fieldHint}>{rateSuggestionHint}</small> : null}
+            </label>
             <label className={`${styles.field} ${styles.compactField}`}><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.activityQuantity} placeholder={selectedActivityIsMvaHour ? "Calculada por MVA x Horas" : ""} disabled={form.measurementKind === "SEM_PRODUCAO" || selectedActivityIsMvaHour} onChange={(event) => setForm((current) => ({ ...current, activityQuantity: event.target.value }))} /></label>
             <label className={`${styles.field} ${styles.compactField}`}><span>Potencia (MVA)</span><input type="number" min="0.01" step="0.01" value={form.activityMvaQuantity} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityMvaQuantity: event.target.value }))} /></label>
             <label className={`${styles.field} ${styles.compactField}`}><span>Horas</span><input type="number" min="0.01" step="0.01" value={form.activityWorkedHours} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityWorkedHours: event.target.value }))} /></label>

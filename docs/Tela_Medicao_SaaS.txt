@@ -22,6 +22,8 @@ Arquitetura
   - `src/app/api/programacao/route.ts`
 - Catalogo de atividades proprio da Medicao:
   - `src/app/api/medicao/activities/catalog/route.ts`
+- Sugestao de taxa para novo cadastro da Medicao:
+  - `src/app/api/medicao/rate-suggestion/route.ts`
 - Banco (multi-tenant + RLS + RPC transacional):
   - `supabase/migrations/112_create_measurement_order_module.sql`
   - `supabase/migrations/114_create_measurement_activities_and_link_measurement_items.sql`
@@ -74,6 +76,8 @@ Cadastro
   - `Data da medicao` nao e campo no formulario; no cadastro novo ela segue automaticamente a `Data execucao`.
   - Cada item calcula `total_value` com base na formula da medicao.
   - A `Taxa` e unica por ordem de medicao; ao editar a taxa do cabecalho e salvar, o sistema reaplica a mesma taxa em todas as atividades da ordem e recalcula todos os itens.
+  - No cadastro novo (`ordem sem id`), ao selecionar um projeto valido, a tela busca e sugere automaticamente a taxa da ultima medicao `COM_PRODUCAO` do mesmo projeto.
+  - Quando nao existe historico de taxa para o projeto selecionado, o campo fica em preenchimento manual e a tela informa esse contexto ao usuario.
   - No modo de edicao, o botao `Cadastro em massa` nao aparece.
   - No modo de edicao, a grade exibe a coluna `Taxa aplicada` e o botao `Recalcular totais`, ambos baseados na taxa unica do cabecalho.
   - A ordem recalcula os totais no frontend para conferencia.
@@ -173,6 +177,7 @@ Atalhos
   - `PATCH /api/medicao` (fechar/cancelar)
   - `GET /api/medicao/activities/catalog` (catalogo de atividades da medicao)
   - `GET /api/medicao/meta` (motivos de sem producao)
+  - `GET /api/medicao/rate-suggestion` (sugestao de taxa por projeto para novo cadastro)
 - Modelo cadastro em massa:
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
@@ -267,6 +272,8 @@ Funcoes principais
   - Responsavel por: validacao de payload, leitura paginada de ordens, leitura de historico, criacao/edicao e troca de status via RPC.
 - Caminho: `src/app/api/medicao/meta/route.ts`
   - Responsavel por: carregar motivos ativos de `Sem producao` por tenant para a tela da Medicao.
+- Caminho: `src/app/api/medicao/rate-suggestion/route.ts`
+  - Responsavel por: sugerir taxa por projeto no cadastro novo, com prioridade atual por historico da ultima medicao e fallback manual.
 - Caminho: `src/app/api/programacao/route.ts`
   - Responsavel por: fornecer contexto operacional da ordem (programacao/projeto/equipe/data).
 - Caminho: `src/app/api/medicao/activities/catalog/route.ts`
@@ -336,6 +343,7 @@ Ajuda contextual
 Atualizacao 2026-04-13
 ----------------------
 - Arquivos alterados/criados:
+  - `src/app/api/medicao/rate-suggestion/route.ts`
   - `src/app/api/medicao/route.ts`
   - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
   - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
@@ -343,12 +351,18 @@ Atualizacao 2026-04-13
   - `README.md`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
+  - `GET /api/medicao/rate-suggestion`
+  - `resolvePreviousMeasurementRate`
+  - `resolveElectricalFieldRateSuggestion` (placeholder para prioridade futura)
+  - `rateSuggestionSourceLabel`
   - `fetchProjectIsTestMap`
   - `isMissingProjectTestColumn`
   - `GET /api/medicao` (pipeline de filtros e consolidacao)
   - `executionStatusStack`
   - `executionStatusAlert`
 - Comportamento antes/depois:
+  - Antes: ao selecionar projeto no cadastro novo da Medicao, a `Taxa unica da medicao` permanecia no default local (`1`) sem consulta de historico por projeto.
+  - Depois: ao selecionar projeto no cadastro novo da Medicao, a tela busca a ultima taxa `COM_PRODUCAO` do mesmo projeto e preenche automaticamente; sem historico, mantem preenchimento manual com aviso contextual.
   - Antes: ordens vinculadas a obras de teste entravam no total de ordens e no valor total consolidado da Medicao.
   - Depois: ordens vinculadas a obras de teste sao removidas da consolidacao da listagem (`Ordens` e `Valor total`) no backend.
   - Antes: o campo `Status execucao` podia ficar comprimido, com `CONCLUIDO` e `Atualizado apos medicao` na mesma linha visual.
