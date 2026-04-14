@@ -222,7 +222,7 @@ Filtros, auto-complete e listagem
     - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
     - `Estrutura` = composicao de equipes por tipo (ex.: `2 MK`, `1 MK + 1 CETO`, `1 LV`) por `Projeto + Data de execucao`.
     - `Nº EQ (RE, CO, CF, CC ou TR)` = `Nº EQ - Numero + Nº EQ - Tipo`.
-    - `INFO STATUS` = campo `ETAPA` no formato `x ETAPA`.
+    - `INFO STATUS` = `ETAPA ÚNICA` quando o checkbox estiver marcado; caso contrario, usa `ETAPA` no formato `xª ETAPA`.
     - `PerÃ­odo` exportado sempre em maiusculas (`INTEGRAL`/`PARCIAL`).
     - `Tempo Previsto` exportado em horas.
     - `ResponsÃ¡vel ExecuÃ§Ã£o` fixo como `INDICA`.
@@ -618,3 +618,23 @@ Atualizacao adicional 2026-04-14
   - Depois: passa a existir tambem `Extracao ENEL NOVO`, mantendo o export antigo sem alteracao.
   - Antes: o export nao atendia o layout novo com `Placa`, `Responsáveis Ampla`, `AREA LIVRE`, `NÚMERO SGD` normalizado e `Nº EQ` composto.
   - Depois: o `Extracao ENEL NOVO` aplica esse mapeamento e preenche as colunas novas conforme regra operacional.
+
+Atualizacao adicional 2026-04-14 (hotfix lock N EQ)
+----------------------------------------------------
+- Arquivo criado:
+  - `supabase/migrations/153_fix_programming_eq_catalog_for_update_lock.sql`
+- Ajuste tecnico:
+  - Na funcao `set_project_programming_electrical_eq_catalog`, o lock mudou de `FOR UPDATE` para `FOR UPDATE OF pp`.
+- Motivo:
+  - Evitar erro PostgreSQL `FOR UPDATE cannot be applied to the nullable side of an outer join` durante cadastro/edicao em lote.
+
+Atualizacao adicional 2026-04-14 (ETAPA UNICA)
+----------------------------------------------
+- Arquivo criado:
+  - `supabase/migrations/154_add_programming_etapa_unica_flag.sql`
+- Ajustes:
+  - Incluido checkbox `ETAPA ÚNICA` no formulario de Programacao.
+  - Persistencia do campo `etapa_unica` no backend apos save (single e batch).
+  - `INFO STATUS` nos exports ENEL passa a usar `ETAPA ÚNICA` quando marcado; sem checkbox, usa `xª ETAPA`.
+  - Ao lado do campo `ETAPA` existe o checkbox `ETAPA ÚNICA`.
+  - Quando `ETAPA ÚNICA` estiver marcado, a programacao salva `etapa_unica = true`, o campo numerico de etapa deixa de ser obrigatorio e o `INFO STATUS` da extracao usa `ETAPA ÚNICA`.

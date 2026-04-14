@@ -121,6 +121,7 @@ type ProgrammingRow = {
   trafo_qty: number | null;
   rede_qty: number | null;
   etapa_number: number | null;
+  etapa_unica: boolean | null;
   work_completion_status: "CONCLUIDO" | "PARCIAL" | null;
   affected_customers: number | null;
   sgd_type_id: string | null;
@@ -204,6 +205,7 @@ type SaveProgrammingPayload = {
   trafoQty?: number | string;
   redeQty?: number | string;
   etapaNumber?: number | string;
+  etapaUnica?: boolean;
   workCompletionStatus?: string;
   affectedCustomers?: number | string;
   sgdTypeId?: string;
@@ -251,6 +253,7 @@ type BatchCreateProgrammingPayload = {
   trafoQty?: number | string;
   redeQty?: number | string;
   etapaNumber?: number | string;
+  etapaUnica?: boolean;
   workCompletionStatus?: string;
   affectedCustomers?: number | string;
   sgdTypeId?: string;
@@ -403,10 +406,10 @@ const PROGRAMMING_SELECT_WITH_STRUCTURE =
   "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, poste_qty, estrutura_qty, trafo_qty, rede_qty, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, etapa_unica, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, etapa_unica, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -452,6 +455,27 @@ function getInvalidRequestedDateLabel(
 function normalizeNullableText(value: unknown) {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function normalizeBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (["true", "1", "sim", "yes"].includes(normalized)) {
+    return true;
+  }
+
+  if (["false", "0", "nao", "não", "no"].includes(normalized)) {
+    return false;
+  }
+
+  return null;
 }
 
 function normalizeElectricalEqNumber(value: unknown) {
@@ -572,6 +596,7 @@ function normalizeProgrammingStructureFields<T extends Record<string, unknown>>(
     trafo_qty: Number(row.trafo_qty ?? 0),
     rede_qty: Number(row.rede_qty ?? 0),
     etapa_number: row.etapa_number === null || row.etapa_number === undefined ? null : Number(row.etapa_number),
+    etapa_unica: Boolean(row.etapa_unica ?? false),
     work_completion_status: normalizeWorkCompletionStatus(row.work_completion_status),
     affected_customers: Number(row.affected_customers ?? 0),
     sgd_type_id: normalizeNullableText(row.sgd_type_id),
@@ -1575,6 +1600,7 @@ async function fetchProgrammingResponseItem(
     trafoQty: Number(row.trafo_qty ?? 0),
     redeQty: Number(row.rede_qty ?? 0),
     etapaNumber: row.etapa_number === null ? null : Number(row.etapa_number),
+    etapaUnica: Boolean(row.etapa_unica ?? false),
     workCompletionStatus: normalizeWorkCompletionStatus(row.work_completion_status),
     affectedCustomers: Number(row.affected_customers ?? 0),
     sgdTypeId: row.sgd_type_id,
@@ -2017,6 +2043,37 @@ async function setProgrammingExecutionResultViaRpc(params: {
       ok: false,
       status: Number(result.status ?? 400),
       message: result.message ?? "Falha ao salvar ETAPA/Estado Trabalho da programacao.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
+async function setProgrammingEtapaUnicaValue(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingIds: string[];
+  etapaUnica: boolean;
+}) {
+  if (!params.programmingIds.length) {
+    return { ok: true } as const;
+  }
+
+  const { error } = await params.supabase
+    .from("project_programming")
+    .update({
+      etapa_unica: params.etapaUnica,
+      updated_by: params.actorUserId,
+    })
+    .eq("tenant_id", params.tenantId)
+    .in("id", params.programmingIds);
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Programacao salva, mas houve falha ao salvar o campo ETAPA UNICA.",
     } as const;
   }
 
@@ -2525,6 +2582,7 @@ export async function GET(request: NextRequest) {
           trafoQty: Number(item.trafo_qty ?? 0),
           redeQty: Number(item.rede_qty ?? 0),
           etapaNumber: item.etapa_number === null ? null : Number(item.etapa_number),
+          etapaUnica: Boolean(item.etapa_unica ?? false),
           workCompletionStatus: normalizeWorkCompletionStatus(item.work_completion_status),
           affectedCustomers: Number(item.affected_customers ?? 0),
           sgdTypeId: item.sgd_type_id,
@@ -2629,6 +2687,7 @@ async function saveProgrammingBatch(request: NextRequest) {
     const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
     const etapaNumberRaw = normalizeText(payload?.etapaNumber);
     const parsedEtapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
+    const etapaUnica = normalizeBoolean(payload?.etapaUnica) ?? false;
     const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
     const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
     const sgdTypeId = normalizeNullableText(payload?.sgdTypeId);
@@ -2713,22 +2772,22 @@ async function saveProgrammingBatch(request: NextRequest) {
       );
     }
 
-    if (!etapaNumberRaw) {
+    if (!etapaUnica && !etapaNumberRaw) {
       return NextResponse.json(
         { message: "O campo ETAPA e obrigatorio." },
         { status: 400 },
       );
     }
 
-    if (parsedEtapaNumber === null) {
+    if (!etapaUnica && parsedEtapaNumber === null) {
       return NextResponse.json(
         { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
         { status: 400 },
       );
     }
 
-    const etapaNumber = parsedEtapaNumber;
-    if (etapaNumber !== null) {
+    const etapaNumber = etapaUnica ? null : parsedEtapaNumber;
+    if (!etapaUnica && etapaNumber !== null) {
       const batchStageConflictSummaries = await fetchProgrammingStageValidation({
         supabase: resolution.supabase,
         tenantId: resolution.appUser.tenant_id,
@@ -2882,6 +2941,19 @@ async function saveProgrammingBatch(request: NextRequest) {
     return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
   }
 
+    const batchProgrammingIds = fullBatchSaveResult.items.map((item) => item.programmingId);
+    const etapaUnicaResult = await setProgrammingEtapaUnicaValue({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingIds: batchProgrammingIds,
+      etapaUnica,
+    });
+
+    if (!etapaUnicaResult.ok) {
+      return NextResponse.json({ message: etapaUnicaResult.message }, { status: etapaUnicaResult.status });
+    }
+
     return NextResponse.json({
       success: true,
       insertedCount: fullBatchSaveResult.insertedCount,
@@ -2931,6 +3003,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
   const etapaNumberRaw = normalizeText(payload?.etapaNumber);
   const parsedEtapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
+  const etapaUnica = normalizeBoolean(payload?.etapaUnica) ?? false;
   const workCompletionStatusRaw = normalizeText(payload?.workCompletionStatus);
   const workCompletionStatus = normalizeWorkCompletionStatus(workCompletionStatusRaw);
   const affectedCustomers = normalizeNonNegativeInteger(payload?.affectedCustomers);
@@ -2998,14 +3071,14 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
-  if (method === "POST" && !etapaNumberRaw) {
+  if (method === "POST" && !etapaUnica && !etapaNumberRaw) {
     return NextResponse.json(
       { message: "O campo ETAPA e obrigatorio." },
       { status: 400 },
     );
   }
 
-  if (etapaNumberRaw && parsedEtapaNumber === null) {
+  if (!etapaUnica && etapaNumberRaw && parsedEtapaNumber === null) {
     return NextResponse.json(
       { message: "O campo ETAPA deve ser um numero inteiro maior que zero." },
       { status: 400 },
@@ -3021,12 +3094,16 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   }
 
   const existingEtapaNumber = currentProgramming?.etapa_number ?? null;
-  const etapaNumber =
-    method === "PUT" && !etapaNumberRaw
-      ? existingEtapaNumber
-      : parsedEtapaNumber;
+  const etapaNumber = etapaUnica
+    ? null
+    : (
+      method === "PUT" && !etapaNumberRaw
+        ? existingEtapaNumber
+        : parsedEtapaNumber
+    );
 
-  const shouldValidateStageConflict = etapaNumber !== null
+  const shouldValidateStageConflict = !etapaUnica
+    && etapaNumber !== null
     && (
       method === "POST"
       || etapaNumber !== existingEtapaNumber
@@ -3241,6 +3318,18 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   } as const;
 
   const persistedProgrammingId = saveResult.programmingId;
+
+  const etapaUnicaResult = await setProgrammingEtapaUnicaValue({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingIds: [persistedProgrammingId],
+    etapaUnica,
+  });
+
+  if (!etapaUnicaResult.ok) {
+    return NextResponse.json({ message: etapaUnicaResult.message }, { status: etapaUnicaResult.status });
+  }
 
   if (method === "PUT" && !electricalField) {
     const { error: clearElectricalFieldError } = await resolution.supabase
