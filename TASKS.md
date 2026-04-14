@@ -237,7 +237,7 @@
 - [x] Reordenar as colunas do `ENEL-EXCEL` da Programacao para o layout operacional solicitado, com `ENCARREGADO` apos `Estrutura` e `Mão de obra` mantida no bloco final.
 - [x] Ajustar mapeamento do `ENEL-EXCEL` para preencher `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT` com o valor de `Ponto eletrico`, incluindo regra agrupada de tipos (`SGD AT/MT`, `SGD AT`, `SGD MT`, `SGD VyP` -> `SGD AT/MT/VyP`).
 - [x] Renomear no frontend o campo obrigatorio de `Campo eletrico` para `Ponto eletrico`, tornar o filtro de `Projeto` digitavel (`input + datalist`) e alinhar o `ENEL-EXCEL` para coluna `Encarregado` com nome do encarregado da equipe programada.
-- [x] Incluir filtro de `Estado Trabalho` na Programacao Simples, com opcoes `Todos`, `Concluido`, `Parcial` e `Nao informado`, aplicando o filtro na lista e no aviso de registro salvo fora dos filtros.
+- [x] Incluir filtro de `Estado Trabalho` na Programacao Simples, com opcoes `Todos`, `Nao informado` e codigos ativos do catalogo por tenant, aplicando o filtro na lista e no aviso de registro salvo fora dos filtros.
 - [x] Adicionar painel de prazos na Programacao Simples acima do cadastro, com cards-resumo (prioridade `Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`) e cards por `SOB` em carrossel horizontal (6 por pagina, setas esquerda/direita), alternancia de janela (`15 dias` e `30 dias`), botao `Ver todos` com modal e exportacao CSV, exclusao de projetos com `Estado Trabalho = CONCLUIDO` e hierarquia visual (`>=30 dias` vermelho escuro, atrasada vermelho, hoje destaque, em breve laranja).
 - [x] Ordenar a `Lista de Programacoes` da Programacao Simples por `Data execucao` decrescente (mais recente primeiro) e, em empate, pelo cadastro mais recente (`created_at` desc).
 - [x] Sincronizar `Estado Trabalho` por `Projeto + Data` na Programacao ativa: ao editar uma equipe e mudar o valor, atualizar automaticamente todas as equipes `PROGRAMADA`/`REPROGRAMADA` do mesmo projeto/data, incluindo limpeza para todas quando o campo ficar vazio.
@@ -417,3 +417,5 @@
 - [x] Separar No EQ em dois campos obrigatorios na Programacao (No EQ - Numero + No EQ - Tipo), com validacao de digitos no numero e bloqueio de save quando qualquer um estiver ausente.
 - [x] Corrigir lock da funcao set_project_programming_electrical_eq_catalog (FOR UPDATE OF pp) para eliminar erro em outer join no cadastro em lote (migration 153).
 - [x] Implementar checkbox ETAPA UNICA na Programacao, persistir flag etapa_unica (single/lote) e usar ETAPA ÚNICA no INFO STATUS da Extracao ENEL quando marcado.
+- [x] Refinar UI do checkbox ETAPA UNICA na Programacao (tamanho compacto, sem quebra de linha e alinhamento visual com o formulario).
+- [x] Criar catalogo por tenant para `Estado do Projeto` (`programming_work_completion_catalog`) e migrar Programacao Simples (API + tela) para consumir opcoes dinamicas em vez de valores fixos.
