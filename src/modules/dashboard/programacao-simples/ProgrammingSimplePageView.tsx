@@ -1314,7 +1314,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const weekEndDate = weekDates[weekDates.length - 1] ?? weekStartDate;
 
   const filteredSchedules = useMemo(() => {
-    return schedules.filter((item) => {
+    const filtered = schedules.filter((item) => {
       const displayStatus = getDisplayProgrammingStatus(item);
       const shouldApplyDateFilter = !isInactiveProgrammingStatus(displayStatus);
       if (shouldApplyDateFilter && !isDateInRange(item.date, activeFilters.startDate, activeFilters.endDate)) {
@@ -1342,6 +1342,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       return true;
     });
+    filtered.sort((left, right) => {
+      if (left.date !== right.date) {
+        return right.date.localeCompare(left.date);
+      }
+
+      if (left.createdAt !== right.createdAt) {
+        return right.createdAt.localeCompare(left.createdAt);
+      }
+
+      if (left.startTime !== right.startTime) {
+        return right.startTime.localeCompare(left.startTime);
+      }
+
+      return right.updatedAt.localeCompare(left.updatedAt);
+    });
+    return filtered;
   }, [activeFilters.endDate, activeFilters.projectId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, activeFilters.workCompletionStatus, schedules]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / PAGE_SIZE));
