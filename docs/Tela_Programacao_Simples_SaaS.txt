@@ -52,6 +52,11 @@ Arquitetura
   - Campos em `project_programming`: `etapa_number`, `work_completion_status`
   - RPC: `set_project_programming_execution_result`
   - Compatibilidade full: sobrecargas de `save_project_programming_full` e `save_project_programming_batch_full` com ETAPA/Estado Trabalho.
+- Migration de catalogo de Estado do Projeto:
+  - `supabase/migrations/155_create_programming_work_completion_catalog.sql`
+  - Tabela: `programming_work_completion_catalog`
+  - Vinculo em `project_programming`: FK (`tenant_id`, `work_completion_status`) -> (`tenant_id`, `code`)
+  - RPC atualizada: `set_project_programming_execution_result` passa a validar Estado do Projeto pelo catalogo ativo do tenant.
 - Migration de Campo eletrico:
   - `supabase/migrations/110_add_programming_electrical_field_and_history_rpc.sql`
   - Campo em `project_programming`: `campo_eletrico`
@@ -157,7 +162,7 @@ Cadastro
   - Para equipes `LV-xx`, a replicacao de documentos tambem alcanca as programacoes ativas do mesmo projeto com `Data de execucao` em ate `+7 dias` da programacao de origem.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
   - Quando `Periodo = Integral`, `Hora termino` volta automaticamente para `17:00`.
-  - Campo `Estado Trabalho` (`CONCLUIDO` ou `PARCIAL`) aparece somente em modo de edicao e e opcional.
+  - Campo `Estado do Projeto` aparece somente em modo de edicao, e opcional, com opcoes vindas do catalogo por tenant (`programming_work_completion_catalog`).
 - Persistencia:
   - Frontend envia `POST /api/programacao` com `action = BATCH_CREATE`.
   - `POST/PUT` usam `save_project_programming_full` (overload com suporte a `p_campo_eletrico` e `p_electrical_eq_catalog_id`).
@@ -178,7 +183,7 @@ Filtros, auto-complete e listagem
   - Projeto
   - Equipe
   - Status
-  - Estado Trabalho (`Todos`, `Concluido`, `Parcial`, `Nao informado`)
+  - Estado Trabalho (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
 - Auto-complete:
   - Projeto (SOB) no cadastro com `input + datalist`, no mesmo padrao do SOB da Locacao.
   - Projeto no filtro com `input + datalist` (digitavel e com selecao por SOB).
@@ -638,3 +643,23 @@ Atualizacao adicional 2026-04-14 (ETAPA UNICA)
   - `INFO STATUS` nos exports ENEL passa a usar `ETAPA ÚNICA` quando marcado; sem checkbox, usa `xª ETAPA`.
   - Ao lado do campo `ETAPA` existe o checkbox `ETAPA ÚNICA`.
   - Quando `ETAPA ÚNICA` estiver marcado, a programacao salva `etapa_unica = true`, o campo numerico de etapa deixa de ser obrigatorio e o `INFO STATUS` da extracao usa `ETAPA ÚNICA`.
+
+Atualizacao adicional 2026-04-14 (catalogo Estado do Projeto)
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/155_create_programming_work_completion_catalog.sql`
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProgrammingWorkCompletionCatalog`
+  - `resolveProgrammingWorkCompletionStatus`
+  - `set_project_programming_execution_result` (migration SQL)
+  - `applyBoardSnapshot`
+  - `buildSavedOutsideFiltersMessage`
+- Comportamento antes/depois:
+  - Antes: o `Estado do Projeto` na edicao e no filtro usava opcoes fixas em tela (`CONCLUIDO` e `PARCIAL`).
+  - Depois: o `Estado do Projeto` passa a consumir o catalogo por tenant (`programming_work_completion_catalog`) na API e no frontend.
+  - Antes: a validacao no backend aceitava somente um conjunto fixo de status.
+  - Depois: a validacao passa a aceitar somente codigos ativos no catalogo do tenant, mantendo isolamento multi-tenant.

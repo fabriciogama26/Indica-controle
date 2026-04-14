@@ -82,6 +82,14 @@ type ProgrammingReasonCatalogRow = {
   sort_order: number;
 };
 
+type ProgrammingWorkCompletionCatalogRow = {
+  id: string;
+  code: string;
+  label_pt: string;
+  is_active: boolean;
+  sort_order: number;
+};
+
 type LocationPlanSupportRow = {
   project_id: string;
   questionnaire_answers: Record<string, unknown> | null;
@@ -122,7 +130,7 @@ type ProgrammingRow = {
   rede_qty: number | null;
   etapa_number: number | null;
   etapa_unica: boolean | null;
-  work_completion_status: "CONCLUIDO" | "PARCIAL" | null;
+  work_completion_status: string | null;
   affected_customers: number | null;
   sgd_type_id: string | null;
   electrical_eq_catalog_id: string | null;
@@ -538,11 +546,7 @@ function normalizeOptionalTime(value: unknown) {
 
 function normalizeWorkCompletionStatus(value: unknown) {
   const normalized = normalizeText(value).toUpperCase();
-  if (normalized === "CONCLUIDO" || normalized === "PARCIAL") {
-    return normalized as "CONCLUIDO" | "PARCIAL";
-  }
-
-  return null;
+  return normalized || null;
 }
 
 function formatTime(value: string | null) {
@@ -1403,6 +1407,26 @@ async function fetchProgrammingReasonCatalog(
   return data ?? [];
 }
 
+async function fetchProgrammingWorkCompletionCatalog(
+  supabase: SupabaseClient,
+  tenantId: string,
+) {
+  const { data, error } = await supabase
+    .from("programming_work_completion_catalog")
+    .select("id, code, label_pt, is_active, sort_order")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("label_pt", { ascending: true })
+    .returns<ProgrammingWorkCompletionCatalogRow[]>();
+
+  if (error) {
+    return [] as ProgrammingWorkCompletionCatalogRow[];
+  }
+
+  return data ?? [];
+}
+
 async function fetchProgrammingById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -1691,7 +1715,7 @@ async function saveProgrammingFullViaRpc(params: {
   trafoQty: number;
   redeQty: number;
   etapaNumber: number | null;
-  workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
+  workCompletionStatus: string | null;
   affectedCustomers: number;
   sgdTypeId: string;
   electricalEqCatalogId: string | null;
@@ -1807,7 +1831,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
   trafoQty: number;
   redeQty: number;
   etapaNumber: number | null;
-  workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
+  workCompletionStatus: string | null;
   affectedCustomers: number;
   sgdTypeId: string;
   electricalEqCatalogId: string | null;
@@ -1918,6 +1942,26 @@ async function resolveProgrammingSgdType(params: {
   return data;
 }
 
+async function resolveProgrammingWorkCompletionStatus(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  workCompletionStatus: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("programming_work_completion_catalog")
+    .select("code, label_pt, is_active")
+    .eq("tenant_id", params.tenantId)
+    .eq("code", params.workCompletionStatus)
+    .eq("is_active", true)
+    .maybeSingle<{ code: string; label_pt: string; is_active: boolean }>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data;
+}
+
 async function resolveProgrammingEqCatalog(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -1997,7 +2041,7 @@ async function setProgrammingExecutionResultViaRpc(params: {
   actorUserId: string;
   programmingId: string;
   etapaNumber: number | null;
-  workCompletionStatus: "CONCLUIDO" | "PARCIAL" | null;
+  workCompletionStatus: string | null;
   force?: boolean;
 }) {
   const shouldPersist = Boolean(params.force)
@@ -2428,7 +2472,7 @@ export async function GET(request: NextRequest) {
     }
 
     const weekStart = startOfWeekMonday(startDate);
-    const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes, reasonOptions, eqCatalog] = await Promise.all([
+    const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes, reasonOptions, eqCatalog, workCompletionCatalog] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, startDate, endDate),
@@ -2437,6 +2481,7 @@ export async function GET(request: NextRequest) {
       fetchProgrammingSgdTypes(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingReasonCatalog(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingEqCatalog(resolution.supabase, resolution.appUser.tenant_id),
+      fetchProgrammingWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
     const activeTeamIds = new Set(teams.map((item) => item.id));
@@ -2542,6 +2587,10 @@ export async function GET(request: NextRequest) {
         code: normalizeText(item.code),
         label: normalizeText(item.label_pt),
         requiresNotes: Boolean(item.requires_notes),
+      })),
+      workCompletionCatalog: workCompletionCatalog.map((item) => ({
+        code: normalizeText(item.code),
+        label: normalizeText(item.label_pt) || normalizeText(item.code),
       })),
       teamSummaries: teamSummaries.map((item) => ({
         teamId: item.team_id,
@@ -3138,9 +3187,24 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   if (workCompletionStatusRaw && !workCompletionStatus) {
     return NextResponse.json(
-      { message: "Estado Trabalho invalido. Use apenas CONCLUIDO ou PARCIAL." },
+      { message: "Estado Trabalho invalido." },
       { status: 400 },
     );
+  }
+
+  if (workCompletionStatus) {
+    const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      workCompletionStatus,
+    });
+
+    if (!selectedWorkCompletionStatus) {
+      return NextResponse.json(
+        { message: "Estado do Projeto invalido para o tenant atual." },
+        { status: 400 },
+      );
+    }
   }
 
   if (affectedCustomers === null) {

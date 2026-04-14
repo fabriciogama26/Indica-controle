@@ -8,7 +8,7 @@ import styles from "./ProgrammingSimplePageView.module.css";
 
 type PeriodMode = "integral" | "partial";
 type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
-type WorkCompletionStatus = "CONCLUIDO" | "PARCIAL";
+type WorkCompletionStatus = string;
 type DocumentKey = "sgd" | "pi" | "pep";
 
 type ProjectItem = {
@@ -55,6 +55,11 @@ type SgdTypeItem = {
 
 type ElectricalEqCatalogItem = {
   id: string;
+  code: string;
+  label: string;
+};
+
+type WorkCompletionCatalogItem = {
   code: string;
   label: string;
 };
@@ -137,6 +142,7 @@ type ProgrammingResponse = {
   supportOptions?: SupportOptionItem[];
   sgdTypes?: SgdTypeItem[];
   electricalEqCatalog?: ElectricalEqCatalogItem[];
+  workCompletionCatalog?: WorkCompletionCatalogItem[];
   reasonOptions?: ProgrammingReasonOptionItem[];
   schedules?: ScheduleItem[];
   nextEtapaNumber?: number;
@@ -1197,6 +1203,7 @@ function buildSavedOutsideFiltersMessage(params: {
   activeFilters: FilterState;
   projectMap: Map<string, ProjectItem>;
   teamMap: Map<string, TeamItem>;
+  workCompletionCatalog: WorkCompletionCatalogItem[];
 }) {
   const reasons: string[] = [];
 
@@ -1226,9 +1233,12 @@ function buildSavedOutsideFiltersMessage(params: {
   if (params.activeFilters.workCompletionStatus !== "TODOS") {
     const savedWorkCompletionStatus = params.workCompletionStatus ?? "NAO_INFORMADO";
     if (params.activeFilters.workCompletionStatus !== savedWorkCompletionStatus) {
+      const selectedCatalogItem = params.activeFilters.workCompletionStatus === "NAO_INFORMADO"
+        ? null
+        : params.workCompletionCatalog.find((item) => item.code === params.activeFilters.workCompletionStatus) ?? null;
       const formattedWorkCompletionStatus = params.activeFilters.workCompletionStatus === "NAO_INFORMADO"
         ? "Nao informado"
-        : params.activeFilters.workCompletionStatus;
+        : selectedCatalogItem?.label ?? params.activeFilters.workCompletionStatus;
       reasons.push(`o Estado Trabalho filtrado e ${formattedWorkCompletionStatus}`);
     }
   }
@@ -1451,6 +1461,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [supportOptions, setSupportOptions] = useState<SupportOptionItem[]>([]);
   const [sgdTypes, setSgdTypes] = useState<SgdTypeItem[]>([]);
   const [electricalEqCatalog, setElectricalEqCatalog] = useState<ElectricalEqCatalogItem[]>([]);
+  const [workCompletionCatalog, setWorkCompletionCatalog] = useState<WorkCompletionCatalogItem[]>([]);
   const [reasonOptions, setReasonOptions] = useState<ProgrammingReasonOptionItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
@@ -1749,6 +1760,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setSupportOptions(data.supportOptions ?? []);
     setSgdTypes(data.sgdTypes ?? []);
     setElectricalEqCatalog(data.electricalEqCatalog ?? []);
+    setWorkCompletionCatalog(data.workCompletionCatalog ?? []);
     setReasonOptions(data.reasonOptions ?? []);
     setSchedules(nextSchedules);
   }, []);
@@ -1799,6 +1811,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       setSupportOptions([]);
       setSgdTypes([]);
       setElectricalEqCatalog([]);
+      setWorkCompletionCatalog([]);
       setFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "Falha ao carregar programacao.",
@@ -2903,6 +2916,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         activeFilters,
         projectMap,
         teamMap,
+        workCompletionCatalog,
       });
       showSubmitFeedback(
         "success",
@@ -3873,8 +3887,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 onChange={(event) => updateFormField("workCompletionStatus", event.target.value as WorkCompletionStatus | "")}
               >
                 <option value="">Selecione</option>
-                <option value="CONCLUIDO">CONCLUIDO</option>
-                <option value="PARCIAL">PARCIAL</option>
+                {workCompletionCatalog.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
               </select>
             </label>
           ) : null}
@@ -4166,8 +4183,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               onChange={(event) => updateFilterField("workCompletionStatus", event.target.value as FilterState["workCompletionStatus"])}
             >
               <option value="TODOS">Todos</option>
-              <option value="CONCLUIDO">Concluido</option>
-              <option value="PARCIAL">Parcial</option>
+              {workCompletionCatalog.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
               <option value="NAO_INFORMADO">Nao informado</option>
             </select>
           </label>

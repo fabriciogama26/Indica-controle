@@ -192,6 +192,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .inlineCheckbox {
@@ -200,13 +201,21 @@
   gap: 6px;
   color: #17347a;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .inlineCheckbox input {
   width: 16px;
   height: 16px;
+  min-height: 16px;
+  padding: 0;
+  margin: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(23, 52, 122, 0.35);
+  box-shadow: none;
+  accent-color: #1f4fb8;
 }
 
 .fieldHint {
