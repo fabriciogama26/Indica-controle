@@ -3454,7 +3454,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           project?.city ?? "",
           serviceDescriptionValue,
           schedule.statusReason ?? "",
-          formatAuditActor(schedule.updatedByName),
+          "",
           formatDate(createdDate),
           schedule.workCompletionStatus ?? "",
           "",
