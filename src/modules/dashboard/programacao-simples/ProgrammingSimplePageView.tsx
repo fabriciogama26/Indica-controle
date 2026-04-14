@@ -115,6 +115,7 @@ type ScheduleItem = {
   trafoQty: number;
   redeQty: number;
   etapaNumber: number | null;
+  etapaUnica: boolean;
   workCompletionStatus: WorkCompletionStatus | null;
   affectedCustomers: number;
   sgdTypeId: string | null;
@@ -244,6 +245,7 @@ type FormState = {
   trafoQty: string;
   redeQty: string;
   etapaNumber: string;
+  etapaUnica: boolean;
   workCompletionStatus: WorkCompletionStatus | "";
   affectedCustomers: string;
   sgdTypeId: string;
@@ -621,7 +623,11 @@ function formatWeekdayExecutionEnelNovo(value: string) {
   return map[weekday] ?? "";
 }
 
-function formatInfoStatusEtapa(etapaNumber: number | null | undefined) {
+function formatInfoStatusEtapa(etapaNumber: number | null | undefined, etapaUnica?: boolean) {
+  if (etapaUnica) {
+    return "ETAPA ÚNICA";
+  }
+
   const stage = Number(etapaNumber ?? 0);
   if (!Number.isFinite(stage) || stage <= 0) {
     return "";
@@ -899,6 +905,7 @@ function createInitialForm(initialDate: string): FormState {
     trafoQty: "0",
     redeQty: "0",
     etapaNumber: "",
+    etapaUnica: false,
     workCompletionStatus: "",
     affectedCustomers: "0",
     sgdTypeId: "",
@@ -1905,7 +1912,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (!form.projectId || !form.date || !form.teamIds.length) {
+    if (!form.projectId || !form.date || !form.teamIds.length || form.etapaUnica) {
       return;
     }
 
@@ -1962,11 +1969,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [accessToken, form.date, form.projectId, form.teamIds, isEditing, isEtapaManuallyEdited, isVisualizationMode]);
+  }, [accessToken, form.date, form.etapaUnica, form.projectId, form.teamIds, isEditing, isEtapaManuallyEdited, isVisualizationMode]);
 
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
     if (field === "etapaNumber") {
       setIsEtapaManuallyEdited(Boolean(String(value).trim()));
+    }
+
+    if (field === "etapaUnica") {
+      const nextEtapaUnica = Boolean(value);
+      if (nextEtapaUnica) {
+        setIsEtapaManuallyEdited(false);
+      }
     }
 
     setForm((current) => {
@@ -1980,9 +1994,24 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         };
       }
 
+      if (field === "etapaUnica") {
+        const nextEtapaUnica = Boolean(value);
+        return {
+          ...current,
+          etapaUnica: nextEtapaUnica,
+          etapaNumber: nextEtapaUnica ? "" : current.etapaNumber,
+        };
+      }
+
       return { ...current, [field]: value };
     });
-    setInvalidFields((current) => current.filter((item) => item !== String(field)));
+    setInvalidFields((current) => {
+      if (field === "etapaUnica") {
+        return current.filter((item) => item !== "etapaUnica" && item !== "etapaNumber");
+      }
+
+      return current.filter((item) => item !== String(field));
+    });
   }
 
   function updateFilterField<Key extends keyof FilterState>(field: Key, value: FilterState[Key]) {
@@ -2210,6 +2239,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       trafoQty: String(schedule.trafoQty ?? 0),
       redeQty: String(schedule.redeQty ?? 0),
       etapaNumber: schedule.etapaNumber === null ? "" : String(schedule.etapaNumber),
+      etapaUnica: Boolean(schedule.etapaUnica),
       workCompletionStatus: schedule.workCompletionStatus ?? "",
       affectedCustomers: String(schedule.affectedCustomers ?? 0),
       sgdTypeId: schedule.sgdTypeId ?? "",
@@ -2657,19 +2687,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (etapaNumberInput === undefined) {
+    if (!form.etapaUnica && etapaNumberInput === undefined) {
       flagInvalidFields(["etapaNumber"], "ETAPA deve ser um numero inteiro maior que zero.");
       return;
     }
 
-    const etapaNumber = etapaNumberInput ?? (isEditing ? (currentEditingSchedule?.etapaNumber ?? null) : null);
+    const etapaNumber = form.etapaUnica
+      ? null
+      : (etapaNumberInput ?? (isEditing ? (currentEditingSchedule?.etapaNumber ?? null) : null));
 
-    if (!isEditing && etapaNumber === null) {
+    if (!isEditing && !form.etapaUnica && etapaNumber === null) {
       flagInvalidFields(["etapaNumber"], "ETAPA e obrigatoria no cadastro.");
       return;
     }
 
-    const shouldValidateStageConflict = etapaNumber !== null
+    const shouldValidateStageConflict = !form.etapaUnica
+      && etapaNumber !== null
       && (
         !isEditing
         || etapaNumber !== (currentEditingSchedule?.etapaNumber ?? null)
@@ -2779,6 +2812,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         trafoQty,
         redeQty,
         etapaNumber: etapaNumber ?? undefined,
+        etapaUnica: form.etapaUnica,
         workCompletionStatus: isEditing ? form.workCompletionStatus : undefined,
         affectedCustomers,
         sgdTypeId: form.sgdTypeId || undefined,
@@ -3199,7 +3233,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         const sgdAtMtVyp = isSgdAtMtVyp ? sgdExportValue : "";
         const sgdBt = isSgdBt ? sgdExportValue : "";
         const sgdTet = isSgdTet ? sgdExportValue : "";
-        const infoStatus = schedule.etapaNumber ? `${schedule.etapaNumber} ETAPA` : "";
+        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica);
         const scheduleCreatedDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
         const estruturaValue = structureSummaryGroup
           ? formatStructureSummaryByCode(structureSummaryGroup.codeCount)
@@ -3360,7 +3394,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         const team = resolveScheduleTeamInfo(schedule, teamMap);
         const sgdTypeDescription = (schedule.sgdTypeDescription ?? "").trim();
         const isAreaLivre = isAreaLivreSgd(schedule.sgdExportColumn, schedule.sgdTypeDescription);
-        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber);
+        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica);
         const createdDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
         const estruturaValue = structureSummaryGroup
           ? Array.from(structureSummaryGroup.teamLabels).sort((a, b) => a.localeCompare(b)).join("|")
@@ -3735,17 +3769,32 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           </label>
 
           <label className={`${styles.field} ${isFieldInvalid("etapaNumber") ? styles.fieldInvalid : ""}`}>
-            <span>ETAPA</span>
+            <div className={styles.inlineFieldHeader}>
+              <span>
+                ETAPA {form.etapaUnica ? null : <span className="requiredMark">*</span>}
+              </span>
+              <label className={styles.inlineCheckbox}>
+                <input
+                  type="checkbox"
+                  checked={form.etapaUnica}
+                  onChange={(event) => updateFormField("etapaUnica", event.target.checked)}
+                />
+                ETAPA ÚNICA
+              </label>
+            </div>
             <input
               type="number"
               min="1"
               step="1"
               value={form.etapaNumber}
               onChange={(event) => updateFormField("etapaNumber", event.target.value)}
+              disabled={form.etapaUnica}
               placeholder="Ex.: 1"
             />
             <small className={styles.fieldHint}>
-              A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas. Na edicao, se nao alterar esse campo, o valor atual e preservado.
+              {form.etapaUnica
+                ? "Com ETAPA ÚNICA marcada, a coluna INFO STATUS na extracao ENEL usa o texto ETAPA ÚNICA."
+                : "A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas. Na edicao, se nao alterar esse campo, o valor atual e preservado."}
             </small>
           </label>
 
@@ -4594,6 +4643,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>TRAFO:</strong> {detailsTarget.trafoQty}</p>
                 <p><strong>REDE:</strong> {detailsTarget.redeQty}</p>
                 <p><strong>ETAPA:</strong> {detailsTarget.etapaNumber ?? "-"}</p>
+                <p><strong>ETAPA ÚNICA:</strong> {detailsTarget.etapaUnica ? "Sim" : "Nao"}</p>
                 <p><strong>Estado Trabalho:</strong> {detailsTarget.workCompletionStatus || "-"}</p>
                 <p><strong>Nº Clientes Afetados:</strong> {detailsTarget.affectedCustomers}</p>
                 <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>

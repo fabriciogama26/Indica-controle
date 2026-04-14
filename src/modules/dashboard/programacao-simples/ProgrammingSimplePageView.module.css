@@ -187,6 +187,28 @@
   font-size: 0.92rem;
 }
 
+.inlineFieldHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.inlineCheckbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #17347a;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.inlineCheckbox input {
+  width: 16px;
+  height: 16px;
+}
+
 .fieldHint {
   color: #5b6a85;
   font-size: 0.8rem;
