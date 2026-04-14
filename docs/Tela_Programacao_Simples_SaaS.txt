@@ -181,6 +181,7 @@ Filtros, auto-complete e listagem
   - Cada card de `SOB` exibe `SOB`, `Data limite` e `Status do prazo` (`Vencida ha X dias`, `Vence hoje` ou `Vence em X dias`), com cor por criticidade.
   - Navegacao do carrossel por setas (`esquerda/direita`), avancando ou voltando 1 pagina de 6 cards por clique.
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Ordenacao da lista: `Data execucao` em ordem decrescente (mais recente primeiro). Em empate de data, prioridade para o cadastro mais recente (`created_at` desc).
   - Quando uma programacao e salva fora do intervalo, projeto, equipe ou status filtrados, a tela avisa no feedback de sucesso que o registro pode nao aparecer na lista atual por causa dos filtros.
 - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Adiar` e `Cancelar`.
   - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
