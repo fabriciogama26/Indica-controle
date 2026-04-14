@@ -419,3 +419,4 @@
 - [x] Implementar checkbox ETAPA UNICA na Programacao, persistir flag etapa_unica (single/lote) e usar ETAPA ÃšNICA no INFO STATUS da Extracao ENEL quando marcado.
 - [x] Refinar UI do checkbox ETAPA UNICA na Programacao (tamanho compacto, sem quebra de linha e alinhamento visual com o formulario).
 - [x] Criar catalogo por tenant para `Estado do Projeto` (`programming_work_completion_catalog`) e migrar Programacao Simples (API + tela) para consumir opcoes dinamicas em vez de valores fixos.
+- [x] Ajustar `Extracao ENEL NOVO` para manter em branco (temporario) as colunas `Tipo de cabo` e `Responsável cancelamento / Parcial / Adiamento`.

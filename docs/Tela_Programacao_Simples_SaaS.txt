@@ -663,3 +663,13 @@ Atualizacao adicional 2026-04-14 (catalogo Estado do Projeto)
   - Depois: o `Estado do Projeto` passa a consumir o catalogo por tenant (`programming_work_completion_catalog`) na API e no frontend.
   - Antes: a validacao no backend aceitava somente um conjunto fixo de status.
   - Depois: a validacao passa a aceitar somente codigos ativos no catalogo do tenant, mantendo isolamento multi-tenant.
+
+Atualizacao adicional 2026-04-14 (Extracao ENEL NOVO - colunas em branco)
+--------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: a coluna `Responsável cancelamento / Parcial / Adiamento` era preenchida com o usuario da ultima atualizacao.
+  - Depois: as colunas `Responsável cancelamento / Parcial / Adiamento` e `Tipo de cabo` passam a sair em branco no `Extracao ENEL NOVO` (regra temporaria).
