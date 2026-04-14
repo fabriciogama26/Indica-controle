@@ -42,6 +42,13 @@
   font-size: 0.92rem;
 }
 
+.fieldHint {
+  color: #5b6a85;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
 .field input,
 .field select,
 .field textarea,
