@@ -320,6 +320,10 @@ function buildProgrammingMatchKey(projectId: string, teamId: string, executionDa
   return `${projectId}|${teamId}|${executionDate}`;
 }
 
+function buildProgrammingProjectDateKey(projectId: string, executionDate: string) {
+  return `${projectId}|${executionDate}`;
+}
+
 function selectBestProgrammingMatch(candidates: ProgrammingMatchRow[]) {
   if (!candidates.length) {
     return null;
@@ -349,7 +353,6 @@ async function loadProgrammingMatchMap(params: {
   }
 
   const projectIds = Array.from(new Set(params.orders.map((item) => item.project_id)));
-  const teamIds = Array.from(new Set(params.orders.map((item) => item.team_id)));
   const executionDates = params.orders.map((item) => item.execution_date).sort();
   const startDate = executionDates[0];
   const endDate = executionDates[executionDates.length - 1];
@@ -359,7 +362,6 @@ async function loadProgrammingMatchMap(params: {
     .select("id, project_id, team_id, execution_date, status, work_completion_status, updated_at")
     .eq("tenant_id", params.tenantId)
     .in("project_id", projectIds)
-    .in("team_id", teamIds)
     .gte("execution_date", startDate)
     .lte("execution_date", endDate)
     .returns<ProgrammingMatchRow[]>();
@@ -370,7 +372,6 @@ async function loadProgrammingMatchMap(params: {
         .select("id, project_id, team_id, execution_date, status, updated_at")
         .eq("tenant_id", params.tenantId)
         .in("project_id", projectIds)
-        .in("team_id", teamIds)
         .gte("execution_date", startDate)
         .lte("execution_date", endDate)
         .returns<Array<Omit<ProgrammingMatchRow, "work_completion_status">>>()
@@ -380,11 +381,17 @@ async function loadProgrammingMatchMap(params: {
     : { data: preferred.data ?? [] };
 
   const grouped = new Map<string, ProgrammingMatchRow[]>();
+  const groupedByProjectDate = new Map<string, ProgrammingMatchRow[]>();
   for (const row of data ?? []) {
     const key = buildProgrammingMatchKey(row.project_id, row.team_id, row.execution_date);
     const current = grouped.get(key) ?? [];
     current.push(row);
     grouped.set(key, current);
+
+    const projectDateKey = buildProgrammingProjectDateKey(row.project_id, row.execution_date);
+    const projectDateCurrent = groupedByProjectDate.get(projectDateKey) ?? [];
+    projectDateCurrent.push(row);
+    groupedByProjectDate.set(projectDateKey, projectDateCurrent);
   }
 
   const result = new Map<string, {
@@ -395,31 +402,26 @@ async function loadProgrammingMatchMap(params: {
   }>();
 
   for (const order of params.orders) {
-    const key = buildProgrammingMatchKey(order.project_id, order.team_id, order.execution_date);
-    const bestMatch = selectBestProgrammingMatch(grouped.get(key) ?? []);
-    if (!bestMatch) {
-      result.set(order.id, {
-        status: "NAO_PROGRAMADA",
-        programmingId: null,
-        completionStatus: null,
-        completionStatusChangedAfterMeasurement: false,
-      });
-      continue;
-    }
+    const teamKey = buildProgrammingMatchKey(order.project_id, order.team_id, order.execution_date);
+    const exactMatch = selectBestProgrammingMatch(grouped.get(teamKey) ?? []);
+    const projectDateKey = buildProgrammingProjectDateKey(order.project_id, order.execution_date);
+    const projectDateMatch = selectBestProgrammingMatch(groupedByProjectDate.get(projectDateKey) ?? []);
+    const completionMatch = exactMatch ?? projectDateMatch;
 
-    const currentCompletion = normalizeProgrammingWorkCompletionStatus(bestMatch.work_completion_status);
+    const currentCompletion = normalizeProgrammingWorkCompletionStatus(completionMatch?.work_completion_status);
     const snapshotCompletion = normalizeProgrammingWorkCompletionStatus(order.programming_completion_status_snapshot);
     const changedBySnapshot = Boolean(snapshotCompletion && currentCompletion && snapshotCompletion !== currentCompletion);
 
     const changedAfterMeasurementWithoutSnapshot = Boolean(
       !snapshotCompletion
       && currentCompletion
-      && new Date(bestMatch.updated_at).getTime() > new Date(order.created_at).getTime(),
+      && completionMatch
+      && new Date(completionMatch.updated_at).getTime() > new Date(order.created_at).getTime(),
     );
 
     result.set(order.id, {
-      status: "PROGRAMADA",
-      programmingId: bestMatch.id,
+      status: exactMatch ? "PROGRAMADA" : "NAO_PROGRAMADA",
+      programmingId: exactMatch?.id ?? null,
       completionStatus: currentCompletion ?? snapshotCompletion,
       completionStatusChangedAfterMeasurement: changedBySnapshot || changedAfterMeasurementWithoutSnapshot,
     });
