@@ -809,3 +809,16 @@ Atualizacao adicional 2026-04-15 (compat fallback sem etapa_final)
 - Comportamento antes/depois:
   - Antes: em ambiente sem coluna `etapa_final`, a leitura da Programacao podia cair em select legado sem `work_completion_status`, quebrando o filtro `Estado Trabalho`.
   - Depois: em ambiente sem `etapa_final`, a API usa fallback intermediario que mantem `work_completion_status`, preservando o filtro de `Estado Trabalho`.
+
+Atualizacao adicional 2026-04-15 (sessao invalida ao editar programacao)
+-------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `resolveLatestAccessToken`
+  - `handleSubmit`
+- Comportamento antes/depois:
+  - Antes: o `PUT /api/programacao` usava apenas o token em memoria da tela; quando ele expirava, a edicao retornava `Sessao invalida para editar programacao.`
+  - Depois: o submit tenta primeiro o token mais recente via `supabase.auth.getSession()` e, em caso de `401`, faz retry unico com token renovado.

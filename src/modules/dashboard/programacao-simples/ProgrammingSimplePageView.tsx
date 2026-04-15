@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, u
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { supabase } from "@/lib/supabase/client";
 import styles from "./ProgrammingSimplePageView.module.css";
 
 type PeriodMode = "integral" | "partial";
@@ -1532,6 +1533,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const commonExportCooldown = useExportCooldown();
   const enelExportCooldown = useExportCooldown();
   const deadlineModalExportCooldown = useExportCooldown();
+  const resolveLatestAccessToken = useCallback(async () => {
+    if (!supabase) {
+      return accessToken;
+    }
+
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      return accessToken;
+    }
+
+    const refreshedAccessToken = data.session?.access_token?.trim() ?? "";
+    return refreshedAccessToken || accessToken;
+  }, [accessToken]);
 
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
   const isEditing = Boolean(editingScheduleId);
@@ -2650,7 +2664,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       );
     }
 
-    if (!accessToken) {
+    const initialAccessToken = await resolveLatestAccessToken();
+    if (!initialAccessToken) {
       showSubmitFeedback("error", "Sessao invalida para salvar programacao.");
       return;
     }
@@ -2893,28 +2908,38 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           .map((item) => ({ catalogId: item.catalogId, quantity: item.quantity })),
       };
 
-      const response = await fetch("/api/programacao", {
+      const requestBody = JSON.stringify(
+        editingScheduleId
+          ? {
+              ...basePayload,
+              id: editingScheduleId,
+              teamId: form.teamIds[0],
+              expectedUpdatedAt: editingExpectedUpdatedAt,
+              changeReason: hasRescheduleChanges ? selectedRescheduleReason || undefined : undefined,
+            }
+          : {
+              action: "BATCH_CREATE",
+              ...basePayload,
+              teamIds: form.teamIds,
+            },
+      );
+
+      const executeSaveRequest = (token: string) => fetch("/api/programacao", {
         method: editingScheduleId ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(
-          editingScheduleId
-            ? {
-                ...basePayload,
-                id: editingScheduleId,
-                teamId: form.teamIds[0],
-                expectedUpdatedAt: editingExpectedUpdatedAt,
-                changeReason: hasRescheduleChanges ? selectedRescheduleReason || undefined : undefined,
-              }
-            : {
-                action: "BATCH_CREATE",
-                ...basePayload,
-                teamIds: form.teamIds,
-              },
-        ),
+        body: requestBody,
       });
+
+      let response = await executeSaveRequest(initialAccessToken);
+      if (response.status === 401) {
+        const refreshedAccessToken = await resolveLatestAccessToken();
+        if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
+          response = await executeSaveRequest(refreshedAccessToken);
+        }
+      }
 
       const data = (await response.json().catch(() => ({}))) as BatchCreateResponse & SaveProgrammingResponse;
       if (!response.ok || (editingScheduleId ? !data.id : !data.success)) {
