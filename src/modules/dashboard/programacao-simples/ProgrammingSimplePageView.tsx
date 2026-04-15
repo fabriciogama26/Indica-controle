@@ -604,13 +604,11 @@ function formatDateExecutionEnelNovo(value: string) {
     return normalized;
   }
 
-  const monthMap = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   const day = match[3];
-  const monthIndex = Number(match[2]) - 1;
-  const year = match[1].slice(-2);
-  const month = monthMap[monthIndex] ?? match[2];
+  const month = match[2];
+  const year = match[1];
 
-  return `${day}-${month}-${year}`;
+  return `${day}/${month}/${year}`;
 }
 
 function formatWeekdayExecutionEnelNovo(value: string) {
@@ -1535,6 +1533,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
+  const workCompletionLabelMap = useMemo(
+    () => new Map(workCompletionCatalog.map((item) => [item.code, item.label])),
+    [workCompletionCatalog],
+  );
   const originalEditingTeamName = editingTeamId ? teamMap.get(editingTeamId)?.name ?? editingTeamId : "";
   const selectedEditingTeamId = isEditing ? form.teamIds[0] ?? "" : "";
   const selectedEditingTeamName = selectedEditingTeamId ? teamMap.get(selectedEditingTeamId)?.name ?? selectedEditingTeamId : "";
@@ -2613,7 +2615,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    const electricalEqNumber = form.electricalField.replace(/[^\d]/g, "").trim();
+    const electricalEqNumber = form.electricalField.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
 
     if (!form.projectId) {
       flagInvalidFields(["projectId"], "Selecione um Projeto (SOB) valido da lista.");
@@ -2676,8 +2678,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (!/^\d+$/.test(electricalEqNumber)) {
-      flagInvalidFields(["electricalField"], "O numero do Nº EQ deve conter apenas digitos.");
+    if (!/^[A-Z0-9]+$/.test(electricalEqNumber)) {
+      flagInvalidFields(["electricalField"], "O numero do Nº EQ deve conter apenas letras e numeros.");
       return;
     }
 
@@ -3329,6 +3331,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setIsExportingEnelNovo(true);
     try {
+      const exportSchedules = filteredSchedules.filter((schedule) => {
+        const project = projectMap.get(schedule.projectId);
+        const serviceType = String(project?.serviceType ?? "").trim().toUpperCase();
+        return serviceType !== "EMERGENCIAL";
+      });
+
+      if (!exportSchedules.length) {
+        setFeedback({
+          type: "error",
+          message: "Nenhuma programacao elegivel para EXTRACAO ENEL NOVO (Tipo de Serviço EMERGENCIAL nao entra).",
+        });
+        return;
+      }
+
       const header = [
         "BASE",
         "Tipo de Serviço",
@@ -3383,7 +3399,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       ];
 
       const structureAccumulator = new Map<string, { teamLabels: Set<string>; plates: Set<string> }>();
-      for (const schedule of filteredSchedules) {
+      for (const schedule of exportSchedules) {
         const key = `${schedule.projectId}__${schedule.date}`;
         const current = structureAccumulator.get(key) ?? { teamLabels: new Set<string>(), plates: new Set<string>() };
 
@@ -3401,7 +3417,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         structureAccumulator.set(key, current);
       }
 
-      const rows = filteredSchedules.map((schedule) => {
+      const rows = exportSchedules.map((schedule) => {
         const project = projectMap.get(schedule.projectId);
         const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
         const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
@@ -3456,11 +3472,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           schedule.statusReason ?? "",
           "",
           formatDate(createdDate),
-          schedule.workCompletionStatus ?? "",
           "",
           "",
           "",
-          project?.serviceType ?? "",
+          "",
           "",
           "",
           "",
@@ -3475,10 +3490,23 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         ];
       });
 
-      const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-      const csv = `\uFEFF${csvLines.join("\n")}`;
-      const exportDate = new Date().toISOString().slice(0, 10);
-      downloadCsvFile(csv, `extracao_enel_novo_${exportDate}.csv`);
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "EXTRACAO_ENEL");
+      const workbookArray = XLSX.write(workbook, {
+        bookType: "xlsb",
+        type: "array",
+      }) as ArrayBuffer;
+      const blob = new Blob([workbookArray], {
+        type: "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "PROGRAMAÇÃO_ANGRA_INDICA.xlsb";
+      link.click();
+      URL.revokeObjectURL(url);
     } finally {
       setIsExportingEnelNovo(false);
     }
@@ -3730,11 +3758,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             </span>
             <input
               type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
+              inputMode="text"
+              pattern="[A-Za-z0-9]*"
               value={form.electricalField}
-              onChange={(event) => updateFormField("electricalField", event.target.value.replace(/[^\d]/g, ""))}
-              placeholder="Ex.: 12345678"
+              onChange={(event) => updateFormField("electricalField", event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+              placeholder="Ex.: AB1234"
             />
           </label>
 
@@ -4244,6 +4272,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <th>Horario</th>
                 <th>Periodo</th>
                 <th>Status</th>
+                <th>Estado Trabalho</th>
                 <th>Atualizado em</th>
                 <th>Acoes</th>
               </tr>
@@ -4254,6 +4283,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                   const project = projectMap.get(schedule.projectId);
                   const team = resolveScheduleTeamInfo(schedule, teamMap);
                   const displayStatus = getDisplayProgrammingStatus(schedule);
+                  const workCompletionLabel = schedule.workCompletionStatus
+                    ? (workCompletionLabelMap.get(schedule.workCompletionStatus) ?? schedule.workCompletionStatus)
+                    : "-";
                   return (
                     <tr key={schedule.id} className={isInactiveProgrammingStatus(displayStatus) ? styles.inactiveRow : undefined}>
                       <td>{formatDate(schedule.date)}</td>
@@ -4270,6 +4302,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                           ) : null}
                         </div>
                       </td>
+                      <td>{workCompletionLabel}</td>
                       <td>{formatDateTime(schedule.updatedAt)}</td>
                       <td className={styles.actionsCell}>
                         <div className={styles.tableActions}>
@@ -4375,7 +4408,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 })
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyRow}>
+                  <td colSpan={10} className={styles.emptyRow}>
                     {isLoadingList
                       ? "Carregando programacoes..."
                       : "Nenhuma programacao encontrada para os filtros informados."}
@@ -4667,6 +4700,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>Estado Trabalho:</strong> {detailsTarget.workCompletionStatus || "-"}</p>
                 <p><strong>Nº Clientes Afetados:</strong> {detailsTarget.affectedCustomers}</p>
                 <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>
+                <p><strong>Numero SGD:</strong> {normalizeSgdNumberForExport(detailsTarget.documents?.sgd?.number) || "-"}</p>
                 <p><strong>Nº EQ (tipo):</strong> {detailsTarget.electricalEqCode || "-"}</p>
                 <p><strong>Apoio:</strong> {detailsTarget.support || "-"}</p>
                 <p><strong>Alimentador:</strong> {detailsTarget.feeder || "-"}</p>

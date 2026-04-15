@@ -673,3 +673,54 @@ Atualizacao adicional 2026-04-14 (Extracao ENEL NOVO - colunas em branco)
 - Comportamento antes/depois:
   - Antes: a coluna `Responsável cancelamento / Parcial / Adiamento` era preenchida com o usuario da ultima atualizacao.
   - Depois: as colunas `Responsável cancelamento / Parcial / Adiamento` e `Tipo de cabo` passam a sair em branco no `Extracao ENEL NOVO` (regra temporaria).
+
+Atualizacao adicional 2026-04-15 (lista, detalhes e Nº EQ alfanumerico)
+------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: a lista principal da Programacao nao exibia a coluna `Estado Trabalho`.
+  - Depois: a lista passa a exibir `Estado Trabalho` em coluna propria, com fallback `-` quando vazio.
+  - Antes: o modal `Detalhes da Programacao` nao mostrava o numero do documento SGD.
+  - Depois: o modal passa a exibir `Numero SGD` (normalizado com separador ` / ` quando aplicavel).
+  - Antes: o campo `Nº EQ - Numero` aceitava somente digitos no frontend e no backend.
+  - Depois: o campo passa a aceitar letras e numeros (`A-Z` e `0-9`) com normalizacao para maiusculas em todo o fluxo.
+  - Antes: a coluna `Tipo de cabo` da `Extracao ENEL NOVO` podia receber valor por deslocamento de colunas.
+  - Depois: o mapeamento foi alinhado para manter `Tipo de cabo` em branco e `Tipo de serviço` na coluna correta.
+
+Atualizacao adicional 2026-04-15 (Extracao ENEL NOVO - nome e filtro)
+---------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: o arquivo era baixado com nome dinamico `extracao_enel_novo_YYYY-MM-DD.csv` e conteudo CSV.
+  - Depois: o download passa a gerar workbook binario real `XLSB` e usar nome fixo `PROGRAMAÇÃO_ANGRA_INDICA.xlsb`.
+  - Antes: programacoes com `Tipo de Serviço = EMERGENCIAL` eram exportadas no ENEL NOVO.
+  - Depois: registros `EMERGENCIAL` passam a ser excluidos da `Extracao ENEL NOVO`.
+
+Atualizacao adicional 2026-04-15 (Extracao ENEL NOVO - colunas temporarias em branco)
+--------------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: a coluna `Tipo de avanço` recebia `Estado Trabalho`.
+  - Depois: `Tipo de avanço` passa a sair em branco (temporario).
+  - Antes: a coluna `Tipo de serviço` (entre `Tipo de rede` e `Tipo de cabo`) recebia valor do projeto.
+  - Depois: `Tipo de serviço` passa a sair em branco (temporario).
+
+Atualizacao adicional 2026-04-15 (Extracao ENEL NOVO - padrao de data)
+---------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: a coluna `Data Execução` da `Extracao ENEL NOVO` era exportada no formato `dd-mmm-yy`.
+  - Depois: a coluna `Data Execução` passa a seguir o padrão `dd/mm/yyyy` (ex.: `10/11/2026`).

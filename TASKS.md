@@ -420,3 +420,11 @@
 - [x] Refinar UI do checkbox ETAPA UNICA na Programacao (tamanho compacto, sem quebra de linha e alinhamento visual com o formulario).
 - [x] Criar catalogo por tenant para `Estado do Projeto` (`programming_work_completion_catalog`) e migrar Programacao Simples (API + tela) para consumir opcoes dinamicas em vez de valores fixos.
 - [x] Ajustar `Extracao ENEL NOVO` para manter em branco (temporario) as colunas `Tipo de cabo` e `Responsável cancelamento / Parcial / Adiamento`.
+- [x] Exibir `Estado Trabalho` na coluna da `Lista de Programacoes` da Programacao Simples.
+- [x] Exibir `Numero SGD` no modal `Detalhes da Programacao`.
+- [x] Permitir `Nº EQ - Numero` alfanumerico (letras + numeros) no frontend e backend, e corrigir mapeamento da `Extracao ENEL NOVO` para manter `Tipo de cabo` em branco.
+- [x] Ajustar nome do arquivo da `Extracao ENEL NOVO` para `PROGRAMAÇÃO_ANGRA_INDICA.XLSB`.
+- [x] Excluir da `Extracao ENEL NOVO` registros com `Tipo de Serviço = EMERGENCIAL`.
+- [x] Converter `Extracao ENEL NOVO` para workbook binario real `XLSB`, com nome fixo `PROGRAMAÇÃO_ANGRA_INDICA.xlsb`.
+- [x] Ajustar `Extracao ENEL NOVO` para manter em branco (temporario) as colunas `Tipo de avanço` e `Tipo de serviço` (entre `Tipo de rede` e `Tipo de cabo`).
+- [x] Padronizar a coluna Data Execução da Extracao ENEL NOVO para o formato dd/mm/yyyy (ex.: 10/11/2026).
