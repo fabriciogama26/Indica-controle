@@ -231,6 +231,99 @@ function normalizeProjectStatusFilter(value: unknown): ProjectStatusFilter {
   return "TODOS";
 }
 
+function normalizeStatusCatalogCode(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+}
+
+function isMissingWorkCompletionStatusIdColumnError(message: string) {
+  const normalized = normalizeText(message).toLowerCase();
+  return (
+    normalized.includes("work_completion_status_id")
+    && (
+      normalized.includes("does not exist")
+      || normalized.includes("could not find")
+      || normalized.includes("schema cache")
+    )
+  );
+}
+
+async function fetchCompletedProgrammingProjectIdsCompat(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds?: string[];
+}) {
+  const resultIds = new Set<string>();
+
+  const { data: workCompletionCatalogRows } = await params.supabase
+    .from("programming_work_completion_catalog")
+    .select("id, code")
+    .eq("tenant_id", params.tenantId)
+    .eq("is_active", true)
+    .returns<Array<{ id: string; code: string }>>();
+
+  const concludedCatalogIds = (workCompletionCatalogRows ?? [])
+    .filter((item) => normalizeStatusCatalogCode(item.code) === "CONCLUIDO")
+    .map((item) => normalizeText(item.id))
+    .filter(Boolean);
+
+  if (concludedCatalogIds.length) {
+    let statusIdQuery = params.supabase
+      .from("project_programming")
+      .select("project_id")
+      .eq("tenant_id", params.tenantId)
+      .in("work_completion_status_id", concludedCatalogIds);
+
+    if (params.projectIds?.length) {
+      statusIdQuery = statusIdQuery.in("project_id", params.projectIds);
+    }
+
+    const { data: statusIdRows, error: statusIdError } = await statusIdQuery
+      .returns<Array<{ project_id: string }>>();
+
+    if (statusIdError && !isMissingWorkCompletionStatusIdColumnError(String(statusIdError.message ?? ""))) {
+      return { projectIds: [] as string[], error: statusIdError };
+    }
+
+    for (const row of statusIdRows ?? []) {
+      const projectId = normalizeText(row.project_id);
+      if (projectId) {
+        resultIds.add(projectId);
+      }
+    }
+  }
+
+  let legacyStatusQuery = params.supabase
+    .from("project_programming")
+    .select("project_id")
+    .eq("tenant_id", params.tenantId)
+    .in("work_completion_status", ["CONCLUIDO", "CONCLUÍDO"]);
+
+  if (params.projectIds?.length) {
+    legacyStatusQuery = legacyStatusQuery.in("project_id", params.projectIds);
+  }
+
+  const { data: legacyStatusRows, error: legacyStatusError } = await legacyStatusQuery
+    .returns<Array<{ project_id: string }>>();
+
+  if (legacyStatusError) {
+    return { projectIds: [] as string[], error: legacyStatusError };
+  }
+
+  for (const row of legacyStatusRows ?? []) {
+    const projectId = normalizeText(row.project_id);
+    if (projectId) {
+      resultIds.add(projectId);
+    }
+  }
+
+  return { projectIds: Array.from(resultIds), error: null };
+}
+
 function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -622,20 +715,17 @@ async function fetchProjectsSummaryCompat(params: {
 
   for (let index = 0; index < projectIds.length; index += chunkSize) {
     const chunk = projectIds.slice(index, index + chunkSize);
-    const { data: programmingRows, error: programmingRowsError } = await params.supabase
-      .from("project_programming")
-      .select("project_id")
-      .eq("tenant_id", params.tenantId)
-      .eq("work_completion_status", "CONCLUIDO")
-      .in("project_id", chunk)
-      .returns<{ project_id: string }[]>();
+    const completedProjectIdsResult = await fetchCompletedProgrammingProjectIdsCompat({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds: chunk,
+    });
 
-    if (programmingRowsError) {
-      return { data: null, error: programmingRowsError };
+    if (completedProjectIdsResult.error) {
+      return { data: null, error: completedProjectIdsResult.error };
     }
 
-    for (const row of programmingRows ?? []) {
-      const projectId = normalizeText(row.project_id);
+    for (const projectId of completedProjectIdsResult.projectIds) {
       if (!projectId) {
         continue;
       }
@@ -1113,20 +1203,16 @@ export async function GET(request: NextRequest) {
     const to = from + pageSize - 1;
     let completedProjectIds: string[] = [];
     if (status === "CONCLUIDO") {
-      const { data: completedRows, error: completedRowsError } = await supabase
-        .from("project_programming")
-        .select("project_id")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("work_completion_status", "CONCLUIDO")
-        .returns<{ project_id: string }[]>();
+      const completedProjectIdsResult = await fetchCompletedProgrammingProjectIdsCompat({
+        supabase,
+        tenantId: appUser.tenant_id,
+      });
 
-      if (completedRowsError) {
+      if (completedProjectIdsResult.error) {
         return NextResponse.json({ message: "Falha ao consolidar status concluido dos projetos." }, { status: 500 });
       }
 
-      completedProjectIds = Array.from(
-        new Set((completedRows ?? []).map((item) => normalizeText(item.project_id)).filter(Boolean)),
-      );
+      completedProjectIds = completedProjectIdsResult.projectIds;
     }
 
     const { data, error, count } = await fetchProjectsPageCompat({

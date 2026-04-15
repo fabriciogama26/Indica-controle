@@ -761,3 +761,51 @@ Atualizacao adicional 2026-04-15 (ETAPA UNICA x ETAPA FINAL)
   - Depois: `etapa_unica` e `etapa_final` sao persistidos e retornados pela API.
   - Antes: `INFO STATUS` considerava somente ETAPA numerica ou ETAPA UNICA.
   - Depois: `INFO STATUS` prioriza `ETAPA FINAL`, depois `ETAPA ÚNICA`, e por fim `xª ETAPA`.
+
+Atualizacao adicional 2026-04-15 (filtro Estado Trabalho)
+----------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `normalizeWorkCompletionCode`
+  - `isWorkCompleted`
+  - `resolveEnelNovoStatus`
+  - bloco `filteredSchedules` (filtro de listagem)
+  - `buildSavedOutsideFiltersMessage`
+- Comportamento antes/depois:
+  - Antes: o filtro `Estado Trabalho` comparava valor textual exato e podia falhar quando havia variacao de acento/espaco/caixa entre catalogo e registros.
+  - Depois: o filtro passa a comparar codigos normalizados, mantendo o resultado consistente para estados equivalentes (ex.: `CONCLUIDO` x `CONCLUÍDO`).
+
+Atualizacao adicional 2026-04-15 (Estado Trabalho por UUID sem perda de historico)
+--------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/157_add_programming_work_completion_status_uuid_sync.sql`
+  - `src/app/api/projects/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchCompletedProgrammingProjectIdsCompat`
+  - `normalizeStatusCatalogCode`
+  - `isMissingWorkCompletionStatusIdColumnError`
+  - migration SQL `sync_project_programming_work_completion_status_fields`
+- Comportamento antes/depois:
+  - Antes: consolidacao de `CONCLUIDO` em Projetos dependia somente de texto fixo (`work_completion_status = 'CONCLUIDO'`).
+  - Depois: consolidacao passa a priorizar o catalogo de Estado Trabalho (UUID em `work_completion_status_id`), com fallback para texto legado, sem perda de dados historicos.
+  - Antes: `project_programming` guardava apenas codigo textual de Estado Trabalho.
+  - Depois: `project_programming` passa a ter tambem `work_completion_status_id` (UUID), com backfill e trigger para manter `codigo <-> UUID` sincronizados automaticamente.
+
+Atualizacao adicional 2026-04-15 (compat fallback sem etapa_final)
+---------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `isMissingEtapaFinalColumnError`
+  - `fetchProgrammingRows`
+  - `PROGRAMMING_SELECT_WITH_*_LEGACY_ETAPA_FINAL`
+- Comportamento antes/depois:
+  - Antes: em ambiente sem coluna `etapa_final`, a leitura da Programacao podia cair em select legado sem `work_completion_status`, quebrando o filtro `Estado Trabalho`.
+  - Depois: em ambiente sem `etapa_final`, a API usa fallback intermediario que mantem `work_completion_status`, preservando o filtro de `Estado Trabalho`.
