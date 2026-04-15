@@ -487,12 +487,12 @@ function normalizeBoolean(value: unknown) {
 }
 
 function normalizeElectricalEqNumber(value: unknown) {
-  const normalized = normalizeText(value).replace(/[^\d]/g, "");
+  const normalized = normalizeText(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!normalized) {
     return null;
   }
 
-  return /^\d+$/.test(normalized) ? normalized : null;
+  return /^[A-Z0-9]+$/.test(normalized) ? normalized : null;
 }
 
 function normalizeSgdNumber(value: unknown) {
@@ -2889,7 +2889,7 @@ async function saveProgrammingBatch(request: NextRequest) {
 
     if (!electricalField) {
       return NextResponse.json(
-        { message: "O numero do Nº EQ deve conter apenas digitos." },
+        { message: "O numero do Nº EQ deve conter apenas letras e numeros." },
         { status: 400 },
       );
     }
@@ -3230,7 +3230,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   if (!electricalField) {
     return NextResponse.json(
-      { message: "O numero do Nº EQ deve conter apenas digitos." },
+      { message: "O numero do Nº EQ deve conter apenas letras e numeros." },
       { status: 400 },
     );
   }
