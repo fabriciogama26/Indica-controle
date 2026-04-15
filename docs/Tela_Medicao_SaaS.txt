@@ -388,4 +388,6 @@ Atualizacao 2026-04-15
   - Depois: o filtro passa a consumir `programming_work_completion_catalog`, com opcoes dinamicas e `Nao informado`.
   - Antes: a Medicao descartava estados fora de `CONCLUIDO/PARCIAL`, exibindo `-` em parte dos casos.
   - Depois: a Medicao passa a herdar qualquer codigo de `Estado Trabalho` da Programacao (com fallback para snapshot da ordem quando necessario).
+  - Antes: quando nao havia match por `Projeto + Equipe + Data`, o `Status execucao` ficava `-` mesmo havendo Programacao para o mesmo `Projeto + Data`.
+  - Depois: sem match de equipe, a Medicao usa fallback de `Projeto + Data` para herdar `Status execucao`, mantendo `Programacao = Nao programada` quando aplicavel.
 
