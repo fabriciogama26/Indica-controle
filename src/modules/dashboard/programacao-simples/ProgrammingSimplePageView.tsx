@@ -121,6 +121,7 @@ type ScheduleItem = {
   redeQty: number;
   etapaNumber: number | null;
   etapaUnica: boolean;
+  etapaFinal: boolean;
   workCompletionStatus: WorkCompletionStatus | null;
   affectedCustomers: number;
   sgdTypeId: string | null;
@@ -252,6 +253,7 @@ type FormState = {
   redeQty: string;
   etapaNumber: string;
   etapaUnica: boolean;
+  etapaFinal: boolean;
   workCompletionStatus: WorkCompletionStatus | "";
   affectedCustomers: string;
   sgdTypeId: string;
@@ -308,6 +310,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   trafoQty: "TRAFO",
   redeQty: "REDE",
   etapaNumber: "ETAPA",
+  etapaUnica: "ETAPA ÚNICA",
+  etapaFinal: "ETAPA FINAL",
   workCompletionStatus: "Estado Trabalho",
   affectedCustomers: "Nº Clientes Afetados",
   electricalEq: "Nº EQ",
@@ -627,7 +631,15 @@ function formatWeekdayExecutionEnelNovo(value: string) {
   return map[weekday] ?? "";
 }
 
-function formatInfoStatusEtapa(etapaNumber: number | null | undefined, etapaUnica?: boolean) {
+function formatInfoStatusEtapa(
+  etapaNumber: number | null | undefined,
+  etapaUnica?: boolean,
+  etapaFinal?: boolean,
+) {
+  if (etapaFinal) {
+    return "ETAPA FINAL";
+  }
+
   if (etapaUnica) {
     return "ETAPA ÚNICA";
   }
@@ -910,6 +922,7 @@ function createInitialForm(initialDate: string): FormState {
     redeQty: "0",
     etapaNumber: "",
     etapaUnica: false,
+    etapaFinal: false,
     workCompletionStatus: "",
     affectedCustomers: "0",
     sgdTypeId: "",
@@ -1927,7 +1940,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (!form.projectId || !form.date || !form.teamIds.length || form.etapaUnica) {
+    if (!form.projectId || !form.date || !form.teamIds.length || form.etapaUnica || form.etapaFinal) {
       return;
     }
 
@@ -1984,14 +1997,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [accessToken, form.date, form.etapaUnica, form.projectId, form.teamIds, isEditing, isEtapaManuallyEdited, isVisualizationMode]);
+  }, [accessToken, form.date, form.etapaFinal, form.etapaUnica, form.projectId, form.teamIds, isEditing, isEtapaManuallyEdited, isVisualizationMode]);
 
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
     if (field === "etapaNumber") {
       setIsEtapaManuallyEdited(Boolean(String(value).trim()));
     }
 
-    if (field === "etapaUnica") {
+    if (field === "etapaUnica" || field === "etapaFinal") {
       const nextEtapaUnica = Boolean(value);
       if (nextEtapaUnica) {
         setIsEtapaManuallyEdited(false);
@@ -2014,15 +2027,26 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         return {
           ...current,
           etapaUnica: nextEtapaUnica,
-          etapaNumber: nextEtapaUnica ? "" : current.etapaNumber,
+          etapaFinal: nextEtapaUnica ? false : current.etapaFinal,
+          etapaNumber: nextEtapaUnica || current.etapaFinal ? "" : current.etapaNumber,
+        };
+      }
+
+      if (field === "etapaFinal") {
+        const nextEtapaFinal = Boolean(value);
+        return {
+          ...current,
+          etapaFinal: nextEtapaFinal,
+          etapaUnica: nextEtapaFinal ? false : current.etapaUnica,
+          etapaNumber: nextEtapaFinal || current.etapaUnica ? "" : current.etapaNumber,
         };
       }
 
       return { ...current, [field]: value };
     });
     setInvalidFields((current) => {
-      if (field === "etapaUnica") {
-        return current.filter((item) => item !== "etapaUnica" && item !== "etapaNumber");
+      if (field === "etapaUnica" || field === "etapaFinal") {
+        return current.filter((item) => item !== "etapaUnica" && item !== "etapaFinal" && item !== "etapaNumber");
       }
 
       return current.filter((item) => item !== String(field));
@@ -2255,6 +2279,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       redeQty: String(schedule.redeQty ?? 0),
       etapaNumber: schedule.etapaNumber === null ? "" : String(schedule.etapaNumber),
       etapaUnica: Boolean(schedule.etapaUnica),
+      etapaFinal: Boolean(schedule.etapaFinal),
       workCompletionStatus: schedule.workCompletionStatus ?? "",
       affectedCustomers: String(schedule.affectedCustomers ?? 0),
       sgdTypeId: schedule.sgdTypeId ?? "",
@@ -2702,21 +2727,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (!form.etapaUnica && etapaNumberInput === undefined) {
+    if (!form.etapaUnica && !form.etapaFinal && etapaNumberInput === undefined) {
       flagInvalidFields(["etapaNumber"], "ETAPA deve ser um numero inteiro maior que zero.");
       return;
     }
 
-    const etapaNumber = form.etapaUnica
+    const etapaNumber = form.etapaUnica || form.etapaFinal
       ? null
       : (etapaNumberInput ?? (isEditing ? (currentEditingSchedule?.etapaNumber ?? null) : null));
 
-    if (!isEditing && !form.etapaUnica && etapaNumber === null) {
+    if (!isEditing && !form.etapaUnica && !form.etapaFinal && etapaNumber === null) {
       flagInvalidFields(["etapaNumber"], "ETAPA e obrigatoria no cadastro.");
       return;
     }
 
     const shouldValidateStageConflict = !form.etapaUnica
+      && !form.etapaFinal
       && etapaNumber !== null
       && (
         !isEditing
@@ -2828,6 +2854,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         redeQty,
         etapaNumber: etapaNumber ?? undefined,
         etapaUnica: form.etapaUnica,
+        etapaFinal: form.etapaFinal,
         workCompletionStatus: isEditing ? form.workCompletionStatus : undefined,
         affectedCustomers,
         sgdTypeId: form.sgdTypeId || undefined,
@@ -3249,7 +3276,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         const sgdAtMtVyp = isSgdAtMtVyp ? sgdExportValue : "";
         const sgdBt = isSgdBt ? sgdExportValue : "";
         const sgdTet = isSgdTet ? sgdExportValue : "";
-        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica);
+        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica, schedule.etapaFinal);
         const scheduleCreatedDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
         const estruturaValue = structureSummaryGroup
           ? formatStructureSummaryByCode(structureSummaryGroup.codeCount)
@@ -3398,10 +3425,24 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         "Qtd Clandestinos",
       ];
 
-      const structureAccumulator = new Map<string, { teamLabels: Set<string>; plates: Set<string> }>();
+      const groupedAccumulator = new Map<string, {
+        baseSchedule: ScheduleItem;
+        schedules: ScheduleItem[];
+        teamLabels: Set<string>;
+        plates: Set<string>;
+        foremanNames: Set<string>;
+      }>();
       for (const schedule of exportSchedules) {
         const key = `${schedule.projectId}__${schedule.date}`;
-        const current = structureAccumulator.get(key) ?? { teamLabels: new Set<string>(), plates: new Set<string>() };
+        const current = groupedAccumulator.get(key) ?? {
+          baseSchedule: schedule,
+          schedules: [],
+          teamLabels: new Set<string>(),
+          plates: new Set<string>(),
+          foremanNames: new Set<string>(),
+        };
+
+        current.schedules.push(schedule);
 
         const team = resolveScheduleTeamInfo(schedule, teamMap);
         const teamLabel = String(team.name ?? "").trim();
@@ -3414,26 +3455,32 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           current.plates.add(vehiclePlate);
         }
 
-        structureAccumulator.set(key, current);
+        const foremanName = String(team.foremanName ?? "").trim();
+        if (foremanName) {
+          current.foremanNames.add(foremanName);
+        }
+
+        groupedAccumulator.set(key, current);
       }
 
-      const rows = exportSchedules.map((schedule) => {
+      const rows = Array.from(groupedAccumulator.values()).map((group) => {
+        const schedule = group.baseSchedule;
         const project = projectMap.get(schedule.projectId);
-        const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
-        const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
-        const team = resolveScheduleTeamInfo(schedule, teamMap);
+        const firstStatusReason = group.schedules
+          .map((item) => String(item.statusReason ?? "").trim())
+          .find(Boolean) ?? "";
+        const firstServiceDescription = group.schedules
+          .map((item) => String(item.serviceDescription ?? "").trim())
+          .find(Boolean) ?? "";
         const sgdTypeDescription = (schedule.sgdTypeDescription ?? "").trim();
         const isAreaLivre = isAreaLivreSgd(schedule.sgdExportColumn, schedule.sgdTypeDescription);
-        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica);
+        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica, schedule.etapaFinal);
         const createdDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
-        const estruturaValue = structureSummaryGroup
-          ? Array.from(structureSummaryGroup.teamLabels).sort((a, b) => a.localeCompare(b)).join("|")
-          : "";
-        const plateValue = structureSummaryGroup
-          ? Array.from(structureSummaryGroup.plates).sort((a, b) => a.localeCompare(b)).join(" - ")
-          : "";
+        const estruturaValue = Array.from(group.teamLabels).sort((a, b) => a.localeCompare(b)).join("|");
+        const plateValue = Array.from(group.plates).sort((a, b) => a.localeCompare(b)).join(" - ");
+        const foremanNamesValue = Array.from(group.foremanNames).sort((a, b) => a.localeCompare(b)).join(" / ");
         const numEqValue = `${(schedule.electricalField ?? "").trim()}${(schedule.electricalEqCode ?? "").trim()}`;
-        const serviceDescriptionValue = (schedule.serviceDescription ?? "").trim()
+        const serviceDescriptionValue = firstServiceDescription
           || (project?.serviceName ?? "").trim();
 
         return [
@@ -3455,7 +3502,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           schedule.support ?? "",
           project?.utilityFieldManager ?? "",
           extractTextBeforeDash(project?.partner ?? ""),
-          team.foremanName ?? "",
+          foremanNamesValue,
           isAreaLivre ? "SIM" : "NAO",
           isAreaLivre ? "NAO" : "SIM",
           sgdTypeDescription,
@@ -3469,7 +3516,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           project?.district ?? "",
           project?.city ?? "",
           serviceDescriptionValue,
-          schedule.statusReason ?? "",
+          firstStatusReason,
           "",
           formatDate(createdDate),
           "",
@@ -3813,16 +3860,26 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           <label className={`${styles.field} ${isFieldInvalid("etapaNumber") ? styles.fieldInvalid : ""}`}>
             <div className={styles.inlineFieldHeader}>
               <span>
-                ETAPA {form.etapaUnica ? null : <span className="requiredMark">*</span>}
+                ETAPA {form.etapaUnica || form.etapaFinal ? null : <span className="requiredMark">*</span>}
               </span>
-              <label className={styles.inlineCheckbox}>
-                <input
-                  type="checkbox"
-                  checked={form.etapaUnica}
-                  onChange={(event) => updateFormField("etapaUnica", event.target.checked)}
-                />
-                ETAPA ÚNICA
-              </label>
+              <div className={styles.inlineCheckboxGroup}>
+                <label className={styles.inlineCheckbox}>
+                  <input
+                    type="checkbox"
+                    checked={form.etapaUnica}
+                    onChange={(event) => updateFormField("etapaUnica", event.target.checked)}
+                  />
+                  ETAPA ÚNICA
+                </label>
+                <label className={styles.inlineCheckbox}>
+                  <input
+                    type="checkbox"
+                    checked={form.etapaFinal}
+                    onChange={(event) => updateFormField("etapaFinal", event.target.checked)}
+                  />
+                  ETAPA FINAL
+                </label>
+              </div>
             </div>
             <input
               type="number"
@@ -3830,13 +3887,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               step="1"
               value={form.etapaNumber}
               onChange={(event) => updateFormField("etapaNumber", event.target.value)}
-              disabled={form.etapaUnica}
+              disabled={form.etapaUnica || form.etapaFinal}
               placeholder="Ex.: 1"
             />
             <small className={styles.fieldHint}>
               {form.etapaUnica
                 ? "Com ETAPA ÚNICA marcada, a coluna INFO STATUS na extracao ENEL usa o texto ETAPA ÚNICA."
-                : "A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas. Na edicao, se nao alterar esse campo, o valor atual e preservado."}
+                : form.etapaFinal
+                  ? "Com ETAPA FINAL marcada, a coluna INFO STATUS na extracao ENEL usa o texto ETAPA FINAL."
+                : "A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas. Na edicao, se nao alterar esse campo, o valor atual e preservado. ETAPA ÚNICA e ETAPA FINAL sao opcoes excludentes."}
             </small>
           </label>
 
@@ -4697,6 +4756,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <p><strong>REDE:</strong> {detailsTarget.redeQty}</p>
                 <p><strong>ETAPA:</strong> {detailsTarget.etapaNumber ?? "-"}</p>
                 <p><strong>ETAPA ÚNICA:</strong> {detailsTarget.etapaUnica ? "Sim" : "Nao"}</p>
+                <p><strong>ETAPA FINAL:</strong> {detailsTarget.etapaFinal ? "Sim" : "Nao"}</p>
                 <p><strong>Estado Trabalho:</strong> {detailsTarget.workCompletionStatus || "-"}</p>
                 <p><strong>Nº Clientes Afetados:</strong> {detailsTarget.affectedCustomers}</p>
                 <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>
