@@ -683,6 +683,7 @@ export async function GET(request: NextRequest) {
   const measurementKindFilter = normalizeText(request.nextUrl.searchParams.get("measurementKind")).toUpperCase();
   const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
   const programmingMatchFilter = normalizeText(request.nextUrl.searchParams.get("programmingMatch")).toUpperCase();
+  const workCompletionStatusFilter = normalizeText(request.nextUrl.searchParams.get("workCompletionStatus")).toUpperCase();
   const completionAlertFilter = normalizeText(request.nextUrl.searchParams.get("completionAlert")).toUpperCase();
   const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
   const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
@@ -782,12 +783,16 @@ export async function GET(request: NextRequest) {
     ? filteredByProjectType.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
     : filteredByProjectType;
 
+  const filteredByWorkCompletionStatus = (workCompletionStatusFilter === "CONCLUIDO" || workCompletionStatusFilter === "PARCIAL")
+    ? filteredByProgrammingMatch.filter((item) => item.programmingCompletionStatus === workCompletionStatusFilter)
+    : filteredByProgrammingMatch;
+
   const filteredByCompletionAlert = (completionAlertFilter === "SIM" || completionAlertFilter === "NAO")
-    ? filteredByProgrammingMatch.filter((item) =>
+    ? filteredByWorkCompletionStatus.filter((item) =>
         completionAlertFilter === "SIM"
           ? item.programmingCompletionStatusChangedAfterMeasurement
           : !item.programmingCompletionStatusChangedAfterMeasurement)
-    : filteredByProgrammingMatch;
+    : filteredByWorkCompletionStatus;
 
   const filteredByMeasurementKind = (measurementKindFilter === "COM_PRODUCAO" || measurementKindFilter === "SEM_PRODUCAO")
     ? filteredByCompletionAlert.filter((item) => item.measurementKind === measurementKindFilter)

@@ -287,6 +287,7 @@ type Filters = {
   measurementKind: "TODOS" | MeasurementKind;
   noProductionReasonId: string;
   programmingMatch: "TODOS" | ProgrammingMatchStatus;
+  workCompletionStatus: "TODOS" | NonNullable<WorkCompletionStatus>;
   completionAlert: "TODOS" | "SIM" | "NAO";
 };
 
@@ -318,6 +319,7 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   params.set("status", filters.status);
   params.set("measurementKind", filters.measurementKind);
   params.set("programmingMatch", filters.programmingMatch);
+  params.set("workCompletionStatus", filters.workCompletionStatus);
   params.set("completionAlert", filters.completionAlert);
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
@@ -791,6 +793,7 @@ export function MeasurementPageView() {
       measurementKind: "TODOS" as const,
       noProductionReasonId: "",
       programmingMatch: "TODOS" as const,
+      workCompletionStatus: "TODOS" as const,
       completionAlert: "TODOS" as const,
     }),
     [today],
@@ -2697,6 +2700,14 @@ export function MeasurementPageView() {
               <option value="TODOS">Todos</option>
               <option value="PROGRAMADA">Programada</option>
               <option value="NAO_PROGRAMADA">Nao programada</option>
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span>Estado Trabalho</span>
+            <select value={filterDraft.workCompletionStatus} onChange={(event) => setFilterDraft((current) => ({ ...current, workCompletionStatus: event.target.value as Filters["workCompletionStatus"] }))}>
+              <option value="TODOS">Todos</option>
+              <option value="CONCLUIDO">Concluido</option>
+              <option value="PARCIAL">Parcial</option>
             </select>
           </label>
           <label className={styles.field}>

@@ -359,6 +359,7 @@
 - [x] Ajustar o resumo da lista da Medicao para considerar o resultado filtrado completo (todas as paginas), e nao apenas a pagina visivel.
 - [x] Ajustar a cor do `Status` na lista da Medicao para exibir `FECHADA` em vermelho (mesma classe de destaque de `CANCELADA`).
 - [x] Ajustar o layout de `Status execucao` na lista da Medicao para exibir `CONCLUIDO` e `Atualizado apos medicao` em linhas separadas.
+- [x] Adicionar no filtro da Medicao o campo `Estado Trabalho` (`Todos`, `Concluido`, `Parcial`) com suporte no frontend e no `GET /api/medicao`.
 - [x] Implementar acao `Abrir` para ordens `FECHADA` na Medicao, com modal de motivo obrigatorio e registro transacional no banco/historico.
 - [x] Ajustar regra de cancelamento da Medicao para permitir em `ABERTA` e `FECHADA`, mantendo bloqueio apenas para `CANCELADA` e registro de historico no RPC.
 - [x] Adicionar suporte a quantidade composta (`MVA*hora`) na Medicao: campos `MVA` e `Horas` na tela/importacao, persistencia em `project_measurement_order_items` e calculo automatico de `quantity`.
@@ -434,3 +435,4 @@
 - [x] Adicionar compatibilidade de Estado Trabalho por UUID (work_completion_status_id) com backfill e trigger de sincronismo codigo/UUID, mantendo fallback legado para CONCLUIDO em /api/projects sem perda de historico.
 - [x] Corrigir fallback de leitura em /api/programacao para ambientes sem coluna etapa_final, preservando work_completion_status e evitando filtro Estado Trabalho zerado por downgrade indevido de select.
 - [x] Corrigir falha de "Sessao invalida para editar programacao" no submit da Programacao Simples, com refresh de token via `supabase.auth.getSession()` e retry unico no `PUT` quando houver `401`.
+

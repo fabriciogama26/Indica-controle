@@ -121,6 +121,7 @@ Filtros, auto-complete e listagem
   - Tipo (`TODOS`, `Com producao`, `Sem producao`)
   - Motivo sem producao (lista carregada de `measurement_no_production_reasons`; aceita `Todos`)
   - Programacao (`TODOS`, `Programada`, `Nao programada`)
+  - Estado Trabalho (`TODOS`, `CONCLUIDO`, `PARCIAL`)
   - Alerta Concluido/Parcial (`TODOS`, `Com alerta`, `Sem alerta`)
 - Listagem:
   - Numero da ordem
@@ -367,4 +368,20 @@ Atualizacao 2026-04-13
   - Depois: ordens vinculadas a obras de teste sao removidas da consolidacao da listagem (`Ordens` e `Valor total`) no backend.
   - Antes: o campo `Status execucao` podia ficar comprimido, com `CONCLUIDO` e `Atualizado apos medicao` na mesma linha visual.
   - Depois: o campo `Status execucao` exibe status e alerta em linhas separadas, com melhor leitura na grade.
+
+Atualizacao 2026-04-15
+----------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `buildOrdersQuery`
+  - `initialFilters`/`Filters`
+  - `applyFilters`
+  - `GET /api/medicao` (pipeline de filtros da listagem)
+- Comportamento antes/depois:
+  - Antes: a tela de Medicao nao tinha filtro explicito por `Estado Trabalho` na lista.
+  - Depois: a tela passa a exibir filtro `Estado Trabalho` (`Todos`, `Concluido`, `Parcial`) e o backend aplica esse filtro na listagem paginada.
 
