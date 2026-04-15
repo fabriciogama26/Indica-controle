@@ -724,3 +724,40 @@ Atualizacao adicional 2026-04-15 (Extracao ENEL NOVO - padrao de data)
 - Comportamento antes/depois:
   - Antes: a coluna `Data Execução` da `Extracao ENEL NOVO` era exportada no formato `dd-mmm-yy`.
   - Depois: a coluna `Data Execução` passa a seguir o padrão `dd/mm/yyyy` (ex.: `10/11/2026`).
+
+Atualizacao adicional 2026-04-15 (ETAPA FINAL e consolidacao da Extracao ENEL NOVO)
+---------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: o checkbox mostrava apenas `ETAPA ÚNICA`.
+  - Depois: o texto passa a exibir `ETAPA ÚNICA / ETAPA FINAL`.
+  - Antes: a `Extracao ENEL NOVO` gerava multiplas linhas para o mesmo `Projeto + Data` quando havia mais de uma equipe.
+  - Depois: a `Extracao ENEL NOVO` consolida em linha unica por `Projeto + Data`, mantendo `Estrutura` e `Placa` agregadas.
+  - Antes: `Responsável Execução` trazia apenas um encarregado por linha.
+  - Depois: `Responsável Execução` passa a listar todos os encarregados do grupo separados por ` / `.
+
+Atualizacao adicional 2026-04-15 (ETAPA UNICA x ETAPA FINAL)
+------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/156_add_programming_etapa_final_flag.sql`
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `formatInfoStatusEtapa`
+  - `updateFormField`
+  - `setProgrammingEtapaFlagsValue`
+  - `saveProgrammingBatch`
+  - `saveProgramming`
+- Comportamento antes/depois:
+  - Antes: havia apenas uma opcao visual combinada (`ETAPA ÚNICA / ETAPA FINAL`) sem distincao funcional.
+  - Depois: existem dois checkboxes (`ETAPA ÚNICA` e `ETAPA FINAL`) com regra de exclusao mutua (se marcar um, o outro desmarca).
+  - Antes: apenas `etapa_unica` era persistido.
+  - Depois: `etapa_unica` e `etapa_final` sao persistidos e retornados pela API.
+  - Antes: `INFO STATUS` considerava somente ETAPA numerica ou ETAPA UNICA.
+  - Depois: `INFO STATUS` prioriza `ETAPA FINAL`, depois `ETAPA ÚNICA`, e por fim `xª ETAPA`.

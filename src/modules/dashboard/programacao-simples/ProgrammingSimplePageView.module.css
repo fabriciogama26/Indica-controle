@@ -206,6 +206,13 @@
   white-space: nowrap;
 }
 
+.inlineCheckboxGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .inlineCheckbox input {
   width: 16px;
   height: 16px;
