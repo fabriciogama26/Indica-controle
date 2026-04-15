@@ -5,7 +5,7 @@ import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 
 type MeasurementOrderStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
-type ProgrammingWorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | null;
+type ProgrammingWorkCompletionStatus = string | null;
 type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 
 type MeasurementOrderRow = {
@@ -304,10 +304,7 @@ function resolveAppUserName(user: AppUserRow | undefined) {
 
 function normalizeProgrammingWorkCompletionStatus(value: unknown): ProgrammingWorkCompletionStatus {
   const normalized = normalizeText(value).toUpperCase();
-  if (normalized === "CONCLUIDO" || normalized === "PARCIAL") {
-    return normalized;
-  }
-  return null;
+  return normalized || null;
 }
 
 function programmingStatusPriority(status: unknown) {
@@ -423,7 +420,7 @@ async function loadProgrammingMatchMap(params: {
     result.set(order.id, {
       status: "PROGRAMADA",
       programmingId: bestMatch.id,
-      completionStatus: currentCompletion,
+      completionStatus: currentCompletion ?? snapshotCompletion,
       completionStatusChangedAfterMeasurement: changedBySnapshot || changedAfterMeasurementWithoutSnapshot,
     });
   }
@@ -783,9 +780,13 @@ export async function GET(request: NextRequest) {
     ? filteredByProjectType.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
     : filteredByProjectType;
 
-  const filteredByWorkCompletionStatus = (workCompletionStatusFilter === "CONCLUIDO" || workCompletionStatusFilter === "PARCIAL")
-    ? filteredByProgrammingMatch.filter((item) => item.programmingCompletionStatus === workCompletionStatusFilter)
-    : filteredByProgrammingMatch;
+  const filteredByWorkCompletionStatus = workCompletionStatusFilter === "NAO_INFORMADO"
+    ? filteredByProgrammingMatch.filter((item) => !item.programmingCompletionStatus)
+    : (
+      workCompletionStatusFilter && workCompletionStatusFilter !== "TODOS"
+        ? filteredByProgrammingMatch.filter((item) => item.programmingCompletionStatus === workCompletionStatusFilter)
+        : filteredByProgrammingMatch
+    );
 
   const filteredByCompletionAlert = (completionAlertFilter === "SIM" || completionAlertFilter === "NAO")
     ? filteredByWorkCompletionStatus.filter((item) =>

@@ -9,7 +9,7 @@ type MeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
-type WorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | null;
+type WorkCompletionStatus = string | null;
 
 type ProjectItem = {
   id: string;
@@ -43,10 +43,16 @@ type ScheduleItem = {
   activities: ScheduleActivity[];
 };
 
+type WorkCompletionCatalogItem = {
+  code: string;
+  label: string;
+};
+
 type ProgrammingResponse = {
   projects?: ProjectItem[];
   teams?: TeamItem[];
   schedules?: ScheduleItem[];
+  workCompletionCatalog?: WorkCompletionCatalogItem[];
   message?: string;
 };
 
@@ -71,6 +77,7 @@ type NoProductionReasonItem = {
 
 type MeasurementMetaResponse = {
   noProductionReasons?: NoProductionReasonItem[];
+  workCompletionCatalog?: WorkCompletionCatalogItem[];
   message?: string;
 };
 
@@ -287,7 +294,7 @@ type Filters = {
   measurementKind: "TODOS" | MeasurementKind;
   noProductionReasonId: string;
   programmingMatch: "TODOS" | ProgrammingMatchStatus;
-  workCompletionStatus: "TODOS" | NonNullable<WorkCompletionStatus>;
+  workCompletionStatus: "TODOS" | "NAO_INFORMADO" | string;
   completionAlert: "TODOS" | "SIM" | "NAO";
 };
 
@@ -431,6 +438,11 @@ function isMvaHourUnit(value: string) {
 
 function programmingMatchLabel(status: ProgrammingMatchStatus) {
   return status === "PROGRAMADA" ? "Programada" : "Nao programada";
+}
+
+function workCompletionStatusLabel(status: WorkCompletionStatus, labelMap: Map<string, string>) {
+  if (!status) return "-";
+  return labelMap.get(status) ?? status;
 }
 
 function formatHistoryActionLabel(action: string) {
@@ -806,6 +818,7 @@ export function MeasurementPageView() {
   const [, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonItem[]>([]);
+  const [workCompletionCatalog, setWorkCompletionCatalog] = useState<WorkCompletionCatalogItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
   const [activeFilters, setActiveFilters] = useState<Filters>(initialFilters);
@@ -840,6 +853,10 @@ export function MeasurementPageView() {
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
+  const workCompletionLabelMap = useMemo(
+    () => new Map(workCompletionCatalog.map((item) => [item.code, item.label])),
+    [workCompletionCatalog],
+  );
   const resolvedActivityOptions = useMemo(() => {
     const byId = new Map<string, ActivityCatalogItem>();
     for (const item of activityOptions) {
@@ -1002,6 +1019,7 @@ export function MeasurementPageView() {
   useEffect(() => {
     if (!accessToken) {
       setNoProductionReasons([]);
+      setWorkCompletionCatalog([]);
       return;
     }
 
@@ -1013,13 +1031,15 @@ export function MeasurementPageView() {
           cache: "no-store",
         });
         const data = (await response.json().catch(() => null)) as MeasurementMetaResponse | null;
-        if (!response.ok) throw new Error(data?.message ?? "Falha ao carregar motivos de sem producao.");
+        if (!response.ok) throw new Error(data?.message ?? "Falha ao carregar metadados da medicao.");
         if (ignore) return;
         setNoProductionReasons(data?.noProductionReasons ?? []);
+        setWorkCompletionCatalog(data?.workCompletionCatalog ?? []);
       } catch (error) {
         if (!ignore) {
           setNoProductionReasons([]);
-          setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar motivos de sem producao." });
+          setWorkCompletionCatalog([]);
+          setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar metadados da medicao." });
         }
       }
     }
@@ -2319,9 +2339,10 @@ export function MeasurementPageView() {
         "Atualizado em",
       ];
       const rows = exportOrders.map((order) => {
+        const executionStatusLabel = workCompletionStatusLabel(order.programmingCompletionStatus, workCompletionLabelMap);
         const executionStatus = order.programmingCompletionStatusChangedAfterMeasurement
-          ? `${order.programmingCompletionStatus ?? "-"} (Atualizado apos medicao)`
-          : (order.programmingCompletionStatus ?? "-");
+          ? `${executionStatusLabel} (Atualizado apos medicao)`
+          : executionStatusLabel;
         return [
           order.orderNumber,
           order.projectCode,
@@ -2413,9 +2434,10 @@ export function MeasurementPageView() {
         const teamName = summary?.teamName ?? teamMap.get(detail.teamId)?.name ?? detail.teamId;
         const foremanName = summary?.foremanName ?? teamMap.get(detail.teamId)?.foremanName ?? "-";
         const programmingLabel = programmingMatchLabel(detail.programmingMatchStatus);
+        const executionStatusLabel = workCompletionStatusLabel(detail.programmingCompletionStatus, workCompletionLabelMap);
         const executionStatus = detail.programmingCompletionStatusChangedAfterMeasurement
-          ? `${detail.programmingCompletionStatus ?? "-"} (Atualizado apos medicao)`
-          : (detail.programmingCompletionStatus ?? "-");
+          ? `${executionStatusLabel} (Atualizado apos medicao)`
+          : executionStatusLabel;
 
         const detailItems = detail.items.length ? detail.items : [{
           id: `${detail.id}-empty`,
@@ -2706,8 +2728,12 @@ export function MeasurementPageView() {
             <span>Estado Trabalho</span>
             <select value={filterDraft.workCompletionStatus} onChange={(event) => setFilterDraft((current) => ({ ...current, workCompletionStatus: event.target.value as Filters["workCompletionStatus"] }))}>
               <option value="TODOS">Todos</option>
-              <option value="CONCLUIDO">Concluido</option>
-              <option value="PARCIAL">Parcial</option>
+              {workCompletionCatalog
+                .filter((item) => item.code !== "NAO_INFORMADO")
+                .map((item) => (
+                  <option key={item.code} value={item.code}>{item.label}</option>
+                ))}
+              <option value="NAO_INFORMADO">Nao informado</option>
             </select>
           </label>
           <label className={styles.field}>
@@ -2771,7 +2797,7 @@ export function MeasurementPageView() {
                   <td>{programmingMatchLabel(order.programmingMatchStatus)}</td>
                   <td>
                     <div className={styles.executionStatusStack}>
-                      <span>{order.programmingCompletionStatus ?? "-"}</span>
+                      <span>{workCompletionStatusLabel(order.programmingCompletionStatus, workCompletionLabelMap)}</span>
                       {order.programmingCompletionStatusChangedAfterMeasurement ? (
                         <span className={`${styles.statusTagDanger} ${styles.executionStatusAlert}`}>Atualizado apos medicao</span>
                       ) : null}
@@ -2948,7 +2974,7 @@ export function MeasurementPageView() {
                 <div><strong>Tipo da medicao:</strong> {measurementKindLabel(detailOrder.measurementKind)}</div>
                 <div><strong>Motivo sem producao:</strong> {detailOrder.noProductionReasonName || "-"}</div>
                 <div><strong>Programacao:</strong> {programmingMatchLabel(detailOrder.programmingMatchStatus)}</div>
-                <div><strong>Status execucao:</strong> {detailOrder.programmingCompletionStatus ?? "-"}</div>
+                <div><strong>Status execucao:</strong> {workCompletionStatusLabel(detailOrder.programmingCompletionStatus, workCompletionLabelMap)}</div>
                 <div><strong>Status da ordem:</strong> {detailOrder.status}</div>
                 <div><strong>Taxa manual:</strong> {detailOrder.manualRate.toLocaleString("pt-BR")}</div>
                 <div className={styles.detailWide}><strong>Observacoes:</strong> {detailOrder.notes || "-"}</div>

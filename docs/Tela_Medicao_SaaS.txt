@@ -121,7 +121,7 @@ Filtros, auto-complete e listagem
   - Tipo (`TODOS`, `Com producao`, `Sem producao`)
   - Motivo sem producao (lista carregada de `measurement_no_production_reasons`; aceita `Todos`)
   - Programacao (`TODOS`, `Programada`, `Nao programada`)
-  - Estado Trabalho (`TODOS`, `CONCLUIDO`, `PARCIAL`)
+  - Estado Trabalho (catalogo por tenant vindo de `programming_work_completion_catalog`, com opcoes dinamicas + `Nao informado`)
   - Alerta Concluido/Parcial (`TODOS`, `Com alerta`, `Sem alerta`)
 - Listagem:
   - Numero da ordem
@@ -374,14 +374,18 @@ Atualizacao 2026-04-15
 - Arquivos alterados/criados:
   - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
   - `src/app/api/medicao/route.ts`
+  - `src/app/api/medicao/meta/route.ts`
   - `docs/Tela_Medicao_SaaS.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
   - `buildOrdersQuery`
   - `initialFilters`/`Filters`
-  - `applyFilters`
+  - `workCompletionStatusLabel`
   - `GET /api/medicao` (pipeline de filtros da listagem)
+  - `GET /api/medicao/meta` (catalogo de `Estado Trabalho`)
 - Comportamento antes/depois:
-  - Antes: a tela de Medicao nao tinha filtro explicito por `Estado Trabalho` na lista.
-  - Depois: a tela passa a exibir filtro `Estado Trabalho` (`Todos`, `Concluido`, `Parcial`) e o backend aplica esse filtro na listagem paginada.
+  - Antes: o filtro de `Estado Trabalho` na Medicao era fixo e nao consumia o catalogo por tenant.
+  - Depois: o filtro passa a consumir `programming_work_completion_catalog`, com opcoes dinamicas e `Nao informado`.
+  - Antes: a Medicao descartava estados fora de `CONCLUIDO/PARCIAL`, exibindo `-` em parte dos casos.
+  - Depois: a Medicao passa a herdar qualquer codigo de `Estado Trabalho` da Programacao (com fallback para snapshot da ordem quando necessario).
 
