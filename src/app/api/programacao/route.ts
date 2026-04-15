@@ -422,8 +422,26 @@ const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL =
 const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
   "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, etapa_unica, etapa_final, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
 
+const PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL_LEGACY_ETAPA_FINAL =
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, feeder, support, support_item_id, note, campo_eletrico, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, etapa_unica, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
+
+const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL_LEGACY_ETAPA_FINAL =
+  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, etapa_unica, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function isMissingEtapaFinalColumnError(errorMessage: unknown) {
+  const normalizedError = normalizeText(errorMessage).toLowerCase();
+  return (
+    normalizedError.includes("etapa_final")
+    && (
+      normalizedError.includes("does not exist")
+      || normalizedError.includes("could not find")
+      || normalizedError.includes("schema cache")
+    )
+  );
 }
 
 function resolveAppUserName(user: AppUserLookupRow | undefined) {
@@ -975,6 +993,24 @@ async function fetchProgrammingRows(
     );
   }
 
+  if (isMissingEtapaFinalColumnError(withOutageStructureAndEnelAttempt.error?.message)) {
+    const withOutageStructureAndEnelLegacyEtapaFinalAttempt = await supabase
+      .from("project_programming")
+      .select(PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL_LEGACY_ETAPA_FINAL)
+      .eq("tenant_id", tenantId)
+      .gte("execution_date", startDate)
+      .lte("execution_date", endDate)
+      .order("execution_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .returns<Array<Record<string, unknown>>>();
+
+    if (!withOutageStructureAndEnelLegacyEtapaFinalAttempt.error) {
+      return (withOutageStructureAndEnelLegacyEtapaFinalAttempt.data ?? []).map((item) =>
+        normalizeProgrammingStructureFields(item),
+      );
+    }
+  }
+
   const withStructureAndEnelAttempt = await supabase
     .from("project_programming")
     .select(PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL)
@@ -989,6 +1025,24 @@ async function fetchProgrammingRows(
     return (withStructureAndEnelAttempt.data ?? []).map((item) =>
       normalizeProgrammingStructureFields(item as unknown as Record<string, unknown>),
     );
+  }
+
+  if (isMissingEtapaFinalColumnError(withStructureAndEnelAttempt.error?.message)) {
+    const withStructureAndEnelLegacyEtapaFinalAttempt = await supabase
+      .from("project_programming")
+      .select(PROGRAMMING_SELECT_WITH_STRUCTURE_AND_ENEL_LEGACY_ETAPA_FINAL)
+      .eq("tenant_id", tenantId)
+      .gte("execution_date", startDate)
+      .lte("execution_date", endDate)
+      .order("execution_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .returns<Array<Record<string, unknown>>>();
+
+    if (!withStructureAndEnelLegacyEtapaFinalAttempt.error) {
+      return (withStructureAndEnelLegacyEtapaFinalAttempt.data ?? []).map((item) =>
+        normalizeProgrammingStructureFields(item),
+      );
+    }
   }
 
   const withStructureAttempt = await supabase

@@ -430,3 +430,6 @@
 - [x] Padronizar a coluna Data Execução da Extracao ENEL NOVO para o formato dd/mm/yyyy (ex.: 10/11/2026).
 - [x] Ajustar Extracao ENEL NOVO para consolidar uma unica linha por Projeto + Data e montar Responsável Execução com encarregados separados por  / .
 - [x] Separar ETAPA em dois checkboxes (ETAPA ÚNICA e ETAPA FINAL) com exclusao mutua, persistencia no banco (etapa_final) e reflexo no INFO STATUS da extracao ENEL.
+- [x] Corrigir filtro de Estado Trabalho na Programacao Simples com comparacao normalizada (sem diferenca por acento/espaco/caixa), evitando falso zero na listagem.
+- [x] Adicionar compatibilidade de Estado Trabalho por UUID (work_completion_status_id) com backfill e trigger de sincronismo codigo/UUID, mantendo fallback legado para CONCLUIDO em /api/projects sem perda de historico.
+- [x] Corrigir fallback de leitura em /api/programacao para ambientes sem coluna etapa_final, preservando work_completion_status e evitando filtro Estado Trabalho zerado por downgrade indevido de select.

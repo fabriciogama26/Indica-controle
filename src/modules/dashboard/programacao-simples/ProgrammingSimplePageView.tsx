@@ -683,11 +683,13 @@ function extractTextBeforeDash(value: string | null | undefined) {
 }
 
 function resolveEnelNovoStatus(schedule: ScheduleItem) {
-  if (schedule.workCompletionStatus === "CONCLUIDO") {
+  const normalizedWorkCompletionStatus = normalizeWorkCompletionCode(schedule.workCompletionStatus);
+
+  if (normalizedWorkCompletionStatus === "CONCLUIDO") {
     return "CONCLUÍDO";
   }
 
-  if (schedule.workCompletionStatus === "PARCIAL") {
+  if (normalizedWorkCompletionStatus === "PARCIAL") {
     return "PARCIAL";
   }
 
@@ -718,6 +720,17 @@ function isAreaLivreSgd(
     || description === "AREA_LIVRE"
     || description === "AREA LIVRE"
   );
+}
+
+function normalizeWorkCompletionCode(value: unknown) {
+  const raw = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+
+  return raw || "NAO_INFORMADO";
 }
 
 function resolveTipoSgdNovoLabel(
@@ -1165,7 +1178,7 @@ function formatHistoryAction(action: string) {
 }
 
 function isWorkCompleted(workCompletionStatus: ScheduleItem["workCompletionStatus"] | string | null | undefined) {
-  const normalized = String(workCompletionStatus ?? "").trim().toUpperCase();
+  const normalized = normalizeWorkCompletionCode(workCompletionStatus);
   return normalized === "CONCLUIDO" || normalized === "COMPLETO";
 }
 
@@ -1242,8 +1255,9 @@ function buildSavedOutsideFiltersMessage(params: {
   }
 
   if (params.activeFilters.workCompletionStatus !== "TODOS") {
-    const savedWorkCompletionStatus = params.workCompletionStatus ?? "NAO_INFORMADO";
-    if (params.activeFilters.workCompletionStatus !== savedWorkCompletionStatus) {
+    const savedWorkCompletionStatus = normalizeWorkCompletionCode(params.workCompletionStatus);
+    const selectedWorkCompletionStatus = normalizeWorkCompletionCode(params.activeFilters.workCompletionStatus);
+    if (selectedWorkCompletionStatus !== savedWorkCompletionStatus) {
       const selectedCatalogItem = params.activeFilters.workCompletionStatus === "NAO_INFORMADO"
         ? null
         : params.workCompletionCatalog.find((item) => item.code === params.activeFilters.workCompletionStatus) ?? null;
@@ -1578,8 +1592,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       }
 
       if (activeFilters.workCompletionStatus !== "TODOS") {
-        const scheduleWorkCompletionStatus = item.workCompletionStatus ?? "NAO_INFORMADO";
-        if (scheduleWorkCompletionStatus !== activeFilters.workCompletionStatus) {
+        const scheduleWorkCompletionStatus = normalizeWorkCompletionCode(item.workCompletionStatus);
+        const selectedWorkCompletionStatus = normalizeWorkCompletionCode(activeFilters.workCompletionStatus);
+        if (scheduleWorkCompletionStatus !== selectedWorkCompletionStatus) {
           return false;
         }
       }
