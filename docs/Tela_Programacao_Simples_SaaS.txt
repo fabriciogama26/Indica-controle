@@ -288,6 +288,7 @@ Boas praticas
 - Seguranca operacional:
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
   - O backend impede salvar a mesma obra para a mesma equipe na mesma data quando ainda existir programacao ativa para esse conjunto.
+  - Quando houver `TEAM_TIME_CONFLICT`, a API enriquece a mensagem de erro com `Equipe` e `Encarregado` para facilitar identificacao no modal de alerta.
   - O adiamento exige nova data posterior a data atual da programacao no frontend, na API e na RPC do banco.
   - O frontend abre modal de alerta para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`, antes de depender apenas do feedback no topo.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.

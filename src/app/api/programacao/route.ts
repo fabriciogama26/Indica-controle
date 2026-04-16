@@ -401,6 +401,30 @@ type PostponeProgrammingRpcResult = {
   updated_at?: string;
 };
 
+type ProgrammingTimeConflictLookupRow = {
+  id: string;
+  team_id: string;
+  project_id: string;
+  start_time: string;
+  end_time: string;
+};
+
+type TeamConflictLookupRow = {
+  id: string;
+  name: string | null;
+  foreman_person_id: string | null;
+};
+
+type ForemanConflictLookupRow = {
+  id: string;
+  nome: string | null;
+};
+
+type ProjectConflictLookupRow = {
+  id: string;
+  sob: string | null;
+};
+
 function isMissingRpcFunctionError(errorMessage: string, functionName: string) {
   const normalizedError = normalizeText(errorMessage).toLowerCase();
   return (
@@ -450,6 +474,83 @@ function resolveAppUserName(user: AppUserLookupRow | undefined) {
   }
 
   return normalizeText(user.login_name) || normalizeText(user.display) || "Nao identificado";
+}
+
+async function resolveTeamTimeConflictDetailedMessage(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  executionDate: string;
+  startTime: string;
+  endTime: string;
+  teamIds: string[];
+  excludeProgrammingId?: string | null;
+}) {
+  const uniqueTeamIds = Array.from(new Set(params.teamIds.map((value) => normalizeText(value)).filter(Boolean)));
+  if (!uniqueTeamIds.length) {
+    return null;
+  }
+
+  let conflictQuery = params.supabase
+    .from("project_programming")
+    .select("id, team_id, project_id, start_time, end_time")
+    .eq("tenant_id", params.tenantId)
+    .eq("execution_date", params.executionDate)
+    .in("team_id", uniqueTeamIds)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .lt("start_time", params.endTime)
+    .gt("end_time", params.startTime)
+    .order("team_id", { ascending: true })
+    .order("start_time", { ascending: true })
+    .limit(1);
+
+  if (params.excludeProgrammingId) {
+    conflictQuery = conflictQuery.neq("id", params.excludeProgrammingId);
+  }
+
+  const { data: conflictRows, error: conflictError } = await conflictQuery;
+  if (conflictError || !Array.isArray(conflictRows) || !conflictRows.length) {
+    return null;
+  }
+
+  const conflict = conflictRows[0] as ProgrammingTimeConflictLookupRow;
+
+  const [{ data: teamRows }, { data: projectRows }] = await Promise.all([
+    params.supabase
+      .from("teams")
+      .select("id, name, foreman_person_id")
+      .eq("tenant_id", params.tenantId)
+      .eq("id", conflict.team_id)
+      .limit(1),
+    params.supabase
+      .from("project")
+      .select("id, sob")
+      .eq("tenant_id", params.tenantId)
+      .eq("id", conflict.project_id)
+      .limit(1),
+  ]);
+
+  const team = (Array.isArray(teamRows) && teamRows.length ? teamRows[0] : null) as TeamConflictLookupRow | null;
+  const project = (Array.isArray(projectRows) && projectRows.length ? projectRows[0] : null) as ProjectConflictLookupRow | null;
+
+  let foremanName = "Nao informado";
+  const foremanId = normalizeText(team?.foreman_person_id);
+  if (foremanId) {
+    const { data: foremanRows } = await params.supabase
+      .from("people")
+      .select("id, nome")
+      .eq("tenant_id", params.tenantId)
+      .eq("id", foremanId)
+      .limit(1);
+
+    const foreman = (Array.isArray(foremanRows) && foremanRows.length ? foremanRows[0] : null) as ForemanConflictLookupRow | null;
+    foremanName = normalizeText(foreman?.nome) || "Nao informado";
+  }
+
+  const teamName = normalizeText(team?.name) || conflict.team_id;
+  const projectCode = normalizeText(project?.sob) || "informada";
+  const conflictInterval = `${formatTime(conflict.start_time)} - ${formatTime(conflict.end_time)}`;
+
+  return `Conflito de horario na equipe ${teamName} (Encarregado: ${foremanName}) com a obra ${projectCode}, no intervalo ${conflictInterval}.`;
 }
 
 function isNegativeNumericLikeText(value: string | null) {
@@ -3180,35 +3281,51 @@ async function saveProgrammingBatch(request: NextRequest) {
     });
 
     if (!fullBatchSaveResult.ok) {
-    if (fullBatchSaveResult.reason === "FULL_RPC_NOT_AVAILABLE") {
-      return NextResponse.json(
-        {
-          message:
-            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Verifique se as RPCs base e wrappers estao atualizadas (migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159).",
-        },
-        { status: 409 },
-      );
-    }
+      if (fullBatchSaveResult.reason === "TEAM_TIME_CONFLICT") {
+        const detailedConflictMessage = await resolveTeamTimeConflictDetailedMessage({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          executionDate,
+          startTime,
+          endTime,
+          teamIds,
+        });
 
-    if (
-      (fullBatchSaveResult.reason === "BATCH_FULL_CREATE_FAILED"
-        || fullBatchSaveResult.reason === "SAVE_PROGRAMMING_FULL_FAILED")
-      && (
-        fullBatchSaveResult.message === "Falha ao cadastrar programacao em lote."
-        || fullBatchSaveResult.message === "Falha ao salvar programacao em transacao unica."
-      )
-    ) {
-      return NextResponse.json(
-        {
-          message:
-            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com RPC full inconsistente. Verifique as migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159.",
-        },
-        { status: 409 },
-      );
-    }
+        return NextResponse.json(
+          { message: detailedConflictMessage ?? fullBatchSaveResult.message },
+          { status: 409 },
+        );
+      }
 
-    return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
-  }
+      if (fullBatchSaveResult.reason === "FULL_RPC_NOT_AVAILABLE") {
+        return NextResponse.json(
+          {
+            message:
+              "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Verifique se as RPCs base e wrappers estao atualizadas (migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159).",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (
+        (fullBatchSaveResult.reason === "BATCH_FULL_CREATE_FAILED"
+          || fullBatchSaveResult.reason === "SAVE_PROGRAMMING_FULL_FAILED")
+        && (
+          fullBatchSaveResult.message === "Falha ao cadastrar programacao em lote."
+          || fullBatchSaveResult.message === "Falha ao salvar programacao em transacao unica."
+        )
+      ) {
+        return NextResponse.json(
+          {
+            message:
+              "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com RPC full inconsistente. Verifique as migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159.",
+          },
+          { status: 409 },
+        );
+      }
+
+      return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
+    }
 
     if (!fullBatchSaveResult.flagsEmbedded) {
       const batchProgrammingIds = fullBatchSaveResult.items.map((item) => item.programmingId);
@@ -3579,6 +3696,23 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   });
 
   if (!fullSaveResult.ok) {
+    if (fullSaveResult.reason === "TEAM_TIME_CONFLICT") {
+      const detailedConflictMessage = await resolveTeamTimeConflictDetailedMessage({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        executionDate,
+        startTime,
+        endTime,
+        teamIds: [teamId],
+        excludeProgrammingId: programmingId || null,
+      });
+
+      return NextResponse.json(
+        { message: detailedConflictMessage ?? fullSaveResult.message },
+        { status: 409 },
+      );
+    }
+
     if (fullSaveResult.reason === "PROGRAMMING_CONFLICT" && programmingId) {
       const conflictPayload = await fetchProgrammingConflictPayload({
         supabase: resolution.supabase,
