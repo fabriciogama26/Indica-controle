@@ -1102,7 +1102,10 @@ async function fetchProgrammingActivities(
   programmingIds: string[],
 ) {
   if (!programmingIds.length) {
-    return new Map<string, ProgrammingActivityRow[]>();
+    return {
+      activityMap: new Map<string, ProgrammingActivityRow[]>(),
+      hasError: false,
+    };
   }
 
   const { data, error } = await supabase
@@ -1115,7 +1118,10 @@ async function fetchProgrammingActivities(
     .returns<ProgrammingActivityRow[]>();
 
   if (error) {
-    return new Map<string, ProgrammingActivityRow[]>();
+    return {
+      activityMap: new Map<string, ProgrammingActivityRow[]>(),
+      hasError: true,
+    };
   }
 
   const activityMap = new Map<string, ProgrammingActivityRow[]>();
@@ -1125,7 +1131,35 @@ async function fetchProgrammingActivities(
     activityMap.set(item.programming_id, current);
   }
 
-  return activityMap;
+  return {
+    activityMap,
+    hasError: false,
+  };
+}
+
+async function fetchProgrammingActivitiesForSave(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  programmingId: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("project_programming_activities")
+    .select("service_activity_id, quantity")
+    .eq("tenant_id", params.tenantId)
+    .eq("programming_id", params.programmingId)
+    .eq("is_active", true)
+    .returns<Array<{ service_activity_id: string; quantity: number }>>();
+
+  if (error) {
+    return null;
+  }
+
+  return (data ?? [])
+    .map((item) => ({
+      catalogId: normalizeText(item.service_activity_id),
+      quantity: normalizePositiveNumber(item.quantity),
+    }))
+    .filter((item): item is { catalogId: string; quantity: number } => Boolean(item.catalogId) && item.quantity !== null);
 }
 
 async function fetchRescheduledProgrammingIds(
@@ -1660,7 +1694,7 @@ async function fetchProgrammingResponseItem(
     ? eqCatalog.find((item) => item.id === row.electrical_eq_catalog_id) ?? null
     : null;
   const team = teamRows[0] ?? null;
-  const scheduleActivities = activitiesMap.get(programmingId) ?? [];
+  const scheduleActivities = activitiesMap.activityMap.get(programmingId) ?? [];
 
   return {
     id: row.id,
@@ -1697,6 +1731,7 @@ async function fetchProgrammingResponseItem(
     note: normalizeText(row.note),
     electricalField: normalizeText(row.campo_eletrico),
     serviceDescription: normalizeText(row.service_description),
+    activitiesLoaded: !activitiesMap.hasError,
     teamName: normalizeText(team?.name) || row.team_id,
     teamVehiclePlate: normalizeText(team?.vehiclePlate),
     teamServiceCenterName: normalizeText(team?.serviceCenterName),
@@ -1774,6 +1809,8 @@ async function saveProgrammingFullViaRpc(params: {
   trafoQty: number;
   redeQty: number;
   etapaNumber: number | null;
+  etapaUnica: boolean;
+  etapaFinal: boolean;
   workCompletionStatus: string | null;
   affectedCustomers: number;
   sgdTypeId: string;
@@ -1823,20 +1860,71 @@ async function saveProgrammingFullViaRpc(params: {
     p_history_metadata: params.historyMetadata ?? {},
     p_campo_eletrico: params.electricalField ?? null,
     p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
+    p_etapa_unica: params.etapaUnica,
+    p_etapa_final: params.etapaFinal,
   };
 
-  const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
+  let { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
+  let usedEmbeddedEtapaFlags = true;
 
   if (error) {
     if (isMissingRpcFunctionError(error.message, rpcName)) {
-      return {
-        ok: false,
-        status: 409,
-        reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full da Programacao indisponivel no ambiente atual.",
-      } as const;
-    }
+      const legacyPayload = {
+        p_tenant_id: params.tenantId,
+        p_actor_user_id: params.actorUserId,
+        p_project_id: params.projectId,
+        p_team_id: params.teamId,
+        p_execution_date: params.executionDate,
+        p_period: params.period,
+        p_start_time: params.startTime,
+        p_end_time: params.endTime,
+        p_expected_minutes: params.expectedMinutes,
+        p_feeder: params.feeder ?? null,
+        p_support: params.support ?? null,
+        p_note: params.note ?? null,
+        p_documents: params.documents,
+        p_activities: params.activities.map((item) => ({
+          catalogId: item.catalogId,
+          quantity: item.quantity,
+        })),
+        p_programming_id: params.programmingId ?? null,
+        p_expected_updated_at: params.expectedUpdatedAt ?? null,
+        p_support_item_id: params.supportItemId ?? null,
+        p_poste_qty: params.posteQty,
+        p_estrutura_qty: params.estruturaQty,
+        p_trafo_qty: params.trafoQty,
+        p_rede_qty: params.redeQty,
+        p_etapa_number: params.etapaNumber,
+        p_work_completion_status: params.workCompletionStatus,
+        p_affected_customers: params.affectedCustomers,
+        p_sgd_type_id: params.sgdTypeId,
+        p_outage_start_time: params.outageStartTime ?? null,
+        p_outage_end_time: params.outageEndTime ?? null,
+        p_service_description: params.serviceDescription ?? null,
+        p_history_action_override: params.historyActionOverride ?? null,
+        p_history_reason: params.historyReason ?? null,
+        p_history_metadata: params.historyMetadata ?? {},
+        p_campo_eletrico: params.electricalField ?? null,
+        p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
+      };
 
+      const legacyAttempt = await params.supabase.rpc(rpcName, legacyPayload);
+      data = legacyAttempt.data;
+      error = legacyAttempt.error;
+      usedEmbeddedEtapaFlags = false;
+
+      if (error && isMissingRpcFunctionError(error.message, rpcName)) {
+        return {
+          ok: false,
+          status: 409,
+          reason: "FULL_RPC_NOT_AVAILABLE",
+          message: "RPC transacional full da Programacao indisponivel no ambiente atual.",
+        } as const;
+      }
+    }
+  }
+
+  if (error) {
     return {
       ok: false,
       status: 500,
@@ -1858,6 +1946,7 @@ async function saveProgrammingFullViaRpc(params: {
 
   return {
     ok: true,
+    flagsEmbedded: usedEmbeddedEtapaFlags,
     action: result.action ?? null,
     programmingId: result.programming_id,
     projectCode: normalizeText(result.project_code),
@@ -1890,6 +1979,8 @@ async function saveProgrammingBatchFullViaRpc(params: {
   trafoQty: number;
   redeQty: number;
   etapaNumber: number | null;
+  etapaUnica: boolean;
+  etapaFinal: boolean;
   workCompletionStatus: string | null;
   affectedCustomers: number;
   sgdTypeId: string;
@@ -1930,20 +2021,66 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_service_description: params.serviceDescription ?? null,
     p_campo_eletrico: params.electricalField ?? null,
     p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
+    p_etapa_unica: params.etapaUnica,
+    p_etapa_final: params.etapaFinal,
   };
 
-  const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
+  let { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
+  let usedEmbeddedEtapaFlags = true;
 
   if (error) {
     if (isMissingRpcFunctionError(error.message, rpcName)) {
-      return {
-        ok: false,
-        status: 409,
-        reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional full de lote da Programacao indisponivel no ambiente atual.",
-      } as const;
-    }
+      const legacyPayload = {
+        p_tenant_id: params.tenantId,
+        p_actor_user_id: params.actorUserId,
+        p_project_id: params.projectId,
+        p_team_ids: params.teamIds,
+        p_execution_date: params.executionDate,
+        p_period: params.period,
+        p_start_time: params.startTime,
+        p_end_time: params.endTime,
+        p_expected_minutes: params.expectedMinutes,
+        p_feeder: params.feeder ?? null,
+        p_support: params.support ?? null,
+        p_note: params.note ?? null,
+        p_documents: params.documents,
+        p_activities: params.activities.map((item) => ({
+          catalogId: item.catalogId,
+          quantity: item.quantity,
+        })),
+        p_support_item_id: params.supportItemId ?? null,
+        p_poste_qty: params.posteQty,
+        p_estrutura_qty: params.estruturaQty,
+        p_trafo_qty: params.trafoQty,
+        p_rede_qty: params.redeQty,
+        p_etapa_number: params.etapaNumber,
+        p_work_completion_status: params.workCompletionStatus,
+        p_affected_customers: params.affectedCustomers,
+        p_sgd_type_id: params.sgdTypeId,
+        p_outage_start_time: params.outageStartTime ?? null,
+        p_outage_end_time: params.outageEndTime ?? null,
+        p_service_description: params.serviceDescription ?? null,
+        p_campo_eletrico: params.electricalField ?? null,
+        p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
+      };
 
+      const legacyAttempt = await params.supabase.rpc(rpcName, legacyPayload);
+      data = legacyAttempt.data;
+      error = legacyAttempt.error;
+      usedEmbeddedEtapaFlags = false;
+
+      if (error && isMissingRpcFunctionError(error.message, rpcName)) {
+        return {
+          ok: false,
+          status: 409,
+          reason: "FULL_RPC_NOT_AVAILABLE",
+          message: "RPC transacional full de lote da Programacao indisponivel no ambiente atual.",
+        } as const;
+      }
+    }
+  }
+
+  if (error) {
     return {
       ok: false,
       status: 500,
@@ -1974,6 +2111,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
 
   return {
     ok: true,
+    flagsEmbedded: usedEmbeddedEtapaFlags,
     insertedCount: Number(result.inserted_count ?? items.length),
     projectCode: normalizeText(result.project_code),
     message: result.message ?? "Programacao em lote salva com sucesso.",
@@ -2580,7 +2718,7 @@ export async function GET(request: NextRequest) {
       projectIds: projects.map((item) => item.id),
       supportOptions,
     });
-    const activitiesMap = await fetchProgrammingActivities(
+    const activitiesResult = await fetchProgrammingActivities(
       resolution.supabase,
       resolution.appUser.tenant_id,
       filteredProgrammingRows.map((item) => item.id),
@@ -2671,12 +2809,13 @@ export async function GET(request: NextRequest) {
         loadPercent: Number(item.load_percent ?? 0),
         loadStatus: item.load_status ?? "FREE",
       })),
+      activitiesLoadError: activitiesResult.hasError,
       schedules: filteredProgrammingRows.map((item) => {
         const project = projectMap.get(item.project_id);
         const sgdType = item.sgd_type_id ? sgdTypeMap.get(item.sgd_type_id) : null;
         const eqCatalog = item.electrical_eq_catalog_id ? eqCatalogMap.get(item.electrical_eq_catalog_id) : null;
         const team = teamLookupMap.get(item.team_id);
-        const scheduleActivities = activitiesMap.get(item.id) ?? [];
+        const scheduleActivities = activitiesResult.activityMap.get(item.id) ?? [];
 
         return {
           id: item.id,
@@ -2715,6 +2854,7 @@ export async function GET(request: NextRequest) {
           note: normalizeText(item.note),
           electricalField: normalizeText(item.campo_eletrico),
           serviceDescription: normalizeText(item.service_description),
+          activitiesLoaded: !activitiesResult.hasError,
           teamName: normalizeText(team?.name) || item.team_id,
           teamVehiclePlate: normalizeText(team?.vehiclePlate),
           teamServiceCenterName: normalizeText(team?.serviceCenterName),
@@ -3029,6 +3169,8 @@ async function saveProgrammingBatch(request: NextRequest) {
       trafoQty,
       redeQty,
       etapaNumber,
+      etapaUnica,
+      etapaFinal,
       workCompletionStatus: null,
       affectedCustomers: affectedCustomers ?? 0,
       sgdTypeId,
@@ -3068,18 +3210,20 @@ async function saveProgrammingBatch(request: NextRequest) {
     return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
   }
 
-    const batchProgrammingIds = fullBatchSaveResult.items.map((item) => item.programmingId);
-    const etapaFlagsResult = await setProgrammingEtapaFlagsValue({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingIds: batchProgrammingIds,
-      etapaUnica,
-      etapaFinal,
-    });
+    if (!fullBatchSaveResult.flagsEmbedded) {
+      const batchProgrammingIds = fullBatchSaveResult.items.map((item) => item.programmingId);
+      const etapaFlagsResult = await setProgrammingEtapaFlagsValue({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingIds: batchProgrammingIds,
+        etapaUnica,
+        etapaFinal,
+      });
 
-    if (!etapaFlagsResult.ok) {
-      return NextResponse.json({ message: etapaFlagsResult.message }, { status: etapaFlagsResult.status });
+      if (!etapaFlagsResult.ok) {
+        return NextResponse.json({ message: etapaFlagsResult.message }, { status: etapaFlagsResult.status });
+      }
     }
 
     return NextResponse.json({
@@ -3140,8 +3284,9 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const electricalEqCatalogId = normalizeNullableText(payload?.electricalEqCatalogId);
   const changeReason = normalizeNullableText(payload?.changeReason);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
-  const activitiesInput = Array.isArray(payload?.activities) ? payload.activities : [];
-  const activities = activitiesInput
+  const hasActivitiesPayload = Array.isArray(payload?.activities);
+  const activitiesInput = hasActivitiesPayload ? payload?.activities ?? [] : [];
+  let activities = activitiesInput
     .map((item) => ({
       catalogId: normalizeText(item.catalogId),
       quantity: normalizePositiveNumber(item.quantity),
@@ -3227,6 +3372,23 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   if (programmingId && !currentProgramming) {
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
+  }
+
+  if (method === "PUT" && programmingId && !hasActivitiesPayload) {
+    const currentActivities = await fetchProgrammingActivitiesForSave({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      programmingId,
+    });
+
+    if (currentActivities === null) {
+      return NextResponse.json(
+        { message: "Falha ao carregar atividades atuais da programacao para salvar com seguranca." },
+        { status: 500 },
+      );
+    }
+
+    activities = currentActivities;
   }
 
   const existingEtapaNumber = currentProgramming?.etapa_number ?? null;
@@ -3401,6 +3563,8 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     trafoQty: trafoQty ?? 0,
     redeQty: redeQty ?? 0,
     etapaNumber,
+    etapaUnica,
+    etapaFinal,
     workCompletionStatus: normalizedWorkCompletionStatus,
     affectedCustomers: affectedCustomers ?? 0,
     sgdTypeId,
@@ -3471,17 +3635,19 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   const persistedProgrammingId = saveResult.programmingId;
 
-  const etapaFlagsResult = await setProgrammingEtapaFlagsValue({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    actorUserId: resolution.appUser.id,
-    programmingIds: [persistedProgrammingId],
-    etapaUnica,
-    etapaFinal,
-  });
+  if (!fullSaveResult.flagsEmbedded) {
+    const etapaFlagsResult = await setProgrammingEtapaFlagsValue({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingIds: [persistedProgrammingId],
+      etapaUnica,
+      etapaFinal,
+    });
 
-  if (!etapaFlagsResult.ok) {
-    return NextResponse.json({ message: etapaFlagsResult.message }, { status: etapaFlagsResult.status });
+    if (!etapaFlagsResult.ok) {
+      return NextResponse.json({ message: etapaFlagsResult.message }, { status: etapaFlagsResult.status });
+    }
   }
 
   if (method === "PUT" && !electricalField) {
