@@ -847,3 +847,15 @@ Atualizacao adicional 2026-04-16 (filtro Tipo SGD e encarregado no calendario)
   - Depois: o aviso inclui o motivo quando o registro salvo fica fora do `Tipo SGD` selecionado.
   - Antes: o calendario semanal mostrava apenas `Equipe` e `Base`.
   - Depois: o calendario semanal passa a mostrar tambem o nome do `Encarregado` em cada linha de equipe.
+
+Atualizacao adicional 2026-04-16 (hotfix hora termino na edicao)
+-----------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `startEditSchedule`
+- Comportamento antes/depois:
+  - Antes: ao clicar em `Editar` uma programacao com `Periodo = Parcial`, a tela forçava `Hora termino` para `12:00`, mesmo quando o registro salvo tinha outro horario (ex.: `19:00`).
+  - Depois: a edicao passa a carregar o `Hora termino` real salvo no registro; fallback para `12:00/17:00` ocorre apenas quando o horario final vier vazio no dado.

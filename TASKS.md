@@ -444,3 +444,4 @@
 - [x] Adicionar filtro `Tipo SGD` na tela de `Projetos`, com suporte no `GET /api/projects` e no `GET /api/projects/meta`.
 - [x] Adicionar filtro `Tipo SGD` na `Programacao Simples` e na `Visualizacao Programacao`, aplicando o recorte na lista e no aviso de registro salvo fora dos filtros.
 - [x] Exibir o nome do `Encarregado` na linha de equipe do `Calendario Semanal de Programacao`.
+- [x] Corrigir hotfix da edicao na Programacao Simples para preservar `Hora termino` real do registro (inclusive em `Parcial`) ao clicar em `Editar`, sem forcar `12:00`.
