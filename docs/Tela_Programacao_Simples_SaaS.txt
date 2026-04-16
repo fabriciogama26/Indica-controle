@@ -859,3 +859,28 @@ Atualizacao adicional 2026-04-16 (hotfix hora termino na edicao)
 - Comportamento antes/depois:
   - Antes: ao clicar em `Editar` uma programacao com `Periodo = Parcial`, a tela forçava `Hora termino` para `12:00`, mesmo quando o registro salvo tinha outro horario (ex.: `19:00`).
   - Depois: a edicao passa a carregar o `Hora termino` real salvo no registro; fallback para `12:00/17:00` ocorre apenas quando o horario final vier vazio no dado.
+
+Atualizacao adicional 2026-04-16 (hardening de sobrescrita e perda de dados)
+------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `supabase/migrations/158_embed_programming_etapa_flags_in_full_wrappers.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProgrammingActivities`
+  - `fetchProgrammingActivitiesForSave`
+  - `saveProgrammingFullViaRpc`
+  - `saveProgrammingBatchFullViaRpc`
+  - `saveProgramming`
+  - `saveProgrammingBatch`
+  - `startEditSchedule`
+  - `handleSubmit`
+- Comportamento antes/depois:
+  - Antes: falha de leitura das atividades na listagem podia cair como array vazio e permitir edicao/salvamento com risco de inativar atividades existentes.
+  - Depois: a API sinaliza `activitiesLoadError`, a tela bloqueia edicao quando atividades nao carregam e o backend preserva atividades atuais no `PUT` quando o payload vier sem atividades.
+  - Antes: programacoes legadas com `Apoio` textual (sem `support_item_id`) podiam perder o valor em uma edicao comum.
+  - Depois: na edicao sem `supportItemId`, a API recebe o `support` atual da agenda para preservar o valor legado.
+  - Antes: flags `ETAPA UNICA` e `ETAPA FINAL` eram persistidas em passo separado apos a RPC full; uma falha nesse passo podia retornar erro mesmo com save principal ja confirmado.
+  - Depois: as flags passam a ser persistidas dentro das RPCs full (`single` e `batch`) via overload novo, com fallback automatico para o fluxo antigo em ambientes sem a migration 158.

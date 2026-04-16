@@ -130,6 +130,7 @@ type ScheduleItem = {
   electricalEqCode?: string;
   sgdTypeDescription?: string;
   sgdExportColumn?: string;
+  activitiesLoaded?: boolean;
   activities: ActivityItem[];
   documents: {
     sgd: { number: string; approvedAt: string; requestedAt: string; includedAt?: string; deliveredAt?: string };
@@ -147,6 +148,7 @@ type ProgrammingResponse = {
   workCompletionCatalog?: WorkCompletionCatalogItem[];
   reasonOptions?: ProgrammingReasonOptionItem[];
   schedules?: ScheduleItem[];
+  activitiesLoadError?: boolean;
   nextEtapaNumber?: number;
   message?: string;
 };
@@ -1805,6 +1807,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setWorkCompletionCatalog(data.workCompletionCatalog ?? []);
     setReasonOptions(data.reasonOptions ?? []);
     setSchedules(nextSchedules);
+    if (data.activitiesLoadError) {
+      setFeedback({
+        type: "error",
+        message: "Atividades da Programacao nao foram carregadas. Recarregue a tela antes de editar para evitar perda de dados.",
+      });
+    }
   }, []);
 
   const fetchBoardSnapshot = useCallback(async () => {
@@ -2276,6 +2284,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         type: "error",
         message: "Somente programacoes ativas podem entrar em edicao.",
       });
+      return;
+    }
+
+    if (schedule.activitiesLoaded === false) {
+      setFeedback({
+        type: "error",
+        message: "Nao foi possivel carregar as atividades desta programacao. Recarregue a tela antes de editar.",
+      });
+      openAlertModal(
+        "Edicao bloqueada por seguranca",
+        "As atividades da programacao nao foram carregadas. Recarregue a tela para evitar sobrescrever dados.",
+      );
       return;
     }
 
@@ -2872,6 +2892,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         outageEndTime: form.outageEndTime || undefined,
         expectedMinutes,
         feeder: form.feeder.trim(),
+        support: !form.supportItemId && isEditing ? (currentEditingSchedule?.support || undefined) : undefined,
         supportItemId: form.supportItemId || undefined,
         note: form.note.trim(),
         electricalField: electricalEqNumber,
@@ -2901,9 +2922,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           },
           {} as Record<DocumentKey, { number: string; approvedAt?: string; requestedAt?: string }>,
         ),
-        activities: form.activities
-          .filter((item) => item.quantity > 0)
-          .map((item) => ({ catalogId: item.catalogId, quantity: item.quantity })),
+        activities: (isEditing && currentEditingSchedule?.activitiesLoaded === false)
+          ? undefined
+          : form.activities
+              .filter((item) => item.quantity > 0)
+              .map((item) => ({ catalogId: item.catalogId, quantity: item.quantity })),
       };
 
       const requestBody = JSON.stringify(

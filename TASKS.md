@@ -445,3 +445,6 @@
 - [x] Adicionar filtro `Tipo SGD` na `Programacao Simples` e na `Visualizacao Programacao`, aplicando o recorte na lista e no aviso de registro salvo fora dos filtros.
 - [x] Exibir o nome do `Encarregado` na linha de equipe do `Calendario Semanal de Programacao`.
 - [x] Corrigir hotfix da edicao na Programacao Simples para preservar `Hora termino` real do registro (inclusive em `Parcial`) ao clicar em `Editar`, sem forcar `12:00`.
+- [x] Hardening da Programacao para evitar perda silenciosa de atividades: quando a carga de atividades falhar, sinalizar erro na API/tela, bloquear edicao insegura e preservar atividades atuais no `PUT` quando o payload vier sem lista de atividades.
+- [x] Preservar `Apoio` legado (texto) na edicao da Programacao quando nao houver `supportItemId`, evitando limpeza involuntaria em registros antigos.
+- [x] Embutir persistencia de `ETAPA UNICA` e `ETAPA FINAL` nas RPCs full (`single` e `batch`) por overload transacional, mantendo fallback compativel para ambientes sem a migration nova.
