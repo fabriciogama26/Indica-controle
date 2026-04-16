@@ -121,7 +121,8 @@ Filtros, auto-complete e listagem
   - `Data Execucao` (data)
   - `Prioridade` (select)
   - `Municipio` (select)
-  - `Status` (`Todos`, `Cancelado`, `Ativo`, `Concluido`)
+  - `Estado Trabalho` (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
+  - `Tipo SGD` (`Todos` + itens ativos do catalogo `programming_sgd_types`)
 - Auto-complete implementado para:
   - `SOB`
   - `Prioridade`
@@ -474,3 +475,29 @@ Atualizacao 2026-04-13
   - Depois: a lista passa a aceitar filtro `Status` com `Cancelado`, `Ativo` e `Concluido`.
   - Antes: os cards de carteira consideravam obras de teste junto com obras operacionais.
   - Depois: o resumo (`Total de projetos` e `Concluidas`) passa a excluir obras de teste no backend.
+
+Atualizacao adicional 2026-04-16 (filtros por Estado Trabalho e Tipo SGD)
+---------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/meta/route.ts`
+  - `src/app/api/projects/route.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `INITIAL_FILTERS`
+  - `buildQuery`
+  - `loadMeta`
+  - `normalizeProjectWorkCompletionStatusFilter`
+  - `normalizeUuid`
+  - `fetchProjectIdsByProgrammingFiltersCompat`
+  - `fetchProjectsPageCompat`
+  - `fetchProjectsSummaryCompat`
+- Comportamento antes/depois:
+  - Antes: a tela de `Projetos` filtrava por `Status` da obra (`Cancelado`, `Ativo`, `Concluido`) e nao tinha filtro de `Tipo SGD`.
+  - Depois: o filtro principal passa a ser `Estado Trabalho` (catalogo por tenant + `Nao informado`) e a tela recebe filtro adicional `Tipo SGD`.
+  - Antes: o backend de `GET /api/projects` nao cruzava `sgd_type_id` nem o catalogo de Estado Trabalho na tabela `project_programming`.
+  - Depois: o backend aplica os dois filtros via programacao (`work_completion_status_id`/fallback legado de texto e `sgd_type_id`) antes de paginar e consolidar os cards.
+  - Antes: `GET /api/projects/meta` nao devolvia catalogo de `Estado Trabalho` e `Tipo SGD`.
+  - Depois: a rota de meta devolve `workCompletionCatalog` e `sgdTypes` por tenant para alimentar os selects da tela.

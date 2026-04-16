@@ -275,6 +275,7 @@ type FilterState = {
   teamId: string;
   status: "TODOS" | ProgrammingStatus;
   workCompletionStatus: "TODOS" | WorkCompletionStatus | "NAO_INFORMADO";
+  sgdTypeId: string;
 };
 
 type DeadlineStatus = "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
@@ -732,22 +733,6 @@ function normalizeWorkCompletionCode(value: unknown) {
     .replace(/\s+/g, "_");
 
   return raw || "NAO_INFORMADO";
-}
-
-function resolveTipoSgdNovoLabel(
-  sgdExportColumn: string | null | undefined,
-  sgdTypeDescription: string | null | undefined,
-) {
-  if (isAreaLivreSgd(sgdExportColumn, sgdTypeDescription)) {
-    return "AREA LIVRE";
-  }
-
-  const cleaned = String(sgdTypeDescription ?? "")
-    .replace(/\bSGD\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return cleaned;
 }
 
 function resolveTeamStructureCode(team?: TeamItem | null) {
@@ -1225,10 +1210,12 @@ function buildSavedOutsideFiltersMessage(params: {
   projectId: string;
   teamIds: string[];
   workCompletionStatus: WorkCompletionStatus | null;
+  sgdTypeId: string | null;
   activeFilters: FilterState;
   projectMap: Map<string, ProjectItem>;
   teamMap: Map<string, TeamItem>;
   workCompletionCatalog: WorkCompletionCatalogItem[];
+  sgdTypes: SgdTypeItem[];
 }) {
   const reasons: string[] = [];
 
@@ -1267,6 +1254,11 @@ function buildSavedOutsideFiltersMessage(params: {
         : selectedCatalogItem?.label ?? params.activeFilters.workCompletionStatus;
       reasons.push(`o Estado Trabalho filtrado e ${formattedWorkCompletionStatus}`);
     }
+  }
+
+  if (params.activeFilters.sgdTypeId && params.sgdTypeId !== params.activeFilters.sgdTypeId) {
+    const filteredSgdType = params.sgdTypes.find((item) => item.id === params.activeFilters.sgdTypeId);
+    reasons.push(`o Tipo SGD filtrado e ${filteredSgdType?.description ?? "selecionado"}`);
   }
 
   if (!reasons.length) {
@@ -1471,6 +1463,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     teamId: "",
     status: "TODOS",
     workCompletionStatus: "TODOS",
+    sgdTypeId: "",
   });
   const [activeFilters, setActiveFilters] = useState<FilterState>({
     startDate: currentYearDateRange.startDate,
@@ -1480,6 +1473,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     teamId: "",
     status: "TODOS",
     workCompletionStatus: "TODOS",
+    sgdTypeId: "",
   });
 
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -1613,6 +1607,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         }
       }
 
+      if (activeFilters.sgdTypeId && item.sgdTypeId !== activeFilters.sgdTypeId) {
+        return false;
+      }
+
       return true;
     });
     filtered.sort((left, right) => {
@@ -1631,7 +1629,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return right.updatedAt.localeCompare(left.updatedAt);
     });
     return filtered;
-  }, [activeFilters.endDate, activeFilters.projectId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, activeFilters.workCompletionStatus, schedules]);
+  }, [activeFilters.endDate, activeFilters.projectId, activeFilters.sgdTypeId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, activeFilters.workCompletionStatus, schedules]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / PAGE_SIZE));
   const pagedSchedules = useMemo(() => {
@@ -2982,10 +2980,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         projectId: data.schedule?.projectId ?? form.projectId,
         teamIds: data.schedule ? [data.schedule.teamId] : (editingScheduleId ? [form.teamIds[0]] : form.teamIds),
         workCompletionStatus: data.schedule?.workCompletionStatus ?? (form.workCompletionStatus || null),
+        sgdTypeId: data.schedule?.sgdTypeId ?? (form.sgdTypeId || null),
         activeFilters,
         projectMap,
         teamMap,
         workCompletionCatalog,
+        sgdTypes,
       });
       showSubmitFeedback(
         "success",
@@ -3057,6 +3057,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       teamId: "",
       status: "TODOS",
       workCompletionStatus: "TODOS",
+      sgdTypeId: "",
     };
     setFilterDraft(reset);
     setActiveFilters(reset);
@@ -4318,6 +4319,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               <option value="NAO_INFORMADO">Nao informado</option>
             </select>
           </label>
+          <label className={styles.field}>
+            <span>Tipo SGD</span>
+            <select value={filterDraft.sgdTypeId} onChange={(event) => updateFilterField("sgdTypeId", event.target.value)}>
+              <option value="">Todos</option>
+              {sgdTypes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.description}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className={styles.actions}>
           <button type="button" className={styles.secondaryButton} onClick={applyFilters} disabled={isLoadingList}>
@@ -4608,6 +4620,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               <div key={team.id} className={styles.weekCalendarRow}>
                 <div className={styles.weekCalendarTeamCell}>
                   <strong>{team.name}</strong>
+                  <small>{team.foremanName || "Sem encarregado"}</small>
                   <small>{team.serviceCenterName || "-"}</small>
                 </div>
 

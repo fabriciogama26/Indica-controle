@@ -154,7 +154,7 @@ type ProjectInput = {
   isTest: boolean;
 };
 
-type ProjectStatusFilter = "TODOS" | "CANCELADO" | "ATIVO" | "CONCLUIDO";
+type ProjectWorkCompletionStatusFilter = "TODOS" | "NAO_INFORMADO" | string;
 
 type ResolvedProjectLookups = {
   partner: ContractRow;
@@ -217,18 +217,20 @@ function normalizeBoolean(value: unknown) {
   return normalized === "true" || normalized === "1" || normalized === "sim";
 }
 
-function normalizeProjectStatusFilter(value: unknown): ProjectStatusFilter {
+function normalizeProjectWorkCompletionStatusFilter(value: unknown): ProjectWorkCompletionStatusFilter {
   const normalized = normalizeText(value).toUpperCase();
-  if (normalized === "CANCELADO") {
-    return "CANCELADO";
+  if (!normalized || normalized === "TODOS") {
+    return "TODOS";
   }
-  if (normalized === "ATIVO") {
-    return "ATIVO";
+  if (normalized === "NAO_INFORMADO") {
+    return "NAO_INFORMADO";
   }
-  if (normalized === "CONCLUIDO") {
-    return "CONCLUIDO";
-  }
-  return "TODOS";
+  return normalized;
+}
+
+function normalizeUuid(value: unknown) {
+  const normalized = normalizeText(value);
+  return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
 }
 
 function normalizeStatusCatalogCode(value: unknown) {
@@ -322,6 +324,98 @@ async function fetchCompletedProgrammingProjectIdsCompat(params: {
   }
 
   return { projectIds: Array.from(resultIds), error: null };
+}
+
+async function fetchProjectIdsByProgrammingFiltersCompat(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  workCompletionStatus: ProjectWorkCompletionStatusFilter;
+  sgdTypeId: string | null;
+}) {
+  const hasWorkCompletionFilter = params.workCompletionStatus !== "TODOS";
+  const hasSgdTypeFilter = Boolean(params.sgdTypeId);
+
+  if (!hasWorkCompletionFilter && !hasSgdTypeFilter) {
+    return { projectIds: null as string[] | null, error: null };
+  }
+
+  const normalizedStatusCode = hasWorkCompletionFilter
+    ? normalizeStatusCatalogCode(params.workCompletionStatus)
+    : "";
+
+  let statusCatalogIds: string[] = [];
+  if (hasWorkCompletionFilter && params.workCompletionStatus !== "NAO_INFORMADO") {
+    const { data: catalogRows, error: catalogError } = await params.supabase
+      .from("programming_work_completion_catalog")
+      .select("id, code")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .returns<Array<{ id: string; code: string }>>();
+
+    if (catalogError) {
+      return { projectIds: [] as string[], error: catalogError };
+    }
+
+    statusCatalogIds = (catalogRows ?? [])
+      .filter((item) => normalizeStatusCatalogCode(item.code) === normalizedStatusCode)
+      .map((item) => normalizeText(item.id))
+      .filter(Boolean);
+  }
+
+  const collectProjectIds = (rows: Array<{ project_id: string }> | null | undefined) =>
+    Array.from(new Set((rows ?? []).map((item) => normalizeText(item.project_id)).filter(Boolean)));
+
+  let query = params.supabase
+    .from("project_programming")
+    .select("project_id")
+    .eq("tenant_id", params.tenantId);
+
+  if (hasSgdTypeFilter && params.sgdTypeId) {
+    query = query.eq("sgd_type_id", params.sgdTypeId);
+  }
+
+  if (hasWorkCompletionFilter) {
+    if (params.workCompletionStatus === "NAO_INFORMADO") {
+      query = query.is("work_completion_status_id", null);
+    } else if (statusCatalogIds.length > 0) {
+      query = query.in("work_completion_status_id", statusCatalogIds);
+    } else {
+      return { projectIds: [] as string[], error: null };
+    }
+  }
+
+  const { data, error } = await query.returns<Array<{ project_id: string }>>();
+  if (!error) {
+    return { projectIds: collectProjectIds(data), error: null };
+  }
+
+  if (!(hasWorkCompletionFilter && isMissingWorkCompletionStatusIdColumnError(String(error.message ?? "")))) {
+    return { projectIds: [] as string[], error };
+  }
+
+  let legacyQuery = params.supabase
+    .from("project_programming")
+    .select("project_id")
+    .eq("tenant_id", params.tenantId);
+
+  if (hasSgdTypeFilter && params.sgdTypeId) {
+    legacyQuery = legacyQuery.eq("sgd_type_id", params.sgdTypeId);
+  }
+
+  if (params.workCompletionStatus === "NAO_INFORMADO") {
+    legacyQuery = legacyQuery.or("work_completion_status.is.null,work_completion_status.eq.");
+  } else {
+    legacyQuery = legacyQuery.ilike("work_completion_status", params.workCompletionStatus);
+  }
+
+  const { data: legacyData, error: legacyError } = await legacyQuery
+    .returns<Array<{ project_id: string }>>();
+
+  if (legacyError) {
+    return { projectIds: [] as string[], error: legacyError };
+  }
+
+  return { projectIds: collectProjectIds(legacyData), error: null };
 }
 
 function isIsoDate(value: string) {
@@ -506,8 +600,7 @@ async function fetchProjectsPageCompat(params: {
   executionDate: string;
   priority: string;
   city: string;
-  status: ProjectStatusFilter;
-  completedProjectIds: string[];
+  programmingFilteredProjectIds: string[] | null;
   from: number;
   to: number;
 }) {
@@ -529,18 +622,11 @@ async function fetchProjectsPageCompat(params: {
     if (params.city) {
       query = query.eq("city_text", params.city);
     }
-    if (params.status === "ATIVO") {
-      query = query.eq("is_active", true);
-    }
-    if (params.status === "CANCELADO") {
-      query = query.eq("is_active", false);
-    }
-    if (params.status === "CONCLUIDO") {
-      query = query.eq("is_active", true);
+    if (params.programmingFilteredProjectIds) {
       query = query.in(
         "id",
-        params.completedProjectIds.length > 0
-          ? params.completedProjectIds
+        params.programmingFilteredProjectIds.length > 0
+          ? params.programmingFilteredProjectIds
           : ["00000000-0000-0000-0000-000000000000"],
       );
     }
@@ -591,8 +677,7 @@ async function fetchProjectsSummaryCompat(params: {
   executionDate: string;
   priority: string;
   city: string;
-  status: ProjectStatusFilter;
-  completedProjectIds: string[];
+  programmingFilteredProjectIds: string[] | null;
 }) {
   const projectIds: string[] = [];
   const projectSobById = new Map<string, string>();
@@ -621,17 +706,12 @@ async function fetchProjectsSummaryCompat(params: {
     if (params.city) {
       projectIdsQuery = projectIdsQuery.eq("city_text", params.city);
     }
-    if (params.status === "CANCELADO") {
-      projectIdsQuery = projectIdsQuery.eq("is_active", false);
-    } else {
-      projectIdsQuery = projectIdsQuery.eq("is_active", true);
-    }
-    if (params.status === "CONCLUIDO") {
-      projectIdsQuery = projectIdsQuery.eq("is_active", true);
+    projectIdsQuery = projectIdsQuery.eq("is_active", true);
+    if (params.programmingFilteredProjectIds) {
       projectIdsQuery = projectIdsQuery.in(
         "id",
-        params.completedProjectIds.length > 0
-          ? params.completedProjectIds
+        params.programmingFilteredProjectIds.length > 0
+          ? params.programmingFilteredProjectIds
           : ["00000000-0000-0000-0000-000000000000"],
       );
     }
@@ -657,17 +737,12 @@ async function fetchProjectsSummaryCompat(params: {
       if (params.city) {
         fallbackQuery = fallbackQuery.eq("city_text", params.city);
       }
-      if (params.status === "CANCELADO") {
-        fallbackQuery = fallbackQuery.eq("is_active", false);
-      } else {
-        fallbackQuery = fallbackQuery.eq("is_active", true);
-      }
-      if (params.status === "CONCLUIDO") {
-        fallbackQuery = fallbackQuery.eq("is_active", true);
+      fallbackQuery = fallbackQuery.eq("is_active", true);
+      if (params.programmingFilteredProjectIds) {
         fallbackQuery = fallbackQuery.in(
           "id",
-          params.completedProjectIds.length > 0
-            ? params.completedProjectIds
+          params.programmingFilteredProjectIds.length > 0
+            ? params.programmingFilteredProjectIds
             : ["00000000-0000-0000-0000-000000000000"],
         );
       }
@@ -1196,23 +1271,21 @@ export async function GET(request: NextRequest) {
     const executionDate = normalizeText(params.get("executionDate"));
     const priority = normalizeText(params.get("priority"));
     const city = normalizeText(params.get("city"));
-    const status = normalizeProjectStatusFilter(params.get("status"));
+    const workCompletionStatus = normalizeProjectWorkCompletionStatusFilter(params.get("workCompletionStatus"));
+    const sgdTypeId = normalizeUuid(params.get("sgdTypeId"));
     const page = Math.max(1, Number(params.get("page") ?? 1));
     const pageSize = Math.min(100, Math.max(1, Number(params.get("pageSize") ?? 20)));
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    let completedProjectIds: string[] = [];
-    if (status === "CONCLUIDO") {
-      const completedProjectIdsResult = await fetchCompletedProgrammingProjectIdsCompat({
-        supabase,
-        tenantId: appUser.tenant_id,
-      });
+    const programmingFilteredProjectIdsResult = await fetchProjectIdsByProgrammingFiltersCompat({
+      supabase,
+      tenantId: appUser.tenant_id,
+      workCompletionStatus,
+      sgdTypeId,
+    });
 
-      if (completedProjectIdsResult.error) {
-        return NextResponse.json({ message: "Falha ao consolidar status concluido dos projetos." }, { status: 500 });
-      }
-
-      completedProjectIds = completedProjectIdsResult.projectIds;
+    if (programmingFilteredProjectIdsResult.error) {
+      return NextResponse.json({ message: "Falha ao aplicar filtros de Programacao nos projetos." }, { status: 500 });
     }
 
     const { data, error, count } = await fetchProjectsPageCompat({
@@ -1222,8 +1295,7 @@ export async function GET(request: NextRequest) {
       executionDate,
       priority,
       city,
-      status,
-      completedProjectIds,
+      programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
       from,
       to,
     });
@@ -1239,8 +1311,7 @@ export async function GET(request: NextRequest) {
       executionDate,
       priority,
       city,
-      status,
-      completedProjectIds,
+      programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
     });
 
     if (summaryResult.error || !summaryResult.data) {

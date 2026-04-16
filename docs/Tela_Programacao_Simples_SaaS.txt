@@ -184,6 +184,7 @@ Filtros, auto-complete e listagem
   - Equipe
   - Status
   - Estado Trabalho (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
+  - Tipo SGD (`Todos` + itens ativos do catalogo `programming_sgd_types`)
 - Auto-complete:
   - Projeto (SOB) no cadastro com `input + datalist`, no mesmo padrao do SOB da Locacao.
   - Projeto no filtro com `input + datalist` (digitavel e com selecao por SOB).
@@ -258,6 +259,7 @@ Filtros, auto-complete e listagem
   - Paginacao local com `Anterior/Proxima`.
 - Calendario semanal de visualizacao (somente na rota `/programacao-visualizacao`):
   - Grade fixa de `segunda a domingo` por equipe.
+  - Cabecalho da linha da equipe exibe `Nome da equipe`, `Encarregado` e `Base`.
   - Cada card representa uma programacao da equipe no dia.
   - Card exibe codigo da obra (sem prefixo `SOB`) e indicadores de documento `SGD` e `PI`.
   - Quando `Tipo de SGD = AREA_LIVRE`, o card mostra apenas indicador `AREA LIVRE` em verde (no lugar de `SGD` e `PI`).
@@ -822,3 +824,26 @@ Atualizacao adicional 2026-04-15 (sessao invalida ao editar programacao)
 - Comportamento antes/depois:
   - Antes: o `PUT /api/programacao` usava apenas o token em memoria da tela; quando ele expirava, a edicao retornava `Sessao invalida para editar programacao.`
   - Depois: o submit tenta primeiro o token mais recente via `supabase.auth.getSession()` e, em caso de `401`, faz retry unico com token renovado.
+
+Atualizacao adicional 2026-04-16 (filtro Tipo SGD e encarregado no calendario)
+--------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `FilterState` (`sgdTypeId`)
+  - bloco `filteredSchedules`
+  - `buildSavedOutsideFiltersMessage`
+  - `clearFilters`
+  - bloco de filtros (`Tipo SGD`)
+  - grade do calendario semanal (`weekCalendarTeamCell`)
+- Comportamento antes/depois:
+  - Antes: a Programacao/Visualizacao nao tinha filtro de `Tipo SGD` na lista.
+  - Depois: `Tipo SGD` passa a filtrar a lista em conjunto com os demais filtros ativos.
+  - Antes: o aviso de "registro salvo fora dos filtros" nao considerava o filtro `Tipo SGD`.
+  - Depois: o aviso inclui o motivo quando o registro salvo fica fora do `Tipo SGD` selecionado.
+  - Antes: o calendario semanal mostrava apenas `Equipe` e `Base`.
+  - Depois: o calendario semanal passa a mostrar tambem o nome do `Encarregado` em cada linha de equipe.

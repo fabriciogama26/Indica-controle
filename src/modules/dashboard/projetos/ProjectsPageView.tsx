@@ -71,7 +71,8 @@ type FilterState = {
   executionDate: string;
   priority: string;
   city: string;
-  status: "TODOS" | "CANCELADO" | "ATIVO" | "CONCLUIDO";
+  workCompletionStatus: "TODOS" | "NAO_INFORMADO" | string;
+  sgdTypeId: string;
 };
 
 type ForecastFilterState = {
@@ -96,6 +97,8 @@ type MetaResponse = {
   utilityResponsibles: string[];
   utilityFieldManagers: string[];
   sobCatalog: SobBaseItem[];
+  workCompletionCatalog: Array<{ code: string; label: string }>;
+  sgdTypes: Array<{ id: string; description: string }>;
 };
 
 type ProjectHistoryResponse = {
@@ -256,7 +259,8 @@ const INITIAL_FILTERS: FilterState = {
   executionDate: "",
   priority: "",
   city: "",
-  status: "TODOS",
+  workCompletionStatus: "TODOS",
+  sgdTypeId: "",
 };
 
 const INITIAL_PROJECT_LIST_SUMMARY: ProjectListSummary = {
@@ -324,8 +328,11 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   if (filters.city) {
     params.set("city", filters.city);
   }
-  if (filters.status && filters.status !== "TODOS") {
-    params.set("status", filters.status);
+  if (filters.workCompletionStatus && filters.workCompletionStatus !== "TODOS") {
+    params.set("workCompletionStatus", filters.workCompletionStatus);
+  }
+  if (filters.sgdTypeId) {
+    params.set("sgdTypeId", filters.sgdTypeId);
   }
 
   params.set("page", String(page));
@@ -585,6 +592,8 @@ export function ProjectsPageView() {
     utilityResponsibles: [],
     utilityFieldManagers: [],
     sobCatalog: [],
+    workCompletionCatalog: [],
+    sgdTypes: [],
   });
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -762,6 +771,8 @@ export function ProjectsPageView() {
         utilityResponsibles: data.utilityResponsibles ?? [],
         utilityFieldManagers: data.utilityFieldManagers ?? [],
         sobCatalog: data.sobCatalog ?? [],
+        workCompletionCatalog: data.workCompletionCatalog ?? [],
+        sgdTypes: data.sgdTypes ?? [],
       });
     } catch {
       setFeedback({
@@ -2766,15 +2777,30 @@ export function ProjectsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Status</span>
+            <span>Estado Trabalho</span>
             <select
-              value={filterDraft.status}
-              onChange={(event) => updateFilterField("status", event.target.value as FilterState["status"])}
+              value={filterDraft.workCompletionStatus}
+              onChange={(event) => updateFilterField("workCompletionStatus", event.target.value as FilterState["workCompletionStatus"])}
             >
               <option value="TODOS">Todos</option>
-              <option value="CANCELADO">Cancelado</option>
-              <option value="ATIVO">Ativo</option>
-              <option value="CONCLUIDO">Concluido</option>
+              {meta.workCompletionCatalog.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
+              <option value="NAO_INFORMADO">Nao informado</option>
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Tipo SGD</span>
+            <select value={filterDraft.sgdTypeId} onChange={(event) => updateFilterField("sgdTypeId", event.target.value)}>
+              <option value="">Todos</option>
+              {meta.sgdTypes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.description}
+                </option>
+              ))}
             </select>
           </label>
         </div>
