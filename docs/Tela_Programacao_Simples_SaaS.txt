@@ -77,6 +77,10 @@ Arquitetura
   - Cria wrappers:
     - `save_project_programming_full_with_electrical_and_eq`
     - `save_project_programming_batch_full_with_electrical_and_eq`
+- Migration de correcao dos wrappers com flags de etapa:
+  - `supabase/migrations/159_fix_programming_full_wrappers_etapa_flags_recursion.sql`
+  - Ajusta wrappers da `158` para chamar as funcoes base com assinatura correta.
+  - Mantem no mesmo wrapper a persistencia de `Ponto eletrico`, `N EQ`, `ETAPA UNICA` e `ETAPA FINAL`.
 - Migration de compatibilidade do tipo SGD:
   - `supabase/migrations/108_allow_area_livre_programming_sgd_types.sql`
   - Catalogo `programming_sgd_types` passa a aceitar `AREA_LIVRE` em `export_column`.

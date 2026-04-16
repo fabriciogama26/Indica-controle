@@ -3184,7 +3184,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Aplique as migrations 091, 094, 095, 099, 100, 106, 111, 151 e 152 e tente novamente.",
+            "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Verifique se as RPCs base e wrappers estao atualizadas (migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159).",
         },
         { status: 409 },
       );
@@ -3201,7 +3201,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 099, 100, 106, 111, 151 e 152 e tente novamente.",
+            "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com RPC full inconsistente. Verifique as migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159.",
         },
         { status: 409 },
       );
