@@ -448,3 +448,5 @@
 - [x] Hardening da Programacao para evitar perda silenciosa de atividades: quando a carga de atividades falhar, sinalizar erro na API/tela, bloquear edicao insegura e preservar atividades atuais no `PUT` quando o payload vier sem lista de atividades.
 - [x] Preservar `Apoio` legado (texto) na edicao da Programacao quando nao houver `supportItemId`, evitando limpeza involuntaria em registros antigos.
 - [x] Embutir persistencia de `ETAPA UNICA` e `ETAPA FINAL` nas RPCs full (`single` e `batch`) por overload transacional, mantendo fallback compativel para ambientes sem a migration nova.
+- [x] Ajustar a Medicao para herdar `CONCLUIDO` por projeto global (independente de data/equipe), aplicando para ordens `Programada` e `Nao programada` e preservando alerta de alteracao apos medicao.
+- [x] Ajustar a Medicao para consolidacao economica de Estado Trabalho por projeto com hierarquia `CONCLUIDO > PARCIAL`, aplicando em ordens Programada/Nao programada e limitando o filtro da tela a Concluido, Parcial e Nao informado.

@@ -391,3 +391,25 @@ Atualizacao 2026-04-15
   - Antes: quando nao havia match por `Projeto + Equipe + Data`, o `Status execucao` ficava `-` mesmo havendo Programacao para o mesmo `Projeto + Data`.
   - Depois: sem match de equipe, a Medicao usa fallback de `Projeto + Data` para herdar `Status execucao`, mantendo `Programacao = Nao programada` quando aplicavel.
 
+Atualizacao 2026-04-16
+----------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `loadProgrammingMatchMap`
+  - `normalizeWorkCompletionStatusToken`
+  - `resolveMeasurementEconomicCompletionStatus`
+  - `measurementEconomicCompletionRank`
+  - `resolveEconomicWorkCompletionStatus`
+  - `economicWorkCompletionOptions`
+- Comportamento antes/depois:
+  - Antes: a Medicao herdava `Estado Trabalho` por match do dia e, na melhoria anterior, apenas com override global de `CONCLUIDO`.
+  - Depois: a Medicao adota hierarquia economica por projeto (`CONCLUIDO > PARCIAL`) para ordens `Programada` e `Nao programada`.
+  - Antes: o filtro de `Estado Trabalho` na Medicao podia listar codigos operacionais diversos do catalogo da Programacao.
+  - Depois: o filtro de `Estado Trabalho` na Medicao passa a exibir apenas `Concluido`, `Parcial` e `Nao informado`.
+  - Antes: o alerta de mudanca apos medicao comparava apenas o status do match do mesmo dia.
+  - Depois: o alerta considera a ultima consolidacao economica do projeto (`CONCLUIDO` ou `PARCIAL`) em relacao ao momento da medicao.
+
