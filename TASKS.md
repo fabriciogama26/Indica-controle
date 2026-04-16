@@ -440,3 +440,7 @@
 
 
 
+- [x] Substituir o filtro `Status` da tela de `Projetos` por `Estado Trabalho`, consumindo o catalogo por tenant (`programming_work_completion_catalog`) com opcao `Nao informado`.
+- [x] Adicionar filtro `Tipo SGD` na tela de `Projetos`, com suporte no `GET /api/projects` e no `GET /api/projects/meta`.
+- [x] Adicionar filtro `Tipo SGD` na `Programacao Simples` e na `Visualizacao Programacao`, aplicando o recorte na lista e no aviso de registro salvo fora dos filtros.
+- [x] Exibir o nome do `Encarregado` na linha de equipe do `Calendario Semanal de Programacao`.

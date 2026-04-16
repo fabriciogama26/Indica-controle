@@ -117,10 +117,10 @@ vercel --prod
   - `(public)/recuperar-senha/page.tsx`: wrapper fino da rota publica de recuperacao de senha.
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
-  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros (incluindo status), marcador de obra de teste, listagem, materiais previstos e atividades previstas por projeto.
+  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros (incluindo `Estado Trabalho` e `Tipo SGD`), marcador de obra de teste, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
-  - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote, edicao com troca de equipe (selecao unica + aviso visual) e exportacao `ENEL-EXCEL`.
+  - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros (incluindo `Estado Trabalho` e `Tipo SGD`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote, edicao com troca de equipe (selecao unica + aviso visual) e exportacao `ENEL-EXCEL`.
   - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com `cadastro + filtros + lista` paginada, modos `Com producao` e `Sem producao`, persistencia transacional em banco, cadastro independente da programacao, match automatico por `Projeto + Equipe + Data`, sugestao automatica de taxa pela ultima medicao do projeto e alerta para mudanca posterior de `CONCLUIDO/PARCIAL` na programacao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem, incluindo `Tipo` por select (`NOVO`/`SUCATA`), flag `Material TRAFO` (`is_transformer`) e `Preco` opcional.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros (incluindo `Status: Ativo/Inativo`), listagem paginada e acoes de detalhe/historico/status.
@@ -145,7 +145,7 @@ vercel --prod
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
   - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users` e registra auditoria do invite via RPC.
-  - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, com filtro de status (`Cancelado`, `Ativo`, `Concluido`), marcador `is_test` e bloqueio de inativacao quando houver agenda operacional pendente.
+  - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, com filtros por programacao (`Estado Trabalho` e `Tipo SGD`), marcador `is_test` e bloqueio de inativacao quando houver agenda operacional pendente.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
   - `api/projects/forecast/route.ts`: lista, adiciona e edita materiais previstos por projeto com controle de concorrencia por `updated_at` na edicao.
   - `api/projects/forecast/catalog/route.ts`: pesquisa materiais ativos para inclusao manual no previsto do projeto.
@@ -199,7 +199,7 @@ vercel --prod
   - `ProgrammingPageView.tsx`: implementacao legada da tela antiga de Programacao (desativada no fluxo atual e mantida sem exclusao de codigo).
   - `ProgrammingPageView.module.css`: estilos da tela de programacao.
 - `src/modules/dashboard/programacao-simples/`
-  - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, quantidades estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros, lista com `Detalhes`/`Edicao`/`Historico`, edicao com troca de equipe (selecao unica + aviso visual), exportacao CSV e exportacao `ENEL-EXCEL`.
+  - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, quantidades estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros (incluindo `Estado Trabalho` e `Tipo SGD`), lista com `Detalhes`/`Edicao`/`Historico`, edicao com troca de equipe (selecao unica + aviso visual), exportacao CSV, exportacao `ENEL-EXCEL` e calendario semanal de visualizacao exibindo o encarregado por equipe.
   - `ProgrammingSimplePageView.module.css`: estilos da nova tela de Programacao.
 - `src/modules/dashboard/medicao/`
   - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, lista paginada, modos `Com producao` e `Sem producao`, motivo estruturado por tenant, inclusao de atividades da medicao, taxa unica por ordem com coluna `Taxa aplicada` na edicao, sugestao automatica da taxa ao selecionar projeto (ultima medicao do projeto), cadastro em massa CSV com suporte aos dois tipos, detalhe por item com `taxa` visivel, importacao reforcada por match exato/univoco do codigo da atividade, bloqueio de atividade duplicada na mesma ordem com validacao tambem na RPC e status de execucao com alerta em linha separada.

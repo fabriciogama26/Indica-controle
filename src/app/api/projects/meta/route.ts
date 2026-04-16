@@ -28,6 +28,16 @@ type PersonNameRow = {
   name: string;
 };
 
+type WorkCompletionCatalogRow = {
+  code: string;
+  label_pt: string | null;
+};
+
+type SgdTypeRow = {
+  id: string;
+  description: string;
+};
+
 function normalizeNames(values: string[]) {
   return Array.from(
     new Set(
@@ -62,6 +72,8 @@ export async function GET(request: NextRequest) {
       supervisorJobTitlesResult,
       utilityResponsiblesResult,
       utilityFieldManagersResult,
+      workCompletionCatalogResult,
+      sgdTypesResult,
     ] = await Promise.all([
       supabase
         .from("project_with_labels")
@@ -135,6 +147,21 @@ export async function GET(request: NextRequest) {
         .eq("ativo", true)
         .order("name", { ascending: true })
         .returns<LookupNameRow[]>(),
+      supabase
+        .from("programming_work_completion_catalog")
+        .select("code, label_pt")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("label_pt", { ascending: true })
+        .returns<WorkCompletionCatalogRow[]>(),
+      supabase
+        .from("programming_sgd_types")
+        .select("id, description")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("is_active", true)
+        .order("description", { ascending: true })
+        .returns<SgdTypeRow[]>(),
     ]);
 
     if (projectsResult.error) {
@@ -212,6 +239,17 @@ export async function GET(request: NextRequest) {
         ? normalizeNames(projectRows.map((item) => String(item.utility_field_manager_text ?? "")))
         : normalizeNames((utilityFieldManagersResult.data ?? []).map((item) => item.name)),
       sobCatalog,
+      workCompletionCatalog: (workCompletionCatalogResult.error ? [] : (workCompletionCatalogResult.data ?? []))
+        .map((item) => ({
+          code: String(item.code ?? "").trim().toUpperCase(),
+          label: String(item.label_pt ?? "").trim() || String(item.code ?? "").trim().toUpperCase(),
+        })),
+      sgdTypes: (sgdTypesResult.error ? [] : (sgdTypesResult.data ?? []))
+        .map((item) => ({
+          id: String(item.id ?? "").trim(),
+          description: String(item.description ?? "").trim(),
+        }))
+        .filter((item) => item.id && item.description),
     });
   } catch {
     return NextResponse.json({ message: "Falha ao carregar opcoes de projetos." }, { status: 500 });

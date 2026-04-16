@@ -32,6 +32,8 @@ Filtros, auto-complete e listagem
   - Projeto
   - Equipe
   - Status
+  - Estado Trabalho (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
+  - Tipo SGD (`Todos` + itens ativos do catalogo `programming_sgd_types`)
 - Lista:
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
   - Acoes por linha: `Detalhes` e `Historico`.
@@ -43,6 +45,7 @@ Filtros, auto-complete e listagem
     - `ADIADA` e `CANCELADA` aparecem na lista mesmo quando a data de execucao esta fora do periodo filtrado.
 - Calendario semanal:
   - Grade fixa de segunda a domingo, com linhas por equipe.
+  - Cabecalho da linha de equipe exibe `Equipe`, `Encarregado` e `Base`.
   - Cada card representa uma programacao no dia.
   - Card exibe: codigo da obra (sem prefixo `SOB`) e indicadores `SGD`/`PI`.
   - O horario nao aparece mais no card.
@@ -108,6 +111,26 @@ Atualizacao 2026-04
   - Comportamento antes/depois:
     - Antes: card usava somente a cor do `Status` da programacao.
     - Depois: card passa a usar `verde escuro` quando `Estado Trabalho = CONCLUIDO/Completo`.
+
+Atualizacao adicional 2026-04-16 (filtros e calendario)
+--------------------------------------------------------
+- Ajustada a visualizacao para incluir os filtros `Estado Trabalho` e `Tipo SGD`, no mesmo padrao da Programacao Simples.
+- Ajustado o calendario semanal para exibir o nome do `Encarregado` na linha de cada equipe.
+- Mapeamento desta atualizacao:
+  - Arquivos alterados:
+    - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+    - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+    - `docs/Tela_Programacao_Simples_SaaS.txt`
+    - `README.md`
+    - `TASKS.md`
+  - Funcoes/hooks/constantes tocadas:
+    - `FilterState` (`sgdTypeId`)
+    - bloco `filteredSchedules`
+    - bloco de filtros (`Tipo SGD`)
+    - grade `weekCalendarTeamCell`
+  - Comportamento antes/depois:
+    - Antes: a visualizacao nao filtrava por `Tipo SGD` e nao mostrava `Encarregado` na linha da equipe do calendario.
+    - Depois: passa a filtrar por `Tipo SGD` e a exibir `Encarregado` junto ao nome da equipe.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
