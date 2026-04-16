@@ -2292,7 +2292,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       date: schedule.date,
       period: schedule.period,
       startTime: schedule.startTime,
-      endTime: schedule.period === "partial" ? "12:00" : schedule.endTime,
+      endTime: schedule.endTime || (schedule.period === "partial" ? "12:00" : "17:00"),
       outageStartTime: schedule.outageStartTime ?? "",
       outageEndTime: schedule.outageEndTime ?? "",
       feeder: schedule.feeder ?? "",
