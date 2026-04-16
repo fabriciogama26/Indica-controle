@@ -10,6 +10,7 @@ type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
 type WorkCompletionStatus = string | null;
+type EconomicWorkCompletionStatus = "CONCLUIDO" | "PARCIAL";
 
 type ProjectItem = {
   id: string;
@@ -440,9 +441,42 @@ function programmingMatchLabel(status: ProgrammingMatchStatus) {
   return status === "PROGRAMADA" ? "Programada" : "Nao programada";
 }
 
+function normalizeWorkCompletionCodeToken(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+}
+
+function resolveEconomicWorkCompletionStatus(value: unknown): EconomicWorkCompletionStatus | null {
+  const token = normalizeWorkCompletionCodeToken(value);
+  if (
+    token === "CONCLUIDO"
+    || token === "COMPLETO"
+    || token.startsWith("CONCLUIDO")
+  ) {
+    return "CONCLUIDO";
+  }
+
+  if (token === "PARCIAL" || token.startsWith("PARCIAL")) {
+    return "PARCIAL";
+  }
+
+  return null;
+}
+
 function workCompletionStatusLabel(status: WorkCompletionStatus, labelMap: Map<string, string>) {
   if (!status) return "-";
-  return labelMap.get(status) ?? status;
+
+  const economicStatus = resolveEconomicWorkCompletionStatus(status);
+  if (economicStatus) {
+    return labelMap.get(economicStatus) ?? economicStatus;
+  }
+
+  const normalized = String(status).trim().toUpperCase();
+  return labelMap.get(normalized) ?? normalized;
 }
 
 function formatHistoryActionLabel(action: string) {
@@ -853,10 +887,57 @@ export function MeasurementPageView() {
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
-  const workCompletionLabelMap = useMemo(
-    () => new Map(workCompletionCatalog.map((item) => [item.code, item.label])),
-    [workCompletionCatalog],
-  );
+  const economicWorkCompletionOptions = useMemo(() => {
+    const map = new Map<EconomicWorkCompletionStatus, { code: EconomicWorkCompletionStatus; label: string }>();
+
+    for (const item of workCompletionCatalog) {
+      const economicStatus = resolveEconomicWorkCompletionStatus(item.code);
+      if (!economicStatus || map.has(economicStatus)) {
+        continue;
+      }
+
+      map.set(economicStatus, {
+        code: economicStatus,
+        label: String(item.label ?? "").trim() || economicStatus,
+      });
+    }
+
+    if (!map.has("CONCLUIDO")) {
+      map.set("CONCLUIDO", { code: "CONCLUIDO", label: "Concluido" });
+    }
+
+    if (!map.has("PARCIAL")) {
+      map.set("PARCIAL", { code: "PARCIAL", label: "Parcial" });
+    }
+
+    return Array.from(map.values());
+  }, [workCompletionCatalog]);
+  const workCompletionLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+
+    for (const item of workCompletionCatalog) {
+      const rawCode = String(item.code ?? "").trim().toUpperCase();
+      const label = String(item.label ?? "").trim();
+      if (rawCode) {
+        map.set(rawCode, label || rawCode);
+      }
+
+      const economicStatus = resolveEconomicWorkCompletionStatus(item.code);
+      if (economicStatus) {
+        map.set(economicStatus, label || economicStatus);
+      }
+    }
+
+    if (!map.has("CONCLUIDO")) {
+      map.set("CONCLUIDO", "Concluido");
+    }
+
+    if (!map.has("PARCIAL")) {
+      map.set("PARCIAL", "Parcial");
+    }
+
+    return map;
+  }, [workCompletionCatalog]);
   const resolvedActivityOptions = useMemo(() => {
     const byId = new Map<string, ActivityCatalogItem>();
     for (const item of activityOptions) {
@@ -2728,8 +2809,7 @@ export function MeasurementPageView() {
             <span>Estado Trabalho</span>
             <select value={filterDraft.workCompletionStatus} onChange={(event) => setFilterDraft((current) => ({ ...current, workCompletionStatus: event.target.value as Filters["workCompletionStatus"] }))}>
               <option value="TODOS">Todos</option>
-              {workCompletionCatalog
-                .filter((item) => item.code !== "NAO_INFORMADO")
+              {economicWorkCompletionOptions
                 .map((item) => (
                   <option key={item.code} value={item.code}>{item.label}</option>
                 ))}
