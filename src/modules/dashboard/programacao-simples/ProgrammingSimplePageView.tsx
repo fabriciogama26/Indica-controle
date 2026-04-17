@@ -274,6 +274,7 @@ type FilterState = {
   endDate: string;
   projectSearch: string;
   projectId: string;
+  municipality: string;
   teamId: string;
   status: "TODOS" | ProgrammingStatus;
   workCompletionStatus: "TODOS" | WorkCompletionStatus | "NAO_INFORMADO";
@@ -1235,6 +1236,13 @@ function buildSavedOutsideFiltersMessage(params: {
     reasons.push(`o Projeto filtrado e ${filteredProject}`);
   }
 
+  if (params.activeFilters.municipality) {
+    const savedProjectCity = params.projectMap.get(params.projectId)?.city ?? "";
+    if (savedProjectCity !== params.activeFilters.municipality) {
+      reasons.push(`o Municipio filtrado e ${params.activeFilters.municipality}`);
+    }
+  }
+
   if (params.activeFilters.teamId && !params.teamIds.includes(params.activeFilters.teamId)) {
     const filteredTeam = params.teamMap.get(params.activeFilters.teamId)?.name ?? "selecionada";
     reasons.push(`a Equipe filtrada e ${filteredTeam}`);
@@ -1462,6 +1470,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     endDate: currentYearDateRange.endDate,
     projectSearch: "",
     projectId: "",
+    municipality: "",
     teamId: "",
     status: "TODOS",
     workCompletionStatus: "TODOS",
@@ -1472,6 +1481,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     endDate: currentYearDateRange.endDate,
     projectSearch: "",
     projectId: "",
+    municipality: "",
     teamId: "",
     status: "TODOS",
     workCompletionStatus: "TODOS",
@@ -1569,6 +1579,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }, [availableTeams, form.teamSearch]);
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
+  const municipalityOptions = useMemo(
+    () => Array.from(new Set(projects.map((item) => item.city).filter(Boolean))).sort((left, right) => left.localeCompare(right)),
+    [projects],
+  );
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
   const workCompletionLabelMap = useMemo(
     () => new Map(workCompletionCatalog.map((item) => [item.code, item.label])),
@@ -1591,6 +1605,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       if (activeFilters.projectId && item.projectId !== activeFilters.projectId) {
         return false;
+      }
+
+      if (activeFilters.municipality) {
+        const scheduleProjectCity = projectMap.get(item.projectId)?.city ?? "";
+        if (scheduleProjectCity !== activeFilters.municipality) {
+          return false;
+        }
       }
 
       if (activeFilters.teamId && item.teamId !== activeFilters.teamId) {
@@ -1631,7 +1652,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return right.updatedAt.localeCompare(left.updatedAt);
     });
     return filtered;
-  }, [activeFilters.endDate, activeFilters.projectId, activeFilters.sgdTypeId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, activeFilters.workCompletionStatus, schedules]);
+  }, [activeFilters.endDate, activeFilters.municipality, activeFilters.projectId, activeFilters.sgdTypeId, activeFilters.startDate, activeFilters.status, activeFilters.teamId, activeFilters.workCompletionStatus, projectMap, schedules]);
 
   const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / PAGE_SIZE));
   const pagedSchedules = useMemo(() => {
@@ -1919,7 +1940,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   useEffect(() => {
     setPage(1);
-  }, [activeFilters.projectId, activeFilters.status, activeFilters.teamId, schedules]);
+  }, [activeFilters.municipality, activeFilters.projectId, activeFilters.status, activeFilters.teamId, schedules]);
 
   useEffect(() => {
     setDeadlineCarouselPage(0);
@@ -3077,6 +3098,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       endDate: currentYearDateRange.endDate,
       projectSearch: "",
       projectId: "",
+      municipality: "",
       teamId: "",
       status: "TODOS",
       workCompletionStatus: "TODOS",
@@ -4302,6 +4324,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 </option>
               ))}
             </datalist>
+          </label>
+          <label className={styles.field}>
+            <span>Municipio</span>
+            <select
+              value={filterDraft.municipality}
+              onChange={(event) => updateFilterField("municipality", event.target.value)}
+            >
+              <option value="">Todos</option>
+              {municipalityOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.field}>
             <span>Equipe</span>

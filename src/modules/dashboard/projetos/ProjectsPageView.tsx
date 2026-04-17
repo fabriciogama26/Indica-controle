@@ -71,6 +71,7 @@ type FilterState = {
   executionDate: string;
   priority: string;
   city: string;
+  canceledOnly: boolean;
   workCompletionStatus: "TODOS" | "NAO_INFORMADO" | string;
   sgdTypeId: string;
 };
@@ -259,6 +260,7 @@ const INITIAL_FILTERS: FilterState = {
   executionDate: "",
   priority: "",
   city: "",
+  canceledOnly: false,
   workCompletionStatus: "TODOS",
   sgdTypeId: "",
 };
@@ -327,6 +329,9 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   }
   if (filters.city) {
     params.set("city", filters.city);
+  }
+  if (filters.canceledOnly) {
+    params.set("canceledOnly", "true");
   }
   if (filters.workCompletionStatus && filters.workCompletionStatus !== "TODOS") {
     params.set("workCompletionStatus", filters.workCompletionStatus);
@@ -2790,6 +2795,19 @@ export function ProjectsPageView() {
               ))}
               <option value="NAO_INFORMADO">Nao informado</option>
             </select>
+          </label>
+
+          <label className={`${styles.field} ${styles.checkboxField}`}>
+            <span>Status Cancelado</span>
+            <div className={styles.checkboxControl}>
+              <input
+                id="projects-filter-canceled-only"
+                type="checkbox"
+                checked={filterDraft.canceledOnly}
+                onChange={(event) => updateFilterField("canceledOnly", event.target.checked)}
+              />
+              <span>Somente cancelados</span>
+            </div>
           </label>
 
           <label className={styles.field}>
