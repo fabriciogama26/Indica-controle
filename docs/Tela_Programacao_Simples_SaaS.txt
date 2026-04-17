@@ -185,6 +185,7 @@ Filtros, auto-complete e listagem
   - Data inicial (padrao: primeiro dia do ano vigente)
   - Data final (padrao: ultimo dia do ano vigente)
   - Projeto
+  - Municipio
   - Equipe
   - Status
   - Estado Trabalho (`Todos`, opcoes do catalogo do tenant e `Nao informado`)

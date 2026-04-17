@@ -600,6 +600,7 @@ async function fetchProjectsPageCompat(params: {
   executionDate: string;
   priority: string;
   city: string;
+  canceledOnly: boolean;
   programmingFilteredProjectIds: string[] | null;
   from: number;
   to: number;
@@ -621,6 +622,9 @@ async function fetchProjectsPageCompat(params: {
     }
     if (params.city) {
       query = query.eq("city_text", params.city);
+    }
+    if (params.canceledOnly) {
+      query = query.eq("is_active", false);
     }
     if (params.programmingFilteredProjectIds) {
       query = query.in(
@@ -677,6 +681,7 @@ async function fetchProjectsSummaryCompat(params: {
   executionDate: string;
   priority: string;
   city: string;
+  canceledOnly: boolean;
   programmingFilteredProjectIds: string[] | null;
 }) {
   const projectIds: string[] = [];
@@ -706,7 +711,7 @@ async function fetchProjectsSummaryCompat(params: {
     if (params.city) {
       projectIdsQuery = projectIdsQuery.eq("city_text", params.city);
     }
-    projectIdsQuery = projectIdsQuery.eq("is_active", true);
+    projectIdsQuery = projectIdsQuery.eq("is_active", params.canceledOnly ? false : true);
     if (params.programmingFilteredProjectIds) {
       projectIdsQuery = projectIdsQuery.in(
         "id",
@@ -737,7 +742,7 @@ async function fetchProjectsSummaryCompat(params: {
       if (params.city) {
         fallbackQuery = fallbackQuery.eq("city_text", params.city);
       }
-      fallbackQuery = fallbackQuery.eq("is_active", true);
+      fallbackQuery = fallbackQuery.eq("is_active", params.canceledOnly ? false : true);
       if (params.programmingFilteredProjectIds) {
         fallbackQuery = fallbackQuery.in(
           "id",
@@ -1271,6 +1276,7 @@ export async function GET(request: NextRequest) {
     const executionDate = normalizeText(params.get("executionDate"));
     const priority = normalizeText(params.get("priority"));
     const city = normalizeText(params.get("city"));
+    const canceledOnly = normalizeBoolean(params.get("canceledOnly"));
     const workCompletionStatus = normalizeProjectWorkCompletionStatusFilter(params.get("workCompletionStatus"));
     const sgdTypeId = normalizeUuid(params.get("sgdTypeId"));
     const page = Math.max(1, Number(params.get("page") ?? 1));
@@ -1295,6 +1301,7 @@ export async function GET(request: NextRequest) {
       executionDate,
       priority,
       city,
+      canceledOnly,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
       from,
       to,
@@ -1311,6 +1318,7 @@ export async function GET(request: NextRequest) {
       executionDate,
       priority,
       city,
+      canceledOnly,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
     });
 

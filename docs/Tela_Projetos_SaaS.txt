@@ -121,6 +121,7 @@ Filtros, auto-complete e listagem
   - `Data Execucao` (data)
   - `Prioridade` (select)
   - `Municipio` (select)
+  - `Status Cancelado` (checkbox `Somente cancelados`)
   - `Estado Trabalho` (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
   - `Tipo SGD` (`Todos` + itens ativos do catalogo `programming_sgd_types`)
 - Auto-complete implementado para:
