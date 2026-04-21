@@ -890,3 +890,15 @@ Atualizacao adicional 2026-04-16 (hardening de sobrescrita e perda de dados)
   - Depois: na edicao sem `supportItemId`, a API recebe o `support` atual da agenda para preservar o valor legado.
   - Antes: flags `ETAPA UNICA` e `ETAPA FINAL` eram persistidas em passo separado apos a RPC full; uma falha nesse passo podia retornar erro mesmo com save principal ja confirmado.
   - Depois: as flags passam a ser persistidas dentro das RPCs full (`single` e `batch`) via overload novo, com fallback automatico para o fluxo antigo em ambientes sem a migration 158.
+
+Atualizacao adicional 2026-04-21 (Estado Trabalho nao persistia ao trocar de PARCIAL para CONCLUIDO)
+-----------------------------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/160_fix_work_completion_status_sync_priority.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - migration SQL `sync_project_programming_work_completion_status_fields` (redefinida via `create or replace function`)
+- Comportamento antes/depois:
+  - Antes: ao editar uma programacao com `work_completion_status_id` ja preenchido, atualizar somente o texto (`work_completion_status`) podia ser sobrescrito de volta para o valor antigo pelo trigger de sincronismo, aparentando "salvou mas nao mudou" na lista.
+  - Depois: o trigger passa a respeitar update explicito por texto (incluindo limpeza para vazio), recalculando o UUID correspondente no catalogo do tenant e mantendo os campos sincronizados sem reverter para o status anterior.
