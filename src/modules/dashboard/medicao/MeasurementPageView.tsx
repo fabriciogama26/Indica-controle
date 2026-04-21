@@ -867,8 +867,12 @@ export function MeasurementPageView() {
   const [statusOrder, setStatusOrder] = useState<OrderItem | null>(null);
   const [statusAction, setStatusAction] = useState<StatusAction>("CANCELAR");
   const [statusReason, setStatusReason] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
   const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [isLoadingFilteredTotal, setIsLoadingFilteredTotal] = useState(false);
+  const [isRefreshingList, setIsRefreshingList] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
@@ -883,6 +887,8 @@ export function MeasurementPageView() {
   const [rateSuggestionSource, setRateSuggestionSource] = useState<RateSuggestionSource | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const hasManualRateUserOverrideRef = useRef(false);
+  const refreshRequestedRef = useRef(false);
+  const refreshHadErrorRef = useRef(false);
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
@@ -1063,6 +1069,7 @@ export function MeasurementPageView() {
       setProjects([]);
       setTeams([]);
       setSchedules([]);
+      setIsLoadingSources(false);
       return;
     }
 
@@ -1083,6 +1090,9 @@ export function MeasurementPageView() {
         setTeams(data?.teams ?? []);
         setSchedules(data?.schedules ?? []);
       } catch (error) {
+        if (!ignore && refreshRequestedRef.current) {
+          refreshHadErrorRef.current = true;
+        }
         if (!ignore) {
           setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar Programacao para Medicao." });
         }
@@ -1095,17 +1105,19 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters.endDate, activeFilters.startDate, form.executionDate]);
+  }, [accessToken, activeFilters.endDate, activeFilters.startDate, form.executionDate, refreshTick]);
 
   useEffect(() => {
     if (!accessToken) {
       setNoProductionReasons([]);
       setWorkCompletionCatalog([]);
+      setIsLoadingMeta(false);
       return;
     }
 
     let ignore = false;
     async function loadMeasurementMeta() {
+      setIsLoadingMeta(true);
       try {
         const response = await fetch("/api/medicao/meta", {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -1117,10 +1129,17 @@ export function MeasurementPageView() {
         setNoProductionReasons(data?.noProductionReasons ?? []);
         setWorkCompletionCatalog(data?.workCompletionCatalog ?? []);
       } catch (error) {
+        if (!ignore && refreshRequestedRef.current) {
+          refreshHadErrorRef.current = true;
+        }
         if (!ignore) {
           setNoProductionReasons([]);
           setWorkCompletionCatalog([]);
           setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar metadados da medicao." });
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingMeta(false);
         }
       }
     }
@@ -1129,12 +1148,13 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken]);
+  }, [accessToken, refreshTick]);
 
   useEffect(() => {
     if (!accessToken) {
       setOrders([]);
       setTotal(0);
+      setIsLoadingOrders(false);
       return;
     }
 
@@ -1148,6 +1168,9 @@ export function MeasurementPageView() {
         setTotal(result?.pagination.total ?? 0);
         setPage(result?.pagination.page ?? page);
       } catch (error) {
+        if (!ignore && refreshRequestedRef.current) {
+          refreshHadErrorRef.current = true;
+        }
         if (!ignore) {
           setOrders([]);
           setTotal(0);
@@ -1162,16 +1185,18 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters, fetchOrdersPage, page]);
+  }, [accessToken, activeFilters, fetchOrdersPage, page, refreshTick]);
 
   useEffect(() => {
     if (!accessToken) {
       setFilteredOrdersTotalAmount(0);
+      setIsLoadingFilteredTotal(false);
       return;
     }
 
     let ignore = false;
     async function loadFilteredOrdersTotalAmount() {
+      setIsLoadingFilteredTotal(true);
       try {
         const exportOrders = await loadAllOrdersForExport();
         if (ignore) return;
@@ -1181,8 +1206,15 @@ export function MeasurementPageView() {
         );
         setFilteredOrdersTotalAmount(sum);
       } catch {
+        if (!ignore && refreshRequestedRef.current) {
+          refreshHadErrorRef.current = true;
+        }
         if (!ignore) {
           setFilteredOrdersTotalAmount(0);
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingFilteredTotal(false);
         }
       }
     }
@@ -1191,7 +1223,24 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, loadAllOrdersForExport]);
+  }, [accessToken, loadAllOrdersForExport, refreshTick]);
+
+  useEffect(() => {
+    if (!isRefreshingList) {
+      return;
+    }
+
+    if (isLoadingSources || isLoadingMeta || isLoadingOrders || isLoadingFilteredTotal) {
+      return;
+    }
+
+    setIsRefreshingList(false);
+    if (refreshRequestedRef.current && !refreshHadErrorRef.current) {
+      setFeedback({ type: "success", message: "Lista atualizada com os dados mais recentes." });
+    }
+    refreshRequestedRef.current = false;
+    refreshHadErrorRef.current = false;
+  }, [isLoadingFilteredTotal, isLoadingMeta, isLoadingOrders, isLoadingSources, isRefreshingList]);
 
   useEffect(() => {
     if (!accessToken || deferredActivitySearch.trim().length < 2) {
@@ -2328,6 +2377,17 @@ export function MeasurementPageView() {
     setStatusReason("");
   }
 
+  function refreshMeasurementList() {
+    if (!accessToken || isRefreshingList) {
+      return;
+    }
+
+    refreshRequestedRef.current = true;
+    refreshHadErrorRef.current = false;
+    setIsRefreshingList(true);
+    setRefreshTick((current) => current + 1);
+  }
+
   async function submitStatusChange(order: OrderItem, action: StatusAction, reason = "") {
     if (!accessToken) return;
     if ((action === "CANCELAR" || action === "ABRIR") && reason.trim().length < 10) {
@@ -2837,7 +2897,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.secondaryButton}
               onClick={() => void exportOrdersCsv()}
-              disabled={isExporting || isExportingDetails || isLoadingOrders || total <= 0}
+              disabled={isExporting || isExportingDetails || isRefreshingList || isLoadingOrders || total <= 0}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
@@ -2845,9 +2905,17 @@ export function MeasurementPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={() => void exportOrdersDetailedCsv()}
-              disabled={isExportingDetails || isExporting || isLoadingOrders || total <= 0}
+              disabled={isExportingDetails || isExporting || isRefreshingList || isLoadingOrders || total <= 0}
             >
               {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={refreshMeasurementList}
+              disabled={isRefreshingList || isLoadingSources || isLoadingMeta || isLoadingOrders || isLoadingFilteredTotal || isExporting || isExportingDetails}
+            >
+              {isRefreshingList ? "Atualizando..." : "Atualizar lista"}
             </button>
           </div>
         </div>
