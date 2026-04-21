@@ -345,6 +345,7 @@
 - [x] Migrar cadastro em massa da Medicao para RPC transacional parcial (`save_project_measurement_order_batch_partial`), salvando linhas validas e retornando por lote as invalidas/duplicadas.
 - [x] Adicionar botao `Exportar Excel (CSV)` na lista de Ordens de Medicao para exportar o resultado filtrado no padrao das outras telas.
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
+- [x] Adicionar botao `Atualizar lista` na lista de Ordens de Medicao (ao lado de `Detalhamento (CSV)`), com recarga manual de lista/consolidacoes para refletir `Status execucao` e demais dados atualizados.
 - [x] Paginar a `Lista de Ordens de Medicao` com `page`, `pageSize` e `total` no backend, navegacao `Anterior/Proxima` na tela e exportacao preservando o resultado filtrado completo.
 - [x] Ampliar a Medicao para suportar `Com producao` e `Sem producao` na mesma tela, com motivo estruturado por tenant, save sem atividades para `Sem producao` e suporte correspondente no cadastro em massa.
 - [x] Restringir `Motivo sem producao` para ficar ativo apenas quando `Tipo da medicao = Sem producao`, limpando no front fora desse tipo e validando na API para bloquear envio em `Com producao`.

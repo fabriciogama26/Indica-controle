@@ -142,6 +142,7 @@ Filtros, auto-complete e listagem
   - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
   - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela.
   - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`.
+  - Botao `Atualizar lista` ao lado de `Detalhamento (CSV)` para recarregar lista, filtros aplicados e consolidacoes com os dados mais recentes.
 - Acoes:
   - Detalhes
   - Historico
@@ -412,4 +413,19 @@ Atualizacao 2026-04-16
   - Depois: o filtro de `Estado Trabalho` na Medicao passa a exibir apenas `Concluido`, `Parcial` e `Nao informado`.
   - Antes: o alerta de mudanca apos medicao comparava apenas o status do match do mesmo dia.
   - Depois: o alerta considera a ultima consolidacao economica do projeto (`CONCLUIDO` ou `PARCIAL`) em relacao ao momento da medicao.
+
+Atualizacao 2026-04-21
+----------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `refreshMeasurementList`
+  - `refreshTick`
+  - `isRefreshingList`
+  - efeitos de carga (`loadSources`, `loadMeasurementMeta`, `loadOrders`, `loadFilteredOrdersTotalAmount`)
+- Comportamento antes/depois:
+  - Antes: a lista da Medicao atualizava apenas pelos gatilhos indiretos (troca de filtro/paginacao/salvamento), sem acao manual explicita no bloco de exportacao.
+  - Depois: a lista passa a ter botao `Atualizar lista` ao lado de `Detalhamento (CSV)`, forçando recarga completa dos dados visiveis e consolidacoes para refletir o `Status execucao` e demais informacoes mais recentes.
 
