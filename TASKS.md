@@ -455,3 +455,4 @@
 - [x] Corrigir wrappers da Programacao com ETAPA UNICA/FINAL para eliminar chamada recursiva/assinatura invalida apos a migration 158, reaproveitando as bases save_project_programming_full/save_project_programming_batch_full e mantendo Ponto eletrico + N EQ + flags no mesmo fluxo.
 - [x] Enriquecer o erro de conflito de horario da Programacao para exibir Equipe e Encarregado no modal de falha (TEAM_TIME_CONFLICT), tanto no cadastro em lote quanto no save individual.
 - [x] Adicionar filtro de Municipio na Programacao Simples e filtro por Status Cancelado (checkbox Somente cancelados) na tela de Projetos, com suporte no querystring/API de listagem e exportacao.
+- [x] Corrigir persistencia de Estado Trabalho na Programacao Simples quando `work_completion_status_id` ja existe: trigger de sincronismo agora respeita update explicito por texto (inclusive limpeza), recalcula UUID e evita reverter `CONCLUIDO` para valor anterior (`PARCIAL`).
