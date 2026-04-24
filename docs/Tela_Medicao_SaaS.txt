@@ -121,6 +121,7 @@ Filtros, auto-complete e listagem
   - Data inicial
   - Data final
   - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
+  - Equipe (lista carregada dos metadados da tela; filtra por `team_id`)
   - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
   - Tipo (`TODOS`, `Com producao`, `Sem producao`)
   - Motivo sem producao (lista carregada de `measurement_no_production_reasons`; aceita `Todos`)
@@ -459,3 +460,20 @@ Atualizacao 2026-04-21
   - Antes: a lista da Medicao atualizava apenas pelos gatilhos indiretos (troca de filtro/paginacao/salvamento), sem acao manual explicita no bloco de exportacao.
   - Depois: a lista passa a ter botao `Atualizar lista` ao lado de `Detalhamento (CSV)`, forçando recarga completa dos dados visiveis e consolidacoes para refletir o `Status execucao` e demais informacoes mais recentes.
 
+Atualizacao 2026-04-24 - filtro por Equipe
+------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `Filters`
+  - `initialFilters`
+  - `buildOrdersQuery`
+  - Renderizacao do bloco `Filtros`
+  - `GET /api/medicao` (pipeline inicial de filtros por `team_id`)
+- Comportamento antes/depois:
+  - Antes: os filtros da lista permitiam recortar por data, projeto, status, tipo, motivo, programacao, estado de trabalho e alerta, mas nao por equipe.
+  - Depois: o filtro da Medicao passa a exibir `Equipe`, enviar `teamId` para `/api/medicao` e aplicar `eq("team_id", teamId)` no backend antes da paginacao, totalizacao e exportacao.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; o filtro adicional atua dentro da query ja limitada por `tenant_id`.

@@ -738,6 +738,7 @@ export async function GET(request: NextRequest) {
   const startDate = normalizeIsoDate(request.nextUrl.searchParams.get("startDate"));
   const endDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
   const projectId = normalizeUuid(request.nextUrl.searchParams.get("projectId"));
+  const teamId = normalizeUuid(request.nextUrl.searchParams.get("teamId"));
   const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
   const measurementKindFilter = normalizeText(request.nextUrl.searchParams.get("measurementKind")).toUpperCase();
   const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
@@ -762,6 +763,9 @@ export async function GET(request: NextRequest) {
 
   if (projectId) {
     query = query.eq("project_id", projectId);
+  }
+  if (teamId) {
+    query = query.eq("team_id", teamId);
   }
   if (statusFilter && statusFilter !== "TODOS") {
     query = query.eq("status", statusFilter);
