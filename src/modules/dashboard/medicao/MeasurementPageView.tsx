@@ -304,6 +304,10 @@ type FormState = {
   expectedUpdatedAt: string | null;
   orderNumber: string;
   status: MeasurementStatus;
+  originalTeamId: string;
+  originalExecutionDate: string;
+  teamNameSnapshot: string;
+  foremanNameSnapshot: string;
   programmingId: string;
   projectId: string;
   teamId: string;
@@ -368,6 +372,10 @@ function createForm(today: string): FormState {
     expectedUpdatedAt: null,
     orderNumber: "",
     status: "ABERTA",
+    originalTeamId: "",
+    originalExecutionDate: "",
+    teamNameSnapshot: "",
+    foremanNameSnapshot: "",
     programmingId: "",
     projectId: "",
     teamId: "",
@@ -2146,6 +2154,10 @@ export function MeasurementPageView() {
         expectedUpdatedAt: order.updatedAt,
         orderNumber: order.orderNumber,
         status: order.status,
+        originalTeamId: order.teamId,
+        originalExecutionDate: order.executionDate,
+        teamNameSnapshot: order.teamName,
+        foremanNameSnapshot: order.foremanName,
         programmingId: order.programmingId ?? "",
         projectId: order.projectId,
         teamId: order.teamId,
@@ -2650,6 +2662,12 @@ export function MeasurementPageView() {
     }
   }
 
+  const formForemanName = form.id
+    && form.teamId === form.originalTeamId
+    && form.executionDate === form.originalExecutionDate
+    ? form.foremanNameSnapshot
+    : (teamMap.get(form.teamId)?.foremanName ?? "");
+
   return (
     <section className={styles.wrapper}>
       {feedback ? <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div> : null}
@@ -2703,7 +2721,7 @@ export function MeasurementPageView() {
               <option value="SEM_PRODUCAO">Sem producao</option>
             </select>
           </label>
-          <label className={styles.field}><span>Encarregado</span><input value={teamMap.get(form.teamId)?.foremanName ?? ""} readOnly /></label>
+          <label className={styles.field}><span>Encarregado</span><input value={formForemanName} readOnly /></label>
           <label className={styles.field}>
             <span>Motivo sem producao{form.measurementKind === "SEM_PRODUCAO" ? " *" : ""}</span>
             <select
