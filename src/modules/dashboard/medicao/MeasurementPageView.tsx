@@ -291,6 +291,7 @@ type Filters = {
   startDate: string;
   endDate: string;
   projectId: string;
+  teamId: string;
   status: "TODOS" | MeasurementStatus;
   measurementKind: "TODOS" | MeasurementKind;
   noProductionReasonId: string;
@@ -336,6 +337,7 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   if (filters.projectId) params.set("projectId", filters.projectId);
+  if (filters.teamId) params.set("teamId", filters.teamId);
   if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
   return params.toString();
 }
@@ -843,6 +845,7 @@ export function MeasurementPageView() {
     () => ({
       ...yearRange(today),
       projectId: "",
+      teamId: "",
       status: "TODOS" as const,
       measurementKind: "TODOS" as const,
       noProductionReasonId: "",
@@ -2858,6 +2861,13 @@ export function MeasurementPageView() {
               list="medicao-project-filter-list"
               placeholder="Digite o codigo do projeto"
             />
+          </label>
+          <label className={styles.field}>
+            <span>Equipe</span>
+            <select value={filterDraft.teamId} onChange={(event) => setFilterDraft((current) => ({ ...current, teamId: event.target.value }))}>
+              <option value="">Todas</option>
+              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+            </select>
           </label>
           <label className={styles.field}><span>Status</span><select value={filterDraft.status} onChange={(event) => setFilterDraft((current) => ({ ...current, status: event.target.value as Filters["status"] }))}><option value="TODOS">Todos</option><option value="ABERTA">Aberta</option><option value="FECHADA">Fechada</option><option value="CANCELADA">Cancelada</option></select></label>
           <label className={styles.field}>

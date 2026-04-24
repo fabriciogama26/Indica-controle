@@ -361,6 +361,7 @@
 - [x] Ajustar a cor do `Status` na lista da Medicao para exibir `FECHADA` em vermelho (mesma classe de destaque de `CANCELADA`).
 - [x] Ajustar o layout de `Status execucao` na lista da Medicao para exibir `CONCLUIDO` e `Atualizado apos medicao` em linhas separadas.
 - [x] Ajustar filtro `Estado Trabalho` da Medicao para consumir o catalogo por tenant (`programming_work_completion_catalog`), com opcoes dinamicas e `Nao informado`, integrado ao `GET /api/medicao`.
+- [x] Adicionar filtro `Equipe` na lista da Medicao, integrado ao `GET /api/medicao`, paginacao, totalizacao e exportacoes.
 - [x] Corrigir heranca de `Estado Trabalho` na Medicao para aceitar qualquer codigo do catalogo e usar fallback de snapshot da ordem quando necessario.
 - [x] Corrigir heranca de `Status execucao` na Medicao para fallback por `Projeto + Data` quando nao houver match de equipe, mantendo `Programacao` como `Nao programada` nesse caso.
 - [x] Implementar acao `Abrir` para ordens `FECHADA` na Medicao, com modal de motivo obrigatorio e registro transacional no banco/historico.
@@ -368,7 +369,7 @@
 - [x] Adicionar suporte a quantidade composta (`MVA*hora`) na Medicao: campos `MVA` e `Horas` na tela/importacao, persistencia em `project_measurement_order_items` e calculo automatico de `quantity`.
 - [x] Restringir atividades `MVA*hora` para nao aceitar `Quantidade` direta: exigir `MVA + Horas` no cadastro, importacao e validacao da RPC.
 - [x] Sugerir automaticamente a `Taxa` no cadastro novo da Medicao ao selecionar projeto, priorizando a ultima medicao `COM_PRODUCAO` do mesmo projeto e mantendo fallback para preenchimento manual.
-- [x] Preservar o encarregado historico da Medicao na edicao: criar `team_foreman_history`, resolver snapshot por `Data execucao` e impedir que edicoes sem troca de equipe/data sobrescrevam `foreman_name_snapshot`.
+- [x] Preservar e corrigir o encarregado historico da Medicao: criar `team_foreman_history`, resolver snapshot por `Data execucao`, abrir vigencia anterior quando a primeira troca estiver no historico e backfillar ordens ja contaminadas.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
