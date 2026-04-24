@@ -38,6 +38,7 @@ Arquitetura
   - `supabase/migrations/126_allow_measurement_cancel_when_open.sql`
   - `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
   - `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
+  - `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
 
 Cadastro
 --------
@@ -299,6 +300,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar `mva_quantity/worked_hours` em `project_measurement_order_items` e ajustar a RPC de save para calcular `quantity` por `MVA x Horas` quando informado.
 - Caminho: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
   - Responsavel por: criar `team_foreman_history`, manter vigencia de encarregado por equipe e aplicar snapshot historico em `project_measurement_orders`.
+- Caminho: `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
+  - Responsavel por: abrir a vigencia inicial do encarregado anterior e recalcular snapshots historicos ja gravados na Medicao.
 - Caminho: `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
   - Responsavel por: permitir que o save da Ordem de Medicao use `programming_id` historico (qualquer status) sem quebrar o fluxo transacional e o historico append.
 - Caminho: `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
@@ -423,6 +426,7 @@ Atualizacao 2026-04-24
 ----------------------
 - Arquivos alterados/criados:
   - `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
+  - `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
   - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
   - `docs/Tela_Medicao_SaaS.txt`
   - `docs/Tela_Equipes_SaaS.txt`
@@ -438,6 +442,7 @@ Atualizacao 2026-04-24
   - Depois: se `Equipe` e `Data execucao` nao mudarem, o banco preserva o snapshot original da ordem.
   - Depois: se a ordem for criada ou tiver `Equipe/Data execucao` alteradas, o banco resolve o encarregado pela vigencia em `team_foreman_history` considerando a `Data execucao`.
   - Depois: o formulario de edicao exibe o encarregado salvo na ordem enquanto o contexto original (`Equipe + Data execucao`) for mantido.
+  - Depois: medições antigas com snapshot contaminado por troca posterior de encarregado sao corrigidas por backfill.
 
 Atualizacao 2026-04-21
 ----------------------

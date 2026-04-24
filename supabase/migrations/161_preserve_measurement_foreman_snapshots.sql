@@ -92,7 +92,7 @@ previous_periods as (
     e.team_id,
     null::uuid as foreman_person_id,
     e.from_name as foreman_name_snapshot,
-    coalesce(e.previous_change_date, t.created_at::date, e.change_date) as valid_from,
+    coalesce(e.previous_change_date, date '1900-01-01') as valid_from,
     (e.change_date - 1) as valid_to
   from foreman_events e
   join public.teams t
@@ -304,6 +304,7 @@ begin
   if tg_op = 'UPDATE'
     and new.team_id is not distinct from old.team_id
     and new.execution_date is not distinct from old.execution_date
+    and coalesce(current_setting('app.allow_measurement_snapshot_rewrite', true), '') <> 'on'
   then
     new.team_name_snapshot := coalesce(nullif(btrim(coalesce(old.team_name_snapshot, '')), ''), new.team_name_snapshot);
     new.foreman_name_snapshot := coalesce(nullif(btrim(coalesce(old.foreman_name_snapshot, '')), ''), new.foreman_name_snapshot);
