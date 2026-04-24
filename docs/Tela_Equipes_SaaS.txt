@@ -28,6 +28,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/133_allow_foreman_reuse_when_inactive_team.sql`
 - Base SQL: `supabase/migrations/134_allow_foreman_change_during_team_activation.sql`
 - Base SQL: `supabase/migrations/140_create_team_stock_operations.sql`
+- Base SQL: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
 
 Cadastro
 --------
@@ -49,6 +50,7 @@ Cadastro
   - O `stock_center_id` da equipe deve apontar para um centro `OWN` ativo do mesmo tenant.
   - No fluxo atual, esse centro proprio e criado automaticamente junto com a equipe e mantido exclusivo por equipe.
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear escrita concorrente.
+  - A troca de encarregado alimenta `team_foreman_history`, mantendo vigencia historica usada pela Medicao para resolver o encarregado pela `Data execucao`.
 - Fluxos de acao:
   - `Cadastrar`
   - `Editar`
@@ -133,6 +135,7 @@ Atualizacao 2026-03
 - Atualizacao (2026-04-02): migration `134_allow_foreman_change_during_team_activation.sql` amplia `set_team_record_status` para aceitar `p_foreman_person_id` na ativacao.
 - Atualizacao (2026-04-04): `Equipes` deixa de exigir selecao manual de `Centro de estoque proprio`; o centro passa a ser criado automaticamente no mesmo save e continua visivel na lista/detalhes/exportacao.
 - Atualizacao (2026-04-04): migration `140_create_team_stock_operations.sql` adiciona `teams.stock_center_id`, e a migration `141_auto_create_team_stock_centers_and_foreman_snapshots.sql` passa a auto-criar/backfill do centro proprio por equipe.
+- Atualizacao (2026-04-24): migration `161_preserve_measurement_foreman_snapshots.sql` cria `team_foreman_history` e sincroniza a vigencia de encarregado por equipe para a Medicao preservar o encarregado historico por `Data execucao`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -167,6 +170,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar `stock_center_id` em `teams`, indice unico parcial por centro proprio e nova versao da RPC `save_team_record`.
 - Caminho: `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
   - Responsavel por: auto-criar/backfill do centro proprio por equipe e republicar `save_team_record` para manter o vinculo automatico.
+- Caminho: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
+  - Responsavel por: criar `team_foreman_history`, sincronizar alteracoes de `teams.foreman_person_id` e preservar snapshots historicos consumidos pela Medicao.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`

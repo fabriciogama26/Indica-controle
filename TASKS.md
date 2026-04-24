@@ -368,6 +368,7 @@
 - [x] Adicionar suporte a quantidade composta (`MVA*hora`) na Medicao: campos `MVA` e `Horas` na tela/importacao, persistencia em `project_measurement_order_items` e calculo automatico de `quantity`.
 - [x] Restringir atividades `MVA*hora` para nao aceitar `Quantidade` direta: exigir `MVA + Horas` no cadastro, importacao e validacao da RPC.
 - [x] Sugerir automaticamente a `Taxa` no cadastro novo da Medicao ao selecionar projeto, priorizando a ultima medicao `COM_PRODUCAO` do mesmo projeto e mantendo fallback para preenchimento manual.
+- [x] Preservar o encarregado historico da Medicao na edicao: criar `team_foreman_history`, resolver snapshot por `Data execucao` e impedir que edicoes sem troca de equipe/data sobrescrevam `foreman_name_snapshot`.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
 - [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.

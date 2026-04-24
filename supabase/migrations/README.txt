@@ -353,6 +353,9 @@ Resumo por arquivo
 
 150_add_project_is_test_and_status_filters.sql
 - Adiciona `project.is_test`, republica a view `project_with_labels` com o novo campo e evolui a RPC `save_project_record` para persistir o marcador de obra de teste.
+
+161_preserve_measurement_foreman_snapshots.sql
+- Cria `team_foreman_history`, sincroniza a vigencia de encarregado por equipe e aplica snapshot historico na Medicao por `Data execucao`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

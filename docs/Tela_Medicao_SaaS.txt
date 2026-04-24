@@ -37,6 +37,7 @@ Arquitetura
   - `supabase/migrations/125_require_closed_before_measurement_cancel.sql`
   - `supabase/migrations/126_allow_measurement_cancel_when_open.sql`
   - `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
+  - `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
 
 Cadastro
 --------
@@ -109,6 +110,8 @@ Cadastro
   - O import em massa protege sobreposicao: se ja existir ordem para o mesmo `Projeto + Equipe + Data de execucao`, a linha e ignorada e o resumo exibe `x linhas ja cadastradas`.
   - O import em massa usa RPC de lote parcial (`save_project_measurement_order_batch_partial`) para salvar linhas validas e retornar erros/duplicidades por linha no mesmo fluxo.
   - Na edicao da ordem `ABERTA`, e permitido alterar `Projeto`, `Equipe` e `Data de execucao`.
+  - Ao editar sem trocar `Equipe` nem `Data execucao`, a ordem preserva `team_name_snapshot` e `foreman_name_snapshot` ja salvos.
+  - Ao criar ordem ou trocar `Equipe/Data execucao`, o snapshot de encarregado e resolvido pelo historico efetivo de encarregado da equipe (`team_foreman_history`) usando a `Data execucao`.
   - Persistencia transacional feita por RPC.
 
 Filtros, auto-complete e listagem
@@ -294,6 +297,8 @@ Constantes e configuracoes
   - Responsavel por: criar catalogo de motivos de `Sem producao`, ampliar o cabecalho da Medicao com `measurement_kind/no_production_reason` e ajustar as RPCs do save manual e em lote.
 - Caminho: `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
   - Responsavel por: adicionar `mva_quantity/worked_hours` em `project_measurement_order_items` e ajustar a RPC de save para calcular `quantity` por `MVA x Horas` quando informado.
+- Caminho: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
+  - Responsavel por: criar `team_foreman_history`, manter vigencia de encarregado por equipe e aplicar snapshot historico em `project_measurement_orders`.
 - Caminho: `supabase/migrations/115_allow_historical_programming_in_measurement_save.sql`
   - Responsavel por: permitir que o save da Ordem de Medicao use `programming_id` historico (qualquer status) sem quebrar o fluxo transacional e o historico append.
 - Caminho: `supabase/migrations/116_measurement_programming_match_and_completion_alert.sql`
@@ -413,6 +418,26 @@ Atualizacao 2026-04-16
   - Depois: o filtro de `Estado Trabalho` na Medicao passa a exibir apenas `Concluido`, `Parcial` e `Nao informado`.
   - Antes: o alerta de mudanca apos medicao comparava apenas o status do match do mesmo dia.
   - Depois: o alerta considera a ultima consolidacao economica do projeto (`CONCLUIDO` ou `PARCIAL`) em relacao ao momento da medicao.
+
+Atualizacao 2026-04-24
+----------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `docs/Tela_Equipes_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Trigger `trg_apply_measurement_team_snapshot`
+  - Funcao `apply_measurement_team_snapshot`
+  - Funcao `resolve_team_foreman_snapshot`
+  - Estado `FormState` da Medicao com snapshots originais de equipe/encarregado
+  - Renderizacao do campo somente leitura `Encarregado` no cadastro/edicao
+- Comportamento antes/depois:
+  - Antes: ao editar uma ordem, a RPC recalculava `foreman_name_snapshot` pelo cadastro atual da equipe e podia trocar o encarregado historico da medicao.
+  - Depois: se `Equipe` e `Data execucao` nao mudarem, o banco preserva o snapshot original da ordem.
+  - Depois: se a ordem for criada ou tiver `Equipe/Data execucao` alteradas, o banco resolve o encarregado pela vigencia em `team_foreman_history` considerando a `Data execucao`.
+  - Depois: o formulario de edicao exibe o encarregado salvo na ordem enquanto o contexto original (`Equipe + Data execucao`) for mantido.
 
 Atualizacao 2026-04-21
 ----------------------
