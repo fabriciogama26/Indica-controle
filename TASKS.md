@@ -456,3 +456,47 @@
 - [x] Enriquecer o erro de conflito de horario da Programacao para exibir Equipe e Encarregado no modal de falha (TEAM_TIME_CONFLICT), tanto no cadastro em lote quanto no save individual.
 - [x] Adicionar filtro de Municipio na Programacao Simples e filtro por Status Cancelado (checkbox Somente cancelados) na tela de Projetos, com suporte no querystring/API de listagem e exportacao.
 - [x] Corrigir persistencia de Estado Trabalho na Programacao Simples quando `work_completion_status_id` ja existe: trigger de sincronismo agora respeita update explicito por texto (inclusive limpeza), recalcula UUID e evita reverter `CONCLUIDO` para valor anterior (`PARCIAL`).
+
+- [x] Criar tela Meta para cadastrar valor diario por tipo de equipe e dias uteis editaveis por ciclo 21 a 20, com migration multi-tenant, API /api/meta, menu/permissoes, docs e README.
+
+- [x] Ajustar tela Meta para listar ciclos pelas datas reais de medicao, calcular meta diaria por valor x equipes ativas e salvar valores/ciclo em cadastro unico.
+
+- [x] Adicionar lista operacional na tela Meta com detalhes, historico, edicao e bloqueio de duplicidade de ciclo na RPC de salvamento.
+
+- [x] Corrigir salvamento da tela Meta com migration incremental 162 para recriar a RPC de cadastro por ciclo e expor detalhe tecnico de erro do Supabase.
+
+- [x] Corrigir normalizacao monetaria da API Meta para preservar centavos quando o frontend envia valor diario como numero decimal.
+
+- [x] Alinhar historico e edicao da tela Meta ao padrao da Medicao e mover Meta/Atividades para a secao Cadastros.
+
+- [x] Aplicar borda amarela nos blocos da tela Meta durante a edicao, seguindo o padrao das demais telas cadastrais.
+
+- [x] Salvar dias padrao segunda a sexta na Meta e exibir Meta ciclo padrao ao lado da Meta ciclo ajustada por dias uteis.
+
+- [x] Adicionar Dias trabalhados na Meta pela media de dias com medicao por equipe e calcular Meta ciclo trabalhado.
+
+- [x] Ajustar Meta para usar Equipes medida manual no calculo das metas e manter Equipes ativas como referencia.
+
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `@supabase/supabase-js` `2.98.0 -> 2.105.1`.
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `@tanstack/react-query` `5.90.21 -> 5.100.6`.
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `@types/node` `20.19.37 -> 25.6.0` (`wanted` 20.19.39).
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `eslint` `9.39.4 -> 10.2.1`.
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `eslint-config-next` `16.1.6 -> 16.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `next` `16.1.6 -> 16.2.4`.
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `react` `19.2.3 -> 19.2.5`.
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `react-dom` `19.2.3 -> 19.2.5`.
+- [ ] Pendencia de dependencia registrada em 2026-04-29: `typescript` `5.9.3 -> 6.0.3`.
+
+- [x] Clarificar e endurecer Dias trabalhados da Meta usando Data execucao distinta por equipe nas medicoes.
+
+- [x] Arredondar Dias trabalhados da Meta e recalcular Meta ciclo trabalhado com o valor arredondado.
+
+- [x] Filtrar Dias trabalhados da Meta somente por medicoes Com producao com base na Data execucao.
+
+- [x] Corrigir migration 168 da Meta materializando a media de dias trabalhados em tabela temporaria.
+
+- [x] Corrigir carregamento e soma de Equipes medida por ciclo salvo na tela Meta.
+
+- [x] Adicionar Atualizar lista e Exportar Excel CSV na lista de metas salvas.
+
+- [x] Corrigir edicao da Meta para salvar alteracoes por ciclo e recalcular metas por Equipes medida.

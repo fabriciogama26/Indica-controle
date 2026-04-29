@@ -44,6 +44,8 @@ const menuSections = [
       { href: "/pessoas", label: "Pessoas", icon: "users" },
       { href: "/cargo", label: "Cargo", icon: "settings" },
       { href: "/equipes", label: "Equipes", icon: "users" },
+      { href: "/atividades", label: "Atividades", icon: "settings" },
+      { href: "/meta", label: "Meta", icon: "settings" },
     ],
   },
   {
@@ -52,7 +54,6 @@ const menuSections = [
       { href: "/prioridade", label: "Prioridade", icon: "settings" },
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
-      { href: "/atividades", label: "Atividades", icon: "settings" },
       { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
@@ -100,6 +101,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/medicao": {
     title: "Medicao",
     subtitle: "Gestao de medicoes operacionais por projeto e periodo.",
+  },
+  "/meta": {
+    title: "Meta",
+    subtitle: "Cadastro de metas de medicao por tipo de equipe e ciclo.",
   },
   "/entrada": {
     title: "Movimentacao de Estoque",

@@ -1,0 +1,215 @@
+Tela: Meta SaaS
+
+Visao geral
+-----------
+- Tela para cadastrar metas de medicao por tipo de equipe.
+- O valor diario e definido por `team_types` do tenant.
+- O ciclo operacional segue o periodo 21 a 20 e cada ciclo salvo vira um cadastro consultavel.
+- A lista de ciclos exibida obedece as datas existentes nas ordens de medicao validas.
+- Os dias uteis do ciclo sao calculados inicialmente por segunda a sexta e podem ser editados para refletir feriados.
+- A tela prepara a base de calculo da futura `Dashboard Medicao`.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/meta/page.tsx`
+- View principal: `src/modules/dashboard/meta/MetaPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/meta/MetaPageView.module.css`
+- API da tela:
+  - `src/app/api/meta/route.ts`
+- Banco:
+  - `supabase/migrations/161_create_measurement_meta_targets.sql`
+  - `supabase/migrations/162_fix_measurement_meta_registration_rpc.sql`
+  - `supabase/migrations/163_move_meta_and_activities_to_cadastros.sql`
+  - `supabase/migrations/164_add_standard_cycle_goal_to_measurement_meta.sql`
+  - `supabase/migrations/165_add_worked_cycle_goal_to_measurement_meta.sql`
+  - `supabase/migrations/166_add_measured_team_count_to_measurement_meta.sql`
+  - `supabase/migrations/167_round_measurement_meta_worked_days.sql`
+  - `supabase/migrations/168_recalculate_measurement_meta_worked_days_production.sql`
+  - `supabase/migrations/169_recreate_measurement_meta_rpc_with_measured_goals.sql`
+
+Cadastro
+--------
+- Cadastro de valor diario por tipo de equipe:
+  - Tipo: origem em `team_types`.
+  - Valor diario: valor monetario usado como meta diaria por equipe daquele tipo.
+  - Equipes ativas: referencia automatica do cadastro de equipes ativas.
+  - Equipes medida: quantidade manual salva por ciclo e usada no calculo das metas.
+- Cadastro de dias uteis por ciclo:
+  - Ciclo: gerado a partir de datas de medicao no formato `21/MM/YYYY a 20/MM/YYYY`.
+  - Inicio e fim: somente leitura.
+  - Dias uteis: campo editavel.
+  - Dias padrao segunda a sexta: valor calculado automaticamente e salvo junto do cadastro.
+  - Dias trabalhados: media arredondada da soma dos dias trabalhados por cada equipe no ciclo, usando `project_measurement_orders.execution_date` (`Data execucao`) como base, contando cada data distinta uma vez por equipe e considerando somente medicoes com `measurement_kind = COM_PRODUCAO`.
+  - Observacao: campo opcional para registrar feriados/ajustes.
+- O cadastro salva valores por tipo, dias uteis e snapshot de equipes do ciclo selecionado em uma unica acao.
+- Quando um ciclo ja possui cadastro salvo, o formulario carrega os valores salvos de `Valor diario` e `Equipes medida` daquele ciclo.
+- Quando o ciclo ainda nao possui cadastro salvo, `Equipes medida` inicia pela quantidade de equipes ativas apenas como sugestao editavel.
+- A RPC bloqueia duplicidade de ciclo no cadastro novo.
+- A API aceita o valor diario como numero decimal enviado pela tela e preserva os centavos.
+- Calculos exibidos:
+  - `Meta diaria por tipo = Valor diario x Equipes medida do tipo`
+  - `Meta diaria cadastrada = soma das metas diarias por tipo`
+  - `Meta do ciclo = Meta diaria cadastrada x Dias uteis do ciclo`
+  - `Meta ciclo padrao = Meta diaria cadastrada x Dias padrao segunda a sexta`
+  - `Dias trabalhados = arredondar(soma dos dias distintos por equipe no ciclo / quantidade de equipes com medicao Com producao)`
+  - `Meta ciclo trabalhado = Meta diaria cadastrada x Dias trabalhados`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- A tela nao possui filtros operacionais nesta etapa.
+- A lista de tipos de equipe vem apenas de tipos ativos do tenant.
+- A lista de ciclos vem das datas de `project_measurement_orders`, considerando ordens ativas, nao canceladas e com tipo `COM_PRODUCAO`.
+- Obras de teste nao entram na formacao da lista de ciclos.
+- A lista de metas salvas exibe:
+  - Ciclo
+  - Dias uteis
+  - Dias padrao
+  - Dias trabalhados
+  - Equipes ativas
+  - Equipes medida
+  - Meta diaria
+  - Meta ciclo
+  - Meta ciclo padrao
+  - Meta ciclo trabalhado
+  - Atualizado em
+- Acoes da lista:
+  - Atualizar lista
+  - Exportar Excel (CSV)
+  - Detalhes
+  - Historico em modal paginado no mesmo padrao visual da tela Medicao
+  - Editar carregando o cadastro no formulario principal, levando o conteudo para o topo e destacando os blocos do formulario com borda amarela
+
+Boas praticas
+-------------
+- Manter valores de meta vinculados ao `tenant_id`.
+- Manter dias uteis por ciclo vinculados ao `tenant_id`.
+- Usar `team_type_id` como chave da meta, evitando duplicar nomes como `MK`, `LV` e `CESTO`.
+- Exibir a meta diaria e a meta do ciclo no cadastro para conferencia antes de salvar.
+- Manter consolidacoes de valor realizado para a `Dashboard Medicao`.
+
+Cancelamento e saldo
+--------------------
+- Nao ha cancelamento funcional nesta tela.
+- Nao ha impacto em saldo de estoque.
+
+Atalhos
+-------
+- Rota ativa: `/meta`
+- Endpoints:
+  - `GET /api/meta` carrega tipos de equipe, metas salvas e ciclos.
+  - `GET /api/meta?detailCycleId=<uuid>` carrega detalhe do cadastro de meta do ciclo.
+  - `GET /api/meta?historyCycleId=<uuid>` carrega historico do cadastro de meta do ciclo.
+  - `POST /api/meta` com `action = SAVE_META_REGISTRATION` salva valores por tipo de equipe e dias uteis do ciclo selecionado.
+
+Atualizacao 2026-04
+-------------------
+- Arquivos criados/alterados:
+  - `supabase/migrations/161_create_measurement_meta_targets.sql`
+  - `supabase/migrations/162_fix_measurement_meta_registration_rpc.sql`
+  - `supabase/migrations/163_move_meta_and_activities_to_cadastros.sql`
+  - `supabase/migrations/164_add_standard_cycle_goal_to_measurement_meta.sql`
+  - `supabase/migrations/165_add_worked_cycle_goal_to_measurement_meta.sql`
+  - `supabase/migrations/166_add_measured_team_count_to_measurement_meta.sql`
+  - `supabase/migrations/167_round_measurement_meta_worked_days.sql`
+  - `supabase/migrations/168_recalculate_measurement_meta_worked_days_production.sql`
+  - `supabase/migrations/169_recreate_measurement_meta_rpc_with_measured_goals.sql`
+  - `src/app/api/meta/route.ts`
+  - `src/app/(dashboard)/meta/page.tsx`
+  - `src/modules/dashboard/meta/MetaPageView.tsx`
+  - `src/modules/dashboard/meta/MetaPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `docs/Tela_Meta_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - Nao existia cadastro estruturado de metas para a Medicao.
+- Depois:
+  - Metas por tipo de equipe e dias uteis por ciclo ficam persistidos por tenant.
+  - A tela exibe equipes ativas como referencia e calcula meta diaria por tipo usando a quantidade manual de equipes medida.
+  - A lista de ciclos passa a obedecer datas reais das medicoes.
+  - O cadastro passa a salvar dias uteis ajustados e dias padrao segunda a sexta.
+  - O cadastro passa a salvar dias trabalhados medios por ciclo, calculados por equipe a partir das medicoes existentes.
+  - A lista passa a exibir `Meta ciclo`, `Meta ciclo padrao` e `Meta ciclo trabalhado`.
+  - A lista passa a ter `Atualizar lista` e `Exportar Excel (CSV)`.
+  - A lista, detalhes e historico passam a exibir a quantidade de `Equipes medida` usada no calculo.
+  - A edicao passa a regravar os itens do ciclo pelo `cycle_id` selecionado e recalcular `Meta diaria`, `Meta ciclo`, `Meta ciclo padrao` e `Meta ciclo trabalhado` sempre por `Valor diario x Equipes medida`.
+  - A API passa a recalcular os totais exibidos a partir dos itens salvos para evitar que registros legados mostrem `Equipes medida` diferente da meta calculada.
+  - Cada ciclo salvo passa a ter lista, detalhe, historico e edicao.
+  - Erros de RPC no salvamento passam a mostrar o detalhe tecnico retornado pelo Supabase.
+  - O salvamento de valor diario passa a preservar decimal enviado como numero, evitando multiplicacao indevida por 100.
+  - A tela `/meta` fica disponivel no menu Cadastros e na matriz de permissoes.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/meta/MetaPageView.tsx`
+  - Responsavel por: renderizar cadastro unico de valores diarios por tipo de equipe, dias uteis por ciclo, meta diaria calculada, meta do ciclo, lista de metas salvas, exportacao CSV e modais de detalhes/historico.
+- Caminho: `src/app/api/meta/route.ts`
+  - Responsavel por: carregar metas, montar ciclos 21 a 20 a partir de datas de medicao, contar equipes ativas por tipo, listar cadastros salvos, recalcular totais por `Equipes medida`, detalhar historico e salvar o cadastro via RPC.
+- Caminho: `supabase/migrations/161_create_measurement_meta_targets.sql`
+  - Responsavel por: criar tabelas `measurement_team_type_targets`, `measurement_cycle_workdays`, `measurement_cycle_target_items`, `measurement_meta_history`, RPC `save_measurement_meta_registration`, RLS, auditoria e permissao da pagina `meta`.
+- Caminho: `supabase/migrations/162_fix_measurement_meta_registration_rpc.sql`
+  - Responsavel por: garantir as tabelas incrementais de itens/historico quando a migration 161 ja tiver sido aplicada e recriar a RPC sem sobrecarga antiga.
+- Caminho: `supabase/migrations/163_move_meta_and_activities_to_cadastros.sql`
+  - Responsavel por: mover `meta` e `atividades` para a secao `Cadastros` em `app_pages`.
+- Caminho: `supabase/migrations/164_add_standard_cycle_goal_to_measurement_meta.sql`
+  - Responsavel por: adicionar `default_workdays`, `standard_cycle_goal`, backfill dos valores existentes e recriar a RPC de salvamento.
+- Caminho: `supabase/migrations/165_add_worked_cycle_goal_to_measurement_meta.sql`
+  - Responsavel por: adicionar `worked_days`, `worked_cycle_goal`, backfill pela media de dias com medicao por equipe e recriar a RPC de salvamento.
+- Caminho: `supabase/migrations/166_add_measured_team_count_to_measurement_meta.sql`
+  - Responsavel por: adicionar `measured_team_count`, recalcular metas existentes pela quantidade medida e recriar a RPC para usar `Equipes medida`.
+- Caminho: `supabase/migrations/167_round_measurement_meta_worked_days.sql`
+  - Responsavel por: arredondar `worked_days`, recalcular `worked_cycle_goal` e recriar a RPC para persistir dias trabalhados arredondados.
+- Caminho: `supabase/migrations/168_recalculate_measurement_meta_worked_days_production.sql`
+  - Responsavel por: recalcular `worked_days` e `worked_cycle_goal` usando somente medicoes `COM_PRODUCAO`.
+- Caminho: `supabase/migrations/169_recreate_measurement_meta_rpc_with_measured_goals.sql`
+  - Responsavel por: recriar a RPC final de salvamento, permitir edicao por `cycle_id`, regravar itens do ciclo e recalcular metas por `measured_team_count`.
+
+Constantes e configuracoes
+- Caminho: `src/app/api/meta/route.ts`
+  - Responsavel por: ciclo por data de medicao, normalizacao de UUID/data/valor e contagem padrao de dias uteis.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/meta` para `page_key = meta`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: incluir item de menu e titulo da tela.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/meta/MetaPageView.tsx`
+  - Responsavel por: `formatCurrency`, `formatDate`, `formatDateTime`, `parseInputMoney`, `loadDetail`, `openHistory`, `startEdit`.
+- Caminho: `src/app/api/meta/route.ts`
+  - Responsavel por: `buildCycleFromMeasurementDate`, `countWeekdays`, `resolveCycleStart`, `normalizeMoney`.
+
+Servicos e integracoes externas
+- `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
+- Supabase/Postgres com RLS ativo nas tabelas novas.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `supabase/migrations/161_create_measurement_meta_targets.sql`
+  - `supabase/migrations/162_fix_measurement_meta_registration_rpc.sql`
+  - `supabase/migrations/163_move_meta_and_activities_to_cadastros.sql`
+  - `supabase/migrations/164_add_standard_cycle_goal_to_measurement_meta.sql`
+  - `supabase/migrations/165_add_worked_cycle_goal_to_measurement_meta.sql`
+  - `supabase/migrations/166_add_measured_team_count_to_measurement_meta.sql`
+  - `supabase/migrations/167_round_measurement_meta_worked_days.sql`
+  - `supabase/migrations/168_recalculate_measurement_meta_worked_days_production.sql`
+  - `supabase/migrations/169_recreate_measurement_meta_rpc_with_measured_goals.sql`
+  - `src/app/api/meta/route.ts`
+  - `src/app/(dashboard)/meta/page.tsx`
+  - `src/modules/dashboard/meta/MetaPageView.tsx`
+  - `src/modules/dashboard/meta/MetaPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Hooks/funcoes/constantes tocadas:
+  - `useState`, `useEffect`, `useMemo`, `useCallback`
+  - `submitRegistration`, `loadMeta`
+  - `loadDetail`, `openDetail`, `openHistory`, `startEdit`
+  - `buildRegistrationsCsv`, `downloadCsvFile`, `exportRegistrationsCsv`
+  - `closeHistoryModal`, `resolveMetaHistoryChanges`, `formatMetaHistoryValue`
+  - `GET /api/meta`, `POST /api/meta`
+- Comportamento antes/depois:
+  - Antes: nao havia fonte oficial de meta para comparar valores medidos.
+  - Depois: o sistema possui cadastro unico por tipo de equipe e ciclo, com calculo de meta diaria por quantidade manual de equipes medida, meta do ciclo por dias uteis, meta ciclo padrao por dias padrao, meta ciclo trabalhado por media arredondada de dias trabalhados das equipes com medicao `COM_PRODUCAO`, bloqueio de duplicidade por ciclo, lista com atualizacao/exportacao CSV, detalhes, historico paginado no padrao da Medicao e edicao no formulario principal com borda amarela. A edicao regrava os itens por `cycle_id`, e a leitura da API tambem recalcula os totais exibidos por `Valor diario x Equipes medida` para evitar exibicao de registros legados inconsistentes.

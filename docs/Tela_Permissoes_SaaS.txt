@@ -61,8 +61,8 @@ Filtros, auto-complete e listagem
   - Visao Geral: Home
   - Operacao: Projetos, Locacao, Programacao, Medicao
   - Almoxarifado: Estoque Atual, Rastreio de TRAFO, Movimentacao de Estoque, Operacoes de Equipe
-  - Cadastros: Materiais, Pessoas, Cargo, Equipes
-  - Cadastro Base: Prioridade, Centro de Servico, Contrato, Atividades, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
+  - Cadastros: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
+  - Cadastro Base: Prioridade, Centro de Servico, Contrato, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 
 Boas praticas
 -------------
@@ -133,6 +133,7 @@ Atualizacao 2026-03
   - `Cargo` adicionado em `Cadastros`
   - `Equipes` adicionada em `Cadastros`
   - `Cadastro Base` expandido para `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`
+- Catalogo frontend de permissao atualizado para mover `Atividades` e `Meta` para `Cadastros`.
 - Regra operacional consolidada:
   - Toda nova tela deve sair com permissao completa (migration + backfill + frontend) no mesmo pacote.
 - Migration `138_add_trafo_position_page_permissions.sql` criada para incluir `posicao-trafo` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
