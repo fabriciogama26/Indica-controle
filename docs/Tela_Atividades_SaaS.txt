@@ -107,10 +107,11 @@ Cancelamento e saldo
 Atalhos
 -------
 - Rota ativa: `/atividades`.
-- Exibida na secao `Cadastro Base` da sidebar.
+- Exibida na secao `Cadastros` da sidebar.
 
 Atualizacao 2026-04
 -------------------
+- Migration `163_move_meta_and_activities_to_cadastros.sql` move `Atividades` para a secao `Cadastros` no menu e no catalogo `app_pages`.
 - Migration `145_create_types_service_activities_and_link_service_activities.sql` criada para:
   - criar o catalogo `types_service_activities` por tenant com RLS e auditoria;
   - semear os tipos fixos (`POSTE`, `ESTRUTURA`, `CONDUTOR(REDE)`, `EMENDA`, `EQUIPAMENTO`, `MQS CHAVES/PARA-RAIO`, `MANUTENÇÃO`, `RAMAL / CAIXA DAE`, `GERADOR`, `PODA`, `OUTROS`);

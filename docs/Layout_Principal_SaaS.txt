@@ -44,8 +44,8 @@ Atalhos
   - `Visao Geral`: Home (`Dashboard Estoque`)
   - `Operacao`: Projetos, Locacao, Programacao e Medicao
   - `Almoxarifado`: Estoque Atual, Rastreio de TRAFO, Movimentacao de Estoque e Operacoes de Equipe
-  - `Cadastros`: Materiais, Pessoas e Cargo
-  - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Atividades, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
+  - `Cadastros`: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
+  - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 - Botao de engrenagem no topo direito abre `/permissoes` apenas para `admin` e `master`.
 - Botao `Sair` no topo direito limpa a sessao local e chama o logout remoto quando aplicavel.
 
@@ -69,10 +69,11 @@ Atualizacao 2026-03
 - `Materiais` movido para a secao `Cadastros`.
 - `Cargo` adicionado na secao `Cadastros`.
 - Secao `Cadastro Base` criada com atalhos para `Prioridade`, `Centro de Servico`, `Contrato`, `Atividades`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
-- `Atividades` adicionada em `Cadastro Base` com rota dedicada `/atividades`.
+- `Atividades` criada com rota dedicada `/atividades` e posteriormente movida para `Cadastros`.
 - Ajustado o shell para scroll interno no `mainContent`, com sidebar e topbar fixos no desktop.
 - Bloco `Conectado` ajustado para priorizar somente `display` no nome do usuario.
 - `Rastreio de TRAFO` adicionada em `Almoxarifado`, com titulo dedicado no shell e bloqueio por `pageAccess`.
+- `Meta` e `Atividades` movidas para a secao `Cadastros`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
