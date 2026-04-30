@@ -291,6 +291,7 @@ type Filters = {
   startDate: string;
   endDate: string;
   projectId: string;
+  teamId: string;
   status: "TODOS" | MeasurementStatus;
   measurementKind: "TODOS" | MeasurementKind;
   noProductionReasonId: string;
@@ -304,6 +305,10 @@ type FormState = {
   expectedUpdatedAt: string | null;
   orderNumber: string;
   status: MeasurementStatus;
+  originalTeamId: string;
+  originalExecutionDate: string;
+  teamNameSnapshot: string;
+  foremanNameSnapshot: string;
   programmingId: string;
   projectId: string;
   teamId: string;
@@ -332,6 +337,7 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   if (filters.projectId) params.set("projectId", filters.projectId);
+  if (filters.teamId) params.set("teamId", filters.teamId);
   if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
   return params.toString();
 }
@@ -368,6 +374,10 @@ function createForm(today: string): FormState {
     expectedUpdatedAt: null,
     orderNumber: "",
     status: "ABERTA",
+    originalTeamId: "",
+    originalExecutionDate: "",
+    teamNameSnapshot: "",
+    foremanNameSnapshot: "",
     programmingId: "",
     projectId: "",
     teamId: "",
@@ -835,6 +845,7 @@ export function MeasurementPageView() {
     () => ({
       ...yearRange(today),
       projectId: "",
+      teamId: "",
       status: "TODOS" as const,
       measurementKind: "TODOS" as const,
       noProductionReasonId: "",
@@ -2146,6 +2157,10 @@ export function MeasurementPageView() {
         expectedUpdatedAt: order.updatedAt,
         orderNumber: order.orderNumber,
         status: order.status,
+        originalTeamId: order.teamId,
+        originalExecutionDate: order.executionDate,
+        teamNameSnapshot: order.teamName,
+        foremanNameSnapshot: order.foremanName,
         programmingId: order.programmingId ?? "",
         projectId: order.projectId,
         teamId: order.teamId,
@@ -2650,6 +2665,12 @@ export function MeasurementPageView() {
     }
   }
 
+  const formForemanName = form.id
+    && form.teamId === form.originalTeamId
+    && form.executionDate === form.originalExecutionDate
+    ? form.foremanNameSnapshot
+    : (teamMap.get(form.teamId)?.foremanName ?? "");
+
   return (
     <section className={styles.wrapper}>
       {feedback ? <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div> : null}
@@ -2703,7 +2724,7 @@ export function MeasurementPageView() {
               <option value="SEM_PRODUCAO">Sem producao</option>
             </select>
           </label>
-          <label className={styles.field}><span>Encarregado</span><input value={teamMap.get(form.teamId)?.foremanName ?? ""} readOnly /></label>
+          <label className={styles.field}><span>Encarregado</span><input value={formForemanName} readOnly /></label>
           <label className={styles.field}>
             <span>Motivo sem producao{form.measurementKind === "SEM_PRODUCAO" ? " *" : ""}</span>
             <select
@@ -2840,6 +2861,13 @@ export function MeasurementPageView() {
               list="medicao-project-filter-list"
               placeholder="Digite o codigo do projeto"
             />
+          </label>
+          <label className={styles.field}>
+            <span>Equipe</span>
+            <select value={filterDraft.teamId} onChange={(event) => setFilterDraft((current) => ({ ...current, teamId: event.target.value }))}>
+              <option value="">Todas</option>
+              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+            </select>
           </label>
           <label className={styles.field}><span>Status</span><select value={filterDraft.status} onChange={(event) => setFilterDraft((current) => ({ ...current, status: event.target.value as Filters["status"] }))}><option value="TODOS">Todos</option><option value="ABERTA">Aberta</option><option value="FECHADA">Fechada</option><option value="CANCELADA">Cancelada</option></select></label>
           <label className={styles.field}>
