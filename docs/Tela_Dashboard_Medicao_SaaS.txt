@@ -1,0 +1,167 @@
+Tela: Dashboard Medicao SaaS
+
+Visao geral
+-----------
+- Tela de indicadores da Medicao baseada nas ordens `COM_PRODUCAO`.
+- Consolida valor realizado por ciclo operacional 21 a 20.
+- Compara valor realizado contra a meta cadastrada na tela Meta.
+- Exibe valor de Concluidos versus Parciais em dois recortes: ciclo completo e periodo `De/Para`.
+- Exibe visao por encarregado no mesmo estilo de comparacao Valor x Meta.
+- Obras marcadas como teste em Projetos nao entram nos indicadores.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/dashboard-medicao/page.tsx`
+- View principal: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+- API da tela:
+  - `src/app/api/dashboard-medicao/route.ts`
+- Banco:
+  - `supabase/migrations/170_create_dashboard_measurement_page.sql`
+- Fontes de dados:
+  - `project_measurement_orders`
+  - `project_measurement_order_items`
+  - `measurement_cycle_workdays`
+  - `measurement_cycle_target_items`
+  - `project_programming`
+  - `teams`
+  - `people`
+  - `project`
+
+Cadastro
+--------
+- Nao ha cadastro nesta tela.
+- A tela consome metas salvas previamente em `/meta`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Ciclo
+  - Projeto (SOB) digitavel, no mesmo padrao do filtro da tela Projetos
+  - Equipe
+  - Encarregado
+  - Status execucao (`Todos`, `Concluidos`, `Parciais`)
+- Graficos:
+  - Valor de Concluidos versus Parciais no ciclo, com tabela acima e exibicao lado a lado com o grafico por periodo em desktop
+  - Valor de Concluidos versus Parciais por periodo `De/Para`, com tabela acima, exibicao lado a lado em desktop e botao proprio `Filtrar periodo`
+  - Ciclo da medicao com tabela acima e grafico Valor x Meta
+  - Encarregados no ciclo com tabela unica acima e tres visoes:
+    - Ranking % de atingimento em barras horizontais ordenadas, com linha de referencia em 100% centralizada no topo
+    - Bullet chart horizontal por encarregado, comparando valor realizado e metas marcadas
+    - Gap financeiro, exibindo quanto excedeu ou faltou contra a meta principal marcada
+- Cada grafico possui botao circular de ampliacao, abrindo modal com o grafico em area maior.
+- No bloco de encarregados, cada visao possui seu proprio botao de ampliacao.
+- Cada visao de encarregados exibe o ciclo medido no cabecalho do grafico.
+- O periodo `De/Para` fica dentro do grafico Valor de Concluidos versus Parciais por periodo e restringe somente esse grafico por `Data execucao`, sem limitar o resultado ao ciclo selecionado.
+- O periodo `De/Para` abre preenchido com o ano calendario corrente, de `01/01` a `31/12`, acompanhando automaticamente a virada do ano.
+- O periodo nao atualiza automaticamente ao digitar; o usuario precisa clicar em `Filtrar periodo`.
+- Ciclo, tabela/grafico do ciclo e tabela/grafico de encarregados usam o ciclo operacional completo com os filtros gerais selecionados.
+- Filtros gerais como Projeto, Equipe, Encarregado e Status execucao tambem sao respeitados no grafico por periodo.
+- O bloco de encarregados exibe legenda para diferenciar Total equipes e cada meta marcada.
+- O grafico de ciclo permite escolher uma base de meta por select:
+  - Meta ciclo
+  - Meta ciclo padrao
+  - Meta ciclo trabalhado
+- O bloco de encarregados permite marcar multiplas metas por checkbox; a primeira meta marcada vira referencia principal do ranking e do gap financeiro.
+- A coluna de dias muda conforme a meta selecionada:
+  - Meta ciclo: Dias uteis
+  - Meta ciclo padrao: Dias padrao
+  - Meta ciclo trabalhado: Dias reais
+- A tela possui botao `Atualizar` para recarregar a consolidacao com os filtros atuais.
+
+Boas praticas
+-------------
+- Manter todos os filtros e leituras vinculados ao tenant autenticado.
+- Usar somente medicoes `COM_PRODUCAO`, ativas e nao canceladas para indicadores de valor.
+- Excluir obras de teste das consolidacoes.
+- Usar a Meta cadastrada como fonte oficial para comparacao de ciclo.
+
+Cancelamento e saldo
+--------------------
+- Nao ha cancelamento funcional nesta tela.
+- Nao ha impacto em saldo de estoque.
+
+Atalhos
+-------
+- Rota ativa: `/dashboard-medicao`
+- Endpoints:
+  - `GET /api/dashboard-medicao`
+- Query params:
+  - `cycleStart`
+  - `startDate`
+  - `endDate`
+  - `project`
+  - `teamId`
+  - `foreman`
+  - `completionStatus`
+
+Atualizacao 2026-04
+-------------------
+- Arquivos criados/alterados:
+  - `src/app/(dashboard)/dashboard-medicao/page.tsx`
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/170_create_dashboard_measurement_page.sql`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - A Meta ja existia, mas ainda nao havia tela de dashboard para comparar realizado x meta.
+- Depois:
+  - O sistema possui Dashboard Medicao com dois graficos Concluidos x Parciais lado a lado em desktop, tabela acima, periodo `De/Para` dedicado ao recorte por periodo com botao proprio de filtro e preenchimento inicial no ano calendario corrente, filtro Projeto digitavel por SOB, comparativo do ciclo e bloco de encarregados com tabela unica, ranking de atingimento, bullet chart de metas, gap financeiro, ciclo no titulo de cada grafico, botao de ampliacao individual por visao, legenda, selecao multipla de metas por checkbox, dias dinamicos por meta e modal de grafico ampliado.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - Responsavel por: renderizar filtros gerais, filtro Projeto digitavel por SOB, periodo `De/Para` local do grafico Concluidos x Parciais por periodo com botao `Filtrar periodo`, checkboxes de metas dos encarregados, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
+- Caminho: `src/app/api/dashboard-medicao/route.ts`
+  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, aplicar filtro digitavel de projeto por SOB, calcular Concluidos x Parciais do ciclo e do periodo `De/Para` independente do ciclo selecionado, excluir obras de teste, consolidar valores, carregar as tres metas do ciclo e montar retorno da dashboard.
+- Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
+  - Responsavel por: cadastrar `dashboard-medicao` em `app_pages` e fazer backfill de permissoes por role/usuario.
+
+Constantes e configuracoes
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: incluir `Dashboard Medicao` em `Visao Geral` e configurar titulo/subtitulo da rota.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/dashboard-medicao` para `page_key = dashboard-medicao`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: incluir a tela no catalogo da matriz de permissoes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/app/api/dashboard-medicao/route.ts`
+  - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectIsTestMap`, `fetchProjectCompletionMap`.
+- Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - Responsavel por: `formatCurrency`, `formatPercent`, `maxValue`, `getCurrentYearPeriod`, `resolveCycleMetaValue`, `resolveCycleDays`, `resolveForemanMetaValue`, `resolveForemanDays`, `loadDashboard`, `applyPeriodFilter`, `toggleForemanMetaMode`, `renderPanelHeader`, `renderCompletionTable`, `renderCompletionChart`, `renderCycleChart`, `renderForemanRanking`, `renderForemanBulletChart`, `renderForemanGapChart`, `renderForemanVisualizations`, `renderForemanLegend`.
+
+Servicos e integracoes externas
+- `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
+- Supabase/Postgres com RLS ativo nas tabelas de origem.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/dashboard-medicao/page.tsx`
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/170_create_dashboard_measurement_page.sql`
+- Hooks/funcoes/constantes tocadas:
+  - `useState`, `useEffect`, `useMemo`, `useCallback`
+  - `GET /api/dashboard-medicao`
+  - `foremanMetaModes`
+  - `cycleMetaMode`
+  - `expandedChart`
+  - `menuSections`
+  - `titleMap`
+  - `ROUTE_PAGE_KEYS`
+  - `permissionCatalog`
+- Comportamento antes/depois:
+  - Antes: a tela de Meta preparava a base de comparacao, mas nao havia visualizacao consolidada da Medicao.
+  - Depois: a tela `/dashboard-medicao` exibe realizado x meta por ciclo e por encarregado, dois graficos Concluidos x Parciais lado a lado em desktop com tabela acima, periodo `De/Para` independente do ciclo selecionado, iniciado no ano calendario corrente e aplicado apenas pelo botao `Filtrar periodo`, filtro Projeto digitavel por SOB, checkboxes de metas nos encarregados, tabela unica de encarregados, ranking com referencia de 100% centralizada no topo, bullet chart de comparacao de metas, gap financeiro, titulo do ciclo em cada grafico de encarregado, botao de expansao individual por visao, legenda dinamica, dias dinamicos por meta, modal de grafico ampliado, filtros e segregacao por tenant.

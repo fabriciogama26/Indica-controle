@@ -58,7 +58,7 @@ Filtros, auto-complete e listagem
 - No login e na reidratacao da sessao, o frontend consulta `src/app/api/auth/session-access/route.ts` para aplicar no shell as telas realmente liberadas para o usuario.
 - Ao selecionar o resultado da busca, a tela aplica `role`, `status` e a matriz visual do usuario escolhido.
 - A listagem atual considera as telas do SaaS web:
-  - Visao Geral: Home
+  - Visao Geral: Home e Dashboard Medicao
   - Operacao: Projetos, Locacao, Programacao, Medicao
   - Almoxarifado: Estoque Atual, Rastreio de TRAFO, Movimentacao de Estoque, Operacoes de Equipe
   - Cadastros: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
@@ -128,6 +128,7 @@ Atualizacao 2026-03
   - a permissao de visualizar a tela passa a representar o pacote inteiro da pagina
 - Catalogo frontend de permissao atualizado para refletir o novo desenho de navegacao:
   - `Medicao` adicionada em `Operacao`
+  - `Dashboard Medicao` adicionada em `Visao Geral`
   - `Estoque Atual`, `Movimentacao de Estoque` e `Operacoes de Equipe` agrupadas em `Almoxarifado`
   - `Materiais` movido para `Cadastros`
   - `Cargo` adicionado em `Cadastros`

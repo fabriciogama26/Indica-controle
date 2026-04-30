@@ -16,7 +16,10 @@ import styles from "./AppShell.module.css";
 const menuSections = [
   {
     title: "Visao Geral",
-    items: [{ href: "/home", label: "Dashboard Estoque", icon: "home" }],
+    items: [
+      { href: "/home", label: "Dashboard Estoque", icon: "home" },
+      { href: "/dashboard-medicao", label: "Dashboard Medicao", icon: "calendar" },
+    ],
   },
   {
     title: "Operacao",
@@ -69,6 +72,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/home": {
     title: "Home",
     subtitle: "Resumo inicial do tenant e atalhos principais.",
+  },
+  "/dashboard-medicao": {
+    title: "Dashboard Medicao",
+    subtitle: "Indicadores de valor realizado, metas por ciclo e desempenho por encarregado.",
   },
   "/pessoas": {
     title: "Pessoas",
