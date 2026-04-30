@@ -500,3 +500,23 @@
 - [x] Adicionar Atualizar lista e Exportar Excel CSV na lista de metas salvas.
 
 - [x] Corrigir edicao da Meta para salvar alteracoes por ciclo e recalcular metas por Equipes medida.
+
+- [x] Criar primeira etapa do Dashboard Medicao com filtros, ciclo, valor versus meta e visao por encarregado.
+
+- [x] Melhorar graficos do Dashboard Medicao com valores externos, modal ampliado, periodo mes/ano e seletor das tres metas nos encarregados.
+
+- [x] Ajustar Dashboard Medicao para periodo De/Para independente do ciclo, seletor de meta no ciclo e dias dinamicos por meta.
+
+- [x] Mover periodo De/Para para o grafico Concluidos x Parciais e adicionar legenda no grafico de encarregados.
+
+- [x] Separar Concluidos x Parciais em graficos por ciclo e por periodo, trocar Projeto para filtro digitavel por SOB e permitir comparativo multiplo de metas nos encarregados.
+
+- [x] Colocar graficos Concluidos x Parciais lado a lado e aplicar De/Para somente por botao Filtrar periodo.
+
+- [x] Corrigir grafico Concluidos x Parciais por periodo para usar De/Para independente do ciclo selecionado.
+
+- [x] Reorganizar Encarregados no ciclo em ranking de atingimento, bullet chart de metas e gap financeiro com tabela unica.
+
+- [x] Adicionar expansao individual e titulo do ciclo em cada grafico de Encarregados no ciclo.
+
+- [x] Definir De/Para inicial do grafico Concluidos x Parciais por periodo com o ano calendario corrente.

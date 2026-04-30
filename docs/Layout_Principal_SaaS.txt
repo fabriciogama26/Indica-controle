@@ -41,7 +41,7 @@ Cancelamento e saldo
 Atalhos
 -------
 - Links de navegacao laterais para:
-  - `Visao Geral`: Home (`Dashboard Estoque`)
+  - `Visao Geral`: Home (`Dashboard Estoque`) e Dashboard Medicao
   - `Operacao`: Projetos, Locacao, Programacao e Medicao
   - `Almoxarifado`: Estoque Atual, Rastreio de TRAFO, Movimentacao de Estoque e Operacoes de Equipe
   - `Cadastros`: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
@@ -74,6 +74,7 @@ Atualizacao 2026-03
 - Bloco `Conectado` ajustado para priorizar somente `display` no nome do usuario.
 - `Rastreio de TRAFO` adicionada em `Almoxarifado`, com titulo dedicado no shell e bloqueio por `pageAccess`.
 - `Meta` e `Atividades` movidas para a secao `Cadastros`.
+- `Dashboard Medicao` adicionada em `Visao Geral`, com titulo dedicado no shell e bloqueio por `pageAccess`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -85,7 +86,7 @@ Funcoes principais
 
 Constantes e configuracoes
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: `menuSections`, `titleMap` e icones das secoes `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
+  - Responsavel por: `menuSections`, `titleMap` e icones das secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: regras de acesso a rotas administrativas, fallback por role e bloqueio por `pageAccess` das novas rotas.
 
@@ -110,3 +111,4 @@ Ajuda contextual
 - Depois: a navegacao separa explicitamente operacao, almoxarifado, cadastros e cadastro base, com permissao por pagina.
 - Estado atual: a tela `Permissoes` fica acessivel pelo icone de engrenagem no topo e nao participa da navegacao principal.
 - Estado atual: a sidebar passa a expor a rota `/posicao-trafo` quando a `page_key = posicao-trafo` estiver liberada para o usuario.
+- Estado atual: a sidebar passa a expor a rota `/dashboard-medicao` quando a `page_key = dashboard-medicao` estiver liberada para o usuario.

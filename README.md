@@ -117,6 +117,7 @@ vercel --prod
   - `(public)/recuperar-senha/page.tsx`: wrapper fino da rota publica de recuperacao de senha.
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
+  - `(dashboard)/dashboard-medicao/page.tsx`: rota do Dashboard Medicao com filtros de ciclo, projeto digitavel por SOB, equipe, encarregado e status execucao, dois graficos Concluidos x Parciais lado a lado em desktop com tabela acima, periodo `De/Para` local do grafico por periodo iniciado no ano calendario corrente e com botao proprio de filtro, comparativo contra as tres metas, tabela unica de encarregados, ranking de atingimento, bullet chart, gap financeiro, titulo do ciclo em cada visao, expansao individual dos graficos de encarregados, checkboxes de metas, dias dinamicos por meta, legenda e modal de grafico ampliado.
   - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros (incluindo `Estado Trabalho` e `Tipo SGD`), marcador de obra de teste, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
@@ -182,6 +183,7 @@ vercel --prod
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado, paginacao e filtro por status (`ATIVO`/`INATIVO`).
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
   - `api/auth/local-login/route.ts`: login local via variaveis de ambiente.
+  - `api/dashboard-medicao/route.ts`: consolida indicadores de Medicao por ciclo, status economico, meta e encarregado, aplica filtro de projeto por SOB, calcula Concluidos x Parciais do ciclo e do periodo `De/Para` independente do ciclo selecionado, e filtra tudo pelo tenant autenticado.
 - `src/modules/auth/login/`
   - `LoginPageView.tsx`: implementacao visual da tela de login.
   - `LoginPageView.module.css`: estilo do login.
@@ -191,6 +193,9 @@ vercel --prod
 - `src/modules/dashboard/home/`
   - `HomePageView.tsx`: implementacao visual da home.
   - `HomePageView.module.css`: estilo da home.
+- `src/modules/dashboard/dashboard-medicao/`
+  - `DashboardMeasurementPageView.tsx`: dashboard da Medicao com filtros, tabelas acima dos graficos, dois graficos de Concluidos x Parciais lado a lado em desktop, periodo `De/Para` iniciado no ano calendario corrente, botao proprio para aplicar periodo, seletor de base de meta do ciclo, tabela unica de encarregados, ranking de atingimento com referencia 100%, bullet chart de metas, gap financeiro, titulo do ciclo por visao de encarregado, botoes individuais de expansao, checkboxes de metas, dias dinamicos por meta e modal ampliado.
+  - `DashboardMeasurementPageView.module.css`: estilos do Dashboard Medicao.
 - `src/modules/dashboard/projetos/`
   - `ProjectsPageView.tsx`: tela de projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas em abas.
   - `ProjectsPageView.module.css`: estilos da tela de projetos.
@@ -340,7 +345,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 12. O backend continua retornando `role` como `role_key` para o frontend, mesmo com a modelagem normalizada.
 13. O frontend persiste a sessao e redireciona para `/home`.
 14. A rota `src/app/(dashboard)/home/page.tsx` monta a home implementada em `src/modules/dashboard/home/`.
-15. O shell principal libera navegacao para as secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`; `Meta` e `Atividades` ficam agrupadas em `Cadastros`.
+15. O shell principal libera navegacao para as secoes `Visao Geral`, `Operacao`, `Almoxarifado`, `Cadastros` e `Cadastro Base`; `Dashboard Medicao` fica em `Visao Geral`, e `Meta` e `Atividades` ficam agrupadas em `Cadastros`.
   16. A rota `/projetos` permite cadastrar, editar, cancelar/ativar e filtrar projetos no tenant atual usando as rotas `/api/projects` e `/api/projects/meta`, limitando `Projeto (SOB)` a `10` caracteres e mantendo a regra de formato por prioridade.
   - Em `Projetos`, `Materiais`, `Atividades`, `Equipes`, `Pessoas` e `Permissoes`, a escrita agora envia `expectedUpdatedAt`; se outro usuario salvar antes, o frontend recusa a sobrescrita e recarrega o estado atual.
   - A migration `077_create_admin_write_rpcs.sql` centraliza no banco as escritas administrativas desses modulos por meio das RPCs `save_project_record`, `set_project_record_status`, `save_material_record`, `set_material_record_status`, `save_service_activity_record`, `set_service_activity_record_status`, `save_team_record`, `set_team_record_status` e `save_user_permissions`.
@@ -364,36 +369,37 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 34. A rota `/materiais` permite cadastrar, editar, cancelar/ativar e filtrar materiais no tenant atual usando a rota `/api/materials`, com `Tipo` por select (`NOVO`/`SUCATA`), flag `Material TRAFO` (`is_transformer`) e `Preco` opcional; a persistencia e o historico seguem delegados para as RPCs `save_material_record` e `set_material_record_status`.
 35. A rota `/medicao` opera `Ordem de Medicao` com persistencia transacional via `/api/medicao`, lista paginada no servidor, filtros por `Tipo` e `Motivo sem producao`, modos `Com producao` e `Sem producao`, motivo estruturado por tenant para ordens sem producao, taxa unica por ordem reaplicada a todos os itens na edicao, sugestao automatica de taxa por projeto (ultima medicao), match automatico opcional por `Projeto + Equipe + Data`, historico, exportacoes e cadastro em massa CSV com suporte aos dois tipos de ordem.
 36. A rota `/meta` cadastra o valor diario por tipo de equipe, calcula `Valor diario x equipes medida`, salva os dias uteis editaveis, os dias padrao segunda a sexta e os dias trabalhados medios arredondados dos ciclos que existem nas medicoes Com producao, bloqueia duplicidade de ciclo via RPC e exibe lista de metas salvas com `Meta ciclo`, `Meta ciclo padrao`, `Meta ciclo trabalhado`, atualizacao, exportacao CSV, detalhes, historico e edicao.
-37. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor e escrita delegada para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
-38. A rota `/programacao` passa a usar `project_programming_history` como timeline operacional dedicada da agenda, com `REPROGRAMADA` salvo fisicamente em `project_programming` e historico de `CREATE/UPDATE/RESCHEDULE/BATCH_CREATE` gravado dentro das RPCs transacionais full, sem depender de `app_entity_history` nem de historico complementar pos-commit na API.
-39. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`.
-40. A rota `/permissoes` continua enviando convite pelo backend, mas a auditoria do invite passa a ser gravada pela RPC `append_user_invite_history`.
-41. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
-42. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
-43. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
-44. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
-45. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro; o fluxo operacional atual da tela usa apenas `Projeto (SOB)` e limita esse campo a `10` caracteres.
-46. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
-47. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
-48. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
-49. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
-50. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
-51. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
-52. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
-53. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
-54. Ao salvar, o backend valida o payload, chama a RPC `save_user_permissions` e deixa a transacao no banco atualizar `app_users.role_id`, `app_users.ativo`, `app_user_page_permissions` e `app_user_permission_history`.
-55. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
-56. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
-57. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
-58. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
-59. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
-60. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
-61. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
-62. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
-63. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
-64. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
-65. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
-66. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
+37. A rota `/dashboard-medicao` exibe indicadores da Medicao por ciclo operacional 21 a 20, compara valor realizado com a Meta, separa Concluidos x Parciais em grafico do ciclo e grafico por periodo `De/Para` independente do ciclo selecionado, lado a lado em desktop, mostra tabela acima de cada grafico, inicia o periodo no ano calendario corrente, aplica o periodo somente pelo botao `Filtrar periodo`, filtra Projeto por SOB digitavel, detalha encarregados com tabela unica, ranking % com linha 100% centralizada, bullet chart de metas, gap financeiro, titulo do ciclo em cada visao, expansao individual dos graficos de encarregados, legenda e checkboxes de metas, ajusta a coluna Dias conforme a meta e amplia graficos em modal.
+38. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo apenas `codigo`, `descricao`, `valor` e `unidade`, usando `/api/activities` com listagem paginada no servidor e escrita delegada para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
+39. A rota `/programacao` passa a usar `project_programming_history` como timeline operacional dedicada da agenda, com `REPROGRAMADA` salvo fisicamente em `project_programming` e historico de `CREATE/UPDATE/RESCHEDULE/BATCH_CREATE` gravado dentro das RPCs transacionais full, sem depender de `app_entity_history` nem de historico complementar pos-commit na API.
+40. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`.
+41. A rota `/permissoes` continua enviando convite pelo backend, mas a auditoria do invite passa a ser gravada pela RPC `append_user_invite_history`.
+42. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
+43. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
+44. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
+45. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
+46. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro; o fluxo operacional atual da tela usa apenas `Projeto (SOB)` e limita esse campo a `10` caracteres.
+47. A migration `034_use_people_for_project_contractor_responsible.sql` remove o lookup dedicado de `Responsavel Contratada` e passa a usar `people` com cargo `SUPERVISOR`.
+48. A migration `036_create_project_history_and_cancellation.sql` adiciona `project.is_active` e cria `project_history` e `project_cancellation_history` para registrar edicoes e cancelamentos.
+49. A migration `037_project_activation_history_rules.sql` permite eventos de ativacao (`ACTIVATE`) e classifica cancelamento/ativacao em `project_cancellation_history.action_type`.
+50. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
+51. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
+52. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
+53. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
+54. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
+55. Ao salvar, o backend valida o payload, chama a RPC `save_user_permissions` e deixa a transacao no banco atualizar `app_users.role_id`, `app_users.ativo`, `app_user_page_permissions` e `app_user_permission_history`.
+56. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.
+57. No login remoto e na reidratacao da sessao, o frontend consulta `/api/auth/session-access` para descobrir as telas realmente liberadas ao usuario.
+58. O shell filtra a sidebar e protege as rotas com base em `pageAccess` quando existirem permissoes customizadas por usuario.
+59. O link `Esqueci minha senha` usa o `login_name` digitado na tela de login e chama a Edge Function `auth-recover`.
+60. O Supabase envia o email de recuperacao para o email vinculado ao `login_name`, usando `PASSWORD_REDIRECT_URL` apontando para o frontend publicado no Vercel.
+61. A rota `src/app/(public)/recuperar-senha/page.tsx` valida `token_hash`, `code` ou tokens do Supabase e permite definir a nova senha.
+62. O `AuthContext` renova os tokens remotos persistidos, reidrata `pageAccess`, encerra a sessao por inatividade e devolve o usuario ao login quando o token expira.
+63. Quando a sessao expira por token vencido, o frontend ainda tenta registrar `LOGOUT` no `login_audit` usando o `session_ref` salvo.
+64. A migration `040_reorganize_menu_sections_and_page_permissions.sql` reorganiza `app_pages` por secao e faz backfill das novas telas em `role_page_permissions` e `app_user_page_permissions`.
+65. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
+66. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
+67. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
 
 ---
 

@@ -51,6 +51,7 @@ const roleOptions: RoleOption[] = [
 // 3) Atualizar menuSections/titleMap no AppShell para manter navegacao e titulo consistentes.
 const permissionCatalog = [
   { pageKey: "home", label: "Dashboard Estoque", path: "/home", section: "Visao Geral" },
+  { pageKey: "dashboard-medicao", label: "Dashboard Medicao", path: "/dashboard-medicao", section: "Visao Geral" },
   { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
   { pageKey: "locacao", label: "Locacao", path: "/locacao", section: "Operacao" },
   { pageKey: "programacao-simples", label: "Programacao", path: "/programacao-simples", section: "Operacao" },
@@ -91,6 +92,7 @@ const permissionCatalog = [
 function createPermissionSet(role: string): PermissionCard[] {
   const defaultPageAccess = [
     "home",
+    "dashboard-medicao",
     "projetos",
     "locacao",
     "programacao-simples",
