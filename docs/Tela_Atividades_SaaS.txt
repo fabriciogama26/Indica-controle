@@ -3,10 +3,11 @@ Tela: Atividades SaaS
 Visao geral
 -----------
 - Tela de cadastro de atividades para contratos e servicos por tenant.
-- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `tipo`, `categoria`, `valor` e `unidade`.
+- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `tipo`, `categoria`, `valor`, `pontos` e `unidade`.
 - `grupo` e `alcance` permanecem opcionais para compatibilidade de dados.
 - Lista atividades cadastradas com filtro por codigo, descricao, tipo, categoria e status (`Ativo/Inativo`).
 - Lista atividades com paginacao no servidor e botao `Exportar Excel (CSV)`.
+- Lista, detalhes e exportacao exibem `Pontos` com origem em `service_activities.voice_point`.
 - Lista com acoes de linha: `Detalhes`, `Editar`, `Historico` e `Cancelar/Ativar`.
 
 Arquitetura
@@ -24,6 +25,7 @@ Arquitetura
 - Banco (categoria obrigatoria em atividades): `supabase/migrations/146_require_service_activity_category_and_update_rpc.sql`
 - Banco (ajuste de voz/unidade por planilha JA10183409): `supabase/migrations/148_update_service_activities_voice_fields_ja10183409.sql`
 - Banco (desativacao por escopo da carga 147): `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
+- Banco (cadastro/edicao de pontos): `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
@@ -37,10 +39,12 @@ Cadastro
   - `Tipo`
   - `Categoria`
   - `Valor`
+  - `Pontos`
   - `Unidade`
 - Regras:
   - `Codigo` e salvo em caixa alta.
   - `Valor` deve ser numerico e maior ou igual a zero.
+  - `Pontos` deve ser numerico e maior que zero.
   - `Tipo` deve existir e estar ativo em `team_types` no mesmo tenant.
   - `Categoria` deve existir e estar ativa em `types_service_activities` no mesmo tenant.
   - `Grupo` e `Alcance` sao opcionais.
@@ -66,6 +70,7 @@ Filtros, auto-complete e listagem
   - `Tipo`
   - `Categoria`
   - `Valor`
+  - `Pontos`
   - `Unidade`
   - `Registrado em`
   - `Acoes` (`Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`)
@@ -188,19 +193,49 @@ Atualizacao 2026-03
 - Antes: atividade nao tinha campo `Tipo`.
 - Depois: atividade exige `Tipo` no cadastro/edicao e permite filtrar/listar/exportar por `Tipo`.
 
+Atualizacao 2026-04-30
+----------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `src/modules/dashboard/atividades/ActivitiesPageView.module.css`
+  - `src/app/api/activities/route.ts`
+  - `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ActivityItem.voicePoint`
+  - `ActivityFormState.voicePoint`
+  - `formatPoints`
+  - `toInputPoints`
+  - `buildActivitiesCsv`
+  - `normalizePositiveDecimal`
+  - `addDecimalChange`
+  - `GET /api/activities`
+  - `POST /api/activities`
+  - `PUT /api/activities`
+  - `save_service_activity_record`
+  - `ActivityRow.voice_point`
+- Comportamento antes/depois:
+  - Antes: `GET /api/activities` nao retornava `service_activities.voice_point` e a tela nao exibia os pontos na lista/detalhes.
+  - Antes: o cadastro/edicao de Atividades nao permitia informar `voice_point`.
+  - Depois: `GET /api/activities` retorna `voicePoint` por atividade e a tela exibe `Pontos` na lista, no modal de detalhes e na exportacao CSV.
+  - Depois: cadastro/edicao passam a exigir `Pontos` maior que zero e persistir `service_activities.voice_point` pela RPC transacional.
+  - Depois: alteracoes de `Pontos` entram em `p_changes.voicePoint` e sao registradas em `app_entity_history` no historico da tela.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao, filtros (incluindo `Status`), listagem paginada, detalhes, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
+  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao com `Pontos`, filtros (incluindo `Status`), listagem paginada com `Pontos`, detalhes com `Pontos`, exportacao CSV, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
 - Caminho: `src/app/api/activities/route.ts`
-  - Responsavel por: validar payload, validar `team_type_id` e `category_id`, listar com paginacao/historico e filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
+  - Responsavel por: validar payload, validar `team_type_id`, `category_id` e `voicePoint`, listar com paginacao/historico, retornar `voicePoint` da atividade, aplicar filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 - Caminho: `src/app/api/activities/meta/route.ts`
   - Responsavel por: retornar opcoes de `Tipo` (`team_types`) e `Categoria` (`types_service_activities`) ativas do tenant.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: `INITIAL_FORM` e funcoes de formatacao de valor.
+  - Responsavel por: `INITIAL_FORM` e funcoes de formatacao de valor/pontos.
 - Caminho: `supabase/migrations/049_create_service_activities_and_page_permissions.sql`
   - Responsavel por: criar tabela, constraints, RLS, trigger de auditoria e permissao da pagina.
 - Caminho: `supabase/migrations/050_activity_code_precheck_and_optional_fields.sql`
@@ -217,6 +252,8 @@ Constantes e configuracoes
   - Responsavel por: atualizar `unit`, `voice_point` e `unit_value` para codigos da carga JA10183409, com validacao de codigos e de grupos mapeados.
 - Caminho: `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
   - Responsavel por: desativar atividades fora do escopo de codigos da migration 147 no tenant alvo e registrar auditoria em `app_entity_history`.
+- Caminho: `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
+  - Responsavel por: atualizar `save_service_activity_record` para persistir `voice_point` no cadastro/edicao e manter historico por `p_changes`.
 - Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
   - Responsavel por: criar `save_service_activity_record` e `set_service_activity_record_status` para escrita transacional da tela de atividades.
 - Caminho: `src/lib/auth/authorization.ts`
@@ -248,6 +285,7 @@ Ajuda contextual
   - `supabase/migrations/146_require_service_activity_category_and_update_rpc.sql`
   - `supabase/migrations/148_update_service_activities_voice_fields_ja10183409.sql`
   - `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
+  - `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -258,6 +296,7 @@ Ajuda contextual
   - `saveActivityViaRpc`, `setActivityStatusViaRpc`
   - `save_service_activity_record`, `set_service_activity_record_status`
   - `categoryId`, `categoryName`
+  - `voicePoint`, `formatPoints`, `buildActivitiesCsv`
   - `service_activities.type_service`, `types_service_activities`
   - `service_activities.voice_point`, `service_activities.unit`, `service_activities.unit_value`
   - `service_activities.ativo`, `service_activities.cancellation_reason`, `service_activities.canceled_at`
@@ -265,7 +304,7 @@ Ajuda contextual
   - `ROUTE_PAGE_KEYS`, `resolveDefaultPageAccess`, `permissionCatalog`
 - Comportamento antes/depois:
   - Antes: rota inexistente para atividades.
-- Depois: rota ativa com cadastro e edicao no tenant atual, com 6 campos obrigatorios (`Codigo`, `Descricao`, `Tipo`, `Categoria`, `Valor`, `Unidade`), precheck RPC anti-duplicidade, historico, controle de status e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
+  - Depois: rota ativa com cadastro e edicao no tenant atual, com 7 campos obrigatorios (`Codigo`, `Descricao`, `Tipo`, `Categoria`, `Valor`, `Pontos`, `Unidade`), precheck RPC anti-duplicidade, historico, controle de status e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
   - Antes: atividade nao possuia tipo vinculado.
   - Depois: atividade passa a exigir tipo de equipe valido por tenant (`team_types`).
   - Antes: atividade nao possuia catalogo dedicado de tipo de servico.

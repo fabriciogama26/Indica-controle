@@ -16,6 +16,7 @@ type ActivityRow = {
   type_service: string;
   group_name: string | null;
   unit_value: number | string;
+  voice_point: number | string | null;
   unit: string;
   scope: string | null;
   ativo: boolean;
@@ -65,6 +66,7 @@ type CreateActivityPayload = {
   categoryId: string;
   group?: string;
   value: string | number;
+  voicePoint: string | number;
   unit: string;
   scope?: string;
 };
@@ -137,6 +139,15 @@ function normalizeDecimal(value: unknown) {
   return Number(numeric.toFixed(2));
 }
 
+function normalizePositiveDecimal(value: unknown) {
+  const raw = String(value ?? "").trim().replace(",", ".");
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null;
+  }
+  return Number(numeric.toFixed(6));
+}
+
 function parseActivityInput(payload: Partial<CreateActivityPayload>) {
   return {
     code: normalizeCode(payload.code),
@@ -145,6 +156,7 @@ function parseActivityInput(payload: Partial<CreateActivityPayload>) {
     categoryId: normalizeText(payload.categoryId),
     group: normalizeNullableText(payload.group),
     value: normalizeDecimal(payload.value),
+    voicePoint: normalizePositiveDecimal(payload.voicePoint),
     unit: normalizeText(payload.unit),
     scope: normalizeNullableText(payload.scope),
   };
@@ -167,6 +179,19 @@ function formatComparableValue(value: unknown) {
   return normalized || null;
 }
 
+function formatComparableDecimal(value: unknown, fractionDigits: number) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const numericValue = typeof value === "number" ? value : Number(String(value).trim().replace(",", "."));
+  if (!Number.isFinite(numericValue)) {
+    return formatComparableValue(value);
+  }
+
+  return numericValue.toFixed(fractionDigits);
+}
+
 function addChange(
   changes: Record<string, HistoryChange>,
   field: string,
@@ -175,6 +200,23 @@ function addChange(
 ) {
   const from = formatComparableValue(previousValue);
   const to = formatComparableValue(nextValue);
+
+  if (from === to) {
+    return;
+  }
+
+  changes[field] = { from, to };
+}
+
+function addDecimalChange(
+  changes: Record<string, HistoryChange>,
+  field: string,
+  previousValue: unknown,
+  nextValue: unknown,
+  fractionDigits: number,
+) {
+  const from = formatComparableDecimal(previousValue, fractionDigits);
+  const to = formatComparableDecimal(nextValue, fractionDigits);
 
   if (from === to) {
     return;
@@ -251,7 +293,7 @@ async function fetchActivityById(
   const { data, error } = await supabase
     .from("service_activities")
     .select(
-      "id, code, description, team_type_id, type_service, group_name, unit_value, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, code, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", activityId)
@@ -321,6 +363,7 @@ async function saveActivityViaRpc(params: {
   categoryId: string;
   group: string | null;
   value: number;
+  voicePoint: number;
   unit: string;
   scope: string | null;
   changes?: Record<string, HistoryChange>;
@@ -336,6 +379,7 @@ async function saveActivityViaRpc(params: {
     p_type_service: params.categoryId,
     p_group_name: params.group,
     p_unit_value: params.value,
+    p_voice_point: params.voicePoint,
     p_unit: params.unit,
     p_scope: params.scope,
     p_changes: params.changes ?? {},
@@ -491,7 +535,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("service_activities")
       .select(
-        "id, code, description, team_type_id, type_service, group_name, unit_value, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, code, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -602,6 +646,7 @@ export async function GET(request: NextRequest) {
         categoryName: typeServiceMap.get(row.type_service) ?? "Nao identificado",
         group: row.group_name ?? "",
         value: Number(row.unit_value ?? 0),
+        voicePoint: row.voice_point === null ? null : Number(row.voice_point ?? 0),
         unit: row.unit,
         scope: row.scope ?? "",
         isActive: Boolean(row.ativo),
@@ -639,11 +684,20 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Partial<CreateActivityPayload>;
     const input = parseActivityInput(body);
 
-    if (!input.code || !input.description || !input.teamTypeId || !input.categoryId || input.value === null || !input.unit) {
+    if (
+      !input.code
+      || !input.description
+      || !input.teamTypeId
+      || !input.categoryId
+      || input.value === null
+      || input.voicePoint === null
+      || !input.unit
+    ) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
     }
 
     const unitValue = input.value as number;
+    const voicePoint = input.voicePoint as number;
 
     if (!(await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId))) {
       return NextResponse.json({ message: "Tipo invalido para o tenant atual." }, { status: 422 });
@@ -680,6 +734,7 @@ export async function POST(request: NextRequest) {
       categoryId: input.categoryId,
       group: input.group,
       value: unitValue,
+      voicePoint,
       unit: input.unit,
       scope: input.scope,
     });
@@ -722,11 +777,20 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Atualize a lista antes de editar a atividade." }, { status: 400 });
     }
 
-    if (!input.code || !input.description || !input.teamTypeId || !input.categoryId || input.value === null || !input.unit) {
+    if (
+      !input.code
+      || !input.description
+      || !input.teamTypeId
+      || !input.categoryId
+      || input.value === null
+      || input.voicePoint === null
+      || !input.unit
+    ) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
     }
 
     const unitValue = input.value as number;
+    const voicePoint = input.voicePoint as number;
 
     const currentActivity = await fetchActivityById(supabase, appUser.tenant_id, activityId);
     if (!currentActivity) {
@@ -777,7 +841,8 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "categoryName", currentTypeService?.name ?? null, nextTypeService.name);
     addChange(changes, "group", currentActivity.group_name, input.group);
-    addChange(changes, "value", currentActivity.unit_value, unitValue);
+    addDecimalChange(changes, "value", currentActivity.unit_value, unitValue, 2);
+    addDecimalChange(changes, "voicePoint", currentActivity.voice_point, voicePoint, 6);
     addChange(changes, "unit", currentActivity.unit, input.unit);
     addChange(changes, "scope", currentActivity.scope, input.scope);
 
@@ -796,6 +861,7 @@ export async function PUT(request: NextRequest) {
       categoryId: input.categoryId,
       group: input.group,
       value: unitValue,
+      voicePoint,
       unit: input.unit,
       scope: input.scope,
       changes,

@@ -88,6 +88,7 @@ Ordem de aplicacao
 84. 084_deactivate_legacy_programacao_page.sql
 85. 085_add_programming_structure_fields_and_actions_support.sql
 86. 086_add_service_activities_is_active_compat.sql
+171. 171_update_service_activity_voice_point_rpc.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -353,6 +354,9 @@ Resumo por arquivo
 
 150_add_project_is_test_and_status_filters.sql
 - Adiciona `project.is_test`, republica a view `project_with_labels` com o novo campo e evolui a RPC `save_project_record` para persistir o marcador de obra de teste.
+
+171_update_service_activity_voice_point_rpc.sql
+- Atualiza `save_service_activity_record` para persistir `service_activities.voice_point` no cadastro/edicao de Atividades e manter historico via `app_entity_history`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

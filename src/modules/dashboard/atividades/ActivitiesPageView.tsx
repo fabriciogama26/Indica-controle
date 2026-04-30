@@ -16,6 +16,7 @@ type ActivityItem = {
   categoryName: string;
   group: string;
   value: number;
+  voicePoint: number | null;
   unit: string;
   scope: string;
   isActive: boolean;
@@ -45,6 +46,7 @@ type ActivityFormState = {
   categoryId: string;
   group: string;
   value: string;
+  voicePoint: string;
   unit: string;
   scope: string;
   updatedAt: string;
@@ -97,6 +99,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   categoryName: "Categoria",
   group: "Grupo",
   value: "Valor",
+  voicePoint: "Pontos",
   unit: "Unidade",
   scope: "Alcance",
   isActive: "Status",
@@ -113,6 +116,7 @@ const INITIAL_FORM: ActivityFormState = {
   categoryId: "",
   group: "",
   value: "",
+  voicePoint: "",
   unit: "",
   scope: "",
   updatedAt: "",
@@ -172,6 +176,7 @@ function buildActivitiesCsv(activityItems: ActivityItem[]) {
     "Categoria",
     "Grupo",
     "Valor",
+    "Pontos",
     "Unidade",
     "Alcance",
     "Status",
@@ -187,6 +192,7 @@ function buildActivitiesCsv(activityItems: ActivityItem[]) {
     activity.categoryName,
     activity.group || "",
     activity.value.toFixed(2),
+    formatPoints(activity.voicePoint),
     activity.unit,
     activity.scope || "",
     activity.isActive ? "Ativo" : "Inativo",
@@ -217,8 +223,24 @@ function formatMoney(value: number) {
   });
 }
 
+function formatPoints(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return Number(value).toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  });
+}
+
 function toInputMoney(value: number) {
   return String(Number(value ?? 0).toFixed(2));
+}
+
+function toInputPoints(value: number | null | undefined) {
+  const numericValue = Number(value ?? "");
+  return Number.isFinite(numericValue) && numericValue > 0 ? String(numericValue) : "";
 }
 
 function formatDateTime(value: string | null) {
@@ -247,6 +269,11 @@ function formatHistoryValue(field: string, value: string | null) {
   if (field === "value") {
     const numericValue = Number(value);
     return Number.isFinite(numericValue) ? formatMoney(numericValue) : value;
+  }
+
+  if (field === "voicePoint") {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? formatPoints(numericValue) : value;
   }
 
   if (field === "isActive") {
@@ -476,6 +503,7 @@ export function ActivitiesPageView() {
       categoryId: activity.categoryId,
       group: activity.group,
       value: toInputMoney(activity.value),
+      voicePoint: toInputPoints(activity.voicePoint),
       unit: activity.unit,
       scope: activity.scope,
       updatedAt: activity.updatedAt,
@@ -534,6 +562,7 @@ export function ActivitiesPageView() {
         categoryId: normalizeText(form.categoryId),
         group: normalizeText(form.group) || null,
         value: form.value,
+        voicePoint: form.voicePoint,
         unit: normalizeText(form.unit),
         scope: normalizeText(form.scope) || null,
         ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
@@ -821,6 +850,21 @@ export function ActivitiesPageView() {
 
           <label className={styles.field}>
             <span>
+              Pontos <span className="requiredMark">*</span>
+            </span>
+            <input
+              type="number"
+              min="0.000001"
+              step="0.000001"
+              value={form.voicePoint}
+              onChange={(event) => setForm((current) => ({ ...current, voicePoint: event.target.value }))}
+              placeholder="Ex.: 1"
+              required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>
               Unidade <span className="requiredMark">*</span>
             </span>
             <input
@@ -946,6 +990,7 @@ export function ActivitiesPageView() {
                 <th>Tipo</th>
                 <th>Categoria</th>
                 <th>Valor</th>
+                <th>Pontos</th>
                 <th>Unidade</th>
                 <th>Registrado em</th>
                 <th>Acoes</th>
@@ -965,6 +1010,7 @@ export function ActivitiesPageView() {
                     <td>{activity.teamTypeName}</td>
                     <td>{activity.categoryName}</td>
                     <td>{formatMoney(activity.value)}</td>
+                    <td>{formatPoints(activity.voicePoint)}</td>
                     <td>{activity.unit}</td>
                     <td>{formatDateTime(activity.createdAt)}</td>
                     <td className={styles.actionsCell}>
@@ -1058,7 +1104,7 @@ export function ActivitiesPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className={styles.emptyRow}>
+                  <td colSpan={9} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando atividades..." : "Nenhuma atividade encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1115,6 +1161,7 @@ export function ActivitiesPageView() {
                 <div><strong>Categoria:</strong> {detailActivity.categoryName}</div>
                 <div><strong>Grupo:</strong> {detailActivity.group || "-"}</div>
                 <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
+                <div><strong>Pontos:</strong> {formatPoints(detailActivity.voicePoint)}</div>
                 <div><strong>Unidade:</strong> {detailActivity.unit}</div>
                 <div><strong>Alcance:</strong> {detailActivity.scope || "-"}</div>
                 <div><strong>Registrado por:</strong> {formatAuditActor(detailActivity.createdByName)}</div>
