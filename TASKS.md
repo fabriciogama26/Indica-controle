@@ -95,6 +95,8 @@
 - [x] Endurecer a migration `147_upsert_service_activities_from_atividades_xlsx.sql` para resolver `type_service` por UUID ou nome normalizado (sem acento/pontuacao) e detalhar no erro os codigos/categorias nao resolvidos.
 - [x] Corrigir compatibilidade da migration `147_upsert_service_activities_from_atividades_xlsx.sql` com ambientes Postgres sem `min(uuid)`, trocando a inferencia de tenant para `array_agg(order by)[1]`.
 - [x] Criar migration `148_update_service_activities_voice_fields_ja10183409.sql` para atualizar `unit`, `voice_point` (Pontos da Voz) e `unit_value` (Valor do Ponto por `group_name`) para os codigos informados do JA10183409.
+- [x] Exibir `voice_point` como `Pontos` na lista, detalhes e exportacao CSV da tela de `Atividades`.
+- [x] Incluir `Pontos` (`voice_point`) no cadastro/edicao de `Atividades` com persistencia por RPC e historico de alteracao.
 - [x] Criar migration `149_deactivate_service_activities_not_in_147.sql` para desativar atividades fora da lista de codigos da migration `147` (com motivo de cancelamento e historico em `app_entity_history`).
 - [x] Formalizar checklist obrigatorio de permissao para nova tela (migration + backfill + `permissionCatalog` + `AppShell`).
 - [x] Criar tela `Equipes` em `Cadastros` com campos `Nome da equipe`, `Placa do veiculo` e `Encarregado` (filtro por cargo `ENCARREGADO`).
