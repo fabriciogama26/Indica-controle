@@ -16,6 +16,7 @@ import {
   ProgrammingHistoryModal,
   ProgrammingPostponeModal,
   ProgrammingStageConflictModal,
+  ProgrammingWeeklyCalendarPanel,
 } from "./components";
 import {
   cancelProgramming,
@@ -49,8 +50,6 @@ import {
   formatDate,
   formatDateTime,
   formatDeadlineStatusLabel,
-  formatWeekdayShort,
-  formatWeekRangeLabel,
   getCurrentYearDateRange,
   getDisplayProgrammingStatus,
   isActiveProgrammingStatus,
@@ -83,7 +82,6 @@ import {
 } from "./validators";
 import type {
   PeriodMode,
-  ProgrammingStatus,
   WorkCompletionStatus,
   DocumentKey,
   ProjectItem,
@@ -104,26 +102,6 @@ import type {
   DeadlineViewMode,
   ProgrammingSimplePageViewMode,
 } from "./types";
-
-function scheduleCardClassName(status: ProgrammingStatus, workCompletionStatus: ScheduleItem["workCompletionStatus"]) {
-  if (isWorkCompleted(workCompletionStatus)) {
-    return styles.weekCardCompleted;
-  }
-
-  if (status === "REPROGRAMADA") {
-    return styles.weekCardRescheduled;
-  }
-
-  if (status === "ADIADA") {
-    return styles.weekCardPostponed;
-  }
-
-  if (status === "CANCELADA") {
-    return styles.weekCardCancelled;
-  }
-
-  return styles.weekCardPlanned;
-}
 
 
 function downloadCsvFile(content: string, filename: string) {
@@ -2717,162 +2695,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       </article>
 
       {isVisualizationMode ? (
-        <article className={`${styles.card} ${styles.calendarTopCard}`}>
-        <div className={styles.calendarHeader}>
-          <h3 className={styles.cardTitle}>Calendario Semanal de Programacao</h3>
-          <div className={styles.calendarActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setWeekStartDate((current) => addDays(current, -7))}
-            >
-              Semana anterior
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => setWeekStartDate(startOfWeekMonday(today))}
-            >
-              Semana atual
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setWeekStartDate((current) => addDays(current, 7))}
-            >
-              Proxima semana
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => void loadBoardData()}
-              disabled={isLoadingList}
-            >
-              {isLoadingList ? "Atualizando..." : "Atualizar"}
-            </button>
-          </div>
-        </div>
-
-        <p className={styles.helperText}>
-          Semana exibida: <strong>{formatWeekRangeLabel(weekStartDate)}</strong> (segunda a domingo).
-        </p>
-
-        <div className={styles.weekLegend}>
-          <span className={`${styles.weekLegendItem} ${styles.weekLegendPlanned}`}>Programado</span>
-          <span className={`${styles.weekLegendItem} ${styles.weekLegendRescheduled}`}>Reprogramado</span>
-          <span className={`${styles.weekLegendItem} ${styles.weekLegendCompleted}`}>Concluido</span>
-          <span className={`${styles.weekLegendItem} ${styles.weekLegendPostponed}`}>Adiado</span>
-          <span className={`${styles.weekLegendItem} ${styles.weekLegendCancelled}`}>Cancelado</span>
-        </div>
-
-        <div className={styles.weekCalendarWrapper}>
-          <div className={styles.weekCalendarHeader}>
-            <div className={styles.weekCalendarTeamHeader}>Equipe</div>
-            {weekDates.map((date) => (
-              <div key={date} className={styles.weekCalendarDayHeader}>
-                <strong>{formatWeekdayShort(date)}</strong>
-                <small>{formatDate(date)}</small>
-              </div>
-            ))}
-          </div>
-
-          {calendarTeams.length ? (
-            calendarTeams.map((team) => (
-              <div key={team.id} className={styles.weekCalendarRow}>
-                <div className={styles.weekCalendarTeamCell}>
-                  <strong>{team.name}</strong>
-                  <small>{team.foremanName || "Sem encarregado"}</small>
-                  <small>{team.serviceCenterName || "-"}</small>
-                </div>
-
-                {weekDates.map((date) => {
-                  const daySchedules = weeklyScheduleMap.get(`${team.id}__${date}`) ?? [];
-
-                  return (
-                    <div key={`${team.id}-${date}`} className={styles.weekCalendarDayCell}>
-                      {daySchedules.length ? (
-                        daySchedules.map((schedule) => {
-                          const project = projectMap.get(schedule.projectId);
-                          const sob = project?.code ?? schedule.projectId;
-                          const displayStatus = getDisplayProgrammingStatus(schedule);
-                          const hasSgd = Boolean(schedule.documents?.sgd?.approvedAt?.trim());
-                          const hasPi = Boolean(schedule.documents?.pi?.approvedAt?.trim());
-                          const isAreaLivreSgdType = (schedule.sgdExportColumn ?? "").toUpperCase() === "AREA_LIVRE";
-
-                          return (
-                            <article
-                              key={schedule.id}
-                              className={`${styles.weekCard} ${scheduleCardClassName(displayStatus, schedule.workCompletionStatus)}`}
-                            >
-                              <div className={styles.weekCardTop}>
-                                <strong>{sob}</strong>
-                              </div>
-
-                              <div className={styles.weekIndicators}>
-                                {isAreaLivreSgdType ? (
-                                  <span className={styles.weekIndicatorOn}>AREA LIVRE</span>
-                                ) : (
-                                  <>
-                                    <span className={hasSgd ? styles.weekIndicatorOn : styles.weekIndicatorOff}>SGD</span>
-                                    <span className={hasPi ? styles.weekIndicatorOn : styles.weekIndicatorOff}>PI</span>
-                                  </>
-                                )}
-                              </div>
-
-                              <div className={styles.weekCardActions}>
-                                <button
-                                  type="button"
-                                  className={styles.weekActionButton}
-                                  onClick={() => setDetailsTarget(schedule)}
-                                  title="Ver detalhe"
-                                  aria-label={`Ver detalhe da programacao ${sob}`}
-                                >
-                                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                    <path
-                                      d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
-                                      stroke="currentColor"
-                                      strokeWidth="1.8"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.weekActionButton}
-                                  onClick={() => void openHistory(schedule)}
-                                  title="Historico"
-                                  aria-label={`Historico da programacao ${sob}`}
-                                >
-                                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                    <path
-                                      d="M3.75 12a8.25 8.25 0 1 0 2.25-5.69M3.75 4.75v4h4"
-                                      stroke="currentColor"
-                                      strokeWidth="1.8"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                    <path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </article>
-                          );
-                        })
-                      ) : (
-                        <div className={styles.weekEmptyCell}>Sem programacao</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))
-          ) : (
-            <div className={styles.weekCalendarEmpty}>Nenhuma equipe disponivel para os filtros atuais.</div>
-          )}
-        </div>
-        </article>
+        <ProgrammingWeeklyCalendarPanel
+          weekStartDate={weekStartDate}
+          weekDates={weekDates}
+          calendarTeams={calendarTeams}
+          weeklyScheduleMap={weeklyScheduleMap}
+          projectMap={projectMap}
+          isLoadingList={isLoadingList}
+          onPreviousWeek={() => setWeekStartDate((current) => addDays(current, -7))}
+          onCurrentWeek={() => setWeekStartDate(startOfWeekMonday(today))}
+          onNextWeek={() => setWeekStartDate((current) => addDays(current, 7))}
+          onRefresh={() => void loadBoardData()}
+          onOpenDetails={setDetailsTarget}
+          onOpenHistory={(schedule) => void openHistory(schedule)}
+        />
       ) : null}
 
       <ProgrammingDeadlineModal

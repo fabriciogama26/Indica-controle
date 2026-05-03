@@ -536,6 +536,7 @@
 - [x] Continuar modularizacao interna da `Programacao Simples`: extrair componentes de modal para `components.tsx` (`Deadline`, `Details`, `History`, `Postpone`, `Cancel`, `Alert` e `StageConflict`) mantendo estados e regras operacionais no PageView.
 - [x] Continuar modularizacao interna da `Programacao Simples`: extrair painel de prazos para `ProgrammingDeadlinePanel` em `components.tsx`, mantendo calculos, estado, API e payloads no PageView.
 - [x] Integrar `useErrorLogger("programacao_simples")` na `Programacao Simples`, registrando falhas de carregamento, historico, save, cancelamento, adiamento, ETAPA e exportacoes em `app_error_logs` com contexto seguro.
+- [x] Continuar modularizacao interna da `Programacao Simples`: extrair calendario semanal para `ProgrammingWeeklyCalendarPanel` em `components.tsx`, mantendo calculos e callbacks no PageView.
 - [ ] Continuar modularizacao interna da `Programacao Simples`: extrair hooks de orquestracao de estado/carregamento e componentes de UI menores, mantendo o PageView como coordenador da tela.
 - [ ] Continuar modularizacao interna da `Programacao Simples`: avaliar separacao posterior de hooks de dados, blocos de UI, exportacoes e regras locais de validacao.
 - [x] Atualizar `docs/Tela_Programacao_Simples_SaaS.txt` a cada etapa estrutural da modularizacao, mapeando arquivos criados/alterados, funcoes tocadas e comportamento antes/depois.

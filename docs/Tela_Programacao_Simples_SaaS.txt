@@ -1099,3 +1099,20 @@ Atualizacao adicional 2026-05-03 (observabilidade - log de erros)
   - Depois: falhas operacionais relevantes chamam a Edge Function `log_error` por meio do hook global `useErrorLogger`, usando a tabela existente `app_error_logs`.
   - O contexto enviado evita formulario inteiro e dados sensiveis; registra somente metadados operacionais como operacao, ids, status, contagens, datas, filtros e mensagens resumidas de resposta.
   - Nao houve alteracao em payloads de save/cancelamento/adiamento, API, RPC, RLS ou regra transacional.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - calendario semanal)
+------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criado componente interno `ProgrammingWeeklyCalendarPanel` para renderizar o calendario semanal da visualizacao.
+  - Movida para `components.tsx` a funcao visual `getScheduleCardClassName`, responsavel pelas classes dos cards da semana.
+  - O PageView manteve `weekDates`, `calendarTeams`, `weeklySchedules`, `weeklyScheduleMap`, navegacao de semana, refresh, detalhe e historico.
+- Comportamento antes/depois:
+  - Antes: o calendario semanal ficava como JSX extenso dentro de `ProgrammingSimplePageView.tsx`.
+  - Depois: o calendario semanal fica em `components.tsx`, dentro da propria feature, recebendo dados e callbacks por props.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 2707 linhas apos a integracao de log de erros.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 2557 linhas, `components.tsx` passa a ter 889 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao esperada.
