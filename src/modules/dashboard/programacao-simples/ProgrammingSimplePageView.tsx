@@ -1,1175 +1,104 @@
 ﻿"use client";
 
-import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { supabase } from "@/lib/supabase/client";
 import styles from "./ProgrammingSimplePageView.module.css";
-
-type PeriodMode = "integral" | "partial";
-type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
-type WorkCompletionStatus = string;
-type DocumentKey = "sgd" | "pi" | "pep";
-
-type ProjectItem = {
-  id: string;
-  code: string;
-  executionDeadline?: string | null;
-  city: string;
-  base: string;
-  serviceType: string;
-  serviceName?: string;
-  priority?: string;
-  partner?: string;
-  utilityResponsible?: string;
-  utilityFieldManager?: string;
-  street?: string;
-  district?: string;
-};
-
-type TeamItem = {
-  id: string;
-  name: string;
-  vehiclePlate?: string;
-  serviceCenterName: string;
-  teamTypeName?: string;
-  foremanName?: string;
-};
-
-type SupportOptionItem = {
-  id: string;
-  description: string;
-};
-
-type ProgrammingReasonOptionItem = {
-  code: string;
-  label: string;
-  requiresNotes: boolean;
-};
-
-type SgdTypeItem = {
-  id: string;
-  description: string;
-  exportColumn: "SGD_AT_MT_VYP" | "SGD_BT" | "SGD_TET" | string;
-};
-
-type ElectricalEqCatalogItem = {
-  id: string;
-  code: string;
-  label: string;
-};
-
-type WorkCompletionCatalogItem = {
-  code: string;
-  label: string;
-};
-
-type DocumentEntry = {
-  number: string;
-  approvedAt: string;
-  requestedAt: string;
-};
-
-type ActivityCatalogItem = {
-  id: string;
-  code: string;
-  description: string;
-  unit: string;
-};
-
-type ActivityItem = {
-  catalogId: string;
-  code: string;
-  description: string;
-  quantity: number;
-  unit: string;
-};
-
-type ScheduleItem = {
-  id: string;
-  projectId: string;
-  teamId: string;
-  teamName?: string;
-  teamServiceCenterName?: string;
-  teamTypeName?: string;
-  teamForemanName?: string;
-  teamVehiclePlate?: string;
-  status: ProgrammingStatus;
-  isReprogrammed?: boolean;
-  date: string;
-  period: PeriodMode;
-  startTime: string;
-  endTime: string;
-  outageStartTime: string;
-  outageEndTime: string;
-  createdAt: string;
-  updatedAt: string;
-  createdByName: string;
-  updatedByName: string;
-  statusReason?: string;
-  statusChangedAt?: string;
-  expectedMinutes: number;
-  feeder: string;
-  support: string;
-  supportItemId: string | null;
-  note: string;
-  electricalField: string;
-  serviceDescription: string;
-  posteQty: number;
-  estruturaQty: number;
-  trafoQty: number;
-  redeQty: number;
-  etapaNumber: number | null;
-  etapaUnica: boolean;
-  etapaFinal: boolean;
-  workCompletionStatus: WorkCompletionStatus | null;
-  affectedCustomers: number;
-  sgdTypeId: string | null;
-  electricalEqCatalogId: string | null;
-  electricalEqCode?: string;
-  sgdTypeDescription?: string;
-  sgdExportColumn?: string;
-  activitiesLoaded?: boolean;
-  activities: ActivityItem[];
-  documents: {
-    sgd: { number: string; approvedAt: string; requestedAt: string; includedAt?: string; deliveredAt?: string };
-    pi: { number: string; approvedAt: string; requestedAt: string; includedAt?: string; deliveredAt?: string };
-    pep: { number: string; approvedAt: string; requestedAt: string; includedAt?: string; deliveredAt?: string };
-  };
-};
-
-type ProgrammingResponse = {
-  projects?: ProjectItem[];
-  teams?: TeamItem[];
-  supportOptions?: SupportOptionItem[];
-  sgdTypes?: SgdTypeItem[];
-  electricalEqCatalog?: ElectricalEqCatalogItem[];
-  workCompletionCatalog?: WorkCompletionCatalogItem[];
-  reasonOptions?: ProgrammingReasonOptionItem[];
-  schedules?: ScheduleItem[];
-  activitiesLoadError?: boolean;
-  nextEtapaNumber?: number;
-  message?: string;
-};
-
-type StageValidationTeamSummary = {
-  teamId: string;
-  teamName: string;
-  highestStage: number;
-  existingStages: number[];
-  existingDates: string[];
-};
-
-type StageValidationResponse = {
-  enteredEtapaNumber?: number;
-  hasConflict?: boolean;
-  highestStage?: number;
-  teams?: StageValidationTeamSummary[];
-  message?: string;
-};
-
-type ActivityCatalogResponse = {
-  items?: ActivityCatalogItem[];
-  message?: string;
-};
-
-type BatchCreateResponse = {
-  success?: boolean;
-  insertedCount?: number;
-  message?: string;
-  enteredEtapaNumber?: number;
-  hasConflict?: boolean;
-  highestStage?: number;
-  teams?: StageValidationTeamSummary[];
-};
-
-type SaveProgrammingResponse = {
-  success?: boolean;
-  id?: string;
-  updatedAt?: string;
-  schedule?: ScheduleItem | null;
-  warning?: string;
-  error?: "conflict";
-  reason?: string | null;
-  detail?: string | null;
-  currentUpdatedAt?: string | null;
-  updatedBy?: string | null;
-  changedFields?: string[];
-  currentRecord?: {
-    id: string;
-    executionDate: string;
-    startTime: string;
-    endTime: string;
-    updatedAt: string;
-  } | null;
-  message?: string;
-  enteredEtapaNumber?: number;
-  hasConflict?: boolean;
-  highestStage?: number;
-  teams?: StageValidationTeamSummary[];
-};
-
-type HistoryChange = {
-  from: string | null;
-  to: string | null;
-};
-
-type ProgrammingHistoryItem = {
-  id: string;
-  changedAt: string;
-  changedByName?: string;
-  reason: string;
-  action: string;
-  changes: Record<string, HistoryChange>;
-  metadata: Record<string, unknown>;
-};
-
-type ProgrammingHistoryResponse = {
-  history?: ProgrammingHistoryItem[];
-  message?: string;
-};
-
-type AlertModalState = {
-  title: string;
-  message: string;
-  details?: string[];
-};
-
-type FormState = {
-  projectId: string;
-  projectSearch: string;
-  date: string;
-  period: PeriodMode;
-  startTime: string;
-  endTime: string;
-  outageStartTime: string;
-  outageEndTime: string;
-  feeder: string;
-  supportItemId: string;
-  note: string;
-  electricalField: string;
-  serviceDescription: string;
-  posteQty: string;
-  estruturaQty: string;
-  trafoQty: string;
-  redeQty: string;
-  etapaNumber: string;
-  etapaUnica: boolean;
-  etapaFinal: boolean;
-  workCompletionStatus: WorkCompletionStatus | "";
-  affectedCustomers: string;
-  sgdTypeId: string;
-  electricalEqCatalogId: string;
-  teamIds: string[];
-  teamSearch: string;
-  activitySearch: string;
-  activityQuantity: string;
-  activities: ActivityItem[];
-  documents: Record<DocumentKey, DocumentEntry>;
-};
-
-type FilterState = {
-  startDate: string;
-  endDate: string;
-  projectSearch: string;
-  projectId: string;
-  municipality: string;
-  teamId: string;
-  status: "TODOS" | ProgrammingStatus;
-  workCompletionStatus: "TODOS" | WorkCompletionStatus | "NAO_INFORMADO";
-  sgdTypeId: string;
-};
-
-type DeadlineStatus = "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
-type DeadlineVisualVariant = "OVERDUE_CRITICAL" | "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
-type DeadlineViewMode = "15" | "30";
-
-const PAGE_SIZE = 20;
-const HISTORY_PAGE_SIZE = 5;
-const DEADLINE_CAROUSEL_PAGE_SIZE = 6;
-const DEADLINE_WINDOW_SHORT_DAYS = 15;
-const DEADLINE_WINDOW_LONG_DAYS = 30;
-const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
-  { key: "sgd", label: "SGD" },
-  { key: "pi", label: "PI" },
-  { key: "pep", label: "PEP" },
-];
-const HISTORY_FIELD_LABELS: Record<string, string> = {
-  project: "Projeto",
-  team: "Equipe",
-  executionDate: "Data execucao",
-  period: "Periodo",
-  startTime: "Hora inicio",
-  endTime: "Hora termino",
-  outageStartTime: "Inicio de desligamento",
-  outageEndTime: "Termino de desligamento",
-  expectedMinutes: "Tempo previsto",
-  feeder: "Alimentador",
-  support: "Apoio",
-  note: "Anotacao",
-  electricalField: "Nº EQ (numero)",
-  serviceDescription: "Descricao do servico",
-  posteQty: "POSTE",
-  estruturaQty: "ESTRUTURA",
-  trafoQty: "TRAFO",
-  redeQty: "REDE",
-  etapaNumber: "ETAPA",
-  etapaUnica: "ETAPA ÚNICA",
-  etapaFinal: "ETAPA FINAL",
-  workCompletionStatus: "Estado Trabalho",
-  affectedCustomers: "Nº Clientes Afetados",
-  electricalEq: "Nº EQ",
-  sgdType: "Tipo de SGD",
-  sgdNumber: "SGD",
-  sgdApprovedAt: "SGD Data Aprovada",
-  sgdRequestedAt: "SGD Data Pedido",
-  piNumber: "PI",
-  piApprovedAt: "PI Data Aprovada",
-  piRequestedAt: "PI Data Pedido",
-  pepNumber: "PEP",
-  pepApprovedAt: "PEP Data Aprovada",
-  pepRequestedAt: "PEP Data Pedido",
-  status: "Status",
-  isActive: "Ativo",
-  cancellationReason: "Motivo do cancelamento",
-  canceledAt: "Data do cancelamento",
-  activities: "Atividades",
-};
-const HISTORY_ALLOWED_ACTIONS = new Set(["UPDATE", "RESCHEDULE", "ADIADA", "CANCELADA"]);
-const HISTORY_HIDDEN_FIELDS = new Set(["isActive", "cancellationReason", "canceledAt", "statusChangedAt"]);
-const VALIDATION_FIELD_LABELS: Record<string, string> = {
-  projectId: "Projeto (SOB)",
-  teamIds: "Equipes",
-  date: "Data execucao",
-  period: "Periodo",
-  startTime: "Hora inicio",
-  endTime: "Hora termino",
-  outageStartTime: "Inicio de desligamento",
-  outageEndTime: "Termino de desligamento",
-  feeder: "Alimentador",
-  electricalField: "Nº EQ (numero)",
-  posteQty: "POSTE",
-  estruturaQty: "ESTRUTURA",
-  trafoQty: "TRAFO",
-  redeQty: "REDE",
-  etapaNumber: "ETAPA",
-  workCompletionStatus: "Estado Trabalho",
-  affectedCustomers: "Nº Clientes Afetados",
-  electricalEqCatalogId: "Nº EQ",
-  sgdTypeId: "Tipo de SGD",
-  changeReason: "Motivo da reprogramacao",
-};
-
-function toIsoDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(value: string, amount: number) {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() + amount);
-  return toIsoDate(date);
-}
-
-function calculateDateDiffInDays(targetDate: string, referenceDate: string) {
-  const [targetYear, targetMonth, targetDay] = targetDate.split("-").map(Number);
-  const [referenceYear, referenceMonth, referenceDay] = referenceDate.split("-").map(Number);
-  const target = new Date(targetYear, targetMonth - 1, targetDay);
-  const reference = new Date(referenceYear, referenceMonth - 1, referenceDay);
-  const diffMs = target.getTime() - reference.getTime();
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-}
-
-function formatDeadlineStatusLabel(daysDiff: number, windowDays: number) {
-  if (daysDiff < 0) {
-    const absDays = Math.abs(daysDiff);
-    return `Vencida ha ${absDays} dia${absDays === 1 ? "" : "s"}`;
-  }
-
-  if (daysDiff === 0) {
-    return "Vence hoje";
-  }
-
-  if (daysDiff <= windowDays) {
-    return `Vence em ${daysDiff} dia${daysDiff === 1 ? "" : "s"}`;
-  }
-
-  return "Ainda no prazo";
-}
-
-function resolveDeadlineStatus(daysDiff: number, windowDays: number): DeadlineStatus {
-  if (daysDiff < 0) {
-    return "OVERDUE";
-  }
-
-  if (daysDiff === 0) {
-    return "TODAY";
-  }
-
-  if (daysDiff <= windowDays) {
-    return "SOON";
-  }
-
-  return "NORMAL";
-}
-
-function resolveDeadlineVisualVariant(daysDiff: number, windowDays: number): DeadlineVisualVariant {
-  if (daysDiff <= -30) {
-    return "OVERDUE_CRITICAL";
-  }
-
-  if (daysDiff < 0) {
-    return "OVERDUE";
-  }
-
-  if (daysDiff === 0) {
-    return "TODAY";
-  }
-
-  if (daysDiff <= windowDays) {
-    return "SOON";
-  }
-
-  return "NORMAL";
-}
-
-function getCurrentYearDateRange(referenceDate: string) {
-  const year = referenceDate.slice(0, 4);
-  return {
-    startDate: `${year}-01-01`,
-    endDate: `${year}-12-31`,
-  };
-}
-
-function startOfWeekMonday(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  const dayOfWeek = date.getDay();
-  const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  date.setDate(date.getDate() + offset);
-  return toIsoDate(date);
-}
-
-function createWeekDates(weekStartDate: string) {
-  return Array.from({ length: 7 }, (_, index) => addDays(weekStartDate, index));
-}
-
-function isDateInRange(value: string, startDate: string, endDate: string) {
-  return value >= startDate && value <= endDate;
-}
-
-function formatWeekdayShort(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-
-  return parsed.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "").toUpperCase();
-}
-
-function formatWeekRangeLabel(weekStartDate: string) {
-  const weekEndDate = addDays(weekStartDate, 6);
-  return `${formatDate(weekStartDate)} a ${formatDate(weekEndDate)}`;
-}
-
-function formatDate(value: string) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleDateString("pt-BR");
-}
-
-function formatDateTime(value: string) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatAuditActor(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  return normalized || "Nao identificado";
-}
-
-function formatWeekday(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-
-  return parsed.toLocaleDateString("pt-BR", { weekday: "long" });
-}
-
-function formatExpectedHours(value: number) {
-  const minutes = Number(value ?? 0);
-  if (!Number.isFinite(minutes) || minutes <= 0) {
-    return "";
-  }
-
-  const totalHours = minutes / 60;
-  if (Number.isInteger(totalHours)) {
-    return String(totalHours);
-  }
-
-  return totalHours.toFixed(2);
-}
-
-function parseTimeToMinutes(value: string) {
-  const normalized = String(value ?? "").trim();
-  if (!/^\d{2}:\d{2}$/.test(normalized)) {
-    return null;
-  }
-
-  const [hours, minutes] = normalized.split(":").map(Number);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-    return null;
-  }
-
-  return (hours * 60) + minutes;
-}
-
-function resolveEnelNovoPeriod(startTime: string, endTime: string) {
-  const startMinutes = parseTimeToMinutes(startTime);
-  const endMinutes = parseTimeToMinutes(endTime);
-  const morningStart = 7 * 60;
-  const morningEnd = 12 * 60;
-  const afternoonStart = 13 * 60;
-
-  if (
-    startMinutes !== null
-    && endMinutes !== null
-    && startMinutes >= morningStart
-    && endMinutes <= morningEnd
-  ) {
-    return "MANHÃ";
-  }
-
-  if (startMinutes !== null && startMinutes >= afternoonStart) {
-    return "TARDE";
-  }
-
-  return "INTEGRAL";
-}
-
-function normalizeSgdNumberForExport(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) {
-    return "";
-  }
-
-  const segments = normalized
-    .split("/")
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-
-  return segments.join(" / ");
-}
-
-function formatExpectedTimeAsClock(value: number) {
-  const minutes = Number(value ?? 0);
-  if (!Number.isFinite(minutes) || minutes <= 0) {
-    return "";
-  }
-
-  const safeMinutes = Math.max(0, Math.floor(minutes));
-  const hours = Math.floor(safeMinutes / 60);
-  const remainderMinutes = safeMinutes % 60;
-
-  return `${String(hours).padStart(2, "0")}:${String(remainderMinutes).padStart(2, "0")}:00`;
-}
-
-function formatDateExecutionEnelNovo(value: string) {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) {
-    return "";
-  }
-
-  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return normalized;
-  }
-
-  const day = match[3];
-  const month = match[2];
-  const year = match[1];
-
-  return `${day}/${month}/${year}`;
-}
-
-function formatWeekdayExecutionEnelNovo(value: string) {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) {
-    return "";
-  }
-
-  const parsed = new Date(`${normalized}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-
-  const weekday = parsed.getDay();
-  const map = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"];
-  return map[weekday] ?? "";
-}
-
-function formatInfoStatusEtapa(
-  etapaNumber: number | null | undefined,
-  etapaUnica?: boolean,
-  etapaFinal?: boolean,
-) {
-  if (etapaFinal) {
-    return "ETAPA FINAL";
-  }
-
-  if (etapaUnica) {
-    return "ETAPA ÚNICA";
-  }
-
-  const stage = Number(etapaNumber ?? 0);
-  if (!Number.isFinite(stage) || stage <= 0) {
-    return "";
-  }
-
-  return `${stage}ª ETAPA`;
-}
-
-function extractTextAfterDash(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) {
-    return "";
-  }
-
-  const parts = normalized.split("-");
-  if (parts.length < 2) {
-    return normalized;
-  }
-
-  const last = parts[parts.length - 1]?.trim();
-  return last || normalized;
-}
-
-function extractTextBeforeDash(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) {
-    return "";
-  }
-
-  const parts = normalized.split("-");
-  if (parts.length < 2) {
-    return normalized;
-  }
-
-  const first = parts[0]?.trim();
-  return first || normalized;
-}
-
-function resolveEnelNovoStatus(schedule: ScheduleItem) {
-  const normalizedWorkCompletionStatus = normalizeWorkCompletionCode(schedule.workCompletionStatus);
-
-  if (normalizedWorkCompletionStatus === "CONCLUIDO") {
-    return "CONCLUÍDO";
-  }
-
-  if (normalizedWorkCompletionStatus === "PARCIAL") {
-    return "PARCIAL";
-  }
-
-  const displayStatus = getDisplayProgrammingStatus(schedule);
-  switch (displayStatus) {
-    case "ADIADA":
-      return "ADIADO";
-    case "CANCELADA":
-      return "CANCELADO";
-    case "REPROGRAMADA":
-      return "REPROGRAMADA";
-    case "PROGRAMADA":
-    default:
-      return "PROGRAMADO";
-  }
-}
-
-function isAreaLivreSgd(
-  sgdExportColumn: string | null | undefined,
-  sgdTypeDescription: string | null | undefined,
-) {
-  const exportColumn = String(sgdExportColumn ?? "").trim().toUpperCase();
-  const description = String(sgdTypeDescription ?? "").trim().toUpperCase();
-
-  return (
-    exportColumn === "AREA_LIVRE"
-    || exportColumn === "AREA LIVRE"
-    || description === "AREA_LIVRE"
-    || description === "AREA LIVRE"
-  );
-}
-
-function normalizeWorkCompletionCode(value: unknown) {
-  const raw = String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-
-  return raw || "NAO_INFORMADO";
-}
-
-function resolveTeamStructureCode(team?: TeamItem | null) {
-  if (!team) {
-    return "";
-  }
-
-  const normalized = normalizeSearchText(`${team.teamTypeName ?? ""} ${team.name ?? ""}`);
-  if (!normalized) {
-    return "";
-  }
-
-  if (normalized.includes("linha morta") || normalized.includes("morta") || /\bmk\b/.test(normalized)) {
-    return "MK";
-  }
-
-  if (normalized.includes("cesto") || normalized.includes("ceto")) {
-    return "CETO";
-  }
-
-  if (normalized.includes("linha viva") || normalized.includes("viva") || /\blv\b/.test(normalized)) {
-    return "LV";
-  }
-
-  return "";
-}
-
-function resolveScheduleTeamInfo(schedule: ScheduleItem, teamMap: Map<string, TeamItem>) {
-  const activeTeam = teamMap.get(schedule.teamId);
-  if (activeTeam) {
-    return activeTeam;
-  }
-
-  return {
-    id: schedule.teamId,
-    name: schedule.teamName ?? schedule.teamId,
-    vehiclePlate: schedule.teamVehiclePlate ?? "",
-    serviceCenterName: schedule.teamServiceCenterName ?? "Sem base",
-    teamTypeName: schedule.teamTypeName ?? "",
-    foremanName: schedule.teamForemanName ?? "",
-  } satisfies TeamItem;
-}
-
-function resolveReasonOption(
-  reasonOptions: ProgrammingReasonOptionItem[],
-  selectedReasonCode: string,
-) {
-  const normalizedCode = selectedReasonCode.trim().toUpperCase();
-  if (!normalizedCode) {
-    return null;
-  }
-
-  return reasonOptions.find((item) => item.code.toUpperCase() === normalizedCode) ?? null;
-}
-
-function isReasonSelectionValid(
-  reasonOptions: ProgrammingReasonOptionItem[],
-  selectedReasonCode: string,
-  reasonNotes: string,
-) {
-  const selectedOption = resolveReasonOption(reasonOptions, selectedReasonCode);
-  if (!selectedOption) {
-    return false;
-  }
-
-  if (selectedOption.requiresNotes && !reasonNotes.trim()) {
-    return false;
-  }
-
-  return true;
-}
-
-function buildReasonText(
-  reasonOptions: ProgrammingReasonOptionItem[],
-  selectedReasonCode: string,
-  reasonNotes: string,
-) {
-  const selectedOption = resolveReasonOption(reasonOptions, selectedReasonCode);
-  if (!selectedOption) {
-    return "";
-  }
-
-  const notes = reasonNotes.trim();
-  if (selectedOption.requiresNotes && !notes) {
-    return "";
-  }
-
-  return notes ? `${selectedOption.label}: ${notes}` : selectedOption.label;
-}
-
-function formatStructureSummaryByCode(codeCountMap: Record<string, number>) {
-  const priorityOrder = ["MK", "CETO", "LV"];
-  const codes = Object.keys(codeCountMap)
-    .filter((code) => codeCountMap[code] > 0)
-    .sort((left, right) => {
-      const leftIndex = priorityOrder.indexOf(left);
-      const rightIndex = priorityOrder.indexOf(right);
-
-      if (leftIndex !== -1 && rightIndex !== -1) {
-        return leftIndex - rightIndex;
-      }
-      if (leftIndex !== -1) {
-        return -1;
-      }
-      if (rightIndex !== -1) {
-        return 1;
-      }
-
-      return left.localeCompare(right);
-    });
-
-  if (!codes.length) {
-    return "";
-  }
-
-  return codes.map((code) => `${codeCountMap[code]} ${code}`).join(" + ");
-}
-
-function calculateExpectedMinutes(startTime: string, endTime: string, _period: PeriodMode) {
-  void _period;
-  const [startHour, startMinute] = startTime.split(":").map(Number);
-  const [endHour, endMinute] = endTime.split(":").map(Number);
-  const startTotal = startHour * 60 + startMinute;
-  const endTotal = endHour * 60 + endMinute;
-
-  if (Number.isFinite(startTotal) && Number.isFinite(endTotal) && endTotal > startTotal) {
-    return endTotal - startTotal;
-  }
-
-  return 0;
-}
-
-function isInvalidTimeRange(startTime: string, endTime: string) {
-  if (!startTime || !endTime) {
-    return false;
-  }
-
-  return endTime <= startTime;
-}
-
-function getDocumentRequestedAfterApprovedLabel(documents: Record<DocumentKey, DocumentEntry>) {
-  const invalidDocument = DOCUMENT_KEYS.find(({ key }) => {
-    const approvedAt = documents[key].approvedAt;
-    const requestedAt = documents[key].requestedAt;
-    return Boolean(approvedAt && requestedAt && requestedAt > approvedAt);
-  });
-
-  return invalidDocument?.label ?? null;
-}
-
-function isNegativeNumericText(value: string) {
-  const normalized = value.trim();
-  if (!normalized) {
-    return false;
-  }
-
-  return /^-\d+([.,]\d+)?$/.test(normalized);
-}
-
-function createEmptyDocuments(): Record<DocumentKey, DocumentEntry> {
-  return {
-    sgd: { number: "", approvedAt: "", requestedAt: "" },
-    pi: { number: "", approvedAt: "", requestedAt: "" },
-    pep: { number: "", approvedAt: "", requestedAt: "" },
-  };
-}
-
-function createInitialForm(initialDate: string): FormState {
-  return {
-    projectId: "",
-    projectSearch: "",
-    date: initialDate,
-    period: "integral",
-    startTime: "08:00",
-    endTime: "17:00",
-    outageStartTime: "",
-    outageEndTime: "",
-    feeder: "",
-    supportItemId: "",
-    note: "",
-    electricalField: "",
-    serviceDescription: "",
-    posteQty: "0",
-    estruturaQty: "0",
-    trafoQty: "0",
-    redeQty: "0",
-    etapaNumber: "",
-    etapaUnica: false,
-    etapaFinal: false,
-    workCompletionStatus: "",
-    affectedCustomers: "0",
-    sgdTypeId: "",
-    electricalEqCatalogId: "",
-    teamIds: [],
-    teamSearch: "",
-    activitySearch: "",
-    activityQuantity: "1",
-    activities: [],
-    documents: createEmptyDocuments(),
-  };
-}
-
-function activityOptionLabel(item: ActivityCatalogItem) {
-  return `${item.code} - ${item.description}`;
-}
-
-function normalizeSearchText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-function findActivityOption(value: string, options: ActivityCatalogItem[]) {
-  const normalized = normalizeSearchText(value);
-  if (!normalized) {
-    return null;
-  }
-
-  const codeCandidate = normalized.split("-")[0]?.trim();
-  return options.find((item) => {
-    const code = normalizeSearchText(item.code);
-    const label = normalizeSearchText(activityOptionLabel(item));
-
-    return (
-      code === normalized ||
-      label === normalized ||
-      code === codeCandidate ||
-      normalized.startsWith(`${code} -`) ||
-      label.includes(normalized)
-    );
-  }) ?? null;
-}
-
-function parseNonNegativeInteger(value: string) {
-  const normalized = value.trim();
-  if (!normalized) {
-    return 0;
-  }
-
-  const parsed = Number(normalized);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function parseOptionalPositiveInteger(value: string) {
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  const parsed = Number(normalized);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return undefined;
-  }
-
-  return parsed;
-}
-
-function normalizeHistoryChangeMap(value: Record<string, unknown>) {
-  const normalized: Record<string, HistoryChange> = {};
-
-  for (const [field, rawChange] of Object.entries(value ?? {})) {
-    if (!rawChange || typeof rawChange !== "object" || Array.isArray(rawChange)) {
-      continue;
-    }
-
-    const recordChange = rawChange as { from?: unknown; to?: unknown };
-    const from = recordChange.from === null || recordChange.from === undefined ? null : String(recordChange.from);
-    const to = recordChange.to === null || recordChange.to === undefined ? null : String(recordChange.to);
-
-    if (from === to) {
-      continue;
-    }
-
-    normalized[field] = { from, to };
-  }
-
-  return normalized;
-}
-
-function normalizeHistoryItemsForDisplay(items: ProgrammingHistoryItem[]) {
-  return items
-    .map((item) => {
-      const action = item.action.trim().toUpperCase();
-      if (!HISTORY_ALLOWED_ACTIONS.has(action)) {
-        return null;
-      }
-
-      const rawChanges = normalizeHistoryChangeMap(item.changes ?? {});
-
-      if (action === "ADIADA" || action === "CANCELADA") {
-        const statusChange = rawChanges.status;
-        const executionDateChange = rawChanges.executionDate;
-        const relevantChanges = Object.fromEntries(
-          Object.entries({
-            ...(statusChange ? { status: statusChange } : {}),
-            ...(executionDateChange ? { executionDate: executionDateChange } : {}),
-          }),
-        );
-
-        if (!Object.keys(relevantChanges).length) {
-          return null;
-        }
-
-        return {
-          ...item,
-          changes: relevantChanges,
-        };
-      }
-
-      const filteredEntries = Object.entries(rawChanges).filter(([field]) => !HISTORY_HIDDEN_FIELDS.has(field));
-      if (!filteredEntries.length) {
-        return null;
-      }
-
-      return {
-        ...item,
-        changes: Object.fromEntries(filteredEntries),
-      };
-    })
-    .filter((item): item is ProgrammingHistoryItem => item !== null);
-}
-
-function parseActivitiesSnapshot(value: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(value) as Array<{ code?: string; quantity?: number }> | null;
-    if (!Array.isArray(parsed)) {
-      return value;
-    }
-
-    const summarized = parsed
-      .map((item) => {
-        const code = String(item.code ?? "").trim();
-        const quantity = Number(item.quantity ?? 0);
-        if (!code || !Number.isFinite(quantity)) {
-          return null;
-        }
-        return `${code} (${quantity})`;
-      })
-      .filter((item): item is string => Boolean(item));
-
-    return summarized.length ? summarized.join(", ") : "-";
-  } catch {
-    return value;
-  }
-}
-
-function formatHistoryValue(field: string, value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  if (
-    field === "etapaNumber"
-    || field === "posteQty"
-    || field === "estruturaQty"
-    || field === "trafoQty"
-    || field === "redeQty"
-    || field === "affectedCustomers"
-  ) {
-    const numericValue = Number(value);
-    if (Number.isFinite(numericValue)) {
-      return String(Math.trunc(numericValue));
-    }
-  }
-
-  if (field === "executionDate") {
-    return formatDate(value);
-  }
-
-  if (
-    field === "sgdApprovedAt"
-    || field === "sgdRequestedAt"
-    || field === "piApprovedAt"
-    || field === "piRequestedAt"
-    || field === "pepApprovedAt"
-    || field === "pepRequestedAt"
-  ) {
-    return formatDate(value);
-  }
-
-  if (field === "canceledAt" || field === "statusChangedAt") {
-    return formatDateTime(value);
-  }
-
-  if (field === "period") {
-    return value === "INTEGRAL" ? "Integral" : value === "PARCIAL" ? "Parcial" : value;
-  }
-
-  if (field === "isActive") {
-    return value === "true" ? "Sim" : "Nao";
-  }
-
-  if (field === "activities") {
-    return parseActivitiesSnapshot(value) ?? "-";
-  }
-
-  return value;
-}
-
-function formatHistoryAction(action: string) {
-  const normalized = action.trim().toUpperCase();
-  if (normalized === "BATCH_CREATE" || normalized === "CREATE") {
-    return "Cadastro";
-  }
-  if (normalized === "UPDATE") {
-    return "Edicao";
-  }
-  if (normalized === "RESCHEDULE") {
-    return "Reprogramacao";
-  }
-  if (normalized === "CANCELADA") {
-    return "Cancelamento";
-  }
-  if (normalized === "ADIADA") {
-    return "Adiamento";
-  }
-  return action || "-";
-}
-
-function isWorkCompleted(workCompletionStatus: ScheduleItem["workCompletionStatus"] | string | null | undefined) {
-  const normalized = normalizeWorkCompletionCode(workCompletionStatus);
-  return normalized === "CONCLUIDO" || normalized === "COMPLETO";
-}
+import {
+  cancelProgramming,
+  fetchProgrammingHistory,
+  fetchProgrammingSnapshot,
+  postponeProgramming,
+  saveProgramming,
+  validateProgrammingStageConflict,
+} from "./api";
+import {
+  DEADLINE_CAROUSEL_PAGE_SIZE,
+  DEADLINE_WINDOW_LONG_DAYS,
+  DEADLINE_WINDOW_SHORT_DAYS,
+  DOCUMENT_KEYS,
+  HISTORY_FIELD_LABELS,
+  HISTORY_PAGE_SIZE,
+  PAGE_SIZE,
+} from "./constants";
+import {
+  buildDeadlineCsvContent,
+  buildEnelCsvContent,
+  buildEnelNovoWorkbookData,
+  buildProgrammingCsvContent,
+} from "./exports";
+import { useProgrammingActivityCatalog, useProgrammingEtapaSuggestion } from "./hooks";
+import {
+  addDays,
+  calculateDateDiffInDays,
+  calculateExpectedMinutes,
+  createInitialForm,
+  createWeekDates,
+  findActivityOption,
+  formatAuditActor,
+  formatDate,
+  formatDateTime,
+  formatDeadlineStatusLabel,
+  formatHistoryAction,
+  formatHistoryValue,
+  formatWeekdayShort,
+  formatWeekRangeLabel,
+  getCurrentYearDateRange,
+  getDisplayProgrammingStatus,
+  isActiveProgrammingStatus,
+  isDateInRange,
+  isInactiveProgrammingStatus,
+  isWorkCompleted,
+  normalizeHistoryItemsForDisplay,
+  normalizeSgdNumberForExport,
+  normalizeWorkCompletionCode,
+  parseNonNegativeInteger,
+  parseOptionalPositiveInteger,
+  resolveDeadlineStatus,
+  resolveDeadlineVisualVariant,
+  resolveReasonOption,
+  resolveScheduleTeamInfo,
+  startOfWeekMonday,
+  toIsoDate,
+} from "./utils";
+import {
+  buildConflictAlertDetails,
+  buildConflictFeedbackMessage,
+  buildFieldValidationDetails,
+  buildLocalStageConflictSummary,
+  buildReasonText,
+  buildSavedOutsideFiltersMessage,
+  getDocumentRequestedAfterApprovedLabel,
+  isInvalidTimeRange,
+  isNegativeNumericText,
+  isReasonSelectionValid,
+} from "./validators";
+import type {
+  PeriodMode,
+  ProgrammingStatus,
+  WorkCompletionStatus,
+  DocumentKey,
+  ProjectItem,
+  TeamItem,
+  SupportOptionItem,
+  ProgrammingReasonOptionItem,
+  SgdTypeItem,
+  ElectricalEqCatalogItem,
+  WorkCompletionCatalogItem,
+  DocumentEntry,
+  ScheduleItem,
+  ProgrammingResponse,
+  StageValidationTeamSummary,
+  ProgrammingHistoryItem,
+  AlertModalState,
+  FormState,
+  FilterState,
+  DeadlineStatus,
+  DeadlineViewMode,
+  ProgrammingSimplePageViewMode,
+} from "./types";
 
 function scheduleCardClassName(status: ProgrammingStatus, workCompletionStatus: ScheduleItem["workCompletionStatus"]) {
   if (isWorkCompleted(workCompletionStatus)) {
@@ -1191,256 +120,6 @@ function scheduleCardClassName(status: ProgrammingStatus, workCompletionStatus: 
   return styles.weekCardPlanned;
 }
 
-function isInactiveProgrammingStatus(status: ProgrammingStatus) {
-  return status === "ADIADA" || status === "CANCELADA";
-}
-
-function isActiveProgrammingStatus(status: ProgrammingStatus) {
-  return status === "PROGRAMADA" || status === "REPROGRAMADA";
-}
-
-function getDisplayProgrammingStatus(schedule: Pick<ScheduleItem, "status" | "isReprogrammed">): ProgrammingStatus {
-  if (schedule.status === "PROGRAMADA" && schedule.isReprogrammed) {
-    return "REPROGRAMADA";
-  }
-
-  return schedule.status;
-}
-
-function buildSavedOutsideFiltersMessage(params: {
-  date: string;
-  status: ProgrammingStatus;
-  projectId: string;
-  teamIds: string[];
-  workCompletionStatus: WorkCompletionStatus | null;
-  sgdTypeId: string | null;
-  activeFilters: FilterState;
-  projectMap: Map<string, ProjectItem>;
-  teamMap: Map<string, TeamItem>;
-  workCompletionCatalog: WorkCompletionCatalogItem[];
-  sgdTypes: SgdTypeItem[];
-}) {
-  const reasons: string[] = [];
-
-  if (
-    !isInactiveProgrammingStatus(params.status)
-    && !isDateInRange(params.date, params.activeFilters.startDate, params.activeFilters.endDate)
-  ) {
-    reasons.push(
-      `a Data execucao ${formatDate(params.date)} esta fora do filtro atual (${formatDate(params.activeFilters.startDate)} a ${formatDate(params.activeFilters.endDate)})`,
-    );
-  }
-
-  if (params.activeFilters.projectId && params.projectId !== params.activeFilters.projectId) {
-    const filteredProject = params.projectMap.get(params.activeFilters.projectId)?.code ?? "selecionado";
-    reasons.push(`o Projeto filtrado e ${filteredProject}`);
-  }
-
-  if (params.activeFilters.municipality) {
-    const savedProjectCity = params.projectMap.get(params.projectId)?.city ?? "";
-    if (savedProjectCity !== params.activeFilters.municipality) {
-      reasons.push(`o Municipio filtrado e ${params.activeFilters.municipality}`);
-    }
-  }
-
-  if (params.activeFilters.teamId && !params.teamIds.includes(params.activeFilters.teamId)) {
-    const filteredTeam = params.teamMap.get(params.activeFilters.teamId)?.name ?? "selecionada";
-    reasons.push(`a Equipe filtrada e ${filteredTeam}`);
-  }
-
-  if (params.activeFilters.status !== "TODOS" && params.status !== params.activeFilters.status) {
-    reasons.push(`o Status filtrado e ${params.activeFilters.status}`);
-  }
-
-  if (params.activeFilters.workCompletionStatus !== "TODOS") {
-    const savedWorkCompletionStatus = normalizeWorkCompletionCode(params.workCompletionStatus);
-    const selectedWorkCompletionStatus = normalizeWorkCompletionCode(params.activeFilters.workCompletionStatus);
-    if (selectedWorkCompletionStatus !== savedWorkCompletionStatus) {
-      const selectedCatalogItem = params.activeFilters.workCompletionStatus === "NAO_INFORMADO"
-        ? null
-        : params.workCompletionCatalog.find((item) => item.code === params.activeFilters.workCompletionStatus) ?? null;
-      const formattedWorkCompletionStatus = params.activeFilters.workCompletionStatus === "NAO_INFORMADO"
-        ? "Nao informado"
-        : selectedCatalogItem?.label ?? params.activeFilters.workCompletionStatus;
-      reasons.push(`o Estado Trabalho filtrado e ${formattedWorkCompletionStatus}`);
-    }
-  }
-
-  if (params.activeFilters.sgdTypeId && params.sgdTypeId !== params.activeFilters.sgdTypeId) {
-    const filteredSgdType = params.sgdTypes.find((item) => item.id === params.activeFilters.sgdTypeId);
-    reasons.push(`o Tipo SGD filtrado e ${filteredSgdType?.description ?? "selecionado"}`);
-  }
-
-  if (!reasons.length) {
-    return null;
-  }
-
-  return `A programacao foi salva, mas pode nao aparecer na lista atual porque ${reasons.join(" e ")}.`;
-}
-
-function buildConflictFeedbackMessage(payload: SaveProgrammingResponse | null, fallback: string) {
-  if (payload?.error !== "conflict") {
-    return payload?.message ?? fallback;
-  }
-
-  const updatedBy = payload.updatedBy?.trim();
-  const updatedAt = payload.currentUpdatedAt ? formatDateTime(payload.currentUpdatedAt) : "";
-  const changedFields = Array.isArray(payload.changedFields) && payload.changedFields.length
-    ? ` Campos em conflito: ${payload.changedFields.join(", ")}.`
-    : "";
-
-  return `${payload.message ?? fallback}${updatedBy || updatedAt ? ` Alterada por ${updatedBy ?? "outro usuario"}${updatedAt ? ` em ${updatedAt}` : ""}.` : ""}${changedFields}`;
-}
-
-function buildFieldValidationDetails(fields: string[]) {
-  const labels = Array.from(
-    new Set(
-      fields
-        .map((field) => VALIDATION_FIELD_LABELS[field] ?? null)
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
-
-  return labels.length ? labels.map((label) => `Revise o campo ${label}.`) : [];
-}
-
-function buildConflictAlertDetails(payload: SaveProgrammingResponse | null) {
-  if (!payload) {
-    return [];
-  }
-
-  const details: string[] = [];
-  if (payload.reason) {
-    details.push(`Codigo do erro: ${payload.reason}.`);
-  }
-
-  if (payload.detail) {
-    details.push(payload.detail);
-  }
-
-  if (payload.updatedBy || payload.currentUpdatedAt) {
-    details.push(
-      `Ultima alteracao: ${payload.updatedBy?.trim() || "outro usuario"}${payload.currentUpdatedAt ? ` em ${formatDateTime(payload.currentUpdatedAt)}` : ""}.`,
-    );
-  }
-
-  if (Array.isArray(payload.changedFields) && payload.changedFields.length) {
-    details.push(`Campos em conflito: ${payload.changedFields.join(", ")}.`);
-  }
-
-  if (payload.currentRecord) {
-    details.push(
-      `Versao atual: ${formatDate(payload.currentRecord.executionDate)} | ${payload.currentRecord.startTime} - ${payload.currentRecord.endTime}.`,
-    );
-  }
-
-  return details;
-}
-
-function buildLocalStageConflictSummary(params: {
-  schedules: ScheduleItem[];
-  teams: TeamItem[];
-  projectId: string;
-  teamIds: string[];
-  enteredEtapaNumber: number;
-  excludeProgrammingId?: string | null;
-  currentEditingStage?: number | null;
-  currentEditingDate?: string | null;
-  currentEditingTeamId?: string | null;
-}) {
-  const teamNameMap = new Map(params.teams.map((item) => [item.id, item.name]));
-  const relevantSchedules = params.schedules.filter((item) => {
-    if (item.projectId !== params.projectId) {
-      return false;
-    }
-
-    if (!params.teamIds.includes(item.teamId)) {
-      return false;
-    }
-
-    if (params.excludeProgrammingId && item.id === params.excludeProgrammingId) {
-      return false;
-    }
-
-    if (item.etapaNumber === null || item.etapaNumber < params.enteredEtapaNumber) {
-      return false;
-    }
-
-    return true;
-  });
-
-  if (!relevantSchedules.length) {
-    return null;
-  }
-
-  const summaries = Array.from(new Set(relevantSchedules.map((item) => item.teamId)))
-    .map((teamId) => {
-      const items = relevantSchedules.filter((item) => item.teamId === teamId);
-      const existingStages = Array.from(
-        new Set(
-          items
-            .map((item) => Number(item.etapaNumber ?? 0))
-            .filter((stage) => Number.isFinite(stage) && stage >= params.enteredEtapaNumber),
-        ),
-      ).sort((left, right) => left - right);
-      const existingDates = Array.from(new Set(items.map((item) => item.date))).sort();
-      const highestStage = existingStages.length ? Math.max(...existingStages) : 0;
-
-      return {
-        teamId,
-        teamName: teamNameMap.get(teamId) ?? teamId,
-        highestStage,
-        existingStages,
-        existingDates,
-      } satisfies StageValidationTeamSummary;
-    })
-    .filter((item) => item.existingStages.length > 0)
-    .sort((left, right) => left.teamName.localeCompare(right.teamName));
-
-  if (
-    params.currentEditingTeamId
-    && params.currentEditingStage
-    && params.currentEditingStage > params.enteredEtapaNumber
-  ) {
-    const existingSummary = summaries.find((item) => item.teamId === params.currentEditingTeamId);
-    if (existingSummary) {
-      if (!existingSummary.existingStages.includes(params.currentEditingStage)) {
-        existingSummary.existingStages = [...existingSummary.existingStages, params.currentEditingStage].sort((left, right) => left - right);
-      }
-      if (params.currentEditingDate && !existingSummary.existingDates.includes(params.currentEditingDate)) {
-        existingSummary.existingDates = [...existingSummary.existingDates, params.currentEditingDate].sort();
-      }
-      existingSummary.highestStage = Math.max(existingSummary.highestStage, params.currentEditingStage);
-    } else {
-      summaries.push({
-        teamId: params.currentEditingTeamId,
-        teamName: teamNameMap.get(params.currentEditingTeamId) ?? params.currentEditingTeamId,
-        highestStage: params.currentEditingStage,
-        existingStages: [params.currentEditingStage],
-        existingDates: params.currentEditingDate ? [params.currentEditingDate] : [],
-      });
-      summaries.sort((left, right) => left.teamName.localeCompare(right.teamName));
-    }
-  }
-
-  if (!summaries.length) {
-    return null;
-  }
-
-  return {
-    enteredEtapaNumber: params.enteredEtapaNumber,
-    highestStage: summaries.reduce((current, item) => Math.max(current, item.highestStage), 0),
-    teams: summaries,
-  };
-}
-
-function escapeCsvValue(value: string | number) {
-  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (raw.includes(";") || raw.includes('"')) {
-    return `"${raw.replace(/"/g, '""')}"`;
-  }
-  return raw;
-}
 
 function downloadCsvFile(content: string, filename: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
@@ -1452,7 +131,6 @@ function downloadCsvFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-type ProgrammingSimplePageViewMode = "cadastro" | "visualizacao";
 
 export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: ProgrammingSimplePageViewMode }) {
   const { session } = useAuth();
@@ -1496,10 +174,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [workCompletionCatalog, setWorkCompletionCatalog] = useState<WorkCompletionCatalogItem[]>([]);
   const [reasonOptions, setReasonOptions] = useState<ProgrammingReasonOptionItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
-  const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [page, setPage] = useState(1);
   const [isLoadingList, setIsLoadingList] = useState(false);
-  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingEnel, setIsExportingEnel] = useState(false);
@@ -1553,7 +229,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     return refreshedAccessToken || accessToken;
   }, [accessToken]);
 
-  const deferredActivitySearch = useDeferredValue(form.activitySearch);
+  const { activityOptions, isLoadingActivities } = useProgrammingActivityCatalog({
+    accessToken,
+    search: form.activitySearch,
+  });
+  useProgrammingEtapaSuggestion({
+    accessToken,
+    form,
+    isEditing: Boolean(editingScheduleId),
+    isEtapaManuallyEdited,
+    isVisualizationMode,
+    setForm,
+    setInvalidFields,
+    setIsEtapaManuallyEdited,
+  });
   const isEditing = Boolean(editingScheduleId);
   const currentEditingSchedule = useMemo(
     () => (editingScheduleId ? schedules.find((item) => item.id === editingScheduleId) ?? null : null),
@@ -1846,22 +535,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setIsLoadingList(true);
     try {
-      const response = await fetch(
-        `/api/programacao?startDate=${requestStartDate}&endDate=${requestEndDate}`,
-        {
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
-      );
-
-      const data = (await response.json().catch(() => ({}))) as ProgrammingResponse;
-      if (!response.ok) {
-        throw new Error(data.message ?? "Falha ao carregar programacao.");
-      }
-
-      return data;
+      return fetchProgrammingSnapshot({
+        accessToken,
+        startDate: requestStartDate,
+        endDate: requestEndDate,
+      });
     } finally {
       setIsLoadingList(false);
     }
@@ -1893,50 +571,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   useEffect(() => {
     void loadBoardData();
   }, [loadBoardData]);
-
-  useEffect(() => {
-    if (!accessToken || deferredActivitySearch.trim().length < 2) {
-      setActivityOptions([]);
-      setIsLoadingActivities(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      setIsLoadingActivities(true);
-      try {
-        const response = await fetch(
-          `/api/projects/activity-forecast/catalog?q=${encodeURIComponent(deferredActivitySearch.trim())}`,
-          {
-            cache: "no-store",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-            signal: controller.signal,
-          },
-        );
-
-        const data = (await response.json().catch(() => ({}))) as ActivityCatalogResponse;
-        if (!response.ok) {
-          setActivityOptions([]);
-          return;
-        }
-
-        setActivityOptions(data.items ?? []);
-      } catch (error) {
-        if ((error as Error).name !== "AbortError") {
-          setActivityOptions([]);
-        }
-      } finally {
-        setIsLoadingActivities(false);
-      }
-    }, 220);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [accessToken, deferredActivitySearch]);
 
   useEffect(() => {
     setPage(1);
@@ -1982,78 +616,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return { ...current, teamIds: validTeamIds };
     });
   }, [availableTeams, selectedProject]);
-
-  useEffect(() => {
-    if (isEditing) {
-      return;
-    }
-
-    setIsEtapaManuallyEdited(false);
-  }, [form.projectId, form.date, form.teamIds, isEditing]);
-
-  useEffect(() => {
-    if (isVisualizationMode || isEditing || !accessToken) {
-      return;
-    }
-
-    if (!form.projectId || !form.date || !form.teamIds.length || form.etapaUnica || form.etapaFinal) {
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({
-          nextEtapaProjectId: form.projectId,
-          nextEtapaDate: form.date,
-          nextEtapaTeamIds: form.teamIds.join(","),
-        });
-
-        const response = await fetch(`/api/programacao?${params.toString()}`, {
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          signal: controller.signal,
-        });
-
-        const data = (await response.json().catch(() => ({}))) as ProgrammingResponse;
-        if (!response.ok || !data.nextEtapaNumber) {
-          return;
-        }
-
-        setForm((current) => {
-          if (current.projectId !== form.projectId || current.date !== form.date) {
-            return current;
-          }
-
-          const sameTeamSelection =
-            current.teamIds.length === form.teamIds.length
-            && current.teamIds.every((teamId) => form.teamIds.includes(teamId));
-
-          if (!sameTeamSelection) {
-            return current;
-          }
-
-          if (isEtapaManuallyEdited && current.etapaNumber.trim()) {
-            return current;
-          }
-
-          return { ...current, etapaNumber: String(data.nextEtapaNumber) };
-        });
-        setInvalidFields((current) => current.filter((item) => item !== "etapaNumber"));
-      } catch (error) {
-        if ((error as Error).name !== "AbortError") {
-          return;
-        }
-      }
-    }, 180);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [accessToken, form.date, form.etapaFinal, form.etapaUnica, form.projectId, form.teamIds, isEditing, isEtapaManuallyEdited, isVisualizationMode]);
 
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
     if (field === "etapaNumber") {
@@ -2133,46 +695,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     currentEditingDate?: string | null;
     currentEditingTeamId?: string | null;
   }) {
-    const query = new URLSearchParams({
-      etapaValidationProjectId: params.projectId,
-      etapaValidationTeamIds: params.teamIds.join(","),
-      etapaValidationNumber: String(params.etapaNumber),
+    if (!accessToken) {
+      throw new Error("Sessao invalida para validar a etapa da programacao.");
+    }
+
+    return validateProgrammingStageConflict({
+      accessToken,
+      ...params,
     });
-
-    if (params.excludeProgrammingId) {
-      query.set("etapaValidationExcludeProgrammingId", params.excludeProgrammingId);
-    }
-    if (params.currentEditingStage) {
-      query.set("etapaValidationCurrentStage", String(params.currentEditingStage));
-    }
-    if (params.currentEditingDate) {
-      query.set("etapaValidationCurrentDate", params.currentEditingDate);
-    }
-    if (params.currentEditingTeamId) {
-      query.set("etapaValidationCurrentTeamId", params.currentEditingTeamId);
-    }
-
-    const response = await fetch(`/api/programacao?${query.toString()}`, {
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    const data = (await response.json().catch(() => ({}))) as StageValidationResponse;
-    if (!response.ok) {
-      throw new Error(data.message ?? "Falha ao validar a etapa da programacao.");
-    }
-
-    if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
-      return {
-        enteredEtapaNumber: Number(data.enteredEtapaNumber ?? params.etapaNumber),
-        highestStage: Number(data.highestStage ?? 0),
-        teams: data.teams,
-      };
-    }
-
-    return null;
   }
 
   function handleProjectSobChange(value: string) {
@@ -2494,24 +1024,19 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setIsLoadingHistory(true);
 
     try {
-      const response = await fetch(`/api/programacao?historyProgrammingId=${encodeURIComponent(schedule.id)}`, {
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+      const data = await fetchProgrammingHistory({
+        accessToken,
+        programmingId: schedule.id,
       });
-      const data = (await response.json().catch(() => ({}))) as ProgrammingHistoryResponse;
-
-      if (!response.ok) {
-        setFeedback({ type: "error", message: data.message ?? "Falha ao carregar historico da programacao." });
-        return;
-      }
 
       const normalizedHistory = normalizeHistoryItemsForDisplay(data.history ?? []);
 
       setHistoryItems(normalizedHistory);
-    } catch {
-      setFeedback({ type: "error", message: "Falha ao carregar historico da programacao." });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao carregar historico da programacao.",
+      });
     } finally {
       setIsLoadingHistory(false);
     }
@@ -2530,22 +1055,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setIsCancelling(true);
 
     try {
-      const response = await fetch("/api/programacao", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          id: cancelTarget.id,
-          action: "CANCELAR",
-          reason: selectedReasonText,
-          expectedUpdatedAt: cancelTarget.updatedAt,
-        }),
+      const { ok, data } = await cancelProgramming({
+        accessToken,
+        id: cancelTarget.id,
+        reason: selectedReasonText,
+        expectedUpdatedAt: cancelTarget.updatedAt,
       });
 
-      const data = (await response.json().catch(() => ({}))) as SaveProgrammingResponse;
-      if (!response.ok) {
+      if (!ok) {
         setFeedback({
           type: "error",
           message: buildConflictFeedbackMessage(data, "Falha ao cancelar programacao."),
@@ -2622,23 +1139,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setAlertModal(null);
 
     try {
-      const response = await fetch("/api/programacao", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          id: postponeTarget.id,
-          action: "ADIAR",
-          reason: selectedReasonText,
-          newDate: postponeDate,
-          expectedUpdatedAt: postponeTarget.updatedAt,
-        }),
+      const { ok, data } = await postponeProgramming({
+        accessToken,
+        id: postponeTarget.id,
+        reason: selectedReasonText,
+        newDate: postponeDate,
+        expectedUpdatedAt: postponeTarget.updatedAt,
       });
 
-      const data = (await response.json().catch(() => ({}))) as SaveProgrammingResponse;
-      if (!response.ok) {
+      if (!ok) {
         const message = buildConflictFeedbackMessage(data, "Falha ao adiar programacao.");
         setFeedback({
           type: "error",
@@ -2966,25 +1475,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             },
       );
 
-      const executeSaveRequest = (token: string) => fetch("/api/programacao", {
-        method: editingScheduleId ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: requestBody,
+      const executeSaveRequest = (token: string) => saveProgramming({
+        accessToken: token,
+        isEditing: Boolean(editingScheduleId),
+        requestBody,
       });
 
-      let response = await executeSaveRequest(initialAccessToken);
-      if (response.status === 401) {
+      let saveResult = await executeSaveRequest(initialAccessToken);
+      if (saveResult.status === 401) {
         const refreshedAccessToken = await resolveLatestAccessToken();
         if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
-          response = await executeSaveRequest(refreshedAccessToken);
+          saveResult = await executeSaveRequest(refreshedAccessToken);
         }
       }
 
-      const data = (await response.json().catch(() => ({}))) as BatchCreateResponse & SaveProgrammingResponse;
-      if (!response.ok || (editingScheduleId ? !data.id : !data.success)) {
+      const { data } = saveResult;
+      if (!saveResult.ok || (editingScheduleId ? !data.id : !data.success)) {
         if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
           setStageConflictModal({
             enteredEtapaNumber: Number(data.enteredEtapaNumber ?? etapaNumber),
@@ -3129,18 +1635,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setIsExportingDeadlineModal(true);
     try {
-      const header = ["SOB", "Data limite", "Status do prazo", "Dias para vencimento", "Faixa", "Janela selecionada"];
-      const rows = deadlineSobCards.map((item) => [
-        item.sob,
-        formatDate(item.executionDeadline),
-        item.statusLabel,
-        item.daysDiff,
-        item.rangeLabel,
-        `${deadlineWindowDays} dias`,
-      ]);
-
-      const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-      const csv = `\uFEFF${csvLines.join("\n")}`;
+      const csv = buildDeadlineCsvContent({
+        items: deadlineSobCards,
+        deadlineWindowDays,
+      });
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `prazos_obras_${deadlineWindowDays}dias_${exportDate}.csv`);
     } finally {
@@ -3167,80 +1665,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setIsExporting(true);
     try {
-      const header = [
-        "Data execucao",
-        "Projeto",
-        "Equipe",
-        "Base",
-        "Hora inicio",
-        "Hora termino",
-        "Periodo",
-        "Nº EQ - Numero",
-        "Tipo de SGD",
-        "Alimentador",
-        "Inicio de desligamento",
-        "Termino de desligamento",
-        "Apoio",
-        "Descricao do servico",
-        "Status",
-        "Motivo do status",
-        "Status alterado em",
-        "POSTE",
-        "ESTRUTURA",
-        "TRAFO",
-        "REDE",
-        "ETAPA",
-        "Estado trabalho",
-        "Nº Clientes afetados",
-        "SGD",
-        "PI",
-        "PEP",
-        "Criado por",
-        "Criado em",
-        "Atualizado por",
-        "Atualizado em",
-      ];
-      const rows = filteredSchedules.map((schedule) => {
-        const project = projectMap.get(schedule.projectId);
-        const team = resolveScheduleTeamInfo(schedule, teamMap);
-        const displayStatus = getDisplayProgrammingStatus(schedule);
-        return [
-          formatDate(schedule.date),
-          project?.code ?? schedule.projectId,
-          team.name,
-          team.serviceCenterName ?? "-",
-          schedule.startTime,
-          schedule.endTime,
-          schedule.period === "integral" ? "Integral" : "Parcial",
-          schedule.electricalField || "",
-          schedule.sgdTypeDescription || "",
-          schedule.feeder || "",
-          schedule.outageStartTime || "",
-          schedule.outageEndTime || "",
-          schedule.support || "",
-          schedule.serviceDescription || "",
-          displayStatus,
-          schedule.statusReason || "",
-          formatDateTime(schedule.statusChangedAt ?? ""),
-          schedule.posteQty,
-          schedule.estruturaQty,
-          schedule.trafoQty,
-          schedule.redeQty,
-          schedule.etapaNumber ?? "",
-          schedule.workCompletionStatus ?? "",
-          schedule.affectedCustomers,
-          schedule.documents?.sgd?.number ?? "",
-          schedule.documents?.pi?.number ?? "",
-          schedule.documents?.pep?.number ?? "",
-          formatAuditActor(schedule.createdByName),
-          formatDateTime(schedule.createdAt),
-          formatAuditActor(schedule.updatedByName),
-          formatDateTime(schedule.updatedAt),
-        ];
+      const csv = buildProgrammingCsvContent({
+        schedules: filteredSchedules,
+        projectMap,
+        teamMap,
       });
-
-      const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-      const csv = `\uFEFF${csvLines.join("\n")}`;
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_simples_${exportDate}.csv`);
     } finally {
@@ -3267,157 +1696,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setIsExportingEnel(true);
     try {
-      const header = [
-        "BASE",
-        "Tipo de Serviço",
-        "SOB",
-        "Data Execução",
-        "Dia da semana",
-        "Período",
-        "Hor Inic Obra",
-        "Hor Térm Obra",
-        "Tempo Previsto",
-        "STATUS",
-        "INFO STATUS",
-        "PRIORIDADE",
-        "Estrutura",
-        "ENCARREGADO",
-        "Apoio",
-        "Responsáveis Enel",
-        "Parceira",
-        "Responsável Execução",
-        "Tipo de SGD",
-        "Nº Clientes Afetados",
-        "SGD AT/MT/VyP",
-        "SGD BT",
-        "SGD TeT",
-        "Nº EQ (RE, CO, CF, CC ou TR)",
-        "Inic deslig",
-        "Térm deslig",
-        "Alim.",
-        "Logradouro",
-        "Bairro",
-        "Município",
-        "Descrição do serviço",
-        "Motivo do Cancelamento / Parcial / Adiamento",
-        "Observação do Cancelamento / Parcial / Adiamento",
-        "Data da programação",
-        "Trafo - kVA",
-        "Observação",
-        "Estado Trabalho",
-        "Data Energização",
-        "PEP",
-        "Serviço",
-        "COM INSTALAÇÃO DE MEDIDOR?",
-        "OBSERVAÇÃO SOBRE PADRÃO DO CLIENTE",
-        "Mão de obra",
-        "Gestor de campo",
-      ];
-
-      const structureAccumulator = new Map<string, { codeCount: Record<string, number>; teamCount: number }>();
-      for (const schedule of filteredSchedules) {
-        const key = `${schedule.projectId}__${schedule.date}`;
-        const current = structureAccumulator.get(key) ?? { codeCount: {}, teamCount: 0 };
-        current.teamCount += 1;
-
-        const teamCode = resolveTeamStructureCode(resolveScheduleTeamInfo(schedule, teamMap));
-        if (teamCode) {
-          current.codeCount[teamCode] = (current.codeCount[teamCode] ?? 0) + 1;
-        }
-
-        structureAccumulator.set(key, current);
-      }
-
-      const rows = filteredSchedules.map((schedule) => {
-        const project = projectMap.get(schedule.projectId);
-        const team = resolveScheduleTeamInfo(schedule, teamMap);
-        const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
-        const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
-        const displayStatus = getDisplayProgrammingStatus(schedule);
-        const periodLabel = schedule.period === "integral" ? "INTEGRAL" : "PARCIAL";
-        const sgdExportValue = schedule.electricalField ?? "";
-        const sgdExportColumn = (schedule.sgdExportColumn ?? "").trim().toUpperCase();
-        const sgdTypeDescription = (schedule.sgdTypeDescription ?? "").trim().toUpperCase();
-        const isAreaLivreSgd = sgdExportColumn === "AREA_LIVRE" || sgdExportColumn === "AREA LIVRE"
-          || sgdTypeDescription === "AREA_LIVRE" || sgdTypeDescription === "AREA LIVRE";
-        const isSgdBt = sgdExportColumn === "SGD_BT" || sgdExportColumn === "SGD BT"
-          || sgdTypeDescription === "SGD_BT" || sgdTypeDescription === "SGD BT";
-        const isSgdTet = sgdExportColumn === "SGD_TET" || sgdExportColumn === "SGD TET"
-          || sgdTypeDescription === "SGD_TET" || sgdTypeDescription === "SGD TET"
-          || sgdTypeDescription === "SGD TET";
-        const isSgdAtMtVyp = !isAreaLivreSgd && !isSgdBt && !isSgdTet && (
-          !sgdExportColumn
-          || sgdExportColumn === "SGD_AT_MT_VYP"
-          || sgdExportColumn === "SGD AT/MT/VYP"
-          || sgdExportColumn === "SGD AT/MT"
-          || sgdExportColumn === "SGD AT"
-          || sgdExportColumn === "SGD MT"
-          || sgdExportColumn === "SGD VYP"
-          || sgdTypeDescription === "SGD AT/MT/VYP"
-          || sgdTypeDescription === "SGD AT/MT"
-          || sgdTypeDescription === "SGD AT"
-          || sgdTypeDescription === "SGD MT"
-          || sgdTypeDescription === "SGD VYP"
-        );
-        const sgdAtMtVyp = isSgdAtMtVyp ? sgdExportValue : "";
-        const sgdBt = isSgdBt ? sgdExportValue : "";
-        const sgdTet = isSgdTet ? sgdExportValue : "";
-        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica, schedule.etapaFinal);
-        const scheduleCreatedDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
-        const estruturaValue = structureSummaryGroup
-          ? formatStructureSummaryByCode(structureSummaryGroup.codeCount)
-          : "";
-
-        return [
-          project?.base ?? "",
-          project?.serviceType ?? "",
-          project?.code ?? "",
-          formatDate(schedule.date),
-          formatWeekday(schedule.date),
-          periodLabel,
-          schedule.startTime ?? "",
-          schedule.endTime ?? "",
-          formatExpectedHours(schedule.expectedMinutes ?? 0),
-          displayStatus ?? "",
-          infoStatus,
-          project?.priority ?? "",
-          estruturaValue,
-          team.foremanName ?? "",
-          schedule.support ?? "",
-          project?.utilityResponsible ?? "",
-          project?.partner ?? "",
-          "INDICA",
-          schedule.sgdTypeDescription ?? "",
-          schedule.affectedCustomers ?? "",
-          sgdAtMtVyp,
-          sgdBt,
-          sgdTet,
-          schedule.electricalField ?? "",
-          schedule.outageStartTime ?? "",
-          schedule.outageEndTime ?? "",
-          schedule.feeder ?? "",
-          project?.street ?? "",
-          project?.district ?? "",
-          project?.city ?? "",
-          schedule.serviceDescription ?? "",
-          schedule.statusReason ?? "",
-          schedule.statusReason ?? "",
-          formatDate(scheduleCreatedDate),
-          schedule.trafoQty ?? "",
-          schedule.note ?? "",
-          schedule.workCompletionStatus ?? "",
-          "",
-          schedule.documents?.pep?.number ?? "",
-          project?.serviceType ?? "",
-          "",
-          "",
-          "",
-          project?.utilityFieldManager ?? "",
-        ];
+      const csv = buildEnelCsvContent({
+        schedules: filteredSchedules,
+        projectMap,
+        teamMap,
       });
-
-      const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-      const csv = `\uFEFF${csvLines.join("\n")}`;
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_enel_excel_${exportDate}.csv`);
     } finally {
@@ -3444,13 +1727,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setIsExportingEnelNovo(true);
     try {
-      const exportSchedules = filteredSchedules.filter((schedule) => {
-        const project = projectMap.get(schedule.projectId);
-        const serviceType = String(project?.serviceType ?? "").trim().toUpperCase();
-        return serviceType !== "EMERGENCIAL";
+      const workbookData = buildEnelNovoWorkbookData({
+        schedules: filteredSchedules,
+        projectMap,
+        teamMap,
       });
 
-      if (!exportSchedules.length) {
+      if (!workbookData.eligibleCount) {
         setFeedback({
           type: "error",
           message: "Nenhuma programacao elegivel para EXTRACAO ENEL NOVO (Tipo de Serviço EMERGENCIAL nao entra).",
@@ -3458,173 +1741,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         return;
       }
 
-      const header = [
-        "BASE",
-        "Tipo de Serviço",
-        "SOB",
-        "Data Execução",
-        "Dia da semana",
-        "Período",
-        "Hor Inic obra",
-        "Hor Térm obra",
-        "Tempo previsto",
-        "STATUS",
-        "INFO STATUS",
-        "PRIORIDADE",
-        "Estrutura",
-        "Placa",
-        "Anotação",
-        "Apoio",
-        "Responsáveis Ampla",
-        "Parceira",
-        "Responsável Execução",
-        "AREA LIVRE",
-        "SOLICITAÇÃO",
-        "TIPO DE SGD",
-        "NÚMERO SGD",
-        "Nº Clientes Afetados",
-        "Nº EQ (RE, CO,CF, CC ou TR)",
-        "Inic deslig",
-        "Térm deslig",
-        "Alim",
-        "Logradouro",
-        "Bairro",
-        "Município",
-        "Descrição do serviço",
-        "Motivo do cancelamento / Parcial / Adiamento",
-        "Responsável cancelamento / Parcial / Adiamento",
-        "Data da programação",
-        "Tipo de avanço",
-        "BT / MT",
-        "Tipo de rede",
-        "Tipo de serviço",
-        "Tipo de cabo",
-        "Status rede",
-        "km",
-        "Tipo de equipamento",
-        "Status equipamento",
-        "Potência equipamento",
-        "Qtd equipamentos",
-        "Status poste",
-        "Tipo poste",
-        "Qtd Postes",
-        "Qtd Clandestinos",
-      ];
-
-      const groupedAccumulator = new Map<string, {
-        baseSchedule: ScheduleItem;
-        schedules: ScheduleItem[];
-        teamLabels: Set<string>;
-        plates: Set<string>;
-        foremanNames: Set<string>;
-      }>();
-      for (const schedule of exportSchedules) {
-        const key = `${schedule.projectId}__${schedule.date}`;
-        const current = groupedAccumulator.get(key) ?? {
-          baseSchedule: schedule,
-          schedules: [],
-          teamLabels: new Set<string>(),
-          plates: new Set<string>(),
-          foremanNames: new Set<string>(),
-        };
-
-        current.schedules.push(schedule);
-
-        const team = resolveScheduleTeamInfo(schedule, teamMap);
-        const teamLabel = String(team.name ?? "").trim();
-        if (teamLabel) {
-          current.teamLabels.add(teamLabel);
-        }
-
-        const vehiclePlate = (team.vehiclePlate ?? "").trim();
-        if (vehiclePlate) {
-          current.plates.add(vehiclePlate);
-        }
-
-        const foremanName = String(team.foremanName ?? "").trim();
-        if (foremanName) {
-          current.foremanNames.add(foremanName);
-        }
-
-        groupedAccumulator.set(key, current);
-      }
-
-      const rows = Array.from(groupedAccumulator.values()).map((group) => {
-        const schedule = group.baseSchedule;
-        const project = projectMap.get(schedule.projectId);
-        const firstStatusReason = group.schedules
-          .map((item) => String(item.statusReason ?? "").trim())
-          .find(Boolean) ?? "";
-        const firstServiceDescription = group.schedules
-          .map((item) => String(item.serviceDescription ?? "").trim())
-          .find(Boolean) ?? "";
-        const sgdTypeDescription = (schedule.sgdTypeDescription ?? "").trim();
-        const isAreaLivre = isAreaLivreSgd(schedule.sgdExportColumn, schedule.sgdTypeDescription);
-        const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica, schedule.etapaFinal);
-        const createdDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
-        const estruturaValue = Array.from(group.teamLabels).sort((a, b) => a.localeCompare(b)).join("|");
-        const plateValue = Array.from(group.plates).sort((a, b) => a.localeCompare(b)).join(" - ");
-        const foremanNamesValue = Array.from(group.foremanNames).sort((a, b) => a.localeCompare(b)).join(" / ");
-        const numEqValue = `${(schedule.electricalField ?? "").trim()}${(schedule.electricalEqCode ?? "").trim()}`;
-        const serviceDescriptionValue = firstServiceDescription
-          || (project?.serviceName ?? "").trim();
-
-        return [
-          extractTextAfterDash(project?.base ?? ""),
-          project?.serviceType ?? "",
-          project?.code ?? "",
-          formatDateExecutionEnelNovo(schedule.date),
-          formatWeekdayExecutionEnelNovo(schedule.date),
-          resolveEnelNovoPeriod(schedule.startTime, schedule.endTime),
-          schedule.startTime ?? "",
-          schedule.endTime ?? "",
-          formatExpectedTimeAsClock(schedule.expectedMinutes ?? 0),
-          resolveEnelNovoStatus(schedule),
-          infoStatus,
-          project?.priority ?? "",
-          estruturaValue,
-          plateValue,
-          schedule.note ?? "",
-          schedule.support ?? "",
-          project?.utilityFieldManager ?? "",
-          extractTextBeforeDash(project?.partner ?? ""),
-          foremanNamesValue,
-          isAreaLivre ? "SIM" : "NAO",
-          isAreaLivre ? "NAO" : "SIM",
-          sgdTypeDescription,
-          normalizeSgdNumberForExport(schedule.documents?.sgd?.number),
-          schedule.affectedCustomers ?? "",
-          numEqValue,
-          schedule.outageStartTime ?? "",
-          schedule.outageEndTime ?? "",
-          schedule.feeder ?? "",
-          project?.street ?? "",
-          project?.district ?? "",
-          project?.city ?? "",
-          serviceDescriptionValue,
-          firstStatusReason,
-          "",
-          formatDate(createdDate),
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          schedule.posteQty ?? "",
-          "",
-        ];
-      });
-
       const XLSX = await import("xlsx");
-      const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      const worksheet = XLSX.utils.aoa_to_sheet([workbookData.header, ...workbookData.rows]);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "EXTRACAO_ENEL");
       const workbookArray = XLSX.write(workbook, {

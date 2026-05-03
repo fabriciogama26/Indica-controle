@@ -1,0 +1,14 @@
+No contexto do Supabase, a Segurança de Nível de Linha (Row Level Security - RLS) atua como uma camada crítica de proteção que garante que os usuários acessem apenas os dados que estão autorizados a ver
+. Em uma plataforma de Back-end as a Service (BaaS) onde o cliente muitas vezes interage diretamente com o banco de dados via SDK, o RLS é o que impede que um usuário mal-intencionado acesse informações de terceiros
+.
+De acordo com as fontes, a relação entre o RLS e as funcionalidades do Supabase, especialmente o Realtime, baseia-se nos seguintes pontos:
+Integração com o Realtime: Uma das características mais robustas mencionadas é que o recurso de tempo real respeita rigorosamente as políticas de RLS
+. Isso significa que, mesmo que uma tabela esteja transmitindo atualizações em broadcast, o sistema filtra essas mensagens antes que elas cheguem ao cliente
+.
+Controle Baseado em Identidade: A autorização para receber ou visualizar um dado é determinada pelo token de autenticação (JWT) do usuário
+. É através desse token que o Supabase identifica quem é o solicitante e aplica as regras de permissão "legal" definidas no banco de dados
+.
+Privacidade e Filtragem: Graças ao RLS, um usuário só receberá notificações de inserção, atualização ou exclusão de linhas se ele tiver permissão explícita para visualizar esses registros específicos
+. Isso evita o vazamento de dados sensíveis em aplicações multiusuário
+.
+Para facilitar a compreensão, imagine que o banco de dados é um grande prédio de escritórios. Sem o RLS, qualquer pessoa que entrasse no prédio poderia abrir qualquer gaveta de qualquer mesa. Com o RLS, é como se cada funcionário tivesse uma chave mestra eletrônica (o JWT) que só abre as portas das salas onde ele tem permissão para trabalhar. Mesmo que algo novo seja entregue no prédio (uma atualização em tempo real), o segurança só levará o pacote até você se a sua chave permitir a entrada naquela sala específica.

@@ -1,0 +1,92 @@
+Com certeza! Com base em todo o nosso histórico de conversas e nas fontes fornecidas, criei um prompt abrangente que pode ser usado para gerar a estrutura completa de um novo projeto de software.
+Este prompt foi projetado para ser usado com uma IA assistente de programação (como o GitHub Copilot, ChatGPT com foco em código, Gemini, etc.) ou como um guia detalhado para uma equipe de desenvolvimento. Ele incorpora os princípios da Arquitetura Limpa, SOLID, organização de pacotes e convenções de nomenclatura que discutimos.
+--------------------------------------------------------------------------------
+Prompt Detalhado para Geração e Organização de Projeto de Software
+Atue como um Arquiteto de Software Sênior e Engenheiro Principal.
+Seu objetivo é gerar a estrutura completa para um novo projeto de software, seguindo os princípios da Arquitetura Limpa (Clean Architecture) de Robert C. Martin e as melhores práticas de desenvolvimento. O projeto deve ser robusto, testável, de fácil manutenção e escalável
+. A estrutura deve "gritar" o domínio de negócio do projeto, e não os frameworks utilizados
+.
+1. Contexto do Projeto:
+Nome do Projeto: [Insira o nome do projeto aqui, ex: "Sistema de Gestão de Catálogo de Vídeos"]
+Linguagem Principal: [Insira a linguagem, ex: "Kotlin", "Python", "Java", "JavaScript/TypeScript"]
+Framework Principal (se aplicável, será tratado como um detalhe): [Insira o framework, ex: "Spring Boot", "Next.js", "Django"]
+Breve Descrição do Domínio: [Descreva em 1-2 frases o propósito do projeto, ex: "Uma plataforma para autores enviarem e venderem vídeos educacionais para indivíduos e empresas."]
+.
+2. Geração da Estrutura de Diretórios (Pastas):
+Crie a seguinte estrutura de diretórios, priorizando a abordagem de "Pacote por Componente" ou "Pacote por Funcionalidade" para que a organização reflita o domínio do negócio
+. Use nomes em minúsculas e separados por hífen para diretórios de alto nível e nomes de pacotes padronizados para o código-fonte.
+[nome-do-projeto]/
+|-- .gitignore               # Arquivo para ignorar artefatos de build, dependências e arquivos de IDE.
+|-- pyproject.toml           # ou build.gradle, package.json, etc., dependendo da linguagem.
+|-- README.md                # Descrição inicial do projeto, como configurar e executar.
+|-- LICENSE                  # Arquivo de licença (ex: MIT, Apache 2.0).
+|
+|-- docs/                    # Documentação do projeto (decisões de arquitetura, guias de estilo, etc.).
+|
+|-- src/                     # Diretório raiz para todo o código-fonte [14].
+|   |-- main/                # Ponto de entrada e configuração do sistema. O componente "mais sujo" [15-17].
+|   |
+|   |-- core/                # Ou 'domain'. O coração do sistema. Contém as regras de negócio.
+|   |   |-- entities/        # Modelos de domínio puros. Regras de negócio críticas [18, 19].
+|   |   |-- usecases/        # Regras de negócio específicas da aplicação [18, 20, 21].
+|   |   |-- ports/           # ou 'gateways'/'repositories'. Interfaces (abstrações) para a camada de dados.
+|   |
+|   |-- infrastructure/      # Detalhes de implementação, frameworks e drivers [22].
+|   |   |-- web/             # Camada de UI. Controllers, Presenters, Views, etc. [23].
+|   |   |-- data/            # Camada de Dados. Implementações de repositórios, ORMs, acesso a BD [24].
+|   |   |-- config/          # Configuração de frameworks (ex: injeção de dependência).
+|
+|-- tests/                   # Testes. A estrutura aqui deve espelhar a de 'src' [25, 26].
+|   |-- unit/
+|   |-- integration/
+|   |-- e2e/
+
+3. Princípios e Regras a Serem Aplicados:
+Ao gerar o código inicial (placeholders/stubs) para cada camada/componente, siga estritamente estes princípios:
+A Regra da Dependência (The Dependency Rule): As dependências do código-fonte devem sempre apontar para dentro, das camadas externas (detalhes) para as camadas internas (políticas/regras de negócio)
+. O core/domain não deve saber nada sobre infrastructure
+.
+Princípios SOLID
+:
+SRP (Responsabilidade Única): Separe o código com base nos "atores" (fontes de mudança)
+. Por exemplo, a lógica de cálculo de pagamento deve estar separada da lógica de relatório de horas
+.
+OCP (Aberto-Fechado): A estrutura deve ser extensível (adicionando novos casos de uso ou funcionalidades) sem modificar o código existente do núcleo
+.
+LSP (Substituição de Liskov): As implementações de interfaces (por exemplo, diferentes repositórios) devem ser substituíveis sem quebrar a lógica de alto nível
+.
+ISP (Segregação de Interface): Crie interfaces específicas para os clientes, evitando que eles dependam de métodos que não usam
+.
+DIP (Inversão de Dependência): Módulos de alto nível não devem depender de módulos de baixo nível. Ambos devem depender de abstrações
+. Use interfaces (ports) no core para serem implementadas pelos adapters na infrastructure.
+Independência de Detalhes: A arquitetura deve permitir que decisões sobre banco de dados
+, web framework
+ e outras ferramentas sejam adiadas e tratadas como plugins
+.
+4. Convenções de Nomenclatura:
+Aplique as seguintes convenções de nomenclatura em todos os arquivos e classes gerados
+:
+Classes/Entidades: Use substantivos claros e do domínio do negócio (ex: Video, UserLicense, PurchaseOrder)
+.
+Casos de Uso (Use Cases): Use o padrão VerboNoPresente + Substantivo + UseCase (ex: PurchaseVideoUseCase, ListAvailableVideosUseCase)
+.
+Interfaces (Ports): Use nomes que descrevam o contrato (ex: VideoRepository, PaymentGateway)
+.
+Implementações (Adapters): Seja específico sobre a tecnologia usada (ex: MongoVideoRepository, StripePaymentGateway). Se for uma implementação padrão, use Default como prefixo ou a tecnologia como sufixo
+.
+Métodos/Funções: Use verbos ou frases verbais (ex: calculatePrice, saveUser)
+.
+5. Geração de Código de Exemplo (Stubs):
+Para o domínio de [Insira o Domínio do Projeto aqui], gere exemplos de arquivos para as seguintes funcionalidades:
+Funcionalidade 1: "Visualizar Catálogo de Vídeos"
+src/core/entities/Video.kt: Uma data class/struct com id, title, description.
+src/core/usecases/ListAvailableVideosUseCase.kt: Uma classe que depende de uma interface VideoRepository e retorna uma lista de Video.
+src/core/ports/VideoRepository.kt: Uma interface com um método fun findAvailable(): List<Video>.
+src/infrastructure/data/InMemoryVideoRepository.kt: Uma implementação da interface VideoRepository que usa uma lista em memória para facilitar os testes.
+src/infrastructure/web/VideoController.kt: Um controller que invoca o ListAvailableVideosUseCase e retorna os dados (sem se acoplar diretamente a um framework web).
+6. Testabilidade:
+Gere um exemplo de teste de unidade para o ListAvailableVideosUseCase. O teste deve usar uma implementação falsa (fake) ou um mock do VideoRepository para demonstrar que a lógica de negócio pode ser testada de forma isolada, sem a necessidade de banco de dados ou UI
+.
+Conclusão do Prompt:
+Ao final, forneça um resumo de como a estrutura gerada atende aos requisitos de uma arquitetura limpa, destacando como a separação de conceitos foi alcançada e como ela permite a independência de desenvolvimento, implantação e manutenção.
+--------------------------------------------------------------------------------
