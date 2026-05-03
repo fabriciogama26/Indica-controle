@@ -1,0 +1,100 @@
+Com base nas fontes fornecidas, podemos extrair diretrizes e princípios importantes para nomear pastas e arquivos, além de definir as raízes principais da estrutura de um software ou aplicativo. As fontes abordam isso tanto de uma perspectiva de arquitetura de alto nível quanto de implementação prática, especialmente em contextos como Java e Python.
+A seguir, apresento uma resposta estruturada que combina esses conceitos para orientá-lo na nomeação e organização do seu projeto.
+1. A Estrutura Deve "Gritar" o Domínio do Negócio
+A diretriz mais importante é que a estrutura de alto nível do seu aplicativo deve revelar seu propósito, não as ferramentas ou frameworks que você está usando
+. Quando alguém olha a estrutura de pastas principal, a primeira impressão deve ser "Ah, este é um sistema de saúde" ou "Este é um sistema de vendas de vídeos", e não "Ah, este é um projeto em Rails"
+.
+Isso significa que as raízes principais (pastas no nível mais alto) devem refletir os conceitos do seu negócio (o domínio).
+2. Organização de Pastas (Pacotes)
+As fontes descrevem diferentes abordagens para organizar o código em pastas ou pacotes. A escolha ideal depende do estágio e da complexidade do projeto
+.
+Abordagens Comuns:
+Pacote por Camada (Horizontal - Package by Layer):
+Como funciona: Agrupa o código com base na sua função técnica
+.
+Nomes de Pastas (Raízes): web, services, repositories, data, ui
+.
+Vantagem: É uma forma rápida de começar um projeto, sem muita complexidade
+.
+Desvantagem: A estrutura não "grita" o domínio do negócio; projetos de domínios diferentes acabam parecendo muito similares
+. Com o crescimento do projeto, ter apenas alguns "baldes" grandes de código se torna insuficiente
+.
+Pacote por Funcionalidade (Vertical - Package by Feature):
+Como funciona: Agrupa verticalmente todo o código relacionado a uma funcionalidade de negócio em uma única pasta
+.
+Nomes de Pastas (Raízes): orders, users, products
+.
+Vantagem: A organização do código de alto nível agora revela algo sobre o domínio do negócio, e é mais fácil encontrar todo o código relacionado a uma funcionalidade específica
+.
+Desvantagem: Embora melhor que a abordagem por camada, ainda pode levar a um acoplamento indesejado se não for implementada com cuidado
+.
+Pacote por Componente (Package by Component):
+Como funciona: É uma abordagem híbrida que agrupa a lógica de negócios e o código de persistência de uma funcionalidade em um único componente, expondo uma interface bem definida
+. A UI é mantida separada
+.
+Nomes de Pastas (Raízes): A estrutura poderia ser:
+app/ (para a camada de UI, como controllers da web)
+components/
+orders/ (contém OrdersComponent e sua implementação)
+users/
+Vantagem: Encapsula melhor os detalhes de implementação e permite que o compilador ajude a reforçar a arquitetura, evitando que, por exemplo, um Controller acesse um Repository diretamente
+.
+Estrutura Recomendada para Código-fonte:
+Use uma pasta src: É uma prática recomendada colocar todo o código-fonte do seu pacote dentro de uma pasta src
+. Isso evita vários bugs comuns, como executar testes na versão local do código em vez da instalada
+.
+Exemplo de estrutura raiz:
+3. Nomenclatura de Arquivos e Classes
+As fontes fornecem diretrizes claras sobre como nomear arquivos, classes e métodos para garantir clareza e manutenibilidade.
+Nomenclatura de Classes:
+Use substantivos: Classes e objetos devem ter nomes de substantivos ou frases nominais, como Customer, WikiPage, Account
+.
+Seja específico e evite abreviações: Nomes como Processor, Manager ou Data são ambíguos e devem ser evitados
+.
+Convenção para Interfaces e Implementações:
+Evite prefixos como I para interfaces (ex: IShapeFactory)
+. Uma interface é um tipo, e sua implementação é um detalhe.
+Nomeie a implementação com um sufixo que a descreva, como JdbcOrdersRepository ou InMemoryNewsRepository
+. Se não houver um nome melhor, use Default como prefixo para a implementação (ex: DefaultNewsRepository)
+.
+Nomenclatura de Métodos/Funções:
+Use verbos: Métodos devem ter nomes de verbos ou frases verbais, como postPayment, deletePage, save
+.
+Padrão para acesso, alteração e predicados: Use get, set e is como prefixos de acordo com o padrão javabean
+.
+Convenção para Casos de Uso (Use Cases): Siga o padrão verbo no presente + substantivo/o que + UseCase
+. Exemplos: FormatDateUseCase, GetLatestNewsWithAuthorsUseCase
+.
+Nomenclatura de Variáveis:
+Seja claro e explícito: Nomes de variáveis devem revelar a intenção. Um nome de uma única letra só é aceitável para variáveis locais dentro de métodos curtos, como em laços (i, j)
+.
+Use nomes do domínio do problema: Use a terminologia do domínio do negócio nos nomes de variáveis, funções e classes. Isso torna o código mais fácil de entender para quem conhece o domínio
+.
+Raízes Principais de um Projeto
+Com base nos princípios de arquitetura e nas práticas de empacotamento, as raízes principais do seu projeto poderiam se assemelhar a esta estrutura:
+nome-do-projeto/
+├── docs/                      # Documentação do projeto [27]
+├── public/                    # Ativos estáticos (ex: workers de JS) [28]
+├── src/                       # Código-fonte da aplicação [18]
+│   ├── main/                  # Ponto de entrada e configuração (o "detalhe final") [29, 30]
+│   ├── ui/                    # Camada de UI (Controllers, Views, Presenters) [31]
+│   │   ├── orders/
+│   │   └── users/
+│   ├── domain/                # Camada de domínio (opcional para lógica complexa/reutilizável) [32, 33]
+│   │   └── usecases/
+│   │       ├── GetOrdersUseCase.js
+│   │       └── FormatDateUseCase.js
+│   └── data/                  # Camada de dados (Repositórios, fontes de dados) [8]
+│       ├── repositories/
+│       │   ├── OrdersRepository.js
+│       │   └── UsersRepository.js
+│       └── models/
+├── tests/                     # Testes [27]
+├── .gitignore                 # Arquivos a serem ignorados pelo Git
+├── LICENSE                    # Arquivo de licença [27]
+├── package.json               # ou pyproject.toml para Python [34]
+└── README.md                  # Descrição do projeto [27]
+Esta estrutura é um exemplo híbrido. A separação em ui, domain e data segue a arquitetura em camadas
+, enquanto a subdivisão dentro de ui (por exemplo, orders/, users/) reflete a organização por funcionalidade
+. O mais importante é que essa estrutura mantém os detalhes (como a UI e o acesso a dados) separados das regras de negócio, permitindo a evolução e manutenção do sistema com menor custo
+.

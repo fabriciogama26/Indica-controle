@@ -902,3 +902,128 @@ Atualizacao adicional 2026-04-21 (Estado Trabalho nao persistia ao trocar de PAR
 - Comportamento antes/depois:
   - Antes: ao editar uma programacao com `work_completion_status_id` ja preenchido, atualizar somente o texto (`work_completion_status`) podia ser sobrescrito de volta para o valor antigo pelo trigger de sincronismo, aparentando "salvou mas nao mudou" na lista.
   - Depois: o trigger passa a respeitar update explicito por texto (incluindo limpeza para vazio), recalculando o UUID correspondente no catalogo do tenant e mantendo os campos sincronizados sem reverter para o status anterior.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - tipos)
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Nenhuma funcao de runtime foi alterada.
+  - Tipos movidos para `types.ts`: `PeriodMode`, `ProgrammingStatus`, `WorkCompletionStatus`, `DocumentKey`, `ProjectItem`, `TeamItem`, `SupportOptionItem`, `ProgrammingReasonOptionItem`, `SgdTypeItem`, `ElectricalEqCatalogItem`, `WorkCompletionCatalogItem`, `DocumentEntry`, `ActivityCatalogItem`, `ActivityItem`, `ScheduleItem`, `ProgrammingResponse`, `StageValidationTeamSummary`, `StageValidationResponse`, `ActivityCatalogResponse`, `BatchCreateResponse`, `SaveProgrammingResponse`, `HistoryChange`, `ProgrammingHistoryItem`, `ProgrammingHistoryResponse`, `AlertModalState`, `FormState`, `FilterState`, `DeadlineStatus`, `DeadlineVisualVariant`, `DeadlineViewMode` e `ProgrammingSimplePageViewMode`.
+- Comportamento antes/depois:
+  - Antes: os tipos da tela ficavam declarados no topo de `ProgrammingSimplePageView.tsx`, aumentando o tamanho do PageView e misturando contrato de dados com orquestracao visual.
+  - Depois: os tipos ficam em `types.ts` e o PageView passa a importa-los com `import type`, sem alteracao de comportamento, payload, validacao, API, RPC, historico, exportacao ou renderizacao.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 4700 linhas.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 4479 linhas e `types.ts` concentra 254 linhas de contratos TypeScript.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - constantes)
+-----------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/constants.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Constantes movidas para `constants.ts`: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `DEADLINE_CAROUSEL_PAGE_SIZE`, `DEADLINE_WINDOW_SHORT_DAYS`, `DEADLINE_WINDOW_LONG_DAYS`, `DOCUMENT_KEYS`, `HISTORY_FIELD_LABELS`, `HISTORY_ALLOWED_ACTIONS`, `HISTORY_HIDDEN_FIELDS` e `VALIDATION_FIELD_LABELS`.
+- Comportamento antes/depois:
+  - Antes: constantes de paginacao, documentos, historico e validacao ficavam no topo de `ProgrammingSimplePageView.tsx`.
+  - Depois: as constantes ficam em `constants.ts` e o PageView apenas importa esses contratos estaticos.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 4479 linhas apos a extracao de tipos.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 4415 linhas, `constants.ts` concentra 76 linhas e nao houve alteracao de comportamento, payload, validacao, API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - utilitarios)
+------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Utilitarios puros movidos para `utils.ts`, incluindo helpers de data/horario, normalizacao, validacao local, historico, conflito, ETAPA, status, busca de atividades, mensagem de registro fora dos filtros e CSV value escaping.
+  - `downloadCsvFile` permaneceu no PageView porque usa DOM/browser.
+  - `scheduleCardClassName` permaneceu no PageView porque depende do CSS module da tela.
+- Comportamento antes/depois:
+  - Antes: utilitarios puros ficavam no mesmo arquivo do componente principal.
+  - Depois: utilitarios puros ficam em `utils.ts` e o PageView importa apenas as funcoes que usa.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 4415 linhas apos a extracao de constantes.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 3590 linhas, `utils.ts` concentra 905 linhas e nao houve alteracao de comportamento, payload, validacao, API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - exportacoes)
+------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criadas funcoes puras de montagem de exportacao: `buildDeadlineCsvContent`, `buildProgrammingCsvContent`, `buildEnelCsvContent` e `buildEnelNovoWorkbookData`.
+  - `handleExportDeadlineModalCsv`, `handleExportCsv`, `handleExportEnelExcel` e `handleExportEnelExcelNovo` foram reduzidas para validacao de estado/cooldown, chamada das funcoes de montagem e download.
+  - O download e o import dinamico de `xlsx` permanecem no PageView por dependerem do ambiente browser/dinamico.
+- Comportamento antes/depois:
+  - Antes: regras de montagem de CSV, ENEL e ENEL NOVO ficavam dentro do componente principal.
+  - Depois: regras de montagem ficam em `exports.ts`, e o PageView mantem apenas orquestracao visual e acionamento do download.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 3590 linhas apos a extracao de utilitarios.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 3211 linhas, `exports.ts` concentra 443 linhas e nao houve alteracao de comportamento, layout de exportacao, nomes de arquivo, payload, API, RPC, historico ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - API local)
+---------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criadas funcoes de acesso HTTP local: `fetchProgrammingSnapshot`, `fetchActivityCatalog`, `fetchNextEtapaNumber`, `validateProgrammingStageConflict`, `fetchProgrammingHistory`, `cancelProgramming`, `postponeProgramming` e `saveProgramming`.
+  - `fetchBoardSnapshot`, busca do catalogo de atividades, sugestao de ETAPA, validacao remota de conflito de ETAPA, historico, cancelamento, adiamento e save principal passaram a usar `api.ts`.
+  - O retry de token no save permanece no PageView porque coordena sessao, UX e feedback de erro/sucesso.
+- Comportamento antes/depois:
+  - Antes: `ProgrammingSimplePageView.tsx` montava URLs, headers, parse JSON e chamadas `fetch` diretamente para carregamento, catalogos, historico, validacoes e mutacoes da Programacao.
+  - Depois: `ProgrammingSimplePageView.tsx` nao possui chamadas diretas a `fetch`; a tela mantem orquestracao de estado, filtros, feedback, modais e retry, enquanto `api.ts` concentra os contratos HTTP locais.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 3211 linhas apos a extracao de exportacoes.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 3140 linhas, `api.ts` concentra 210 linhas e nao houve alteracao de comportamento, payload, metodo HTTP, querystring, concorrencia (`expectedUpdatedAt`), API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - fachada e validadores)
+----------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/index.ts`
+  - `src/modules/dashboard/programacao-simples/validators.ts`
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/app/(dashboard)/programacao-simples/page.tsx`
+  - `src/app/(dashboard)/programacao-visualizacao/page.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criada fachada publica `index.ts`, exportando `ProgrammingSimplePageView` e os tipos publicos do modulo.
+  - As rotas `programacao-simples` e `programacao-visualizacao` passaram a importar pela raiz do modulo (`@/modules/dashboard/programacao-simples`), sem acessar arquivo interno do PageView.
+  - Movidas para `validators.ts`: `isReasonSelectionValid`, `buildReasonText`, `isInvalidTimeRange`, `getDocumentRequestedAfterApprovedLabel`, `isNegativeNumericText`, `buildSavedOutsideFiltersMessage`, `buildConflictFeedbackMessage`, `buildFieldValidationDetails`, `buildConflictAlertDetails` e `buildLocalStageConflictSummary`.
+  - `utils.ts` permanece com formatadores, parsers, normalizadores, helpers de historico/status e utilitarios especificos da feature.
+- Comportamento antes/depois:
+  - Antes: `exports.ts` ja existia, mas era responsavel por montagem de CSV/ENEL, nao por fachada publica do modulo.
+  - Depois: `index.ts` passa a ser a fachada publica da feature, preservando `exports.ts` como arquivo interno de exportacoes operacionais.
+  - Antes: validadores e mensagens de conflito/filtro ficavam misturados em `utils.ts`.
+  - Depois: validadores e mensagens de validacao ficam em `validators.ts`, mantendo tudo dentro da propria feature e sem importar regra de dominio irmao.
+  - Antes: `utils.ts` tinha 905 linhas apos a primeira extracao.
+  - Depois: `utils.ts` passa a ter 652 linhas, `validators.ts` concentra 268 linhas, `index.ts` tem 2 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - hooks iniciais)
+-------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/hooks.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criado hook `useProgrammingActivityCatalog` para concentrar debounce, loading e busca do catalogo de atividades.
+  - Criado hook `useProgrammingEtapaSuggestion` para concentrar reset de edicao manual da `ETAPA` e sugestao automatica via `fetchNextEtapaNumber`.
+  - `ProgrammingSimplePageView.tsx` deixou de manter `activityOptions`, `isLoadingActivities`, `useDeferredValue` e os effects diretos desses dois fluxos.
+- Comportamento antes/depois:
+  - Antes: o PageView controlava diretamente debounce, abort controller, loading e atualizacao de opcoes de atividades.
+  - Depois: esse fluxo fica em `hooks.ts`, dentro da propria feature, usando `api.ts` local e retornando apenas `activityOptions` e `isLoadingActivities` para a tela.
+  - Antes: o PageView controlava diretamente a sugestao automatica de `ETAPA`.
+  - Depois: a sugestao de `ETAPA` fica em `useProgrammingEtapaSuggestion`, preservando a protecao para nao sobrescrever valor digitado manualmente.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 3142 linhas apos a separacao de fachada/validadores.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 3069 linhas, `hooks.ts` concentra 131 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao.

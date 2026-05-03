@@ -1,0 +1,95 @@
+Com certeza! Com base nas fontes fornecidas, preparei um mapa mental que detalha o passo a passo para criar uma estrutura robusta e bem definida para softwares e aplicativos. Este mapa mental aborda desde os princípios fundamentais até as decisões de implementação prática.
+Mapa Mental: Passo a Passo para Criar a Estrutura de Software e Apps
+1. Fundamentos e Filosofia da Arquitetura
+Objetivo Principal: O objetivo da arquitetura de software é minimizar os recursos humanos necessários para construir e manter o sistema
+. Uma boa arquitetura torna o sistema fácil de entender, desenvolver, manter e implantar
+.
+Dois Valores do Software: Todo sistema de software possui dois valores: comportamento (o que ele faz) e estrutura (a arquitetura)
+. A estrutura é o valor maior, pois garante que o software seja "soft", ou seja, fácil de mudar
+.
+Manter Opções Abertas: Uma boa arquitetura deixa o máximo de opções abertas pelo maior tempo possível
+. Ela adia e posterga decisões sobre detalhes como frameworks, bancos de dados e servidores web, permitindo que o foco permaneça nas regras de negócio
+.
+A Arquitetura Grita o Caso de Uso: A estrutura de alto nível do seu aplicativo deve "gritar" qual é o seu propósito (por exemplo, "Sistema de Saúde" ou "Sistema de Contabilidade"), e não quais frameworks você usou (como "Rails" ou "Spring")
+.
+2. Definindo as Regras de Negócio (O Coração do Sistema)
+Identificar Regras de Negócio Críticas (Entidades): Estas são as regras que fazem ou economizam dinheiro para o negócio, independentemente da automação
+. Elas são encapsuladas em objetos chamados Entidades, que contêm os dados e as regras mais gerais e de alto nível
+. As Entidades devem ser puras, sem conhecimento sobre UI, banco de dados ou frameworks
+.
+Identificar Casos de Uso: Descrevem como o sistema automatizado é usado, orquestrando o fluxo de dados e direcionando as Entidades para atingir os objetivos
+. Eles representam as regras de negócio específicas da aplicação
+.
+Independência: Casos de uso não devem descrever a UI, apenas a interação entre o usuário e as Entidades
+.
+3. Princípios de Design (SOLID)
+Os princípios SOLID orientam como organizar funções e estruturas de dados em classes e como essas classes devem se interconectar
+.
+SRP (Princípio da Responsabilidade Única): Um módulo deve ter apenas um, e somente um, ator (grupo de usuários/stakeholders) para mudar
+. Separe o código que diferentes atores dependem
+.
+OCP (Princípio Aberto-Fechado): O software deve ser aberto para extensão, mas fechado para modificação
+. Adicione novos comportamentos sem alterar o código existente, protegendo componentes de alto nível de mudanças nos de baixo nível
+.
+LSP (Princípio da Substituição de Liskov): Partes intercambiáveis devem aderir a um contrato que permita que uma seja substituída pela outra sem quebrar o sistema
+.
+ISP (Princípio da Segregação de Interface): Evite depender de coisas que você não usa
+. Isso se aplica a classes com muitos métodos e a componentes com muitas classes
+.
+DIP (Princípio da Inversão de Dependência): O código que implementa políticas de alto nível não deve depender do código que implementa detalhes de baixo nível. Detalhes devem depender de políticas
+.
+4. Estruturando em Camadas e Componentes (A Arquitetura Limpa)
+A Regra da Dependência: As dependências do código-fonte devem apontar apenas para dentro, em direção às políticas de nível superior
+. Nada em um círculo interno pode saber sobre algo em um círculo externo
+.
+Divisão em Camadas concêntricas:
+Entidades (Círculo mais interno): Regras de negócio críticas para toda a empresa
+.
+Casos de Uso: Regras de negócio específicas da aplicação
+.
+Adaptadores de Interface (Presenters, Controllers, Gateways): Convertem dados do formato mais conveniente para os casos de uso e entidades para o formato mais conveniente para agências externas (UI, Banco de Dados, Web)
+.
+Frameworks e Drivers (Círculo mais externo): Onde todos os detalhes vão (Web, Banco de Dados, UI Frameworks)
+.
+Limites Arquitetônicos (Boundaries):
+Desenhe linhas que separam os elementos do software, restringindo o conhecimento de um lado sobre o outro
+.
+Use interfaces polimórficas para cruzar os limites, invertendo a dependência contra o fluxo de controle para seguir a Regra da Dependência
+.
+O padrão Humble Object é útil para definir limites. Ele separa comportamentos difíceis de testar (como a UI) dos fáceis de testar (como Presenters)
+.
+5. Estrutura da Aplicação (Implementação Prática)
+Organização do Código: A forma como você organiza o código em pacotes/módulos é crucial para reforçar a arquitetura
+.
+Pacote por Camada (Horizontal): Agrupa o código por função técnica (ex: web, services, repositories)
+. É um bom ponto de partida, mas não "grita" o domínio do negócio
+.
+Pacote por Funcionalidade (Vertical): Agrupa todo o código relacionado a uma funcionalidade em um único pacote (ex: orders)
+. Melhora a visibilidade do domínio
+.
+Pacote por Componente: Uma abordagem híbrida que agrupa lógica de negócios e persistência em um único componente, expondo uma interface limpa
+. Ajuda a usar o compilador para reforçar a arquitetura
+.
+Camadas em Apps Modernos (Ex: Android):
+Camada de IU (UI Layer): Responsável por exibir os dados do app na tela e lidar com a interação do usuário
+. Segue o Fluxo de Dados Unidirecional (UDF), onde o estado flui para baixo (do ViewModel para a UI) e os eventos fluem para cima (da UI para o ViewModel)
+.
+Camada de Domínio (Domain Layer): Uma camada opcional entre a UI e a camada de dados para encapsular a lógica de negócios complexa ou reutilizável
+. Use UseCases para isso
+.
+Camada de Dados (Data Layer): Responsável por fornecer os dados do aplicativo, geralmente por meio do padrão de Repositório
+.
+O Componente Main: É o detalhe final, o componente de mais baixo nível
+. Sua responsabilidade é criar todas as fábricas e dependências e, em seguida, entregar o controle para as partes abstratas de alto nível do sistema
+. Pense nele como um plugin para a aplicação
+.
+6. Testabilidade como Guia
+Arquitetura Testável: Uma boa arquitetura é intrinsecamente testável
+. As regras de negócio devem ser testáveis sem a UI, banco de dados ou servidor web
+.
+Testes são Componentes do Sistema: Os testes seguem a Regra da Dependência, apontando para dentro, e são o círculo mais externo da arquitetura
+.
+Projete para Testabilidade: Crie uma API de Teste para desacoplar os testes da estrutura da aplicação, evitando o problema de "Testes Frágeis"
+. A lógica de negócios não deve depender de elementos voláteis como a UI para ser testada
+.
+Este mapa mental fornece uma visão estruturada, guiando desde os conceitos de alto nível até as decisões práticas de implementação, sempre com o objetivo de criar um software flexível, sustentável e de fácil manutenção.

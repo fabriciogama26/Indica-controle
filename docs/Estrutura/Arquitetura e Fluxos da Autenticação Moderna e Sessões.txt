@@ -1,0 +1,35 @@
+Com base nas fontes, o fluxo do processo de autenticação moderna e gerenciamento de sessões (que fundamenta o funcionamento do Supabase) pode ser dividido nos seguintes estágios:
+1. Fluxo de Autenticação com Credenciais (E-mail e Senha)
+Entrada do Usuário: O usuário insere e-mail e senha no cliente
+.
+Processamento de Segurança (Back-end):
+O servidor recebe a senha e aplica uma função de hash lenta (como Bcrypt ou Argon2) para segurança contra ataques de força bruta
+.
+O sistema utiliza um salt (valor aleatório) para garantir que usuários com senhas iguais tenham hashes diferentes no banco de dados
+.
+Validação de Identidade: O servidor compara o hash gerado com o armazenado. Se coincidirem, a identidade é provada
+.
+Segundo Fator (MFA): O sistema solicita um segundo fator de autenticação, como um código TOTP (gerado por apps como Google Authenticator) ou uma assinatura de desafio via Passkey
+.
+Emissão de Tokens: Uma vez autenticado, o servidor gera um Access Token (JWT) de curta duração (ex: 15 minutos) e um Refresh Token
+.
+2. Fluxo de Requisições Autorizadas
+Envio do Token: O cliente armazena o token (preferencialmente em cookies httpOnly para proteção contra XSS) e o envia no cabeçalho Authorization: Bearer em todas as requisições subsequentes
+.
+Verificação sem Estado (Stateless): O servidor ou API verifica apenas a assinatura digital do JWT usando uma chave secreta. Se a assinatura for válida e o token não tiver expirado, o acesso é concedido sem necessidade de consulta extra ao banco de dados de sessões
+.
+Checagem de Escopos: A API verifica se o token possui os "escopos" (permissões) necessários para realizar aquela ação específica (princípio do menor privilégio)
+.
+3. Fluxo de Login Social (OAuth e OpenID Connect)
+Redirecionamento Protegido: O app redireciona o usuário para o provedor (ex: Google) enviando um parâmetro state (contra ataques CSRF) e, no caso de apps móveis, um code_challenge (PKCE)
+.
+Autorização Delegada: O usuário faz login no provedor e concede permissão. O provedor devolve um código de autorização temporário para o app
+.
+Troca de Código por Tokens: O back-end do app troca esse código diretamente com o servidor do provedor por tokens de acesso e um ID Token (um JWT que contém os dados de identidade como nome e foto)
+.
+4. Ciclo de Vida e Renovação
+Expiração: Quando o Access Token de 15 minutos vence, a requisição do usuário falha
+.
+Renovação (Refresh): O cliente usa o Refresh Token para pedir um novo par de tokens. Através da rotação de tokens, o Refresh Token antigo é invalidado e um novo é emitido, garantindo segurança contínua
+.
+Este fluxo garante que o sistema seja escalável (via JWT), seguro (via Hashing e MFA) e ofereça uma boa experiência ao usuário (via Refresh Tokens e Login Social)

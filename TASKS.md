@@ -524,3 +524,15 @@
 - [x] Adicionar expansao individual e titulo do ciclo em cada grafico de Encarregados no ciclo.
 
 - [x] Definir De/Para inicial do grafico Concluidos x Parciais por periodo com o ano calendario corrente.
+- [x] Decisao arquitetural (2026-05-03): manter o SaaS como monolito modular, evitando microservicos/deploys separados e priorizando melhoria dos limites internos por modulo.
+- [x] Iniciar modularizacao interna da `Programacao Simples` sem mudanca funcional, extraindo os contratos TypeScript para `src/modules/dashboard/programacao-simples/types.ts`.
+- [x] Continuar modularizacao interna da `Programacao Simples`: extrair constantes para `constants.ts` mantendo comportamento e payloads atuais.
+- [x] Continuar modularizacao interna da `Programacao Simples`: extrair utilitarios puros para `utils.ts`, sem mover funcao que dependa de CSS module, hook React, estado ou DOM.
+- [x] Continuar modularizacao interna da `Programacao Simples`: separar regras de exportacao (`CSV`, `Extracao ENEL` e `Extracao ENEL NOVO`) em arquivo proprio, preservando layout e nomes de arquivo atuais.
+- [x] Continuar modularizacao interna da `Programacao Simples`: separar chamadas HTTP locais em `api.ts` para carregamento, catalogo de atividades, sugestao/validacao de ETAPA, historico, save, cancelamento e adiamento sem alterar contratos da API.
+- [x] Continuar modularizacao interna da `Programacao Simples`: criar fachada publica `index.ts`, importar a tela pela raiz do modulo e separar validadores locais em `validators.ts` sem alterar comportamento.
+- [x] Continuar modularizacao interna da `Programacao Simples`: iniciar `hooks.ts` com `useProgrammingActivityCatalog` e `useProgrammingEtapaSuggestion`, preservando debounce, abort controller, loading e protecao contra sobrescrita manual da ETAPA.
+- [ ] Continuar modularizacao interna da `Programacao Simples`: extrair hooks de orquestracao de estado/carregamento e componentes de UI menores, mantendo o PageView como coordenador da tela.
+- [ ] Continuar modularizacao interna da `Programacao Simples`: avaliar separacao posterior de hooks de dados, blocos de UI, exportacoes e regras locais de validacao.
+- [x] Atualizar `docs/Tela_Programacao_Simples_SaaS.txt` a cada etapa estrutural da modularizacao, mapeando arquivos criados/alterados, funcoes tocadas e comportamento antes/depois.
+- [x] Formalizar regra de monolito modular verdadeiro em `AGENTS.md` e `docs/Auditoria_Completa_SaaS.txt`: modulo precisa preservar fronteira de dependencia, fachada publica, shared apenas universal e backend espelhando dominio.

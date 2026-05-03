@@ -4,6 +4,7 @@ Arquivos principais para nova task
 - README.md
 - TASKS.md
 - docs/Handoff_SaaS.txt
+- docs/Auditoria_Completa_SaaS.txt
 - docs/Arquitetura_SaaS.txt
 - docs/Backend_Contratos_SaaS.txt
 - docs/Tela_Login_SaaS.txt
