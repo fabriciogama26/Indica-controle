@@ -532,6 +532,10 @@
 - [x] Continuar modularizacao interna da `Programacao Simples`: separar chamadas HTTP locais em `api.ts` para carregamento, catalogo de atividades, sugestao/validacao de ETAPA, historico, save, cancelamento e adiamento sem alterar contratos da API.
 - [x] Continuar modularizacao interna da `Programacao Simples`: criar fachada publica `index.ts`, importar a tela pela raiz do modulo e separar validadores locais em `validators.ts` sem alterar comportamento.
 - [x] Continuar modularizacao interna da `Programacao Simples`: iniciar `hooks.ts` com `useProgrammingActivityCatalog` e `useProgrammingEtapaSuggestion`, preservando debounce, abort controller, loading e protecao contra sobrescrita manual da ETAPA.
+- [x] Continuar modularizacao interna da `Programacao Simples`: extrair `useProgrammingBoardData` para carregamento principal, aplicacao de snapshot, loading da lista e refresh pos-save sem alterar contratos da API.
+- [x] Continuar modularizacao interna da `Programacao Simples`: extrair componentes de modal para `components.tsx` (`Deadline`, `Details`, `History`, `Postpone`, `Cancel`, `Alert` e `StageConflict`) mantendo estados e regras operacionais no PageView.
+- [x] Continuar modularizacao interna da `Programacao Simples`: extrair painel de prazos para `ProgrammingDeadlinePanel` em `components.tsx`, mantendo calculos, estado, API e payloads no PageView.
+- [x] Integrar `useErrorLogger("programacao_simples")` na `Programacao Simples`, registrando falhas de carregamento, historico, save, cancelamento, adiamento, ETAPA e exportacoes em `app_error_logs` com contexto seguro.
 - [ ] Continuar modularizacao interna da `Programacao Simples`: extrair hooks de orquestracao de estado/carregamento e componentes de UI menores, mantendo o PageView como coordenador da tela.
 - [ ] Continuar modularizacao interna da `Programacao Simples`: avaliar separacao posterior de hooks de dados, blocos de UI, exportacoes e regras locais de validacao.
 - [x] Atualizar `docs/Tela_Programacao_Simples_SaaS.txt` a cada etapa estrutural da modularizacao, mapeando arquivos criados/alterados, funcoes tocadas e comportamento antes/depois.

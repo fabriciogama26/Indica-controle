@@ -3,13 +3,23 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { supabase } from "@/lib/supabase/client";
 import styles from "./ProgrammingSimplePageView.module.css";
 import {
+  ProgrammingAlertModal,
+  ProgrammingCancelModal,
+  ProgrammingDeadlinePanel,
+  ProgrammingDeadlineModal,
+  ProgrammingDetailsModal,
+  ProgrammingHistoryModal,
+  ProgrammingPostponeModal,
+  ProgrammingStageConflictModal,
+} from "./components";
+import {
   cancelProgramming,
   fetchProgrammingHistory,
-  fetchProgrammingSnapshot,
   postponeProgramming,
   saveProgramming,
   validateProgrammingStageConflict,
@@ -19,7 +29,6 @@ import {
   DEADLINE_WINDOW_LONG_DAYS,
   DEADLINE_WINDOW_SHORT_DAYS,
   DOCUMENT_KEYS,
-  HISTORY_FIELD_LABELS,
   HISTORY_PAGE_SIZE,
   PAGE_SIZE,
 } from "./constants";
@@ -29,7 +38,7 @@ import {
   buildEnelNovoWorkbookData,
   buildProgrammingCsvContent,
 } from "./exports";
-import { useProgrammingActivityCatalog, useProgrammingEtapaSuggestion } from "./hooks";
+import { useProgrammingActivityCatalog, useProgrammingBoardData, useProgrammingEtapaSuggestion } from "./hooks";
 import {
   addDays,
   calculateDateDiffInDays,
@@ -37,12 +46,9 @@ import {
   createInitialForm,
   createWeekDates,
   findActivityOption,
-  formatAuditActor,
   formatDate,
   formatDateTime,
   formatDeadlineStatusLabel,
-  formatHistoryAction,
-  formatHistoryValue,
   formatWeekdayShort,
   formatWeekRangeLabel,
   getCurrentYearDateRange,
@@ -89,7 +95,6 @@ import type {
   WorkCompletionCatalogItem,
   DocumentEntry,
   ScheduleItem,
-  ProgrammingResponse,
   StageValidationTeamSummary,
   ProgrammingHistoryItem,
   AlertModalState,
@@ -134,6 +139,7 @@ function downloadCsvFile(content: string, filename: string) {
 
 export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: ProgrammingSimplePageViewMode }) {
   const { session } = useAuth();
+  const logError = useErrorLogger("programacao_simples");
   const accessToken = session?.accessToken ?? null;
   const formCardRef = useRef<HTMLElement | null>(null);
   const feedbackRef = useRef<HTMLDivElement | null>(null);
@@ -175,7 +181,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [reasonOptions, setReasonOptions] = useState<ProgrammingReasonOptionItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [page, setPage] = useState(1);
-  const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingEnel, setIsExportingEnel] = useState(false);
@@ -232,6 +237,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const { activityOptions, isLoadingActivities } = useProgrammingActivityCatalog({
     accessToken,
     search: form.activitySearch,
+    onError: logError,
   });
   useProgrammingEtapaSuggestion({
     accessToken,
@@ -242,6 +248,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setForm,
     setInvalidFields,
     setIsEtapaManuallyEdited,
+    onError: logError,
   });
   const isEditing = Boolean(editingScheduleId);
   const currentEditingSchedule = useMemo(
@@ -249,6 +256,21 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     [editingScheduleId, schedules],
   );
   const canSubmitCancellation = isReasonSelectionValid(reasonOptions, cancelReasonCode, cancelReasonNotes) && !isCancelling;
+  const safeFormLogContext = () => ({
+    mode: isEditing ? "edit" : "batch_create",
+    projectId: form.projectId || null,
+    teamCount: form.teamIds.length,
+    date: form.date || null,
+    startTime: form.startTime || null,
+    endTime: form.endTime || null,
+    editingScheduleId,
+    hasActivitiesLoaded: currentEditingSchedule?.activitiesLoaded ?? null,
+    activityCount: form.activities.length,
+    hasEtapaUnica: form.etapaUnica,
+    hasEtapaFinal: form.etapaFinal,
+    hasWorkCompletionStatus: Boolean(form.workCompletionStatus),
+    documentKeysWithNumber: DOCUMENT_KEYS.filter((item) => Boolean(form.documents[item.key].number.trim())).map((item) => item.key),
+  });
   const selectedProject = projects.find((item) => item.id === form.projectId) ?? null;
   const availableTeams = useMemo(() => {
     if (!selectedProject) {
@@ -283,6 +305,22 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const hasEditingTeamChanged = Boolean(isEditing && editingTeamId && selectedEditingTeamId && selectedEditingTeamId !== editingTeamId);
   const weekDates = useMemo(() => createWeekDates(weekStartDate), [weekStartDate]);
   const weekEndDate = weekDates[weekDates.length - 1] ?? weekStartDate;
+  const { applyBoardSnapshot, fetchBoardSnapshot, isLoadingList, loadBoardData } = useProgrammingBoardData({
+    accessToken,
+    activeFilters,
+    weekStartDate,
+    weekEndDate,
+    setProjects,
+    setTeams,
+    setSupportOptions,
+    setSgdTypes,
+    setElectricalEqCatalog,
+    setWorkCompletionCatalog,
+    setReasonOptions,
+    setSchedules,
+    setFeedback,
+    onError: logError,
+  });
 
   const filteredSchedules = useMemo(() => {
     const filtered = schedules.filter((item) => {
@@ -497,80 +535,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const deadlineWindowHeading = deadlineViewMode === "15"
     ? "SOB com vencimento ate 15 dias"
     : "SOB com vencimento ate 30 dias";
-
-  const applyBoardSnapshot = useCallback((data: ProgrammingResponse) => {
-    const nextProjects = data.projects ?? [];
-    const nextTeams = data.teams ?? [];
-    const nextSchedules = (data.schedules ?? []).sort((left, right) => {
-      if (left.date === right.date) {
-        return left.startTime.localeCompare(right.startTime);
-      }
-
-      return left.date.localeCompare(right.date);
-    });
-
-    setProjects(nextProjects);
-    setTeams(nextTeams);
-    setSupportOptions(data.supportOptions ?? []);
-    setSgdTypes(data.sgdTypes ?? []);
-    setElectricalEqCatalog(data.electricalEqCatalog ?? []);
-    setWorkCompletionCatalog(data.workCompletionCatalog ?? []);
-    setReasonOptions(data.reasonOptions ?? []);
-    setSchedules(nextSchedules);
-    if (data.activitiesLoadError) {
-      setFeedback({
-        type: "error",
-        message: "Atividades da Programacao nao foram carregadas. Recarregue a tela antes de editar para evitar perda de dados.",
-      });
-    }
-  }, []);
-
-  const fetchBoardSnapshot = useCallback(async () => {
-    if (!accessToken) {
-      return null;
-    }
-
-    const requestStartDate = activeFilters.startDate < weekStartDate ? activeFilters.startDate : weekStartDate;
-    const requestEndDate = activeFilters.endDate > weekEndDate ? activeFilters.endDate : weekEndDate;
-
-    setIsLoadingList(true);
-    try {
-      return fetchProgrammingSnapshot({
-        accessToken,
-        startDate: requestStartDate,
-        endDate: requestEndDate,
-      });
-    } finally {
-      setIsLoadingList(false);
-    }
-  }, [accessToken, activeFilters.endDate, activeFilters.startDate, weekEndDate, weekStartDate]);
-
-  const loadBoardData = useCallback(async () => {
-    try {
-      const data = await fetchBoardSnapshot();
-      if (!data) {
-        return;
-      }
-
-      applyBoardSnapshot(data);
-    } catch (error) {
-      setProjects([]);
-      setTeams([]);
-      setSchedules([]);
-      setSupportOptions([]);
-      setSgdTypes([]);
-      setElectricalEqCatalog([]);
-      setWorkCompletionCatalog([]);
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Falha ao carregar programacao.",
-      });
-    }
-  }, [applyBoardSnapshot, fetchBoardSnapshot]);
-
-  useEffect(() => {
-    void loadBoardData();
-  }, [loadBoardData]);
 
   useEffect(() => {
     setPage(1);
@@ -1037,6 +1001,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         type: "error",
         message: error instanceof Error ? error.message : "Falha ao carregar historico da programacao.",
       });
+      await logError("Falha ao carregar historico da programacao.", error, {
+        operation: "load_history",
+        programmingId: schedule.id,
+        projectId: schedule.projectId,
+        teamId: schedule.teamId,
+        status: schedule.status,
+      });
     } finally {
       setIsLoadingHistory(false);
     }
@@ -1063,9 +1034,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       });
 
       if (!ok) {
-        setFeedback({
-          type: "error",
-          message: buildConflictFeedbackMessage(data, "Falha ao cancelar programacao."),
+        const message = buildConflictFeedbackMessage(data, "Falha ao cancelar programacao.");
+        setFeedback({ type: "error", message });
+        await logError("Falha ao cancelar programacao.", undefined, {
+          operation: "cancel_programming",
+          programmingId: cancelTarget.id,
+          projectId: cancelTarget.projectId,
+          teamId: cancelTarget.teamId,
+          status: cancelTarget.status,
+          expectedUpdatedAt: cancelTarget.updatedAt,
+          responseMessage: message,
+          responseError: data.error ?? null,
         });
         return;
       }
@@ -1084,7 +1063,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         if (boardData) {
           applyBoardSnapshot(boardData);
         }
-      } catch {
+      } catch (refreshError) {
+        await logError("Programacao cancelada, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          operation: "refresh_after_cancel",
+          programmingId: cancelTarget.id,
+          projectId: cancelTarget.projectId,
+          teamId: cancelTarget.teamId,
+        });
         if (!data.warning) {
           setFeedback({
             type: "success",
@@ -1092,10 +1077,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           });
         }
       }
-    } catch {
+    } catch (error) {
       setFeedback({
         type: "error",
         message: "Falha ao cancelar programacao.",
+      });
+      await logError("Falha ao cancelar programacao.", error, {
+        operation: "cancel_programming",
+        programmingId: cancelTarget.id,
+        projectId: cancelTarget.projectId,
+        teamId: cancelTarget.teamId,
+        status: cancelTarget.status,
+        expectedUpdatedAt: cancelTarget.updatedAt,
       });
     } finally {
       setIsCancelling(false);
@@ -1158,6 +1151,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           message,
           buildConflictAlertDetails(data),
         );
+        await logError("Falha ao adiar programacao.", undefined, {
+          operation: "postpone_programming",
+          programmingId: postponeTarget.id,
+          projectId: postponeTarget.projectId,
+          teamId: postponeTarget.teamId,
+          status: postponeTarget.status,
+          expectedUpdatedAt: postponeTarget.updatedAt,
+          newDate: postponeDate,
+          responseMessage: message,
+          responseError: data.error ?? null,
+        });
         return;
       }
 
@@ -1175,7 +1179,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         if (boardData) {
           applyBoardSnapshot(boardData);
         }
-      } catch {
+      } catch (refreshError) {
+        await logError("Programacao adiada, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          operation: "refresh_after_postpone",
+          programmingId: postponeTarget.id,
+          projectId: postponeTarget.projectId,
+          teamId: postponeTarget.teamId,
+          newDate: postponeDate,
+        });
         if (!data.warning) {
           setFeedback({
             type: "success",
@@ -1183,12 +1194,21 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           });
         }
       }
-    } catch {
+    } catch (error) {
       setFeedback({
         type: "error",
         message: "Falha ao adiar programacao.",
       });
       openAlertModal("Falha ao validar adiamento", "Falha ao adiar programacao.");
+      await logError("Falha ao adiar programacao.", error, {
+        operation: "postpone_programming",
+        programmingId: postponeTarget.id,
+        projectId: postponeTarget.projectId,
+        teamId: postponeTarget.teamId,
+        status: postponeTarget.status,
+        expectedUpdatedAt: postponeTarget.updatedAt,
+        newDate: postponeDate,
+      });
     } finally {
       setIsPostponing(false);
     }
@@ -1377,6 +1397,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           message,
         );
         openAlertModal("Falha ao validar ETAPA", message);
+        await logError("Falha ao validar ETAPA da programacao.", error, {
+          operation: "validate_stage_conflict",
+          ...safeFormLogContext(),
+          etapaNumber,
+          excludeProgrammingId: editingScheduleId,
+        });
         return;
       }
     }
@@ -1405,6 +1431,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       );
       return;
     }
+
+    const operationLogContext = safeFormLogContext();
 
     setIsSaving(true);
     setFeedback(null);
@@ -1491,6 +1519,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const { data } = saveResult;
       if (!saveResult.ok || (editingScheduleId ? !data.id : !data.success)) {
+        const fallbackMessage = editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.";
+        const responseMessage = buildConflictFeedbackMessage(data, fallbackMessage);
         if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
           setStageConflictModal({
             enteredEtapaNumber: Number(data.enteredEtapaNumber ?? etapaNumber),
@@ -1501,23 +1531,25 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
         showSubmitFeedback(
           "error",
-          buildConflictFeedbackMessage(
-            data,
-            editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
-          ),
+          responseMessage,
         );
         if (!(data.hasConflict && Array.isArray(data.teams) && data.teams.length)) {
           openAlertModal(
             data.error === "conflict"
               ? (editingScheduleId ? "Conflito ao salvar edicao" : "Conflito ao cadastrar programacao")
               : (editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao"),
-            buildConflictFeedbackMessage(
-              data,
-              editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.",
-            ),
+            responseMessage,
             buildConflictAlertDetails(data),
           );
         }
+        await logError(fallbackMessage, undefined, {
+          operation: editingScheduleId ? "save_programming_edit" : "save_programming_batch",
+          ...operationLogContext,
+          responseStatus: saveResult.status,
+          responseMessage,
+          responseError: data.error ?? null,
+          hasConflict: Boolean(data.hasConflict),
+        });
         return;
       }
 
@@ -1553,7 +1585,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         if (boardData) {
           applyBoardSnapshot(boardData);
         }
-      } catch {
+      } catch (refreshError) {
+        await logError("Programacao salva, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          operation: "refresh_after_save",
+          ...operationLogContext,
+          savedScheduleId: data.id ?? data.schedule?.id ?? null,
+        });
         if (!data.warning) {
           showSubmitFeedback(
             "success",
@@ -1561,7 +1598,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           );
         }
       }
-    } catch {
+    } catch (error) {
       const message = editingScheduleId ? "Falha ao editar programacao." : "Falha ao cadastrar programacao em lote.";
       showSubmitFeedback(
         "error",
@@ -1571,6 +1608,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao",
         message,
       );
+      await logError(message, error, {
+        operation: editingScheduleId ? "save_programming_edit" : "save_programming_batch",
+        ...operationLogContext,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -1641,6 +1682,16 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       });
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `prazos_obras_${deadlineWindowDays}dias_${exportDate}.csv`);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: "Falha ao exportar prazos das obras.",
+      });
+      await logError("Falha ao exportar prazos das obras.", error, {
+        operation: "export_deadline_csv",
+        deadlineWindowDays,
+        itemCount: deadlineSobCards.length,
+      });
     } finally {
       setIsExportingDeadlineModal(false);
     }
@@ -1672,6 +1723,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       });
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_simples_${exportDate}.csv`);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: "Falha ao exportar programacao em CSV.",
+      });
+      await logError("Falha ao exportar programacao em CSV.", error, {
+        operation: "export_programming_csv",
+        itemCount: filteredSchedules.length,
+        startDate: activeFilters.startDate,
+        endDate: activeFilters.endDate,
+      });
     } finally {
       setIsExporting(false);
     }
@@ -1703,6 +1765,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       });
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_enel_excel_${exportDate}.csv`);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: "Falha ao gerar extracao ENEL.",
+      });
+      await logError("Falha ao gerar extracao ENEL.", error, {
+        operation: "export_enel_csv",
+        itemCount: filteredSchedules.length,
+        startDate: activeFilters.startDate,
+        endDate: activeFilters.endDate,
+      });
     } finally {
       setIsExportingEnel(false);
     }
@@ -1758,6 +1831,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       link.download = "PROGRAMAÇÃO_ANGRA_INDICA.xlsb";
       link.click();
       URL.revokeObjectURL(url);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: "Falha ao gerar EXTRACAO ENEL NOVO.",
+      });
+      await logError("Falha ao gerar EXTRACAO ENEL NOVO.", error, {
+        operation: "export_enel_novo_xlsb",
+        itemCount: filteredSchedules.length,
+        startDate: activeFilters.startDate,
+        endDate: activeFilters.endDate,
+      });
     } finally {
       setIsExportingEnelNovo(false);
     }
@@ -1776,121 +1860,21 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       {!isVisualizationMode ? (
         <>
-          <article className={styles.card}>
-          <h3 className={styles.cardTitle}>Prazos das Obras</h3>
-          <div className={styles.deadlineSummaryGrid}>
-            <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummaryToday}`}>
-              <strong>Vence hoje</strong>
-              <span>{deadlineSummary.dueToday}</span>
-            </article>
-            <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummarySoon}`}>
-              <strong>Vence em breve</strong>
-              <span>{deadlineSummary.dueSoon}</span>
-            </article>
-            <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummaryOverdue}`}>
-              <strong>Vencida</strong>
-              <span>{deadlineSummary.overdue}</span>
-            </article>
-            <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummaryNormal}`}>
-              <strong>No prazo</strong>
-              <span>{deadlineSummary.normal}</span>
-            </article>
-          </div>
-
-          <div className={`${styles.sectionHeader} ${styles.deadlineSectionHeader}`}>
-            <div>
-              <h4>{deadlineWindowHeading}</h4>
-              <p>Cards por obra com data limite, status do prazo e alerta visual.</p>
-            </div>
-            <div className={styles.deadlineViewToggle} role="group" aria-label="Janela de prazo dos cards SOB">
-              <button
-                type="button"
-                className={`${styles.deadlineViewToggleButton} ${deadlineViewMode === "15" ? styles.deadlineViewToggleButtonActive : ""}`}
-                onClick={() => setDeadlineViewMode("15")}
-              >
-                15 dias
-              </button>
-              <button
-                type="button"
-                className={`${styles.deadlineViewToggleButton} ${deadlineViewMode === "30" ? styles.deadlineViewToggleButtonActive : ""}`}
-                onClick={() => setDeadlineViewMode("30")}
-              >
-                30 dias
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => setIsDeadlineModalOpen(true)}
-              >
-                Ver todos
-              </button>
-            </div>
-          </div>
-
-          {deadlineSobPages.length ? (
-            <div className={styles.deadlineCarouselWrapper}>
-              <button
-                type="button"
-                className={styles.deadlineCarouselButton}
-                onClick={() => setDeadlineCarouselPage((current) => Math.max(0, current - 1))}
-                disabled={deadlineCarouselPage === 0}
-                aria-label="Pagina anterior dos cards SOB"
-              >
-                {"<"}
-              </button>
-              <div className={styles.deadlineCarouselViewport}>
-                <div
-                  className={styles.deadlineCarouselTrack}
-                  style={{ transform: `translateX(-${deadlineCarouselPage * 100}%)` }}
-                >
-                  {deadlineSobPages.map((pageItems, pageIndex) => (
-                    <div key={`deadline-page-${pageIndex}`} className={styles.deadlineCarouselPage}>
-                      {pageItems.map((item) => (
-                        <article
-                          key={item.id}
-                          className={`${styles.deadlineSobCard} ${
-                            item.visualVariant === "OVERDUE_CRITICAL"
-                              ? styles.deadlineSobCardOverdueCritical
-                              : item.visualVariant === "OVERDUE"
-                                ? styles.deadlineSobCardOverdue
-                                : item.visualVariant === "TODAY"
-                                  ? styles.deadlineSobCardToday
-                                  : item.visualVariant === "SOON"
-                                    ? styles.deadlineSobCardSoon
-                                    : styles.deadlineSobCardNormal
-                          }`}
-                        >
-                          <strong>SOB {item.sob}</strong>
-                          <span>Data limite: {formatDate(item.executionDeadline)}</span>
-                          <span>Status: {item.statusLabel}</span>
-                        </article>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <button
-                type="button"
-                className={styles.deadlineCarouselButton}
-                onClick={() => setDeadlineCarouselPage((current) => Math.min(totalDeadlineCarouselPages - 1, current + 1))}
-                disabled={deadlineCarouselPage >= totalDeadlineCarouselPages - 1}
-                aria-label="Proxima pagina dos cards SOB"
-              >
-                {">"}
-              </button>
-            </div>
-          ) : (
-            <p className={styles.emptyHint}>
-              Nenhuma obra com data limite ate {deadlineWindowDays} dias a frente.
-            </p>
-          )}
-
-          {deadlineSobPages.length ? (
-            <p className={styles.deadlineCarouselPageInfo}>
-              Pagina {deadlineCarouselPage + 1} de {totalDeadlineCarouselPages}
-            </p>
-          ) : null}
-        </article>
+          <ProgrammingDeadlinePanel
+            summary={deadlineSummary}
+            windowHeading={deadlineWindowHeading}
+            viewMode={deadlineViewMode}
+            windowDays={deadlineWindowDays}
+            pages={deadlineSobPages}
+            carouselPage={deadlineCarouselPage}
+            totalPages={totalDeadlineCarouselPages}
+            onViewModeChange={setDeadlineViewMode}
+            onOpenModal={() => setIsDeadlineModalOpen(true)}
+            onPreviousPage={() => setDeadlineCarouselPage((current) => Math.max(0, current - 1))}
+            onNextPage={() =>
+              setDeadlineCarouselPage((current) => Math.min(totalDeadlineCarouselPages - 1, current + 1))
+            }
+          />
 
           <article ref={formCardRef} className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
             <h3 className={styles.cardTitle}>{isEditing ? "Edicao de Programacao" : "Cadastro de Programacao"}</h3>
@@ -2891,442 +2875,62 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         </article>
       ) : null}
 
-      {isDeadlineModalOpen ? (
-        <div className={styles.modalOverlay} onClick={() => setIsDeadlineModalOpen(false)}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Todos os prazos das obras ({deadlineWindowDays} dias)</h4>
-                <p className={styles.modalSubtitle}>
-                  Total: {deadlineSobCards.length} | Janela: ate {deadlineWindowDays} dias | Concluidas nao entram.
-                </p>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={() => setIsDeadlineModalOpen(false)}>
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              <div className={styles.deadlineModalActions}>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => void handleExportDeadlineModalCsv()}
-                  disabled={isExportingDeadlineModal || !deadlineSobCards.length}
-                >
-                  {isExportingDeadlineModal ? "Exportando..." : "Exportar Excel (CSV)"}
-                </button>
-              </div>
-
-              <div className={styles.tableWrapper}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>SOB</th>
-                      <th>Data limite</th>
-                      <th>Status do prazo</th>
-                      <th>Dias para vencimento</th>
-                      <th>Faixa</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deadlineSobCards.length ? (
-                      deadlineSobCards.map((item) => (
-                        <tr key={`deadline-modal-${item.id}`}>
-                          <td>{item.sob}</td>
-                          <td>{formatDate(item.executionDeadline)}</td>
-                          <td>{item.statusLabel}</td>
-                          <td>{item.daysDiff}</td>
-                          <td>{item.rangeLabel}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td className={styles.emptyRow} colSpan={5}>
-                          Nenhuma obra encontrada para a janela selecionada.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {detailsTarget ? (
-        <div className={styles.modalOverlay} onClick={() => setDetailsTarget(null)}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Detalhes da Programacao</h4>
-                <p className={styles.modalSubtitle}>ID da programacao: {detailsTarget.id}</p>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailsTarget(null)}>
-                Fechar
-              </button>
-            </header>
-            <div className={styles.modalBody}>
-              <div className={styles.detailsGrid}>
-                <p><strong>Status:</strong> {getDisplayProgrammingStatus(detailsTarget)}</p>
-                <p><strong>Criado por:</strong> {formatAuditActor(detailsTarget.createdByName)}</p>
-                <p><strong>Criado em:</strong> {formatDateTime(detailsTarget.createdAt)}</p>
-                <p><strong>Atualizado por:</strong> {formatAuditActor(detailsTarget.updatedByName)}</p>
-                <p><strong>Atualizado em:</strong> {formatDateTime(detailsTarget.updatedAt)}</p>
-                <p><strong>Projeto:</strong> {projectMap.get(detailsTarget.projectId)?.code ?? detailsTarget.projectId}</p>
-                <p><strong>Equipe:</strong> {resolveScheduleTeamInfo(detailsTarget, teamMap).name}</p>
-                <p><strong>Data execucao:</strong> {formatDate(detailsTarget.date)}</p>
-                <p><strong>Horario:</strong> {detailsTarget.startTime} - {detailsTarget.endTime}</p>
-                <p><strong>Inicio de desligamento:</strong> {detailsTarget.outageStartTime || "-"}</p>
-                <p><strong>Termino de desligamento:</strong> {detailsTarget.outageEndTime || "-"}</p>
-                <p><strong>POSTE:</strong> {detailsTarget.posteQty}</p>
-                <p><strong>ESTRUTURA:</strong> {detailsTarget.estruturaQty}</p>
-                <p><strong>TRAFO:</strong> {detailsTarget.trafoQty}</p>
-                <p><strong>REDE:</strong> {detailsTarget.redeQty}</p>
-                <p><strong>ETAPA:</strong> {detailsTarget.etapaNumber ?? "-"}</p>
-                <p><strong>ETAPA ÚNICA:</strong> {detailsTarget.etapaUnica ? "Sim" : "Nao"}</p>
-                <p><strong>ETAPA FINAL:</strong> {detailsTarget.etapaFinal ? "Sim" : "Nao"}</p>
-                <p><strong>Estado Trabalho:</strong> {detailsTarget.workCompletionStatus || "-"}</p>
-                <p><strong>Nº Clientes Afetados:</strong> {detailsTarget.affectedCustomers}</p>
-                <p><strong>Tipo de SGD:</strong> {detailsTarget.sgdTypeDescription || "-"}</p>
-                <p><strong>Numero SGD:</strong> {normalizeSgdNumberForExport(detailsTarget.documents?.sgd?.number) || "-"}</p>
-                <p><strong>Nº EQ (tipo):</strong> {detailsTarget.electricalEqCode || "-"}</p>
-                <p><strong>Apoio:</strong> {detailsTarget.support || "-"}</p>
-                <p><strong>Alimentador:</strong> {detailsTarget.feeder || "-"}</p>
-                <p><strong>Nº EQ (numero):</strong> {detailsTarget.electricalField || "-"}</p>
-                <p className={styles.detailWide}><strong>Descricao do servico:</strong> {detailsTarget.serviceDescription || "-"}</p>
-                <p className={styles.detailWide}><strong>Anotacao:</strong> {detailsTarget.note || "-"}</p>
-                {isInactiveProgrammingStatus(getDisplayProgrammingStatus(detailsTarget)) ? (
-                  <>
-                    <p><strong>Data do cancelamento/adiamento:</strong> {formatDateTime(detailsTarget.statusChangedAt ?? "")}</p>
-                    <p className={styles.detailWide}>
-                      <strong>Motivo do cancelamento/adiamento:</strong> {detailsTarget.statusReason || "-"}
-                    </p>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {historyTarget ? (
-        <div
-          className={styles.modalOverlay}
-          onClick={() => {
-            setHistoryTarget(null);
-            setHistoryPage(1);
-          }}
-        >
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Historico da Programacao</h4>
-                <p className={styles.modalSubtitle}>ID da programacao: {historyTarget.id}</p>
-              </div>
-              <button
-                type="button"
-                className={styles.modalCloseButton}
-                onClick={() => {
-                  setHistoryTarget(null);
-                  setHistoryPage(1);
-                }}
-              >
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              {isLoadingHistory ? <p className={styles.emptyHint}>Carregando historico...</p> : null}
-              {!isLoadingHistory && historyItems.length === 0 ? (
-                <p className={styles.emptyHint}>Nenhuma alteracao registrada.</p>
-              ) : null}
-              {!isLoadingHistory && historyItems.length > 0 ? (
-                <div className={styles.historyList}>
-                  {pagedHistoryItems.map((item) => {
-                    const changedFields = Object.entries(item.changes ?? {}).filter(([, change]) => {
-                      return (change.from ?? "") !== (change.to ?? "");
-                    });
-
-                    return (
-                      <article key={item.id} className={styles.historyCard}>
-                        <header className={styles.historyCardHeader}>
-                          <strong>{formatHistoryAction(item.action)}</strong>
-                          <span>{formatDateTime(item.changedAt)} | {formatAuditActor(item.changedByName)}</span>
-                        </header>
-
-                        <div className={styles.historyChanges}>
-                          {changedFields.length ? (
-                            changedFields.map(([field, change]) => (
-                              <div key={field} className={styles.historyChangeItem}>
-                                <strong>{HISTORY_FIELD_LABELS[field] ?? field}</strong>
-                                <span>De: {formatHistoryValue(field, change.from)}</span>
-                                <span>Para: {formatHistoryValue(field, change.to)}</span>
-                              </div>
-                            ))
-                          ) : (
-                            <p className={styles.emptyHint}>Nenhum campo alterado nesse evento.</p>
-                          )}
-                        </div>
-
-                        <p><strong>Motivo:</strong> {item.reason || "-"}</p>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {!isLoadingHistory && historyItems.length > 0 ? (
-                <div className={styles.historyPagination}>
-                  <span>
-                    Pagina {Math.min(historyPage, totalHistoryPages)} de {totalHistoryPages} | Total: {historyItems.length}
-                  </span>
-                  <div className={styles.paginationActions}>
-                    <button
-                      type="button"
-                      className={styles.ghostButton}
-                      onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}
-                      disabled={historyPage <= 1}
-                    >
-                      Anterior
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.ghostButton}
-                      onClick={() => setHistoryPage((current) => Math.min(totalHistoryPages, current + 1))}
-                      disabled={historyPage >= totalHistoryPages}
-                    >
-                      Proxima
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {postponeTarget ? (
-        <div className={styles.modalOverlay} onClick={closePostponeModal}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <h4>Adiar Programacao</h4>
-              <button type="button" className={styles.modalCloseButton} onClick={closePostponeModal} disabled={isPostponing}>
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              <p>
-                Informe o motivo e a nova data da programacao. A programacao atual sera marcada como ADIADA e um novo
-                registro sera criado para a nova data com status REPROGRAMADA. A nova data deve ser posterior a data
-                atual da programacao.
-              </p>
-
-              <label className={styles.field}>
-                <span>
-                  Nova data da programacao <span className="requiredMark">*</span>
-                </span>
-                <input
-                  type="date"
-                  value={postponeDate}
-                  onChange={(event) => setPostponeDate(event.target.value)}
-                  min={postponeTarget ? addDays(postponeTarget.date, 1) : today}
-                  disabled={isPostponing}
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>
-                  Motivo do adiamento <span className="requiredMark">*</span>
-                </span>
-                <select
-                  value={postponeReasonCode}
-                  onChange={(event) => setPostponeReasonCode(event.target.value)}
-                  disabled={isPostponing}
-                >
-                  <option value="">Selecione</option>
-                  {reasonOptions.map((item) => (
-                    <option key={item.code} value={item.code}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                {resolveReasonOption(reasonOptions, postponeReasonCode)?.requiresNotes ? (
-                  <textarea
-                    value={postponeReasonNotes}
-                    onChange={(event) => setPostponeReasonNotes(event.target.value)}
-                    rows={3}
-                    placeholder="Descreva a observacao complementar do motivo."
-                    disabled={isPostponing}
-                  />
-                ) : null}
-              </label>
-
-              <div className={styles.actions}>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => void confirmPostpone()}
-                  disabled={isPostponing}
-                >
-                  {isPostponing ? "Adiando..." : "Validar adiamento"}
-                </button>
-                <button type="button" className={styles.ghostButton} onClick={closePostponeModal} disabled={isPostponing}>
-                  Voltar
-                </button>
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {cancelTarget ? (
-        <div className={styles.modalOverlay} onClick={closeCancelModal}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <h4>Cancelar Programacao</h4>
-              <button type="button" className={styles.modalCloseButton} onClick={closeCancelModal} disabled={isCancelling}>
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              <p>
-                Selecione o motivo do cancelamento. Quando o motivo exigir observacao, preencha o campo complementar.
-              </p>
-
-              <label className={styles.field}>
-                <span>
-                  Motivo do cancelamento <span className="requiredMark">*</span>
-                </span>
-                <select
-                  value={cancelReasonCode}
-                  onChange={(event) => setCancelReasonCode(event.target.value)}
-                >
-                  <option value="">Selecione</option>
-                  {reasonOptions.map((item) => (
-                    <option key={item.code} value={item.code}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                {resolveReasonOption(reasonOptions, cancelReasonCode)?.requiresNotes ? (
-                  <textarea
-                    value={cancelReasonNotes}
-                    onChange={(event) => setCancelReasonNotes(event.target.value)}
-                    rows={3}
-                    placeholder="Descreva a observacao complementar do motivo."
-                  />
-                ) : null}
-              </label>
-
-              <div className={styles.actions}>
-                <button
-                  type="button"
-                  className={styles.dangerButton}
-                  onClick={() => void confirmCancellation()}
-                  disabled={!canSubmitCancellation}
-                >
-                  {isCancelling ? "Cancelando..." : "Validar cancelamento"}
-                </button>
-                <button type="button" className={styles.ghostButton} onClick={closeCancelModal} disabled={isCancelling}>
-                  Voltar
-                </button>
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {alertModal ? (
-        <div className={styles.modalOverlay} onClick={closeAlertModal}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>{alertModal.title}</h4>
-                <p className={styles.modalSubtitle}>Revise os dados antes de tentar novamente.</p>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={closeAlertModal}>
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              <div className={styles.warningCard}>
-                <p>{alertModal.message}</p>
-              </div>
-
-              {alertModal.details?.length ? (
-                <div className={styles.historyCard}>
-                  <div className={styles.historyCardHeader}>
-                    <strong>Possiveis pontos para revisar</strong>
-                  </div>
-                  <ul className={styles.alertList}>
-                    {alertModal.details.map((detail) => (
-                      <li key={detail}>{detail}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {stageConflictModal ? (
-        <div className={styles.modalOverlay} onClick={() => setStageConflictModal(null)}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Conflito de ETAPA</h4>
-                <p className={styles.modalSubtitle}>
-                  A ETAPA {stageConflictModal.enteredEtapaNumber} conflita com o historico ja existente para este projeto.
-                </p>
-              </div>
-              <button
-                type="button"
-                className={styles.modalCloseButton}
-                onClick={() => setStageConflictModal(null)}
-              >
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              <div className={styles.warningCard}>
-                <p>
-                  <strong>Maior etapa encontrada:</strong> {stageConflictModal.highestStage}
-                </p>
-                <p>
-                  Corrija o campo <strong>ETAPA</strong> no formulario antes de tentar salvar novamente.
-                </p>
-              </div>
-
-              <div className={styles.historyList}>
-                {stageConflictModal.teams.map((team) => (
-                  <article key={team.teamId} className={styles.historyCard}>
-                    <div className={styles.historyCardHeader}>
-                      <strong>{team.teamName}</strong>
-                      <span>Maior etapa: {team.highestStage}</span>
-                    </div>
-                    <div className={styles.historyChanges}>
-                      <div className={styles.historyChangeItem}>
-                        <strong>Etapas ja encontradas</strong>
-                        <span>{team.existingStages.join(", ")}</span>
-                      </div>
-                      <div className={styles.historyChangeItem}>
-                        <strong>Datas encontradas</strong>
-                        <span>{team.existingDates.length ? team.existingDates.map(formatDate).join(", ") : "-"}</span>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
+      <ProgrammingDeadlineModal
+        isOpen={isDeadlineModalOpen}
+        items={deadlineSobCards}
+        windowDays={deadlineWindowDays}
+        isExporting={isExportingDeadlineModal}
+        onClose={() => setIsDeadlineModalOpen(false)}
+        onExport={() => void handleExportDeadlineModalCsv()}
+      />
+      <ProgrammingDetailsModal
+        target={detailsTarget}
+        projectMap={projectMap}
+        teamMap={teamMap}
+        onClose={() => setDetailsTarget(null)}
+      />
+      <ProgrammingHistoryModal
+        target={historyTarget}
+        items={historyItems}
+        pagedItems={pagedHistoryItems}
+        isLoading={isLoadingHistory}
+        page={historyPage}
+        totalPages={totalHistoryPages}
+        onClose={() => {
+          setHistoryTarget(null);
+          setHistoryPage(1);
+        }}
+        onPreviousPage={() => setHistoryPage((current) => Math.max(1, current - 1))}
+        onNextPage={() => setHistoryPage((current) => Math.min(totalHistoryPages, current + 1))}
+      />
+      <ProgrammingPostponeModal
+        target={postponeTarget}
+        reasonOptions={reasonOptions}
+        reasonCode={postponeReasonCode}
+        reasonNotes={postponeReasonNotes}
+        date={postponeDate}
+        minDate={postponeTarget ? addDays(postponeTarget.date, 1) : today}
+        isSubmitting={isPostponing}
+        onClose={closePostponeModal}
+        onConfirm={() => void confirmPostpone()}
+        onDateChange={setPostponeDate}
+        onReasonCodeChange={setPostponeReasonCode}
+        onReasonNotesChange={setPostponeReasonNotes}
+      />
+      <ProgrammingCancelModal
+        target={cancelTarget}
+        reasonOptions={reasonOptions}
+        reasonCode={cancelReasonCode}
+        reasonNotes={cancelReasonNotes}
+        canSubmit={canSubmitCancellation}
+        isSubmitting={isCancelling}
+        onClose={closeCancelModal}
+        onConfirm={() => void confirmCancellation()}
+        onReasonCodeChange={setCancelReasonCode}
+        onReasonNotesChange={setCancelReasonNotes}
+      />
+      <ProgrammingAlertModal modal={alertModal} onClose={closeAlertModal} />
+      <ProgrammingStageConflictModal modal={stageConflictModal} onClose={() => setStageConflictModal(null)} />
 
       <datalist id="programming-simple-activity-list">
         {activityOptions.map((item) => (

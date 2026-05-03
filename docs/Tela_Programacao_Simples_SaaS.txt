@@ -1027,3 +1027,75 @@ Atualizacao adicional 2026-05-03 (modularizacao interna - hooks iniciais)
   - Depois: a sugestao de `ETAPA` fica em `useProgrammingEtapaSuggestion`, preservando a protecao para nao sobrescrever valor digitado manualmente.
   - Antes: `ProgrammingSimplePageView.tsx` tinha 3142 linhas apos a separacao de fachada/validadores.
   - Depois: `ProgrammingSimplePageView.tsx` passa a ter 3069 linhas, `hooks.ts` concentra 131 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - hook de carregamento)
+--------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/hooks.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criado hook `useProgrammingBoardData` para concentrar `applyBoardSnapshot`, `fetchBoardSnapshot`, `loadBoardData` e `isLoadingList`.
+  - O hook usa `fetchProgrammingSnapshot` de `api.ts` e recebe os setters de estado do PageView para manter a tela como coordenadora.
+  - Os fluxos de refresh apos cancelamento, adiamento e save continuam usando `fetchBoardSnapshot` + `applyBoardSnapshot`, preservando a regra de sucesso com aviso quando a atualizacao visual falhar apos commit.
+- Comportamento antes/depois:
+  - Antes: o PageView possuia diretamente a orquestracao de carregamento principal, ordenacao dos schedules, limpeza de estado em erro e loading da lista.
+  - Depois: essa orquestracao fica em `useProgrammingBoardData`, dentro da propria feature, sem mover regra critica para o frontend nem alterar contrato de API/RPC.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 3069 linhas apos os hooks iniciais.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 3021 linhas, `hooks.ts` passa a ter 269 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - componentes de modal)
+--------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criados componentes internos de modal: `ProgrammingDeadlineModal`, `ProgrammingDetailsModal`, `ProgrammingHistoryModal`, `ProgrammingPostponeModal`, `ProgrammingCancelModal`, `ProgrammingAlertModal` e `ProgrammingStageConflictModal`.
+  - O PageView manteve estados, callbacks e regras operacionais; os componentes recebem dados e acoes por props.
+  - O modal de detalhes passou a concentrar exibicao de dados da programacao, projeto e equipe.
+  - O modal de historico passou a concentrar renderizacao dos eventos paginados.
+  - Os modais de adiamento/cancelamento continuam usando callbacks do PageView para validar e executar a operacao.
+- Comportamento antes/depois:
+  - Antes: os modais ficavam como blocos JSX extensos dentro de `ProgrammingSimplePageView.tsx`.
+  - Depois: os modais ficam em `components.tsx`, dentro da propria feature, sem importar dominio irmao e sem mover regra critica de negocio para componente visual.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 3021 linhas apos o hook de carregamento.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 2672 linhas, `components.tsx` concentra 550 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (modularizacao interna - painel de prazos)
+----------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/hooks.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Criado componente interno `ProgrammingDeadlinePanel` para renderizar resumo de vencimentos, seletor de janela, carrossel de SOB e estado vazio.
+  - Mantido `useProgrammingBoardData` em `hooks.ts` para carregamento e refresh da tela.
+  - O PageView manteve os calculos de `deadlineSummary`, `deadlineSobCards`, `deadlineSobPages`, estado de janela e pagina do carrossel.
+- Comportamento antes/depois:
+  - Antes: o painel `Prazos das Obras` ficava como JSX extenso dentro de `ProgrammingSimplePageView.tsx`.
+  - Depois: o painel fica em `components.tsx`, dentro da propria feature, recebendo dados e callbacks por props.
+  - Foi recuperado `ProgrammingSimplePageView.tsx` a partir da versao integra do Git apos o desligamento deixar o arquivo local com bytes nulos; em seguida foram reaplicadas as extrações de hook, modais e painel.
+  - Antes: `ProgrammingSimplePageView.tsx` tinha 2672 linhas apos a extracao dos modais.
+  - Depois: `ProgrammingSimplePageView.tsx` passa a ter 2568 linhas, `components.tsx` passa a ter 709 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao.
+
+Atualizacao adicional 2026-05-03 (observabilidade - log de erros)
+-------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/hooks.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Integrado `useErrorLogger("programacao_simples")` no PageView.
+  - `useProgrammingBoardData`, `useProgrammingActivityCatalog` e `useProgrammingEtapaSuggestion` passaram a aceitar `onError` opcional para registrar falhas de carregamento, catalogo e sugestao automatica de ETAPA.
+  - Registradas falhas de historico, cancelamento, adiamento, validacao de ETAPA, salvamento, refresh visual pos-save e exportacoes.
+- Comportamento antes/depois:
+  - Antes: falhas da tela eram exibidas via feedback/modal, mas Programacao Simples nao persistia erros em `app_error_logs`.
+  - Depois: falhas operacionais relevantes chamam a Edge Function `log_error` por meio do hook global `useErrorLogger`, usando a tabela existente `app_error_logs`.
+  - O contexto enviado evita formulario inteiro e dados sensiveis; registra somente metadados operacionais como operacao, ids, status, contagens, datas, filtros e mensagens resumidas de resposta.
+  - Nao houve alteracao em payloads de save/cancelamento/adiamento, API, RPC, RLS ou regra transacional.
