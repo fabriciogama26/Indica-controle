@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { isSerialTrackedMaterial, normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 
 type StockCenterRow = {
   id: string;
@@ -32,6 +33,7 @@ type MaterialRow = {
   descricao: string;
   tipo: string;
   is_transformer: boolean;
+  serial_tracking_type: SerialTrackingType | null;
 };
 
 type ReversalReasonRow = {
@@ -85,7 +87,7 @@ export async function GET(request: NextRequest) {
         .returns<ProjectRow[]>(),
       supabase
         .from("materials")
-        .select("id, codigo, descricao, tipo, is_transformer")
+        .select("id, codigo, descricao, tipo, is_transformer, serial_tracking_type")
         .eq("tenant_id", appUser.tenant_id)
         .eq("is_active", true)
         .order("codigo", { ascending: true })
@@ -156,7 +158,8 @@ export async function GET(request: NextRequest) {
         materialCode: row.codigo,
         description: row.descricao,
         materialType: String(row.tipo ?? "").trim().toUpperCase(),
-        isTransformer: Boolean(row.is_transformer),
+        isTransformer: isSerialTrackedMaterial(normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE"))),
+        serialTrackingType: normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE")),
       })),
       reversalReasons: reversalReasonsResult.error
         ? DEFAULT_REVERSAL_REASONS

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
   normalizeDateInput,
@@ -43,6 +44,7 @@ type MaterialLookupRow = {
   id: string;
   codigo: string;
   is_transformer: boolean;
+  serial_tracking_type?: string | null;
   is_active: boolean;
 };
 
@@ -88,6 +90,7 @@ type ImportValidationIssue = {
 
 type PreparedImportEntry = SaveTeamStockOperationBatchEntry & {
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
   materialCode: string;
   quantity: number;
   serialNumber: string | null;
@@ -241,7 +244,7 @@ export async function POST(request: NextRequest) {
       materialIds.length
         ? supabase
             .from("materials")
-            .select("id, codigo, is_transformer, is_active")
+            .select("id, codigo, is_transformer, serial_tracking_type, is_active")
             .eq("tenant_id", appUser.tenant_id)
             .in("id", materialIds)
             .returns<MaterialLookupRow[]>()
@@ -318,7 +321,8 @@ export async function POST(request: NextRequest) {
       row.id,
       {
         materialCode: row.codigo,
-        isTransformer: Boolean(row.is_transformer),
+        isTransformer: isSerialTrackedMaterial(normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE"))),
+        serialTrackingType: normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE")),
         isActive: Boolean(row.is_active),
       },
     ]));
@@ -404,13 +408,13 @@ export async function POST(request: NextRequest) {
       if (entryDate && entryDate > today) {
         issues.push(makeIssue(rowNumber, "data_operacao", entryDate, "Data da movimentacao nao pode ser futura."));
       }
-      if (material?.isTransformer && item.quantity !== 1) {
-        issues.push(makeIssue(rowNumber, "quantidade", item.quantity, "Material TRAFO permite somente quantidade 1 por movimentacao."));
+      if (isSerialTrackedMaterial(material?.serialTrackingType) && item.quantity !== 1) {
+        issues.push(makeIssue(rowNumber, "quantidade", item.quantity, `Material ${serialTrackingLabel(material?.serialTrackingType)} permite somente quantidade 1 por movimentacao.`));
       }
-      if (material?.isTransformer && !normalizeText(item.serialNumber)) {
-        issues.push(makeIssue(rowNumber, "serial", item.serialNumber, "Serial e obrigatorio para material TRAFO."));
+      if (isSerialTrackedMaterial(material?.serialTrackingType) && !normalizeText(item.serialNumber)) {
+        issues.push(makeIssue(rowNumber, "serial", item.serialNumber, `Serial e obrigatorio para material ${serialTrackingLabel(material?.serialTrackingType)}.`));
       }
-      if (material?.isTransformer && !normalizeText(item.lotCode)) {
+      if (requiresLotCode(material?.serialTrackingType) && !normalizeText(item.lotCode)) {
         issues.push(makeIssue(rowNumber, "lp", item.lotCode, "LP e obrigatorio para material TRAFO."));
       }
 
@@ -441,6 +445,10 @@ export async function POST(request: NextRequest) {
           ? teamStockCenter.name
           : "CAMPO / INSTALADO";
       const destinationStockCenterId = validatedOperationKind === "REQUISITION" ? team.stock_center_id : stockCenterId;
+      const preparedItem = {
+        ...item,
+        lotCode: isSerialTrackedMaterial(material.serialTrackingType) && !requiresLotCode(material.serialTrackingType) ? "-" : item.lotCode,
+      };
 
       preparedEntries.push({
         rowNumber,
@@ -451,12 +459,13 @@ export async function POST(request: NextRequest) {
         entryDate,
         entryType: effectiveEntryType,
         notes,
-        items: [item],
+        items: [preparedItem],
         isTransformer: material.isTransformer,
+        serialTrackingType: material.serialTrackingType,
         materialCode: material.materialCode,
         quantity: item.quantity,
-        serialNumber: item.serialNumber ?? null,
-        lotCode: item.lotCode ?? null,
+        serialNumber: preparedItem.serialNumber ?? null,
+        lotCode: preparedItem.lotCode ?? null,
         sourceStockCenterId,
         sourceStockCenterName,
         destinationStockCenterId,
@@ -504,7 +513,7 @@ export async function POST(request: NextRequest) {
                 entry.rowNumber,
                 "serial",
                 `${item.serialNumber ?? ""}/${item.lotCode ?? ""}`,
-                `A unidade TRAFO informada ja esta registrada no estoque com o material ${entry.materialCode}. Utilize Devolucao ou outra movimentacao compativel em vez de Retorno de campo.`,
+                `A unidade por serial informada ja esta registrada no estoque com o material ${entry.materialCode}. Utilize Devolucao ou outra movimentacao compativel em vez de Retorno de campo.`,
               ),
             );
             continue;
@@ -517,7 +526,7 @@ export async function POST(request: NextRequest) {
               entry.rowNumber,
               "serial",
               `${item.serialNumber ?? ""}/${item.lotCode ?? ""}`,
-              `A unidade TRAFO informada nao esta no estoque de origem (${entry.sourceStockCenterName}). Confira Material, Serial e LP.`,
+              `A unidade por serial informada nao esta no estoque de origem (${entry.sourceStockCenterName}). Confira Material, Serial${requiresLotCode(entry.serialTrackingType) ? " e LP" : ""}.`,
             ),
           );
           continue;

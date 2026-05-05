@@ -70,6 +70,23 @@ function mapStockTransferValidationMessage(details: unknown) {
   return "";
 }
 
+function mapSerialTrackedDatabaseError(message: unknown) {
+  const normalized = String(message ?? "").trim().toUpperCase();
+  if (normalized.includes("SERIAL_TRACKED_QUANTITY_MUST_BE_ONE")) {
+    return "Material rastreavel por serial permite somente quantidade 1 por movimentacao.";
+  }
+  if (normalized.includes("SERIAL_TRACKED_SERIAL_REQUIRED")) {
+    return "Serial e obrigatorio para material rastreavel por serial.";
+  }
+  if (normalized.includes("SERIAL_TRACKED_UNIT_ALREADY_IN_STOCK")) {
+    return "A unidade por serial informada ja esta registrada em estoque proprio ou vinculada a outra operacao.";
+  }
+  if (normalized.includes("SERIAL_TRACKED_UNIT_NOT_IN_FROM_CENTER")) {
+    return "A unidade por serial informada nao esta disponivel no centro DE informado.";
+  }
+  return "";
+}
+
 export async function saveStockTransferViaRpc(
   supabase: SupabaseClient,
   payload: SaveStockTransferPayload,
@@ -88,11 +105,12 @@ export async function saveStockTransferViaRpc(
   });
 
   if (error) {
+    const mappedDatabaseError = mapSerialTrackedDatabaseError(error.message);
     return {
       ok: false,
       status: 500,
       reason: "RPC_ERROR",
-      message: "Falha ao salvar movimentacao de estoque.",
+      message: mappedDatabaseError || "Falha ao salvar movimentacao de estoque.",
       details: error.message,
     } as const;
   }
@@ -100,9 +118,12 @@ export async function saveStockTransferViaRpc(
   const result = (data ?? {}) as StockTransferRpcResult;
   const normalizedReason = String(result.reason ?? "").trim().toUpperCase();
   const normalizedMessage = String(result.message ?? "").trim();
+  const mappedSerialTrackedReasonMessage = mapSerialTrackedDatabaseError(normalizedReason);
   const mappedErrorMessage =
     normalizedReason === "INSUFFICIENT_STOCK"
       ? "Saldo insuficiente no centro de estoque de origem."
+      : mappedSerialTrackedReasonMessage
+        ? mappedSerialTrackedReasonMessage
       : normalizedReason === "TRANSFORMER_UNIT_NOT_IN_FROM_CENTER"
         ? "O TRAFO informado nao esta disponivel no centro de origem com o Serial e LP informados."
         : normalizedReason === "TRANSFORMER_UNIT_ALREADY_IN_OWN_STOCK"

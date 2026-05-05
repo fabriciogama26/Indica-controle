@@ -63,7 +63,7 @@ const permissionCatalog = [
   },
   { pageKey: "medicao", label: "Medicao", path: "/medicao", section: "Operacao" },
   { pageKey: "estoque", label: "Estoque Atual", path: "/estoque", section: "Almoxarifado" },
-  { pageKey: "posicao-trafo", label: "Rastreio de TRAFO", path: "/posicao-trafo", section: "Almoxarifado" },
+  { pageKey: "posicao-trafo", label: "Rastreio de SERIAL", path: "/posicao-trafo", section: "Almoxarifado" },
   { pageKey: "entrada", label: "Movimentacao de Estoque", path: "/entrada", section: "Almoxarifado" },
   { pageKey: "saida", label: "Operacoes de Equipe", path: "/saida", section: "Almoxarifado" },
   { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },

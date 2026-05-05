@@ -7,6 +7,7 @@ import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { isSerialTrackedMaterial, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { HISTORY_EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   FilterState,
@@ -227,7 +228,8 @@ export function TeamStockOperationsPageView() {
   );
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / LIST_PAGE_SIZE));
-  const requiresTransformerFields = Boolean(selectedMaterial?.isTransformer);
+  const requiresTransformerFields = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
+  const requiresLotFields = requiresLotCode(selectedMaterial?.serialTrackingType);
   const formDateLabel = operationDateLabel(form.operationKind);
   const formCardTitle = "Cadastro de Operacoes de Equipe";
   const formCardDescription = `Selecione a operacao: Requisicao, Devolucao ou Retorno de campo via ${fieldReturnOriginName}.`;
@@ -277,7 +279,7 @@ export function TeamStockOperationsPageView() {
       ...current,
       description: selectedMaterial.description,
       entryType: current.operationKind === "FIELD_RETURN" ? "SUCATA" : nextEntryType,
-      quantity: selectedMaterial.isTransformer ? "1" : current.quantity,
+      quantity: isSerialTrackedMaterial(selectedMaterial.serialTrackingType) ? "1" : current.quantity,
     }));
   }, [selectedMaterial]);
 
@@ -500,9 +502,9 @@ export function TeamStockOperationsPageView() {
       entryType: current.operationKind === "FIELD_RETURN"
         ? (matchedMaterial ? "SUCATA" : "")
         : normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
-      quantity: matchedMaterial?.isTransformer ? "1" : current.quantity,
-      serialNumber: matchedMaterial?.isTransformer ? current.serialNumber : "",
-      lotCode: matchedMaterial?.isTransformer ? current.lotCode : "",
+      quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? "1" : current.quantity,
+      serialNumber: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? current.serialNumber : "",
+      lotCode: requiresLotCode(matchedMaterial?.serialTrackingType) ? current.lotCode : "",
     }));
   }
 
@@ -543,12 +545,16 @@ export function TeamStockOperationsPageView() {
     }
 
     if (requiresTransformerFields && !isTransformerQuantityValid(quantity)) {
-      showError("Material TRAFO permite somente quantidade 1 por operacao.");
+      showError(`Material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)} permite somente quantidade 1 por operacao.`);
       return;
     }
 
-    if (requiresTransformerFields && (!normalizeText(form.serialNumber) || !normalizeText(form.lotCode))) {
-      showError("Serial e LP sao obrigatorios para material TRAFO.");
+    if (requiresTransformerFields && !normalizeText(form.serialNumber)) {
+      showError(`Serial e obrigatorio para material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)}.`);
+      return;
+    }
+    if (requiresLotFields && !normalizeText(form.lotCode)) {
+      showError("LP e obrigatorio para material TRAFO.");
       return;
     }
 
@@ -568,10 +574,10 @@ export function TeamStockOperationsPageView() {
     const normalizedSerial = normalizeText(form.serialNumber);
     const normalizedLot = normalizeText(form.lotCode);
     const hasDuplicate = form.items.some((item) => {
-      if (item.isTransformer || selectedMaterial.isTransformer) {
+      if (item.isTransformer || isSerialTrackedMaterial(selectedMaterial.serialTrackingType)) {
         return item.materialId === form.materialId
           && normalizeText(item.serialNumber).toUpperCase() === normalizedSerial.toUpperCase()
-          && normalizeText(item.lotCode).toUpperCase() === normalizedLot.toUpperCase();
+        && normalizeText(item.lotCode || "-").toUpperCase() === (requiresLotCode(selectedMaterial.serialTrackingType) ? normalizedLot.toUpperCase() : "-");
       }
 
       return item.materialId === form.materialId;
@@ -579,8 +585,8 @@ export function TeamStockOperationsPageView() {
 
     if (hasDuplicate) {
       showError(
-        selectedMaterial.isTransformer
-          ? "Esta unidade TRAFO ja foi adicionada na operacao."
+        isSerialTrackedMaterial(selectedMaterial.serialTrackingType)
+          ? "Esta unidade rastreavel ja foi adicionada na operacao."
           : "Este material ja foi adicionado na operacao. Remova a linha anterior para incluir novamente.",
       );
       return;
@@ -606,7 +612,8 @@ export function TeamStockOperationsPageView() {
           serialNumber: normalizedSerial,
           lotCode: normalizedLot,
           entryType: normalizedEntryType,
-          isTransformer: Boolean(selectedMaterial.isTransformer),
+          isTransformer: isSerialTrackedMaterial(selectedMaterial.serialTrackingType),
+          serialTrackingType: selectedMaterial.serialTrackingType,
         },
       ],
     }));
@@ -669,20 +676,20 @@ export function TeamStockOperationsPageView() {
       if (!response.ok) {
         return {
           ok: false,
-          message: data.message ?? "Falha ao validar a unidade TRAFO para retorno de campo.",
+      message: data.message ?? "Falha ao validar a unidade por serial para retorno de campo.",
         } as const;
       }
 
       const matchedUnit = (data.items ?? []).find((item) =>
         item.materialId === params.materialId
         && String(item.serialNumber ?? "").trim().toUpperCase() === String(params.serialNumber ?? "").trim().toUpperCase()
-        && String(item.lotCode ?? "").trim().toUpperCase() === String(params.lotCode ?? "").trim().toUpperCase(),
+        && String(item.lotCode ?? "").trim().toUpperCase() === String(params.lotCode || "-").trim().toUpperCase(),
       );
 
       if (matchedUnit && matchedUnit.currentStatus !== "FORA_ESTOQUE") {
         return {
           ok: false,
-          message: `Material ${params.materialCode}: a unidade TRAFO informada ja esta registrada no estoque ou vinculada a uma equipe. Utilize outra operacao em vez de Retorno de campo.`,
+          message: `Material ${params.materialCode}: a unidade por serial informada ja esta registrada no estoque ou vinculada a uma equipe. Utilize outra operacao em vez de Retorno de campo.`,
         } as const;
       }
 
@@ -700,7 +707,7 @@ export function TeamStockOperationsPageView() {
       searchParams.set("stockCenterId", sourceStockCenterId);
       searchParams.set("materialCode", params.materialCode);
       searchParams.set("serialNumber", params.serialNumber ?? "");
-      searchParams.set("lotCode", params.lotCode ?? "");
+      searchParams.set("lotCode", params.lotCode || "-");
 
       const response = await fetch(`/api/trafo-positions?${searchParams.toString()}`, {
         cache: "no-store",
@@ -713,21 +720,21 @@ export function TeamStockOperationsPageView() {
       if (!response.ok) {
         return {
           ok: false,
-          message: data.message ?? "Falha ao validar a unidade TRAFO no estoque de origem.",
+          message: data.message ?? "Falha ao validar a unidade por serial no estoque de origem.",
         } as const;
       }
 
       const matchedUnit = (data.items ?? []).find((item) =>
         item.materialId === params.materialId
         && String(item.serialNumber ?? "").trim().toUpperCase() === String(params.serialNumber ?? "").trim().toUpperCase()
-        && String(item.lotCode ?? "").trim().toUpperCase() === String(params.lotCode ?? "").trim().toUpperCase()
+        && String(item.lotCode ?? "").trim().toUpperCase() === String(params.lotCode || "-").trim().toUpperCase()
         && item.currentStockCenterId === sourceStockCenterId,
       );
 
       if (!matchedUnit) {
         return {
           ok: false,
-          message: `Material ${params.materialCode}: a unidade TRAFO informada nao esta no estoque de origem (${sourceStockCenterName}). Confira Material, Serial e LP.`,
+          message: `Material ${params.materialCode}: a unidade por serial informada nao esta no estoque de origem (${sourceStockCenterName}). Confira Material, Serial${params.lotCode ? " e LP" : ""}.`,
         } as const;
       }
 
@@ -822,12 +829,17 @@ export function TeamStockOperationsPageView() {
 
       if (item.isTransformer) {
         if (!isTransformerQuantityValid(item.quantity)) {
-          showError(`Material TRAFO ${item.materialCode} permite somente quantidade 1 por operacao.`);
+          showError(`Material ${serialTrackingLabel(item.serialTrackingType)} ${item.materialCode} permite somente quantidade 1 por operacao.`);
           return;
         }
 
-        if (!normalizeText(item.serialNumber) || !normalizeText(item.lotCode)) {
-          showError(`Serial e LP sao obrigatorios para o material TRAFO ${item.materialCode}.`);
+        if (!normalizeText(item.serialNumber)) {
+          showError(`Serial e obrigatorio para o material ${serialTrackingLabel(item.serialTrackingType)} ${item.materialCode}.`);
+          return;
+        }
+
+        if (requiresLotCode(item.serialTrackingType) && !normalizeText(item.lotCode)) {
+          showError(`LP e obrigatorio para o material TRAFO ${item.materialCode}.`);
           return;
         }
       }
@@ -837,7 +849,7 @@ export function TeamStockOperationsPageView() {
         materialCode: item.materialCode,
         quantity: item.quantity,
         serialNumber: normalizeText(item.serialNumber) || null,
-        lotCode: normalizeText(item.lotCode) || null,
+        lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
         isTransformer: item.isTransformer,
       });
       if (!sourceAvailability.ok) {
@@ -1260,15 +1272,15 @@ export function TeamStockOperationsPageView() {
           issues.push({ rowNumber, column: "material_codigo", value: materialRaw, error: "Tipo do material deve ser NOVO ou SUCATA no cadastro de materiais." });
         }
 
-        if (material?.isTransformer) {
+        if (material && isSerialTrackedMaterial(material.serialTrackingType)) {
           if (!serialRaw) {
-            issues.push({ rowNumber, column: "serial", value: serialRaw, error: "Serial e obrigatorio para material TRAFO." });
+            issues.push({ rowNumber, column: "serial", value: serialRaw, error: `Serial e obrigatorio para material ${serialTrackingLabel(material.serialTrackingType)}.` });
           }
-          if (!lotRaw) {
+          if (requiresLotCode(material.serialTrackingType) && !lotRaw) {
             issues.push({ rowNumber, column: "lp", value: lotRaw, error: "LP e obrigatorio para material TRAFO." });
           }
           if (!isTransformerQuantityValid(quantity)) {
-            issues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: "Material TRAFO permite somente quantidade 1." });
+            issues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: `Material ${serialTrackingLabel(material.serialTrackingType)} permite somente quantidade 1.` });
           }
 
         }
@@ -1282,7 +1294,7 @@ export function TeamStockOperationsPageView() {
           || quantity === null
           || !entryDate
           || !entryType
-          || (material.isTransformer && (!serialRaw || !lotRaw || !isTransformerQuantityValid(quantity)))
+          || (isSerialTrackedMaterial(material.serialTrackingType) && (!serialRaw || (requiresLotCode(material.serialTrackingType) && !lotRaw) || !isTransformerQuantityValid(quantity)))
         ) {
           return [];
         }
@@ -1300,7 +1312,7 @@ export function TeamStockOperationsPageView() {
             materialId: material.id,
             quantity,
             serialNumber: serialRaw || null,
-            lotCode: lotRaw || null,
+            lotCode: lotRaw || (isSerialTrackedMaterial(material.serialTrackingType) && !requiresLotCode(material.serialTrackingType) ? "-" : null),
           },
         ];
       });
@@ -1529,7 +1541,7 @@ export function TeamStockOperationsPageView() {
                   disabled={isSubmitting || requiresTransformerFields}
                   readOnly={requiresTransformerFields}
                 />
-                {requiresTransformerFields ? <small className={styles.fieldHint}>TRAFO opera sempre com quantidade 1.</small> : null}
+                {requiresTransformerFields ? <small className={styles.fieldHint}>Material rastreavel opera sempre com quantidade 1.</small> : null}
               </label>
 
               <label className={styles.field}>
@@ -1553,13 +1565,14 @@ export function TeamStockOperationsPageView() {
 
               <label className={styles.field}>
                 <span>
-                  LP {requiresTransformerFields ? <span className={styles.requiredMark}>*</span> : null}
+                  LP {requiresLotFields ? <span className={styles.requiredMark}>*</span> : null}
                 </span>
                 <input
                   type="text"
                   value={form.lotCode}
                   onChange={(event) => updateForm("lotCode", event.target.value)}
-                  disabled={isSubmitting || !requiresTransformerFields}
+                  disabled={isSubmitting || !requiresLotFields}
+                  placeholder={requiresLotFields ? "Informe o LP" : "Obrigatorio apenas para TRAFO"}
                 />
               </label>
 

@@ -1,10 +1,10 @@
-Tela: Rastreio de TRAFO SaaS
+Tela: Rastreio de SERIAL SaaS
 
 Visao geral
 -----------
-- Tela operacional read-only para consultar a posicao atual de cada unidade de TRAFO, mantendo uma unica linha por unidade.
-- Usa `trafo_instances` como fonte unitaria de verdade, mas a leitura principal da tela prioriza o centro fisico de referencia e nao expoe centros de equipe como posicao principal.
-- Complementa `Movimentacao de Estoque` e `Estoque Atual` com foco na identidade da unidade (`material + Serial + LP`).
+- Tela operacional read-only para consultar a posicao atual de cada material rastreado por serial, mantendo uma unica linha por unidade.
+- Usa `trafo_instances` como fonte unitaria de verdade para TRAFO, RELIGADOR e CHAVE; a leitura principal prioriza o centro fisico de referencia e nao expoe centros de equipe como posicao principal.
+- Complementa `Movimentacao de Estoque` e `Estoque Atual` com foco na identidade da unidade (`material + Serial` e, para TRAFO, tambem `LP`).
 - Permite acionar movimentacao da propria unidade, com pre-preenchimento do formulario de `/entrada`.
 - Exibe a cadeia completa de movimentacoes da unidade em modal de `Historico`, incluindo `Requisicao`, `Devolucao` e `Retorno de campo`.
 
@@ -38,6 +38,7 @@ Filtros, auto-complete e listagem
   - `Centro fisico`
   - `Situacao` (`Todos`, `Em estoque proprio`, `Com equipe`, `Fora do estoque proprio`)
   - `Material (codigo)`
+  - `Rastreio`
   - `Serial`
   - `LP`
 - Listagem:
@@ -54,8 +55,8 @@ Filtros, auto-complete e listagem
   - `Atualizado em`
   - `Acoes`
 - Regras de exibicao:
-  - A consulta traz somente materiais com `materials.is_transformer = true`.
-  - A linha principal continua unica por `material + Serial + LP`.
+  - A consulta traz somente materiais com `materials.serial_tracking_type <> NONE`.
+  - A linha principal continua unica por `material + Serial + LP`; para RELIGADOR/CHAVE o backend usa `LP = '-'` como valor tecnico.
   - `Situacao` deriva do estado atual da unidade:
     - `Em estoque proprio`: unidade em centro fisico `OWN`.
     - `Com equipe`: unidade atualmente entregue para equipe, mantendo o centro fisico de referencia na lista.
@@ -68,8 +69,8 @@ Filtros, auto-complete e listagem
 - Acoes:
   - `Detalhes`
   - `Historico`
-  - `Movimentar este TRAFO`
-- A acao `Movimentar este TRAFO`:
+  - `Movimentar esta unidade`
+- A acao `Movimentar esta unidade`:
   - fica habilitada apenas quando a unidade estiver efetivamente em centro fisico `OWN`;
   - redireciona para `/entrada`;
   - pre-preenche o modo dedicado de movimentacao da unidade com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1`;
@@ -84,7 +85,7 @@ Boas praticas
 - Consultar a posicao unitaria somente via `trafo_instances`.
 - Nao duplicar linhas da grade para representar entregas por equipe; essa cadeia deve ficar no `Historico`.
 - Usar `/entrada` apenas como tela de acao; a fonte da posicao atual continua sendo `trafo_instances`.
-- Bloquear a acao `Movimentar este TRAFO` quando a unidade estiver `Com equipe` ou `Fora do estoque proprio`.
+- Bloquear a acao `Movimentar esta unidade` quando a unidade estiver `Com equipe` ou `Fora do estoque proprio`.
 - Erros da tela devem ser registrados com tag `posicao_trafo` via `useErrorLogger`.
 
 Cancelamento e saldo
@@ -92,7 +93,7 @@ Cancelamento e saldo
 - A tela nao grava saldo diretamente.
 - A transferencia acionada pela tela continua sendo concluida na RPC `save_stock_transfer_record`.
 - `stock_center_balances` continua como saldo agregado por `centro + material`.
-- `trafo_instances` continua como rastreio unitario da unidade de TRAFO.
+- `trafo_instances` continua como rastreio unitario da unidade serializada.
 - O backend da tela passa a reinterpretar `Requisicao` para equipe como status `Com equipe`, sem trocar a leitura principal para o centro de equipe.
 
 Atalhos
@@ -137,6 +138,11 @@ Atualizacao 2026-04
 - `Requisicao` e `Devolucao` deixaram de aparecer como troca de centro principal e passaram para o `Historico` da unidade.
 - `Retorno de campo` tambem passa a aparecer apenas no historico da unidade, mantendo o centro fisico como leitura principal quando a unidade reentra no estoque.
   - A tela passou a mostrar `Com equipe` como situacao propria e a bloquear o atalho de movimentacao enquanto a unidade nao estiver em estoque fisico.
+- Atualizacao 2026-05:
+  - A tela foi renomeada visualmente de `Rastreio de TRAFO` para `Rastreio de SERIAL`.
+  - A consulta passou de `materials.is_transformer = true` para `materials.serial_tracking_type <> NONE`.
+  - RELIGADOR e CHAVE entram na mesma tela, exigindo Serial e usando `LP = '-'` tecnicamente.
+  - O pre-preenchimento de `/entrada` passou a usar `prefillMode=serial-transfer`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -144,7 +150,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
   - Responsavel por: carregar metadados, aplicar filtros, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade e redirecionar para movimentacao pre-preenchida quando elegivel.
 - Caminho: `src/app/api/trafo-positions/route.ts`
-  - Responsavel por: listar a posicao unitaria de TRAFO por tenant a partir de `trafo_instances`, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal e expor o historico por unidade.
+  - Responsavel por: listar a posicao unitaria de materiais rastreados por serial por tenant a partir de `trafo_instances`, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal e expor o historico por unidade.
 - Caminho: `src/app/api/trafo-positions/meta/route.ts`
   - Responsavel por: listar centros ativos `OWN` fisicos para os filtros da tela, excluindo centros vinculados a equipes.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
@@ -181,8 +187,10 @@ Ajuda contextual
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `src/lib/materialSerialTracking.ts`
   - `src/components/ui/ActionIcon.tsx`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
+  - `supabase/migrations/172_generalize_serial_tracked_materials.sql`
   - `docs/Tela_Posicao_Trafo_SaaS.txt`
 - Funcoes/hooks/constantes tocadas:
   - `TrafoPositionPageView`

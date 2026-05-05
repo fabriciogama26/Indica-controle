@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
   normalizeDateInput,
@@ -26,6 +27,7 @@ type MaterialRow = {
   codigo: string;
   descricao: string;
   is_transformer?: boolean | null;
+  serial_tracking_type?: string | null;
 };
 
 type TransferHeaderRow = {
@@ -412,7 +414,7 @@ async function loadTeamOperationList(request: NextRequest) {
     materialIds.length
       ? supabase
           .from("materials")
-          .select("id, codigo, descricao, is_transformer")
+          .select("id, codigo, descricao, is_transformer, serial_tracking_type")
           .eq("tenant_id", appUser.tenant_id)
           .in("id", materialIds)
           .returns<MaterialRow[]>()
@@ -521,7 +523,8 @@ async function loadTeamOperationList(request: NextRequest) {
         materialId: item.material_id,
         materialCode: material?.codigo ?? "-",
         description: material?.descricao ?? "-",
-        isTransformer: Boolean(material?.is_transformer),
+        isTransformer: isSerialTrackedMaterial(normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE"))),
+        serialTrackingType: normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE")),
         quantity: Number(item.quantity ?? 0),
         serialNumber: item.serial_number,
         lotCode: item.lot_code,

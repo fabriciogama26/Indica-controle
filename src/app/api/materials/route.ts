@@ -7,6 +7,7 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
+import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 
 type MaterialRow = {
   id: string;
@@ -15,6 +16,7 @@ type MaterialRow = {
   umb: string | null;
   tipo: string;
   is_transformer: boolean;
+  serial_tracking_type: SerialTrackingType | null;
   unit_price: number;
   is_active: boolean;
   cancellation_reason: string | null;
@@ -45,6 +47,7 @@ type CreateMaterialPayload = {
   tipo: string;
   unitPrice?: string | number | null;
   isTransformer?: boolean;
+  serialTrackingType?: SerialTrackingType | string | null;
 };
 
 type UpdateMaterialPayload = CreateMaterialPayload & {
@@ -79,6 +82,7 @@ type MaterialInput = {
   tipo: string;
   unitPrice: number;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
 };
 
 type MaterialCodePrecheckResult = {
@@ -153,7 +157,12 @@ function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialIn
     umb: normalizeNullableText(payload.umb),
     tipo: normalizeMaterialType(payload.tipo),
     unitPrice: normalizePrice(payload.unitPrice),
-    isTransformer: normalizeBoolean(payload.isTransformer),
+    serialTrackingType: normalizeSerialTrackingType(
+      payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
+    ),
+    isTransformer: normalizeSerialTrackingType(
+      payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
+    ) === "TRAFO",
   };
 }
 
@@ -257,7 +266,7 @@ async function fetchMaterialById(
   const { data, error } = await supabase
     .from("materials")
     .select(
-      "id, codigo, descricao, umb, tipo, is_transformer, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", materialId)
@@ -323,6 +332,7 @@ async function saveMaterialViaRpc(params: {
   tipo: string;
   unitPrice: number;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
@@ -336,6 +346,7 @@ async function saveMaterialViaRpc(params: {
     p_tipo: params.tipo,
     p_is_transformer: params.isTransformer,
     p_unit_price: params.unitPrice,
+    p_serial_tracking_type: params.serialTrackingType,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
@@ -484,7 +495,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("materials")
       .select(
-        "id, codigo, descricao, umb, tipo, is_transformer, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id)
@@ -585,6 +596,7 @@ export async function GET(request: NextRequest) {
         umb: normalizeNullableText(item.umb) ?? umbFallbackByMaterialId.get(item.id) ?? null,
         tipo: item.tipo,
         isTransformer: Boolean(item.is_transformer),
+        serialTrackingType: normalizeSerialTrackingType(item.serial_tracking_type ?? (item.is_transformer ? "TRAFO" : "NONE")),
         unitPrice: item.unit_price,
         isActive: item.is_active,
         cancellationReason: item.cancellation_reason,
@@ -643,6 +655,7 @@ export async function POST(request: NextRequest) {
       umb: input.umb,
       tipo: input.tipo,
       isTransformer: input.isTransformer,
+      serialTrackingType: input.serialTrackingType,
       unitPrice,
     });
 
@@ -719,6 +732,12 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "umb", currentMaterial.umb, input.umb);
     addChange(changes, "tipo", currentMaterial.tipo, input.tipo);
     addChange(changes, "isTransformer", currentMaterial.is_transformer, input.isTransformer);
+    addChange(
+      changes,
+      "serialTrackingType",
+      normalizeSerialTrackingType(currentMaterial.serial_tracking_type ?? (currentMaterial.is_transformer ? "TRAFO" : "NONE")),
+      input.serialTrackingType,
+    );
     addChange(changes, "unitPrice", currentMaterial.unit_price, unitPrice);
 
     if (Object.keys(changes).length === 0) {
@@ -735,6 +754,7 @@ export async function PUT(request: NextRequest) {
       umb: input.umb,
       tipo: input.tipo,
       isTransformer: input.isTransformer,
+      serialTrackingType: input.serialTrackingType,
       unitPrice,
       changes,
       expectedUpdatedAt,

@@ -1,3 +1,5 @@
+import type { SerialTrackingType } from "@/lib/materialSerialTracking";
+
 export type StockCenterOption = {
   id: string;
   name: string;
@@ -17,6 +19,7 @@ export type TrafoPositionListItem = {
   materialCode: string;
   description: string;
   materialType: string;
+  serialTrackingType: SerialTrackingType;
   serialNumber: string;
   lotCode: string;
   currentStockCenterId: string | null;
