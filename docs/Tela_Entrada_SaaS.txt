@@ -257,6 +257,7 @@ Atualizacao 2026-05
 - A lista de movimentacoes e o pre-preenchimento passam a usar `prefillMode=serial-transfer`, mantendo compatibilidade com `transformer-transfer`.
 - API/listagem/importacao passam a carregar `materials.serial_tracking_type` e o helper `materialSerialTracking`.
 - Migration `172_generalize_serial_tracked_materials.sql` adiciona gatilhos para manter `trafo_instances` atualizado tambem para RELIGADOR e CHAVE.
+- O modelo CSV do cadastro em massa passa a trazer exemplos de material comum decimal, RELIGADOR com Serial e TRAFO com Serial + LP.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

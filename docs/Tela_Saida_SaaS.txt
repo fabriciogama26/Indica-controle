@@ -206,6 +206,7 @@ Atualizacao 2026-05
 - `Retorno de campo` reconhece unidades RELIGADOR/CHAVE novas ou fora do estoque proprio e grava a posicao em `trafo_instances`.
 - API/listagem/importacao passam a carregar `materials.serial_tracking_type` e o helper `materialSerialTracking`.
 - Migration `172_generalize_serial_tracked_materials.sql` generaliza o rastreio unitario para materiais serializados.
+- O modelo CSV do cadastro em massa passa a trazer exemplos de material comum decimal, RELIGADOR com Serial, TRAFO com Serial + LP e CHAVE no retorno de campo.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
