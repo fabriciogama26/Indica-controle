@@ -4,7 +4,7 @@ Visao geral
 -----------
 - Tela read-only no padrao `filtros + lista`.
 - Consulta o saldo fisico atual por `Centro de estoque + Material`.
-- O saldo ja vem calculado no backend e a tela apenas exibe o valor.
+- O saldo ja vem calculado no backend e a tela apenas exibe o valor, preservando casas decimais quando houver movimentacao fracionada.
 - `Ultima movimentacao` mostra a ultima alteracao operacional conhecida daquele `material` naquele `centro`; quando a linha ainda existe em `stock_center_balances`, usa o `updated_at` do saldo, e quando o saldo fisico zera e a linha nao existe mais, a API recompõe a visibilidade a partir do historico de `stock_transfers`.
 - A tela trabalha somente com centros `OWN` fisicos/principais, sem recalculo no frontend.
 - Centros vinculados a equipes nao aparecem na lista nem no filtro principal do `Estoque Atual`.
@@ -33,8 +33,8 @@ Filtros, auto-complete e listagem
   - `Centro de estoque` (somente centros `OWN` fisicos/principais)
   - `Material (codigo)`
   - `Descricao`
-  - `Saldo minimo`
-  - `Saldo maximo`
+  - `Saldo minimo` (aceita virgula ou ponto)
+  - `Saldo maximo` (aceita virgula ou ponto)
   - `Exibir saldo zero`
 - Listagem:
   - `Centro`
@@ -46,7 +46,7 @@ Filtros, auto-complete e listagem
   - `Ultima movimentacao`
   - `Acoes`
 - Regras de exibicao:
-  - `Saldo` exibido como numero inteiro.
+  - `Saldo` exibido como numero decimal em pt-BR, com ate 3 casas decimais.
   - `Exibir saldo zero` inicia em `Sim`, para manter o saldo fisico visivel mesmo apos requisicoes para equipe.
   - Materiais que ja passaram pelo centro fisico continuam aparecendo com saldo `0`, mesmo quando o saldo atual nao possui mais linha persistida em `stock_center_balances`.
   - `Ultima movimentacao` usa o timestamp mais recente entre o saldo atual e o historico de `stock_transfers` do centro fisico.
@@ -121,6 +121,10 @@ Atualizacao 2026-04
   - O historico passou a priorizar rotulo funcional do evento em vez de usar o `transferId` como titulo principal.
   - O historico recebeu chips de operacao/status e destaque visual para `Estorno` e `Estornada`.
   - A arquitetura de TRAFO passou a manter a posicao unitaria atual em `trafo_instances`, e a consulta unitaria agora fica na tela dedicada `/posicao-trafo` sem mudar a listagem agregada atual.
+- Atualizacao 2026-05:
+  - O `Saldo` deixou de ser arredondado no `GET /api/stock-balance`.
+  - Filtros `Saldo minimo` e `Saldo maximo` passam a aceitar decimal com virgula ou ponto (`1,5` ou `1.5`).
+  - Lista, card `Saldo total da pagina`, modal de detalhes, historico e CSV passam a exibir valores decimais em formato pt-BR.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -142,7 +146,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/estoque/utils.ts`
-  - Responsavel por: montar query string, formatar datas/inteiros e exportar CSV.
+  - Responsavel por: montar query string, formatar datas, inteiros, decimais e exportar CSV.
 - Caminho: `src/hooks/useErrorLogger.ts`
   - Responsavel por: registrar falhas do modulo em `log_error`.
 
@@ -167,6 +171,8 @@ Ajuda contextual
   - `buildCurrentStockQuery`
   - `formatDateTime`
   - `formatInteger`
+  - `formatDecimal`
+  - `formatSignedDecimal`
   - `movementTypeLabel`
   - `currentStockHistoryTitle`
 - `currentStockStatusLabel`
@@ -182,3 +188,4 @@ Ajuda contextual
   - Depois: o modal usa titulo funcional, operacao traduzida e chips/status para facilitar leitura operacional.
   - Antes: material zerado podia desaparecer da lista principal quando a linha do saldo nao estivesse mais persistida.
   - Depois: o material continua visivel no centro fisico com saldo `0`, preservando a consulta do historico pelo proprio `Estoque Atual`.
+  - Atualizacao (2026-05): antes o saldo era arredondado para inteiro; depois preserva e exibe decimal com virgula/ponto conforme entrada/filtro.

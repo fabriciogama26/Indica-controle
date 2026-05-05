@@ -21,9 +21,10 @@ import {
   buildCurrentStockQuery,
   csvEscape,
   downloadCsvFile,
+  formatDecimal,
   formatDateTime,
   formatInteger,
-  formatSignedInteger,
+  formatSignedDecimal,
   toIsoDate,
 } from "./utils";
 import styles from "./CurrentStockPageView.module.css";
@@ -420,7 +421,7 @@ export function CurrentStockPageView() {
           csvEscape(item.description),
           csvEscape(item.unit),
           csvEscape(item.materialType),
-          csvEscape(item.balanceQuantity),
+          csvEscape(formatDecimal(item.balanceQuantity)),
           csvEscape(formatDateTime(item.lastMovementAt)),
         ].join(";")),
       ];
@@ -489,24 +490,24 @@ export function CurrentStockPageView() {
           <label className={styles.field}>
             <span>Saldo minimo</span>
             <input
-              type="number"
-              min="0"
-              step="1"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]+([,.][0-9]{1,3})?"
               value={filterDraft.qtyMin}
               onChange={(event) => updateFilterDraft("qtyMin", event.target.value)}
-              placeholder="0"
+              placeholder="0 ou 1,5"
             />
           </label>
 
           <label className={styles.field}>
             <span>Saldo maximo</span>
             <input
-              type="number"
-              min="0"
-              step="1"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]+([,.][0-9]{1,3})?"
               value={filterDraft.qtyMax}
               onChange={(event) => updateFilterDraft("qtyMax", event.target.value)}
-              placeholder="9999"
+              placeholder="9999 ou 10,5"
             />
           </label>
 
@@ -565,7 +566,7 @@ export function CurrentStockPageView() {
 
           <div className={styles.statCard}>
             <span className={styles.statLabel}>Saldo total da pagina</span>
-            <strong className={styles.statValue}>{formatInteger(pageBalanceTotal)}</strong>
+            <strong className={styles.statValue}>{formatDecimal(pageBalanceTotal)}</strong>
           </div>
         </div>
 
@@ -591,7 +592,7 @@ export function CurrentStockPageView() {
                   <td>{item.description}</td>
                   <td>{item.unit || "-"}</td>
                   <td>{item.materialType || "-"}</td>
-                  <td className={styles.quantityCell}>{formatInteger(item.balanceQuantity)}</td>
+                  <td className={styles.quantityCell}>{formatDecimal(item.balanceQuantity)}</td>
                   <td>{formatDateTime(item.lastMovementAt)}</td>
                   <td className={styles.actionsCell}>
                     <div className={styles.tableActions}>
@@ -675,7 +676,7 @@ export function CurrentStockPageView() {
                 <div><strong>Descricao:</strong> {detailItem.description}</div>
                 <div><strong>UMB:</strong> {detailItem.unit || "-"}</div>
                 <div><strong>Tipo:</strong> {detailItem.materialType || "-"}</div>
-                <div><strong>Saldo atual:</strong> {formatInteger(detailItem.balanceQuantity)}</div>
+                <div><strong>Saldo atual:</strong> {formatDecimal(detailItem.balanceQuantity)}</div>
                 <div><strong>Ultima movimentacao:</strong> {formatDateTime(detailItem.lastMovementAt)}</div>
                 <div><strong>Chave tecnica:</strong> {detailItem.stockCenterId} | {detailItem.materialId}</div>
               </div>
@@ -789,7 +790,7 @@ export function CurrentStockPageView() {
                     <div>
                       <strong>Saldo aplicado:</strong>{" "}
                       <span className={entry.signedQuantity >= 0 ? styles.historySignedPositive : styles.historySignedNegative}>
-                        {formatSignedInteger(entry.signedQuantity)}
+                        {formatSignedDecimal(entry.signedQuantity)}
                       </span>
                     </div>
                     <div><strong>Operacao:</strong> {movementTypeLabel(entry.operationKind ?? entry.movementType)}</div>
@@ -799,7 +800,7 @@ export function CurrentStockPageView() {
                     <div><strong>Centro DE:</strong> {entry.fromStockCenterName}</div>
                     <div><strong>Centro PARA:</strong> {entry.toStockCenterName}</div>
                     <div><strong>Data da movimentacao:</strong> {formatDateTime(`${entry.entryDate}T00:00:00`)}</div>
-                    <div><strong>Quantidade original:</strong> {formatInteger(entry.quantity)}</div>
+                    <div><strong>Quantidade original:</strong> {formatDecimal(entry.quantity)}</div>
                     <div><strong>Serial:</strong> {entry.serialNumber || "-"}</div>
                     <div><strong>LP:</strong> {entry.lotCode || "-"}</div>
                     <div><strong>Status:</strong> {currentStockStatusLabel(entry)}</div>
