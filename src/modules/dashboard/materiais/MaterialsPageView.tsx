@@ -6,6 +6,7 @@ import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./MaterialsPageView.module.css";
 
 type MaterialItem = {
@@ -15,6 +16,7 @@ type MaterialItem = {
   umb: string | null;
   tipo: string;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
   unitPrice: number;
   isActive: boolean;
   cancellationReason: string | null;
@@ -39,6 +41,7 @@ type FormState = {
   descricao: string;
   tipo: string;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
   umb: string;
   unitPrice: string;
   updatedAt: string;
@@ -71,6 +74,7 @@ const INITIAL_FORM: FormState = {
   descricao: "",
   tipo: "",
   isTransformer: false,
+  serialTrackingType: "NONE",
   umb: "",
   unitPrice: "",
   updatedAt: "",
@@ -88,6 +92,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   descricao: "Descricao",
   tipo: "Tipo",
   isTransformer: "Trafo",
+  serialTrackingType: "Rastreio por serial",
   umb: "UMB",
   unitPrice: "Preco",
   isActive: "Status",
@@ -141,7 +146,7 @@ function buildMaterialsCsv(materialItems: MaterialItem[]) {
     "Codigo",
     "Descricao",
     "Tipo",
-    "Trafo",
+    "Rastreio por serial",
     "UMB",
     "Preco",
     "Status",
@@ -154,7 +159,7 @@ function buildMaterialsCsv(materialItems: MaterialItem[]) {
     material.codigo,
     material.descricao,
     material.tipo,
-    material.isTransformer ? "Sim" : "Nao",
+    serialTrackingLabel(material.serialTrackingType),
     material.umb ?? "",
     material.unitPrice.toFixed(2),
     material.isActive ? "Ativo" : "Inativo",
@@ -219,6 +224,10 @@ function formatHistoryValue(field: string, value: string | null) {
     return value === "true" ? "Sim" : "Nao";
   }
 
+  if (field === "serialTrackingType") {
+    return serialTrackingLabel(value);
+  }
+
   if (field === "canceledAt") {
     return formatDateTime(value);
   }
@@ -232,6 +241,7 @@ function toFormState(material: MaterialItem): FormState {
     descricao: material.descricao,
     tipo: material.tipo,
     isTransformer: Boolean(material.isTransformer),
+    serialTrackingType: material.serialTrackingType,
     umb: formatOptionalText(material.umb, ""),
     unitPrice: String(material.unitPrice ?? 0),
     updatedAt: material.updatedAt,
@@ -330,6 +340,17 @@ export function MaterialsPageView() {
 
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateSerialTrackingType(value: SerialTrackingType, checked: boolean) {
+    setForm((current) => {
+      const nextType = checked ? value : "NONE";
+      return {
+        ...current,
+        serialTrackingType: nextType,
+        isTransformer: nextType === "TRAFO",
+      };
+    });
   }
 
   function updateFilterField<Key extends keyof FilterState>(field: Key, value: FilterState[Key]) {
@@ -443,7 +464,8 @@ export function MaterialsPageView() {
         codigo: normalizeCode(form.codigo),
         descricao: normalizeText(form.descricao),
         tipo: normalizeMaterialType(form.tipo),
-        isTransformer: Boolean(form.isTransformer),
+        isTransformer: form.serialTrackingType === "TRAFO",
+        serialTrackingType: form.serialTrackingType,
         umb: normalizeText(form.umb) || null,
         unitPrice: normalizeText(form.unitPrice),
         ...(isEditing ? { expectedUpdatedAt: form.updatedAt } : {}),
@@ -718,10 +740,28 @@ export function MaterialsPageView() {
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
-              checked={form.isTransformer}
-              onChange={(event) => updateFormField("isTransformer", event.target.checked)}
+              checked={form.serialTrackingType === "TRAFO"}
+              onChange={(event) => updateSerialTrackingType("TRAFO", event.target.checked)}
             />
             Material TRAFO (exige Serial e LP na movimentacao)
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.serialTrackingType === "RELIGADOR"}
+              onChange={(event) => updateSerialTrackingType("RELIGADOR", event.target.checked)}
+            />
+            Material RELIGADOR (exige Serial na movimentacao)
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.serialTrackingType === "CHAVE"}
+              onChange={(event) => updateSerialTrackingType("CHAVE", event.target.checked)}
+            />
+            Material CHAVES (exige Serial na movimentacao)
           </label>
 
           <label className={styles.field}>
@@ -823,7 +863,7 @@ export function MaterialsPageView() {
                 <th>Codigo</th>
                 <th>Descricao</th>
                 <th>Tipo</th>
-                <th>Trafo</th>
+                <th>Rastreio</th>
                 <th>UMB</th>
                 <th>Preco</th>
                 <th>Registrado por</th>
@@ -843,7 +883,7 @@ export function MaterialsPageView() {
                       </td>
                       <td>{material.descricao}</td>
                       <td>{material.tipo}</td>
-                      <td>{material.isTransformer ? "Sim" : "Nao"}</td>
+                      <td>{serialTrackingLabel(material.serialTrackingType)}</td>
                       <td>{formatOptionalText(material.umb)}</td>
                       <td>{formatCurrency(material.unitPrice)}</td>
                       <td>{material.createdByName}</td>

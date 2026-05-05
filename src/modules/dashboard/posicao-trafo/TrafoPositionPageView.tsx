@@ -7,6 +7,7 @@ import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { EXPORT_COOLDOWN_MS, EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
 import type {
   StockCenterOption,
@@ -131,10 +132,10 @@ export function TrafoPositionPageView() {
         const data = (await response.json().catch(() => ({}))) as TrafoPositionMetaResponse;
         if (!response.ok) {
           if (isMounted) {
-            setFeedback({ type: "error", message: data.message ?? "Falha ao carregar os centros da posicao de TRAFO." });
+            setFeedback({ type: "error", message: data.message ?? "Falha ao carregar os centros do rastreio de serial." });
           }
 
-          await logError("Falha ao carregar metadados da posicao de TRAFO.", undefined, {
+          await logError("Falha ao carregar metadados do rastreio de serial.", undefined, {
             responseStatus: response.status,
             responseMessage: data.message ?? null,
           });
@@ -147,10 +148,10 @@ export function TrafoPositionPageView() {
         }
       } catch (error) {
         if (isMounted) {
-          setFeedback({ type: "error", message: "Falha ao carregar os centros da posicao de TRAFO." });
+          setFeedback({ type: "error", message: "Falha ao carregar os centros do rastreio de serial." });
         }
 
-        await logError("Falha ao carregar metadados da posicao de TRAFO.", error);
+        await logError("Falha ao carregar metadados do rastreio de serial.", error);
       } finally {
         if (isMounted) {
           setIsLoadingMeta(false);
@@ -186,10 +187,10 @@ export function TrafoPositionPageView() {
           if (isMounted) {
             setItems([]);
             setTotal(0);
-            setFeedback({ type: "error", message: data.message ?? "Falha ao carregar a posicao de TRAFO." });
+            setFeedback({ type: "error", message: data.message ?? "Falha ao carregar o rastreio de serial." });
           }
 
-          await logError("Falha ao carregar a lista de posicao de TRAFO.", undefined, {
+          await logError("Falha ao carregar a lista de rastreio de serial.", undefined, {
             responseStatus: response.status,
             responseMessage: data.message ?? null,
             filters,
@@ -207,10 +208,10 @@ export function TrafoPositionPageView() {
         if (isMounted) {
           setItems([]);
           setTotal(0);
-          setFeedback({ type: "error", message: "Falha ao carregar a posicao de TRAFO." });
+          setFeedback({ type: "error", message: "Falha ao carregar o rastreio de serial." });
         }
 
-        await logError("Falha ao carregar a lista de posicao de TRAFO.", error, { filters, page });
+        await logError("Falha ao carregar a lista de rastreio de serial.", error, { filters, page });
       } finally {
         if (isMounted) {
           setIsLoadingList(false);
@@ -259,7 +260,7 @@ export function TrafoPositionPageView() {
 
   async function loadHistory(targetItem: TrafoPositionListItem, targetPage: number) {
     if (!accessToken) {
-      setFeedback({ type: "error", message: "Sessao invalida para carregar o historico do TRAFO." });
+      setFeedback({ type: "error", message: "Sessao invalida para carregar o historico da unidade." });
       return;
     }
 
@@ -278,11 +279,11 @@ export function TrafoPositionPageView() {
 
       const data = (await response.json().catch(() => ({}))) as TrafoPositionHistoryResponse;
       if (!response.ok) {
-        setFeedback({ type: "error", message: data.message ?? "Falha ao carregar o historico do TRAFO." });
+        setFeedback({ type: "error", message: data.message ?? "Falha ao carregar o historico da unidade." });
         setHistoryEntries([]);
         setHistoryTotal(0);
 
-        await logError("Falha ao carregar o historico da posicao de TRAFO.", undefined, {
+        await logError("Falha ao carregar o historico do rastreio de serial.", undefined, {
           responseStatus: response.status,
           responseMessage: data.message ?? null,
           trafoInstanceId: targetItem.id,
@@ -295,11 +296,11 @@ export function TrafoPositionPageView() {
       setHistoryPage(data.pagination?.page ?? targetPage);
       setHistoryTotal(data.pagination?.total ?? 0);
     } catch (error) {
-      setFeedback({ type: "error", message: "Falha ao carregar o historico do TRAFO." });
+      setFeedback({ type: "error", message: "Falha ao carregar o historico da unidade." });
       setHistoryEntries([]);
       setHistoryTotal(0);
 
-      await logError("Falha ao carregar o historico da posicao de TRAFO.", error, {
+      await logError("Falha ao carregar o historico do rastreio de serial.", error, {
         trafoInstanceId: targetItem.id,
         page: targetPage,
       });
@@ -322,7 +323,7 @@ export function TrafoPositionPageView() {
     }
 
     const params = new URLSearchParams();
-    params.set("prefillMode", "transformer-transfer");
+    params.set("prefillMode", "serial-transfer");
     params.set("fromStockCenterId", item.currentStockCenterId);
     params.set("materialId", item.materialId);
     params.set("materialCode", item.materialCode);
@@ -334,7 +335,7 @@ export function TrafoPositionPageView() {
 
   async function handleExportCsv() {
     if (!accessToken) {
-      setFeedback({ type: "error", message: "Sessao invalida para exportar a posicao de TRAFO." });
+      setFeedback({ type: "error", message: "Sessao invalida para exportar o rastreio de serial." });
       return;
     }
 
@@ -358,9 +359,9 @@ export function TrafoPositionPageView() {
 
         const data = (await response.json().catch(() => ({}))) as TrafoPositionListResponse;
         if (!response.ok) {
-          setFeedback({ type: "error", message: data.message ?? "Falha ao exportar a posicao de TRAFO." });
+          setFeedback({ type: "error", message: data.message ?? "Falha ao exportar o rastreio de serial." });
 
-          await logError("Falha ao exportar a posicao de TRAFO.", undefined, {
+          await logError("Falha ao exportar o rastreio de serial.", undefined, {
             responseStatus: response.status,
             responseMessage: data.message ?? null,
             filters,
@@ -386,7 +387,7 @@ export function TrafoPositionPageView() {
       }
 
       const lines = [
-        "centro_fisico;situacao;equipe_atual;encarregado_atual;projeto_ultimo;material_codigo;descricao;serial;lp;ultima_operacao;data_ultima_movimentacao;atualizado_em;ultima_transferencia",
+        "centro_fisico;situacao;equipe_atual;encarregado_atual;projeto_ultimo;material_codigo;descricao;rastreio;serial;lp;ultima_operacao;data_ultima_movimentacao;atualizado_em;ultima_transferencia",
         ...exportedItems.map((item) => [
           csvEscape(item.currentStockCenterName ?? "-"),
           csvEscape(currentStatusLabel(item.currentStatus)),
@@ -395,6 +396,7 @@ export function TrafoPositionPageView() {
           csvEscape(item.lastProjectCode ?? "-"),
           csvEscape(item.materialCode),
           csvEscape(item.description),
+          csvEscape(serialTrackingLabel(item.serialTrackingType)),
           csvEscape(item.serialNumber),
           csvEscape(item.lotCode),
           csvEscape(movementTypeLabel(item.lastOperationKind)),
@@ -404,14 +406,14 @@ export function TrafoPositionPageView() {
         ].join(";")),
       ];
 
-      downloadCsvFile(`\uFEFF${lines.join("\n")}\n`, `posicao_unitaria_trafo_${toIsoDate(new Date())}.csv`);
+      downloadCsvFile(`\uFEFF${lines.join("\n")}\n`, `rastreio_serial_${toIsoDate(new Date())}.csv`);
 
-      setFeedback({ type: "success", message: "Exportacao da posicao de TRAFO concluida." });
+      setFeedback({ type: "success", message: "Exportacao do rastreio de serial concluida." });
       setIsExportCooldownActive(true);
       window.setTimeout(() => setIsExportCooldownActive(false), EXPORT_COOLDOWN_MS);
     } catch (error) {
-      setFeedback({ type: "error", message: "Falha ao exportar a posicao de TRAFO." });
-      await logError("Falha ao exportar a posicao de TRAFO.", error, { filters });
+      setFeedback({ type: "error", message: "Falha ao exportar o rastreio de serial." });
+      await logError("Falha ao exportar o rastreio de serial.", error, { filters });
     } finally {
       setIsExporting(false);
     }
@@ -502,7 +504,7 @@ export function TrafoPositionPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <div>
-            <h3 className={styles.cardTitle}>Rastreio de TRAFO</h3>
+            <h3 className={styles.cardTitle}>Rastreio de SERIAL</h3>
             <p className={styles.tableHint}>
               A lista mantem uma linha por unidade e mostra o centro fisico de referencia. Requisicoes e devolucoes por equipe aparecem no historico da unidade, sem trocar a leitura principal para centro de equipe.
             </p>
@@ -547,6 +549,7 @@ export function TrafoPositionPageView() {
                 <th>Projeto ultimo</th>
                 <th>Material (codigo)</th>
                 <th>Descricao</th>
+                <th>Rastreio</th>
                 <th>Serial</th>
                 <th>LP</th>
                 <th>Ultima operacao</th>
@@ -568,6 +571,7 @@ export function TrafoPositionPageView() {
                   <td>{item.lastProjectCode ?? "-"}</td>
                   <td>{item.materialCode}</td>
                   <td className={styles.descriptionCell}>{item.description}</td>
+                  <td>{serialTrackingLabel(item.serialTrackingType)}</td>
                   <td>{item.serialNumber}</td>
                   <td>{item.lotCode}</td>
                   <td>
@@ -584,7 +588,7 @@ export function TrafoPositionPageView() {
                         className={`${styles.actionButton} ${styles.actionView}`}
                         onClick={() => setDetailItem(item)}
                         title="Detalhes"
-                        aria-label={`Detalhes da posicao do TRAFO ${item.materialCode} serial ${item.serialNumber}`}
+                        aria-label={`Detalhes da unidade ${item.materialCode} serial ${item.serialNumber}`}
                       >
                         <ActionIcon name="details" />
                       </button>
@@ -593,7 +597,7 @@ export function TrafoPositionPageView() {
                         className={`${styles.actionButton} ${styles.actionHistory}`}
                         onClick={() => void openHistoryModal(item)}
                         title="Historico"
-                        aria-label={`Historico do TRAFO ${item.materialCode} serial ${item.serialNumber}`}
+                        aria-label={`Historico da unidade ${item.materialCode} serial ${item.serialNumber}`}
                       >
                         <ActionIcon name="history" />
                       </button>
@@ -601,8 +605,8 @@ export function TrafoPositionPageView() {
                         type="button"
                         className={`${styles.actionButton} ${styles.actionTransfer}`}
                         onClick={() => openTransferPrefill(item)}
-                        title={item.canMove ? "Movimentar este TRAFO" : "TRAFO indisponivel para movimentacao a partir do estoque proprio"}
-                        aria-label={`Movimentar o TRAFO ${item.materialCode} serial ${item.serialNumber}`}
+                        title={item.canMove ? "Movimentar esta unidade" : "Unidade indisponivel para movimentacao a partir do estoque proprio"}
+                        aria-label={`Movimentar a unidade ${item.materialCode} serial ${item.serialNumber}`}
                         disabled={!item.canMove}
                       >
                         <ActionIcon name="transfer" />
@@ -612,8 +616,8 @@ export function TrafoPositionPageView() {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={12} className={styles.emptyRow}>
-                    {isLoadingList ? "Carregando posicao de TRAFO..." : "Nenhuma unidade encontrada para os filtros aplicados."}
+                  <td colSpan={13} className={styles.emptyRow}>
+                    {isLoadingList ? "Carregando rastreio de serial..." : "Nenhuma unidade encontrada para os filtros aplicados."}
                   </td>
                 </tr>
               )}
@@ -672,6 +676,7 @@ export function TrafoPositionPageView() {
                 <div><strong>Material:</strong> {detailItem.materialCode}</div>
                 <div className={styles.detailWide}><strong>Descricao:</strong> {detailItem.description}</div>
                 <div><strong>Tipo:</strong> {detailItem.materialType || "-"}</div>
+                <div><strong>Rastreio:</strong> {serialTrackingLabel(detailItem.serialTrackingType)}</div>
                 <div><strong>Serial:</strong> {detailItem.serialNumber}</div>
                 <div><strong>LP:</strong> {detailItem.lotCode}</div>
                 <div><strong>Ultima operacao:</strong> <span className={detailMovementChipClass}>{movementTypeLabel(detailItem.lastOperationKind)}</span></div>
@@ -691,7 +696,7 @@ export function TrafoPositionPageView() {
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Historico da Unidade TRAFO</h4>
+                <h4>Historico da Unidade</h4>
                 <p className={styles.modalSubtitle}>
                   {historyItem.materialCode} | Serial {historyItem.serialNumber} | LP {historyItem.lotCode}
                 </p>

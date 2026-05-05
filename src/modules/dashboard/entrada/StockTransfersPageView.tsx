@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { isSerialTrackedMaterial, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./StockTransfersPageView.module.css";
 
 type StockCenterOption = {
@@ -26,6 +27,7 @@ type MaterialOption = {
   description: string;
   materialType: string;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
 };
 
 type ReversalReasonOption = {
@@ -52,6 +54,7 @@ type TransferListItem = {
   materialCode: string;
   description: string;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
   quantity: number;
   serialNumber: string | null;
   lotCode: string | null;
@@ -139,6 +142,7 @@ type TransferFormItem = {
   lotCode: string;
   entryType: "SUCATA" | "NOVO";
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
 };
 
 type FormState = {
@@ -557,7 +561,8 @@ export function StockTransfersPageView() {
   );
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
-  const requiresTransformerFields = Boolean(selectedMaterial?.isTransformer);
+  const requiresSerialFields = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
+  const requiresLotFields = requiresLotCode(selectedMaterial?.serialTrackingType);
   const isTransformerMovementMode = Boolean(transformerMovementMode);
   const formEntryDateLabel = movementDateLabel(form.movementType);
   const transferPrefill = useMemo(() => ({
@@ -779,7 +784,12 @@ export function StockTransfersPageView() {
   }, [transferPrefill.fromStockCenterId, transferPrefill.lotCode, transferPrefill.materialCode, transferPrefill.materialId, transferPrefill.mode, transferPrefill.serialNumber]);
 
   useEffect(() => {
-    if (prefillApplied || transferPrefill.mode !== "transformer-transfer" || materials.length === 0 || stockCenters.length === 0) {
+    if (
+      prefillApplied
+      || !["transformer-transfer", "serial-transfer"].includes(transferPrefill.mode)
+      || materials.length === 0
+      || stockCenters.length === 0
+    ) {
       return;
     }
 
@@ -788,7 +798,7 @@ export function StockTransfersPageView() {
       || (transferPrefill.materialCode && normalizeCode(material.materialCode) === transferPrefill.materialCode),
     ) ?? null;
 
-    if (!matchedMaterial || !matchedMaterial.isTransformer) {
+    if (!matchedMaterial || !isSerialTrackedMaterial(matchedMaterial.serialTrackingType)) {
       setPrefillApplied(true);
       return;
     }
@@ -817,7 +827,7 @@ export function StockTransfersPageView() {
     });
     setFeedback({
       type: "success",
-      message: "Modo de movimentacao do TRAFO ativado. Escolha Saida ou Transferencia e conclua os campos variaveis.",
+      message: "Modo de movimentacao por serial ativado. Escolha Saida ou Transferencia e conclua os campos variaveis.",
     });
     setPrefillApplied(true);
   }, [materials, prefillApplied, stockCenters, transferPrefill]);
@@ -855,9 +865,9 @@ export function StockTransfersPageView() {
       materialId: matchedMaterial?.id ?? "",
       description: matchedMaterial?.description ?? "",
       entryType: normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
-      quantity: matchedMaterial?.isTransformer ? "1" : current.quantity,
-      serialNumber: matchedMaterial?.isTransformer ? current.serialNumber : "",
-      lotCode: matchedMaterial?.isTransformer ? current.lotCode : "",
+      quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? "1" : current.quantity,
+      serialNumber: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? current.serialNumber : "",
+      lotCode: requiresLotCode(matchedMaterial?.serialTrackingType) ? current.lotCode : "",
     }));
   }
 
@@ -934,12 +944,15 @@ export function StockTransfersPageView() {
       return "Quantidade deve ser maior que zero.";
     }
 
-    if (requiresTransformerFields) {
+    if (requiresSerialFields) {
       if (!isTransformerQuantityValid(quantity)) {
-        return "Material TRAFO permite somente quantidade 1 por movimentacao.";
+        return `Material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)} permite somente quantidade 1 por movimentacao.`;
       }
-      if (!normalizeText(form.serialNumber) || !normalizeText(form.lotCode)) {
-        return "Serial e LP sao obrigatorios para material TRAFO.";
+      if (!normalizeText(form.serialNumber)) {
+        return `Serial e obrigatorio para material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)}.`;
+      }
+      if (requiresLotFields && !normalizeText(form.lotCode)) {
+        return "LP e obrigatorio para material TRAFO.";
       }
     }
 
@@ -977,14 +990,19 @@ export function StockTransfersPageView() {
       return;
     }
 
-    if (selectedMaterial.isTransformer) {
+    if (isSerialTrackedMaterial(selectedMaterial.serialTrackingType)) {
       if (!isTransformerQuantityValid(quantity)) {
-        showError(`Material TRAFO ${selectedMaterial.materialCode}: quantidade deve ser exatamente 1.`);
+        showError(`Material ${serialTrackingLabel(selectedMaterial.serialTrackingType)} ${selectedMaterial.materialCode}: quantidade deve ser exatamente 1.`);
         return;
       }
 
-      if (!normalizeText(form.serialNumber) || !normalizeText(form.lotCode)) {
-        showError(`Material TRAFO ${selectedMaterial.materialCode}: Serial e LP sao obrigatorios.`);
+      if (!normalizeText(form.serialNumber)) {
+        showError(`Material ${serialTrackingLabel(selectedMaterial.serialTrackingType)} ${selectedMaterial.materialCode}: Serial e obrigatorio.`);
+        return;
+      }
+
+      if (requiresLotCode(selectedMaterial.serialTrackingType) && !normalizeText(form.lotCode)) {
+        showError(`Material TRAFO ${selectedMaterial.materialCode}: LP e obrigatorio.`);
         return;
       }
     }
@@ -995,17 +1013,17 @@ export function StockTransfersPageView() {
     }
 
     if (isTransformerMovementMode && form.items.length > 0) {
-      showError("O modo de movimentacao de TRAFO pre-preenchido aceita apenas a unidade selecionada.");
+      showError("O modo de movimentacao por serial pre-preenchido aceita apenas a unidade selecionada.");
       return;
     }
 
     const normalizedSerial = normalizeText(form.serialNumber);
     const normalizedLot = normalizeText(form.lotCode);
     const hasDuplicate = form.items.some((item) => {
-      if (item.isTransformer || selectedMaterial.isTransformer) {
+      if (item.isTransformer || isSerialTrackedMaterial(selectedMaterial.serialTrackingType)) {
         return item.materialId === selectedMaterial.id
           && normalizeText(item.serialNumber).toUpperCase() === normalizedSerial.toUpperCase()
-          && normalizeText(item.lotCode).toUpperCase() === normalizedLot.toUpperCase();
+          && normalizeText(item.lotCode).toUpperCase() === (requiresLotCode(selectedMaterial.serialTrackingType) ? normalizedLot.toUpperCase() : "");
       }
 
       return item.materialId === selectedMaterial.id;
@@ -1013,8 +1031,8 @@ export function StockTransfersPageView() {
 
     if (hasDuplicate) {
       showError(
-        selectedMaterial.isTransformer
-          ? `Material TRAFO ${selectedMaterial.materialCode}: esta unidade ja foi adicionada na movimentacao.`
+        isSerialTrackedMaterial(selectedMaterial.serialTrackingType)
+          ? `Material ${serialTrackingLabel(selectedMaterial.serialTrackingType)} ${selectedMaterial.materialCode}: esta unidade ja foi adicionada na movimentacao.`
           : `Material ${selectedMaterial.materialCode}: este item ja foi adicionado na movimentacao.`,
       );
       return;
@@ -1040,7 +1058,8 @@ export function StockTransfersPageView() {
           serialNumber: normalizedSerial,
           lotCode: normalizedLot,
           entryType: normalizedEntryType,
-          isTransformer: Boolean(selectedMaterial.isTransformer),
+          isTransformer: isSerialTrackedMaterial(selectedMaterial.serialTrackingType),
+          serialTrackingType: selectedMaterial.serialTrackingType,
         },
       ],
     }));
@@ -1091,20 +1110,20 @@ export function StockTransfersPageView() {
       if (!response.ok) {
         return {
           ok: false,
-          message: data.message ?? `Material ${item.materialCode}: falha ao validar a unidade TRAFO para entrada.`,
+          message: data.message ?? `Material ${item.materialCode}: falha ao validar a unidade por serial para entrada.`,
         } as const;
       }
 
       const matchedUnit = (data.items ?? []).find((candidate) =>
         candidate.materialId === item.materialId
         && String(candidate.serialNumber ?? "").trim().toUpperCase() === String(item.serialNumber ?? "").trim().toUpperCase()
-        && String(candidate.lotCode ?? "").trim().toUpperCase() === String(item.lotCode ?? "").trim().toUpperCase(),
+        && String(candidate.lotCode ?? "").trim().toUpperCase() === String(item.lotCode || "-").trim().toUpperCase(),
       );
 
       if (matchedUnit && matchedUnit.currentStatus !== "FORA_ESTOQUE") {
         return {
           ok: false,
-          message: `Material ${item.materialCode}: a unidade TRAFO informada ja esta registrada em estoque proprio ou vinculada a outra operacao.`,
+          message: `Material ${item.materialCode}: a unidade por serial informada ja esta registrada em estoque proprio ou vinculada a outra operacao.`,
         } as const;
       }
 
@@ -1125,7 +1144,7 @@ export function StockTransfersPageView() {
       searchParams.set("stockCenterId", form.fromStockCenterId);
       searchParams.set("materialCode", item.materialCode);
       searchParams.set("serialNumber", item.serialNumber ?? "");
-      searchParams.set("lotCode", item.lotCode ?? "");
+      searchParams.set("lotCode", item.lotCode || "-");
 
       const response = await fetch(`/api/trafo-positions?${searchParams.toString()}`, {
         cache: "no-store",
@@ -1147,21 +1166,21 @@ export function StockTransfersPageView() {
       if (!response.ok) {
         return {
           ok: false,
-          message: data.message ?? `Material ${item.materialCode}: falha ao validar a unidade TRAFO no centro DE.`,
+          message: data.message ?? `Material ${item.materialCode}: falha ao validar a unidade por serial no centro DE.`,
         } as const;
       }
 
       const matchedUnit = (data.items ?? []).find((candidate) =>
         candidate.materialId === item.materialId
         && String(candidate.serialNumber ?? "").trim().toUpperCase() === String(item.serialNumber ?? "").trim().toUpperCase()
-        && String(candidate.lotCode ?? "").trim().toUpperCase() === String(item.lotCode ?? "").trim().toUpperCase()
+        && String(candidate.lotCode ?? "").trim().toUpperCase() === String(item.lotCode || "-").trim().toUpperCase()
         && candidate.currentStockCenterId === form.fromStockCenterId,
       );
 
       if (!matchedUnit) {
         return {
           ok: false,
-          message: `Material ${item.materialCode}: a unidade TRAFO informada nao esta no centro DE (${fromCenterName}). Confira Material, Serial e LP.`,
+          message: `Material ${item.materialCode}: a unidade por serial informada nao esta no centro DE (${fromCenterName}). Confira Material e Serial${item.lotCode ? " / LP" : ""}.`,
         } as const;
       }
 
@@ -1272,12 +1291,17 @@ export function StockTransfersPageView() {
 
       if (item.isTransformer) {
         if (!isTransformerQuantityValid(item.quantity)) {
-          showError(`Material TRAFO ${item.materialCode}: quantidade deve ser exatamente 1.`);
+          showError(`Material rastreavel ${item.materialCode}: quantidade deve ser exatamente 1.`);
           return;
         }
 
-        if (!normalizeText(item.serialNumber) || !normalizeText(item.lotCode)) {
-          showError(`Material TRAFO ${item.materialCode}: Serial e LP sao obrigatorios.`);
+        if (!normalizeText(item.serialNumber)) {
+          showError(`Material rastreavel ${item.materialCode}: Serial e obrigatorio.`);
+          return;
+        }
+
+        if (requiresLotCode(item.serialTrackingType) && !normalizeText(item.lotCode)) {
+          showError(`Material TRAFO ${item.materialCode}: LP e obrigatorio.`);
           return;
         }
       }
@@ -1290,7 +1314,7 @@ export function StockTransfersPageView() {
     }
 
     if (isTransformerMovementMode && form.items.length !== 1) {
-      showError("O modo de movimentacao de TRAFO pre-preenchido exige exatamente um item na lista.");
+      showError("O modo de movimentacao por serial pre-preenchido exige exatamente um item na lista.");
       return;
     }
 
@@ -1317,7 +1341,7 @@ export function StockTransfersPageView() {
             materialId: item.materialId,
             quantity: item.quantity,
             serialNumber: normalizeText(item.serialNumber) || null,
-            lotCode: normalizeText(item.lotCode) || null,
+        lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
           })),
         }),
       });
@@ -1339,7 +1363,7 @@ export function StockTransfersPageView() {
 
       if (isTransformerMovementMode) {
         clearTransformerMovementMode();
-        setFeedback({ type: "success", message: data.message ?? "Movimentacao do TRAFO salva com sucesso." });
+        setFeedback({ type: "success", message: data.message ?? "Movimentacao por serial salva com sucesso." });
       } else {
         setFeedback({ type: "success", message: data.message ?? "Movimentacao salva com sucesso." });
         resetOperationForm();
@@ -1398,7 +1422,7 @@ export function StockTransfersPageView() {
   }
 
   function openTransferPrefill(item: TransferListItem) {
-    if (!item.isTransformer || !item.serialNumber || !item.lotCode) {
+    if (!item.isTransformer || !item.serialNumber || (requiresLotCode(item.serialTrackingType) && !item.lotCode)) {
       return;
     }
 
@@ -1412,12 +1436,12 @@ export function StockTransfersPageView() {
     }
 
     const params = new URLSearchParams();
-    params.set("prefillMode", "transformer-transfer");
+    params.set("prefillMode", "serial-transfer");
     params.set("fromStockCenterId", inferredFromStockCenterId);
     params.set("materialId", item.materialId);
     params.set("materialCode", item.materialCode);
     params.set("serialNumber", item.serialNumber);
-    params.set("lotCode", item.lotCode);
+    params.set("lotCode", item.lotCode || "-");
 
     router.push(`/entrada?${params.toString()}`);
   }
@@ -1444,10 +1468,10 @@ export function StockTransfersPageView() {
   }
 
   const formCardTitle = isTransformerMovementMode
-    ? "Movimentacao de TRAFO pre-preenchida"
+    ? "Movimentacao por serial pre-preenchida"
     : "Cadastro de Movimentacao de Estoque";
   const formCardDescription = isTransformerMovementMode
-    ? "Use este modo para Saida ou Transferencia da mesma unidade. Material, Serial, LP, quantidade e centro DE ficam travados."
+    ? "Use este modo para Saida ou Transferencia da mesma unidade. Material, Serial, quantidade e centro DE ficam travados."
     : "Selecione a operacao: Entrada, Saida ou Transferencia.";
   const submitButtonLabel = isSubmitting
     ? "Salvando..."
@@ -1722,25 +1746,30 @@ export function StockTransfersPageView() {
           return;
         }
 
-        if (material.isTransformer && (!serialNumber || !lotCode)) {
-          importIssues.push({ rowNumber, column: "serial/lp", value: `${serialNumberRaw} | ${lotCodeRaw}`, error: "Serial e LP sao obrigatorios para material TRAFO." });
+        if (isSerialTrackedMaterial(material.serialTrackingType) && !serialNumber) {
+          importIssues.push({ rowNumber, column: "serial", value: serialNumberRaw, error: `Serial e obrigatorio para material ${serialTrackingLabel(material.serialTrackingType)}.` });
           return;
         }
 
-        if (material.isTransformer && quantity !== 1) {
-          importIssues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: "Material TRAFO permite somente quantidade 1 por movimentacao." });
+        if (requiresLotCode(material.serialTrackingType) && !lotCode) {
+          importIssues.push({ rowNumber, column: "lp", value: lotCodeRaw, error: "LP e obrigatorio para material TRAFO." });
           return;
         }
 
-        if (material.isTransformer) {
-          const transformerUnitKey = `${material.id}::${serialNumber ?? ""}::${lotCode ?? ""}`;
+        if (isSerialTrackedMaterial(material.serialTrackingType) && quantity !== 1) {
+          importIssues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: `Material ${serialTrackingLabel(material.serialTrackingType)} permite somente quantidade 1 por movimentacao.` });
+          return;
+        }
+
+        if (isSerialTrackedMaterial(material.serialTrackingType)) {
+          const transformerUnitKey = `${material.id}::${serialNumber ?? ""}::${requiresLotCode(material.serialTrackingType) ? lotCode ?? "" : "-"}`;
           const firstSeenRow = seenTransformerUnits.get(transformerUnitKey);
           if (firstSeenRow) {
             importIssues.push({
               rowNumber,
               column: "serial/lp",
               value: `${materialCode} | ${serialNumberRaw} | ${lotCodeRaw}`,
-              error: `Ja existe outra linha no CSV com o mesmo material, Serial e LP (linha ${firstSeenRow}).`,
+              error: `Ja existe outra linha no CSV com o mesmo material e Serial${requiresLotCode(material.serialTrackingType) ? " e LP" : ""} (linha ${firstSeenRow}).`,
             });
             return;
           }
@@ -1761,7 +1790,7 @@ export function StockTransfersPageView() {
               materialId: material.id,
               quantity,
               serialNumber,
-              lotCode,
+              lotCode: isSerialTrackedMaterial(material.serialTrackingType) && !requiresLotCode(material.serialTrackingType) ? "-" : lotCode,
             },
           ],
         });
@@ -2014,11 +2043,11 @@ export function StockTransfersPageView() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  pattern={requiresTransformerFields ? "1" : "[0-9]+([,.][0-9]{1,3})?"}
+                  pattern={requiresSerialFields ? "1" : "[0-9]+([,.][0-9]{1,3})?"}
                   value={form.quantity}
-                  onChange={(event) => updateFormField("quantity", requiresTransformerFields ? "1" : event.target.value)}
+                  onChange={(event) => updateFormField("quantity", requiresSerialFields ? "1" : event.target.value)}
                   disabled={isSubmitting || isTransformerMovementMode}
-                  readOnly={requiresTransformerFields || isTransformerMovementMode}
+                  readOnly={requiresSerialFields || isTransformerMovementMode}
                 />
               </label>
 
@@ -2038,28 +2067,28 @@ export function StockTransfersPageView() {
               <label className={styles.field}>
                 <span>
                   Serial
-                  {requiresTransformerFields ? <span className={styles.requiredMark}>*</span> : null}
+                  {requiresSerialFields ? <span className={styles.requiredMark}>*</span> : null}
                 </span>
                 <input
                   type="text"
                   value={form.serialNumber}
                   onChange={(event) => updateFormField("serialNumber", event.target.value)}
-                  disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
-                  placeholder={requiresTransformerFields ? "Informe o serial" : "Disponivel apenas para material TRAFO"}
+                  disabled={isSubmitting || !requiresSerialFields || isTransformerMovementMode}
+                  placeholder={requiresSerialFields ? "Informe o serial" : "Disponivel apenas para material rastreavel"}
                 />
               </label>
 
               <label className={styles.field}>
                 <span>
                   LP
-                  {requiresTransformerFields ? <span className={styles.requiredMark}>*</span> : null}
+                  {requiresLotFields ? <span className={styles.requiredMark}>*</span> : null}
                 </span>
                 <input
                   type="text"
                   value={form.lotCode}
                   onChange={(event) => updateFormField("lotCode", event.target.value)}
-                  disabled={isSubmitting || !requiresTransformerFields || isTransformerMovementMode}
-                  placeholder={requiresTransformerFields ? "Informe o LP" : "Disponivel apenas para material TRAFO"}
+                  disabled={isSubmitting || !requiresLotFields || isTransformerMovementMode}
+                  placeholder={requiresLotFields ? "Informe o LP" : "Obrigatorio apenas para TRAFO"}
                 />
               </label>
 
@@ -2076,7 +2105,7 @@ export function StockTransfersPageView() {
             </div>
 
             <p className={styles.fieldHint}>
-              Material TRAFO exige Serial, LP e quantidade fixa igual a 1.
+              Materiais rastreaveis exigem Serial e quantidade 1. TRAFO tambem exige LP.
             </p>
 
             <div className={styles.tableWrapper}>
@@ -2376,18 +2405,18 @@ export function StockTransfersPageView() {
                         type="button"
                         className={`${styles.actionButton} ${styles.actionTransfer}`}
                         onClick={() => openTransferPrefill(item)}
-                        disabled={!item.isTransformer || !item.serialNumber || !item.lotCode || item.isReversal || item.isReversed || item.movementType === "EXIT"}
-                        aria-label={`Movimentar o TRAFO ${item.materialCode} serial ${item.serialNumber ?? "-"}`}
+                        disabled={!item.isTransformer || !item.serialNumber || (requiresLotCode(item.serialTrackingType) && !item.lotCode) || item.isReversal || item.isReversed || item.movementType === "EXIT"}
+                        aria-label={`Movimentar a unidade ${item.materialCode} serial ${item.serialNumber ?? "-"}`}
                         title={
                           !item.isTransformer
-                            ? "Acao disponivel somente para material TRAFO"
+                            ? "Acao disponivel somente para material rastreavel por serial"
                             : item.isReversal
                               ? "Use a movimentacao original para pre-preencher a movimentacao"
                               : item.isReversed
                                 ? "Movimentacao original estornada"
                                 : item.movementType === "EXIT"
                                   ? "Saida para terceiro nao define centro atual proprio para nova movimentacao"
-                                  : "Movimentar este TRAFO"
+                                  : "Movimentar esta unidade"
                         }
                       >
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">

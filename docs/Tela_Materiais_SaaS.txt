@@ -32,7 +32,7 @@ Cadastro
 - Campo opcional:
   - `Preco`
   - `UMB`
-  - `Material TRAFO` (`is_transformer`)
+  - `Rastreio por serial` (`serial_tracking_type`)
 - Campos `LP` e `Serial` removidos do cadastro base de `materials`.
 - `LP` e `Serial` permanecem apenas nos fluxos de movimentacao (`Entrada`, `Saida`, `Requisicao`, `Devolucao`).
 - Regra de preco:
@@ -40,9 +40,11 @@ Cadastro
 - Regra de tipo:
   - Obrigatorio e nao pode ficar vazio.
   - Cadastro/edicao via select fixo: `NOVO` ou `SUCATA`.
-- Regra de material TRAFO:
-  - Campo `is_transformer` editavel no cadastro de materiais.
-  - Quando ativo, o fluxo de movimentacao exige `Serial` e `LP`.
+- Regra de rastreio por serial:
+  - `Material TRAFO` grava `serial_tracking_type = TRAFO` e exige `Serial + LP` na movimentacao.
+  - `Material RELIGADOR` grava `serial_tracking_type = RELIGADOR` e exige `Serial` na movimentacao.
+  - `Material CHAVES` grava `serial_tracking_type = CHAVE` e exige `Serial` na movimentacao.
+  - Os checkboxes sao mutuamente exclusivos; `materials.is_transformer` fica preservado apenas como compatibilidade para TRAFO.
 - Regra de duplicidade de codigo:
   - Cadastro e edicao executam pre-check via RPC (`precheck_material_code_conflict`).
   - Se o codigo ja existir no mesmo tenant, a operacao e bloqueada.
@@ -66,7 +68,7 @@ Filtros, auto-complete e listagem
   - `Codigo`
   - `Descricao`
   - `Tipo`
-  - `Trafo`
+  - `Rastreio`
   - `UMB`
   - `Preco`
   - `Registrado por`
@@ -136,6 +138,11 @@ Atualizacao 2026-03
   - `Preco` deixou de ser obrigatorio (quando vazio, o backend grava `0.00`).
   - `Tipo` passou a ser select fixo (`NOVO`/`SUCATA`) com validacao na API e na RPC de escrita.
   - A lista de materiais passou a exibir a coluna `Trafo` (`Sim`/`Nao`).
+- Atualizacao (2026-05):
+  - Cadastro de `Materiais` passou a oferecer `Material TRAFO`, `Material RELIGADOR` e `Material CHAVES`.
+  - Criada coluna logica `serial_tracking_type` para diferenciar materiais que exigem `Serial` e os que tambem exigem `LP`.
+  - A lista, exportacao CSV e historico passam a exibir `Rastreio por serial` em vez de apenas `Trafo`.
+  - Migration `172_generalize_serial_tracked_materials.sql` mantem `is_transformer` sincronizado para compatibilidade com TRAFO.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -181,6 +188,8 @@ Ajuda contextual
   - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
   - `src/modules/dashboard/materiais/MaterialsPageView.module.css`
   - `src/app/api/materials/route.ts`
+  - `src/lib/materialSerialTracking.ts`
+  - `supabase/migrations/172_generalize_serial_tracked_materials.sql`
   - `src/lib/server/concurrency.ts`
   - `supabase/migrations/042_materials_price_status_and_history.sql`
   - `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
@@ -189,15 +198,18 @@ Ajuda contextual
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
   - `MaterialsPageView`, `loadMaterials`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`
+  - `updateSerialTrackingType`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/materials`
   - `precheck_material_code_conflict` (RPC de validacao antes de insert/update)
   - `saveMaterialViaRpc`, `setMaterialStatusViaRpc`
   - `save_material_record`, `set_material_record_status`
+  - `normalizeSerialTrackingType`, `serialTrackingLabel`
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
   - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`
 - Comportamento antes/depois:
   - Antes: tela de Materiais sem CRUD.
   - Depois: cadastro completo com historico, preco obrigatorio, inativacao/ativacao com motivo e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
+  - Atualizacao (2026-05): antes o cadastro distinguia apenas TRAFO; depois passa a distinguir TRAFO, RELIGADOR e CHAVE para rastreio por serial.
   - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios do cadastro e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Arquivos alterados/criados (2026-03-24):

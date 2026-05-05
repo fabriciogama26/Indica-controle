@@ -74,6 +74,11 @@ type TeamOperationBatchRpcResult = {
 };
 
 function mapTeamOperationErrorMessage(reason: string) {
+  const serialTrackedMessage = mapSerialTrackedDatabaseError(reason);
+  if (serialTrackedMessage) {
+    return serialTrackedMessage;
+  }
+
   switch (reason) {
     case "TEAM_NOT_FOUND":
       return "Equipe nao encontrada ou inativa para este tenant.";
@@ -96,6 +101,23 @@ function mapTeamOperationErrorMessage(reason: string) {
   }
 }
 
+function mapSerialTrackedDatabaseError(message: unknown) {
+  const normalized = String(message ?? "").trim().toUpperCase();
+  if (normalized.includes("SERIAL_TRACKED_QUANTITY_MUST_BE_ONE")) {
+    return "Material rastreavel por serial permite somente quantidade 1 por movimentacao.";
+  }
+  if (normalized.includes("SERIAL_TRACKED_SERIAL_REQUIRED")) {
+    return "Serial e obrigatorio para material rastreavel por serial.";
+  }
+  if (normalized.includes("SERIAL_TRACKED_UNIT_ALREADY_IN_STOCK")) {
+    return "A unidade por serial informada ja esta registrada em estoque proprio ou vinculada a outra operacao.";
+  }
+  if (normalized.includes("SERIAL_TRACKED_UNIT_NOT_IN_FROM_CENTER")) {
+    return "A unidade por serial informada nao esta disponivel no centro DE informado.";
+  }
+  return "";
+}
+
 export async function saveTeamStockOperationViaRpc(
   supabase: SupabaseClient,
   payload: SaveTeamStockOperationPayload,
@@ -114,11 +136,12 @@ export async function saveTeamStockOperationViaRpc(
   });
 
   if (error) {
+    const mappedDatabaseError = mapSerialTrackedDatabaseError(error.message);
     return {
       ok: false,
       status: 500,
       reason: "RPC_ERROR",
-      message: "Falha ao salvar operacao de equipe.",
+      message: mappedDatabaseError || "Falha ao salvar operacao de equipe.",
       details: error.message,
     } as const;
   }
@@ -156,11 +179,12 @@ export async function saveTeamStockOperationBatchViaRpc(
   });
 
   if (error) {
+    const mappedDatabaseError = mapSerialTrackedDatabaseError(error.message);
     return {
       ok: false,
       status: 500,
       reason: "RPC_ERROR",
-      message: "Falha ao salvar o cadastro em massa das operacoes de equipe.",
+      message: mappedDatabaseError || "Falha ao salvar o cadastro em massa das operacoes de equipe.",
       details: error.message,
       failedRowNumber: null,
     } as const;

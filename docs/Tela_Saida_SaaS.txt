@@ -4,7 +4,7 @@ Visao geral
 -----------
 - Tela operacional dedicada a `Requisicao`, `Devolucao` e `Retorno de campo` entre um `Centro de estoque` proprio, o `Centro de estoque proprio` vinculado a uma `Equipe` e o centro tecnico `CAMPO / INSTALADO`.
 - Reaproveita o mesmo ledger de estoque (`stock_transfers`, `stock_transfer_items`, `stock_center_balances`) para manter saldo, historico e estorno consistentes.
-- O fluxo exige `Projeto`, `Equipe`, `Centro de estoque`, `Material`, `Quantidade`, `Data da operacao` e respeita as mesmas regras de TRAFO da movimentacao de estoque.
+- O fluxo exige `Projeto`, `Equipe`, `Centro de estoque`, `Material`, `Quantidade`, `Data da operacao` e respeita as mesmas regras de rastreio por serial da movimentacao de estoque.
 
 Arquitetura
 -----------
@@ -54,8 +54,8 @@ Cadastro
   - `Projeto` e obrigatorio mesmo sendo campo informativo do fluxo.
   - `Tipo` e preenchido automaticamente a partir de `materials.tipo`.
   - `quantity` deve ser maior que zero.
-  - Quando `materials.is_transformer = true`, `quantity` deve ser exatamente `1`.
-  - Quando `materials.is_transformer = true`, `serialNumber` e `lotCode` sao obrigatorios.
+  - Quando `materials.serial_tracking_type <> NONE`, `quantity` deve ser exatamente `1`.
+  - Quando `materials.serial_tracking_type <> NONE`, `serialNumber` e obrigatorio; `lotCode` tambem e obrigatorio somente para `TRAFO`.
   - `entryDate` nao pode ser futura.
   - O save ocorre via RPC transacional, sem fallback de gravacao parcial.
 
@@ -67,9 +67,9 @@ Filtros, auto-complete e listagem
   - `Descricao` e `Tipo` sao preenchidos automaticamente a partir do material.
   - O bloco de material funciona com `Adicionar material`, montando uma lista local antes do `Salvar operacao`, no mesmo raciocinio operacional da tela de `Medicao`.
   - A mesma operacao manual aceita varios itens, mas todos precisam compartilhar o mesmo `Tipo` (`NOVO` ou `SUCATA`) porque o ledger grava `entry_type` no cabecalho da transferencia.
-  - Material comum nao pode repetir na mesma operacao manual; para TRAFO a unicidade e por `material + serial + LP`.
+  - Material comum nao pode repetir na mesma operacao manual; para material rastreavel a unicidade e por `material + serial` e, quando for TRAFO, tambem `LP`.
   - Em `Retorno de campo`, o frontend nao exige saldo previo no centro da equipe.
-  - Em `Retorno de campo`, `TRAFO` aceita unidade nova ou unidade previamente `Fora do estoque proprio`, mas bloqueia unidade ja registrada em centro proprio/equipe.
+  - Em `Retorno de campo`, material rastreavel aceita unidade nova ou unidade previamente `Fora do estoque proprio`, mas bloqueia unidade ja registrada em centro proprio/equipe.
 - `Centro de estoque` e `Equipe` usam `select`.
 - O select de `Equipe` lista as equipes ativas do cadastro `teams`.
 - O select de `Centro de estoque` nao lista centros vinculados a equipes, ativas ou inativas.
@@ -200,6 +200,12 @@ Atualizacao 2026-05
 - O historico modal de `Operacoes de Equipe` passou a tratar o cadastro inicial como evento de `Cadastro`, sem listar todos os campos do registro como alteracoes.
 - Campos contextuais como `Equipe`, `Encarregado`, `Operacao` e origem tecnica continuam aparecendo apenas quando fazem parte de evento posterior, como estorno.
 - O campo `Quantidade` aceita decimal com virgula ou ponto (`1,5` ou `1.5`), mantendo ate 3 casas decimais e `TRAFO = 1`.
+- Materiais `TRAFO`, `RELIGADOR` e `CHAVE` passam a entrar no controle por serial:
+  - `TRAFO`: exige `Serial + LP` e quantidade `1`.
+  - `RELIGADOR`/`CHAVE`: exigem `Serial` e quantidade `1`; o backend normaliza `LP = '-'`.
+- `Retorno de campo` reconhece unidades RELIGADOR/CHAVE novas ou fora do estoque proprio e grava a posicao em `trafo_instances`.
+- API/listagem/importacao passam a carregar `materials.serial_tracking_type` e o helper `materialSerialTracking`.
+- Migration `172_generalize_serial_tracked_materials.sql` generaliza o rastreio unitario para materiais serializados.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

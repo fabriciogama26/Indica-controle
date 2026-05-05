@@ -1,3 +1,5 @@
+import type { SerialTrackingType } from "@/lib/materialSerialTracking";
+
 export type StockCenterOption = {
   id: string;
   name: string;
@@ -23,6 +25,7 @@ export type MaterialOption = {
   description: string;
   materialType: string;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
 };
 
 export type ReversalReasonOption = {
@@ -57,6 +60,7 @@ export type TeamOperationListItem = {
   materialCode: string;
   description: string;
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
   quantity: number;
   serialNumber: string | null;
   lotCode: string | null;
@@ -148,6 +152,7 @@ export type TeamOperationFormItem = {
   lotCode: string;
   entryType: "SUCATA" | "NOVO";
   isTransformer: boolean;
+  serialTrackingType: SerialTrackingType;
 };
 
 export type FormState = {

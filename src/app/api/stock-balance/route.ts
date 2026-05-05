@@ -134,8 +134,8 @@ function normalizeHistoryOperationKind(value: string | null) {
   return null;
 }
 
-function parseNonNegativeInteger(value: string | null) {
-  const normalized = normalizeText(value);
+function parseNonNegativeDecimal(value: string | null) {
+  const normalized = normalizeText(value).replace(",", ".");
   if (!normalized) {
     return null;
   }
@@ -145,7 +145,7 @@ function parseNonNegativeInteger(value: string | null) {
     return null;
   }
 
-  return Math.trunc(parsed);
+  return parsed;
 }
 
 function unwrapRelation<T>(value: T | T[] | null) {
@@ -479,8 +479,8 @@ export async function GET(request: NextRequest) {
     const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
     const materialCode = normalizeCode(request.nextUrl.searchParams.get("materialCode"));
     const description = normalizeText(request.nextUrl.searchParams.get("description"));
-    const qtyMin = parseNonNegativeInteger(request.nextUrl.searchParams.get("qtyMin"));
-    const qtyMax = parseNonNegativeInteger(request.nextUrl.searchParams.get("qtyMax"));
+    const qtyMin = parseNonNegativeDecimal(request.nextUrl.searchParams.get("qtyMin"));
+    const qtyMax = parseNonNegativeDecimal(request.nextUrl.searchParams.get("qtyMax"));
     const onlyPositive = normalizeOnlyPositive(request.nextUrl.searchParams.get("onlyPositive"));
     const includeTeamCenters = normalizeText(request.nextUrl.searchParams.get("includeTeamCenters")) === "1";
 
@@ -612,7 +612,7 @@ export async function GET(request: NextRequest) {
         description: material.descricao,
         unit: String(material.umb ?? "").trim(),
         materialType: String(material.tipo ?? "").trim().toUpperCase(),
-        balanceQuantity: Math.round(Number(row.quantity ?? 0)),
+        balanceQuantity: Number(row.quantity ?? 0),
         lastMovementAt: row.updated_at,
       });
     });

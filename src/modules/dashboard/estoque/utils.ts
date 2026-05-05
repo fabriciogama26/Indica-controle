@@ -21,8 +21,15 @@ export function formatInteger(value: number) {
   }).format(value);
 }
 
-export function formatSignedInteger(value: number) {
-  const formatted = formatInteger(Math.abs(value));
+export function formatDecimal(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
+  }).format(value);
+}
+
+export function formatSignedDecimal(value: number) {
+  const formatted = formatDecimal(Math.abs(value));
   if (value > 0) return `+${formatted}`;
   if (value < 0) return `-${formatted}`;
   return formatted;

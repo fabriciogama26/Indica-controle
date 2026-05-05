@@ -542,3 +542,4 @@
 - [ ] Continuar modularizacao interna da `Programacao Simples`: avaliar separacao posterior de hooks de dados, blocos de UI, exportacoes e regras locais de validacao.
 - [x] Atualizar `docs/Tela_Programacao_Simples_SaaS.txt` a cada etapa estrutural da modularizacao, mapeando arquivos criados/alterados, funcoes tocadas e comportamento antes/depois.
 - [x] Formalizar regra de monolito modular verdadeiro em `AGENTS.md` e `docs/Auditoria_Completa_SaaS.txt`: modulo precisa preservar fronteira de dependencia, fachada publica, shared apenas universal e backend espelhando dominio.
+- [x] Generalizar rastreio unitario de materiais serializados para TRAFO, RELIGADOR e CHAVE, com serial_tracking_type, validacao de Serial/LP conforme tipo e tela Rastreio de SERIAL.

@@ -14,7 +14,7 @@ type TeamStockCenterRow = {
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para carregar metadados da posicao de TRAFO.",
+      invalidSessionMessage: "Sessao invalida para carregar metadados do rastreio de serial.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (stockCentersResult.error || teamCentersResult.error) {
-      return NextResponse.json({ message: "Falha ao carregar metadados da posicao de TRAFO." }, { status: 500 });
+      return NextResponse.json({ message: "Falha ao carregar metadados do rastreio de serial." }, { status: 500 });
     }
 
     const blockedCenterIds = new Set(
@@ -59,6 +59,6 @@ export async function GET(request: NextRequest) {
         })),
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao carregar metadados da posicao de TRAFO." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao carregar metadados do rastreio de serial." }, { status: 500 });
   }
 }

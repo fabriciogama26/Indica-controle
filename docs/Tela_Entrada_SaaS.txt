@@ -47,14 +47,15 @@ Cadastro
     - `TRANSFER`: `OWN -> OWN`
   - `from_stock_center_id` e `to_stock_center_id` devem ser diferentes.
   - `quantity` deve ser maior que zero (`quantity > 0`).
-  - Quando `materials.is_transformer = true` (material TRAFO), `quantity` deve ser exatamente `1`.
+  - Quando `materials.serial_tracking_type <> NONE`, `quantity` deve ser exatamente `1`.
   - `entry_date` nao pode ser futura.
-  - Quando `materials.is_transformer = true` (material TRAFO), `serial_number` e `lot_code` sao obrigatorios.
+  - Quando `materials.serial_tracking_type <> NONE`, `serial_number` e obrigatorio; `lot_code` tambem e obrigatorio somente para `TRAFO`.
   - A combinacao `material_id + serial_number + lot_code` de TRAFO nao pode ficar duplicada em centros `OWN`.
   - Para `EXIT` e `TRANSFER` de TRAFO, o backend valida a unidade pelo conjunto `material_id + serial_number + lot_code` no centro de origem usando `trafo_instances`.
   - Para `ENTRY` de TRAFO, o backend bloqueia nova entrada da mesma unidade quando ela ja estiver registrada em algum centro `OWN`.
-  - Campos `Serial` e `LP` ficam habilitados somente quando o material selecionado for TRAFO.
-  - Campo `Quantidade` fica travado em `1` quando o material selecionado for TRAFO.
+  - Campo `Serial` fica habilitado para TRAFO, RELIGADOR e CHAVE.
+  - Campo `LP` fica habilitado somente para TRAFO.
+  - Campo `Quantidade` fica travado em `1` quando o material selecionado for rastreavel por serial.
   - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
   - Material precisa estar ativo no tenant.
   - Projeto precisa estar ativo no tenant.
@@ -250,12 +251,18 @@ Atualizacao 2026-05
 - O carregamento de metadados remove centros vinculados a equipes dos selects `DE` e `PARA`.
 - O `POST /api/stock-transfers` bloqueia no backend qualquer centro vinculado a equipe, mesmo em chamada direta fora da interface.
 - O campo `Quantidade` aceita decimal com virgula ou ponto (`1,5` ou `1.5`), mantendo ate 3 casas decimais e `TRAFO = 1`.
+- Materiais com `serial_tracking_type` `TRAFO`, `RELIGADOR` ou `CHAVE` passam a usar a mesma regra de unidade rastreavel:
+  - `TRAFO`: exige `Serial + LP` e quantidade `1`.
+  - `RELIGADOR`/`CHAVE`: exigem `Serial` e quantidade `1`; o backend normaliza `LP = '-'`.
+- A lista de movimentacoes e o pre-preenchimento passam a usar `prefillMode=serial-transfer`, mantendo compatibilidade com `transformer-transfer`.
+- API/listagem/importacao passam a carregar `materials.serial_tracking_type` e o helper `materialSerialTracking`.
+- Migration `172_generalize_serial_tracked_materials.sql` adiciona gatilhos para manter `trafo_instances` atualizado tambem para RELIGADOR e CHAVE.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
-  - Responsavel por: cadastro manual, validacoes de regra por operacao, importacao CSV em modal, filtros, lista e modais de detalhes/historico.
+  - Responsavel por: cadastro manual, validacoes de regra por operacao, importacao CSV em modal, filtros, lista, modais de detalhes/historico e modo de movimentacao por serial.
 - Caminho: `src/app/api/stock-transfers/route.ts`
   - Responsavel por: criar movimentacao, listar somente movimentacoes fisicas, bloquear centro vinculado a equipe e listar historico de alteracoes por transferencia.
 - Caminho: `src/app/api/stock-transfers/import/route.ts`

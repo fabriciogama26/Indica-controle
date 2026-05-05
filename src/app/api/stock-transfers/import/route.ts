@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
   normalizeDateInput,
@@ -39,6 +40,7 @@ type ImportPayload = {
 type MaterialLookupRow = {
   id: string;
   is_transformer: boolean;
+  serial_tracking_type?: string | null;
   is_active: boolean;
 };
 
@@ -123,7 +125,7 @@ export async function POST(request: NextRequest) {
     const materialResult = materialIds.length
       ? await supabase
           .from("materials")
-          .select("id, is_transformer, is_active")
+          .select("id, is_transformer, serial_tracking_type, is_active")
           .eq("tenant_id", appUser.tenant_id)
           .in("id", materialIds)
           .returns<MaterialLookupRow[]>()
@@ -135,7 +137,11 @@ export async function POST(request: NextRequest) {
 
     const materialMap = new Map((materialResult.data ?? []).map((row) => [
       row.id,
-      { isTransformer: Boolean(row.is_transformer), isActive: Boolean(row.is_active) },
+      {
+        isTransformer: Boolean(row.is_transformer),
+        serialTrackingType: normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE")),
+        isActive: Boolean(row.is_active),
+      },
     ]));
     const seenTransformerUnits = new Map<string, number>();
 
@@ -178,20 +184,23 @@ export async function POST(request: NextRequest) {
 
       const invalidTransformerItem = items.find((item) => {
         const material = materialMap.get(item.materialId);
-        if (!material?.isTransformer) {
+        if (!isSerialTrackedMaterial(material?.serialTrackingType)) {
           return false;
         }
-        return item.quantity !== 1 || !normalizeText(item.serialNumber) || !normalizeText(item.lotCode);
+        return item.quantity !== 1 || !normalizeText(item.serialNumber) || (requiresLotCode(material?.serialTrackingType) && !normalizeText(item.lotCode));
       });
 
       if (invalidTransformerItem) {
+        const material = materialMap.get(invalidTransformerItem.materialId);
         errorCount += 1;
         results.push({
           rowNumber,
           success: false,
           message: invalidTransformerItem.quantity !== 1
-            ? "Material TRAFO permite somente quantidade 1 por movimentacao."
-            : "Serial e LP sao obrigatorios para material TRAFO.",
+            ? `Material ${serialTrackingLabel(material?.serialTrackingType)} permite somente quantidade 1 por movimentacao.`
+            : requiresLotCode(material?.serialTrackingType)
+              ? "Serial e LP sao obrigatorios para material TRAFO."
+              : `Serial e obrigatorio para material ${serialTrackingLabel(material?.serialTrackingType)}.`,
           reason: invalidTransformerItem.quantity !== 1
             ? "TRANSFORMER_QUANTITY_MUST_BE_ONE"
             : "TRANSFORMER_SERIAL_OR_LOT_REQUIRED",
@@ -223,11 +232,12 @@ export async function POST(request: NextRequest) {
 
       const duplicateTransformerItem = items.find((item) => {
         const material = materialMap.get(item.materialId);
-        if (!material?.isTransformer) {
+        const serialTrackingType = material?.serialTrackingType ?? "NONE";
+        if (!isSerialTrackedMaterial(serialTrackingType)) {
           return false;
         }
 
-        const unitKey = `${item.materialId}::${normalizeText(item.serialNumber)}::${normalizeText(item.lotCode)}`;
+        const unitKey = `${item.materialId}::${normalizeText(item.serialNumber)}::${requiresLotCode(serialTrackingType) ? normalizeText(item.lotCode) : "-"}`;
         const firstSeenRow = seenTransformerUnits.get(unitKey);
         if (firstSeenRow) {
           return true;
@@ -238,17 +248,26 @@ export async function POST(request: NextRequest) {
       });
 
       if (duplicateTransformerItem) {
-        const unitKey = `${duplicateTransformerItem.materialId}::${normalizeText(duplicateTransformerItem.serialNumber)}::${normalizeText(duplicateTransformerItem.lotCode)}`;
+        const material = materialMap.get(duplicateTransformerItem.materialId);
+        const unitKey = `${duplicateTransformerItem.materialId}::${normalizeText(duplicateTransformerItem.serialNumber)}::${requiresLotCode(material?.serialTrackingType) ? normalizeText(duplicateTransformerItem.lotCode) : "-"}`;
         const firstSeenRow = seenTransformerUnits.get(unitKey);
         errorCount += 1;
         results.push({
           rowNumber,
           success: false,
-          message: `Ja existe outra linha na importacao com o mesmo material, Serial e LP (linha ${firstSeenRow ?? "-"})`,
+          message: `Ja existe outra linha na importacao com o mesmo material e Serial${requiresLotCode(material?.serialTrackingType) ? " e LP" : ""} (linha ${firstSeenRow ?? "-"})`,
           reason: "DUPLICATE_TRANSFORMER_UNIT_IN_IMPORT",
         });
         continue;
       }
+
+      const normalizedItems = items.map((item) => {
+        const material = materialMap.get(item.materialId);
+        if (isSerialTrackedMaterial(material?.serialTrackingType) && !requiresLotCode(material?.serialTrackingType)) {
+          return { ...item, lotCode: "-" };
+        }
+        return item;
+      });
 
       const saveResult = await saveStockTransferViaRpc(supabase, {
         tenantId: appUser.tenant_id,
@@ -260,7 +279,7 @@ export async function POST(request: NextRequest) {
         entryDate,
         entryType,
         notes,
-        items,
+        items: normalizedItems,
       });
 
       if (!saveResult.ok) {

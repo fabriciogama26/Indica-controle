@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 
 type MaterialRelation = {
@@ -8,6 +9,7 @@ type MaterialRelation = {
   descricao: string;
   tipo: string | null;
   is_transformer: boolean;
+  serial_tracking_type: SerialTrackingType | null;
   is_active: boolean;
 };
 
@@ -194,7 +196,7 @@ function resolveOperationKind(
 
 async function loadTrafoHistory(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
-    invalidSessionMessage: "Sessao invalida para carregar o historico da posicao de TRAFO.",
+    invalidSessionMessage: "Sessao invalida para carregar o historico do rastreio de serial.",
     inactiveMessage: "Usuario inativo.",
   });
 
@@ -219,7 +221,7 @@ async function loadTrafoHistory(request: NextRequest) {
     .maybeSingle<Pick<TrafoInstanceRow, "id" | "material_id" | "serial_number" | "lot_code">>();
 
   if (trafoInstanceError || !trafoInstance) {
-    return NextResponse.json({ message: "TRAFO nao encontrado para carregar o historico." }, { status: 404 });
+    return NextResponse.json({ message: "Unidade por serial nao encontrada para carregar o historico." }, { status: 404 });
   }
 
   const { data: itemRows, error: itemsError } = await supabase
@@ -232,7 +234,7 @@ async function loadTrafoHistory(request: NextRequest) {
     .returns<StockTransferItemRow[]>();
 
   if (itemsError) {
-    return NextResponse.json({ message: "Falha ao carregar o historico da posicao de TRAFO." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao carregar o historico do rastreio de serial." }, { status: 500 });
   }
 
   if (!itemRows?.length) {
@@ -252,7 +254,7 @@ async function loadTrafoHistory(request: NextRequest) {
     .returns<StockTransferHeaderRow[]>();
 
   if (transfersError) {
-    return NextResponse.json({ message: "Falha ao carregar o historico da posicao de TRAFO." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao carregar o historico do rastreio de serial." }, { status: 500 });
   }
 
   if (!transferHeaders?.length) {
@@ -346,7 +348,7 @@ async function loadTrafoHistory(request: NextRequest) {
     || reversalsFromOriginalResult.error
     || reversalsByReversalResult.error
   ) {
-    return NextResponse.json({ message: "Falha ao carregar detalhes do historico da posicao de TRAFO." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao carregar detalhes do historico do rastreio de serial." }, { status: 500 });
   }
 
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
@@ -440,7 +442,7 @@ export async function GET(request: NextRequest) {
     }
 
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para carregar a posicao de TRAFO.",
+      invalidSessionMessage: "Sessao invalida para carregar o rastreio de serial.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -472,12 +474,12 @@ export async function GET(request: NextRequest) {
           "last_entry_date",
           "updated_at",
           "updated_by",
-          "materials!inner(id, codigo, descricao, tipo, is_transformer, is_active)",
+          "materials!inner(id, codigo, descricao, tipo, is_transformer, serial_tracking_type, is_active)",
           "stock_centers(id, name, center_type, is_active)",
         ].join(", "),
       )
       .eq("tenant_id", appUser.tenant_id)
-      .eq("materials.is_transformer", true)
+      .neq("materials.serial_tracking_type", "NONE")
       .eq("materials.is_active", true)
       .order("updated_at", { ascending: false });
 
@@ -496,7 +498,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query.returns<TrafoInstanceRow[]>();
 
     if (error) {
-      return NextResponse.json({ message: "Falha ao carregar a posicao de TRAFO." }, { status: 500 });
+      return NextResponse.json({ message: "Falha ao carregar o rastreio de serial." }, { status: 500 });
     }
 
     const teamResult = await supabase
@@ -506,7 +508,7 @@ export async function GET(request: NextRequest) {
       .returns<TeamRow[]>();
 
     if (teamResult.error) {
-      return NextResponse.json({ message: "Falha ao carregar a posicao de TRAFO." }, { status: 500 });
+      return NextResponse.json({ message: "Falha ao carregar o rastreio de serial." }, { status: 500 });
     }
 
     const teamCenterIds = new Set(
@@ -555,7 +557,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (lastTransfersResult.error || usersResult.error || projectsResult.error || teamOperationsResult.error) {
-      return NextResponse.json({ message: "Falha ao carregar a posicao de TRAFO." }, { status: 500 });
+      return NextResponse.json({ message: "Falha ao carregar o rastreio de serial." }, { status: 500 });
     }
 
     const transferRows = lastTransfersResult.data ?? [];
@@ -581,7 +583,7 @@ export async function GET(request: NextRequest) {
       : ({ data: [], error: null } as { data: StockCenterRow[]; error: null });
 
     if (extraStockCentersResult.error) {
-      return NextResponse.json({ message: "Falha ao carregar a posicao de TRAFO." }, { status: 500 });
+      return NextResponse.json({ message: "Falha ao carregar o rastreio de serial." }, { status: 500 });
     }
 
     const currentStockCenterRows = (data ?? [])
@@ -648,6 +650,7 @@ export async function GET(request: NextRequest) {
           materialCode: material.codigo,
           description: material.descricao,
           materialType: String(material.tipo ?? "").trim().toUpperCase(),
+          serialTrackingType: normalizeSerialTrackingType(material.serial_tracking_type ?? (material.is_transformer ? "TRAFO" : "NONE")),
           serialNumber: row.serial_number,
           lotCode: row.lot_code,
           currentStockCenterId: physicalReferenceCenterId,
@@ -690,6 +693,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao carregar a posicao de TRAFO." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao carregar o rastreio de serial." }, { status: 500 });
   }
 }
