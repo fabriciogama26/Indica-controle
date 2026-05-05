@@ -281,8 +281,12 @@ export function normalizeText(value: unknown) {
 }
 
 export function parsePositiveNumber(value: unknown) {
-  const normalized = String(value ?? "").trim().replace(",", ".");
-  const numeric = Number(normalized);
+  const normalized = String(value ?? "").trim().replace(/\s+/g, "");
+  if (!/^\d+(?:[,.]\d{1,3})?$/.test(normalized)) {
+    return null;
+  }
+
+  const numeric = Number(normalized.replace(",", "."));
   if (!Number.isFinite(numeric) || numeric <= 0) {
     return null;
   }

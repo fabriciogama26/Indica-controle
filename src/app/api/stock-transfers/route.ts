@@ -66,6 +66,14 @@ type StockTransferReversalRow = {
   created_at: string;
 };
 
+type TeamStockOperationRow = {
+  transfer_id: string;
+};
+
+type TeamStockCenterRow = {
+  stock_center_id: string | null;
+};
+
 type AppUserRow = {
   id: string;
   display: string | null;
@@ -415,7 +423,7 @@ async function loadTransferList(request: NextRequest) {
     ),
   );
 
-  const [materialsResult, stockCentersResult, projectsResult, usersResult, reversalsFromOriginalResult, reversalsByReversalResult] = await Promise.all([
+  const [materialsResult, stockCentersResult, projectsResult, usersResult, teamOperationsResult, reversalsFromOriginalResult, reversalsByReversalResult] = await Promise.all([
     materialIds.length
       ? supabase
           .from("materials")
@@ -448,6 +456,14 @@ async function loadTransferList(request: NextRequest) {
           .in("id", userIds)
           .returns<AppUserRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+    transferIds.length
+      ? supabase
+          .from("stock_transfer_team_operations")
+          .select("transfer_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("transfer_id", transferIds)
+          .returns<TeamStockOperationRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: TeamStockOperationRow[]; error: null }),
     transferIds.length
       ? supabase
           .from("stock_transfer_reversals")
@@ -488,6 +504,9 @@ async function loadTransferList(request: NextRequest) {
       String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
     ]),
   );
+  const teamOperationTransferIds = new Set(
+    ((teamOperationsResult.error ? [] : teamOperationsResult.data) ?? []).map((row) => row.transfer_id),
+  );
   const reversalByOriginalMap = new Map(
     ((reversalsFromOriginalResult.error ? [] : reversalsFromOriginalResult.data) ?? []).map((row) => [
       row.original_stock_transfer_id,
@@ -512,6 +531,7 @@ async function loadTransferList(request: NextRequest) {
   const allRows: TransferListItem[] = (itemRows ?? []).flatMap((item) => {
     const transfer = transferMap.get(item.stock_transfer_id);
     if (!transfer) return [];
+    if (teamOperationTransferIds.has(transfer.id)) return [];
 
     const material = materialMap.get(item.material_id);
     const fromStockCenterName = stockCenterMap.get(transfer.from_stock_center_id) ?? "-";
@@ -827,6 +847,31 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+    const candidateCenterIds = Array.from(new Set([fromStockCenterId, toStockCenterId].filter(Boolean)));
+    const teamCentersResult = candidateCenterIds.length
+      ? await supabase
+          .from("teams")
+          .select("stock_center_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("stock_center_id", candidateCenterIds)
+          .returns<TeamStockCenterRow[]>()
+      : { data: [], error: null };
+
+    if (teamCentersResult.error) {
+      return NextResponse.json({ message: "Falha ao validar centros da movimentacao de estoque." }, { status: 500 });
+    }
+
+    const blockedTeamCenter = (teamCentersResult.data ?? []).find((row) => String(row.stock_center_id ?? "").trim());
+    if (blockedTeamCenter) {
+      return NextResponse.json(
+        {
+          message:
+            "Centros vinculados a equipes nao podem ser usados na Movimentacao de Estoque. Use Operacoes de Equipe para requisicao, devolucao ou retorno de campo.",
+        },
+        { status: 400 },
+      );
+    }
+
     const saveResult = await saveStockTransferViaRpc(supabase, {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,

@@ -1521,9 +1521,9 @@ export function TeamStockOperationsPageView() {
                   Quantidade <span className={styles.requiredMark}>*</span>
                 </span>
                 <input
-                  type="number"
-                  min="0"
-                  step="0.001"
+                  type="text"
+                  inputMode="decimal"
+                  pattern={requiresTransformerFields ? "1" : "[0-9]+([,.][0-9]{1,3})?"}
                   value={form.quantity}
                   onChange={(event) => handleQuantityChange(event.target.value)}
                   disabled={isSubmitting || requiresTransformerFields}

@@ -195,13 +195,19 @@ Atualizacao 2026-04
   - adiciona `FIELD_RETURN` na RPC transacional de operacoes de equipe
   - preserva `Retorno de campo` e origem tecnica tambem nos estornos e historicos
 
+Atualizacao 2026-05
+-------------------
+- O historico modal de `Operacoes de Equipe` passou a tratar o cadastro inicial como evento de `Cadastro`, sem listar todos os campos do registro como alteracoes.
+- Campos contextuais como `Equipe`, `Encarregado`, `Operacao` e origem tecnica continuam aparecendo apenas quando fazem parte de evento posterior, como estorno.
+- O campo `Quantidade` aceita decimal com virgula ou ponto (`1,5` ou `1.5`), mantendo ate 3 casas decimais e `TRAFO = 1`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
   - Responsavel por: formulario, filtros, importacao CSV, lista, detalhes, historico e estorno da tela.
 - Caminho: `src/app/api/team-stock-operations/route.ts`
-  - Responsavel por: criar operacoes, listar historico operacional e montar o historico funcional por transferencia.
+  - Responsavel por: criar operacoes, listar historico operacional e montar o historico funcional por transferencia, omitindo detalhes completos do cadastro inicial.
 - Caminho: `src/app/api/team-stock-operations/import/route.ts`
   - Responsavel por: processar importacao em lote de requisicoes/devolucoes, validar saldo/TRAFO em sequencia e devolver erros por linha.
 - Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
@@ -223,7 +229,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/saida/utils.ts`
-  - Responsavel por: formatacao de datas, parser CSV, normalizacao da operacao e geracao do relatorio de erros.
+  - Responsavel por: formatacao de datas, parser CSV, normalizacao da operacao, validacao decimal de quantidade e geracao do relatorio de erros.
 - Caminho: `src/hooks/useErrorLogger.ts`
   - Responsavel por: registrar falhas do modulo.
 
@@ -267,3 +273,7 @@ Ajuda contextual
 - Depois: o import ja normaliza/valida data na tela e envia `entryDate` no formato canonico (`YYYY-MM-DD`).
 - Antes: o estorno era restrito a perfil administrativo.
 - Depois: o estorno passa a aceitar tambem perfil `user`, mantendo os mesmos bloqueios de integridade do fluxo.
+- Antes: o historico de cadastro podia listar todos os campos iniciais como `De: - / Para: valor`.
+- Depois: o cadastro inicial aparece como evento resumido e o detalhamento fica reservado para alteracoes/estornos reais.
+- Antes: o input numerico dependia do comportamento do navegador para aceitar virgula.
+- Depois: a quantidade manual aceita virgula ou ponto com validacao propria de decimal positivo.
