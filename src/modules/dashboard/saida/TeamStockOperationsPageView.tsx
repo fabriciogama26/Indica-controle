@@ -1145,9 +1145,10 @@ export function TeamStockOperationsPageView() {
     const headerLine = IMPORT_TEMPLATE_HEADERS.join(";");
     const sampleLines = [
       headerLine,
-      "REQUISICAO;CENTRO-A;Equipe Norte;PROJ-001;MAT-001;5;;;2026-04-04;Requisicao operacional",
+      "REQUISICAO;CENTRO-A;Equipe Norte;PROJ-001;MAT-001;5,5;;;2026-04-04;Requisicao operacional com decimal",
+      "REQUISICAO;CENTRO-A;Equipe Norte;PROJ-001;RELIGADOR-001;1;SER-REL-001;;2026-04-04;Religador exige Serial",
       "DEVOLUCAO;CENTRO-A;Equipe Norte;PROJ-001;TRAFO-001;1;SER-001;LP-001;2026-04-04;Devolucao de unidade",
-      "RETORNO_DE_CAMPO;CENTRO-A;Equipe Norte;PROJ-001;TRAFO-RET-001;1;SER-RET-001;LP-RET-001;2026-04-04;Retirada de campo",
+      "RETORNO_DE_CAMPO;CENTRO-A;Equipe Norte;PROJ-001;CHAVE-RET-001;1;SER-CH-001;;2026-04-04;Chave exige Serial",
     ];
     downloadCsv(`\uFEFF${sampleLines.join("\n")}\n`, "operacoes_equipe_modelo.csv");
   }
@@ -2115,7 +2116,7 @@ export function TeamStockOperationsPageView() {
                   <div>
                     <strong>Preencha a planilha</strong>
                     <p>Colunas obrigatorias: operacao, centro_estoque, equipe, projeto, material_codigo, quantidade, data_operacao.</p>
-                    <p>Colunas condicionais: serial e lp para material TRAFO.</p>
+                    <p>Colunas condicionais: serial para materiais rastreaveis; lp somente para TRAFO.</p>
                     <p>Coluna opcional: observacao.</p>
                     <p>Operacao aceita: REQUISICAO/REQUISITION, DEVOLUCAO/RETURN ou RETORNO_DE_CAMPO/FIELD_RETURN.</p>
                   </div>

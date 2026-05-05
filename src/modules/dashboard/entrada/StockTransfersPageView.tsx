@@ -1384,20 +1384,48 @@ export function StockTransfersPageView() {
   }
 
   function downloadImportTemplate() {
-    const sample = [
-      "TRANSFERENCIA",
-      "CENTRO A",
-      "CENTRO B",
-      "SOB-001",
-      "MAT-001",
-      "1",
-      "SERIAL-001",
-      "LP-001",
-      toIsoDate(new Date()),
-      "Opcional",
+    const headerLine = IMPORT_TEMPLATE_HEADERS.join(";");
+    const sampleLines = [
+      headerLine,
+      [
+        "TRANSFERENCIA",
+        "CENTRO A",
+        "CENTRO B",
+        "SOB-001",
+        "MAT-001",
+        "1,5",
+        "",
+        "",
+        toIsoDate(new Date()),
+        "Material comum com decimal",
+      ],
+      [
+        "ENTRADA",
+        "CAMPO / INSTALADO",
+        "CENTRO A",
+        "SOB-001",
+        "RELIGADOR-001",
+        "1",
+        "SER-REL-001",
+        "",
+        toIsoDate(new Date()),
+        "Religador exige Serial",
+      ],
+      [
+        "TRANSFERENCIA",
+        "CENTRO A",
+        "CENTRO B",
+        "SOB-001",
+        "TRAFO-001",
+        "1",
+        "SER-TRAFO-001",
+        "LP-001",
+        toIsoDate(new Date()),
+        "TRAFO exige Serial e LP",
+      ],
     ];
 
-    const csv = `\uFEFF${IMPORT_TEMPLATE_HEADERS.join(";")}\n${sample.map((value) => csvEscape(value)).join(";")}`;
+    const csv = `\uFEFF${sampleLines.map((line) => Array.isArray(line) ? line.map((value) => csvEscape(value)).join(";") : line).join("\n")}\n`;
     downloadCsv(csv, "modelo_cadastro_massa_entrada.csv");
   }
 
@@ -2724,7 +2752,7 @@ export function StockTransfersPageView() {
                   <div>
                     <strong>Preencha a planilha</strong>
                     <p>Colunas obrigatorias: operacao, centro_de, centro_para, projeto, material_codigo, quantidade, data_entrada.</p>
-                    <p>Colunas condicionais: serial e lp (obrigatorias quando o material for TRAFO).</p>
+                    <p>Colunas condicionais: serial para materiais rastreaveis; lp somente para TRAFO.</p>
                     <p>Coluna opcional: observacao.</p>
                     <p>Operacao: ENTRADA, SAIDA ou TRANSFERENCIA (tambem aceita ENTRY, EXIT, TRANSFER).</p>
                     <p>LP = identificador de lote/plaqueta do material (equivalente ao campo lot_code).</p>
