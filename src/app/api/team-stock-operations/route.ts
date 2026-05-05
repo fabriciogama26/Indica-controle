@@ -707,19 +707,23 @@ async function loadTeamOperationHistory(request: NextRequest) {
 
   const entries = historyRows.map((row) => {
     const rawChanges = parseHistoryChanges(row.changes);
-    const normalizedChanges = normalizeResolvedHistoryChangeSet(rawChanges, historyValueMaps);
+    let normalizedChanges = normalizeResolvedHistoryChangeSet(rawChanges, historyValueMaps);
     const action = resolveHistoryAction(rawChanges, normalizedChanges);
 
-    if (!normalizedChanges.teamName) {
+    if (action === "CREATE") {
+      normalizedChanges = {};
+    }
+
+    if (action !== "CREATE" && !normalizedChanges.teamName) {
       normalizedChanges.teamName = { from: null, to: teamOperation.team_name_snapshot };
     }
-    if (!normalizedChanges.foremanName) {
+    if (action !== "CREATE" && !normalizedChanges.foremanName) {
       normalizedChanges.foremanName = { from: null, to: teamOperation.foreman_name_snapshot };
     }
-    if (!normalizedChanges.operationKind) {
+    if (action !== "CREATE" && !normalizedChanges.operationKind) {
       normalizedChanges.operationKind = { from: null, to: operationKind };
     }
-    if (!normalizedChanges.technicalOriginStockCenterId && teamOperation.technical_origin_stock_center_id) {
+    if (action !== "CREATE" && !normalizedChanges.technicalOriginStockCenterId && teamOperation.technical_origin_stock_center_id) {
       normalizedChanges.technicalOriginStockCenterId = {
         from: null,
         to: historyValueMaps.stockCenters.get(teamOperation.technical_origin_stock_center_id) ?? teamOperation.technical_origin_stock_center_id,

@@ -243,19 +243,27 @@ Atualizacao 2026-04
   - faz backfill inicial da localizacao atual do TRAFO a partir do ledger existente, com bloqueio da migration se encontrar dados inconsistentes;
   - republica a RPC `save_stock_transfer_record` para validar `ENTRY`/`EXIT`/`TRANSFER` pela tabela `trafo_instances`, mantendo `stock_center_balances` apenas como saldo agregado.
 
+Atualizacao 2026-05
+-------------------
+- A tela `Movimentacao de Estoque` representa somente entrada, saida e transferencia entre estoques fisicos.
+- Registros originados em `Operacoes de Equipe` deixam de aparecer na lista principal da movimentacao para evitar leitura incorreta como `Transferencia`.
+- O carregamento de metadados remove centros vinculados a equipes dos selects `DE` e `PARA`.
+- O `POST /api/stock-transfers` bloqueia no backend qualquer centro vinculado a equipe, mesmo em chamada direta fora da interface.
+- O campo `Quantidade` aceita decimal com virgula ou ponto (`1,5` ou `1.5`), mantendo ate 3 casas decimais e `TRAFO = 1`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
   - Responsavel por: cadastro manual, validacoes de regra por operacao, importacao CSV em modal, filtros, lista e modais de detalhes/historico.
 - Caminho: `src/app/api/stock-transfers/route.ts`
-  - Responsavel por: criar movimentacao, listar movimentacoes e listar historico de alteracoes por transferencia.
+  - Responsavel por: criar movimentacao, listar somente movimentacoes fisicas, bloquear centro vinculado a equipe e listar historico de alteracoes por transferencia.
 - Caminho: `src/app/api/stock-transfers/import/route.ts`
   - Responsavel por: processamento em lote de movimentacoes e retorno consolidado por linha.
 - Caminho: `src/app/api/stock-transfers/reversal/route.ts`
   - Responsavel por: validar payload de estorno (`reversalReasonCode`/`reversalReasonNotes`) e acionar RPC transacional de reversao.
 - Caminho: `src/app/api/stock-transfers/meta/route.ts`
-  - Responsavel por: listar centros, projetos, materiais e catalogo de motivos de estorno para os selects/datalists.
+  - Responsavel por: listar centros fisicos sem centros de equipe, projetos, materiais e catalogo de motivos de estorno para os selects/datalists.
 - Caminho: `supabase/migrations/128_create_stock_transfer_module.sql`
   - Responsavel por: modelagem base e RPC transacional de debito/credito entre centros.
 - Caminho: `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
@@ -337,3 +345,7 @@ Ajuda contextual
 - Depois: a data de importacao passa por normalizacao forte (`YYYY-MM-DD`) antes da comparacao com a data atual.
 - Antes: o botao/endpoint de estorno aceitava apenas perfil administrativo.
 - Depois: o estorno passa a aceitar tambem perfil `user`, mantendo os bloqueios operacionais existentes.
+- Antes: centros proprios de equipe podiam aparecer em `DE/PARA` e registros de `Operacoes de Equipe` podiam ser lidos na lista como `Transferencia`.
+- Depois: `DE/PARA` exclui centros de equipe, a API bloqueia esses centros e a lista da movimentacao mostra apenas estoque fisico.
+- Antes: o input numerico dependia do comportamento do navegador para aceitar virgula.
+- Depois: a quantidade manual aceita virgula ou ponto com validacao propria de decimal positivo.

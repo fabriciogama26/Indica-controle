@@ -62,8 +62,9 @@ export function rowStatusLabel(item: Pick<TeamOperationListItem, "isReversal" | 
 }
 
 export function parsePositiveNumber(value: string) {
-  const normalized = normalizeText(value).replace(",", ".");
-  const parsed = Number(normalized);
+  const normalized = normalizeText(value).replace(/\s+/g, "");
+  if (!/^\d+(?:[,.]\d{1,3})?$/.test(normalized)) return null;
+  const parsed = Number(normalized.replace(",", "."));
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Number(parsed.toFixed(3));
 }

@@ -9,6 +9,10 @@ type StockCenterRow = {
   controls_balance: boolean;
 };
 
+type TeamRow = {
+  stock_center_id: string | null;
+};
+
 type ProjectRow = {
   id: string;
   sob: string;
@@ -53,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
 
-    const [stockCentersResult, projectsResult, materialsResult, reversalReasonsResult] = await Promise.all([
+    const [stockCentersResult, teamsResult, projectsResult, materialsResult, reversalReasonsResult] = await Promise.all([
       supabase
         .from("stock_centers")
         .select("id, name, center_type, controls_balance")
@@ -61,6 +65,11 @@ export async function GET(request: NextRequest) {
         .eq("is_active", true)
         .order("name", { ascending: true })
         .returns<StockCenterRow[]>(),
+      supabase
+        .from("teams")
+        .select("stock_center_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .returns<TeamRow[]>(),
       supabase
         .from("project")
         .select("id, sob, is_active")
@@ -84,17 +93,23 @@ export async function GET(request: NextRequest) {
         .returns<ReversalReasonRow[]>(),
     ]);
 
-    if (stockCentersResult.error || projectsResult.error || materialsResult.error) {
+    if (stockCentersResult.error || teamsResult.error || projectsResult.error || materialsResult.error) {
       return NextResponse.json({ message: "Falha ao carregar metadados da movimentacao de estoque." }, { status: 500 });
     }
 
+    const teamStockCenterIds = new Set(
+      (teamsResult.data ?? []).map((row) => String(row.stock_center_id ?? "").trim()).filter(Boolean),
+    );
+
     return NextResponse.json({
-      stockCenters: (stockCentersResult.data ?? []).map((row) => ({
-        id: row.id,
-        name: row.name,
-        centerType: row.center_type,
-        controlsBalance: Boolean(row.controls_balance),
-      })),
+      stockCenters: (stockCentersResult.data ?? [])
+        .filter((row) => !teamStockCenterIds.has(row.id))
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          centerType: row.center_type,
+          controlsBalance: Boolean(row.controls_balance),
+        })),
       projects: (projectsResult.data ?? []).map((row) => ({
         id: row.id,
         projectCode: row.sob,
