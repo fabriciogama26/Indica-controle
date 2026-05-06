@@ -525,6 +525,8 @@
 - [x] Adicionar expansao individual e titulo do ciclo em cada grafico de Encarregados no ciclo.
 
 - [x] Definir De/Para inicial do grafico Concluidos x Parciais por periodo com o ano calendario corrente.
+
+- [x] Ajustar filtros gerais do Dashboard Medicao para aplicar somente pelo botao Filtrar, sem recarregar automaticamente ao alterar campos.
 - [x] Decisao arquitetural (2026-05-03): manter o SaaS como monolito modular, evitando microservicos/deploys separados e priorizando melhoria dos limites internos por modulo.
 - [x] Iniciar modularizacao interna da `Programacao Simples` sem mudanca funcional, extraindo os contratos TypeScript para `src/modules/dashboard/programacao-simples/types.ts`.
 - [x] Continuar modularizacao interna da `Programacao Simples`: extrair constantes para `constants.ts` mantendo comportamento e payloads atuais.

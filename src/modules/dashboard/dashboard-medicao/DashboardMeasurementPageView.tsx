@@ -177,6 +177,11 @@ export function DashboardMeasurementPageView() {
   const [teamId, setTeamId] = useState("");
   const [foreman, setForeman] = useState("");
   const [completionStatus, setCompletionStatus] = useState("TODOS");
+  const [cycleDraft, setCycleDraft] = useState("");
+  const [projectSearchDraft, setProjectSearchDraft] = useState("");
+  const [teamIdDraft, setTeamIdDraft] = useState("");
+  const [foremanDraft, setForemanDraft] = useState("");
+  const [completionStatusDraft, setCompletionStatusDraft] = useState("TODOS");
   const [foremanMetaModes, setForemanMetaModes] = useState<ForemanMetaMode[]>(["cycle"]);
   const [cycleMetaMode, setCycleMetaMode] = useState<ForemanMetaMode>("cycle");
   const [expandedChart, setExpandedChart] = useState<ExpandedChart>(null);
@@ -241,6 +246,10 @@ export function DashboardMeasurementPageView() {
     void loadDashboard();
   }, [loadDashboard]);
 
+  useEffect(() => {
+    setCycleDraft(selectedCycleStart);
+  }, [selectedCycleStart]);
+
   const cycleMax = useMemo(
     () => maxValue([cycleComparison?.value ?? 0, cycleComparison ? resolveCycleMetaValue(cycleComparison, cycleMetaMode) : 0]),
     [cycleComparison, cycleMetaMode],
@@ -279,6 +288,28 @@ export function DashboardMeasurementPageView() {
 
   function openChart(chart: Exclude<ExpandedChart, null>) {
     setExpandedChart(chart);
+  }
+
+  function applyDashboardFilters() {
+    const nextProjectSearch = projectSearchDraft.trim();
+    const filtersAreApplied =
+      selectedCycleStart === cycleDraft &&
+      projectSearch === nextProjectSearch &&
+      teamId === teamIdDraft &&
+      foreman === foremanDraft &&
+      completionStatus === completionStatusDraft;
+
+    if (filtersAreApplied) {
+      void loadDashboard();
+      return;
+    }
+
+    setSelectedCycleStart(cycleDraft);
+    setProjectSearch(nextProjectSearch);
+    setProjectSearchDraft(nextProjectSearch);
+    setTeamId(teamIdDraft);
+    setForeman(foremanDraft);
+    setCompletionStatus(completionStatusDraft);
   }
 
   function applyPeriodFilter() {
@@ -540,15 +571,15 @@ export function DashboardMeasurementPageView() {
             <h2 className={styles.cardTitle}>Filtros</h2>
             <p className={styles.cardSubtitle}>Consolidacao por ciclo operacional da Medicao.</p>
           </div>
-          <button type="button" className={styles.primaryButton} onClick={() => void loadDashboard()} disabled={isLoading}>
-            {isLoading ? "Atualizando..." : "Atualizar"}
+          <button type="button" className={styles.primaryButton} onClick={applyDashboardFilters} disabled={isLoading}>
+            {isLoading ? "Filtrando..." : "Filtrar"}
           </button>
         </div>
 
         <div className={styles.filterGrid}>
           <label className={styles.field}>
             <span>Ciclo</span>
-            <select value={selectedCycleStart} onChange={(event) => setSelectedCycleStart(event.target.value)} disabled={isLoading}>
+            <select value={cycleDraft} onChange={(event) => setCycleDraft(event.target.value)} disabled={isLoading}>
               {cycles.length ? (
                 cycles.map((cycle) => (
                   <option key={cycle.cycleStart} value={cycle.cycleStart}>
@@ -565,8 +596,8 @@ export function DashboardMeasurementPageView() {
             <span>Projeto (SOB)</span>
             <input
               type="text"
-              value={projectSearch}
-              onChange={(event) => setProjectSearch(event.target.value)}
+              value={projectSearchDraft}
+              onChange={(event) => setProjectSearchDraft(event.target.value)}
               placeholder="Filtrar por SOB"
               list="dashboard-medicao-projects"
               disabled={isLoading}
@@ -580,7 +611,7 @@ export function DashboardMeasurementPageView() {
 
           <label className={styles.field}>
             <span>Equipe</span>
-            <select value={teamId} onChange={(event) => setTeamId(event.target.value)} disabled={isLoading}>
+            <select value={teamIdDraft} onChange={(event) => setTeamIdDraft(event.target.value)} disabled={isLoading}>
               <option value="">Todas</option>
               {teams.map((team) => (
                 <option key={team.id} value={team.id}>
@@ -592,7 +623,7 @@ export function DashboardMeasurementPageView() {
 
           <label className={styles.field}>
             <span>Encarregado</span>
-            <select value={foreman} onChange={(event) => setForeman(event.target.value)} disabled={isLoading}>
+            <select value={foremanDraft} onChange={(event) => setForemanDraft(event.target.value)} disabled={isLoading}>
               <option value="">Todos</option>
               {foremenOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -604,7 +635,7 @@ export function DashboardMeasurementPageView() {
 
           <label className={styles.field}>
             <span>Status execucao</span>
-            <select value={completionStatus} onChange={(event) => setCompletionStatus(event.target.value)} disabled={isLoading}>
+            <select value={completionStatusDraft} onChange={(event) => setCompletionStatusDraft(event.target.value)} disabled={isLoading}>
               <option value="TODOS">Todos</option>
               <option value="CONCLUIDO">Concluidos</option>
               <option value="PARCIAL">Parciais</option>

@@ -55,6 +55,7 @@ Filtros, auto-complete e listagem
 - O periodo `De/Para` fica dentro do grafico Valor de Concluidos versus Parciais por periodo e restringe somente esse grafico por `Data execucao`, sem limitar o resultado ao ciclo selecionado.
 - O periodo `De/Para` abre preenchido com o ano calendario corrente, de `01/01` a `31/12`, acompanhando automaticamente a virada do ano.
 - O periodo nao atualiza automaticamente ao digitar; o usuario precisa clicar em `Filtrar periodo`.
+- Os filtros gerais nao atualizam automaticamente ao selecionar/digitar; o usuario precisa clicar em `Filtrar`.
 - Ciclo, tabela/grafico do ciclo e tabela/grafico de encarregados usam o ciclo operacional completo com os filtros gerais selecionados.
 - Filtros gerais como Projeto, Equipe, Encarregado e Status execucao tambem sao respeitados no grafico por periodo.
 - O bloco de encarregados exibe legenda para diferenciar Total equipes e cada meta marcada.
@@ -67,7 +68,7 @@ Filtros, auto-complete e listagem
   - Meta ciclo: Dias uteis
   - Meta ciclo padrao: Dias padrao
   - Meta ciclo trabalhado: Dias reais
-- A tela possui botao `Atualizar` para recarregar a consolidacao com os filtros atuais.
+- A tela possui botao `Filtrar` para aplicar os filtros gerais e recarregar a consolidacao.
 
 Boas praticas
 -------------
@@ -112,13 +113,13 @@ Atualizacao 2026-04
 - Antes:
   - A Meta ja existia, mas ainda nao havia tela de dashboard para comparar realizado x meta.
 - Depois:
-  - O sistema possui Dashboard Medicao com dois graficos Concluidos x Parciais lado a lado em desktop, tabela acima, periodo `De/Para` dedicado ao recorte por periodo com botao proprio de filtro e preenchimento inicial no ano calendario corrente, filtro Projeto digitavel por SOB, comparativo do ciclo e bloco de encarregados com tabela unica, ranking de atingimento, bullet chart de metas, gap financeiro, ciclo no titulo de cada grafico, botao de ampliacao individual por visao, legenda, selecao multipla de metas por checkbox, dias dinamicos por meta e modal de grafico ampliado.
+  - O sistema possui Dashboard Medicao com dois graficos Concluidos x Parciais lado a lado em desktop, tabela acima, filtros gerais aplicados apenas pelo botao `Filtrar`, periodo `De/Para` dedicado ao recorte por periodo com botao proprio de filtro e preenchimento inicial no ano calendario corrente, filtro Projeto digitavel por SOB, comparativo do ciclo e bloco de encarregados com tabela unica, ranking de atingimento, bullet chart de metas, gap financeiro, ciclo no titulo de cada grafico, botao de ampliacao individual por visao, legenda, selecao multipla de metas por checkbox, dias dinamicos por meta e modal de grafico ampliado.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
-  - Responsavel por: renderizar filtros gerais, filtro Projeto digitavel por SOB, periodo `De/Para` local do grafico Concluidos x Parciais por periodo com botao `Filtrar periodo`, checkboxes de metas dos encarregados, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
+  - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, periodo `De/Para` local do grafico Concluidos x Parciais por periodo com botao `Filtrar periodo`, checkboxes de metas dos encarregados, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
   - Responsavel por: carregar medicoes, montar ciclos 21 a 20, aplicar filtro digitavel de projeto por SOB, calcular Concluidos x Parciais do ciclo e do periodo `De/Para` independente do ciclo selecionado, excluir obras de teste, consolidar valores, carregar as tres metas do ciclo e montar retorno da dashboard.
 - Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
@@ -136,7 +137,7 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
   - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectIsTestMap`, `fetchProjectCompletionMap`.
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
-  - Responsavel por: `formatCurrency`, `formatPercent`, `maxValue`, `getCurrentYearPeriod`, `resolveCycleMetaValue`, `resolveCycleDays`, `resolveForemanMetaValue`, `resolveForemanDays`, `loadDashboard`, `applyPeriodFilter`, `toggleForemanMetaMode`, `renderPanelHeader`, `renderCompletionTable`, `renderCompletionChart`, `renderCycleChart`, `renderForemanRanking`, `renderForemanBulletChart`, `renderForemanGapChart`, `renderForemanVisualizations`, `renderForemanLegend`.
+  - Responsavel por: `formatCurrency`, `formatPercent`, `maxValue`, `getCurrentYearPeriod`, `resolveCycleMetaValue`, `resolveCycleDays`, `resolveForemanMetaValue`, `resolveForemanDays`, `loadDashboard`, `applyDashboardFilters`, `applyPeriodFilter`, `toggleForemanMetaMode`, `renderPanelHeader`, `renderCompletionTable`, `renderCompletionChart`, `renderCycleChart`, `renderForemanRanking`, `renderForemanBulletChart`, `renderForemanGapChart`, `renderForemanVisualizations`, `renderForemanLegend`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
@@ -164,4 +165,4 @@ Ajuda contextual
   - `permissionCatalog`
 - Comportamento antes/depois:
   - Antes: a tela de Meta preparava a base de comparacao, mas nao havia visualizacao consolidada da Medicao.
-  - Depois: a tela `/dashboard-medicao` exibe realizado x meta por ciclo e por encarregado, dois graficos Concluidos x Parciais lado a lado em desktop com tabela acima, periodo `De/Para` independente do ciclo selecionado, iniciado no ano calendario corrente e aplicado apenas pelo botao `Filtrar periodo`, filtro Projeto digitavel por SOB, checkboxes de metas nos encarregados, tabela unica de encarregados, ranking com referencia de 100% centralizada no topo, bullet chart de comparacao de metas, gap financeiro, titulo do ciclo em cada grafico de encarregado, botao de expansao individual por visao, legenda dinamica, dias dinamicos por meta, modal de grafico ampliado, filtros e segregacao por tenant.
+  - Depois: a tela `/dashboard-medicao` exibe realizado x meta por ciclo e por encarregado, dois graficos Concluidos x Parciais lado a lado em desktop com tabela acima, filtros gerais aplicados apenas pelo botao `Filtrar`, periodo `De/Para` independente do ciclo selecionado, iniciado no ano calendario corrente e aplicado apenas pelo botao `Filtrar periodo`, filtro Projeto digitavel por SOB, checkboxes de metas nos encarregados, tabela unica de encarregados, ranking com referencia de 100% centralizada no topo, bullet chart de comparacao de metas, gap financeiro, titulo do ciclo em cada grafico de encarregado, botao de expansao individual por visao, legenda dinamica, dias dinamicos por meta, modal de grafico ampliado, filtros e segregacao por tenant.
