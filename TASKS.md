@@ -549,3 +549,5 @@
 - [x] Revisar RLS publica e criar hardening sem policies DELETE/ALL.
 
 - [x] Corrigir edicao da Meta para recalcular Dias trabalhados do ciclo selecionado no backend antes de salvar.
+
+- [x] Renomear Dias trabalhados da Meta para Media Dias trabalhados mantendo calculo por media de dias com medicao por equipe.
