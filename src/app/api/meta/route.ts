@@ -155,14 +155,6 @@ function normalizeTeamCount(value: unknown) {
   return parsed;
 }
 
-function normalizeCycleDays(value: unknown) {
-  const parsed = Number(normalizeText(value).replace(",", "."));
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 31) {
-    return null;
-  }
-  return Number(parsed.toFixed(2));
-}
-
 function toIsoDate(value: Date) {
   const year = value.getUTCFullYear();
   const month = String(value.getUTCMonth() + 1).padStart(2, "0");
@@ -276,6 +268,50 @@ async function fetchAppUserMap(params: {
     .returns<AppUserRow[]>();
 
   return new Map((data ?? []).map((item) => [item.id, item]));
+}
+
+async function calculateWorkedDaysForCycle(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  cycleStart: string;
+  cycleEnd: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("project_measurement_orders")
+    .select("execution_date, project_id, team_id")
+    .eq("tenant_id", params.tenantId)
+    .eq("is_active", true)
+    .eq("measurement_kind", "COM_PRODUCAO")
+    .neq("status", "CANCELADA")
+    .gte("execution_date", params.cycleStart)
+    .lte("execution_date", params.cycleEnd)
+    .returns<MeasurementOrderDateRow[]>();
+
+  if (error) {
+    throw new Error("Falha ao recalcular dias trabalhados do ciclo.");
+  }
+
+  const projectIsTestMap = await fetchProjectIsTestMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds: (data ?? []).map((item) => item.project_id),
+  });
+
+  const workedDatesByTeam = new Map<string, Set<string>>();
+  for (const row of data ?? []) {
+    const executionDate = normalizeExecutionDate(row.execution_date);
+    if (!executionDate || !row.team_id || projectIsTestMap.get(row.project_id)) {
+      continue;
+    }
+
+    const dates = workedDatesByTeam.get(row.team_id) ?? new Set<string>();
+    dates.add(executionDate);
+    workedDatesByTeam.set(row.team_id, dates);
+  }
+
+  const counts = Array.from(workedDatesByTeam.values()).map((dates) => dates.size);
+  const average = counts.length ? counts.reduce((sum, value) => sum + value, 0) / counts.length : 0;
+  return Math.round(average);
 }
 
 async function loadMetaDetail(params: {
@@ -591,9 +627,7 @@ export async function GET(request: NextRequest) {
         ...cycle,
         id: savedCycle?.id ?? null,
         defaultWorkdays: savedCycle?.default_workdays ?? cycle.defaultWorkdays,
-        workedDays: savedCycle?.worked_days === null || savedCycle?.worked_days === undefined
-          ? cycle.workedDays
-          : Math.round(Number(savedCycle.worked_days)),
+        workedDays: cycle.workedDays,
         workdays: savedCycle?.workdays ?? cycle.defaultWorkdays,
         notes: savedCycle?.notes ?? "",
         updatedAt: savedCycle?.updated_at ?? null,
@@ -641,14 +675,24 @@ export async function POST(request: NextRequest) {
   const cycleEnd = normalizeIsoDate(payload?.cycleEnd);
   const workdays = normalizeWorkdays(payload?.workdays);
   const defaultWorkdays = normalizeWorkdays(payload?.defaultWorkdays);
-  const workedDaysValue = normalizeCycleDays(payload?.workedDays);
-  const workedDays = workedDaysValue === null ? null : Math.round(workedDaysValue);
   const notes = normalizeText(payload?.notes) || null;
   const cycleId = normalizeUuid(payload?.cycleId);
   const reason = normalizeText(payload?.reason) || null;
 
-  if (!cycleStart || !cycleEnd || workdays === null || defaultWorkdays === null || workedDays === null) {
+  if (!cycleStart || !cycleEnd || workdays === null || defaultWorkdays === null) {
     return NextResponse.json({ message: "Informe ciclo e dias uteis validos." }, { status: 400 });
+  }
+
+  let workedDays = 0;
+  try {
+    workedDays = await calculateWorkedDaysForCycle({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      cycleStart,
+      cycleEnd,
+    });
+  } catch {
+    return NextResponse.json({ message: "Falha ao recalcular dias trabalhados do ciclo." }, { status: 500 });
   }
 
   const { data, error } = await resolution.supabase.rpc("save_measurement_meta_registration", {
