@@ -527,6 +527,10 @@
 - [x] Definir De/Para inicial do grafico Concluidos x Parciais por periodo com o ano calendario corrente.
 
 - [x] Ajustar filtros gerais do Dashboard Medicao para aplicar somente pelo botao Filtrar, sem recarregar automaticamente ao alterar campos.
+
+- [x] Ajustar Projecao de fechamento do Dashboard Medicao para usar datas distintas de Data execucao e os dias da meta selecionada.
+
+- [x] Ocultar Projecao de fechamento no Ciclo da medicao quando a meta selecionada for Meta ciclo trabalhado.
 - [x] Decisao arquitetural (2026-05-03): manter o SaaS como monolito modular, evitando microservicos/deploys separados e priorizando melhoria dos limites internos por modulo.
 - [x] Iniciar modularizacao interna da `Programacao Simples` sem mudanca funcional, extraindo os contratos TypeScript para `src/modules/dashboard/programacao-simples/types.ts`.
 - [x] Continuar modularizacao interna da `Programacao Simples`: extrair constantes para `constants.ts` mantendo comportamento e payloads atuais.
