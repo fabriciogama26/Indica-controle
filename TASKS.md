@@ -545,3 +545,5 @@
 - [x] Generalizar rastreio unitario de materiais serializados para TRAFO, RELIGADOR e CHAVE, com serial_tracking_type, validacao de Serial/LP conforme tipo e tela Rastreio de SERIAL.
 - [x] Preservar e exibir saldo decimal no Estoque Atual, aceitando filtros com virgula ou ponto.
 - [x] Revisar cadastro em massa para materiais rastreaveis, incluindo exemplos CSV de RELIGADOR, CHAVE e quantidade decimal.
+
+- [x] Revisar RLS publica e criar hardening sem policies DELETE/ALL.

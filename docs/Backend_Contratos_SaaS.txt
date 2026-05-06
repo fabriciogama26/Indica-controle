@@ -215,6 +215,8 @@ Ajuda contextual
 - `login_audit` agora registra duas linhas por sessao do SaaS web: uma com `event_type = 'LOGIN'` e outra com `event_type = 'LOGOUT'`, correlacionadas por `session_ref`.
 - As policies RLS multi-tenant agora devem considerar `auth.uid()` e `app_users.ativo = true` para evitar acesso de usuarios desativados com sessao ainda valida.
 - As policies multi-tenant agora tambem devem ser `TO authenticated`, evitando depender apenas de `auth.uid() is null` para bloquear `anon`.
+- A migration `173_harden_public_rls_no_delete.sql` passa a ser a trava final de seguranca para RLS publica: liga RLS em todas as tabelas `public`, remove policies `FOR ALL`/`FOR DELETE` e falha se ainda existir tabela publica sem RLS ou policy com `ALL`/`DELETE`.
+- Nenhuma policy RLS final deve conceder DELETE direto; exclusoes operacionais, quando inevitaveis, devem ficar encapsuladas em RPC `security definer` ou ser substituidas por cancelamento/status.
 - `app_pages` funciona como catalogo global de rotas controladas e `role_page_permissions` armazena acesso por tenant e `role_id`.
 - `app_roles` virou a fonte de verdade dos perfis (`admin`, `master`, `user`).
 - A funcao `user_is_admin_in_tenant(uuid)` agora resolve o papel administrativo via `app_roles.is_admin`.

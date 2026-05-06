@@ -357,6 +357,9 @@ Resumo por arquivo
 
 171_update_service_activity_voice_point_rpc.sql
 - Atualiza `save_service_activity_record` para persistir `service_activities.voice_point` no cadastro/edicao de Atividades e manter historico via `app_entity_history`.
+
+173_harden_public_rls_no_delete.sql
+- Liga RLS em todas as tabelas `public`, remove policies `FOR ALL`/`FOR DELETE`, recria acessos nao destrutivos equivalentes para policies antigas `FOR ALL` e falha a migration se ainda restar policy com DELETE/ALL ou tabela publica sem RLS.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
