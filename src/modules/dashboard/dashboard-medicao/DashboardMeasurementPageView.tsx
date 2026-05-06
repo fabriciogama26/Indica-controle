@@ -24,6 +24,11 @@ type Summary = {
   workdays: number;
   defaultWorkdays: number;
   workedDays: number;
+  executedWorkdays: number;
+  averageDailyValue: number;
+  forecastValue: number;
+  forecastPercentage: number;
+  forecastDifference: number;
   completedValue: number;
   partialValue: number;
   noStatusValue: number;
@@ -45,6 +50,11 @@ type CycleComparison = {
   workdays: number;
   defaultWorkdays: number;
   workedDays: number;
+  executedWorkdays: number;
+  averageDailyValue: number;
+  forecastValue: number;
+  forecastPercentage: number;
+  forecastDifference: number;
   percentage: number;
 };
 
@@ -148,6 +158,14 @@ function resolveCycleDays(cycle: CycleComparison, mode: ForemanMetaMode) {
   return cycle.workdays;
 }
 
+function resolveCycleForecastValue(cycle: CycleComparison, mode: ForemanMetaMode) {
+  return cycle.averageDailyValue * resolveCycleDays(cycle, mode);
+}
+
+function resolveCycleForecastDifference(cycle: CycleComparison, mode: ForemanMetaMode) {
+  return resolveCycleForecastValue(cycle, mode) - resolveCycleMetaValue(cycle, mode);
+}
+
 function resolveForemanDays(row: ForemanRow, summary: Summary | null, mode: ForemanMetaMode) {
   if (mode === "standard") return summary?.defaultWorkdays ?? 0;
   if (mode === "worked") return row.workedDays;
@@ -177,6 +195,11 @@ export function DashboardMeasurementPageView() {
   const [teamId, setTeamId] = useState("");
   const [foreman, setForeman] = useState("");
   const [completionStatus, setCompletionStatus] = useState("TODOS");
+  const [cycleDraft, setCycleDraft] = useState("");
+  const [projectSearchDraft, setProjectSearchDraft] = useState("");
+  const [teamIdDraft, setTeamIdDraft] = useState("");
+  const [foremanDraft, setForemanDraft] = useState("");
+  const [completionStatusDraft, setCompletionStatusDraft] = useState("TODOS");
   const [foremanMetaModes, setForemanMetaModes] = useState<ForemanMetaMode[]>(["cycle"]);
   const [cycleMetaMode, setCycleMetaMode] = useState<ForemanMetaMode>("cycle");
   const [expandedChart, setExpandedChart] = useState<ExpandedChart>(null);
@@ -241,8 +264,16 @@ export function DashboardMeasurementPageView() {
     void loadDashboard();
   }, [loadDashboard]);
 
+  useEffect(() => {
+    setCycleDraft(selectedCycleStart);
+  }, [selectedCycleStart]);
+
   const cycleMax = useMemo(
-    () => maxValue([cycleComparison?.value ?? 0, cycleComparison ? resolveCycleMetaValue(cycleComparison, cycleMetaMode) : 0]),
+    () => maxValue([
+      cycleComparison?.value ?? 0,
+      cycleComparison && cycleMetaMode !== "worked" ? resolveCycleForecastValue(cycleComparison, cycleMetaMode) : 0,
+      cycleComparison ? resolveCycleMetaValue(cycleComparison, cycleMetaMode) : 0,
+    ]),
     [cycleComparison, cycleMetaMode],
   );
   const primaryForemanMetaMode = foremanMetaModes[0] ?? "cycle";
@@ -279,6 +310,28 @@ export function DashboardMeasurementPageView() {
 
   function openChart(chart: Exclude<ExpandedChart, null>) {
     setExpandedChart(chart);
+  }
+
+  function applyDashboardFilters() {
+    const nextProjectSearch = projectSearchDraft.trim();
+    const filtersAreApplied =
+      selectedCycleStart === cycleDraft &&
+      projectSearch === nextProjectSearch &&
+      teamId === teamIdDraft &&
+      foreman === foremanDraft &&
+      completionStatus === completionStatusDraft;
+
+    if (filtersAreApplied) {
+      void loadDashboard();
+      return;
+    }
+
+    setSelectedCycleStart(cycleDraft);
+    setProjectSearch(nextProjectSearch);
+    setProjectSearchDraft(nextProjectSearch);
+    setTeamId(teamIdDraft);
+    setForeman(foremanDraft);
+    setCompletionStatus(completionStatusDraft);
   }
 
   function applyPeriodFilter() {
@@ -357,6 +410,8 @@ export function DashboardMeasurementPageView() {
   function renderCycleChart(isExpanded = false) {
     if (!cycleComparison) return null;
     const metaValue = resolveCycleMetaValue(cycleComparison, cycleMetaMode);
+    const forecastValue = resolveCycleForecastValue(cycleComparison, cycleMetaMode);
+    const showForecast = cycleMetaMode !== "worked";
     return (
       <div className={`${styles.dualChart} ${isExpanded ? styles.chartExpanded : ""}`}>
         <div className={styles.verticalBarGroup}>
@@ -366,6 +421,15 @@ export function DashboardMeasurementPageView() {
           </div>
           <strong>Valor</strong>
         </div>
+        {showForecast ? (
+          <div className={styles.verticalBarGroup}>
+            <div className={styles.valueLabel}>{formatCurrency(forecastValue)}</div>
+            <div className={isExpanded ? styles.verticalBarTrackExpanded : styles.verticalBarTrack}>
+              <div className={styles.barGreen} style={{ height: `${Math.max(4, (forecastValue / cycleMax) * 100)}%` }} />
+            </div>
+            <strong>Projecao de fechamento</strong>
+          </div>
+        ) : null}
         <div className={styles.verticalBarGroup}>
           <div className={styles.valueLabel}>{formatCurrency(metaValue)}</div>
           <div className={isExpanded ? styles.verticalBarTrackExpanded : styles.verticalBarTrack}>
@@ -540,15 +604,15 @@ export function DashboardMeasurementPageView() {
             <h2 className={styles.cardTitle}>Filtros</h2>
             <p className={styles.cardSubtitle}>Consolidacao por ciclo operacional da Medicao.</p>
           </div>
-          <button type="button" className={styles.primaryButton} onClick={() => void loadDashboard()} disabled={isLoading}>
-            {isLoading ? "Atualizando..." : "Atualizar"}
+          <button type="button" className={styles.primaryButton} onClick={applyDashboardFilters} disabled={isLoading}>
+            {isLoading ? "Filtrando..." : "Filtrar"}
           </button>
         </div>
 
         <div className={styles.filterGrid}>
           <label className={styles.field}>
             <span>Ciclo</span>
-            <select value={selectedCycleStart} onChange={(event) => setSelectedCycleStart(event.target.value)} disabled={isLoading}>
+            <select value={cycleDraft} onChange={(event) => setCycleDraft(event.target.value)} disabled={isLoading}>
               {cycles.length ? (
                 cycles.map((cycle) => (
                   <option key={cycle.cycleStart} value={cycle.cycleStart}>
@@ -565,8 +629,8 @@ export function DashboardMeasurementPageView() {
             <span>Projeto (SOB)</span>
             <input
               type="text"
-              value={projectSearch}
-              onChange={(event) => setProjectSearch(event.target.value)}
+              value={projectSearchDraft}
+              onChange={(event) => setProjectSearchDraft(event.target.value)}
               placeholder="Filtrar por SOB"
               list="dashboard-medicao-projects"
               disabled={isLoading}
@@ -580,7 +644,7 @@ export function DashboardMeasurementPageView() {
 
           <label className={styles.field}>
             <span>Equipe</span>
-            <select value={teamId} onChange={(event) => setTeamId(event.target.value)} disabled={isLoading}>
+            <select value={teamIdDraft} onChange={(event) => setTeamIdDraft(event.target.value)} disabled={isLoading}>
               <option value="">Todas</option>
               {teams.map((team) => (
                 <option key={team.id} value={team.id}>
@@ -592,7 +656,7 @@ export function DashboardMeasurementPageView() {
 
           <label className={styles.field}>
             <span>Encarregado</span>
-            <select value={foreman} onChange={(event) => setForeman(event.target.value)} disabled={isLoading}>
+            <select value={foremanDraft} onChange={(event) => setForemanDraft(event.target.value)} disabled={isLoading}>
               <option value="">Todos</option>
               {foremenOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -604,7 +668,7 @@ export function DashboardMeasurementPageView() {
 
           <label className={styles.field}>
             <span>Status execucao</span>
-            <select value={completionStatus} onChange={(event) => setCompletionStatus(event.target.value)} disabled={isLoading}>
+            <select value={completionStatusDraft} onChange={(event) => setCompletionStatusDraft(event.target.value)} disabled={isLoading}>
               <option value="TODOS">Todos</option>
               <option value="CONCLUIDO">Concluidos</option>
               <option value="PARCIAL">Parciais</option>
@@ -679,9 +743,14 @@ export function DashboardMeasurementPageView() {
               <tr>
                 <th>Ciclo</th>
                 <th>Valor</th>
+                {cycleMetaMode !== "worked" ? <th>Projecao de fechamento</th> : null}
                 <th>{foremanMetaLabels[cycleMetaMode]}</th>
                 <th>{metaDayLabels[cycleMetaMode]}</th>
+                {cycleMetaMode !== "worked" ? <th>Dias trabalhados</th> : null}
+                {cycleMetaMode !== "worked" ? <th>Ritmo atual</th> : null}
+                {cycleMetaMode !== "worked" ? <th>Dif. prevista</th> : null}
                 <th>%Porcentagem</th>
+                {cycleMetaMode !== "worked" ? <th>%Previsto</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -689,13 +758,18 @@ export function DashboardMeasurementPageView() {
                 <tr>
                   <td>{cycleComparison.label}</td>
                   <td>{formatCurrency(cycleComparison.value)}</td>
+                  {cycleMetaMode !== "worked" ? <td>{formatCurrency(resolveCycleForecastValue(cycleComparison, cycleMetaMode))}</td> : null}
                   <td>{formatCurrency(resolveCycleMetaValue(cycleComparison, cycleMetaMode))}</td>
                   <td>{resolveCycleDays(cycleComparison, cycleMetaMode)}</td>
+                  {cycleMetaMode !== "worked" ? <td>{cycleComparison.executedWorkdays}</td> : null}
+                  {cycleMetaMode !== "worked" ? <td>{formatCurrency(cycleComparison.averageDailyValue)}/dia</td> : null}
+                  {cycleMetaMode !== "worked" ? <td>{formatCurrency(resolveCycleForecastDifference(cycleComparison, cycleMetaMode))}</td> : null}
                   <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (cycleComparison.value / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td>
+                  {cycleMetaMode !== "worked" ? <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (resolveCycleForecastValue(cycleComparison, cycleMetaMode) / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td> : null}
                 </tr>
               ) : (
                 <tr>
-                  <td colSpan={5} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
+                  <td colSpan={cycleMetaMode === "worked" ? 5 : 10} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
                 </tr>
               )}
             </tbody>

@@ -520,6 +520,7 @@
 }
 
 .barBlue,
+.barGreen,
 .barOrange,
 .dynamicBar {
   width: 100%;
@@ -530,6 +531,10 @@
 
 .barBlue {
   background: #4b77c7;
+}
+
+.barGreen {
+  background: #17a884;
 }
 
 .barOrange {

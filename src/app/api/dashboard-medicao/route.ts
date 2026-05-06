@@ -502,6 +502,11 @@ export async function GET(request: NextRequest) {
 
   const realizedValue = filteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
   const percentage = cycleMetaValue > 0 ? (realizedValue / cycleMetaValue) * 100 : 0;
+  const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
+  const averageDailyValue = executedWorkdays > 0 ? realizedValue / executedWorkdays : 0;
+  const forecastValue = averageDailyValue * workdays;
+  const forecastPercentage = cycleMetaValue > 0 ? (forecastValue / cycleMetaValue) * 100 : 0;
+  const forecastDifference = forecastValue - cycleMetaValue;
 
   return NextResponse.json({
     cycles,
@@ -523,6 +528,11 @@ export async function GET(request: NextRequest) {
       workdays,
       defaultWorkdays,
       workedDays,
+      executedWorkdays,
+      averageDailyValue,
+      forecastValue,
+      forecastPercentage,
+      forecastDifference,
       completedValue: cycleCompletionTotals.get("CONCLUIDO")?.value ?? 0,
       partialValue: cycleCompletionTotals.get("PARCIAL")?.value ?? 0,
       noStatusValue: cycleCompletionTotals.get("NAO_INFORMADO")?.value ?? 0,
@@ -539,6 +549,11 @@ export async function GET(request: NextRequest) {
       workdays,
       defaultWorkdays,
       workedDays,
+      executedWorkdays,
+      averageDailyValue,
+      forecastValue,
+      forecastPercentage,
+      forecastDifference,
       percentage,
     },
     foremen: Array.from(foremanMap.values())
