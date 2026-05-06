@@ -547,3 +547,5 @@
 - [x] Revisar cadastro em massa para materiais rastreaveis, incluindo exemplos CSV de RELIGADOR, CHAVE e quantidade decimal.
 
 - [x] Revisar RLS publica e criar hardening sem policies DELETE/ALL.
+
+- [x] Corrigir edicao da Meta para recalcular Dias trabalhados do ciclo selecionado no backend antes de salvar.
