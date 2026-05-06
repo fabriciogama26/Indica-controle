@@ -39,11 +39,11 @@ Cadastro
   - Inicio e fim: somente leitura.
   - Dias uteis: campo editavel.
   - Dias padrao segunda a sexta: valor calculado automaticamente e salvo junto do cadastro.
-  - Dias trabalhados: media arredondada da soma dos dias trabalhados por cada equipe no ciclo, usando `project_measurement_orders.execution_date` (`Data execucao`) como base, contando cada data distinta uma vez por equipe e considerando somente medicoes com `measurement_kind = COM_PRODUCAO`.
+  - Média Dias trabalhados: media arredondada da soma dos dias trabalhados por cada equipe no ciclo, usando `project_measurement_orders.execution_date` (`Data execucao`) como base, contando cada data distinta uma vez por equipe e considerando somente medicoes com `measurement_kind = COM_PRODUCAO`.
   - Observacao: campo opcional para registrar feriados/ajustes.
 - O cadastro salva valores por tipo, dias uteis e snapshot de equipes do ciclo selecionado em uma unica acao.
 - Quando um ciclo ja possui cadastro salvo, o formulario carrega os valores salvos de `Valor diario` e `Equipes medida` daquele ciclo.
-- Ao salvar cadastro ou edicao, a API recalcula `Dias trabalhados` pelo ciclo selecionado antes de chamar a RPC, evitando manter valor antigo salvo quando surgem novas medicoes.
+- Ao salvar cadastro ou edicao, a API recalcula `Média Dias trabalhados` pelo ciclo selecionado antes de chamar a RPC, evitando manter valor antigo salvo quando surgem novas medicoes.
 - Quando o ciclo ainda nao possui cadastro salvo, `Equipes medida` inicia pela quantidade de equipes ativas apenas como sugestao editavel.
 - A RPC bloqueia duplicidade de ciclo no cadastro novo.
 - A API aceita o valor diario como numero decimal enviado pela tela e preserva os centavos.
@@ -52,8 +52,8 @@ Cadastro
   - `Meta diaria cadastrada = soma das metas diarias por tipo`
   - `Meta do ciclo = Meta diaria cadastrada x Dias uteis do ciclo`
   - `Meta ciclo padrao = Meta diaria cadastrada x Dias padrao segunda a sexta`
-  - `Dias trabalhados = arredondar(soma dos dias distintos por equipe no ciclo / quantidade de equipes com medicao Com producao)`
-  - `Meta ciclo trabalhado = Meta diaria cadastrada x Dias trabalhados`
+  - `Média Dias trabalhados = arredondar(soma dos dias distintos por equipe no ciclo / quantidade de equipes com medicao Com producao)`
+  - `Meta ciclo trabalhado = Meta diaria cadastrada x Média Dias trabalhados`
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -65,7 +65,7 @@ Filtros, auto-complete e listagem
   - Ciclo
   - Dias uteis
   - Dias padrao
-  - Dias trabalhados
+  - Média Dias trabalhados
   - Equipes ativas
   - Equipes medida
   - Meta diaria
@@ -131,12 +131,12 @@ Atualizacao 2026-04
   - A tela exibe equipes ativas como referencia e calcula meta diaria por tipo usando a quantidade manual de equipes medida.
   - A lista de ciclos passa a obedecer datas reais das medicoes.
   - O cadastro passa a salvar dias uteis ajustados e dias padrao segunda a sexta.
-  - O cadastro passa a salvar dias trabalhados medios por ciclo, calculados por equipe a partir das medicoes existentes.
+  - O cadastro passa a salvar `Média Dias trabalhados` por ciclo, calculada por equipe a partir das medicoes existentes.
   - A lista passa a exibir `Meta ciclo`, `Meta ciclo padrao` e `Meta ciclo trabalhado`.
   - A lista passa a ter `Atualizar lista` e `Exportar Excel (CSV)`.
   - A lista, detalhes e historico passam a exibir a quantidade de `Equipes medida` usada no calculo.
   - A edicao passa a regravar os itens do ciclo pelo `cycle_id` selecionado e recalcular `Meta diaria`, `Meta ciclo`, `Meta ciclo padrao` e `Meta ciclo trabalhado` sempre por `Valor diario x Equipes medida`.
-  - A edicao passa a recalcular `Dias trabalhados` no backend pelo ciclo selecionado antes do salvamento, usando as medicoes `COM_PRODUCAO` atuais.
+  - A edicao passa a recalcular `Média Dias trabalhados` no backend pelo ciclo selecionado antes do salvamento, usando as medicoes `COM_PRODUCAO` atuais.
   - A API passa a recalcular os totais exibidos a partir dos itens salvos para evitar que registros legados mostrem `Equipes medida` diferente da meta calculada.
   - Cada ciclo salvo passa a ter lista, detalhe, historico e edicao.
   - Erros de RPC no salvamento passam a mostrar o detalhe tecnico retornado pelo Supabase.
@@ -149,7 +149,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/meta/MetaPageView.tsx`
   - Responsavel por: renderizar cadastro unico de valores diarios por tipo de equipe, dias uteis por ciclo, meta diaria calculada, meta do ciclo, lista de metas salvas, exportacao CSV e modais de detalhes/historico.
 - Caminho: `src/app/api/meta/route.ts`
-  - Responsavel por: carregar metas, montar ciclos 21 a 20 a partir de datas de medicao, contar equipes ativas por tipo, listar cadastros salvos, recalcular `Dias trabalhados` pelo ciclo selecionado, recalcular totais por `Equipes medida`, detalhar historico e salvar o cadastro via RPC.
+  - Responsavel por: carregar metas, montar ciclos 21 a 20 a partir de datas de medicao, contar equipes ativas por tipo, listar cadastros salvos, recalcular `Média Dias trabalhados` pelo ciclo selecionado, recalcular totais por `Equipes medida`, detalhar historico e salvar o cadastro via RPC.
 - Caminho: `supabase/migrations/161_create_measurement_meta_targets.sql`
   - Responsavel por: criar tabelas `measurement_team_type_targets`, `measurement_cycle_workdays`, `measurement_cycle_target_items`, `measurement_meta_history`, RPC `save_measurement_meta_registration`, RLS, auditoria e permissao da pagina `meta`.
 - Caminho: `supabase/migrations/162_fix_measurement_meta_registration_rpc.sql`
@@ -214,4 +214,4 @@ Ajuda contextual
   - `GET /api/meta`, `POST /api/meta`
 - Comportamento antes/depois:
   - Antes: nao havia fonte oficial de meta para comparar valores medidos.
-  - Depois: o sistema possui cadastro unico por tipo de equipe e ciclo, com calculo de meta diaria por quantidade manual de equipes medida, meta do ciclo por dias uteis, meta ciclo padrao por dias padrao, meta ciclo trabalhado por media arredondada de dias trabalhados das equipes com medicao `COM_PRODUCAO`, bloqueio de duplicidade por ciclo, lista com atualizacao/exportacao CSV, detalhes, historico paginado no padrao da Medicao e edicao no formulario principal com borda amarela. A edicao regrava os itens por `cycle_id`, recalcula `Dias trabalhados` pelo ciclo selecionado antes de salvar, e a leitura da API tambem recalcula os totais exibidos por `Valor diario x Equipes medida` para evitar exibicao de registros legados inconsistentes.
+  - Depois: o sistema possui cadastro unico por tipo de equipe e ciclo, com calculo de meta diaria por quantidade manual de equipes medida, meta do ciclo por dias uteis, meta ciclo padrao por dias padrao, meta ciclo trabalhado por `Média Dias trabalhados` das equipes com medicao `COM_PRODUCAO`, bloqueio de duplicidade por ciclo, lista com atualizacao/exportacao CSV, detalhes, historico paginado no padrao da Medicao e edicao no formulario principal com borda amarela. A edicao regrava os itens por `cycle_id`, recalcula `Média Dias trabalhados` pelo ciclo selecionado antes de salvar, e a leitura da API tambem recalcula os totais exibidos por `Valor diario x Equipes medida` para evitar exibicao de registros legados inconsistentes.

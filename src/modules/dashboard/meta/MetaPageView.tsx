@@ -109,7 +109,7 @@ const META_HISTORY_FIELD_LABELS: Record<string, string> = {
   cycleEnd: "Fim do ciclo",
   workdays: "Dias uteis",
   defaultWorkdays: "Dias padrao segunda a sexta",
-  workedDays: "Dias trabalhados",
+  workedDays: "Média Dias trabalhados",
   notes: "Observacao",
   totalMeasuredTeams: "Equipes medida",
   totalDailyGoal: "Meta diaria",
@@ -169,7 +169,7 @@ function buildRegistrationsCsv(registrations: MetaRegistration[]) {
     "Ciclo",
     "Dias uteis",
     "Dias padrao",
-    "Dias trabalhados",
+    "Média Dias trabalhados",
     "Equipes ativas",
     "Equipes medida",
     "Meta diaria",
@@ -779,7 +779,7 @@ export function MetaPageView() {
                 <strong>{selectedCycle?.defaultWorkdays ?? "-"}</strong>
               </div>
               <div>
-                <span>Dias trabalhados</span>
+                <span>Média Dias trabalhados</span>
                 <strong>{selectedCycle ? selectedCycle.workedDays.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) : "-"}</strong>
               </div>
               <div>
@@ -872,7 +872,7 @@ export function MetaPageView() {
                 <th>Ciclo</th>
                 <th>Dias uteis</th>
                 <th>Dias padrao</th>
-                <th>Dias trabalhados</th>
+                <th>Média Dias trabalhados</th>
                 <th>Equipes ativas</th>
                 <th>Equipes medida</th>
                 <th>Meta diaria</th>
@@ -970,7 +970,7 @@ export function MetaPageView() {
             <div className={styles.detailGrid}>
               <div><strong>Dias uteis:</strong> {detail.workdays}</div>
               <div><strong>Dias padrao:</strong> {detail.defaultWorkdays}</div>
-              <div><strong>Dias trabalhados:</strong> {detail.workedDays.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</div>
+              <div><strong>Média Dias trabalhados:</strong> {detail.workedDays.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</div>
               <div><strong>Equipes medida:</strong> {detail.totalMeasuredTeams}</div>
               <div><strong>Meta diaria:</strong> {formatCurrency(detail.totalDailyGoal)}</div>
               <div><strong>Meta ciclo:</strong> {formatCurrency(detail.totalCycleGoal)}</div>
