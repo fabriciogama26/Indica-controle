@@ -1014,6 +1014,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       if (!ok) {
         const message = buildConflictFeedbackMessage(data, "Falha ao cancelar programacao.");
         setFeedback({ type: "error", message });
+        openAlertModal(
+          data.error === "conflict" ? "Conflito ao validar cancelamento" : "Falha ao validar cancelamento",
+          message,
+          buildConflictAlertDetails(data),
+        );
         await logError("Falha ao cancelar programacao.", undefined, {
           operation: "cancel_programming",
           programmingId: cancelTarget.id,

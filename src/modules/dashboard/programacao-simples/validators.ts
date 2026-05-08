@@ -206,7 +206,7 @@ export function buildConflictAlertDetails(payload: SaveProgrammingResponse | nul
     details.push(`Campos em conflito: ${payload.changedFields.join(", ")}.`);
   }
 
-  if (payload.currentRecord) {
+  if (payload.currentRecord && payload.currentRecord.startTime && payload.currentRecord.endTime) {
     details.push(
       `Versao atual: ${formatDate(payload.currentRecord.executionDate)} | ${payload.currentRecord.startTime} - ${payload.currentRecord.endTime}.`,
     );

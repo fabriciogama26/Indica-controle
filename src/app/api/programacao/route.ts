@@ -420,6 +420,15 @@ type ForemanConflictLookupRow = {
   nome: string | null;
 };
 
+type ProjectConcludedProgrammingContext = {
+  programmingId: string;
+  executionDate: string;
+  teamId: string;
+  teamName: string;
+  foremanName: string;
+  workCompletionStatus: string;
+};
+
 type ProjectConflictLookupRow = {
   id: string;
   sob: string | null;
@@ -553,6 +562,112 @@ async function resolveTeamTimeConflictDetailedMessage(params: {
   return `Conflito de horario na equipe ${teamName} (Encarregado: ${foremanName}) com a obra ${projectCode}, no intervalo ${conflictInterval}.`;
 }
 
+async function resolveProjectCompletedProgrammingContext(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+}) {
+  const { data: concludedRows, error: concludedError } = await params.supabase
+    .from("project_programming")
+    .select("id, execution_date, team_id, work_completion_status, updated_at")
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .not("work_completion_status", "is", null)
+    .order("execution_date", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(50);
+
+  if (concludedError || !Array.isArray(concludedRows) || !concludedRows.length) {
+    return null;
+  }
+
+  const concluded = concludedRows.find((row) => isCompletedWorkStatus(row.work_completion_status));
+  if (!concluded) {
+    return null;
+  }
+
+  const { data: teamRows } = await params.supabase
+    .from("teams")
+    .select("id, name, foreman_person_id")
+    .eq("tenant_id", params.tenantId)
+    .eq("id", concluded.team_id)
+    .limit(1);
+
+  const team = (Array.isArray(teamRows) && teamRows.length ? teamRows[0] : null) as TeamConflictLookupRow | null;
+
+  let foremanName = "Nao informado";
+  const foremanId = normalizeText(team?.foreman_person_id);
+  if (foremanId) {
+    const { data: foremanRows } = await params.supabase
+      .from("people")
+      .select("id, nome")
+      .eq("tenant_id", params.tenantId)
+      .eq("id", foremanId)
+      .limit(1);
+
+    const foreman = (Array.isArray(foremanRows) && foremanRows.length ? foremanRows[0] : null) as ForemanConflictLookupRow | null;
+    foremanName = normalizeText(foreman?.nome) || "Nao informado";
+  }
+
+  return {
+    programmingId: normalizeText(concluded.id),
+    executionDate: normalizeText(concluded.execution_date),
+    teamId: normalizeText(concluded.team_id),
+    teamName: normalizeText(team?.name) || normalizeText(concluded.team_id),
+    foremanName,
+    workCompletionStatus: normalizeText(concluded.work_completion_status),
+  } satisfies ProjectConcludedProgrammingContext;
+}
+
+function buildProjectCompletedConflictResponse(params: {
+  message: string;
+  context: ProjectConcludedProgrammingContext;
+}) {
+  const detail = `Registro CONCLUIDO encontrado em ${formatDatePtBr(params.context.executionDate)} na equipe ${params.context.teamName} (Encarregado: ${params.context.foremanName}).`;
+
+  return {
+    error: "conflict" as const,
+    reason: "PROJECT_COMPLETED_REQUIRES_REOPEN",
+    message: params.message,
+    detail,
+    currentRecord: {
+      id: params.context.programmingId,
+      executionDate: params.context.executionDate,
+      startTime: "",
+      endTime: "",
+      updatedAt: "",
+    },
+  };
+}
+
+async function propagateWorkCompletionStatusToProjectDays(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  projectId: string;
+  workCompletionStatus: string;
+}) {
+  const { error } = await params.supabase
+    .from("project_programming")
+    .update({
+      work_completion_status: params.workCompletionStatus,
+      updated_by: params.actorUserId,
+    })
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"]);
+
+  if (error) {
+    return {
+      ok: false,
+      status: 500,
+      message: "Programacao salva, mas houve falha ao sincronizar Estado Trabalho para os outros dias do projeto.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
 function isNegativeNumericLikeText(value: string | null) {
   const normalized = normalizeText(value);
   if (!normalized) {
@@ -671,8 +786,30 @@ function normalizeWorkCompletionStatus(value: unknown) {
   return normalized || null;
 }
 
+function normalizeStatusToken(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+function isCompletedWorkStatus(value: unknown) {
+  const token = normalizeStatusToken(value);
+  return token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO");
+}
+
 function formatTime(value: string | null) {
   return normalizeText(value).slice(0, 5);
+}
+
+function formatDatePtBr(value: string | null | undefined) {
+  const raw = normalizeText(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw || "-";
+  }
+
+  const [year, month, day] = raw.split("-");
+  return `${day}/${month}/${year}`;
 }
 
 function normalizePositiveInteger(value: unknown) {
@@ -3066,6 +3203,22 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json({ message: "Selecione um Projeto (SOB) valido da lista." }, { status: 400 });
     }
 
+    const completedProjectContext = await resolveProjectCompletedProgrammingContext({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+    });
+    if (completedProjectContext) {
+      return NextResponse.json(
+        buildProjectCompletedConflictResponse({
+          message:
+            "Este projeto esta com Estado Trabalho CONCLUIDO. Antes de programar novamente, altere o Estado Trabalho para diferente de CONCLUIDO.",
+          context: completedProjectContext,
+        }),
+        { status: 409 },
+      );
+    }
+
     if (!teamIds.length) {
       return NextResponse.json({ message: "Selecione ao menos uma equipe para cadastrar a programacao." }, { status: 400 });
     }
@@ -3635,6 +3788,37 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
+  const completedProjectContext = await resolveProjectCompletedProgrammingContext({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId,
+  });
+
+  if (completedProjectContext) {
+    if (method === "PUT") {
+      const isChangingFromCompletedToAnotherStatus = Boolean(workCompletionStatus) && !isCompletedWorkStatus(workCompletionStatus);
+      if (!isChangingFromCompletedToAnotherStatus) {
+        return NextResponse.json(
+          buildProjectCompletedConflictResponse({
+            message:
+              "Este projeto possui Estado Trabalho CONCLUIDO. Para continuar, altere o Estado Trabalho para um valor diferente de CONCLUIDO nesta edicao.",
+            context: completedProjectContext,
+          }),
+          { status: 409 },
+        );
+      }
+    } else {
+      return NextResponse.json(
+        buildProjectCompletedConflictResponse({
+          message:
+            "Este projeto esta com Estado Trabalho CONCLUIDO. Antes de programar novamente, altere o Estado Trabalho para diferente de CONCLUIDO.",
+          context: completedProjectContext,
+        }),
+        { status: 409 },
+      );
+    }
+  }
+
   const normalizedWorkCompletionStatus =
     method === "PUT"
       ? workCompletionStatus
@@ -3784,6 +3968,25 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     }
   }
 
+  if (
+    method === "PUT"
+    && completedProjectContext
+    && normalizedWorkCompletionStatus
+    && !isCompletedWorkStatus(normalizedWorkCompletionStatus)
+  ) {
+    const propagationResult = await propagateWorkCompletionStatusToProjectDays({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      projectId,
+      workCompletionStatus: normalizedWorkCompletionStatus,
+    });
+
+    if (!propagationResult.ok) {
+      return NextResponse.json({ message: propagationResult.message }, { status: propagationResult.status });
+    }
+  }
+
   if (method === "PUT" && !electricalField) {
     const { error: clearElectricalFieldError } = await resolution.supabase
       .from("project_programming")
@@ -3897,6 +4100,23 @@ export async function PATCH(request: NextRequest) {
   const currentProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId);
   if (!currentProgramming) {
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
+  }
+
+  const completedProjectContext = await resolveProjectCompletedProgrammingContext({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId: currentProgramming.project_id,
+  });
+
+  if (completedProjectContext) {
+    return NextResponse.json(
+      buildProjectCompletedConflictResponse({
+        message:
+          "Este projeto possui Estado Trabalho CONCLUIDO. Antes de adiar ou cancelar, edite uma programacao e altere o Estado Trabalho para diferente de CONCLUIDO.",
+        context: completedProjectContext,
+      }),
+      { status: 409 },
+    );
   }
 
   if (action === "ADIADA") {
