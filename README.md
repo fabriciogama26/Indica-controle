@@ -118,7 +118,7 @@ vercel --prod
   - `(dashboard)/layout.tsx`: shell protegido do dashboard.
   - `(dashboard)/home/page.tsx`: wrapper fino da home autenticada.
   - `(dashboard)/dashboard-medicao/page.tsx`: rota do Dashboard Medicao com filtros de ciclo, projeto digitavel por SOB, equipe, encarregado e status execucao aplicados apenas pelo botao `Filtrar`, dois graficos Concluidos x Parciais lado a lado em desktop com tabela acima, periodo `De/Para` local do grafico por periodo iniciado no ano calendario corrente e com botao proprio de filtro, comparativo contra as tres metas com barra de Projecao de fechamento, tabela unica de encarregados, ranking de atingimento, bullet chart, gap financeiro, titulo do ciclo em cada visao, expansao individual dos graficos de encarregados, checkboxes de metas, dias dinamicos por meta, legenda e modal de grafico ampliado.
-  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros (incluindo `Estado Trabalho` e `Tipo SGD`), marcador de obra de teste, listagem, materiais previstos e atividades previstas por projeto.
+  - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros (incluindo `Estado Trabalho` e `Tipo SGD`), marcadores de obra de teste e retirada da carteira, listagem, materiais previstos e atividades previstas por projeto.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
   - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros (incluindo `Estado Trabalho` e `Tipo SGD`), acoes de linha (`Detalhes`, `Edicao`, `Historico`), submit em lote, edicao com troca de equipe (selecao unica + aviso visual) e exportacao `ENEL-EXCEL`.
@@ -147,7 +147,7 @@ vercel --prod
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
   - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users` e registra auditoria do invite via RPC.
-  - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, com filtros por programacao (`Estado Trabalho` e `Tipo SGD`), marcador `is_test` e bloqueio de inativacao quando houver agenda operacional pendente.
+  - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, com filtros por programacao (`Estado Trabalho` e `Tipo SGD`), marcadores `is_test` e `is_withdrawn` e bloqueio de inativacao quando houver agenda operacional pendente.
   - `api/projects/meta/route.ts`: carrega opcoes de apoio da tela de projetos (SOB base, prioridades, municipios e responsaveis).
   - `api/projects/forecast/route.ts`: lista, adiciona e edita materiais previstos por projeto com controle de concorrencia por `updated_at` na edicao.
   - `api/projects/forecast/catalog/route.ts`: pesquisa materiais ativos para inclusao manual no previsto do projeto.
@@ -323,6 +323,7 @@ vercel --prod
 - `supabase/migrations/084_deactivate_legacy_programacao_page.sql`: desativa a pagina legada `programacao` e bloqueia acesso nas tabelas de permissao.
 - `supabase/migrations/085_add_programming_structure_fields_and_actions_support.sql`: adiciona colunas estruturais de quantidade em `project_programming` e atualiza RPCs para persistir esses campos.
 - `supabase/migrations/086_add_service_activities_is_active_compat.sql`: cria compatibilidade entre `ativo` e `is_active` em `service_activities`, estabilizando as RPCs de Programacao em lote.
+- `supabase/migrations/174_add_project_is_withdrawn.sql`: adiciona `project.is_withdrawn`, republica `project_with_labels` e atualiza `save_project_record` para o marcador `RETIRADO DA CARTEIRA`.
 
 ---
 

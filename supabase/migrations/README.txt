@@ -360,6 +360,9 @@ Resumo por arquivo
 
 173_harden_public_rls_no_delete.sql
 - Liga RLS em todas as tabelas `public`, remove policies `FOR ALL`/`FOR DELETE`, recria acessos nao destrutivos equivalentes para policies antigas `FOR ALL` e falha a migration se ainda restar policy com DELETE/ALL ou tabela publica sem RLS.
+
+174_add_project_is_withdrawn.sql
+- Adiciona `project.is_withdrawn`, republica a view `project_with_labels` com o novo campo e evolui a RPC `save_project_record` para persistir o marcador `RETIRADO DA CARTEIRA`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

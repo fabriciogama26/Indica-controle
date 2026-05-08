@@ -28,6 +28,7 @@ type ProjectItem = {
   observation: string | null;
   isActive: boolean;
   isTest: boolean;
+  isWithdrawn: boolean;
   hasLocacao: boolean;
   cancellationReason: string | null;
   canceledAt: string | null;
@@ -64,6 +65,7 @@ type FormState = {
   serviceDescription: string;
   observation: string;
   isTest: boolean;
+  isWithdrawn: boolean;
 };
 
 type FilterState = {
@@ -230,6 +232,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   partner: "Parceira",
   isActive: "Status",
   isTest: "Obra de teste",
+  isWithdrawn: "Retirado da carteira",
   cancellationReason: "Motivo do cancelamento",
   canceledAt: "Data do cancelamento",
   activationReason: "Motivo da ativacao",
@@ -253,6 +256,7 @@ const INITIAL_FORM: FormState = {
   serviceDescription: "",
   observation: "",
   isTest: false,
+  isWithdrawn: false,
 };
 
 const INITIAL_FILTERS: FilterState = {
@@ -374,6 +378,7 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     "Observacao",
     "Status",
     "Obra de teste",
+    "Retirado da carteira",
     "Registrado por",
     "Registrado em",
     "Atualizado por",
@@ -400,6 +405,7 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     project.observation ?? "",
     project.isActive ? "Ativo" : "Inativo",
     project.isTest ? "Sim" : "Nao",
+    project.isWithdrawn ? "Sim" : "Nao",
     formatAuditActor(project.createdByName),
     formatDateTime(project.createdAt),
     formatAuditActor(project.updatedByName),
@@ -544,6 +550,7 @@ function toFormState(project: ProjectItem): FormState {
     serviceDescription: project.serviceDescription ?? "",
     observation: project.observation ?? "",
     isTest: Boolean(project.isTest),
+    isWithdrawn: Boolean(project.isWithdrawn),
   };
 }
 
@@ -561,7 +568,7 @@ function formatHistoryValue(field: string, value: string | null) {
     return value === "true" ? "Ativo" : "Inativo";
   }
 
-  if (field === "isTest") {
+  if (field === "isTest" || field === "isWithdrawn") {
     return value === "true" ? "Sim" : "Nao";
   }
 
@@ -2486,17 +2493,28 @@ export function ProjectsPageView() {
 
               <label className={`${styles.field} ${styles.checkboxField}`}>
                 <span>Classificacao</span>
-                <div className={styles.checkboxControl}>
-                  <input
-                    id="project-is-test"
-                    type="checkbox"
-                    checked={form.isTest}
-                    onChange={(event) => updateFormField("isTest", event.target.checked)}
-                  />
-                  <span>Marcar obra como teste (ignorar em cards/resumos de medicao)</span>
+                <div className={styles.classificationOptions}>
+                  <div className={styles.checkboxControl}>
+                    <input
+                      id="project-is-test"
+                      type="checkbox"
+                      checked={form.isTest}
+                      onChange={(event) => updateFormField("isTest", event.target.checked)}
+                    />
+                    <span>Marcar obra como teste (ignorar em cards/resumos de medicao)</span>
+                  </div>
+                  <div className={styles.checkboxControl}>
+                    <input
+                      id="project-is-withdrawn"
+                      type="checkbox"
+                      checked={form.isWithdrawn}
+                      onChange={(event) => updateFormField("isWithdrawn", event.target.checked)}
+                    />
+                    <span>RETIRADO DA CARTEIRA</span>
+                  </div>
                 </div>
                 <small className={styles.checkboxHelp}>
-                  Obras de teste continuam editaveis, mas nao entram em consolidacoes operacionais.
+                  Obras de teste continuam editaveis e obras retiradas da carteira nao entram nos cards de carteira.
                 </small>
               </label>
 
@@ -2872,6 +2890,7 @@ export function ProjectsPageView() {
                           <span>{project.sob}</span>
                           {!project.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                           {project.isTest ? <span className={styles.testTag}>Teste</span> : null}
+                          {project.isWithdrawn ? <span className={styles.withdrawnTag}>Retirado</span> : null}
                         </div>
                       </td>
                       <td>{project.serviceCenter}</td>
@@ -3544,6 +3563,7 @@ export function ProjectsPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Status:</strong> {detailProject.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Obra de teste:</strong> {detailProject.isTest ? "Sim" : "Nao"}</div>
+                <div><strong>Retirado da carteira:</strong> {detailProject.isWithdrawn ? "Sim" : "Nao"}</div>
                 <div><strong>Prioridade:</strong> {detailProject.priority}</div>
                 <div><strong>Centro de Servico:</strong> {detailProject.serviceCenter}</div>
                 <div><strong>Parceira:</strong> {detailProject.partner}</div>
