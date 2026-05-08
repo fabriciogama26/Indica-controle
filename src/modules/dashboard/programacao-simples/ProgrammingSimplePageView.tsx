@@ -900,14 +900,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     payload: SaveProgrammingResponse;
   }) {
     const detailText = (params.payload.detail ?? "").trim();
+    const normalizedSpotlightMessage = detailText
+      .replace(/^Registro CONCLUIDO encontrado\s*/i, "")
+      .replace(/^em\s*/i, "");
+    const nonRedundantDetails = buildConflictAlertDetails(params.payload).filter(
+      (detail) => !/Registro CONCLUIDO encontrado/i.test(detail),
+    );
     openAlertModal(
       params.title,
       "Este projeto esta com Estado Trabalho CONCLUIDO.",
-      buildConflictAlertDetails(params.payload),
+      nonRedundantDetails,
       {
         reason: params.payload.reason ?? null,
-        spotlightTitle: "Registro CONCLUIDO encontrado",
-        spotlightMessage: detailText || "Existe ao menos um registro concluido para este projeto.",
+        spotlightTitle: "Detalhe do registro concluido",
+        spotlightMessage: normalizedSpotlightMessage || "Existe ao menos um registro concluido para este projeto.",
         guidanceMessage: "Selecione um Estado Trabalho diferente de CONCLUIDO e salve novamente.",
         showWorkCompletionSelector: true,
       },
