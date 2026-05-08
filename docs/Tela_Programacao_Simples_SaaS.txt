@@ -1143,6 +1143,28 @@ Atualizacao adicional 2026-05 (regra de aviso para projeto concluido na Programa
   - Antes: no cancelamento, alguns conflitos apareciam apenas em feedback textual.
   - Depois: conflitos relevantes tambem sobem em modal de alerta com detalhes.
 
+Atualizacao adicional 2026-05 (UX modal de projeto concluido)
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingAlertModal` passou a aceitar catalogo e valor atual de `Estado Trabalho` para renderizar select no proprio modal.
+  - `AlertModalState` ganhou campos opcionais de destaque visual (`spotlightTitle`, `spotlightMessage`, `guidanceMessage`, `showWorkCompletionSelector`).
+  - Criada funcao `openProjectCompletedAlertModal` no PageView para montar modal chamativo no conflito `PROJECT_COMPLETED_REQUIRES_REOPEN`.
+  - Ajuste no fluxo de erro de `cancelar`, `adiar` e `salvar` para usar modal especializado quando o projeto estiver concluido.
+- Comportamento antes/depois:
+  - Antes: mensagem de projeto concluido aparecia em bloco unico, com detalhes em lista simples.
+  - Depois: o alerta fica separado em blocos visuais com maior destaque para:
+    - "Este projeto esta com Estado Trabalho CONCLUIDO"
+    - "Registro CONCLUIDO encontrado em data/equipe/encarregado"
+  - Antes: o usuario precisava voltar ao formulario para procurar o campo de Estado Trabalho.
+  - Depois: o modal mostra select de `Estado Trabalho` (sem opcao CONCLUIDO) para facilitar o ajuste imediato no formulario antes de salvar novamente.
+
 Atualizacao adicional 2026-05-08 (centro de servico no modal de prazos)
 ------------------------------------------------------------------------
 - Arquivos alterados/criados:

@@ -565,3 +565,5 @@
 
 - [x] Implementar aviso obrigatorio para projeto com Estado Trabalho CONCLUIDO em Programacao (programar/reprogramar/adiar/cancelar), exigindo troca para status diferente de CONCLUIDO na edicao e propagando o novo estado para outros dias programados do mesmo projeto.
 - [x] Exibir `Centro de servico` no modal `Todos os prazos das obras` da Programacao Simples e incluir a coluna na exportacao CSV de prazos.
+
+- [x] Melhorar modal de conflito para projeto CONCLUIDO na Programacao: blocos visuais destacados + select de Estado Trabalho no proprio modal para ajuste rapido.

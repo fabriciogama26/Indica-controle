@@ -11,6 +11,7 @@ import type {
   ScheduleItem,
   StageValidationTeamSummary,
   TeamItem,
+  WorkCompletionCatalogItem,
 } from "./types";
 import {
   formatAuditActor,
@@ -849,9 +850,18 @@ export function ProgrammingCancelModal(props: {
 
 export function ProgrammingAlertModal(props: {
   modal: AlertModalState | null;
+  workCompletionCatalog: WorkCompletionCatalogItem[];
+  selectedWorkCompletionStatus: string;
+  onWorkCompletionStatusChange: (value: string) => void;
   onClose: () => void;
 }) {
-  const { modal, onClose } = props;
+  const {
+    modal,
+    workCompletionCatalog,
+    selectedWorkCompletionStatus,
+    onWorkCompletionStatusChange,
+    onClose,
+  } = props;
   if (!modal) {
     return null;
   }
@@ -873,6 +883,37 @@ export function ProgrammingAlertModal(props: {
           <div className={styles.warningCard}>
             <p>{modal.message}</p>
           </div>
+
+          {modal.spotlightTitle || modal.spotlightMessage ? (
+            <div className={styles.alertSpotlightCard}>
+              {modal.spotlightTitle ? <strong>{modal.spotlightTitle}</strong> : null}
+              {modal.spotlightMessage ? <p>{modal.spotlightMessage}</p> : null}
+            </div>
+          ) : null}
+
+          {modal.showWorkCompletionSelector ? (
+            <div className={styles.alertActionCard}>
+              <label className={styles.field}>
+                <span>Estado Trabalho (obrigatorio para continuar)</span>
+                <select
+                  value={selectedWorkCompletionStatus}
+                  onChange={(event) => onWorkCompletionStatusChange(event.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  {workCompletionCatalog
+                    .filter((item) => item.code !== "CONCLUIDO")
+                    .map((item) => (
+                      <option key={item.code} value={item.code}>
+                        {item.label}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <p className={styles.alertActionHint}>
+                {modal.guidanceMessage ?? "Selecione um Estado Trabalho diferente de CONCLUIDO e tente salvar novamente."}
+              </p>
+            </div>
+          ) : null}
 
           {modal.details?.length ? (
             <div className={styles.historyCard}>

@@ -225,6 +225,11 @@ export type AlertModalState = {
   title: string;
   message: string;
   details?: string[];
+  reason?: string | null;
+  spotlightTitle?: string;
+  spotlightMessage?: string;
+  guidanceMessage?: string;
+  showWorkCompletionSelector?: boolean;
 };
 
 export type FormState = {
