@@ -26,6 +26,7 @@ type CsvValue = string | number;
 
 type DeadlineExportItem = {
   sob: string;
+  serviceCenter: string;
   executionDeadline: string;
   statusLabel: string;
   daysDiff: number;
@@ -47,9 +48,10 @@ export function buildDeadlineCsvContent(params: {
   items: DeadlineExportItem[];
   deadlineWindowDays: number;
 }) {
-  const header = ["SOB", "Data limite", "Status do prazo", "Dias para vencimento", "Faixa", "Janela selecionada"];
+  const header = ["SOB", "Centro de servico", "Data limite", "Status do prazo", "Dias para vencimento", "Faixa", "Janela selecionada"];
   const rows = params.items.map((item) => [
     item.sob,
+    item.serviceCenter,
     formatDate(item.executionDeadline),
     item.statusLabel,
     item.daysDiff,

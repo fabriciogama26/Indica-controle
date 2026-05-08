@@ -37,6 +37,7 @@ type StageConflictModalState = {
 type DeadlineModalItem = {
   id: string;
   sob: string;
+  serviceCenter: string;
   executionDeadline: string;
   statusLabel: string;
   daysDiff: number;
@@ -449,6 +450,7 @@ export function ProgrammingDeadlineModal(props: {
               <thead>
                 <tr>
                   <th>SOB</th>
+                  <th>Centro de servico</th>
                   <th>Data limite</th>
                   <th>Status do prazo</th>
                   <th>Dias para vencimento</th>
@@ -460,6 +462,7 @@ export function ProgrammingDeadlineModal(props: {
                   items.map((item) => (
                     <tr key={`deadline-modal-${item.id}`}>
                       <td>{item.sob}</td>
+                      <td>{item.serviceCenter}</td>
                       <td>{formatDate(item.executionDeadline)}</td>
                       <td>{item.statusLabel}</td>
                       <td>{item.daysDiff}</td>
@@ -468,7 +471,7 @@ export function ProgrammingDeadlineModal(props: {
                   ))
                 ) : (
                   <tr>
-                    <td className={styles.emptyRow} colSpan={5}>
+                    <td className={styles.emptyRow} colSpan={6}>
                       Nenhuma obra encontrada para a janela selecionada.
                     </td>
                   </tr>

@@ -563,3 +563,4 @@
 - [ ] Tratamento de seguranca Supabase (2026-05-07): habilitar Leaked Password Protection no Supabase Auth e registrar evidencia de validacao apos novo linter sem alertas.
 
 - [x] Implementar aviso obrigatorio para projeto com Estado Trabalho CONCLUIDO em Programacao (programar/reprogramar/adiar/cancelar), exigindo troca para status diferente de CONCLUIDO na edicao e propagando o novo estado para outros dias programados do mesmo projeto.
+- [x] Exibir `Centro de servico` no modal `Todos os prazos das obras` da Programacao Simples e incluir a coluna na exportacao CSV de prazos.
