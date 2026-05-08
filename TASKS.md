@@ -557,3 +557,9 @@
 - [x] Corrigir edicao da Meta para recalcular Dias trabalhados do ciclo selecionado no backend antes de salvar.
 
 - [x] Renomear Dias trabalhados da Meta para Media Dias trabalhados mantendo calculo por media de dias com medicao por equipe.
+- [ ] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para fixar `search_path` das funcoes reportadas pelo linter (`function_search_path_mutable`).
+- [ ] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para revogar `EXECUTE` do role `anon` nas RPCs `SECURITY DEFINER`, preservando somente chamadas autenticadas/service-role justificadas.
+- [ ] Tratamento de seguranca Supabase (2026-05-07): classificar RPCs `SECURITY DEFINER` acessiveis por `authenticated` entre uso intencional do app e uso exclusivo de `service_role`, ajustando grants sem quebrar rotas atuais.
+- [ ] Tratamento de seguranca Supabase (2026-05-07): habilitar Leaked Password Protection no Supabase Auth e registrar evidencia de validacao apos novo linter sem alertas.
+
+- [x] Implementar aviso obrigatorio para projeto com Estado Trabalho CONCLUIDO em Programacao (programar/reprogramar/adiar/cancelar), exigindo troca para status diferente de CONCLUIDO na edicao e propagando o novo estado para outros dias programados do mesmo projeto.
