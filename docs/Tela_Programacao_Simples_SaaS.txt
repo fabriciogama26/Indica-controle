@@ -199,10 +199,11 @@ Filtros, auto-complete e listagem
   - Acima de `Cadastro de Programacao`, a tela mostra um painel de prazos das obras baseado em `Projeto (SOB) + Data limite`.
   - O painel traz cards-resumo com prioridade visual (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`) e cards por `SOB` em carrossel horizontal (6 por pagina), para obras com data limite ate a janela selecionada.
   - Existe alternancia de janela no proprio bloco: `15 dias` e `30 dias`.
-  - O botao `Ver todos` abre modal com a listagem completa da janela selecionada e botao de `Exportar Excel (CSV)`.
+  - O botao `Ver todos` abre modal com a listagem completa da janela selecionada, incluindo `Centro de servico`, e botao de `Exportar Excel (CSV)`.
   - Projetos com qualquer programacao no periodo carregado com `Estado Trabalho = CONCLUIDO` sao removidos da contagem e dos cards de prazo.
   - Hierarquia visual dos cards SOB: `Muito atrasado (>=30 dias)` em vermelho escuro, `Pouco atrasado` em vermelho, `Vence hoje` em vermelho com destaque de borda e `Vence em breve` em laranja.
   - Cada card de `SOB` exibe `SOB`, `Data limite` e `Status do prazo` (`Vencida ha X dias`, `Vence hoje` ou `Vence em X dias`), com cor por criticidade.
+  - O modal de prazos exibe as colunas `SOB`, `Centro de servico`, `Data limite`, `Status do prazo`, `Dias para vencimento` e `Faixa`; a exportacao CSV do modal usa os mesmos dados.
   - Navegacao do carrossel por setas (`esquerda/direita`), avancando ou voltando 1 pagina de 6 cards por clique.
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
   - Ordenacao da lista: `Data execucao` em ordem decrescente (mais recente primeiro). Em empate de data, prioridade para o cadastro mais recente (`created_at` desc).
@@ -1141,3 +1142,20 @@ Atualizacao adicional 2026-05 (regra de aviso para projeto concluido na Programa
   - Depois: para continuar na edicao, e obrigatorio trocar para status diferente de `CONCLUIDO`; ao salvar, o novo Estado Trabalho e propagado para os outros dias programados do mesmo projeto (status `PROGRAMADA`/`REPROGRAMADA`).
   - Antes: no cancelamento, alguns conflitos apareciam apenas em feedback textual.
   - Depois: conflitos relevantes tambem sobem em modal de alerta com detalhes.
+
+Atualizacao adicional 2026-05-08 (centro de servico no modal de prazos)
+------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `deadlineProjects` passa a carregar `serviceCenter` a partir de `project.base`.
+  - `ProgrammingDeadlineModal` passa a renderizar a coluna `Centro de servico`.
+  - `buildDeadlineCsvContent` passa a exportar `Centro de servico` no CSV de prazos.
+- Comportamento antes/depois:
+  - Antes: o modal `Todos os prazos das obras` e seu CSV exibiam SOB, data limite, status, dias para vencimento e faixa.
+  - Depois: o modal e o CSV tambem exibem o centro de servico da obra.
+  - Nao houve alteracao em payloads de save/cancelamento/adiamento, API, banco, migration, RLS ou escopo multi-tenant.
