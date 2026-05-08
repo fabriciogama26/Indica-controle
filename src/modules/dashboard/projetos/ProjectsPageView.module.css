@@ -162,6 +162,12 @@
   align-content: start;
 }
 
+.classificationOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .checkboxControl {
   min-height: 46px;
   border-radius: 14px;
@@ -369,6 +375,16 @@
   color: #0f5937;
   background: #dcf9e7;
   border: 1px solid #9cdeba;
+}
+
+.withdrawnTag {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #6d3f05;
+  background: #fff1d6;
+  border: 1px solid #edc77e;
 }
 
 .inactiveRow {

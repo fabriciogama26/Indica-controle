@@ -41,6 +41,7 @@ type ProjectRow = {
   observation: string | null;
   is_active: boolean;
   is_test: boolean;
+  is_withdrawn: boolean;
   has_locacao: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
@@ -51,10 +52,11 @@ type ProjectRow = {
   updated_at: string;
 };
 
-type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob" | "is_test"> & {
+type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob" | "is_test" | "is_withdrawn"> & {
   has_locacao?: boolean | null;
   fob?: string | null;
   is_test?: boolean | null;
+  is_withdrawn?: boolean | null;
 };
 
 type ProjectListSummary = {
@@ -107,6 +109,7 @@ type CreateProjectPayload = {
   serviceDescription?: string | null;
   observation?: string | null;
   isTest?: boolean;
+  isWithdrawn?: boolean;
 };
 
 type UpdateProjectPayload = CreateProjectPayload & {
@@ -152,6 +155,7 @@ type ProjectInput = {
   serviceDescription: string | null;
   observation: string | null;
   isTest: boolean;
+  isWithdrawn: boolean;
 };
 
 type ProjectWorkCompletionStatusFilter = "TODOS" | "NAO_INFORMADO" | string;
@@ -441,6 +445,7 @@ function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput
     serviceDescription: normalizeNullableText(payload.serviceDescription),
     observation: normalizeNullableText(payload.observation),
     isTest: normalizeBoolean(payload.isTest),
+    isWithdrawn: normalizeBoolean(payload.isWithdrawn),
   };
 }
 
@@ -537,6 +542,9 @@ function buildUserLoginNameMap(users: ProjectUserRow[]) {
 }
 
 const PROJECT_SELECT_WITH_LOCATION =
+  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, is_withdrawn, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
+
+const PROJECT_SELECT_WITH_TEST =
   "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
 const PROJECT_SELECT_LEGACY =
@@ -544,7 +552,12 @@ const PROJECT_SELECT_LEGACY =
 
 function isMissingOptionalProjectColumns(message: string) {
   const normalized = normalizeText(message).toLowerCase();
-  return normalized.includes("has_locacao") || normalized.includes("fob") || normalized.includes("is_test");
+  return (
+    normalized.includes("has_locacao")
+    || normalized.includes("fob")
+    || normalized.includes("is_test")
+    || normalized.includes("is_withdrawn")
+  );
 }
 
 async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string, projectId: string) {
@@ -561,6 +574,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
         ...primary.data,
         fob: normalizeNullableText(primary.data.fob),
         is_test: Boolean(primary.data.is_test),
+        is_withdrawn: Boolean(primary.data.is_withdrawn),
         has_locacao: Boolean(primary.data.has_locacao),
       } as ProjectRow,
       error: null,
@@ -569,6 +583,30 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
 
   if (!isMissingOptionalProjectColumns(String(primary.error?.message ?? ""))) {
     return { data: null, error: primary.error };
+  }
+
+  const withTest = await supabase
+    .from("project_with_labels")
+    .select(PROJECT_SELECT_WITH_TEST)
+    .eq("tenant_id", tenantId)
+    .eq("id", projectId)
+    .maybeSingle<ProjectBaseRow>();
+
+  if (!withTest.error && withTest.data) {
+    return {
+      data: {
+        ...withTest.data,
+        fob: normalizeNullableText(withTest.data.fob),
+        is_test: Boolean(withTest.data.is_test),
+        is_withdrawn: false,
+        has_locacao: Boolean(withTest.data.has_locacao),
+      } as ProjectRow,
+      error: null,
+    };
+  }
+
+  if (!isMissingOptionalProjectColumns(String(withTest.error?.message ?? ""))) {
+    return { data: null, error: withTest.error };
   }
 
   const fallback = await supabase
@@ -587,6 +625,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
       ...fallback.data,
       fob: null,
       is_test: false,
+      is_withdrawn: false,
       has_locacao: false,
     } as ProjectRow,
     error: null,
@@ -650,6 +689,7 @@ async function fetchProjectsPageCompat(params: {
         ...item,
         fob: normalizeNullableText(item.fob),
         is_test: Boolean(item.is_test),
+        is_withdrawn: Boolean(item.is_withdrawn),
         has_locacao: Boolean(item.has_locacao),
       })) as ProjectRow[],
       count: primary.count ?? 0,
@@ -661,6 +701,26 @@ async function fetchProjectsPageCompat(params: {
     return { data: [] as ProjectRow[], count: 0, error: primary.error };
   }
 
+  const withTest = await runQuery(PROJECT_SELECT_WITH_TEST);
+  if (!withTest.error) {
+    const withTestRows = (withTest.data ?? []) as unknown as ProjectBaseRow[];
+    return {
+      data: withTestRows.map((item) => ({
+        ...item,
+        fob: normalizeNullableText(item.fob),
+        is_test: Boolean(item.is_test),
+        is_withdrawn: false,
+        has_locacao: Boolean(item.has_locacao),
+      })) as ProjectRow[],
+      count: withTest.count ?? 0,
+      error: null,
+    };
+  }
+
+  if (!isMissingOptionalProjectColumns(String(withTest.error.message ?? ""))) {
+    return { data: [] as ProjectRow[], count: 0, error: withTest.error };
+  }
+
   const fallback = await runQuery(PROJECT_SELECT_LEGACY);
   if (fallback.error) {
     return { data: [] as ProjectRow[], count: 0, error: fallback.error };
@@ -668,7 +728,13 @@ async function fetchProjectsPageCompat(params: {
 
   const fallbackRows = (fallback.data ?? []) as unknown as ProjectBaseRow[];
   return {
-    data: fallbackRows.map((item) => ({ ...item, fob: null, is_test: false, has_locacao: false })) as ProjectRow[],
+    data: fallbackRows.map((item) => ({
+      ...item,
+      fob: null,
+      is_test: false,
+      is_withdrawn: false,
+      has_locacao: false,
+    })) as ProjectRow[],
     count: fallback.count ?? 0,
     error: null,
   };
@@ -696,6 +762,7 @@ async function fetchProjectsSummaryCompat(params: {
       .select("id, sob")
       .eq("tenant_id", params.tenantId)
       .eq("is_test", false)
+      .eq("is_withdrawn", false)
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
 
@@ -722,6 +789,42 @@ async function fetchProjectsSummaryCompat(params: {
     }
 
     let { data: projectRows, error: projectRowsError } = await projectIdsQuery.returns<{ id: string; sob: string | null }[]>();
+    if (projectRowsError && isMissingOptionalProjectColumns(String(projectRowsError.message ?? ""))) {
+      let withTestQuery = params.supabase
+        .from("project_with_labels")
+        .select("id, sob")
+        .eq("tenant_id", params.tenantId)
+        .eq("is_test", false)
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (params.sob) {
+        withTestQuery = withTestQuery.ilike("sob", `%${params.sob}%`);
+      }
+      if (params.executionDate && isIsoDate(params.executionDate)) {
+        withTestQuery = withTestQuery.eq("execution_deadline", params.executionDate);
+      }
+      if (params.priority) {
+        withTestQuery = withTestQuery.eq("priority_text", params.priority);
+      }
+      if (params.city) {
+        withTestQuery = withTestQuery.eq("city_text", params.city);
+      }
+      withTestQuery = withTestQuery.eq("is_active", params.canceledOnly ? false : true);
+      if (params.programmingFilteredProjectIds) {
+        withTestQuery = withTestQuery.in(
+          "id",
+          params.programmingFilteredProjectIds.length > 0
+            ? params.programmingFilteredProjectIds
+            : ["00000000-0000-0000-0000-000000000000"],
+        );
+      }
+
+      const withTestResult = await withTestQuery.returns<{ id: string; sob: string | null }[]>();
+      projectRows = withTestResult.data;
+      projectRowsError = withTestResult.error;
+    }
+
     if (projectRowsError && isMissingOptionalProjectColumns(String(projectRowsError.message ?? ""))) {
       let fallbackQuery = params.supabase
         .from("project_with_labels")
@@ -1038,6 +1141,7 @@ function buildProjectWritePayload(
     service_description: input.serviceDescription,
     observation: input.observation,
     is_test: input.isTest,
+    is_withdrawn: input.isWithdrawn,
   };
 }
 
@@ -1062,6 +1166,7 @@ function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, loo
   addChange(changes, "observation", current.observation, input.observation);
   addChange(changes, "partner", current.partner_text, lookups.partner.name);
   addChange(changes, "isTest", current.is_test, input.isTest);
+  addChange(changes, "isWithdrawn", current.is_withdrawn, input.isWithdrawn);
 
   return changes;
 }
@@ -1108,6 +1213,7 @@ async function saveProjectViaRpc(params: {
     p_service_description: params.payload.service_description,
     p_observation: params.payload.observation,
     p_is_test: params.payload.is_test,
+    p_is_withdrawn: params.payload.is_withdrawn,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   };
@@ -1117,14 +1223,24 @@ async function saveProjectViaRpc(params: {
 
   let { data, error } = await executeSaveProjectRpc(rpcPayload);
   if (error) {
-    const legacyPayload = Object.fromEntries(
-      Object.entries(rpcPayload).filter(([key]) => key !== "p_fob" && key !== "p_is_test"),
+    const withoutWithdrawnPayload = Object.fromEntries(
+      Object.entries(rpcPayload).filter(([key]) => key !== "p_is_withdrawn"),
     );
 
-    const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
-    if (!legacyAttempt.error) {
-      data = legacyAttempt.data;
+    const withoutWithdrawnAttempt = await executeSaveProjectRpc(withoutWithdrawnPayload);
+    if (!withoutWithdrawnAttempt.error) {
+      data = withoutWithdrawnAttempt.data;
       error = null;
+    } else {
+      const legacyPayload = Object.fromEntries(
+        Object.entries(rpcPayload).filter(([key]) => key !== "p_fob" && key !== "p_is_test" && key !== "p_is_withdrawn"),
+      );
+
+      const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
+      if (!legacyAttempt.error) {
+        data = legacyAttempt.data;
+        error = null;
+      }
     }
   }
 
@@ -1369,6 +1485,7 @@ export async function GET(request: NextRequest) {
         observation: item.observation,
         isActive: Boolean(item.is_active),
         isTest: Boolean(item.is_test),
+        isWithdrawn: Boolean(item.is_withdrawn),
         hasLocacao: Boolean(item.has_locacao),
         cancellationReason: item.cancellation_reason,
         canceledAt: item.canceled_at,

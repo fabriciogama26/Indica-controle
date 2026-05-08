@@ -44,6 +44,7 @@ Arquitetura
 - Banco (concorrencia e limites dos previstos): `supabase/migrations/066_harden_location_and_project_forecast_rpcs.sql`
 - Banco (RPC transacional da tela principal): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Banco (remocao da constraint de formato por prioridade no SOB): `supabase/migrations/118_remove_project_sob_priority_format_constraint.sql`
+- Banco (marcador retirado da carteira): `supabase/migrations/174_add_project_is_withdrawn.sql`
 
 Cadastro
 --------
@@ -66,6 +67,7 @@ Cadastro
   - `Descricao do servico`
   - `Observacao`
   - `Obra de teste` (checkbox para excluir da carteira e das consolidacoes de medicao)
+  - `RETIRADO DA CARTEIRA` (checkbox para excluir dos cards de carteira sem tratar como obra de teste)
 - `Centro de Servico` e preenchido automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
 - `Parceira` nao aparece no frontend; o backend preenche automaticamente com `contract.name` do tenant ativo.
 - Campos carregados de tabelas de dominio:
@@ -144,8 +146,8 @@ Filtros, auto-complete e listagem
 - Coluna `Registrado por` exibida com `app_users.login_name` do `created_by`.
 - Coluna de data na lista padronizada como `Registrado em` (com base em `created_at`).
 - Bloco `Status da Carteira de Projetos` adicionado no topo da tela (acima de `Cadastro de Projeto`) com 2 cards:
-  - `Total de projetos` (todos os `SOB` unicos ativos retornados pelos filtros atuais, excluindo obras de teste).
-  - `Concluidas` (projetos ativos por `SOB` unico com `Estado Trabalho = CONCLUIDO` na `Programacao`, excluindo obras de teste; nao soma por equipe).
+  - `Total de projetos` (todos os `SOB` unicos ativos retornados pelos filtros atuais, excluindo obras de teste e obras retiradas da carteira).
+  - `Concluidas` (projetos ativos por `SOB` unico com `Estado Trabalho = CONCLUIDO` na `Programacao`, excluindo obras de teste e obras retiradas da carteira; nao soma por equipe).
 - Chamadas autenticadas da tela usam `cache: no-store` para evitar exibir dados de sessao antiga apos troca de usuario.
 - Quando a aba `Materiais previstos` esta ativa, os blocos de `Filtros` e `Lista de Projetos` ficam ocultos e a tela mostra:
   - `Filtros de Materiais Previstos` (codigo, descricao, tipo).
@@ -314,6 +316,8 @@ Constantes e configuracoes
   - Responsavel por: remover a constraint `chk_project_sob_priority_format`, liberando `SOB` sem padrao de prefixo por prioridade.
 - Caminho: `supabase/migrations/150_add_project_is_test_and_status_filters.sql`
   - Responsavel por: adicionar `project.is_test`, republicar `project_with_labels` e evoluir a RPC `save_project_record` com suporte ao marcador de obra de teste.
+- Caminho: `supabase/migrations/174_add_project_is_withdrawn.sql`
+  - Responsavel por: adicionar `project.is_withdrawn`, republicar `project_with_labels` e evoluir a RPC `save_project_record` com suporte ao marcador `RETIRADO DA CARTEIRA`.
 - Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
 - Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
@@ -502,3 +506,29 @@ Atualizacao adicional 2026-04-16 (filtros por Estado Trabalho e Tipo SGD)
   - Depois: o backend aplica os dois filtros via programacao (`work_completion_status_id`/fallback legado de texto e `sgd_type_id`) antes de paginar e consolidar os cards.
   - Antes: `GET /api/projects/meta` nao devolvia catalogo de `Estado Trabalho` e `Tipo SGD`.
   - Depois: a rota de meta devolve `workCompletionCatalog` e `sgdTypes` por tenant para alimentar os selects da tela.
+
+Atualizacao 2026-05
+-------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+  - `src/app/api/projects/route.ts`
+  - `supabase/migrations/174_add_project_is_withdrawn.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `parseProjectInput`
+  - `buildProjectWritePayload`
+  - `buildProjectUpdateChanges`
+  - `saveProjectViaRpc`
+  - `fetchProjectsPageCompat`
+  - `fetchProjectsSummaryCompat`
+  - `INITIAL_FORM`
+  - `HISTORY_FIELD_LABELS`
+- Comportamento antes/depois:
+  - Antes: a classificacao do cadastro tinha apenas `Obra de teste`.
+  - Depois: o cadastro passa a ter tambem `RETIRADO DA CARTEIRA`, persistido em `project.is_withdrawn`.
+  - Antes: retirar uma obra dos cards exigiria reaproveitar `is_test`, com impacto em Programacao/Medicao.
+  - Depois: `RETIRADO DA CARTEIRA` exclui apenas os cards de carteira da tela de Projetos, mantendo a obra disponivel nos demais fluxos operacionais.

@@ -31,6 +31,7 @@
 - [x] Adicionar botao de exportacao `Exportar Excel (CSV)` na lista de `Projetos` com base nos filtros ativos.
 - [x] Adicionar bloco `Status da Carteira de Projetos` no topo da tela de `Projetos` com 2 cards (`Total de projetos` e `Concluidas`) e resumo agregado por filtros no `GET /api/projects`, contando apenas projetos ativos por `SOB` unico e `Concluidas` baseado em `Estado Trabalho = CONCLUIDO` na programacao.
 - [x] Adicionar no cadastro de `Projetos` o marcador `Obra de teste`, com persistencia em `project.is_test`, tag visual na lista/detalhes e exclusao dessa obra dos cards de carteira.
+- [x] Adicionar no cadastro de `Projetos` o marcador `RETIRADO DA CARTEIRA`, com persistencia em `project.is_withdrawn`, tag visual na lista/detalhes e exclusao dessa obra dos cards de carteira.
 - [x] Adicionar filtro de `Status` na tela de `Projetos` com opcoes `Cancelado`, `Ativo` e `Concluido`.
 - [x] Adicionar filtro de `Status` na tela de `Atividades` com opcoes `Todos`, `Ativo` e `Inativo`, com suporte correspondente no `GET /api/activities`.
 - [x] Desabilitar cache nas chamadas autenticadas de `Projetos` para evitar dados antigos apos troca de sessao.
