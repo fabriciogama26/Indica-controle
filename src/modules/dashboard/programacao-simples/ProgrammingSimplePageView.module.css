@@ -1037,6 +1037,40 @@
   margin: 0;
 }
 
+.alertSpotlightCard {
+  border: 1px solid rgba(209, 67, 67, 0.35);
+  background: linear-gradient(180deg, #ffe7e7 0%, #ffd9d9 100%);
+  color: #7b2020;
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.alertSpotlightCard strong {
+  font-size: 0.93rem;
+}
+
+.alertSpotlightCard p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.alertActionCard {
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #f4f8ff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.alertActionHint {
+  margin: 0;
+  color: #1f2f54;
+  font-size: 0.84rem;
+}
+
 .alertList {
   margin: 0;
   padding-left: 18px;

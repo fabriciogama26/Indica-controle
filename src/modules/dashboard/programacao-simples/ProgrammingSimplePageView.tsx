@@ -96,6 +96,7 @@ import type {
   StageValidationTeamSummary,
   ProgrammingHistoryItem,
   AlertModalState,
+  SaveProgrammingResponse,
   FormState,
   FilterState,
   DeadlineStatus,
@@ -880,12 +881,38 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     });
   }
 
-  function openAlertModal(title: string, message: string, details?: string[]) {
+  function openAlertModal(
+    title: string,
+    message: string,
+    details?: string[],
+    extra?: Partial<AlertModalState>,
+  ) {
     setAlertModal({
       title,
       message,
       details: details?.filter(Boolean),
+      ...extra,
     });
+  }
+
+  function openProjectCompletedAlertModal(params: {
+    title: string;
+    payload: SaveProgrammingResponse;
+  }) {
+    const detailText = (params.payload.detail ?? "").trim();
+    openAlertModal(
+      params.title,
+      "Este projeto esta com Estado Trabalho CONCLUIDO.",
+      buildConflictAlertDetails(params.payload),
+      {
+        reason: params.payload.reason ?? null,
+        spotlightTitle: "Registro CONCLUIDO encontrado",
+        spotlightMessage: detailText || "Existe ao menos um registro concluido para este projeto.",
+        guidanceMessage: "Selecione um Estado Trabalho diferente de CONCLUIDO e salve novamente.",
+        showWorkCompletionSelector: true,
+      },
+    );
+    setInvalidFields((current) => Array.from(new Set([...current, "workCompletionStatus"])));
   }
 
   function closeAlertModal() {
@@ -1016,11 +1043,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       if (!ok) {
         const message = buildConflictFeedbackMessage(data, "Falha ao cancelar programacao.");
         setFeedback({ type: "error", message });
-        openAlertModal(
-          data.error === "conflict" ? "Conflito ao validar cancelamento" : "Falha ao validar cancelamento",
-          message,
-          buildConflictAlertDetails(data),
-        );
+        if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
+          openProjectCompletedAlertModal({
+            title: "Projeto concluido exige reabertura",
+            payload: data,
+          });
+        } else {
+          openAlertModal(
+            data.error === "conflict" ? "Conflito ao validar cancelamento" : "Falha ao validar cancelamento",
+            message,
+            buildConflictAlertDetails(data),
+          );
+        }
         await logError("Falha ao cancelar programacao.", undefined, {
           operation: "cancel_programming",
           programmingId: cancelTarget.id,
@@ -1131,11 +1165,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           type: "error",
           message,
         });
-        openAlertModal(
-          data.error === "conflict" ? "Conflito ao validar adiamento" : "Falha ao validar adiamento",
-          message,
-          buildConflictAlertDetails(data),
-        );
+        if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
+          openProjectCompletedAlertModal({
+            title: "Projeto concluido exige reabertura",
+            payload: data,
+          });
+        } else {
+          openAlertModal(
+            data.error === "conflict" ? "Conflito ao validar adiamento" : "Falha ao validar adiamento",
+            message,
+            buildConflictAlertDetails(data),
+          );
+        }
         await logError("Falha ao adiar programacao.", undefined, {
           operation: "postpone_programming",
           programmingId: postponeTarget.id,
@@ -1519,13 +1560,20 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           responseMessage,
         );
         if (!(data.hasConflict && Array.isArray(data.teams) && data.teams.length)) {
-          openAlertModal(
-            data.error === "conflict"
-              ? (editingScheduleId ? "Conflito ao salvar edicao" : "Conflito ao cadastrar programacao")
-              : (editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao"),
-            responseMessage,
-            buildConflictAlertDetails(data),
-          );
+          if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
+            openProjectCompletedAlertModal({
+              title: "Projeto concluido exige reabertura",
+              payload: data,
+            });
+          } else {
+            openAlertModal(
+              data.error === "conflict"
+                ? (editingScheduleId ? "Conflito ao salvar edicao" : "Conflito ao cadastrar programacao")
+                : (editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao"),
+              responseMessage,
+              buildConflictAlertDetails(data),
+            );
+          }
         }
         await logError(fallbackMessage, undefined, {
           operation: editingScheduleId ? "save_programming_edit" : "save_programming_batch",
@@ -2772,7 +2820,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         onReasonCodeChange={setCancelReasonCode}
         onReasonNotesChange={setCancelReasonNotes}
       />
-      <ProgrammingAlertModal modal={alertModal} onClose={closeAlertModal} />
+      <ProgrammingAlertModal
+        modal={alertModal}
+        workCompletionCatalog={workCompletionCatalog}
+        selectedWorkCompletionStatus={form.workCompletionStatus}
+        onWorkCompletionStatusChange={(value) => updateFormField("workCompletionStatus", value)}
+        onClose={closeAlertModal}
+      />
       <ProgrammingStageConflictModal modal={stageConflictModal} onClose={() => setStageConflictModal(null)} />
 
       <datalist id="programming-simple-activity-list">
