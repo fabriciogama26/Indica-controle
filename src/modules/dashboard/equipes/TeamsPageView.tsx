@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./TeamsPageView.module.css";
 
@@ -18,6 +19,8 @@ type TeamItem = {
   teamTypeName: string;
   foremanId: string;
   foremanName: string;
+  supervisorId: string | null;
+  supervisorName: string;
   isActive: boolean;
   cancellationReason: string | null;
   canceledAt: string | null;
@@ -42,6 +45,8 @@ type ForemanOption = {
   name: string;
 };
 
+type SupervisorOption = ForemanOption;
+
 type TeamTypeOption = {
   id: string;
   name: string;
@@ -59,6 +64,7 @@ type TeamFormState = {
   serviceCenterId: string;
   teamTypeId: string;
   foremanId: string;
+  supervisorId: string;
   updatedAt: string;
 };
 
@@ -68,6 +74,7 @@ type TeamFilterState = {
   serviceCenterId: string;
   teamTypeId: string;
   foremanId: string;
+  supervisorId: string;
 };
 
 type TeamsListResponse = {
@@ -78,6 +85,7 @@ type TeamsListResponse = {
 
 type TeamsMetaResponse = {
   foremen?: ForemanOption[];
+  supervisors?: SupervisorOption[];
   teamTypes?: TeamTypeOption[];
   serviceCenters?: ServiceCenterOption[];
   message?: string;
@@ -100,6 +108,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   stockCenterName: "Centro de estoque proprio",
   teamTypeName: "Tipo",
   foremanName: "Encarregado",
+  supervisorName: "Supervisor",
   isActive: "Status",
   cancellationReason: "Motivo do cancelamento",
   canceledAt: "Data do cancelamento",
@@ -113,6 +122,7 @@ const INITIAL_FORM: TeamFormState = {
   serviceCenterId: "",
   teamTypeId: "",
   foremanId: "",
+  supervisorId: "",
   updatedAt: "",
 };
 
@@ -122,6 +132,7 @@ const INITIAL_FILTERS: TeamFilterState = {
   serviceCenterId: "",
   teamTypeId: "",
   foremanId: "",
+  supervisorId: "",
 };
 
 function normalizeText(value: string) {
@@ -149,6 +160,9 @@ function buildQuery(filters: TeamFilterState, page: number, pageSize = PAGE_SIZE
   if (filters.foremanId.trim()) {
     params.set("foremanId", filters.foremanId.trim());
   }
+  if (filters.supervisorId.trim()) {
+    params.set("supervisorId", filters.supervisorId.trim());
+  }
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
@@ -170,6 +184,7 @@ function buildTeamsCsv(teamItems: TeamItem[]) {
     "Centro de estoque proprio",
     "Tipo",
     "Encarregado",
+    "Supervisor",
     "Status",
     "Registrado por",
     "Registrado em",
@@ -183,6 +198,7 @@ function buildTeamsCsv(teamItems: TeamItem[]) {
     team.stockCenterName,
     team.teamTypeName,
     team.foremanName,
+    team.supervisorName,
     team.isActive ? "Ativo" : "Inativo",
     formatAuditActor(team.createdByName),
     formatDateTime(team.createdAt),
@@ -254,10 +270,12 @@ function scrollDashboardContentToTop() {
 
 export function TeamsPageView() {
   const { session } = useAuth();
+  const logError = useErrorLogger("equipes");
   const [form, setForm] = useState<TeamFormState>(INITIAL_FORM);
   const [filterDraft, setFilterDraft] = useState<TeamFilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<TeamFilterState>(INITIAL_FILTERS);
   const [foremen, setForemen] = useState<ForemanOption[]>([]);
+  const [supervisors, setSupervisors] = useState<SupervisorOption[]>([]);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<ServiceCenterOption[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
@@ -325,6 +343,7 @@ export function TeamsPageView() {
       const data = (await response.json().catch(() => ({}))) as TeamsMetaResponse;
       if (!response.ok) {
         setForemen([]);
+        setSupervisors([]);
         setTeamTypes([]);
         setServiceCenters([]);
         setFeedback({
@@ -335,20 +354,23 @@ export function TeamsPageView() {
       }
 
       setForemen(data.foremen ?? []);
+      setSupervisors(data.supervisors ?? []);
       setTeamTypes(data.teamTypes ?? []);
       setServiceCenters(data.serviceCenters ?? []);
-    } catch {
+    } catch (error) {
       setForemen([]);
+      setSupervisors([]);
       setTeamTypes([]);
       setServiceCenters([]);
       setFeedback({
         type: "error",
         message: "Falha ao carregar metadados de equipes.",
       });
+      await logError("Falha ao carregar metadados de equipes.", error);
     } finally {
       setIsLoadingMeta(false);
     }
-  }, [session?.accessToken]);
+  }, [logError, session?.accessToken]);
 
   const loadTeams = useCallback(
     async (targetPage: number, filters: TeamFilterState) => {
@@ -383,19 +405,20 @@ export function TeamsPageView() {
         setTeams(nextTeams);
         setTotal(data.pagination?.total ?? 0);
         return nextTeams;
-      } catch {
+      } catch (error) {
         setTeams([]);
         setTotal(0);
         setFeedback({
           type: "error",
           message: "Falha ao carregar equipes.",
         });
+        await logError("Falha ao carregar equipes.", error, { filters, targetPage });
         return [] as TeamItem[];
       } finally {
         setIsLoadingList(false);
       }
     },
-    [session?.accessToken],
+    [logError, session?.accessToken],
   );
 
   const loadTeamHistory = useCallback(
@@ -430,15 +453,16 @@ export function TeamsPageView() {
         setHistoryEntries(data.history ?? []);
         setHistoryPage(data.pagination?.page ?? targetPage);
         setHistoryTotal(data.pagination?.total ?? 0);
-      } catch {
+      } catch (error) {
         setFeedback({ type: "error", message: "Falha ao carregar historico da equipe." });
         setHistoryEntries([]);
         setHistoryTotal(0);
+        await logError("Falha ao carregar historico da equipe.", error, { teamId: team.id, targetPage });
       } finally {
         setIsLoadingHistory(false);
       }
     },
-    [session?.accessToken],
+    [logError, session?.accessToken],
   );
 
   useEffect(() => {
@@ -480,6 +504,7 @@ export function TeamsPageView() {
       serviceCenterId: team.serviceCenterId ?? "",
       teamTypeId: team.teamTypeId,
       foremanId: team.foremanId,
+      supervisorId: team.supervisorId ?? "",
       updatedAt: team.updatedAt,
     });
     setFeedback(null);
@@ -549,6 +574,7 @@ export function TeamsPageView() {
         serviceCenterId: normalizeText(form.serviceCenterId),
         teamTypeId: normalizeText(form.teamTypeId),
         foremanId: normalizeText(form.foremanId),
+        supervisorId: normalizeText(form.supervisorId) || null,
         ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
 
@@ -583,11 +609,12 @@ export function TeamsPageView() {
       resetForm();
       await loadTeams(1, activeFilters);
       setPage(1);
-    } catch {
+    } catch (error) {
       setFeedback({
         type: "error",
         message: "Falha ao salvar equipe.",
       });
+      await logError("Falha ao salvar equipe.", error, { form });
     } finally {
       setIsSaving(false);
     }
@@ -658,11 +685,12 @@ export function TeamsPageView() {
 
       closeStatusModal();
       await loadTeams(page, activeFilters);
-    } catch {
+    } catch (error) {
       setFeedback({
         type: "error",
         message: "Falha ao atualizar status da equipe.",
       });
+      await logError("Falha ao atualizar status da equipe.", error, { teamId: statusTeam.id, statusAction });
     } finally {
       setIsChangingStatus(false);
     }
@@ -738,11 +766,12 @@ export function TeamsPageView() {
         type: "success",
         message: `${allTeams.length} equipe(s) exportada(s) com sucesso.`,
       });
-    } catch {
+    } catch (error) {
       setFeedback({
         type: "error",
         message: "Falha ao exportar equipes.",
       });
+      await logError("Falha ao exportar equipes.", error, { filters: activeFilters });
     } finally {
       setIsExporting(false);
     }
@@ -852,6 +881,22 @@ export function TeamsPageView() {
             </select>
           </label>
 
+          <label className={styles.field}>
+            <span>Supervisor</span>
+            <select
+              value={form.supervisorId}
+              onChange={(event) => setForm((current) => ({ ...current, supervisorId: event.target.value }))}
+              disabled={isLoadingMeta}
+            >
+              <option value="">{isLoadingMeta ? "Carregando..." : "Sem supervisor"}</option>
+              {supervisors.map((supervisor) => (
+                <option key={supervisor.id} value={supervisor.id}>
+                  {supervisor.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <div className={`${styles.actions} ${styles.formActions}`}>
             {isEditing ? (
               <button type="button" className={styles.ghostButton} onClick={resetForm} disabled={isSaving}>
@@ -900,6 +945,22 @@ export function TeamsPageView() {
               {foremen.map((foreman) => (
                 <option key={foreman.id} value={foreman.id}>
                   {foreman.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Supervisor</span>
+            <select
+              value={filterDraft.supervisorId}
+              onChange={(event) => updateFilterField("supervisorId", event.target.value)}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Todos</option>
+              {supervisors.map((supervisor) => (
+                <option key={supervisor.id} value={supervisor.id}>
+                  {supervisor.name}
                 </option>
               ))}
             </select>
@@ -971,6 +1032,7 @@ export function TeamsPageView() {
                 <th>Centro de estoque proprio</th>
                 <th>Tipo</th>
                 <th>Encarregado</th>
+                <th>Supervisor</th>
                 <th>Registrado em</th>
                 <th>Acoes</th>
               </tr>
@@ -990,6 +1052,7 @@ export function TeamsPageView() {
                     <td>{team.stockCenterName}</td>
                     <td>{team.teamTypeName}</td>
                     <td>{team.foremanName}</td>
+                    <td>{team.supervisorName}</td>
                     <td>{formatDateTime(team.createdAt)}</td>
                     <td className={styles.actionsCell}>
                       <div className={styles.tableActions}>
@@ -1152,6 +1215,9 @@ export function TeamsPageView() {
                 </div>
                 <div>
                   <strong>Encarregado:</strong> {detailTeam.foremanName}
+                </div>
+                <div>
+                  <strong>Supervisor:</strong> {detailTeam.supervisorName}
                 </div>
                 <div>
                   <strong>Registrado por:</strong> {formatAuditActor(detailTeam.createdByName)}

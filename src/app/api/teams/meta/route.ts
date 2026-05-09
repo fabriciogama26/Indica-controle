@@ -26,8 +26,8 @@ function normalizeName(value: string | null | undefined) {
   return String(value ?? "").trim();
 }
 
-const FOREMAN_JOB_TITLE_FILTER =
-  "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%,code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
+const FOREMAN_JOB_TITLE_FILTER = "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%";
+const SUPERVISOR_JOB_TITLE_FILTER = "code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
 
 async function fetchForemen(supabase: SupabaseClient, tenantId: string) {
   const { data: jobTitles, error: jobTitleError } = await supabase
@@ -101,6 +101,42 @@ async function fetchServiceCenters(supabase: SupabaseClient, tenantId: string) {
     .filter((item) => Boolean(item.id) && Boolean(item.name));
 }
 
+async function fetchSupervisors(supabase: SupabaseClient, tenantId: string) {
+  const { data: jobTitles, error: jobTitleError } = await supabase
+    .from("job_titles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .or(SUPERVISOR_JOB_TITLE_FILTER)
+    .returns<JobTitleIdRow[]>();
+
+  if (jobTitleError || !jobTitles || jobTitles.length === 0) {
+    return [] as Array<{ id: string; name: string }>;
+  }
+
+  const jobTitleIds = jobTitles.map((item) => item.id).filter(Boolean);
+  if (jobTitleIds.length === 0) {
+    return [] as Array<{ id: string; name: string }>;
+  }
+
+  const { data: peopleRows, error: peopleError } = await supabase
+    .from("people")
+    .select("id, nome")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .in("job_title_id", jobTitleIds)
+    .order("nome", { ascending: true })
+    .returns<PersonRow[]>();
+
+  if (peopleError) {
+    return [] as Array<{ id: string; name: string }>;
+  }
+
+  return (peopleRows ?? [])
+    .map((item) => ({ id: item.id, name: normalizeName(item.nome) }))
+    .filter((item) => Boolean(item.id) && Boolean(item.name));
+}
+
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -113,14 +149,16 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const [foremen, teamTypes, serviceCenters] = await Promise.all([
+    const [foremen, supervisors, teamTypes, serviceCenters] = await Promise.all([
       fetchForemen(supabase, appUser.tenant_id),
+      fetchSupervisors(supabase, appUser.tenant_id),
       fetchTeamTypes(supabase, appUser.tenant_id),
       fetchServiceCenters(supabase, appUser.tenant_id),
     ]);
 
     return NextResponse.json({
       foremen,
+      supervisors,
       teamTypes,
       serviceCenters,
     });

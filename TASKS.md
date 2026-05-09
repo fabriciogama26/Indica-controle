@@ -111,6 +111,7 @@
 - [x] Ajustar regra de `Equipes` para permitir reutilizar `Encarregado` quando o vinculo anterior estiver inativo, mantendo bloqueio de duplicidade apenas entre equipes ativas (API + RPC de cadastro/edicao/reativacao).
 - [x] Padronizar o modal de `Cancelar/Ativar` da tela `Equipes` para o mesmo layout dos modais padrao (`modalCard` + botao `Fechar` no cabecalho e nas acoes).
 - [x] Adicionar no modal de `Ativar` da tela `Equipes` o fluxo de troca de encarregado quando houver conflito (`DUPLICATE_TEAM_FOREMAN`), com suporte no `PATCH /api/teams` e na RPC `set_team_record_status`.
+- [x] Vincular `Supervisor` opcional ao cadastro de `Equipes` usando `teams.supervisor_person_id`, permitindo que o mesmo supervisor acompanhe varias equipes.
 - [x] Padronizar todas as listas ativas (`Projetos`, `Materiais`, `Atividades`, `Equipes` e `Materiais previstos`) com botao `Exportar Excel (CSV)` e remover o texto fixo de paginacao no cabecalho.
 - [x] Criar componentes compartilhados de padrao de tela (`ActionIcon` e `CsvExportButton`) e aplicar na tela `Materiais` para reduzir duplicacao e garantir consistencia nas novas telas.
 - [x] Criar base de ambiente com `.env.example`, `.env` local e `.gitignore` para segredos/artefatos do projeto.

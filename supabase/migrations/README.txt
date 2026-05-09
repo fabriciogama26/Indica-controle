@@ -89,6 +89,7 @@ Ordem de aplicacao
 85. 085_add_programming_structure_fields_and_actions_support.sql
 86. 086_add_service_activities_is_active_compat.sql
 171. 171_update_service_activity_voice_point_rpc.sql
+175. 175_add_team_supervisor_link.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -363,6 +364,9 @@ Resumo por arquivo
 
 174_add_project_is_withdrawn.sql
 - Adiciona `project.is_withdrawn`, republica a view `project_with_labels` com o novo campo e evolui a RPC `save_project_record` para persistir o marcador `RETIRADO DA CARTEIRA`.
+
+175_add_team_supervisor_link.sql
+- Adiciona `teams.supervisor_person_id`, FK por tenant para `people`, indice por supervisor e republica `save_team_record` com validacao de cargo `SUPERVISOR`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
