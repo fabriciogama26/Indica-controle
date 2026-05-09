@@ -22,7 +22,6 @@ import type {
   SupportOptionItem,
   TeamItem,
   WorkCompletionCatalogItem,
-  WorkCompletionCatalogItem,
   WorkCompletionStatus,
 } from "./types";
 import {
