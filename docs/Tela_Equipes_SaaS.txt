@@ -3,9 +3,10 @@
 Visao geral
 -----------
 - Tela para cadastro e manutencao de equipes operacionais por tenant.
-- Cada equipe possui: nome, placa do veiculo, base, tipo e encarregado.
+- Cada equipe possui: nome, placa do veiculo, base, tipo, encarregado e supervisor opcional.
 - Cada equipe passa a receber automaticamente um `Centro de estoque proprio` (`stock_center_id`) no mesmo salvamento do cadastro.
-- O encarregado e vinculado a `people`, filtrando cargos com correspondencia em `ENCARREGADO` ou `SUPERVISOR`.
+- O encarregado e vinculado a `people`, filtrando cargos com correspondencia em `ENCARREGADO`.
+- O supervisor e vinculado a `people`, filtrando cargos com correspondencia em `SUPERVISOR`, e pode se repetir em varias equipes.
 - O tipo e vinculado ao catalogo `team_types` por tenant.
 - A base corresponde ao catalogo `project_service_centers` do tenant.
 
@@ -30,6 +31,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/140_create_team_stock_operations.sql`
 - Base SQL: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
 - Base SQL: `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
+- Base SQL: `supabase/migrations/175_add_team_supervisor_link.sql`
 
 Cadastro
 --------
@@ -40,11 +42,14 @@ Cadastro
   - `Tipo`
   - `Encarregado`
 - Campo opcional:
+  - `Supervisor`
   - `Centro de estoque proprio` gerado automaticamente pelo sistema no save
 - Regras:
   - Base deve existir no tenant e estar ativa em `project_service_centers`.
   - Encarregado deve existir no tenant e estar ativo em `people`.
-  - Encarregado deve ter cargo com correspondencia em `ENCARREGADO` ou `SUPERVISOR`.
+  - Encarregado deve ter cargo com correspondencia em `ENCARREGADO`.
+  - Supervisor, quando informado, deve existir no tenant, estar ativo em `people` e ter cargo com correspondencia em `SUPERVISOR`.
+  - Um mesmo supervisor pode ficar vinculado a varias equipes ativas ou inativas.
   - Nao permitir cadastrar/editar equipe quando ja existir outra equipe ativa com o mesmo encarregado no tenant.
   - Tipo deve existir no tenant e estar ativo em `team_types`.
   - Bloqueio de duplicidade por combinacao (`tenant_id`, `foreman_person_id`, `name`, `vehicle_plate`).
@@ -66,11 +71,12 @@ Filtros, auto-complete e listagem
   - Base
   - Tipo
   - Encarregado
+  - Supervisor
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`)
   - Botao `Exportar Excel (CSV)` para exportar equipes filtradas
   - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
-  - Colunas: Nome da equipe, Placa, Base, Centro de estoque proprio, Tipo, Encarregado, Registrado em, Acoes
+  - Colunas: Nome da equipe, Placa, Base, Centro de estoque proprio, Tipo, Encarregado, Supervisor, Registrado em, Acoes
 - Acoes por linha:
   - `Detalhes`
   - `Editar`
@@ -86,6 +92,7 @@ Boas praticas
 - Manter o vinculo de base da equipe preenchido para permitir programacao consistente da obra.
 - Quando a equipe participar de requisicao/devolucao, o `Centro de estoque proprio` ja deve existir por criacao automatica no cadastro da equipe.
 - Nao permitir salvar encarregado fora do cargo `ENCARREGADO`.
+- Nao permitir salvar supervisor fora do cargo `SUPERVISOR`.
 - Registrar alteracoes em `app_entity_history` para update/cancel/activate.
 - Manter consistencia de permissao em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Recarregar a lista e limpar o formulario stale quando houver conflito de concorrencia.
@@ -139,15 +146,23 @@ Atualizacao 2026-03
 - Atualizacao (2026-04-24): migration `161_preserve_measurement_foreman_snapshots.sql` cria `team_foreman_history` e sincroniza a vigencia de encarregado por equipe para a Medicao preservar o encarregado historico por `Data execucao`.
 - Atualizacao (2026-04-24): migration `162_backfill_measurement_foreman_snapshots.sql` abre a vigencia inicial do encarregado anterior quando o primeiro historico e uma troca e corrige medições antigas.
 
+Atualizacao 2026-05
+-------------------
+- Tela `Equipes` passa a permitir vincular um `Supervisor` opcional por equipe.
+- O supervisor e salvo em `teams.supervisor_person_id`, com FK composta por tenant para `people`.
+- A API de metadados retorna supervisores separadamente de encarregados.
+- A listagem, filtros, detalhes, exportacao CSV e historico passam a considerar `Supervisor`.
+- A migration `175_add_team_supervisor_link.sql` adiciona o campo, indice por tenant/supervisor e republica `save_team_record` com `p_supervisor_person_id`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/equipes/TeamsPageView.tsx`
   - Responsavel por: formulario, filtros, listagem, detalhes, historico e cancelamento/ativacao, incluindo a base da equipe, envio de `expectedUpdatedAt` e refresh quando houver conflito.
 - Caminho: `src/app/api/teams/route.ts`
-  - Responsavel por: validar payload, paginar listagem/historico e delegar cadastro, edicao e status para as RPCs `save_team_record` e `set_team_record_status`.
+  - Responsavel por: validar payload, paginar listagem/historico e delegar cadastro, edicao e status para as RPCs `save_team_record` e `set_team_record_status`, incluindo supervisor opcional por tenant.
 - Caminho: `src/app/api/teams/meta/route.ts`
-  - Responsavel por: retornar encarregados, bases, tipos e centros de estoque proprios validos para selecao na tela.
+  - Responsavel por: retornar encarregados, supervisores, bases, tipos e centros de estoque proprios validos para selecao na tela.
 
 Constantes e configuracoes
 - Caminho: `src/lib/auth/authorization.ts`
@@ -176,6 +191,8 @@ Constantes e configuracoes
   - Responsavel por: criar `team_foreman_history`, sincronizar alteracoes de `teams.foreman_person_id` e preservar snapshots historicos consumidos pela Medicao.
 - Caminho: `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
   - Responsavel por: corrigir vigencias iniciais e snapshots de Medicao ja gravados com encarregado atual indevido.
+- Caminho: `supabase/migrations/175_add_team_supervisor_link.sql`
+  - Responsavel por: adicionar `teams.supervisor_person_id`, FK por tenant para `people`, indice por supervisor e nova assinatura de `save_team_record` com validacao de cargo `SUPERVISOR`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -183,6 +200,29 @@ Funcoes utilitarias relacionadas
 
 Servicos e integracoes externas
 - Supabase Postgres (RLS + policies + triggers)
+
+Atualizacao 2026-05 (Supervisor por equipe)
+-------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - `src/app/api/teams/route.ts`
+  - `src/app/api/teams/meta/route.ts`
+  - `supabase/migrations/175_add_team_supervisor_link.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Equipes_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: a equipe tinha apenas `Encarregado`, e a busca de encarregado aceitava cargo `SUPERVISOR` como fallback.
+  - Depois: `Encarregado` e `Supervisor` ficam separados; encarregado usa cargo `ENCARREGADO`, supervisor usa cargo `SUPERVISOR`.
+  - Depois: um mesmo supervisor pode ser usado em varias equipes sem conflito de unicidade.
+  - Depois: supervisor aparece em formulario, filtro, listagem, detalhes, exportacao CSV e historico.
+- Funcoes/hooks/constantes tocadas:
+  - `TeamsPageView`, `buildQuery`, `buildTeamsCsv`, `startEdit`, `handleSubmit`, `useErrorLogger("equipes")`
+  - `GET`/`POST`/`PUT` de `/api/teams`
+  - `GET` de `/api/teams/meta`
+  - `fetchSupervisorJobTitleIds`, `fetchSupervisorById`, `fetchSupervisors`
+  - `save_team_record` com parametro `p_supervisor_person_id`
 
 Ajuda contextual
 - Arquivos alterados/criados:

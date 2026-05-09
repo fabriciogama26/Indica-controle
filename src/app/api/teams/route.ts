@@ -16,6 +16,7 @@ type TeamRow = {
   stock_center_id: string | null;
   team_type_id: string;
   foreman_person_id: string;
+  supervisor_person_id: string | null;
   ativo: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
@@ -31,6 +32,8 @@ type ForemanRow = {
   nome: string;
   job_title_id: string;
 };
+
+type SupervisorRow = ForemanRow;
 
 type JobTitleIdRow = {
   id: string;
@@ -90,6 +93,7 @@ type CreateTeamPayload = {
   stockCenterId?: string | null;
   teamTypeId: string;
   foremanId: string;
+  supervisorId?: string | null;
 };
 
 type UpdateTeamPayload = CreateTeamPayload & {
@@ -121,8 +125,8 @@ type DbErrorShape = {
   code?: string | null;
 };
 
-const FOREMAN_JOB_TITLE_FILTER =
-  "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%,code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
+const FOREMAN_JOB_TITLE_FILTER = "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%";
+const SUPERVISOR_JOB_TITLE_FILTER = "code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
 
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value ?? "");
@@ -199,6 +203,14 @@ function mapTeamDbError(error: unknown, fallbackMessage: string) {
       status: 422,
       message: "Encarregado invalido para o tenant atual.",
       reason: "INVALID_FOREMAN",
+    } as const;
+  }
+
+  if (combined.includes("teams_supervisor_person_tenant_fk") || combined.includes("invalid_supervisor")) {
+    return {
+      status: 422,
+      message: "Supervisor invalido para o tenant atual.",
+      reason: "INVALID_SUPERVISOR",
     } as const;
   }
 
@@ -356,6 +368,22 @@ async function fetchForemanJobTitleIds(supabase: SupabaseClient, tenantId: strin
   return (data ?? []).map((item) => item.id).filter(Boolean);
 }
 
+async function fetchSupervisorJobTitleIds(supabase: SupabaseClient, tenantId: string) {
+  const { data, error } = await supabase
+    .from("job_titles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .or(SUPERVISOR_JOB_TITLE_FILTER)
+    .returns<JobTitleIdRow[]>();
+
+  if (error) {
+    return [] as string[];
+  }
+
+  return (data ?? []).map((item) => item.id).filter(Boolean);
+}
+
 async function fetchForemanById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -374,6 +402,40 @@ async function fetchForemanById(
     .eq("id", foremanId)
     .in("job_title_id", jobTitleIds)
     .maybeSingle<ForemanRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: normalizeText(data.nome),
+  };
+}
+
+async function fetchSupervisorById(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supervisorId: string | null,
+) {
+  const normalizedSupervisorId = normalizeText(supervisorId);
+  if (!normalizedSupervisorId) {
+    return null;
+  }
+
+  const jobTitleIds = await fetchSupervisorJobTitleIds(supabase, tenantId);
+  if (jobTitleIds.length === 0) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("people")
+    .select("id, nome, job_title_id")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .eq("id", normalizedSupervisorId)
+    .in("job_title_id", jobTitleIds)
+    .maybeSingle<SupervisorRow>();
 
   if (error || !data) {
     return null;
@@ -466,7 +528,7 @@ async function fetchTeamById(
   const { data, error } = await supabase
     .from("teams")
     .select(
-      "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, supervisor_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", teamId)
@@ -516,6 +578,7 @@ async function saveTeamViaRpc(params: {
   stockCenterId: string | null;
   teamTypeId: string;
   foremanId: string;
+  supervisorId: string | null;
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
@@ -581,6 +644,7 @@ async function saveTeamViaRpc(params: {
           stock_center_id: params.stockCenterId,
           team_type_id: params.teamTypeId,
           foreman_person_id: params.foremanId,
+          supervisor_person_id: params.supervisorId,
           ativo: true,
           cancellation_reason: null,
           canceled_at: null,
@@ -689,6 +753,7 @@ async function saveTeamViaRpc(params: {
         stock_center_id: effectiveStockCenterId,
         team_type_id: params.teamTypeId,
         foreman_person_id: params.foremanId,
+        supervisor_person_id: params.supervisorId,
         updated_by: params.actorUserId,
       })
       .eq("tenant_id", params.tenantId)
@@ -721,6 +786,7 @@ async function saveTeamViaRpc(params: {
     p_stock_center_id: params.stockCenterId,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
+    p_supervisor_person_id: params.supervisorId,
   });
 
   if (error) {
@@ -963,6 +1029,7 @@ export async function GET(request: NextRequest) {
     const serviceCenterId = normalizeText(params.get("serviceCenterId"));
     const teamTypeId = normalizeText(params.get("teamTypeId"));
     const foremanId = normalizeText(params.get("foremanId"));
+    const supervisorId = normalizeText(params.get("supervisorId"));
     const page = parsePositiveInteger(params.get("page"), 1);
     const pageSize = Math.min(parsePositiveInteger(params.get("pageSize"), 20), 100);
     const from = (page - 1) * pageSize;
@@ -971,7 +1038,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("teams")
       .select(
-        "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, supervisor_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -996,6 +1063,10 @@ export async function GET(request: NextRequest) {
       query = query.eq("foreman_person_id", foremanId);
     }
 
+    if (supervisorId) {
+      query = query.eq("supervisor_person_id", supervisorId);
+    }
+
     const { data, error, count } = await query
       .order("ativo", { ascending: false })
       .order("name", { ascending: true })
@@ -1016,6 +1087,9 @@ export async function GET(request: NextRequest) {
 
     const foremanIds = Array.from(
       new Set((data ?? []).map((item) => item.foreman_person_id).filter((value): value is string => Boolean(value))),
+    );
+    const supervisorIds = Array.from(
+      new Set((data ?? []).map((item) => item.supervisor_person_id).filter((value): value is string => Boolean(value))),
     );
     const teamTypeIds = Array.from(
       new Set((data ?? []).map((item) => item.team_type_id).filter((value): value is string => Boolean(value))),
@@ -1083,6 +1157,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let supervisors: PersonRow[] = [];
+    if (supervisorIds.length > 0) {
+      const supervisorsResult = await supabase
+        .from("people")
+        .select("id, nome")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("id", supervisorIds)
+        .returns<PersonRow[]>();
+
+      if (!supervisorsResult.error) {
+        supervisors = supervisorsResult.data ?? [];
+      }
+    }
+
     let stockCenters: StockCenterRow[] = [];
     if (stockCenterIds.length > 0) {
       const stockCentersResult = await supabase
@@ -1100,6 +1188,7 @@ export async function GET(request: NextRequest) {
     const userDisplayMap = buildUserDisplayMap(users);
     const userLoginNameMap = buildUserLoginNameMap(users);
     const foremanMap = buildForemanMap(foremen);
+    const supervisorMap = buildForemanMap(supervisors);
     const teamTypeMap = buildTeamTypeMap(teamTypes);
     const serviceCenterMap = new Map(serviceCenters.map((item) => [item.id, normalizeText(item.name)]));
     const stockCenterMap = new Map(stockCenters.map((item) => [item.id, normalizeText(item.name)]));
@@ -1117,6 +1206,8 @@ export async function GET(request: NextRequest) {
         teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
         foremanId: row.foreman_person_id,
         foremanName: foremanMap.get(row.foreman_person_id) ?? "Nao identificado",
+        supervisorId: row.supervisor_person_id,
+        supervisorName: row.supervisor_person_id ? supervisorMap.get(row.supervisor_person_id) ?? "Nao identificado" : "Sem supervisor",
         isActive: Boolean(row.ativo),
         cancellationReason: row.cancellation_reason,
         canceledAt: row.canceled_at,
@@ -1157,6 +1248,7 @@ export async function POST(request: NextRequest) {
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
       foremanId: normalizeText(body.foremanId),
+      supervisorId: normalizeText(body.supervisorId) || null,
     };
 
     if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
@@ -1176,6 +1268,13 @@ export async function POST(request: NextRequest) {
     const foreman = await fetchForemanById(supabase, appUser.tenant_id, input.foremanId);
     if (!foreman) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
+    }
+
+    if (input.supervisorId) {
+      const supervisor = await fetchSupervisorById(supabase, appUser.tenant_id, input.supervisorId);
+      if (!supervisor) {
+        return NextResponse.json({ message: "Supervisor invalido para o tenant atual." }, { status: 422 });
+      }
     }
 
     if (input.stockCenterId) {
@@ -1209,6 +1308,7 @@ export async function POST(request: NextRequest) {
       stockCenterId: input.stockCenterId,
       teamTypeId: input.teamTypeId,
       foremanId: input.foremanId,
+      supervisorId: input.supervisorId,
     });
 
     if (!saveResult.ok) {
@@ -1246,6 +1346,7 @@ export async function PUT(request: NextRequest) {
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
       foremanId: normalizeText(body.foremanId),
+      supervisorId: normalizeText(body.supervisorId) || null,
     };
 
     if (!teamId) {
@@ -1299,9 +1400,17 @@ export async function PUT(request: NextRequest) {
 
     const currentForeman = await fetchForemanById(supabase, appUser.tenant_id, currentTeam.foreman_person_id);
     const nextForeman = await fetchForemanById(supabase, appUser.tenant_id, input.foremanId);
+    const currentSupervisor = await fetchSupervisorById(supabase, appUser.tenant_id, currentTeam.supervisor_person_id);
+    const nextSupervisor = input.supervisorId
+      ? await fetchSupervisorById(supabase, appUser.tenant_id, input.supervisorId)
+      : null;
 
     if (!nextForeman) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
+    }
+
+    if (input.supervisorId && !nextSupervisor) {
+      return NextResponse.json({ message: "Supervisor invalido para o tenant atual." }, { status: 422 });
     }
 
     const existingTeamByForeman = await fetchExistingTeamByForeman({
@@ -1324,6 +1433,7 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "stockCenterName", currentStockCenter?.name ?? null, nextStockCenter?.name ?? null);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "foremanName", currentForeman?.name ?? null, nextForeman.name);
+    addChange(changes, "supervisorName", currentSupervisor?.name ?? null, nextSupervisor?.name ?? null);
 
     if (Object.keys(changes).length === 0) {
       return NextResponse.json({
@@ -1343,6 +1453,7 @@ export async function PUT(request: NextRequest) {
       stockCenterId: input.stockCenterId,
       teamTypeId: input.teamTypeId,
       foremanId: input.foremanId,
+      supervisorId: input.supervisorId,
       changes,
       expectedUpdatedAt,
     });

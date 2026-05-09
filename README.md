@@ -142,7 +142,7 @@ vercel --prod
   - `(dashboard)/responsavel-distribuidora/page.tsx`: placeholder de Responsavel Distribuidora.
   - `(dashboard)/municipio/page.tsx`: placeholder de Municipio.
   - `(dashboard)/pessoas/page.tsx`: rota da tela de Pessoas com cadastro, filtros, listagem, historico, exportacao e troca de status.
-- `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, filtros, historico, troca de status e criacao automatica do centro de estoque proprio.
+- `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, supervisor opcional, filtros, historico, troca de status e criacao automatica do centro de estoque proprio.
   - `(dashboard)/permissoes/page.tsx`: tela administrativa base para permissoes por pagina.
   - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
@@ -164,8 +164,8 @@ vercel --prod
   - `api/medicao/activities/catalog/route.ts`: pesquisa atividades ativas para inclusao manual ou importacao da Medicao.
   - `api/medicao/rate-suggestion/route.ts`: sugere a taxa da nova ordem por `projectId`, priorizando historico da ultima medicao do projeto e retornando fallback para preenchimento manual.
   - `api/meta/route.ts`: carrega e salva em cadastro unico as metas de medicao por tipo de equipe e dias uteis por ciclo, sempre filtrando pelo tenant autenticado, formando ciclos a partir das datas reais de medicao e expondo lista/detalhes/historico de metas salvas.
-- `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico e a geracao automatica do centro de estoque proprio.
-- `api/teams/meta/route.ts`: carrega bases, tipos e encarregados validos para a tela de Equipes.
+- `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico, supervisor opcional e a geracao automatica do centro de estoque proprio.
+- `api/teams/meta/route.ts`: carrega bases, tipos, encarregados e supervisores validos para a tela de Equipes.
   - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo (ignorando obras de teste), resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a `is_transformer` e `Preco` opcional (default `0.00`).
   - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos, materiais ativos e catalogo de motivos padrao de estorno para a tela de movimentacao.
@@ -215,7 +215,7 @@ vercel --prod
   - `MetaPageView.tsx`: tela de cadastro de metas da Medicao por tipo de equipe, equipes ativas como referencia, equipes medida manuais, meta diaria calculada, dias uteis por ciclo, dias padrao segunda a sexta, `Média Dias trabalhados` por medicoes Com producao recalculada no backend ao salvar, meta ciclo padrao, meta ciclo trabalhado e lista operacional com atualizacao, exportacao CSV, detalhes, historico e edicao.
   - `MetaPageView.module.css`: estilos da tela Meta.
 - `src/modules/dashboard/equipes/`
-- `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, centro de estoque proprio automatico, historico e cancelamento/ativacao.
+- `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, supervisor opcional, centro de estoque proprio automatico, historico e cancelamento/ativacao.
   - `TeamsPageView.module.css`: estilos da tela de equipes.
 - `src/modules/dashboard/materiais/`
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
@@ -296,7 +296,7 @@ vercel --prod
   - `Tela_Materiais_SaaS.txt`: tela de materiais com cadastro, filtros, historico e cancelamento/ativacao.
   - `Tela_Entrada_SaaS.txt`: tela de Movimentacao de Estoque com transferencia entre centros, importacao CSV, estorno transacional e exportacao da lista com status de estorno.
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
-  - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, historico e troca de status.
+  - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, supervisor, historico e troca de status.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
   - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
@@ -324,6 +324,7 @@ vercel --prod
 - `supabase/migrations/085_add_programming_structure_fields_and_actions_support.sql`: adiciona colunas estruturais de quantidade em `project_programming` e atualiza RPCs para persistir esses campos.
 - `supabase/migrations/086_add_service_activities_is_active_compat.sql`: cria compatibilidade entre `ativo` e `is_active` em `service_activities`, estabilizando as RPCs de Programacao em lote.
 - `supabase/migrations/174_add_project_is_withdrawn.sql`: adiciona `project.is_withdrawn`, republica `project_with_labels` e atualiza `save_project_record` para o marcador `RETIRADO DA CARTEIRA`.
+- `supabase/migrations/175_add_team_supervisor_link.sql`: adiciona `teams.supervisor_person_id`, FK por tenant para `people` e republica `save_team_record` com supervisor opcional.
 
 ---
 
