@@ -531,6 +531,13 @@
 - [x] Ajustar filtros gerais do Dashboard Medicao para aplicar somente pelo botao Filtrar, sem recarregar automaticamente ao alterar campos.
 
 - [x] Ajustar Projecao de fechamento do Dashboard Medicao para usar datas distintas de Data execucao e os dias da meta selecionada.
+- [x] Adicionar no `Dashboard Medicao` o filtro e o grafico `Producao por supervisor`, somando a producao das equipes vinculadas em `teams.supervisor_person_id`.
+- [x] Adicionar no `Dashboard Medicao` a alternancia da meta do supervisor entre `Equipes com producao` e `Todas vinculadas`, exibindo as duas bases na tabela.
+- [x] Ajustar `Producao por supervisor` para exibir quadro grafico com `% atingimento`, `Bullet de meta` e `Gap financeiro`, respeitando a base `Equipes com producao` ou `Todas vinculadas`.
+- [x] Adicionar filtro local por semana nos blocos `Encarregados no ciclo` e `Supervisor no ciclo`, sem alterar os filtros gerais do Dashboard Medicao.
+- [x] Adicionar legendas nos graficos de ranking, bullet e gap dos blocos `Encarregados no ciclo` e `Supervisor no ciclo`.
+- [x] Reposicionar legendas dos graficos de encarregados e supervisores acima do texto do ciclo/semana.
+- [x] Ajustar bullet chart de metas com margem no eixo para exibir melhor o marcador de meta e remover a legenda global antiga dos encarregados.
 
 - [x] Ocultar Projecao de fechamento no Ciclo da medicao quando a meta selecionada for Meta ciclo trabalhado.
 - [x] Decisao arquitetural (2026-05-03): manter o SaaS como monolito modular, evitando microservicos/deploys separados e priorizando melhoria dos limites internos por modulo.
