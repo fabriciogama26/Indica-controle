@@ -13,6 +13,7 @@ import {
   ProgrammingDeadlinePanel,
   ProgrammingDeadlineModal,
   ProgrammingDetailsModal,
+  ProgrammingFormPanel,
   ProgrammingHistoryModal,
   ProgrammingPostponeModal,
   ProgrammingStageConflictModal,
@@ -63,7 +64,6 @@ import {
   parseOptionalPositiveInteger,
   resolveDeadlineStatus,
   resolveDeadlineVisualVariant,
-  resolveReasonOption,
   resolveScheduleTeamInfo,
   startOfWeekMonday,
   toIsoDate,
@@ -82,7 +82,6 @@ import {
 } from "./validators";
 import type {
   PeriodMode,
-  WorkCompletionStatus,
   DocumentKey,
   ProjectItem,
   TeamItem,
@@ -1915,523 +1914,41 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
             }
           />
 
-          <article ref={formCardRef} className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
-            <h3 className={styles.cardTitle}>{isEditing ? "Edicao de Programacao" : "Cadastro de Programacao"}</h3>
-
-        <form className={styles.formGrid} onSubmit={handleSubmit}>
-          <label className={`${styles.field} ${isFieldInvalid("projectId") ? styles.fieldInvalid : ""}`}>
-            <span>
-              Projeto (SOB) <span className="requiredMark">*</span>
-            </span>
-            <input
-              list="programming-simple-project-list"
-              value={form.projectSearch}
-              onChange={(event) => handleProjectSobChange(event.target.value)}
-              placeholder="Digite o SOB do projeto"
-              required
-            />
-            <datalist id="programming-simple-project-list">
-              {projects.map((project) => (
-                <option key={project.id} value={project.code}>
-                  {project.city} | {project.base}
-                </option>
-              ))}
-            </datalist>
-          </label>
-
-          <label className={styles.field}>
-            <span>
-              Data execucao <span className="requiredMark">*</span>
-            </span>
-            <input type="date" value={form.date} onChange={(event) => updateFormField("date", event.target.value)} required />
-          </label>
-
-          <label className={styles.field}>
-            <span>
-              Periodo <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.period}
-              onChange={(event) => updateFormField("period", event.target.value as PeriodMode)}
-            >
-              <option value="integral">Integral</option>
-              <option value="partial">Parcial</option>
-            </select>
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("startTime") ? styles.fieldInvalid : ""}`}>
-            <span>
-              Hora inicio <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="time"
-              value={form.startTime}
-              onChange={(event) => updateFormField("startTime", event.target.value)}
-              required
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("endTime") ? styles.fieldInvalid : ""}`}>
-            <span>
-              Hora termino <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="time"
-              value={form.endTime}
-              onChange={(event) => updateFormField("endTime", event.target.value)}
-              required
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("outageStartTime") ? styles.fieldInvalid : ""}`}>
-            <span>Inicio de desligamento</span>
-            <input
-              type="time"
-              value={form.outageStartTime}
-              onChange={(event) => updateFormField("outageStartTime", event.target.value)}
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("outageEndTime") ? styles.fieldInvalid : ""}`}>
-            <span>Termino de desligamento</span>
-            <input
-              type="time"
-              value={form.outageEndTime}
-              onChange={(event) => updateFormField("outageEndTime", event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Apoio</span>
-            <select
-              value={form.supportItemId}
-              onChange={(event) => updateFormField("supportItemId", event.target.value)}
-            >
-              <option value="">Selecione</option>
-              {supportOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.description}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("feeder") ? styles.fieldInvalid : ""}`}>
-            <span>Alimentador</span>
-            <input
-              type="text"
-              value={form.feeder}
-              onChange={(event) => updateFormField("feeder", event.target.value)}
-              placeholder="Ex.: AL-09"
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("electricalField") ? styles.fieldInvalid : ""}`}>
-            <span>
-              Nº EQ - Numero <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              inputMode="text"
-              pattern="[A-Za-z0-9]*"
-              value={form.electricalField}
-              onChange={(event) => updateFormField("electricalField", event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
-              placeholder="Ex.: AB1234"
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("posteQty") ? styles.fieldInvalid : ""}`}>
-            <span>POSTE (quantidade)</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.posteQty}
-              onChange={(event) => updateFormField("posteQty", event.target.value)}
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("estruturaQty") ? styles.fieldInvalid : ""}`}>
-            <span>ESTRUTURA (quantidade)</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.estruturaQty}
-              onChange={(event) => updateFormField("estruturaQty", event.target.value)}
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("trafoQty") ? styles.fieldInvalid : ""}`}>
-            <span>TRAFO (quantidade)</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.trafoQty}
-              onChange={(event) => updateFormField("trafoQty", event.target.value)}
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("redeQty") ? styles.fieldInvalid : ""}`}>
-            <span>REDE (quantidade)</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.redeQty}
-              onChange={(event) => updateFormField("redeQty", event.target.value)}
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("etapaNumber") ? styles.fieldInvalid : ""}`}>
-            <div className={styles.inlineFieldHeader}>
-              <span>
-                ETAPA {form.etapaUnica || form.etapaFinal ? null : <span className="requiredMark">*</span>}
-              </span>
-              <div className={styles.inlineCheckboxGroup}>
-                <label className={styles.inlineCheckbox}>
-                  <input
-                    type="checkbox"
-                    checked={form.etapaUnica}
-                    onChange={(event) => updateFormField("etapaUnica", event.target.checked)}
-                  />
-                  ETAPA ÚNICA
-                </label>
-                <label className={styles.inlineCheckbox}>
-                  <input
-                    type="checkbox"
-                    checked={form.etapaFinal}
-                    onChange={(event) => updateFormField("etapaFinal", event.target.checked)}
-                  />
-                  ETAPA FINAL
-                </label>
-              </div>
-            </div>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={form.etapaNumber}
-              onChange={(event) => updateFormField("etapaNumber", event.target.value)}
-              disabled={form.etapaUnica || form.etapaFinal}
-              placeholder="Ex.: 1"
-            />
-            <small className={styles.fieldHint}>
-              {form.etapaUnica
-                ? "Com ETAPA ÚNICA marcada, a coluna INFO STATUS na extracao ENEL usa o texto ETAPA ÚNICA."
-                : form.etapaFinal
-                  ? "Com ETAPA FINAL marcada, a coluna INFO STATUS na extracao ENEL usa o texto ETAPA FINAL."
-                : "A etapa e sugerida automaticamente com base nas programacoes anteriores do mesmo projeto para as equipes selecionadas. Na edicao, se nao alterar esse campo, o valor atual e preservado. ETAPA ÚNICA e ETAPA FINAL sao opcoes excludentes."}
-            </small>
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("affectedCustomers") ? styles.fieldInvalid : ""}`}>
-            <span>Nº Clientes Afetados</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.affectedCustomers}
-              onChange={(event) => updateFormField("affectedCustomers", event.target.value)}
-            />
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("sgdTypeId") ? styles.fieldInvalid : ""}`}>
-            <span>
-              Tipo de SGD <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.sgdTypeId}
-              onChange={(event) => updateFormField("sgdTypeId", event.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              {sgdTypes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.description}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={`${styles.field} ${isFieldInvalid("electricalEqCatalogId") ? styles.fieldInvalid : ""}`}>
-            <span>
-              Nº EQ - Tipo (RE, CO, CF, CC ou TR) <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.electricalEqCatalogId}
-              onChange={(event) => updateFormField("electricalEqCatalogId", event.target.value)}
-              required
-            >
-              <option value="">Selecione</option>
-              {electricalEqCatalog.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={`${styles.field} ${styles.fieldWide}`}>
-            <span>Descricao do servico</span>
-            <input
-              type="text"
-              value={form.serviceDescription}
-              onChange={(event) => updateFormField("serviceDescription", event.target.value)}
-              placeholder="Descricao operacional do servico para esta programacao."
-            />
-          </label>
-
-          <label className={`${styles.field} ${styles.fieldWide}`}>
-            <span>Anotacao</span>
-            <textarea
-              value={form.note}
-              onChange={(event) => updateFormField("note", event.target.value)}
-              rows={4}
-              placeholder="Observacoes operacionais para todas as equipes selecionadas."
-            />
-          </label>
-
-          {editingScheduleId ? (
-            <label className={`${styles.field} ${isFieldInvalid("workCompletionStatus") ? styles.fieldInvalid : ""}`}>
-              <span>Estado do Projeto</span>
-              <select
-                value={form.workCompletionStatus}
-                onChange={(event) => updateFormField("workCompletionStatus", event.target.value as WorkCompletionStatus | "")}
-              >
-                <option value="">Selecione</option>
-                {workCompletionCatalog.map((item) => (
-                  <option key={item.code} value={item.code}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-
-          {editingScheduleId ? (
-            <label className={`${styles.field} ${styles.fieldWide} ${isFieldInvalid("changeReason") ? styles.fieldInvalid : ""}`}>
-              <span>Motivo da reprogramacao (obrigatorio se alterar projeto, equipe, data, horario ou periodo)</span>
-              <select
-                value={editChangeReasonCode}
-                onChange={(event) => setEditChangeReasonCode(event.target.value)}
-                disabled={!reasonOptions.length}
-              >
-                <option value="">Selecione</option>
-                {reasonOptions.map((item) => (
-                  <option key={item.code} value={item.code}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              {!reasonOptions.length ? (
-                <small className={styles.helperText}>
-                  Catalogo de motivos indisponivel. Aplique a migration 135 para habilitar a selecao.
-                </small>
-              ) : null}
-              {resolveReasonOption(reasonOptions, editChangeReasonCode)?.requiresNotes ? (
-                <textarea
-                  value={editChangeReasonNotes}
-                  onChange={(event) => setEditChangeReasonNotes(event.target.value)}
-                  rows={3}
-                  placeholder="Descreva a observacao complementar do motivo."
-                />
-              ) : null}
-            </label>
-          ) : null}
-
-          <section className={`${styles.formSection} ${styles.fieldWide}`}>
-            <div className={styles.sectionHeader}>
-              <h4>
-                Equipes <span className="requiredMark">*</span>
-              </h4>
-              <p>Selecione uma ou mais equipes para receber a programacao do formulario.</p>
-            </div>
-            <div className={`${styles.teamSelectionCard} ${isFieldInvalid("teamIds") ? styles.teamSelectionCardInvalid : ""}`}>
-              <div className={styles.teamSelectionHeader}>
-                <input
-                  type="text"
-                  value={form.teamSearch}
-                  onChange={(event) => updateFormField("teamSearch", event.target.value)}
-                  placeholder="Buscar equipe..."
-                />
-                <div className={styles.actions}>
-                  <button type="button" className={styles.ghostButton} onClick={selectAllVisibleTeams} disabled={Boolean(editingScheduleId)}>
-                    Marcar visiveis
-                  </button>
-                  <button type="button" className={styles.ghostButton} onClick={clearSelectedTeams} disabled={Boolean(editingScheduleId)}>
-                    Limpar
-                  </button>
-                </div>
-              </div>
-
-              {editingScheduleId ? (
-                <p className={styles.helperText}>
-                  Modo edicao ativo: voce pode trocar a equipe da programacao, mantendo apenas 1 equipe selecionada.
-                </p>
-              ) : selectedProject ? (
-                <p className={styles.helperText}>
-                  Base do projeto selecionado: <strong>{selectedProject.base}</strong>. Somente equipes dessa base sao exibidas.
-                </p>
-              ) : (
-                <p className={styles.helperText}>Selecione um projeto para limitar as equipes pela base.</p>
-              )}
-              {hasEditingTeamChanged ? (
-                <div className={styles.warningCard}>
-                  <p>
-                    Reprogramacao com troca de equipe detectada.
-                  </p>
-                  <p>
-                    Equipe original: <strong>{originalEditingTeamName}</strong> | Nova equipe: <strong>{selectedEditingTeamName}</strong>
-                  </p>
-                  <p>
-                    Para salvar, mantenha o motivo de reprogramacao preenchido.
-                  </p>
-                </div>
-              ) : null}
-
-              <div className={styles.teamList}>
-                {visibleTeamOptions.length ? (
-                  visibleTeamOptions.map((team) => (
-                    <label key={team.id} className={styles.teamOption}>
-                      <input
-                        type="checkbox"
-                        checked={form.teamIds.includes(team.id)}
-                        onChange={() => toggleTeam(team.id)}
-                      />
-                      <div className={styles.teamOptionMeta}>
-                        <strong>{team.name}</strong>
-                        <small>{team.serviceCenterName}</small>
-                        <small>Encarregado: {team.foremanName || "Sem encarregado"}</small>
-                      </div>
-                    </label>
-                  ))
-                ) : (
-                  <p className={styles.emptyHint}>Nenhuma equipe disponivel para o filtro atual.</p>
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className={`${styles.formSection} ${styles.fieldWide}`}>
-            <div className={styles.sectionHeader}>
-              <h4>Atividades</h4>
-              <p>Inclua o codigo e a quantidade das atividades previstas para a programacao.</p>
-            </div>
-            <div className={styles.activityComposer}>
-              <label className={styles.field}>
-                <span>Codigo da atividade</span>
-                <input
-                  list="programming-simple-activity-list"
-                  value={form.activitySearch}
-                  onChange={(event) => updateFormField("activitySearch", event.target.value)}
-                  placeholder={isLoadingActivities ? "Buscando atividades..." : "Digite codigo e selecione"}
-                />
-              </label>
-              <label className={styles.field}>
-                <span>Quantidade</span>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={form.activityQuantity}
-                  onChange={(event) => updateFormField("activityQuantity", event.target.value)}
-                />
-              </label>
-              <button type="button" className={styles.secondaryButton} onClick={addActivity}>
-                Incluir atividade
-              </button>
-            </div>
-
-            <div className={styles.activitiesList}>
-              {form.activities.length ? (
-                form.activities.map((item, index) => (
-                  <div key={item.catalogId} className={styles.activityRow}>
-                    <div>
-                      <strong>{item.code}</strong>
-                      <small>{item.description}</small>
-                    </div>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={item.quantity}
-                      onChange={(event) => updateActivityQuantity(index, event.target.value)}
-                    />
-                    <span>{item.unit}</span>
-                    <button type="button" className={styles.ghostButton} onClick={() => removeActivity(index)}>
-                      Remover
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <p className={styles.emptyHint}>Nenhuma atividade incluida.</p>
-              )}
-            </div>
-          </section>
-
-          <section className={`${styles.formSection} ${styles.fieldWide}`}>
-            <div className={styles.sectionHeader}>
-              <h4>Documentos</h4>
-              <p>Preencha os dados dos documentos quando existirem para a programacao.</p>
-            </div>
-            <div className={styles.documentsGrid}>
-              {DOCUMENT_KEYS.map((item) => (
-                <div key={item.key} className={styles.documentCard}>
-                  <label className={styles.field}>
-                    <span>{item.label}</span>
-                    <input
-                      value={form.documents[item.key].number}
-                      onChange={(event) => updateDocument(item.key, "number", event.target.value)}
-                      placeholder={`Numero ${item.label}`}
-                    />
-                  </label>
-                  <label className={styles.field}>
-                    <span>Data aprovada</span>
-                    <input
-                      type="date"
-                      value={form.documents[item.key].approvedAt}
-                      onChange={(event) => updateDocument(item.key, "approvedAt", event.target.value)}
-                    />
-                  </label>
-                  <label className={styles.field}>
-                    <span>Data pedido</span>
-                    <input
-                      type="date"
-                      value={form.documents[item.key].requestedAt}
-                      onChange={(event) => updateDocument(item.key, "requestedAt", event.target.value)}
-                    />
-                  </label>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <div className={`${styles.actions} ${styles.formActions} ${styles.formActionsInline}`}>
-            <button
-              type="submit"
-              className={styles.primaryButton}
-              disabled={
-                isSaving
-                || !form.projectId
-                || !form.teamIds.length
-                || (isEditing && form.teamIds.length !== 1)
-                || !form.sgdTypeId
-                || !form.electricalField.trim()
-                || !form.electricalEqCatalogId
-              }
-            >
-              {isSaving ? "Salvando..." : editingScheduleId ? "Salvar edicao" : "Cadastrar programacao"}
-            </button>
-            {editingScheduleId ? (
-              <button type="button" className={styles.ghostButton} onClick={cancelEditMode} disabled={isSaving}>
-                Cancelar edicao
-              </button>
-            ) : null}
-          </div>
-            </form>
-          </article>
+          <ProgrammingFormPanel
+            formCardRef={formCardRef}
+            form={form}
+            projects={projects}
+            supportOptions={supportOptions}
+            sgdTypes={sgdTypes}
+            electricalEqCatalog={electricalEqCatalog}
+            workCompletionCatalog={workCompletionCatalog}
+            reasonOptions={reasonOptions}
+            activityOptions={activityOptions}
+            visibleTeamOptions={visibleTeamOptions}
+            selectedProject={selectedProject}
+            isEditing={isEditing}
+            isSaving={isSaving}
+            isLoadingActivities={isLoadingActivities}
+            hasEditingTeamChanged={hasEditingTeamChanged}
+            originalEditingTeamName={originalEditingTeamName}
+            selectedEditingTeamName={selectedEditingTeamName}
+            editChangeReasonCode={editChangeReasonCode}
+            editChangeReasonNotes={editChangeReasonNotes}
+            isFieldInvalid={isFieldInvalid}
+            onSubmit={handleSubmit}
+            onProjectSobChange={handleProjectSobChange}
+            onFormFieldChange={updateFormField}
+            onToggleTeam={toggleTeam}
+            onSelectAllVisibleTeams={selectAllVisibleTeams}
+            onClearSelectedTeams={clearSelectedTeams}
+            onAddActivity={addActivity}
+            onUpdateActivityQuantity={updateActivityQuantity}
+            onRemoveActivity={removeActivity}
+            onDocumentChange={updateDocument}
+            onEditChangeReasonCodeChange={setEditChangeReasonCode}
+            onEditChangeReasonNotesChange={setEditChangeReasonNotes}
+            onCancelEdit={cancelEditMode}
+          />
         </>
       ) : null}
 
@@ -2834,12 +2351,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         onClose={closeAlertModal}
       />
       <ProgrammingStageConflictModal modal={stageConflictModal} onClose={() => setStageConflictModal(null)} />
-
-      <datalist id="programming-simple-activity-list">
-        {activityOptions.map((item) => (
-          <option key={item.id} value={item.code} label={item.description} />
-        ))}
-      </datalist>
     </section>
   );
 }
