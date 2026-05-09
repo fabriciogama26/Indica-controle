@@ -43,7 +43,7 @@
 
 .filterGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
   gap: 12px;
 }
 
@@ -152,30 +152,32 @@
   gap: 10px;
 }
 
-.chartLegend {
+.panelLegend {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 16px;
-  border-top: 1px solid #edf1f8;
-  padding-top: 18px;
-  font-size: 12px;
-  font-weight: 700;
+  gap: 10px 14px;
+  margin-bottom: 10px;
   color: #31456f;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .foremanVisualGrid,
-.foremanVisualGridExpanded {
+.foremanVisualGridExpanded,
+.supervisorVisualGrid,
+.supervisorVisualGridExpanded {
   display: grid;
   gap: 14px;
   padding-top: 14px;
 }
 
-.foremanVisualGridExpanded {
+.foremanVisualGridExpanded,
+.supervisorVisualGridExpanded {
   min-width: 980px;
 }
 
-.foremanVisualTop {
+.foremanVisualTop,
+.supervisorVisualTop {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
@@ -365,6 +367,13 @@
   width: 10px;
   height: 10px;
   border-radius: 999px;
+}
+
+.legendLine {
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: #0f172a;
 }
 
 .legendBlue {
@@ -691,7 +700,8 @@
     grid-template-columns: 1fr;
   }
 
-  .foremanVisualTop {
+  .foremanVisualTop,
+  .supervisorVisualTop {
     grid-template-columns: 1fr;
   }
 }

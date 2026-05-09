@@ -31,6 +31,8 @@ type TeamRow = {
   name: string;
   team_type_id: string | null;
   foreman_person_id: string | null;
+  supervisor_person_id: string | null;
+  ativo?: boolean | null;
 };
 
 type PersonRow = {
@@ -59,6 +61,33 @@ type ProgrammingCompletionRow = {
   project_id: string;
   work_completion_status: string | null;
   updated_at: string;
+};
+
+type CycleWeek = {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  workdays: number;
+};
+
+type ForemanAggregate = {
+  foremanName: string;
+  totalValue: number;
+  metaValue: number;
+  standardMetaValue: number;
+  workedMetaValue: number;
+  teamIds: Set<string>;
+  daysByTeam: Map<string, Set<string>>;
+};
+
+type SupervisorAggregate = {
+  supervisorId: string | null;
+  supervisorName: string;
+  totalValue: number;
+  orderCount: number;
+  productiveTeamIds: Set<string>;
+  potentialTeamIds: Set<string>;
 };
 
 function normalizeText(value: unknown) {
@@ -109,6 +138,10 @@ function toIsoDate(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function addDays(value: Date, days: number) {
+  return createUtcDate(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate() + days);
+}
+
 function addMonths(value: Date, months: number) {
   return createUtcDate(value.getUTCFullYear(), value.getUTCMonth() + months, value.getUTCDate());
 }
@@ -128,6 +161,43 @@ function formatCycleLabel(start: Date, end: Date) {
   const endMonth = String(end.getUTCMonth() + 1).padStart(2, "0");
   const endYear = String(end.getUTCFullYear());
   return `Ciclo ${startDay}/${startMonth}/${startYear} a ${endDay}/${endMonth}/${endYear}`;
+}
+
+function formatShortDate(value: Date) {
+  const day = String(value.getUTCDate()).padStart(2, "0");
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  return `${day}/${month}`;
+}
+
+function countBusinessDays(start: Date, end: Date) {
+  let total = 0;
+  for (let current = start; current <= end; current = addDays(current, 1)) {
+    const day = current.getUTCDay();
+    if (day !== 0 && day !== 6) total += 1;
+  }
+  return total;
+}
+
+function buildCycleWeeks(cycleStart: string, cycleEnd: string): CycleWeek[] {
+  const weeks: CycleWeek[] = [];
+  let start = parseIsoDate(cycleStart);
+  const cycleEndDate = parseIsoDate(cycleEnd);
+  let index = 1;
+
+  while (start <= cycleEndDate) {
+    const end = addDays(start, 6) > cycleEndDate ? cycleEndDate : addDays(start, 6);
+    weeks.push({
+      id: `week-${index}`,
+      label: `${index}ª semana (${formatShortDate(start)} a ${formatShortDate(end)})`,
+      startDate: toIsoDate(start),
+      endDate: toIsoDate(end),
+      workdays: countBusinessDays(start, end),
+    });
+    start = addDays(end, 1);
+    index += 1;
+  }
+
+  return weeks;
 }
 
 function buildCycleFromMeasurementDate(value: string) {
@@ -216,6 +286,7 @@ export async function GET(request: NextRequest) {
   const projectQueryFilter = normalizeText(request.nextUrl.searchParams.get("project")).toLowerCase();
   const teamIdFilter = normalizeUuid(request.nextUrl.searchParams.get("teamId"));
   const foremanFilter = normalizeText(request.nextUrl.searchParams.get("foreman"));
+  const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
   const completionFilter = normalizeText(request.nextUrl.searchParams.get("completionStatus")).toUpperCase();
 
   const { data: orders, error: ordersError } = await resolution.supabase
@@ -266,13 +337,17 @@ export async function GET(request: NextRequest) {
       startDate: null,
       endDate: null,
       selectedCycleStart: null,
-      filters: { projects: [], teams: [], foremen: [] },
+      filters: { projects: [], teams: [], foremen: [], supervisors: [] },
       summary: null,
       completionChart: [],
       cycleCompletionChart: [],
       periodCompletionChart: [],
       cycleComparison: null,
       foremen: [],
+      foremenByWeek: {},
+      cycleWeeks: [],
+      supervisorsProduction: [],
+      supervisorsProductionByWeek: {},
     });
   }
 
@@ -280,6 +355,7 @@ export async function GET(request: NextRequest) {
     if (order.execution_date < selectedCycle.cycleStart || order.execution_date > selectedCycle.cycleEnd) return false;
     return true;
   });
+  const cycleWeeks = buildCycleWeeks(selectedCycle.cycleStart, selectedCycle.cycleEnd);
 
   const hasPeriodFilter = Boolean(startDateFilter || endDateFilter);
   const periodOrders = hasPeriodFilter
@@ -302,6 +378,50 @@ export async function GET(request: NextRequest) {
     orderCompletionMap.set(order.id, projectCompletionMap.get(order.project_id) ?? snapshot);
   }
 
+  const allVisibleTeamIds = Array.from(new Set([...cycleOrders, ...periodOrders].map((order) => order.team_id).filter(Boolean)));
+  const teamsResult = allVisibleTeamIds.length
+    ? await resolution.supabase
+        .from("teams")
+        .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
+        .eq("tenant_id", tenantId)
+        .in("id", allVisibleTeamIds)
+        .returns<TeamRow[]>()
+    : { data: [] as TeamRow[], error: null };
+
+  if (teamsResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar equipes para dashboard." }, { status: 500 });
+  }
+
+  const activeTeamsResult = await resolution.supabase
+    .from("teams")
+    .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .returns<TeamRow[]>();
+
+  if (activeTeamsResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar equipes ativas para metas de supervisores." }, { status: 500 });
+  }
+
+  const teamMap = new Map((teamsResult.data ?? []).map((team) => [team.id, team]));
+  const activeTeamMap = new Map((activeTeamsResult.data ?? []).map((team) => [team.id, team]));
+  const personIds = Array.from(
+    new Set(
+      [...(teamsResult.data ?? []), ...(activeTeamsResult.data ?? [])]
+        .flatMap((team) => [team.foreman_person_id, team.supervisor_person_id])
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const peopleResult = personIds.length
+    ? await resolution.supabase
+        .from("people")
+        .select("id, nome")
+        .eq("tenant_id", tenantId)
+        .in("id", personIds)
+        .returns<PersonRow[]>()
+    : { data: [] as PersonRow[], error: null };
+  const personMap = new Map((peopleResult.data ?? []).map((person) => [person.id, normalizeText(person.nome)]));
+
   const projectOptions = Array.from(
     new Map(cycleOrders.map((order) => [order.project_id, {
       id: order.project_id,
@@ -320,11 +440,26 @@ export async function GET(request: NextRequest) {
     new Set(cycleOrders.map((order) => normalizeText(order.foreman_name_snapshot)).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right));
 
+  const supervisorOptions = Array.from(
+    new Map(
+      (activeTeamsResult.data ?? [])
+        .filter((team): team is TeamRow => Boolean(team?.supervisor_person_id))
+        .map((team) => [
+          team.supervisor_person_id as string,
+          {
+            id: team.supervisor_person_id as string,
+            label: personMap.get(team.supervisor_person_id as string) || "Supervisor nao identificado",
+          },
+        ]),
+    ).values(),
+  ).sort((left, right) => left.label.localeCompare(right.label));
+
   const filteredOrders = cycleOrders.filter((order) => {
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
     if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL") && orderCompletionMap.get(order.id) !== completionFilter) return false;
     return true;
   });
@@ -334,6 +469,7 @@ export async function GET(request: NextRequest) {
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
     if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL") && orderCompletionMap.get(order.id) !== completionFilter) return false;
     return true;
   });
@@ -378,28 +514,6 @@ export async function GET(request: NextRequest) {
   if (targetItemsResult.error) {
     return NextResponse.json({ message: "Falha ao carregar metas do ciclo." }, { status: 500 });
   }
-
-  const teamIds = Array.from(new Set(filteredOrders.map((order) => order.team_id)));
-  const teamsResult = teamIds.length
-    ? await resolution.supabase
-        .from("teams")
-        .select("id, name, team_type_id, foreman_person_id")
-        .eq("tenant_id", tenantId)
-        .in("id", teamIds)
-        .returns<TeamRow[]>()
-    : { data: [] as TeamRow[], error: null };
-
-  const teamMap = new Map((teamsResult.data ?? []).map((team) => [team.id, team]));
-  const foremanPersonIds = Array.from(new Set((teamsResult.data ?? []).map((team) => team.foreman_person_id).filter((id): id is string => Boolean(id))));
-  const peopleResult = foremanPersonIds.length
-    ? await resolution.supabase
-        .from("people")
-        .select("id, nome")
-        .eq("tenant_id", tenantId)
-        .in("id", foremanPersonIds)
-        .returns<PersonRow[]>()
-    : { data: [] as PersonRow[], error: null };
-  const personMap = new Map((peopleResult.data ?? []).map((person) => [person.id, normalizeText(person.nome)]));
 
   const dailyMetaByTeamType = new Map((targetItemsResult.data ?? []).map((item) => [item.team_type_id, Number(item.daily_value ?? 0)]));
   const cycleMetaValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.cycle_goal ?? 0), 0);
@@ -447,31 +561,44 @@ export async function GET(request: NextRequest) {
   const cycleCompletionTotals = createCompletionTotals();
   const periodCompletionTotals = createCompletionTotals();
 
-  const foremanMap = new Map<string, {
-    foremanName: string;
-    totalValue: number;
-    metaValue: number;
-    standardMetaValue: number;
-    workedMetaValue: number;
-    teamIds: Set<string>;
-    daysByTeam: Map<string, Set<string>>;
-  }>();
+  const potentialSupervisorTeams = (activeTeamsResult.data ?? []).filter((team) => {
+    if (!team.supervisor_person_id) return false;
+    if (teamIdFilter && team.id !== teamIdFilter) return false;
+    if (supervisorIdFilter && team.supervisor_person_id !== supervisorIdFilter) return false;
+    return true;
+  });
 
-  for (const order of filteredOrders) {
-    addCompletionTotals(cycleCompletionTotals, order);
+  function createForemanMap() {
+    return new Map<string, ForemanAggregate>();
   }
 
-  for (const order of periodFilteredOrders) {
-    addCompletionTotals(periodCompletionTotals, order);
+  function createSupervisorMap() {
+    const map = new Map<string, SupervisorAggregate>();
+    for (const team of potentialSupervisorTeams) {
+      const supervisorId = team.supervisor_person_id ?? null;
+      const supervisorName = supervisorId ? personMap.get(supervisorId) || "Supervisor nao identificado" : "Sem supervisor";
+      const supervisorKey = supervisorId ?? "__NO_SUPERVISOR__";
+      const currentSupervisor = map.get(supervisorKey) ?? {
+        supervisorId,
+        supervisorName,
+        totalValue: 0,
+        orderCount: 0,
+        productiveTeamIds: new Set<string>(),
+        potentialTeamIds: new Set<string>(),
+      };
+      currentSupervisor.potentialTeamIds.add(team.id);
+      map.set(supervisorKey, currentSupervisor);
+    }
+    return map;
   }
 
-  for (const order of filteredOrders) {
+  function addForemanOrder(target: Map<string, ForemanAggregate>, order: MeasurementOrderRow) {
     const totalValue = valueByOrder.get(order.id) ?? 0;
     const team = teamMap.get(order.team_id);
     const foremanName = normalizeText(order.foreman_name_snapshot)
       || (team?.foreman_person_id ? personMap.get(team.foreman_person_id) : "")
       || "Nao identificado";
-    const current = foremanMap.get(foremanName) ?? {
+    const current = target.get(foremanName) ?? {
       foremanName,
       totalValue: 0,
       metaValue: 0,
@@ -485,22 +612,128 @@ export async function GET(request: NextRequest) {
     const dates = current.daysByTeam.get(order.team_id) ?? new Set<string>();
     dates.add(order.execution_date);
     current.daysByTeam.set(order.team_id, dates);
-    foremanMap.set(foremanName, current);
+    target.set(foremanName, current);
   }
 
-  for (const foreman of foremanMap.values()) {
-    for (const teamId of foreman.teamIds) {
-      const team = teamMap.get(teamId);
-      if (team?.team_type_id) {
-        const dailyMeta = dailyMetaByTeamType.get(team.team_type_id) ?? 0;
-        foreman.metaValue += dailyMeta * workdays;
-        foreman.standardMetaValue += dailyMeta * defaultWorkdays;
-        foreman.workedMetaValue += dailyMeta * workedDays;
-      }
+  function addSupervisorOrder(target: Map<string, SupervisorAggregate>, order: MeasurementOrderRow) {
+    const totalValue = valueByOrder.get(order.id) ?? 0;
+    const team = teamMap.get(order.team_id);
+    const supervisorId = team?.supervisor_person_id ?? null;
+    const supervisorName = supervisorId ? personMap.get(supervisorId) || "Supervisor nao identificado" : "Sem supervisor";
+    const supervisorKey = supervisorId ?? "__NO_SUPERVISOR__";
+    const currentSupervisor = target.get(supervisorKey) ?? {
+      supervisorId,
+      supervisorName,
+      totalValue: 0,
+      orderCount: 0,
+      productiveTeamIds: new Set<string>(),
+      potentialTeamIds: new Set<string>(),
+    };
+    currentSupervisor.totalValue += totalValue;
+    currentSupervisor.orderCount += 1;
+    currentSupervisor.productiveTeamIds.add(order.team_id);
+    if (activeTeamMap.has(order.team_id)) {
+      currentSupervisor.potentialTeamIds.add(order.team_id);
     }
+    target.set(supervisorKey, currentSupervisor);
   }
 
+  function calculateSupervisorMeta(teamIds: Set<string>, metaWorkdays: number) {
+    let total = 0;
+    for (const teamId of teamIds) {
+      const team = activeTeamMap.get(teamId) ?? teamMap.get(teamId);
+      if (!team?.team_type_id) continue;
+      total += (dailyMetaByTeamType.get(team.team_type_id) ?? 0) * metaWorkdays;
+    }
+    return total;
+  }
+
+  function buildForemanRows(target: Map<string, ForemanAggregate>, metaWorkdays: number, standardMetaWorkdays: number) {
+    return Array.from(target.values())
+      .map((foreman) => {
+        let metaValue = 0;
+        let standardMetaValue = 0;
+        let workedMetaValue = 0;
+        const dayCounts = Array.from(foreman.daysByTeam.values()).map((dates) => dates.size);
+        const rowWorkedDays = dayCounts.length ? Math.round(dayCounts.reduce((sum, value) => sum + value, 0) / dayCounts.length) : 0;
+        for (const teamId of foreman.teamIds) {
+          const team = teamMap.get(teamId);
+          if (team?.team_type_id) {
+            const dailyMeta = dailyMetaByTeamType.get(team.team_type_id) ?? 0;
+            metaValue += dailyMeta * metaWorkdays;
+            standardMetaValue += dailyMeta * standardMetaWorkdays;
+            workedMetaValue += dailyMeta * rowWorkedDays;
+          }
+        }
+        return {
+          foremanName: foreman.foremanName,
+          totalValue: foreman.totalValue,
+          metaValue,
+          standardMetaValue,
+          workedMetaValue,
+          teamCount: foreman.teamIds.size,
+          metaDays: metaWorkdays,
+          standardMetaDays: standardMetaWorkdays,
+          workedDays: rowWorkedDays,
+          percentage: metaValue > 0 ? (foreman.totalValue / metaValue) * 100 : 0,
+        };
+      })
+      .sort((left, right) => right.totalValue - left.totalValue);
+  }
+
+  function buildSupervisorRows(target: Map<string, SupervisorAggregate>, metaWorkdays: number, totalRealized: number) {
+    return Array.from(target.values())
+      .map((supervisor) => {
+        const productiveMetaValue = calculateSupervisorMeta(supervisor.productiveTeamIds, metaWorkdays);
+        const potentialMetaValue = calculateSupervisorMeta(supervisor.potentialTeamIds, metaWorkdays);
+        return {
+          supervisorId: supervisor.supervisorId,
+          supervisorName: supervisor.supervisorName,
+          totalValue: supervisor.totalValue,
+          orderCount: supervisor.orderCount,
+          productiveTeamCount: supervisor.productiveTeamIds.size,
+          potentialTeamCount: supervisor.potentialTeamIds.size,
+          productiveMetaValue,
+          potentialMetaValue,
+          productivePercentage: productiveMetaValue > 0 ? (supervisor.totalValue / productiveMetaValue) * 100 : 0,
+          potentialPercentage: potentialMetaValue > 0 ? (supervisor.totalValue / potentialMetaValue) * 100 : 0,
+          percentageOfTotal: totalRealized > 0 ? (supervisor.totalValue / totalRealized) * 100 : 0,
+        };
+      })
+      .sort((left, right) => right.totalValue - left.totalValue);
+  }
+
+  const foremanMap = createForemanMap();
+  const supervisorProductionMap = createSupervisorMap();
+
+  for (const order of filteredOrders) {
+    addCompletionTotals(cycleCompletionTotals, order);
+    addForemanOrder(foremanMap, order);
+    addSupervisorOrder(supervisorProductionMap, order);
+  }
+
+  for (const order of periodFilteredOrders) {
+    addCompletionTotals(periodCompletionTotals, order);
+  }
+
+  const foremenByWeek: Record<string, ReturnType<typeof buildForemanRows>> = {};
+  const supervisorsProductionByWeek: Record<string, ReturnType<typeof buildSupervisorRows>> = {};
+  for (const week of cycleWeeks) {
+    const weekOrders = filteredOrders.filter((order) => order.execution_date >= week.startDate && order.execution_date <= week.endDate);
+    const weekForemanMap = createForemanMap();
+    const weekSupervisorMap = createSupervisorMap();
+    for (const order of weekOrders) {
+      addForemanOrder(weekForemanMap, order);
+      addSupervisorOrder(weekSupervisorMap, order);
+    }
+    const weekRealizedValue = weekOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
+    foremenByWeek[week.id] = buildForemanRows(weekForemanMap, week.workdays, week.workdays);
+    supervisorsProductionByWeek[week.id] = buildSupervisorRows(weekSupervisorMap, week.workdays, weekRealizedValue);
+  }
+
+  const foremenRows = buildForemanRows(foremanMap, workdays, defaultWorkdays);
   const realizedValue = filteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
+  const supervisorsProductionRows = buildSupervisorRows(supervisorProductionMap, workdays, realizedValue);
   const percentage = cycleMetaValue > 0 ? (realizedValue / cycleMetaValue) * 100 : 0;
   const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
   const averageDailyValue = executedWorkdays > 0 ? realizedValue / executedWorkdays : 0;
@@ -519,6 +752,7 @@ export async function GET(request: NextRequest) {
       projects: projectOptions,
       teams: teamOptions,
       foremen: foremanOptions.map((name) => ({ id: name, label: name })),
+      supervisors: supervisorOptions,
     },
     summary: {
       orderCount: filteredOrders.length,
@@ -556,21 +790,10 @@ export async function GET(request: NextRequest) {
       forecastDifference,
       percentage,
     },
-    foremen: Array.from(foremanMap.values())
-      .map((foreman) => {
-        const dayCounts = Array.from(foreman.daysByTeam.values()).map((dates) => dates.size);
-        const workedDays = dayCounts.length ? Math.round(dayCounts.reduce((sum, value) => sum + value, 0) / dayCounts.length) : 0;
-        return {
-          foremanName: foreman.foremanName,
-          totalValue: foreman.totalValue,
-          metaValue: foreman.metaValue,
-          standardMetaValue: foreman.standardMetaValue,
-          workedMetaValue: foreman.workedMetaValue,
-          teamCount: foreman.teamIds.size,
-          workedDays,
-          percentage: foreman.metaValue > 0 ? (foreman.totalValue / foreman.metaValue) * 100 : 0,
-        };
-      })
-      .sort((left, right) => right.totalValue - left.totalValue),
+    cycleWeeks,
+    foremen: foremenRows,
+    foremenByWeek,
+    supervisorsProduction: supervisorsProductionRows,
+    supervisorsProductionByWeek,
   });
 }
