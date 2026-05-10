@@ -590,6 +590,7 @@
 - [x] Alinhar o modelo de itens entre `Faturamento` e `Medicao Asbuilt` por `Projeto + Atividade + Pontos + Quantidade + Taxa + Valor unitario + Valor calculado`, preservando `tenant_id`, RLS, historico e `expectedUpdatedAt`.
 - [x] Corrigir parser decimal do cadastro em massa em `Faturamento` e `Medicao Asbuilt` para aceitar `1,5`, `1.5`, `1.234,56` e `1,234.56` sem transformar decimal em inteiro.
 - [x] Permitir registrar codigo de atividade inativo em `Faturamento` e `Medicao Asbuilt`, salvando snapshot `activity_active_snapshot` no item sem alterar a regra da tela `Medicao`.
+- [x] Corrigir leitura de itens importados em massa no detalhe/edicao de `Faturamento` e `Medicao Asbuilt`, incluindo fallback para bancos sem `activity_active_snapshot` e migration incremental `178`.
 - [ ] Criar comparativo operacional por projeto entre `Faturamento` e `Medicao Asbuilt`, exibindo atividades em comum, atividades divergentes, diferenca de quantidade, diferenca de taxa e diferenca de valor calculado.
 - [x] Criar `docs/Tela_Medicao_Asbuilt_SaaS.txt` e registrar que o dashboard comparativo fica para etapa futura.
 

@@ -373,6 +373,9 @@ Resumo por arquivo
 
 177_create_measurement_asbuilt_page.sql
 - Cria o modulo `Medicao Asbuilt` com tabelas `project_asbuilt_measurement_orders`, `project_asbuilt_measurement_order_items`, `project_asbuilt_measurement_order_history`, RLS, RPCs transacionais de save/status/lote parcial, cadastro da pagina `medicao-asbuilt` em permissoes, itens com valor calculado por `voice_point * quantity * rate * unit_value` e snapshot `activity_active_snapshot` para registrar codigo de atividade inativo quando recebido de fonte externa.
+
+178_patch_billing_asbuilt_mass_import_items.sql
+- Atualiza ambientes que ja aplicaram `176`/`177`, garantindo `activity_active_snapshot` nos itens e recompilando as RPCs de save/lote parcial de `Faturamento` e `Medicao Asbuilt` para preservar atividades importadas em massa no detalhe e na edicao.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

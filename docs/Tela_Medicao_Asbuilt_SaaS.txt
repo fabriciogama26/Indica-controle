@@ -164,6 +164,8 @@ Atualizacao 2026-05
   - Parser decimal do cadastro em massa corrigido para preservar valores com virgula ou ponto decimal.
   - Historico ajustado para registrar criacao sem payload de alteracoes e edicao somente com campos alterados.
   - Permitido registrar codigo de atividade inativo em Medicao Asbuilt, salvando snapshot `activity_active_snapshot` no item e exibindo `Status atividade`.
+  - Detalhe e edicao passam a tratar ambientes ainda sem `activity_active_snapshot`, evitando que itens importados em massa aparecam como lista vazia quando o banco estiver defasado.
+  - Migration `178_patch_billing_asbuilt_mass_import_items.sql` recompila as RPCs de save/lote parcial para preservar atividades do cadastro em massa em ambientes que ja tinham aplicado `177`.
 - Lacunas explicitas:
   - O dashboard comparativo entre Faturamento e Medicao Asbuilt fica para etapa futura.
 
@@ -186,6 +188,8 @@ Constantes e configuracoes
   - Responsavel por: contratos TypeScript da tela e respostas da API.
 - Caminho: `supabase/migrations/177_create_measurement_asbuilt_page.sql`
   - Responsavel por: tabelas, RLS, RPCs e permissao da pagina `medicao-asbuilt`.
+- Caminho: `supabase/migrations/178_patch_billing_asbuilt_mass_import_items.sql`
+  - Responsavel por: patch incremental para coluna `activity_active_snapshot` e RPCs de save/lote parcial em bases ja migradas.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`
@@ -201,6 +205,7 @@ Ajuda contextual
   - Antes: Medicao Asbuilt nao existia como tela separada.
   - Depois: Medicao Asbuilt existe como tela separada baseada no Faturamento, com itens por quantidade/taxa e valor calculado pela regra da Medicao.
   - Ajuste de precificacao: os campos antigos de cobranca e validacao manual nao existem na tela; o total e derivado de pontos, quantidade, taxa e valor unitario.
+  - Ajuste de importacao: atividades salvas pelo cadastro em massa continuam vinculadas ao detalhe/edicao; se o banco estiver sem a coluna nova, a API usa leitura compativel ate a migration `178` ser aplicada.
 - Arquivos alterados/criados:
   - Listados em `Atualizacao 2026-05`.
 - Hooks/funcoes/constantes tocadas:
