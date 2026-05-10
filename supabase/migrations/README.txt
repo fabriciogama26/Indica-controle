@@ -367,6 +367,12 @@ Resumo por arquivo
 
 175_add_team_supervisor_link.sql
 - Adiciona `teams.supervisor_person_id`, FK por tenant para `people`, indice por supervisor e republica `save_team_record` com validacao de cargo `SUPERVISOR`.
+
+176_create_project_billing_module.sql
+- Cria o modulo `Faturamento` com tabelas `project_billing_orders`, `project_billing_order_items`, `project_billing_order_history`, RLS, RPCs transacionais de save/status/lote parcial, cadastro da pagina `faturamento` em permissoes, itens com valor calculado por `voice_point * quantity * rate * unit_value` e snapshot `activity_active_snapshot` para registrar codigo de atividade inativo quando recebido de fonte externa.
+
+177_create_measurement_asbuilt_page.sql
+- Cria o modulo `Medicao Asbuilt` com tabelas `project_asbuilt_measurement_orders`, `project_asbuilt_measurement_order_items`, `project_asbuilt_measurement_order_history`, RLS, RPCs transacionais de save/status/lote parcial, cadastro da pagina `medicao-asbuilt` em permissoes, itens com valor calculado por `voice_point * quantity * rate * unit_value` e snapshot `activity_active_snapshot` para registrar codigo de atividade inativo quando recebido de fonte externa.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

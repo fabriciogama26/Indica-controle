@@ -17,6 +17,8 @@ Arquivos principais para nova task
 - docs/Tela_Programacao_Simples_SaaS.txt
 - docs/Tela_Visualizacao_Programacao_SaaS.txt
 - docs/Tela_Medicao_SaaS.txt
+- docs/Tela_Medicao_Asbuilt_SaaS.txt
+- docs/Tela_Faturamento_SaaS.txt
 - docs/Tela_Estoque_SaaS.txt
 - docs/Tela_Saida_SaaS.txt
 - docs/Tela_Posicao_Trafo_SaaS.txt
@@ -45,6 +47,8 @@ Estado atual resumido
 - Base de permissoes por pagina criada
 - Home inicial implementada
 - Tela de Projetos com cadastro/filtros/lista implementada
+- Tela de Faturamento com cadastro manual, cadastro em massa, lista, historico e status aberto/fechado implementada
+- Tela de Medicao Asbuilt criada como fluxo separado baseado no Faturamento, com persistencia propria e precificacao alinhada a regra da Medicao
 - Navegacao lateral reorganizada em Visao Geral, Operacao, Almoxarifado, Cadastros e Cadastro Base
 - Tela de Estoque Atual com filtros/lista paginada implementada
 - Tela de Rastreio de SERIAL implementada com consulta em `trafo_instances`

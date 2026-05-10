@@ -1,0 +1,493 @@
+.wrapper {
+  display: grid;
+  gap: 18px;
+}
+
+.card {
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 18px;
+  box-shadow: 0 14px 32px rgba(15, 32, 74, 0.08);
+}
+
+.editingCard {
+  border-color: rgba(202, 151, 0, 0.45);
+  box-shadow: 0 0 0 3px rgba(241, 194, 27, 0.18), 0 14px 32px rgba(15, 32, 74, 0.08);
+}
+
+.cardTitle {
+  margin: 0 0 14px;
+  color: #17347a;
+  font-size: 1.28rem;
+}
+
+.formGrid,
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field span {
+  color: #32446d;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.field input,
+.field select,
+.field textarea,
+.tableInput {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  color: #18264b;
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.field textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.fieldWide {
+  grid-column: span 2;
+}
+
+.actions,
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.formActions {
+  grid-column: 1 / -1;
+}
+
+.filterGrid + .actions,
+.summaryBar + .actions,
+.summaryBar + .tableWrapper {
+  margin-top: 12px;
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton,
+.dangerButton {
+  border: none;
+  border-radius: 14px;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 18px;
+}
+
+.primaryButton {
+  background: linear-gradient(180deg, #17347a 0%, #2750a3 100%);
+  color: #f7fbff;
+}
+
+.secondaryButton {
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  background: rgba(37, 74, 156, 0.1);
+  color: #17347a;
+}
+
+.ghostButton {
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  background: #fff;
+  color: #17347a;
+}
+
+.dangerButton {
+  background: #c62828;
+  color: #ffffff;
+  border: 1px solid #b71c1c;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.ghostButton:disabled,
+.dangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.subCard {
+  margin-top: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 8px;
+  background: rgba(247, 249, 254, 0.82);
+  padding: 14px;
+}
+
+.tableHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tableHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tableTitle {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.05rem;
+}
+
+.tableHint,
+.loadingHint {
+  color: #63708d;
+  font-size: 0.86rem;
+}
+
+.inlineForm {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 2fr) repeat(2, minmax(120px, 0.7fr)) minmax(220px, 1.2fr) auto;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.compactField {
+  max-width: 170px;
+}
+
+.itemObservationField {
+  min-width: 220px;
+}
+
+.tableWrapper {
+  overflow: auto;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid rgba(23, 52, 122, 0.1);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 0.88rem;
+  vertical-align: top;
+}
+
+.table th {
+  background: rgba(23, 52, 122, 0.06);
+  color: #17347a;
+  font-weight: 800;
+}
+
+.emptyRow {
+  color: #63708d;
+  text-align: center !important;
+}
+
+.summaryBar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.summaryBar > div {
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 14px;
+  background: #fff;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.summaryBar span {
+  display: block;
+  color: #63708d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.summaryBar strong {
+  color: #17347a;
+  font-size: 1.04rem;
+}
+
+.statusTag,
+.statusTagDanger {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.statusTag {
+  background: rgba(31, 126, 70, 0.12);
+  color: #1f7e46;
+}
+
+.statusTagDanger {
+  background: rgba(174, 31, 31, 0.12);
+  color: #a71f1f;
+}
+
+.actionsCell {
+  min-width: 252px;
+}
+
+.tableActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actionButton {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.actionButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.actionButton:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.97);
+}
+
+.actionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.actionView {
+  color: #1d77b8;
+  background: #dce8f5;
+}
+
+.actionEdit {
+  color: #2a86bd;
+  background: #dce8f5;
+}
+
+.actionHistory {
+  color: #2a86bd;
+  background: #dce8f5;
+}
+
+.actionCancel {
+  color: #c62828;
+  background: #dce8f5;
+}
+
+.actionClose {
+  color: #1f8d45;
+  background: #dce8f5;
+}
+
+.feedbackSuccess,
+.feedbackError {
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.feedbackSuccess {
+  border: 1px solid rgba(38, 106, 196, 0.16);
+  background: rgba(38, 106, 196, 0.1);
+  color: #17347a;
+}
+
+.feedbackError {
+  border: 1px solid rgba(180, 30, 30, 0.16);
+  background: rgba(180, 30, 30, 0.08);
+  color: #8b1a1a;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 22, 47, 0.45);
+  padding: 18px;
+}
+
+.modalCard {
+  width: min(980px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 22px 48px rgba(16, 35, 77, 0.3);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(23, 52, 122, 0.12);
+  padding: 14px 16px;
+}
+
+.modalHeader h4 {
+  margin: 0;
+  color: #17347a;
+}
+
+.modalSubtitle {
+  margin: 4px 0 0;
+  color: #63708d;
+  font-size: 0.84rem;
+}
+
+.modalCloseButton {
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+.modalBody {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detailGrid div,
+.historyCard,
+.importStep {
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 8px;
+  background: rgba(247, 249, 254, 0.72);
+  padding: 10px;
+}
+
+.detailWide {
+  grid-column: 1 / -1;
+}
+
+.historyCardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.historyReason {
+  margin: 8px 0 0;
+}
+
+.pagination,
+.paginationActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.importStep {
+  display: grid;
+  gap: 10px;
+}
+
+.importStepHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.importStepHeader strong {
+  color: #17347a;
+}
+
+.importStepHeader p {
+  margin: 4px 0 0;
+  color: #63708d;
+  font-size: 0.88rem;
+}
+
+.importStepNumber {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #17347a;
+  color: #fff;
+  font-weight: 900;
+}
+
+.importDropzone {
+  display: grid;
+  cursor: pointer;
+  gap: 6px;
+  border: 1px dashed rgba(23, 52, 122, 0.24);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+@media (max-width: 960px) {
+  .formGrid,
+  .filterGrid,
+  .summaryBar,
+  .detailGrid,
+  .inlineForm {
+    grid-template-columns: 1fr;
+  }
+
+  .fieldWide,
+  .detailWide,
+  .itemObservationField {
+    min-width: 0;
+  }
+}

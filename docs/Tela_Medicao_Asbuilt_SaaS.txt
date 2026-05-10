@@ -1,0 +1,211 @@
+Tela: Medicao Asbuilt SaaS
+
+Visao geral
+-----------
+- Tela separada para registrar `Medicao Asbuilt` por projeto.
+- A tela segue a estrutura operacional do `Faturamento`: cadastro, filtros, lista, detalhes, historico, status e cadastro em massa.
+- A tela nao usa a `MeasurementPageView` da Medicao operacional.
+- A persistencia e propria da Medicao Asbuilt, sem gravar nas tabelas de Faturamento.
+- Status operacional:
+  - `ABERTA`: registro editavel.
+  - `FECHADA`: registro aprovado/fechado.
+  - `CANCELADA`: registro cancelado com motivo.
+- Regra de precificacao:
+  - O valor da Medicao Asbuilt segue a mesma regra da tela Medicao:
+  - `Pontos (voice_point) x Quantidade x Taxa x Valor unitario`.
+  - A tela segue o fluxo do Faturamento, mas sem os campos antigos de cobranca e validacao manual.
+
+Arquitetura
+-----------
+- Rota:
+  - `src/app/(dashboard)/medicao-asbuilt/page.tsx`
+- Fachada publica:
+  - `src/modules/dashboard/medicao-asbuilt/index.ts`
+- View principal:
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+- Tipos, constantes e utilitarios:
+  - `src/modules/dashboard/medicao-asbuilt/types.ts`
+  - `src/modules/dashboard/medicao-asbuilt/constants.ts`
+  - `src/modules/dashboard/medicao-asbuilt/utils.ts`
+- Estilo dedicado:
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.module.css`
+- APIs:
+  - `src/app/api/medicao-asbuilt/route.ts`
+  - `src/app/api/medicao-asbuilt/meta/route.ts`
+  - `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
+- Banco:
+  - `supabase/migrations/177_create_measurement_asbuilt_page.sql`
+
+Cadastro
+--------
+- Campos principais:
+  - Projeto
+  - Tipo (`Com producao` ou `Sem producao`)
+  - Motivo sem producao (obrigatorio somente em `Sem producao`)
+  - Observacao
+- Itens nesta etapa:
+  - Codigo/atividade do catalogo `service_activities`
+  - Status da atividade no momento do registro (`Ativa` ou `Inativa`)
+  - Quantidade
+  - Taxa
+  - Pontos da atividade
+  - Valor unitario da atividade
+  - Valor calculado automaticamente
+  - Observacao do item
+- Regras:
+  - Projeto e obrigatorio.
+  - Ao menos uma atividade com quantidade e taxa e obrigatoria.
+  - Quantidade e taxa devem ser maiores que zero.
+  - O valor do item e calculado por `voice_point x quantity x rate x unit_value`.
+  - Atividades inativas podem ser registradas nesta tela quando informadas por codigo, para preservar registros externos recebidos da WiseBuild.
+  - O item salva `activity_active_snapshot` para manter o historico do status da atividade no momento do registro.
+  - A mesma atividade nao pode se repetir no mesmo registro.
+  - `Com producao` nao aceita motivo sem producao.
+  - `Sem producao` exige motivo sem producao.
+  - A persistencia usa RPC transacional propria.
+  - Edicao exige `expectedUpdatedAt` e so e permitida em registro `ABERTA`.
+  - A API resolve tenant e usuario autenticado no servidor.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Projeto
+  - Status
+  - Tipo
+  - Motivo sem producao
+- Auto-complete:
+  - Projeto usa `project.sob`.
+  - Atividade usa `service_activities.code/description`.
+- Listagem:
+  - Numero
+  - Projeto
+  - Tipo
+  - Motivo
+  - Quantidade de itens
+  - Valor total
+  - Status
+  - Atualizado em
+- Acoes:
+  - Detalhes
+  - Historico
+  - Editar (somente `ABERTA`)
+  - Fechar (somente `ABERTA`)
+  - Abrir (somente `FECHADA`)
+  - Cancelar (quando diferente de `CANCELADA`)
+- Exportacao:
+  - CSV com cooldown de 10 segundos.
+  - `Detalhamento (CSV)` exporta uma linha por atividade da Medicao Asbuilt.
+
+Boas praticas
+-------------
+- Manter Medicao Asbuilt separada de Faturamento e da Medicao operacional.
+- A tela `Medicao` continua exigindo atividade ativa; a excecao para codigo inativo fica limitada a `Faturamento` e `Medicao Asbuilt`.
+- Nao criar dashboard comparativo nesta etapa.
+- A comparacao entre Faturamento e Medicao Asbuilt deve ser criada depois, em tela/dashboard proprio.
+- Manter o calculo automatico com a mesma regra da Medicao:
+  - `voice_point x quantity x rate x unit_value`
+- O calculo automatico deve ficar em RPC/transacao, nao apenas no frontend.
+- Manter `tenant_id`, RLS, historico e `expectedUpdatedAt`.
+- Registrar erros da tela com `useErrorLogger("medicao-asbuilt")`.
+
+Cancelamento e saldo
+--------------------
+- Nao ha impacto em saldo de estoque.
+- Fechamento altera status para `FECHADA`.
+- Reabertura altera status para `ABERTA` e exige motivo.
+- Cancelamento altera status para `CANCELADA` e exige motivo.
+- Todas as mudancas de status usam RPC propria e registram historico.
+
+Atalhos
+-------
+- Rota ativa: `/medicao-asbuilt`
+- Endpoints:
+  - `GET /api/medicao-asbuilt`
+  - `POST /api/medicao-asbuilt`
+  - `PUT /api/medicao-asbuilt`
+  - `PATCH /api/medicao-asbuilt`
+  - `GET /api/medicao-asbuilt/meta`
+  - `GET /api/medicao-asbuilt/activities/catalog`
+- Modelo cadastro em massa:
+  - `projeto;tipo_medicao_asbuilt;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao`
+  - Valores obrigatorios: `projeto`, `tipo_medicao_asbuilt`, `codigo_atividade`, `quantidade` e `taxa`.
+  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
+  - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
+
+Atualizacao 2026-05
+-------------------
+- Arquivos criados/alterados:
+  - `src/app/(dashboard)/medicao-asbuilt/page.tsx`
+  - `src/app/api/medicao-asbuilt/route.ts`
+  - `src/app/api/medicao-asbuilt/meta/route.ts`
+  - `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
+  - `src/modules/dashboard/medicao-asbuilt/index.ts`
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.module.css`
+  - `src/modules/dashboard/medicao-asbuilt/types.ts`
+  - `src/modules/dashboard/medicao-asbuilt/constants.ts`
+  - `src/modules/dashboard/medicao-asbuilt/utils.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/177_create_measurement_asbuilt_page.sql`
+  - `docs/Tela_Medicao_Asbuilt_SaaS.txt`
+  - `docs/00_Indice_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
+- Antes:
+  - A rota `medicao-asbuilt` nao existia como modulo proprio.
+- Depois:
+  - Existe tela separada de Medicao Asbuilt baseada no fluxo do Faturamento, com rota, menu, permissao, API, RLS, RPC, historico, status e precificacao automatica pela regra da Medicao.
+- Ajustes posteriores:
+  - Botao `Adicionar`, botoes de acao da tabela e botoes principais alinhados ao padrao visual da tela Medicao.
+  - Incluido `Detalhamento (CSV)` na listagem.
+  - Cadastro em massa revisado para deixar claro quais colunas existem no modelo e quais valores sao obrigatorios.
+  - Parser decimal do cadastro em massa corrigido para preservar valores com virgula ou ponto decimal.
+  - Historico ajustado para registrar criacao sem payload de alteracoes e edicao somente com campos alterados.
+  - Permitido registrar codigo de atividade inativo em Medicao Asbuilt, salvando snapshot `activity_active_snapshot` no item e exibindo `Status atividade`.
+- Lacunas explicitas:
+  - O dashboard comparativo entre Faturamento e Medicao Asbuilt fica para etapa futura.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico e status.
+- Caminho: `src/app/api/medicao-asbuilt/route.ts`
+  - Responsavel por: validacao de payload, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
+- Caminho: `src/app/api/medicao-asbuilt/meta/route.ts`
+  - Responsavel por: carregar projetos e motivos de sem producao por tenant.
+- Caminho: `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
+  - Responsavel por: pesquisar atividades em `service_activities`.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/medicao-asbuilt/constants.ts`
+  - Responsavel por: estado inicial, filtros, paginacao, cabecalho de importacao e labels de historico.
+- Caminho: `src/modules/dashboard/medicao-asbuilt/types.ts`
+  - Responsavel por: contratos TypeScript da tela e respostas da API.
+- Caminho: `supabase/migrations/177_create_measurement_asbuilt_page.sql`
+  - Responsavel por: tabelas, RLS, RPCs e permissao da pagina `medicao-asbuilt`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`
+  - Responsavel por: normalizacao, parse de CSV, formatacao de moeda/data e download CSV.
+
+Servicos e integracoes externas
+- `resolveAuthenticatedAppUser` para autenticacao, usuario ativo e tenant ativo.
+- Supabase/Postgres com RLS e RPCs `SECURITY DEFINER` para escrita transacional.
+- `useErrorLogger("medicao-asbuilt")` para registro de falhas da tela.
+
+Ajuda contextual
+- Comportamento antes/depois:
+  - Antes: Medicao Asbuilt nao existia como tela separada.
+  - Depois: Medicao Asbuilt existe como tela separada baseada no Faturamento, com itens por quantidade/taxa e valor calculado pela regra da Medicao.
+  - Ajuste de precificacao: os campos antigos de cobranca e validacao manual nao existem na tela; o total e derivado de pontos, quantidade, taxa e valor unitario.
+- Arquivos alterados/criados:
+  - Listados em `Atualizacao 2026-05`.
+- Hooks/funcoes/constantes tocadas:
+  - `AsbuiltMeasurementPageView`
+  - `resolveAsbuiltMeasurementContext`
+  - `save_project_asbuilt_measurement_order`
+  - `set_project_asbuilt_measurement_order_status`
+  - `save_project_asbuilt_measurement_order_batch_partial`
