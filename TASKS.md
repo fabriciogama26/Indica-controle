@@ -576,3 +576,23 @@
 - [x] Exibir `Centro de servico` no modal `Todos os prazos das obras` da Programacao Simples e incluir a coluna na exportacao CSV de prazos.
 
 - [x] Melhorar modal de conflito para projeto CONCLUIDO na Programacao: blocos visuais destacados + select de Estado Trabalho no proprio modal para ajuste rapido.
+- [x] Criar tela Faturamento baseada no fluxo da Medicao, com projeto, tipo, motivo sem producao, observacao, atividades pagas, valor por item, cadastro em massa, historico e status ABERTA/FECHADA/CANCELADA.
+- [x] Criar migration 176_create_project_billing_module.sql com tabelas/RLS/RPCs transacionais para project_billing_orders, itens, historico, lote parcial e permissao da pagina faturamento.
+- [ ] Evoluir regra de Garantia de faturamento minimo para calculo automatico por tipo de grupo quando a regra de pontuacao for definida.
+- [x] Padronizar UX do Faturamento com o bloco Atividades faturadas e Cadastro em massa no mesmo padrao visual da Medicao, removendo Status inicial do resumo do cadastro.
+- [x] Ajustar a malha de colunas do bloco Atividades faturadas do Faturamento para igualar o espacamento do inlineForm da Medicao.
+- [x] Adicionar respiro vertical entre campos de inclusao do Faturamento e a tabela de atividades para alinhar o botao Adicionar ao padrao visual da Medicao.
+- [x] Ajustar espacamento dos botoes do Faturamento nos blocos de cadastro, filtros e lista para evitar elementos colados aos campos/resumos.
+- 2026-05-09: Ajustado o rotulo do resumo da lista de faturamentos de Valor da pagina para Valor total.
+- 2026-05-09: Faturamento ajustado para registrar apenas quantidade e taxa por atividade, com valor calculado automaticamente pela regra da Medicao.
+- [x] Criar tela `Medicao Asbuilt` separada, baseada no fluxo do `Faturamento`, com rota, menu, permissao, API, tabelas/RLS/RPCs proprias, historico e status `ABERTA`, `FECHADA` e `CANCELADA`.
+- [x] Ajustar o Faturamento para remover valor manual por item e calcular automaticamente o valor pela mesma regra da Medicao: `Pontos x Quantidade x Taxa x Valor unitario`, persistindo o total calculado no banco/RPC.
+- [x] Alinhar o modelo de itens entre `Faturamento` e `Medicao Asbuilt` por `Projeto + Atividade + Pontos + Quantidade + Taxa + Valor unitario + Valor calculado`, preservando `tenant_id`, RLS, historico e `expectedUpdatedAt`.
+- [x] Corrigir parser decimal do cadastro em massa em `Faturamento` e `Medicao Asbuilt` para aceitar `1,5`, `1.5`, `1.234,56` e `1,234.56` sem transformar decimal em inteiro.
+- [x] Permitir registrar codigo de atividade inativo em `Faturamento` e `Medicao Asbuilt`, salvando snapshot `activity_active_snapshot` no item sem alterar a regra da tela `Medicao`.
+- [ ] Criar comparativo operacional por projeto entre `Faturamento` e `Medicao Asbuilt`, exibindo atividades em comum, atividades divergentes, diferenca de quantidade, diferenca de taxa e diferenca de valor calculado.
+- [x] Criar `docs/Tela_Medicao_Asbuilt_SaaS.txt` e registrar que o dashboard comparativo fica para etapa futura.
+
+
+
+

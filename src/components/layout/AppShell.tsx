@@ -29,6 +29,8 @@ const menuSections = [
       { href: "/programacao-simples", label: "Programacao", icon: "calendar" },
       { href: "/programacao-visualizacao", label: "Visualizacao Programacao", icon: "calendar" },
       { href: "/medicao", label: "Medicao", icon: "calendar" },
+      { href: "/medicao-asbuilt", label: "Medicao Asbuilt", icon: "calendar" },
+      { href: "/faturamento", label: "Faturamento", icon: "calendar" },
     ],
   },
   {
@@ -108,6 +110,14 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/medicao": {
     title: "Medicao",
     subtitle: "Gestao de medicoes operacionais por projeto e periodo.",
+  },
+  "/medicao-asbuilt": {
+    title: "Medicao Asbuilt",
+    subtitle: "Registro as built de atividades medidas por projeto.",
+  },
+  "/faturamento": {
+    title: "Faturamento",
+    subtitle: "Controle de atividades pagas por projeto e aprovacao de faturamento.",
   },
   "/meta": {
     title: "Meta",

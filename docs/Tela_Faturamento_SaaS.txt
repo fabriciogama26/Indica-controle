@@ -1,0 +1,211 @@
+Tela: Faturamento SaaS
+
+Visao geral
+-----------
+- Tela de `Faturamento` no padrao `cadastro + filtros + lista`.
+- O faturamento registra atividades por projeto com quantidade, taxa e valor calculado por item.
+- O valor e calculado automaticamente pela mesma regra de precificacao da Medicao:
+  - `Pontos x Quantidade x Taxa x Valor unitario`.
+- A tela nao usa equipe nem data de execucao.
+- Status operacional:
+  - `ABERTA`: pre-aprovacao.
+  - `FECHADA`: faturamento aprovado.
+  - `CANCELADA`: faturamento cancelado com motivo.
+- O tipo `Sem producao` usa o catalogo de motivos de sem producao, permitindo selecionar casos como garantia de faturamento minimo.
+- A regra futura de calculo automatico da garantia de faturamento minimo ficou fora desta entrega.
+
+Arquitetura
+-----------
+- Rota:
+  - `src/app/(dashboard)/faturamento/page.tsx`
+- Fachada publica:
+  - `src/modules/dashboard/faturamento/index.ts`
+- View principal:
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+- Tipos, constantes e utilitarios:
+  - `src/modules/dashboard/faturamento/types.ts`
+  - `src/modules/dashboard/faturamento/constants.ts`
+  - `src/modules/dashboard/faturamento/utils.ts`
+- Estilo dedicado:
+  - `src/modules/dashboard/faturamento/BillingPageView.module.css`
+- APIs:
+  - `src/app/api/faturamento/route.ts`
+  - `src/app/api/faturamento/meta/route.ts`
+  - `src/app/api/faturamento/activities/catalog/route.ts`
+- Banco:
+  - `supabase/migrations/176_create_project_billing_module.sql`
+
+Cadastro
+--------
+- Campos principais:
+  - Projeto
+  - Tipo de faturamento (`Com producao` ou `Sem producao`)
+  - Motivo sem producao (obrigatorio somente em `Sem producao`)
+  - Observacao
+- Itens:
+  - Codigo/atividade do catalogo `service_activities`
+  - Status da atividade no momento do registro (`Ativa` ou `Inativa`)
+  - Quantidade
+  - Taxa
+  - Pontos da atividade
+  - Valor unitario da atividade
+  - Valor calculado automaticamente
+  - Observacao do item
+- Regras:
+  - Projeto e obrigatorio.
+  - Ao menos uma atividade com quantidade e taxa e obrigatoria.
+  - Quantidade e taxa devem ser maiores que zero.
+  - O valor do item e calculado por `voice_point x quantity x rate x unit_value`.
+  - Atividades inativas podem ser registradas nesta tela quando informadas por codigo, para preservar cobrancas externas recebidas da WiseBuild.
+  - O item salva `activity_active_snapshot` para manter o historico do status da atividade no momento do registro.
+  - A mesma atividade nao pode se repetir no mesmo faturamento.
+  - `Com producao` nao aceita motivo sem producao.
+  - `Sem producao` exige motivo sem producao.
+  - O bloco `Atividades faturadas` segue o mesmo padrao visual do bloco `Atividades da Ordem` da Medicao.
+  - O resumo do bloco de atividades exibe `Itens` e `Valor total`; o status fica na lista e nos detalhes.
+  - A persistencia usa RPC transacional (`save_project_billing_order`) e grava historico na mesma transacao.
+  - Edicao exige `expectedUpdatedAt` e so e permitida em faturamento `ABERTA`.
+  - A API resolve tenant e usuario autenticado no servidor e ignora tenant vindo do body.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Projeto
+  - Status
+  - Tipo
+  - Motivo sem producao
+- Auto-complete:
+  - Projeto usa `project.sob`.
+  - Atividade usa `service_activities.code/description`.
+- Listagem:
+  - Numero do faturamento
+  - Projeto
+  - Tipo
+  - Motivo
+  - Quantidade de itens
+  - Valor total
+  - Status
+  - Atualizado em
+- Acoes:
+  - Detalhes
+  - Historico
+  - Editar (somente `ABERTA`)
+  - Fechar (somente `ABERTA`)
+  - Abrir (somente `FECHADA`)
+  - Cancelar (quando diferente de `CANCELADA`)
+- Exportacao:
+  - `Exportar Excel (CSV)` com cooldown de 10 segundos.
+  - `Detalhamento (CSV)` exporta uma linha por atividade do faturamento.
+
+Boas praticas
+-------------
+- Manter faturamento separado de medicao; a comparacao entre medido, cobrado e validado deve ser feita em tela propria futura.
+- A tela `Medicao` continua exigindo atividade ativa; a excecao para codigo inativo fica limitada a `Faturamento` e `Medicao Asbuilt`.
+- Nao adicionar regra de calculo de garantia minima no frontend sem RPC/regra de banco correspondente.
+- Manter a precificacao em RPC/transacao pelo criterio da Medicao (`Pontos x Quantidade x Taxa x Valor unitario`).
+- Manter `tenant_id`, RLS e permissao por pagina em qualquer evolucao da tela.
+- Manter `expectedUpdatedAt` nas edicoes e mudancas de status.
+- Registrar erros da tela com `useErrorLogger("faturamento")`.
+
+Cancelamento e saldo
+--------------------
+- Nao ha impacto em saldo de estoque.
+- Fechamento altera status para `FECHADA`.
+- Reabertura altera status para `ABERTA` e exige motivo.
+- Cancelamento altera status para `CANCELADA` e exige motivo.
+- Todas as mudancas de status usam `set_project_billing_order_status` e registram historico.
+
+Atalhos
+-------
+- Rota ativa: `/faturamento`
+- Endpoints:
+  - `GET /api/faturamento`
+  - `POST /api/faturamento`
+  - `PUT /api/faturamento`
+  - `PATCH /api/faturamento`
+  - `GET /api/faturamento/meta`
+  - `GET /api/faturamento/activities/catalog`
+- Modelo cadastro em massa:
+  - `projeto;tipo_faturamento;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao`
+  - Valores obrigatorios: `projeto`, `tipo_faturamento`, `codigo_atividade`, `quantidade` e `taxa`.
+  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
+  - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
+  - Modal no mesmo padrao da Medicao: baixar modelo, preencher planilha e enviar arquivo com acao explicita `Importar planilha`.
+
+Atualizacao 2026-05
+-------------------
+- Arquivos criados/alterados:
+  - `src/app/(dashboard)/faturamento/page.tsx`
+  - `src/app/api/faturamento/route.ts`
+  - `src/app/api/faturamento/meta/route.ts`
+  - `src/app/api/faturamento/activities/catalog/route.ts`
+  - `src/modules/dashboard/faturamento/index.ts`
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `src/modules/dashboard/faturamento/BillingPageView.module.css`
+  - `src/modules/dashboard/faturamento/types.ts`
+  - `src/modules/dashboard/faturamento/constants.ts`
+  - `src/modules/dashboard/faturamento/utils.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/176_create_project_billing_module.sql`
+  - `docs/Tela_Faturamento_SaaS.txt`
+  - `docs/00_Indice_SaaS.txt`
+  - `TASKS.md`
+  - Antes:
+    - Nao existia tela nem persistencia dedicada para faturamento por projeto.
+  - Depois:
+    - Existe modulo de faturamento com menu, permissao, cadastro manual, cadastro em massa, listagem, exportacao, detalhes, historico e status aberto/fechado.
+  - Ajuste posterior:
+    - Bloco de `Atividades faturadas` alinhado ao espaçamento da Medicao.
+    - Removido resumo visual `Status inicial` do bloco de atividades.
+    - Cadastro em massa padronizado para o fluxo em 3 etapas usado na Medicao.
+    - Grade de campos do bloco `Atividades faturadas` ajustada para usar a mesma malha de colunas do `inlineForm` da Medicao.
+    - Incluido respiro vertical entre os campos de inclusao e a tabela de atividades para evitar o botao `Adicionar` colado na lista.
+    - Incluido espacamento padrao entre resumos, botoes de acao e tabela na lista/filtros do Faturamento.
+    - Rotulo do resumo financeiro da lista ajustado de `Valor da pagina` para `Valor total`.
+    - Itens de faturamento foram ajustados para registrar apenas quantidade e taxa, com valor total calculado por `Pontos x Quantidade x Taxa x Valor unitario`.
+    - Botao `Adicionar`, botoes de acao da tabela e botoes principais alinhados ao padrao visual da tela Medicao.
+    - Incluido `Detalhamento (CSV)` na listagem.
+    - Cadastro em massa revisado para deixar claro quais colunas existem no modelo e quais valores sao obrigatorios.
+    - Parser decimal do cadastro em massa corrigido para preservar valores com virgula ou ponto decimal.
+    - Historico ajustado para registrar criacao sem payload de alteracoes e edicao somente com campos alterados.
+    - Permitido registrar codigo de atividade inativo em Faturamento, salvando snapshot `activity_active_snapshot` no item e exibindo `Status atividade`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico e status.
+- Caminho: `src/app/api/faturamento/route.ts`
+  - Responsavel por: validacao de payload, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
+- Caminho: `src/app/api/faturamento/meta/route.ts`
+  - Responsavel por: carregar projetos e motivos de sem producao por tenant.
+- Caminho: `src/app/api/faturamento/activities/catalog/route.ts`
+  - Responsavel por: pesquisar atividades em `service_activities`.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/faturamento/constants.ts`
+  - Responsavel por: estado inicial, filtros, paginacao, cabecalho de importacao e labels de historico.
+- Caminho: `src/modules/dashboard/faturamento/types.ts`
+  - Responsavel por: contratos TypeScript da tela e respostas da API.
+- Caminho: `supabase/migrations/176_create_project_billing_module.sql`
+  - Responsavel por: tabelas `project_billing_orders`, `project_billing_order_items`, `project_billing_order_history`, RLS, RPCs e permissao da pagina `faturamento`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/faturamento/utils.ts`
+  - Responsavel por: normalizacao, parse de CSV, formatacao de moeda/data e download CSV.
+
+Servicos e integracoes externas
+- `resolveAuthenticatedAppUser` para autenticacao, usuario ativo e tenant ativo.
+- Supabase/Postgres com RLS e RPCs `SECURITY DEFINER` para escrita transacional.
+- `useErrorLogger("faturamento")` para registro de falhas da tela.
+
+Ajuda contextual
+- Comportamento antes/depois:
+  - Antes: faturamento ficava fora do SaaS operacional.
+  - Depois: faturamento registra o que foi pago por projeto e atividade, permitindo comparacao futura contra medicao.
+  - Ajuste UX: status inicial nao aparece no cadastro; a leitura de status fica na listagem, detalhes e acoes de status.
+  - Ajuste de precificacao: os campos antigos de cobranca e validacao manual foram substituidos por quantidade, taxa e valor calculado.
+- Lacuna explicita:
+  - A regra de calculo automatico para garantia de faturamento minimo nao foi implementada nesta etapa.
