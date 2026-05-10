@@ -36,7 +36,7 @@ type BillingOrderItemRow = {
   quantity: number | string;
   rate: number | string;
   unit_value: number | string;
-  activity_active_snapshot: boolean | null;
+  activity_active_snapshot?: boolean | null;
   total_value: number | string;
   observation: string | null;
   is_active: boolean;
@@ -329,7 +329,7 @@ async function fetchBillingOrderDetail(params: {
     return null;
   }
 
-  const { data: items } = await params.supabase
+  let { data: items, error: itemsError } = await params.supabase
     .from("project_billing_order_items")
     .select("id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, voice_point, quantity, rate, unit_value, activity_active_snapshot, total_value, observation, is_active, updated_at")
     .eq("tenant_id", params.tenantId)
@@ -337,6 +337,23 @@ async function fetchBillingOrderDetail(params: {
     .eq("is_active", true)
     .order("activity_code", { ascending: true })
     .returns<BillingOrderItemRow[]>();
+
+  if (itemsError && String(itemsError.message ?? "").includes("activity_active_snapshot")) {
+    const fallback = await params.supabase
+      .from("project_billing_order_items")
+      .select("id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, voice_point, quantity, rate, unit_value, total_value, observation, is_active, updated_at")
+      .eq("tenant_id", params.tenantId)
+      .eq("billing_order_id", params.orderId)
+      .eq("is_active", true)
+      .order("activity_code", { ascending: true })
+      .returns<BillingOrderItemRow[]>();
+    items = fallback.data ?? [];
+    itemsError = fallback.error;
+  }
+
+  if (itemsError) {
+    return null;
+  }
 
   const userIds = [order.created_by, order.updated_by].filter((item): item is string => Boolean(item));
   const userMap = await fetchAppUserMap({
