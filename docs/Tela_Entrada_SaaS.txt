@@ -21,6 +21,7 @@ Arquitetura
 - Banco (hardening centro/tipo): `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
 - Banco (estorno): `supabase/migrations/131_add_stock_transfer_reversal.sql`
 - Banco (catalogo motivo estorno): `supabase/migrations/134_standardize_stock_reversal_reasons.sql`
+- Banco (estorno por item): `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
 - Banco (TRAFO unitario): `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
 - Banco (instancia unitaria TRAFO): `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
 
@@ -155,7 +156,10 @@ Cancelamento e saldo
 --------------------
 - Edicao direta da movimentacao permanece bloqueada; correcao operacional ocorre via `Estorno`.
 - Estorno cria nova movimentacao inversa e preserva a movimentacao original.
-- Nao permite duplo estorno da mesma movimentacao.
+- O estorno novo ocorre por item/linha (`stock_transfer_items.id`), permitindo corrigir um material sem reverter os demais itens da mesma transferencia.
+- Estornos antigos por transferencia inteira continuam preservados em `stock_transfer_reversals`.
+- Nao permite duplo estorno do mesmo item.
+- Nao permite estorno integral da transferencia quando ela ja possui estorno parcial por item.
 - Nao permite estornar uma movimentacao que ja e estorno.
 - Modal de estorno exige:
   - `Motivo padrao do estorno` (catalogo)
@@ -258,6 +262,8 @@ Atualizacao 2026-05
 - API/listagem/importacao passam a carregar `materials.serial_tracking_type` e o helper `materialSerialTracking`.
 - Migration `172_generalize_serial_tracked_materials.sql` adiciona gatilhos para manter `trafo_instances` atualizado tambem para RELIGADOR e CHAVE.
 - O modelo CSV do cadastro em massa passa a trazer exemplos de material comum decimal, RELIGADOR com Serial e TRAFO com Serial + LP.
+- O estorno passa a ser independente por item/linha da lista. A UI envia `transferItemId` e a API aciona a RPC de estorno por item, preservando o legado de estorno integral por `transferId`.
+- A tabela `stock_transfer_item_reversals` registra o vinculo `item original -> item de estorno` sem alterar registros historicos existentes.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -282,6 +288,8 @@ Funcoes principais
   - Responsavel por: modelagem do estorno e RPC `reverse_stock_transfer_record`.
 - Caminho: `supabase/migrations/134_standardize_stock_reversal_reasons.sql`
   - Responsavel por: catalogo de motivos (`stock_transfer_reversal_reason_catalog`) e RPC `reverse_stock_transfer_record_v2`.
+- Caminho: `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
+  - Responsavel por: criar `stock_transfer_item_reversals`, RPC `reverse_stock_transfer_item_record_v1` e bloquear estorno integral quando ja existir estorno parcial.
 - Caminho: `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
   - Responsavel por: endurecer validacao unitario de TRAFO na RPC `save_stock_transfer_record`.
 - Caminho: `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
@@ -291,7 +299,7 @@ Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
   - Responsavel por: `HISTORY_PAGE_SIZE`, `INITIAL_FORM` e mapeamento de labels do historico.
 - Caminho: `src/lib/server/stockTransfers.ts`
-  - Responsavel por: normalizacao de payload e chamada padronizada das RPCs `save_stock_transfer_record` e `reverse_stock_transfer_record`.
+  - Responsavel por: normalizacao de payload e chamada padronizada das RPCs `save_stock_transfer_record`, `reverse_stock_transfer_record_v2` e `reverse_stock_transfer_item_record_v1`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -357,3 +365,5 @@ Ajuda contextual
 - Depois: `DE/PARA` exclui centros de equipe, a API bloqueia esses centros e a lista da movimentacao mostra apenas estoque fisico.
 - Antes: o input numerico dependia do comportamento do navegador para aceitar virgula.
 - Depois: a quantidade manual aceita virgula ou ponto com validacao propria de decimal positivo.
+- Antes: o botao de estorno ficava preso a primeira linha da transferencia e revertia todos os itens da mesma movimentacao.
+- Depois: cada linha pode ser estornada separadamente por `transferItemId`, mantendo bloqueio de duplo estorno por item e preservando os estornos antigos por transferencia inteira.

@@ -244,21 +244,6 @@ export function TeamStockOperationsPageView() {
     : form.operationKind === "RETURN"
       ? (selectedTeam?.stockCenterName ?? "centro da equipe")
       : fieldReturnOriginName;
-  const firstRowByTransferId = useMemo(() => {
-    const seen = new Set<string>();
-    const map = new Map<string, boolean>();
-    historyItems.forEach((item) => {
-      const key = item.transferId || item.id;
-      if (!seen.has(key)) {
-        seen.add(key);
-        map.set(item.id, true);
-      } else {
-        map.set(item.id, false);
-      }
-    });
-    return map;
-  }, [historyItems]);
-
   function showError(message: string) {
     setFeedback({ type: "error", message });
     setAlertMessage(message);
@@ -1110,6 +1095,7 @@ export function TeamStockOperationsPageView() {
         },
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
+          transferItemId: reversalModalItem.id,
           reversalReasonCode,
           reversalReasonNotes: normalizeText(reversalReasonNotes) || null,
           reversalDate,
@@ -1860,9 +1846,9 @@ export function TeamStockOperationsPageView() {
                           type="button"
                           className={`${styles.actionButton} ${styles.actionReversal}`}
                           onClick={() => openReversalModal(item)}
-                          disabled={!canReverseTeamOperation || isReversing || item.isReversal || item.isReversed || firstRowByTransferId.get(item.id) === false}
-                          aria-label={`Estornar operacao ${item.transferId}`}
-                          title="Estornar"
+                          disabled={!canReverseTeamOperation || isReversing || item.isReversal || item.isReversed}
+                          aria-label={`Estornar item da operacao ${item.transferId}`}
+                          title="Estornar este item"
                         >
                           <ActionIcon name="cancel" />
                         </button>
@@ -2002,7 +1988,7 @@ export function TeamStockOperationsPageView() {
 
             <div className={styles.modalBody}>
               <p className={styles.reversalWarning}>
-                O estorno cria uma nova movimentacao inversa no mesmo ledger. A operacao original permanece preservada para auditoria.
+                O estorno cria uma nova movimentacao inversa somente para este item no mesmo ledger. A operacao original permanece preservada para auditoria.
               </p>
 
               <div className={styles.detailGrid}>

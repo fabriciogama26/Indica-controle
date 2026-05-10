@@ -171,6 +171,7 @@
 - [x] Evoluir a `Movimentacao de Estoque` para lista local em `Materiais da Movimentacao`, com `Adicionar material`, resumo por itens e save unico com `items[]`.
 - [x] Padronizar os alertas manuais da `Movimentacao de Estoque` com modal operacional e mensagens por `material_code`, no mesmo modelo da tela `Operacoes de Equipe`.
 - [x] Separar semanticamente `Movimentacao de Estoque` e `Operacoes de Equipe`, ocultando requisicoes/devolucoes/retornos da lista fisica, bloqueando centros de equipe em `DE/PARA`, resumindo cadastro inicial no historico de equipe e aceitando quantidade decimal com virgula ou ponto.
+- [x] Permitir estorno independente por item/linha em `Movimentacao de Estoque` e `Operacoes de Equipe`, evitando que o estorno de uma linha reverta todos os materiais da mesma transferencia.
 - [x] Renomear a tela `Rastreio de TRAFO` no shell, catalogo de permissao e documentacao, substituindo o nome anterior `Posicao Unitaria TRAFO`.
 - [x] Remover `Operacao cancelada` e `Outro` do catalogo de motivo padrao do estorno e bloquear esses codigos tambem no backend/RPC.
 - [x] Endurecer `GET /api/stock-transfers` para nao derrubar a lista quando consultas auxiliares de detalhes/metadados falharem.
