@@ -573,21 +573,6 @@ export function StockTransfersPageView() {
     serialNumber: normalizeText(searchParams.get("serialNumber")),
     lotCode: normalizeText(searchParams.get("lotCode")),
   }), [searchParams]);
-  const firstRowByTransferId = useMemo(() => {
-    const seen = new Set<string>();
-    const map = new Map<string, boolean>();
-    historyItems.forEach((item) => {
-      const key = item.transferId || item.id;
-      if (!seen.has(key)) {
-        seen.add(key);
-        map.set(item.id, true);
-      } else {
-        map.set(item.id, false);
-      }
-    });
-    return map;
-  }, [historyItems]);
-
   const buildHistoryListParams = useCallback((targetPage: number, pageSize: number, activeFilters: FilterState) => {
     const params = new URLSearchParams();
     params.set("page", String(targetPage));
@@ -1618,6 +1603,7 @@ export function StockTransfersPageView() {
         },
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
+          transferItemId: reversalModalItem.id,
           reversalReasonCode: normalizedReasonCode,
           reversalReasonNotes: normalizedReasonNotes,
           reversalDate: normalizedReversalDate,
@@ -2461,7 +2447,7 @@ export function StockTransfersPageView() {
                         type="button"
                         className={`${styles.actionButton} ${styles.actionReversal}`}
                         onClick={() => openReversalModal(item)}
-                        disabled={!canReverseStockMovement || isReversing || item.isReversed || item.isReversal || firstRowByTransferId.get(item.id) === false}
+                        disabled={!canReverseStockMovement || isReversing || item.isReversed || item.isReversal}
                         aria-label={`Estornar movimentacao ${item.transferId ?? item.id}`}
                         title={
                           !canReverseStockMovement
@@ -2470,9 +2456,7 @@ export function StockTransfersPageView() {
                             ? "Movimentacao ja estornada"
                             : item.isReversal
                               ? "Movimentacao de estorno nao permite novo estorno"
-                              : firstRowByTransferId.get(item.id) === false
-                                ? "Use a primeira linha da transferencia para estornar"
-                              : "Estornar"
+                              : "Estornar este item"
                         }
                       >
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2637,7 +2621,7 @@ export function StockTransfersPageView() {
 
             <div className={styles.modalBody}>
               <p className={styles.reversalWarning}>
-                O estorno cria uma nova movimentacao inversa e nao altera o registro original.
+                O estorno cria uma nova movimentacao inversa somente para este item e nao altera o registro original.
               </p>
 
               <div className={styles.detailGrid}>

@@ -68,6 +68,15 @@ type StockTransferReversalRow = {
   created_at: string;
 };
 
+type StockTransferItemReversalRow = {
+  original_stock_transfer_id: string;
+  original_stock_transfer_item_id: string;
+  reversal_stock_transfer_id: string;
+  reversal_stock_transfer_item_id: string | null;
+  reversal_reason: string;
+  created_at: string;
+};
+
 type TeamStockOperationRow = {
   transfer_id: string;
 };
@@ -410,6 +419,7 @@ async function loadTransferList(request: NextRequest) {
   }
 
   const materialIds = Array.from(new Set((itemRows ?? []).map((row) => row.material_id).filter(Boolean)));
+  const transferItemIds = Array.from(new Set((itemRows ?? []).map((row) => row.id).filter(Boolean)));
   const stockCenterIds = Array.from(
     new Set(
       (transferHeaders ?? [])
@@ -426,7 +436,17 @@ async function loadTransferList(request: NextRequest) {
     ),
   );
 
-  const [materialsResult, stockCentersResult, projectsResult, usersResult, teamOperationsResult, reversalsFromOriginalResult, reversalsByReversalResult] = await Promise.all([
+  const [
+    materialsResult,
+    stockCentersResult,
+    projectsResult,
+    usersResult,
+    teamOperationsResult,
+    reversalsFromOriginalResult,
+    reversalsByReversalResult,
+    itemReversalsFromOriginalResult,
+    itemReversalsByReversalResult,
+  ] = await Promise.all([
     materialIds.length
       ? supabase
           .from("materials")
@@ -483,6 +503,22 @@ async function loadTransferList(request: NextRequest) {
           .in("reversal_stock_transfer_id", transferIds)
           .returns<StockTransferReversalRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
+    transferItemIds.length
+      ? supabase
+          .from("stock_transfer_item_reversals")
+          .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("original_stock_transfer_item_id", transferItemIds)
+          .returns<StockTransferItemReversalRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
+    transferItemIds.length
+      ? supabase
+          .from("stock_transfer_item_reversals")
+          .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("reversal_stock_transfer_item_id", transferItemIds)
+          .returns<StockTransferItemReversalRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
 
   let materialsData = materialsResult.data ?? [];
@@ -530,6 +566,30 @@ async function loadTransferList(request: NextRequest) {
       },
     ]),
   );
+  const itemReversalByOriginalMap = new Map(
+    ((itemReversalsFromOriginalResult.error ? [] : itemReversalsFromOriginalResult.data) ?? []).map((row) => [
+      row.original_stock_transfer_item_id,
+      {
+        originalTransferId: row.original_stock_transfer_id,
+        reversalTransferId: row.reversal_stock_transfer_id,
+        reversalReason: row.reversal_reason,
+        reversedAt: row.created_at,
+      },
+    ]),
+  );
+  const originalByReversalItemMap = new Map(
+    ((itemReversalsByReversalResult.error ? [] : itemReversalsByReversalResult.data) ?? [])
+      .filter((row) => row.reversal_stock_transfer_item_id)
+      .map((row) => [
+        row.reversal_stock_transfer_item_id as string,
+        {
+          originalTransferId: row.original_stock_transfer_id,
+          reversalTransferId: row.reversal_stock_transfer_id,
+          reversalReason: row.reversal_reason,
+          reversedAt: row.created_at,
+        },
+      ]),
+  );
 
   const allRows: TransferListItem[] = (itemRows ?? []).flatMap((item) => {
     const transfer = transferMap.get(item.stock_transfer_id);
@@ -543,6 +603,8 @@ async function loadTransferList(request: NextRequest) {
 
     const reversalFromOriginal = reversalByOriginalMap.get(transfer.id) ?? null;
     const reversalFromReversal = originalByReversalMap.get(transfer.id) ?? null;
+    const itemReversalFromOriginal = itemReversalByOriginalMap.get(item.id) ?? null;
+    const itemReversalFromReversal = originalByReversalItemMap.get(item.id) ?? null;
 
     return [
       {
@@ -568,12 +630,12 @@ async function loadTransferList(request: NextRequest) {
         projectId: transfer.project_id,
         projectCode,
         notes: transfer.notes,
-        isReversed: Boolean(reversalFromOriginal),
-        reversalTransferId: reversalFromOriginal?.reversalTransferId ?? null,
-        isReversal: Boolean(reversalFromReversal),
-        originalTransferId: reversalFromReversal?.originalTransferId ?? null,
-        reversalReason: reversalFromOriginal?.reversalReason ?? reversalFromReversal?.reversalReason ?? null,
-        reversedAt: reversalFromOriginal?.reversedAt ?? reversalFromReversal?.reversedAt ?? null,
+        isReversed: Boolean(reversalFromOriginal || itemReversalFromOriginal),
+        reversalTransferId: reversalFromOriginal?.reversalTransferId ?? itemReversalFromOriginal?.reversalTransferId ?? null,
+        isReversal: Boolean(reversalFromReversal || itemReversalFromReversal),
+        originalTransferId: reversalFromReversal?.originalTransferId ?? itemReversalFromReversal?.originalTransferId ?? null,
+        reversalReason: reversalFromOriginal?.reversalReason ?? itemReversalFromOriginal?.reversalReason ?? reversalFromReversal?.reversalReason ?? itemReversalFromReversal?.reversalReason ?? null,
+        reversedAt: reversalFromOriginal?.reversedAt ?? itemReversalFromOriginal?.reversedAt ?? reversalFromReversal?.reversedAt ?? itemReversalFromReversal?.reversedAt ?? null,
       },
     ];
   });

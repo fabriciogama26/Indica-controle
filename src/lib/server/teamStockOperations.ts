@@ -21,6 +21,7 @@ export type ReverseTeamStockOperationPayload = {
   tenantId: string;
   actorUserId: string;
   originalTransferId: string;
+  originalTransferItemId?: string | null;
   reversalReasonCode: string;
   reversalReasonNotes?: string | null;
   reversalDate?: string | null;
@@ -96,6 +97,16 @@ function mapTeamOperationErrorMessage(reason: string) {
       return "Nao foi possivel preparar o centro tecnico CAMPO / INSTALADO.";
     case "TEAM_OPERATION_REQUIRED_FIELDS":
       return "Centro de estoque e equipe sao obrigatorios para a operacao.";
+    case "ITEM_ALREADY_REVERSED":
+      return "Este item da operacao de equipe ja foi estornado.";
+    case "FULL_TRANSFER_ALREADY_REVERSED":
+      return "Esta operacao de equipe ja foi estornada integralmente.";
+    case "PARTIAL_REVERSAL_EXISTS":
+      return "Esta operacao de equipe ja possui estorno por item. Estorne os itens restantes individualmente.";
+    case "ORIGINAL_ITEM_NOT_FOUND":
+      return "Item da operacao de equipe original nao encontrado.";
+    case "REVERSAL_OF_REVERSAL_NOT_ALLOWED":
+      return "Nao e permitido estornar uma operacao de estorno.";
     default:
       return "";
   }
@@ -226,14 +237,27 @@ export async function reverseTeamStockOperationViaRpc(
   supabase: SupabaseClient,
   payload: ReverseTeamStockOperationPayload,
 ) {
-  const { data, error } = await supabase.rpc("reverse_team_stock_operation_record_v2", {
-    p_tenant_id: payload.tenantId,
-    p_actor_user_id: payload.actorUserId,
-    p_original_stock_transfer_id: payload.originalTransferId,
-    p_reversal_reason_code: payload.reversalReasonCode,
-    p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
-    p_reversal_date: payload.reversalDate ?? null,
-  });
+  const rpcName = payload.originalTransferItemId
+    ? "reverse_team_stock_operation_item_record_v1"
+    : "reverse_team_stock_operation_record_v2";
+  const rpcPayload = payload.originalTransferItemId
+    ? {
+        p_tenant_id: payload.tenantId,
+        p_actor_user_id: payload.actorUserId,
+        p_original_stock_transfer_item_id: payload.originalTransferItemId,
+        p_reversal_reason_code: payload.reversalReasonCode,
+        p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
+        p_reversal_date: payload.reversalDate ?? null,
+      }
+    : {
+        p_tenant_id: payload.tenantId,
+        p_actor_user_id: payload.actorUserId,
+        p_original_stock_transfer_id: payload.originalTransferId,
+        p_reversal_reason_code: payload.reversalReasonCode,
+        p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
+        p_reversal_date: payload.reversalDate ?? null,
+      };
+  const { data, error } = await supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
     return {

@@ -135,6 +135,10 @@ Cancelamento e saldo
 --------------------
 - A correcao operacional e feita por `Estorno`, nao por edicao direta.
 - O estorno cria nova movimentacao inversa dentro do mesmo ledger.
+- O estorno novo ocorre por item/linha (`stock_transfer_items.id`), permitindo corrigir um material sem reverter os demais itens da mesma operacao.
+- Estornos antigos por transferencia inteira continuam preservados em `stock_transfer_reversals`.
+- Nao permite duplo estorno do mesmo item.
+- Nao permite estorno integral da operacao quando ela ja possui estorno parcial por item.
 - O estorno exige:
   - `Motivo padrao do estorno`
   - `Data do estorno`
@@ -207,6 +211,8 @@ Atualizacao 2026-05
 - API/listagem/importacao passam a carregar `materials.serial_tracking_type` e o helper `materialSerialTracking`.
 - Migration `172_generalize_serial_tracked_materials.sql` generaliza o rastreio unitario para materiais serializados.
 - O modelo CSV do cadastro em massa passa a trazer exemplos de material comum decimal, RELIGADOR com Serial, TRAFO com Serial + LP e CHAVE no retorno de campo.
+- O estorno passa a ser independente por item/linha da lista. A UI envia `transferItemId` e a API aciona a RPC de estorno por item, preservando o legado de estorno integral por `transferId`.
+- A tabela `stock_transfer_item_reversals` registra o vinculo `item original -> item de estorno` sem alterar registros historicos existentes.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -218,9 +224,11 @@ Funcoes principais
 - Caminho: `src/app/api/team-stock-operations/import/route.ts`
   - Responsavel por: processar importacao em lote de requisicoes/devolucoes, validar saldo/TRAFO em sequencia e devolver erros por linha.
 - Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
-  - Responsavel por: validar payload de estorno e chamar a RPC transacional de reversao.
+  - Responsavel por: validar payload de estorno e chamar a RPC transacional de reversao por item ou por transferencia legada.
 - Caminho: `src/lib/server/teamStockOperations.ts`
-  - Responsavel por: encapsular chamadas para `save_team_stock_operation_record` e `reverse_team_stock_operation_record_v2`.
+  - Responsavel por: encapsular chamadas para `save_team_stock_operation_record`, `reverse_team_stock_operation_record_v2` e `reverse_team_stock_operation_item_record_v1`.
+- Caminho: `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
+  - Responsavel por: criar `stock_transfer_item_reversals`, RPC `reverse_stock_transfer_item_record_v1`, RPC `reverse_team_stock_operation_item_record_v1` e preservar estornos integrais legados.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/saida/constants.ts`
@@ -244,6 +252,7 @@ Servicos e integracoes externas
 - Supabase Postgres com RLS
 - RPC `save_team_stock_operation_record`
 - RPC `reverse_team_stock_operation_record_v2`
+- RPC `reverse_team_stock_operation_item_record_v1`
 
 Ajuda contextual
 - Arquivos alterados/criados:
@@ -284,3 +293,5 @@ Ajuda contextual
 - Depois: o cadastro inicial aparece como evento resumido e o detalhamento fica reservado para alteracoes/estornos reais.
 - Antes: o input numerico dependia do comportamento do navegador para aceitar virgula.
 - Depois: a quantidade manual aceita virgula ou ponto com validacao propria de decimal positivo.
+- Antes: o botao de estorno ficava preso a primeira linha da transferencia e revertia todos os itens da mesma operacao.
+- Depois: cada linha pode ser estornada separadamente por `transferItemId`, mantendo bloqueio de duplo estorno por item e preservando os estornos antigos por transferencia inteira.

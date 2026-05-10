@@ -9,6 +9,7 @@ import {
 
 type ReversalPayload = {
   transferId?: unknown;
+  transferItemId?: unknown;
   reversalReasonCode?: unknown;
   reversalReasonNotes?: unknown;
   reversalDate?: unknown;
@@ -38,13 +39,14 @@ export async function POST(request: NextRequest) {
 
     const payload = (await request.json().catch(() => ({}))) as ReversalPayload;
     const transferId = normalizeText(payload.transferId);
+    const transferItemId = normalizeText(payload.transferItemId);
     const reversalReasonCode = normalizeText(payload.reversalReasonCode).toUpperCase();
     const reversalReasonNotes = normalizeText(payload.reversalReasonNotes) || null;
     const reversalDateRaw = normalizeText(payload.reversalDate);
     const reversalDate = reversalDateRaw ? normalizeDateInput(reversalDateRaw) : null;
 
-    if (!transferId) {
-      return NextResponse.json({ message: "transferId e obrigatorio para estorno." }, { status: 400 });
+    if (!transferId && !transferItemId) {
+      return NextResponse.json({ message: "transferId ou transferItemId e obrigatorio para estorno." }, { status: 400 });
     }
 
     if (!reversalReasonCode) {
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
       originalTransferId: transferId,
+      originalTransferItemId: transferItemId || null,
       reversalReasonCode,
       reversalReasonNotes,
       reversalDate,
