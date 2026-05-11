@@ -46,7 +46,7 @@ with check (public.user_can_access_tenant(serial_retirements.tenant_id));
 drop trigger if exists trg_serial_retirements_audit on public.serial_retirements;
 create trigger trg_serial_retirements_audit
 before insert or update on public.serial_retirements
-for each row execute function public.set_audit_fields();
+for each row execute function public.apply_audit_fields();
 
 create or replace function public.retire_serial_tracked_unit(
   p_tenant_id uuid,
