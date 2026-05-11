@@ -213,6 +213,8 @@ Atualizacao 2026-05
 - O modelo CSV do cadastro em massa passa a trazer exemplos de material comum decimal, RELIGADOR com Serial, TRAFO com Serial + LP e CHAVE no retorno de campo.
 - O estorno passa a ser independente por item/linha da lista. A UI envia `transferItemId` e a API aciona a RPC de estorno por item, preservando o legado de estorno integral por `transferId`.
 - A tabela `stock_transfer_item_reversals` registra o vinculo `item original -> item de estorno` sem alterar registros historicos existentes.
+- A listagem passa a ter fallback para ambientes com schema em transicao: se o select completo de `stock_transfer_team_operations` falhar por colunas novas ausentes, a API tenta carregar `transfer_id/team_id` legados para evitar bloqueio total da tela.
+- A API tambem registra no log do servidor a etapa tecnica que falhou (`team-operations`, `stock-transfers`, `stock-transfer-items` ou fallback de `materials`), mantendo a resposta publica sem detalhes sensiveis.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -220,7 +222,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
   - Responsavel por: formulario, filtros, importacao CSV, lista, detalhes, historico e estorno da tela.
 - Caminho: `src/app/api/team-stock-operations/route.ts`
-  - Responsavel por: criar operacoes, listar historico operacional e montar o historico funcional por transferencia, omitindo detalhes completos do cadastro inicial.
+  - Responsavel por: criar operacoes, listar historico operacional, montar o historico funcional por transferencia, omitir detalhes completos do cadastro inicial e aplicar fallback de leitura para schema em transicao.
 - Caminho: `src/app/api/team-stock-operations/import/route.ts`
   - Responsavel por: processar importacao em lote de requisicoes/devolucoes, validar saldo/TRAFO em sequencia e devolver erros por linha.
 - Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
@@ -295,3 +297,5 @@ Ajuda contextual
 - Depois: a quantidade manual aceita virgula ou ponto com validacao propria de decimal positivo.
 - Antes: o botao de estorno ficava preso a primeira linha da transferencia e revertia todos os itens da mesma operacao.
 - Depois: cada linha pode ser estornada separadamente por `transferItemId`, mantendo bloqueio de duplo estorno por item e preservando os estornos antigos por transferencia inteira.
+- Antes: falha de select em colunas recentes de `stock_transfer_team_operations` derrubava a listagem de `/saida` com mensagem generica.
+- Depois: a API tenta fallback legado e registra a etapa tecnica no log do servidor para diagnostico sem expor detalhes ao usuario.

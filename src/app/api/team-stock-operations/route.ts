@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 
 import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
@@ -79,6 +80,11 @@ type TeamOperationMapRow = {
   foreman_name_snapshot: string;
 };
 
+type LegacyTeamOperationMapRow = {
+  transfer_id: string;
+  team_id: string;
+};
+
 type TeamRow = {
   id: string;
   stock_center_id: string | null;
@@ -144,6 +150,140 @@ function normalizeReversalStatus(value: string | null) {
     return normalized as "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
   }
   return "TODOS" as const;
+}
+
+function shouldFallbackToLegacyTeamOperationSelect(error: PostgrestError | null) {
+  if (!error) {
+    return false;
+  }
+
+  const normalized = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return (
+    normalized.includes("operation_kind")
+    || normalized.includes("technical_origin_stock_center_id")
+    || normalized.includes("team_name_snapshot")
+    || normalized.includes("foreman_name_snapshot")
+    || error.code === "42703"
+    || error.code === "PGRST204"
+  );
+}
+
+function logTeamOperationLoadError(step: string, error: PostgrestError | null, context: Record<string, unknown> = {}) {
+  if (!error) {
+    return;
+  }
+
+  console.error("[team-stock-operations] load error", {
+    step,
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+    ...context,
+  });
+}
+
+function normalizeLegacyTeamOperationRows(rows: LegacyTeamOperationMapRow[] | null | undefined) {
+  return (rows ?? []).map((row) => ({
+    transfer_id: row.transfer_id,
+    team_id: row.team_id,
+    operation_kind: null,
+    technical_origin_stock_center_id: null,
+    team_name_snapshot: "Equipe nao informada",
+    foreman_name_snapshot: "Encarregado nao informado",
+  })) satisfies TeamOperationMapRow[];
+}
+
+async function loadTeamOperationRows(
+  supabase: SupabaseClient,
+  tenantId: string,
+  teamIdFilter: string,
+) {
+  let fullQuery = supabase
+    .from("stock_transfer_team_operations")
+    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
+    .eq("tenant_id", tenantId);
+
+  if (teamIdFilter) {
+    fullQuery = fullQuery.eq("team_id", teamIdFilter);
+  }
+
+  const fullResult = await fullQuery.returns<TeamOperationMapRow[]>();
+
+  if (!fullResult.error) {
+    return fullResult;
+  }
+
+  if (!shouldFallbackToLegacyTeamOperationSelect(fullResult.error)) {
+    return fullResult;
+  }
+
+  logTeamOperationLoadError("team-operations-full-select", fullResult.error, { fallback: "legacy-select" });
+
+  let legacyQuery = supabase
+    .from("stock_transfer_team_operations")
+    .select("transfer_id, team_id")
+    .eq("tenant_id", tenantId);
+
+  if (teamIdFilter) {
+    legacyQuery = legacyQuery.eq("team_id", teamIdFilter);
+  }
+
+  const legacyResult = await legacyQuery.returns<LegacyTeamOperationMapRow[]>();
+
+  if (legacyResult.error) {
+    return {
+      data: null,
+      error: legacyResult.error,
+    };
+  }
+
+  return {
+    data: normalizeLegacyTeamOperationRows(legacyResult.data),
+    error: null,
+  };
+}
+
+async function loadTeamOperationRowByTransfer(
+  supabase: SupabaseClient,
+  tenantId: string,
+  transferId: string,
+) {
+  const fullResult = await supabase
+    .from("stock_transfer_team_operations")
+    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
+    .eq("tenant_id", tenantId)
+    .eq("transfer_id", transferId)
+    .maybeSingle<TeamOperationMapRow>();
+
+  if (!fullResult.error) {
+    return fullResult;
+  }
+
+  if (!shouldFallbackToLegacyTeamOperationSelect(fullResult.error)) {
+    return fullResult;
+  }
+
+  logTeamOperationLoadError("team-operation-history-full-select", fullResult.error, { fallback: "legacy-select" });
+
+  const legacyResult = await supabase
+    .from("stock_transfer_team_operations")
+    .select("transfer_id, team_id")
+    .eq("tenant_id", tenantId)
+    .eq("transfer_id", transferId)
+    .maybeSingle<LegacyTeamOperationMapRow>();
+
+  if (legacyResult.error) {
+    return {
+      data: null,
+      error: legacyResult.error,
+    };
+  }
+
+  return {
+    data: legacyResult.data ? normalizeLegacyTeamOperationRows([legacyResult.data])[0] : null,
+    error: null,
+  };
 }
 
 function toIsoDate(value: Date) {
@@ -344,18 +484,14 @@ async function loadTeamOperationList(request: NextRequest) {
       : normalizeEntryType(request.nextUrl.searchParams.get("entryType"));
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
 
-  let teamOperationQuery = supabase
-    .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
-    .eq("tenant_id", appUser.tenant_id);
-
-  if (teamIdFilter) {
-    teamOperationQuery = teamOperationQuery.eq("team_id", teamIdFilter);
-  }
-
-  const { data: teamOperationRows, error: teamOperationError } = await teamOperationQuery.returns<TeamOperationMapRow[]>();
+  const { data: teamOperationRows, error: teamOperationError } = await loadTeamOperationRows(
+    supabase,
+    appUser.tenant_id,
+    teamIdFilter,
+  );
 
   if (teamOperationError) {
+    logTeamOperationLoadError("team-operations", teamOperationError, { tenantId: appUser.tenant_id, teamIdFilter });
     return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
   }
 
@@ -388,6 +524,10 @@ async function loadTeamOperationList(request: NextRequest) {
 
   const { data: transferHeaders, error: transfersError } = await transfersQuery.returns<TransferHeaderRow[]>();
   if (transfersError) {
+    logTeamOperationLoadError("stock-transfers", transfersError, {
+      tenantId: appUser.tenant_id,
+      transferCount: transferIds.length,
+    });
     return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
   }
 
@@ -407,6 +547,10 @@ async function loadTeamOperationList(request: NextRequest) {
     .returns<TransferItemRow[]>();
 
   if (itemsError) {
+    logTeamOperationLoadError("stock-transfer-items", itemsError, {
+      tenantId: appUser.tenant_id,
+      transferCount: currentTransferIds.length,
+    });
     return NextResponse.json({ message: "Falha ao carregar itens das operacoes de equipe." }, { status: 500 });
   }
 
@@ -505,9 +649,30 @@ async function loadTeamOperationList(request: NextRequest) {
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
 
+  let materialsData = materialsResult.data ?? [];
+  if (materialsResult.error && materialIds.length) {
+    logTeamOperationLoadError("materials-full-select", materialsResult.error, { fallback: "legacy-select" });
+
+    const legacyMaterialsResult = await supabase
+      .from("materials")
+      .select("id, codigo, descricao")
+      .eq("tenant_id", appUser.tenant_id)
+      .in("id", materialIds)
+      .returns<MaterialRow[]>();
+
+    if (legacyMaterialsResult.error) {
+      logTeamOperationLoadError("materials-legacy-select", legacyMaterialsResult.error, {
+        tenantId: appUser.tenant_id,
+        materialCount: materialIds.length,
+      });
+    }
+
+    materialsData = legacyMaterialsResult.data ?? [];
+  }
+
   const teamByTransferId = new Map(teamOperationRows.map((row) => [row.transfer_id, row.team_id]));
   const transferMap = new Map((transferHeaders ?? []).map((row) => [row.id, row]));
-  const materialMap = new Map((materialsResult.data ?? []).map((row) => [row.id, row]));
+  const materialMap = new Map(materialsData.map((row) => [row.id, row]));
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map((usersResult.data ?? []).map((row) => [
@@ -670,14 +835,14 @@ async function loadTeamOperationHistory(request: NextRequest) {
     return NextResponse.json({ message: "transferId e obrigatorio para carregar o historico." }, { status: 400 });
   }
 
-  const { data: teamOperation, error: teamOperationError } = await supabase
-    .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
-    .eq("tenant_id", appUser.tenant_id)
-    .eq("transfer_id", transferId)
-    .maybeSingle<TeamOperationMapRow>();
+  const { data: teamOperation, error: teamOperationError } = await loadTeamOperationRowByTransfer(
+    supabase,
+    appUser.tenant_id,
+    transferId,
+  );
 
   if (teamOperationError || !teamOperation) {
+    logTeamOperationLoadError("team-operation-history", teamOperationError, { tenantId: appUser.tenant_id, transferId });
     return NextResponse.json({ message: "Operacao de equipe nao encontrada." }, { status: 404 });
   }
 
