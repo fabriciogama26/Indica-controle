@@ -44,6 +44,22 @@ type MetaResponse = {
   message?: string;
 };
 
+type SerialOption = {
+  id: string;
+  materialId: string;
+  materialCode: string;
+  serialTrackingType: SerialTrackingType;
+  serialNumber: string;
+  lotCode: string;
+  currentStockCenterId: string | null;
+  updatedAt: string | null;
+};
+
+type SerialOptionsResponse = {
+  items?: SerialOption[];
+  message?: string;
+};
+
 type TransferListItem = {
   id: string;
   transferId: string;
@@ -241,6 +257,10 @@ function normalizeText(value: string | null | undefined) {
 }
 
 function normalizeCode(value: string) {
+  return normalizeText(value).toUpperCase();
+}
+
+function normalizeUnitText(value: string | null | undefined) {
   return normalizeText(value).toUpperCase();
 }
 
@@ -495,6 +515,7 @@ export function StockTransfersPageView() {
   const [stockCenters, setStockCenters] = useState<StockCenterOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
+  const [serialOptions, setSerialOptions] = useState<SerialOption[]>([]);
   const [reversalReasons, setReversalReasons] = useState<ReversalReasonOption[]>([]);
 
   const [historyItems, setHistoryItems] = useState<TransferListItem[]>([]);
@@ -514,6 +535,7 @@ export function StockTransfersPageView() {
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingHistoryModal, setIsLoadingHistoryModal] = useState(false);
+  const [isLoadingSerialOptions, setIsLoadingSerialOptions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -565,6 +587,21 @@ export function StockTransfersPageView() {
   const requiresLotFields = requiresLotCode(selectedMaterial?.serialTrackingType);
   const isTransformerMovementMode = Boolean(transformerMovementMode);
   const formEntryDateLabel = movementDateLabel(form.movementType);
+  const fromStockCenterName = centerMap.get(form.fromStockCenterId)?.name ?? "centro DE";
+  const matchedSerialOption = useMemo(
+    () => serialOptions.find((option) =>
+      option.materialId === form.materialId
+      && normalizeUnitText(option.serialNumber) === normalizeUnitText(form.serialNumber)
+      && normalizeUnitText(option.lotCode || "-") === normalizeUnitText(form.lotCode || "-"),
+    ) ?? null,
+    [form.lotCode, form.materialId, form.serialNumber, serialOptions],
+  );
+  const serialLotOptions = useMemo(
+    () => serialOptions.filter((option) =>
+      !form.serialNumber || normalizeUnitText(option.serialNumber) === normalizeUnitText(form.serialNumber),
+    ),
+    [form.serialNumber, serialOptions],
+  );
   const transferPrefill = useMemo(() => ({
     mode: normalizeText(searchParams.get("prefillMode")),
     fromStockCenterId: normalizeText(searchParams.get("fromStockCenterId")),
@@ -821,6 +858,92 @@ export function StockTransfersPageView() {
     void loadHistory(1);
   }, [filters, loadHistory]);
 
+  useEffect(() => {
+    if (
+      !session?.accessToken
+      || !requiresSerialFields
+      || form.movementType === "ENTRY"
+      || !form.fromStockCenterId
+      || !form.materialId
+    ) {
+      setSerialOptions([]);
+      setIsLoadingSerialOptions(false);
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setIsLoadingSerialOptions(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("movementType", form.movementType);
+        params.set("fromStockCenterId", form.fromStockCenterId);
+        params.set("materialId", form.materialId);
+        params.set("pageSize", "50");
+        if (form.serialNumber) params.set("serialNumber", form.serialNumber);
+
+        const response = await fetch(`/api/stock-transfers/serial-options?${params.toString()}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+          signal: controller.signal,
+        });
+
+        const data = (await response.json().catch(() => ({}))) as SerialOptionsResponse;
+        if (!response.ok) {
+          if (isMounted) {
+            setSerialOptions([]);
+          }
+          await logError("Falha ao carregar seriais disponiveis da movimentacao de estoque.", undefined, {
+            responseStatus: response.status,
+            responseMessage: data.message ?? null,
+            movementType: form.movementType,
+            fromStockCenterId: form.fromStockCenterId,
+            materialId: form.materialId,
+          });
+          return;
+        }
+
+        if (isMounted) {
+          setSerialOptions(data.items ?? []);
+        }
+      } catch (error) {
+        if ((error as { name?: string })?.name === "AbortError") {
+          return;
+        }
+
+        if (isMounted) {
+          setSerialOptions([]);
+        }
+        await logError("Falha ao carregar seriais disponiveis da movimentacao de estoque.", error, {
+          movementType: form.movementType,
+          fromStockCenterId: form.fromStockCenterId,
+          materialId: form.materialId,
+        });
+      } finally {
+        if (isMounted) {
+          setIsLoadingSerialOptions(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    form.fromStockCenterId,
+    form.materialId,
+    form.movementType,
+    form.serialNumber,
+    logError,
+    requiresSerialFields,
+    session?.accessToken,
+  ]);
+
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -851,8 +974,8 @@ export function StockTransfersPageView() {
       description: matchedMaterial?.description ?? "",
       entryType: normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
       quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? "1" : current.quantity,
-      serialNumber: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? current.serialNumber : "",
-      lotCode: requiresLotCode(matchedMaterial?.serialTrackingType) ? current.lotCode : "",
+      serialNumber: "",
+      lotCode: "",
     }));
   }
 
@@ -877,7 +1000,51 @@ export function StockTransfersPageView() {
       movementType: value,
       fromStockCenterId: isTransformerMovementMode ? current.fromStockCenterId : "",
       toStockCenterId: "",
+      serialNumber: isTransformerMovementMode ? current.serialNumber : "",
+      lotCode: isTransformerMovementMode ? current.lotCode : "",
     }));
+  }
+
+  function handleFromStockCenterChange(value: string) {
+    if (form.items.length > 0) {
+      showError("Remova os itens adicionados antes de trocar o centro DE.");
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      fromStockCenterId: value,
+      serialNumber: isTransformerMovementMode ? current.serialNumber : "",
+      lotCode: isTransformerMovementMode ? current.lotCode : "",
+    }));
+  }
+
+  function handleToStockCenterChange(value: string) {
+    if (form.items.length > 0) {
+      showError("Remova os itens adicionados antes de trocar o centro PARA.");
+      return;
+    }
+
+    updateFormField("toStockCenterId", value);
+  }
+
+  function handleSerialNumberChange(value: string) {
+    const matchedOptions = serialOptions.filter((option) =>
+      normalizeUnitText(option.serialNumber) === normalizeUnitText(value),
+    );
+    const nextLotCode = requiresLotFields && matchedOptions.length === 1
+      ? matchedOptions[0].lotCode
+      : "";
+
+    setForm((current) => ({
+      ...current,
+      serialNumber: value,
+      lotCode: requiresLotFields && current.movementType !== "ENTRY" ? nextLotCode : current.lotCode,
+    }));
+  }
+
+  function handleLotCodeChange(value: string) {
+    updateFormField("lotCode", value);
   }
 
   function isValidCenterPairByMovementType() {
@@ -951,7 +1118,7 @@ export function StockTransfersPageView() {
     });
   }
 
-  function handleAddFormItem() {
+  async function handleAddFormItem() {
     const validationError = validateManualForm();
     if (validationError) {
       showError(validationError);
@@ -988,6 +1155,26 @@ export function StockTransfersPageView() {
 
       if (requiresLotCode(selectedMaterial.serialTrackingType) && !normalizeText(form.lotCode)) {
         showError(`Material TRAFO ${selectedMaterial.materialCode}: LP e obrigatorio.`);
+        return;
+      }
+    }
+
+    if (isSerialTrackedMaterial(selectedMaterial.serialTrackingType) && form.movementType !== "ENTRY") {
+      const sourceAvailability = await ensureSourceStockAvailability({
+        rowId: createRowId(),
+        materialId: selectedMaterial.id,
+        materialCode: selectedMaterial.materialCode,
+        description: selectedMaterial.description,
+        quantity,
+        serialNumber: normalizeText(form.serialNumber),
+        lotCode: normalizeText(form.lotCode) || (requiresLotCode(selectedMaterial.serialTrackingType) ? "" : "-"),
+        entryType: normalizedEntryType,
+        isTransformer: true,
+        serialTrackingType: selectedMaterial.serialTrackingType,
+      });
+
+      if (!sourceAvailability.ok) {
+        showError(sourceAvailability.message);
         return;
       }
     }
@@ -1124,14 +1311,14 @@ export function StockTransfersPageView() {
 
     if (item.isTransformer) {
       const searchParams = new URLSearchParams();
-      searchParams.set("page", "1");
-      searchParams.set("pageSize", "10");
-      searchParams.set("stockCenterId", form.fromStockCenterId);
-      searchParams.set("materialCode", item.materialCode);
+      searchParams.set("movementType", form.movementType);
+      searchParams.set("fromStockCenterId", form.fromStockCenterId);
+      searchParams.set("materialId", item.materialId);
+      searchParams.set("pageSize", "20");
       searchParams.set("serialNumber", item.serialNumber ?? "");
       searchParams.set("lotCode", item.lotCode || "-");
 
-      const response = await fetch(`/api/trafo-positions?${searchParams.toString()}`, {
+      const response = await fetch(`/api/stock-transfers/serial-options?${searchParams.toString()}`, {
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
@@ -1157,8 +1344,8 @@ export function StockTransfersPageView() {
 
       const matchedUnit = (data.items ?? []).find((candidate) =>
         candidate.materialId === item.materialId
-        && String(candidate.serialNumber ?? "").trim().toUpperCase() === String(item.serialNumber ?? "").trim().toUpperCase()
-        && String(candidate.lotCode ?? "").trim().toUpperCase() === String(item.lotCode || "-").trim().toUpperCase()
+        && normalizeUnitText(candidate.serialNumber) === normalizeUnitText(item.serialNumber)
+        && normalizeUnitText(candidate.lotCode || "-") === normalizeUnitText(item.lotCode || "-")
         && candidate.currentStockCenterId === form.fromStockCenterId,
       );
 
@@ -1949,7 +2136,7 @@ export function StockTransfersPageView() {
             </span>
             <select
               value={form.fromStockCenterId}
-              onChange={(event) => updateFormField("fromStockCenterId", event.target.value)}
+              onChange={(event) => handleFromStockCenterChange(event.target.value)}
               disabled={isSubmitting || isLoadingMeta || isTransformerMovementMode}
             >
               <option value="">Selecione</option>
@@ -1967,7 +2154,7 @@ export function StockTransfersPageView() {
             </span>
             <select
               value={form.toStockCenterId}
-              onChange={(event) => updateFormField("toStockCenterId", event.target.value)}
+              onChange={(event) => handleToStockCenterChange(event.target.value)}
               disabled={isSubmitting || isLoadingMeta}
             >
               <option value="">Selecione</option>
@@ -2086,10 +2273,26 @@ export function StockTransfersPageView() {
                 <input
                   type="text"
                   value={form.serialNumber}
-                  onChange={(event) => updateFormField("serialNumber", event.target.value)}
+                  onChange={(event) => handleSerialNumberChange(event.target.value)}
+                  list={requiresSerialFields && form.movementType !== "ENTRY" ? "entrada-serial-list" : undefined}
                   disabled={isSubmitting || !requiresSerialFields || isTransformerMovementMode}
-                  placeholder={requiresSerialFields ? "Informe o serial" : "Disponivel apenas para material rastreavel"}
+                  placeholder={
+                    requiresSerialFields
+                      ? form.movementType === "ENTRY"
+                        ? "Informe o serial novo"
+                        : "Digite para selecionar do centro DE"
+                      : "Disponivel apenas para material rastreavel"
+                  }
                 />
+                {requiresSerialFields && form.movementType !== "ENTRY" ? (
+                  <small className={styles.fieldHint}>
+                    {isLoadingSerialOptions
+                      ? "Carregando seriais disponiveis..."
+                      : matchedSerialOption
+                        ? `Selecionado no centro DE: ${fromStockCenterName}.`
+                        : "Use um serial listado no centro DE."}
+                  </small>
+                ) : null}
               </label>
 
               <label className={styles.field}>
@@ -2100,9 +2303,16 @@ export function StockTransfersPageView() {
                 <input
                   type="text"
                   value={form.lotCode}
-                  onChange={(event) => updateFormField("lotCode", event.target.value)}
+                  onChange={(event) => handleLotCodeChange(event.target.value)}
+                  list={requiresLotFields && form.movementType !== "ENTRY" ? "entrada-lp-list" : undefined}
                   disabled={isSubmitting || !requiresLotFields || isTransformerMovementMode}
-                  placeholder={requiresLotFields ? "Informe o LP" : "Obrigatorio apenas para TRAFO"}
+                  placeholder={
+                    requiresLotFields
+                      ? form.movementType === "ENTRY"
+                        ? "Informe o LP novo"
+                        : "Selecione o LP do centro DE"
+                      : "Obrigatorio apenas para TRAFO"
+                  }
                 />
               </label>
 
@@ -2110,7 +2320,7 @@ export function StockTransfersPageView() {
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={handleAddFormItem}
+                  onClick={() => void handleAddFormItem()}
                   disabled={isSubmitting || isLoadingMeta}
                 >
                   Adicionar material
@@ -2804,6 +3014,20 @@ export function StockTransfersPageView() {
         {materials.map((material) => (
           <option key={material.id} value={material.materialCode}>
             {material.description}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="entrada-serial-list">
+        {serialOptions.map((option) => (
+          <option key={option.id} value={option.serialNumber}>
+            {requiresLotCode(option.serialTrackingType) ? `LP ${option.lotCode}` : option.materialCode}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="entrada-lp-list">
+        {serialLotOptions.map((option) => (
+          <option key={option.id} value={option.lotCode}>
+            Serial {option.serialNumber}
           </option>
         ))}
       </datalist>
