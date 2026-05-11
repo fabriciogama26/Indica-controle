@@ -50,7 +50,7 @@ Cadastro
   - `Grupo` deve ser preenchido.
   - `Tipo` deve existir e estar ativo em `team_types` no mesmo tenant.
   - `Categoria` deve existir e estar ativa em `types_service_activities` no mesmo tenant.
-  - `Alcance` e opcional.
+  - `Alcance` e opcional e aceita texto livre em formato similar a observacao.
   - `Codigo` deve ser unico por tenant.
   - Pre-validacao de codigo via RPC `precheck_activity_code_conflict` (bloqueia duplicidade antes de inserir/editar).
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear `last-write-wins`.
@@ -248,6 +248,7 @@ Atualizacao 2026-05
   - Antes: o formulario de Atividades nao exibia `Grupo` nem `Alcance` no cadastro/edicao.
   - Antes: `Grupo` podia chegar vazio no backend/RPC.
   - Depois: o formulario exibe `Grupo *` e `Alcance`, exige `Grupo` no HTML, na API e na RPC transacional, e continua tratando `Alcance` como opcional.
+  - Depois: `Alcance` passa a ser exibido como campo de texto longo para aceitar descricao similar a observacao.
   - Depois: alteracoes de `Grupo` e `Alcance` continuam entrando no historico via `p_changes.group` e `p_changes.scope`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
