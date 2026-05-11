@@ -122,6 +122,7 @@ Filtros, auto-complete e listagem
   - `Projeto (SOB)` (texto)
   - `Data Execucao` (data)
   - `Prioridade` (select)
+  - `Centro de Servico *` (select com opcoes do tenant)
   - `Municipio` (select)
   - `Status Cancelado` (checkbox `Somente cancelados`)
   - `Estado Trabalho` (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
@@ -129,6 +130,7 @@ Filtros, auto-complete e listagem
 - Auto-complete implementado para:
   - `SOB`
   - `Prioridade`
+  - `Centro de Servico`
   - `Municipio`
   - `Responsaveis`
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`) para evitar truncamento por limite de retorno em uma unica chamada.
@@ -532,3 +534,22 @@ Atualizacao 2026-05
   - Depois: o cadastro passa a ter tambem `RETIRADO DA CARTEIRA`, persistido em `project.is_withdrawn`.
   - Antes: retirar uma obra dos cards exigiria reaproveitar `is_test`, com impacto em Programacao/Medicao.
   - Depois: `RETIRADO DA CARTEIRA` exclui apenas os cards de carteira da tela de Projetos, mantendo a obra disponivel nos demais fluxos operacionais.
+
+Atualizacao adicional 2026-05-11
+--------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/route.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `FilterState`
+  - `INITIAL_FILTERS`
+  - `buildQuery`
+  - `fetchProjectsPageCompat`
+  - `fetchProjectsSummaryCompat`
+  - `GET /api/projects`
+- Comportamento antes/depois:
+  - Antes: os filtros da tela de `Projetos` nao permitiam recorte por `Centro de Servico`.
+  - Depois: o bloco `Filtros` exibe `Centro de Servico *`, alimentado por `meta.serviceCenters`, e envia `serviceCenter` para `/api/projects`.
+  - Depois: o backend aplica `service_center_text` dentro do mesmo `tenant_id` na listagem paginada, exportacao CSV e consolidacao dos cards da carteira.
