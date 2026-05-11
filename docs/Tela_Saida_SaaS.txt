@@ -15,6 +15,7 @@ Arquitetura
 - Constantes: `src/modules/dashboard/saida/constants.ts`
 - Utilitarios: `src/modules/dashboard/saida/utils.ts`
 - API (meta): `src/app/api/team-stock-operations/meta/route.ts`
+- API (serial options): `src/app/api/team-stock-operations/serial-options/route.ts`
 - API (create/list/history): `src/app/api/team-stock-operations/route.ts`
 - API (batch import): `src/app/api/team-stock-operations/import/route.ts`
 - API (reversal): `src/app/api/team-stock-operations/reversal/route.ts`
@@ -56,6 +57,8 @@ Cadastro
   - `quantity` deve ser maior que zero.
   - Quando `materials.serial_tracking_type <> NONE`, `quantity` deve ser exatamente `1`.
   - Quando `materials.serial_tracking_type <> NONE`, `serialNumber` e obrigatorio; `lotCode` tambem e obrigatorio somente para `TRAFO`.
+  - Em `REQUISITION`, Serial/LP deve existir no centro de estoque principal selecionado.
+  - Em `RETURN`, Serial/LP deve existir no centro proprio atual da equipe selecionada.
   - `entryDate` nao pode ser futura.
   - O save ocorre via RPC transacional, sem fallback de gravacao parcial.
 
@@ -64,6 +67,8 @@ Filtros, auto-complete e listagem
 - Cadastro manual:
   - `Projeto` usa `input + datalist`.
   - `Material (codigo)` usa `input + datalist`.
+  - `Serial` usa `input + datalist` para material rastreavel em `REQUISITION` e `RETURN`, carregando apenas unidades de `trafo_instances` que estao no estoque de origem real da operacao.
+  - `LP` usa `input + datalist` quando o material exige LP (`TRAFO`), filtrando pelos seriais disponiveis na origem real.
   - `Descricao` e `Tipo` sao preenchidos automaticamente a partir do material.
   - O bloco de material funciona com `Adicionar material`, montando uma lista local antes do `Salvar operacao`, no mesmo raciocinio operacional da tela de `Medicao`.
   - A mesma operacao manual aceita varios itens, mas todos precisam compartilhar o mesmo `Tipo` (`NOVO` ou `SUCATA`) porque o ledger grava `entry_type` no cabecalho da transferencia.
@@ -158,6 +163,7 @@ Atalhos
 - Endpoints:
   - `GET/POST /api/team-stock-operations`
   - `GET /api/team-stock-operations?mode=history`
+  - `GET /api/team-stock-operations/serial-options`
   - `POST /api/team-stock-operations/import`
   - `POST /api/team-stock-operations/reversal`
 
@@ -215,6 +221,9 @@ Atualizacao 2026-05
 - A tabela `stock_transfer_item_reversals` registra o vinculo `item original -> item de estorno` sem alterar registros historicos existentes.
 - A listagem passa a ter fallback para ambientes com schema em transicao: se o select completo de `stock_transfer_team_operations` falhar por colunas novas ausentes, a API tenta carregar `transfer_id/team_id` legados para evitar bloqueio total da tela.
 - A API tambem registra no log do servidor a etapa tecnica que falhou (`team-operations`, `stock-transfers`, `stock-transfer-items` ou fallback de `materials`), mantendo a resposta publica sem detalhes sensiveis.
+- Ajuste de regra: `Requisicao` passa a sugerir e validar Serial/LP a partir do centro de estoque principal, enquanto `Devolucao` passa a usar o centro proprio atual da equipe como origem real.
+- Ajuste de UX: o campo `Serial` da tela passa a listar somente unidades registradas em estoque para a origem real da operacao; `LP` tambem recebe lista quando o material exige esse campo.
+- Nova API `GET /api/team-stock-operations/serial-options` consulta `trafo_instances` por `tenant_id`, `material_id` e `current_stock_center_id`, sem expor centros de equipe na listagem publica de estoque.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -225,6 +234,8 @@ Funcoes principais
   - Responsavel por: criar operacoes, listar historico operacional, montar o historico funcional por transferencia, omitir detalhes completos do cadastro inicial e aplicar fallback de leitura para schema em transicao.
 - Caminho: `src/app/api/team-stock-operations/import/route.ts`
   - Responsavel por: processar importacao em lote de requisicoes/devolucoes, validar saldo/TRAFO em sequencia e devolver erros por linha.
+- Caminho: `src/app/api/team-stock-operations/serial-options/route.ts`
+  - Responsavel por: listar seriais e LPs disponiveis na origem real de `REQUISITION` ou `RETURN` para autocomplete e validacao previa.
 - Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
   - Responsavel por: validar payload de estorno e chamar a RPC transacional de reversao por item ou por transferencia legada.
 - Caminho: `src/lib/server/teamStockOperations.ts`
@@ -265,6 +276,7 @@ Ajuda contextual
   - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
   - `src/modules/dashboard/saida/TeamStockOperationsPageView.module.css`
   - `src/app/api/team-stock-operations/meta/route.ts`
+  - `src/app/api/team-stock-operations/serial-options/route.ts`
   - `src/app/api/team-stock-operations/route.ts`
   - `src/app/api/team-stock-operations/import/route.ts`
   - `src/app/api/team-stock-operations/reversal/route.ts`
@@ -280,7 +292,9 @@ Ajuda contextual
   - `supabase/migrations/143_create_team_stock_operation_batch_full.sql`
 - Funcoes/hooks/constantes tocadas:
   - `TeamStockOperationsPageView`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `openHistoryModal`, `handleConfirmReversal`
+  - `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`
   - `GET/POST` de `/api/team-stock-operations`
+  - `GET` de `/api/team-stock-operations/serial-options`
   - `POST` de `/api/team-stock-operations/import`
   - `POST` de `/api/team-stock-operations/reversal`
   - `saveTeamStockOperationViaRpc`, `saveTeamStockOperationBatchViaRpc`, `reverseTeamStockOperationViaRpc`
@@ -299,3 +313,5 @@ Ajuda contextual
 - Depois: cada linha pode ser estornada separadamente por `transferItemId`, mantendo bloqueio de duplo estorno por item e preservando os estornos antigos por transferencia inteira.
 - Antes: falha de select em colunas recentes de `stock_transfer_team_operations` derrubava a listagem de `/saida` com mensagem generica.
 - Depois: a API tenta fallback legado e registra a etapa tecnica no log do servidor para diagnostico sem expor detalhes ao usuario.
+- Antes: a validacao manual de serial reutilizava o rastreio publico, que mostra centro fisico de referencia quando a unidade esta com equipe.
+- Depois: a tela usa uma consulta propria por centro atual real; `REQUISITION` baixa do centro principal e `RETURN` baixa do centro proprio da equipe antes de creditar o centro principal.
