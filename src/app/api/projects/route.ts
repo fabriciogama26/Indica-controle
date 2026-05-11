@@ -638,6 +638,7 @@ async function fetchProjectsPageCompat(params: {
   sob: string;
   executionDate: string;
   priority: string;
+  serviceCenter: string;
   city: string;
   canceledOnly: boolean;
   programmingFilteredProjectIds: string[] | null;
@@ -658,6 +659,9 @@ async function fetchProjectsPageCompat(params: {
     }
     if (params.priority) {
       query = query.eq("priority_text", params.priority);
+    }
+    if (params.serviceCenter) {
+      query = query.eq("service_center_text", params.serviceCenter);
     }
     if (params.city) {
       query = query.eq("city_text", params.city);
@@ -746,6 +750,7 @@ async function fetchProjectsSummaryCompat(params: {
   sob: string;
   executionDate: string;
   priority: string;
+  serviceCenter: string;
   city: string;
   canceledOnly: boolean;
   programmingFilteredProjectIds: string[] | null;
@@ -774,6 +779,9 @@ async function fetchProjectsSummaryCompat(params: {
     }
     if (params.priority) {
       projectIdsQuery = projectIdsQuery.eq("priority_text", params.priority);
+    }
+    if (params.serviceCenter) {
+      projectIdsQuery = projectIdsQuery.eq("service_center_text", params.serviceCenter);
     }
     if (params.city) {
       projectIdsQuery = projectIdsQuery.eq("city_text", params.city);
@@ -806,6 +814,9 @@ async function fetchProjectsSummaryCompat(params: {
       }
       if (params.priority) {
         withTestQuery = withTestQuery.eq("priority_text", params.priority);
+      }
+      if (params.serviceCenter) {
+        withTestQuery = withTestQuery.eq("service_center_text", params.serviceCenter);
       }
       if (params.city) {
         withTestQuery = withTestQuery.eq("city_text", params.city);
@@ -841,6 +852,9 @@ async function fetchProjectsSummaryCompat(params: {
       }
       if (params.priority) {
         fallbackQuery = fallbackQuery.eq("priority_text", params.priority);
+      }
+      if (params.serviceCenter) {
+        fallbackQuery = fallbackQuery.eq("service_center_text", params.serviceCenter);
       }
       if (params.city) {
         fallbackQuery = fallbackQuery.eq("city_text", params.city);
@@ -1391,6 +1405,7 @@ export async function GET(request: NextRequest) {
     const sob = normalizeText(params.get("sob"));
     const executionDate = normalizeText(params.get("executionDate"));
     const priority = normalizeText(params.get("priority"));
+    const serviceCenter = normalizeText(params.get("serviceCenter"));
     const city = normalizeText(params.get("city"));
     const canceledOnly = normalizeBoolean(params.get("canceledOnly"));
     const workCompletionStatus = normalizeProjectWorkCompletionStatusFilter(params.get("workCompletionStatus"));
@@ -1416,6 +1431,7 @@ export async function GET(request: NextRequest) {
       sob,
       executionDate,
       priority,
+      serviceCenter,
       city,
       canceledOnly,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
@@ -1433,6 +1449,7 @@ export async function GET(request: NextRequest) {
       sob,
       executionDate,
       priority,
+      serviceCenter,
       city,
       canceledOnly,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,

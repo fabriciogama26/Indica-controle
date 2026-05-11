@@ -72,6 +72,7 @@ type FilterState = {
   sob: string;
   executionDate: string;
   priority: string;
+  serviceCenter: string;
   city: string;
   canceledOnly: boolean;
   workCompletionStatus: "TODOS" | "NAO_INFORMADO" | string;
@@ -263,6 +264,7 @@ const INITIAL_FILTERS: FilterState = {
   sob: "",
   executionDate: "",
   priority: "",
+  serviceCenter: "",
   city: "",
   canceledOnly: false,
   workCompletionStatus: "TODOS",
@@ -330,6 +332,9 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   }
   if (filters.priority) {
     params.set("priority", filters.priority);
+  }
+  if (filters.serviceCenter) {
+    params.set("serviceCenter", filters.serviceCenter);
   }
   if (filters.city) {
     params.set("city", filters.city);
@@ -2782,6 +2787,23 @@ export function ProjectsPageView() {
               {priorityOptions.map((priority) => (
                 <option key={priority} value={priority}>
                   {priority}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
+              Centro de Servico <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={filterDraft.serviceCenter}
+              onChange={(event) => updateFilterField("serviceCenter", event.target.value)}
+            >
+              <option value="">Todos</option>
+              {meta.serviceCenters.map((serviceCenter) => (
+                <option key={serviceCenter} value={serviceCenter}>
+                  {serviceCenter}
                 </option>
               ))}
             </select>
