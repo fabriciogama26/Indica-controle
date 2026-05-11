@@ -12,6 +12,7 @@ Arquitetura
 - View: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
 - Estilo: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
 - API (meta): `src/app/api/stock-transfers/meta/route.ts`
+- API (serial options): `src/app/api/stock-transfers/serial-options/route.ts`
 - API (create/list/history): `src/app/api/stock-transfers/route.ts`
 - API (batch import): `src/app/api/stock-transfers/import/route.ts`
 - API (reversal): `src/app/api/stock-transfers/reversal/route.ts`
@@ -56,6 +57,8 @@ Cadastro
   - Para `ENTRY` de TRAFO, o backend bloqueia nova entrada da mesma unidade quando ela ja estiver registrada em algum centro `OWN`.
   - Campo `Serial` fica habilitado para TRAFO, RELIGADOR e CHAVE.
   - Campo `LP` fica habilitado somente para TRAFO.
+  - Em `Entrada`, Serial/LP pode ser novo e nao deve aparecer como unidade ja ativa no estoque.
+  - Em `Saida` e `Transferencia`, Serial/LP deve existir no centro `DE` real da movimentacao.
   - Campo `Quantidade` fica travado em `1` quando o material selecionado for rastreavel por serial.
   - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
   - Material precisa estar ativo no tenant.
@@ -66,6 +69,8 @@ Filtros, auto-complete e listagem
 ---------------------------------
 - Campo `Projeto` no cadastro manual segue padrao digitavel (`input + datalist`), no mesmo comportamento de `Material (codigo)`.
 - Cadastro manual com auto-complete por `material_code` (`input + datalist`).
+- Cadastro manual com auto-complete por `Serial` para material rastreavel em `Saida` e `Transferencia`, carregando apenas unidades registradas em `trafo_instances.current_stock_center_id = Centro DE`.
+- Cadastro manual com auto-complete por `LP` quando o material exige LP (`TRAFO`), filtrando pelas unidades disponiveis no centro `DE`.
 - Ao selecionar `material_code`, a `description` e preenchida automaticamente.
 - O formulario manual separa os campos do item em um sub-card `Materiais da Movimentacao`, no mesmo padrao visual da tela `Operacoes de Equipe`.
 - O cadastro manual agora funciona por lista local de itens:
@@ -262,6 +267,8 @@ Atualizacao 2026-05
 - API/listagem/importacao passam a carregar `materials.serial_tracking_type` e o helper `materialSerialTracking`.
 - Migration `172_generalize_serial_tracked_materials.sql` adiciona gatilhos para manter `trafo_instances` atualizado tambem para RELIGADOR e CHAVE.
 - O modelo CSV do cadastro em massa passa a trazer exemplos de material comum decimal, RELIGADOR com Serial e TRAFO com Serial + LP.
+- Ajuste de regra: `Saida` e `Transferencia` passam a sugerir/validar Serial/LP pela posicao real da unidade no centro `DE`; `Entrada` continua aceitando serial novo e bloqueia duplicidade de unidade ja ativa.
+- Nova API `GET /api/stock-transfers/serial-options` consulta `trafo_instances` por `tenant_id`, `material_id` e `current_stock_center_id`, mantendo centros de equipe fora da movimentacao fisica.
 - O estorno passa a ser independente por item/linha da lista. A UI envia `transferItemId` e a API aciona a RPC de estorno por item, preservando o legado de estorno integral por `transferId`.
 - A tabela `stock_transfer_item_reversals` registra o vinculo `item original -> item de estorno` sem alterar registros historicos existentes.
 
@@ -278,6 +285,8 @@ Funcoes principais
   - Responsavel por: validar payload de estorno (`reversalReasonCode`/`reversalReasonNotes`) e acionar RPC transacional de reversao.
 - Caminho: `src/app/api/stock-transfers/meta/route.ts`
   - Responsavel por: listar centros fisicos sem centros de equipe, projetos, materiais e catalogo de motivos de estorno para os selects/datalists.
+- Caminho: `src/app/api/stock-transfers/serial-options/route.ts`
+  - Responsavel por: listar seriais e LPs disponiveis no centro `DE` real para `Saida` e `Transferencia`.
 - Caminho: `supabase/migrations/128_create_stock_transfer_module.sql`
   - Responsavel por: modelagem base e RPC transacional de debito/credito entre centros.
 - Caminho: `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
@@ -322,6 +331,7 @@ Ajuda contextual
   - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
   - `src/lib/server/stockTransfers.ts`
   - `src/app/api/stock-transfers/meta/route.ts`
+  - `src/app/api/stock-transfers/serial-options/route.ts`
   - `src/app/api/stock-transfers/route.ts`
   - `src/app/api/stock-transfers/import/route.ts`
   - `src/app/api/stock-transfers/reversal/route.ts`
@@ -334,9 +344,10 @@ Ajuda contextual
   - `src/app/(dashboard)/saida/page.tsx`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
 - Funcoes/hooks/constantes tocadas:
-  - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
+  - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
   - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
   - `GET` de `/api/stock-transfers/meta`
+  - `GET` de `/api/stock-transfers/serial-options`
   - `POST` de `/api/stock-transfers/import`
   - `POST` de `/api/stock-transfers/reversal`
   - `saveStockTransferViaRpc`, `reverseStockTransferViaRpc`, `normalizeEntryType`, `normalizeMovementType`, `parsePositiveNumber`
@@ -367,3 +378,5 @@ Ajuda contextual
 - Depois: a quantidade manual aceita virgula ou ponto com validacao propria de decimal positivo.
 - Antes: o botao de estorno ficava preso a primeira linha da transferencia e revertia todos os itens da mesma movimentacao.
 - Depois: cada linha pode ser estornada separadamente por `transferItemId`, mantendo bloqueio de duplo estorno por item e preservando os estornos antigos por transferencia inteira.
+- Antes: o cadastro manual de `Saida`/`Transferencia` permitia digitar Serial/LP livremente e validava pela leitura publica do rastreio.
+- Depois: o cadastro manual usa opcoes por centro `DE` real, evitando aceitar unidade que esta fora do centro de origem.
