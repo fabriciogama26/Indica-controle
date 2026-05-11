@@ -568,7 +568,7 @@ export async function GET(request: NextRequest) {
           "updated_at",
           "updated_by",
           "materials!inner(id, codigo, descricao, tipo, is_transformer, serial_tracking_type, is_active)",
-          "stock_centers(id, name, center_type, is_active)",
+          "stock_centers:stock_centers!trafo_instances_current_stock_center_id_fkey(id, name, center_type, is_active)",
         ].join(", "),
       )
       .eq("tenant_id", appUser.tenant_id)
