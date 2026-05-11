@@ -560,7 +560,7 @@ export function ActivitiesPageView() {
         description: normalizeText(form.description),
         teamTypeId: normalizeText(form.teamTypeId),
         categoryId: normalizeText(form.categoryId),
-        group: normalizeText(form.group) || null,
+        group: normalizeText(form.group),
         value: form.value,
         voicePoint: form.voicePoint,
         unit: normalizeText(form.unit),
@@ -831,6 +831,29 @@ export function ActivitiesPageView() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
+              Grupo <span className="requiredMark">*</span>
+            </span>
+            <input
+              type="text"
+              value={form.group}
+              onChange={(event) => setForm((current) => ({ ...current, group: event.target.value }))}
+              placeholder="Grupo da atividade"
+              required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Alcance</span>
+            <input
+              type="text"
+              value={form.scope}
+              onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value }))}
+              placeholder="Alcance da atividade"
+            />
           </label>
 
           <label className={styles.field}>

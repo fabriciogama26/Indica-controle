@@ -376,6 +376,9 @@ Resumo por arquivo
 
 178_patch_billing_asbuilt_mass_import_items.sql
 - Atualiza ambientes que ja aplicaram `176`/`177`, garantindo `activity_active_snapshot` nos itens e recompilando as RPCs de save/lote parcial de `Faturamento` e `Medicao Asbuilt` para preservar atividades importadas em massa no detalhe e na edicao.
+
+180_require_service_activity_group_in_rpc.sql
+- Atualiza `save_service_activity_record` para exigir `group_name` no cadastro/edicao de Atividades, mantendo `scope` opcional e preservando validacoes por tenant/categoria.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
