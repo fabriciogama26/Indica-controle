@@ -1117,3 +1117,30 @@ Atualizacao adicional 2026-05-03 (modularizacao interna - calendario semanal)
   - Depois: o calendario semanal fica em `components.tsx`, dentro da propria feature, recebendo dados e callbacks por props.
   - Antes: `ProgrammingSimplePageView.tsx` tinha 2707 linhas apos a integracao de log de erros.
   - Depois: `ProgrammingSimplePageView.tsx` passa a ter 2557 linhas, `components.tsx` passa a ter 889 linhas e nao houve alteracao de comportamento, payload, API, RPC, historico, exportacao ou renderizacao esperada.
+
+Atualizacao adicional 2026-05-11 (salvar Estado Trabalho no modal de projeto concluido)
+--------------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `buildProjectCompletedConflictResponse`: passa a devolver `currentRecord.updatedAt` no conflito de projeto `CONCLUIDO`.
+  - `saveProgrammingWorkCompletionStatus`: nova acao interna do `PATCH /api/programacao` para salvar somente `Estado Trabalho`.
+  - `saveProgrammingWorkCompletionStatus` em `api.ts`: contrato HTTP local para o botao do modal.
+  - `openProjectCompletedAlertModal`: armazena `id` e `expectedUpdatedAt` da programacao concluida no estado do modal.
+  - `saveWorkCompletionStatusFromAlertModal`: executa o save do modal, trata retry de sessao, concorrencia, feedback, log de erro e refresh da grade.
+  - `ProgrammingAlertModal`: adiciona botao `Salvar` quando o seletor de `Estado Trabalho` estiver visivel.
+  - `AlertModalState` e `SaveProgrammingResponse`: recebem o alvo de salvamento e dados de concorrencia do registro concluido.
+- Comportamento antes/depois:
+  - Antes: o modal `Projeto concluido exige reabertura` exibia um select de `Estado Trabalho`, mas a alteracao ficava apenas no estado local do formulario; o usuario precisava fechar o modal e clicar em `Salvar edicao` no formulario principal.
+  - Depois: o modal tem botao `Salvar`, valida que o estado selecionado e diferente de `CONCLUIDO`, salva direto o registro concluido apontado pelo conflito e atualiza a grade apos o commit.
+  - Antes: o conflito de projeto concluido retornava o registro atual sem `updatedAt`, impedindo persistencia direta com controle de concorrencia.
+  - Depois: o retorno inclui `updatedAt`, e o backend exige `expectedUpdatedAt` para bloquear sobrescrita concorrente.
+  - Antes: a troca rapida de estado no modal nao tinha contrato HTTP dedicado.
+  - Depois: `PATCH /api/programacao` aceita `action = SALVAR_ESTADO_TRABALHO`, valida o catalogo do tenant, atualiza apenas `work_completion_status`, preserva `tenant_id`, registra historico operacional em `project_programming_history` e retorna o `schedule` atualizado.
+  - Multi-tenant: todas as leituras/escritas filtram por `tenant_id`; o estado selecionado precisa existir ativo em `programming_work_completion_catalog` do tenant atual.

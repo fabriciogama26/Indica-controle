@@ -578,6 +578,7 @@
 - [x] Exibir `Centro de servico` no modal `Todos os prazos das obras` da Programacao Simples e incluir a coluna na exportacao CSV de prazos.
 
 - [x] Melhorar modal de conflito para projeto CONCLUIDO na Programacao: blocos visuais destacados + select de Estado Trabalho no proprio modal para ajuste rapido.
+- [x] Adicionar botao `Salvar` no modal de conflito para projeto `CONCLUIDO` na Programacao Simples, persistindo a troca de `Estado Trabalho` sem exigir fechar o modal e acionar `Salvar edicao` no formulario principal.
 - [x] Criar tela Faturamento baseada no fluxo da Medicao, com projeto, tipo, motivo sem producao, observacao, atividades pagas, valor por item, cadastro em massa, historico e status ABERTA/FECHADA/CANCELADA.
 - [x] Criar migration 176_create_project_billing_module.sql com tabelas/RLS/RPCs transacionais para project_billing_orders, itens, historico, lote parcial e permissao da pagina faturamento.
 - [ ] Evoluir regra de Garantia de faturamento minimo para calculo automatico por tipo de grupo quando a regra de pontuacao for definida.

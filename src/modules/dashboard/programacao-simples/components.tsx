@@ -1463,14 +1463,20 @@ export function ProgrammingAlertModal(props: {
   modal: AlertModalState | null;
   workCompletionCatalog: WorkCompletionCatalogItem[];
   selectedWorkCompletionStatus: string;
+  canSaveWorkCompletionStatus: boolean;
+  isSavingWorkCompletionStatus: boolean;
   onWorkCompletionStatusChange: (value: string) => void;
+  onSaveWorkCompletionStatus: () => void;
   onClose: () => void;
 }) {
   const {
     modal,
     workCompletionCatalog,
     selectedWorkCompletionStatus,
+    canSaveWorkCompletionStatus,
+    isSavingWorkCompletionStatus,
     onWorkCompletionStatusChange,
+    onSaveWorkCompletionStatus,
     onClose,
   } = props;
   if (!modal) {
@@ -1523,6 +1529,16 @@ export function ProgrammingAlertModal(props: {
               <p className={styles.alertActionHint}>
                 {modal.guidanceMessage ?? "Selecione um Estado Trabalho diferente de CONCLUIDO e tente salvar novamente."}
               </p>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={onSaveWorkCompletionStatus}
+                  disabled={!canSaveWorkCompletionStatus || isSavingWorkCompletionStatus}
+                >
+                  {isSavingWorkCompletionStatus ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
             </div>
           ) : null}
 

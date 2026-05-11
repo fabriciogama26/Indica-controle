@@ -24,6 +24,7 @@ import {
   fetchProgrammingHistory,
   postponeProgramming,
   saveProgramming,
+  saveProgrammingWorkCompletionStatus,
   validateProgrammingStageConflict,
 } from "./api";
 import {
@@ -188,6 +189,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [isPostponing, setIsPostponing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
+  const [isSavingWorkCompletionStatusFromModal, setIsSavingWorkCompletionStatusFromModal] = useState(false);
   const [invalidFields, setInvalidFields] = useState<string[]>([]);
   const [isEtapaManuallyEdited, setIsEtapaManuallyEdited] = useState(false);
   const [stageConflictModal, setStageConflictModal] = useState<{
@@ -915,6 +917,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         spotlightMessage: normalizedSpotlightMessage || "Existe ao menos um registro concluido para este projeto.",
         guidanceMessage: "Selecione um Estado Trabalho diferente de CONCLUIDO e salve novamente.",
         showWorkCompletionSelector: true,
+        workCompletionTarget: params.payload.currentRecord?.id && params.payload.currentRecord.updatedAt
+          ? {
+              id: params.payload.currentRecord.id,
+              expectedUpdatedAt: params.payload.currentRecord.updatedAt,
+            }
+          : null,
       },
     );
     setInvalidFields((current) => Array.from(new Set([...current, "workCompletionStatus"])));
@@ -922,6 +930,110 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
   function closeAlertModal() {
     setAlertModal(null);
+  }
+
+  async function saveWorkCompletionStatusFromAlertModal() {
+    const target = alertModal?.workCompletionTarget ?? null;
+    const selectedWorkCompletionStatus = form.workCompletionStatus;
+
+    if (!target?.id || !target.expectedUpdatedAt) {
+      setFeedback({
+        type: "error",
+        message: "Nao foi possivel identificar a programacao concluida para salvar o Estado Trabalho.",
+      });
+      return;
+    }
+
+    if (!selectedWorkCompletionStatus || isWorkCompleted(selectedWorkCompletionStatus)) {
+      setInvalidFields((current) => Array.from(new Set([...current, "workCompletionStatus"])));
+      setFeedback({
+        type: "error",
+        message: "Selecione um Estado Trabalho diferente de CONCLUIDO antes de salvar.",
+      });
+      return;
+    }
+
+    const initialAccessToken = await resolveLatestAccessToken();
+    if (!initialAccessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para salvar Estado Trabalho." });
+      return;
+    }
+
+    setIsSavingWorkCompletionStatusFromModal(true);
+    setFeedback(null);
+
+    try {
+      const executeSaveRequest = (token: string) => saveProgrammingWorkCompletionStatus({
+        accessToken: token,
+        id: target.id,
+        workCompletionStatus: selectedWorkCompletionStatus,
+        expectedUpdatedAt: target.expectedUpdatedAt,
+        reason: "Reabertura de projeto concluido pelo modal.",
+      });
+
+      let saveResult = await executeSaveRequest(initialAccessToken);
+      if (saveResult.status === 401) {
+        const refreshedAccessToken = await resolveLatestAccessToken();
+        if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
+          saveResult = await executeSaveRequest(refreshedAccessToken);
+        }
+      }
+
+      const { data } = saveResult;
+      if (!saveResult.ok) {
+        const message = buildConflictFeedbackMessage(data, "Falha ao salvar Estado Trabalho.");
+        setFeedback({ type: "error", message });
+        await logError("Falha ao salvar Estado Trabalho pelo modal.", undefined, {
+          operation: "save_work_completion_status_from_completed_modal",
+          programmingId: target.id,
+          expectedUpdatedAt: target.expectedUpdatedAt,
+          workCompletionStatus: selectedWorkCompletionStatus,
+          responseStatus: saveResult.status,
+          responseMessage: message,
+          responseError: data.error ?? null,
+        });
+        return;
+      }
+
+      if (editingScheduleId === target.id) {
+        setEditingExpectedUpdatedAt(data.schedule?.updatedAt ?? data.updatedAt ?? target.expectedUpdatedAt);
+      }
+
+      closeAlertModal();
+      setInvalidFields((current) => current.filter((field) => field !== "workCompletionStatus"));
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Estado Trabalho salvo com sucesso.",
+      });
+
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) {
+          applyBoardSnapshot(boardData);
+        }
+      } catch (refreshError) {
+        await logError("Estado Trabalho salvo, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          operation: "refresh_after_work_completion_status_save",
+          programmingId: target.id,
+        });
+        if (!data.warning) {
+          setFeedback({
+            type: "success",
+            message: `${data.message ?? "Estado Trabalho salvo com sucesso."} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+          });
+        }
+      }
+    } catch (error) {
+      setFeedback({ type: "error", message: "Falha ao salvar Estado Trabalho." });
+      await logError("Falha ao salvar Estado Trabalho pelo modal.", error, {
+        operation: "save_work_completion_status_from_completed_modal",
+        programmingId: target.id,
+        expectedUpdatedAt: target.expectedUpdatedAt,
+        workCompletionStatus: selectedWorkCompletionStatus,
+      });
+    } finally {
+      setIsSavingWorkCompletionStatusFromModal(false);
+    }
   }
 
   function openCancelModal(schedule: ScheduleItem) {
@@ -2347,7 +2459,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         modal={alertModal}
         workCompletionCatalog={workCompletionCatalog}
         selectedWorkCompletionStatus={form.workCompletionStatus}
+        canSaveWorkCompletionStatus={Boolean(
+          alertModal?.workCompletionTarget?.id
+          && alertModal.workCompletionTarget.expectedUpdatedAt
+          && form.workCompletionStatus
+          && !isWorkCompleted(form.workCompletionStatus),
+        )}
+        isSavingWorkCompletionStatus={isSavingWorkCompletionStatusFromModal}
         onWorkCompletionStatusChange={(value) => updateFormField("workCompletionStatus", value)}
+        onSaveWorkCompletionStatus={() => void saveWorkCompletionStatusFromAlertModal()}
         onClose={closeAlertModal}
       />
       <ProgrammingStageConflictModal modal={stageConflictModal} onClose={() => setStageConflictModal(null)} />

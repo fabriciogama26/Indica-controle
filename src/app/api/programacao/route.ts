@@ -286,6 +286,7 @@ type CancelProgrammingPayload = {
   reason?: string;
   newDate?: string;
   expectedUpdatedAt?: string;
+  workCompletionStatus?: string;
 };
 
 type SaveProgrammingRpcResult = {
@@ -427,6 +428,7 @@ type ProjectConcludedProgrammingContext = {
   teamName: string;
   foremanName: string;
   workCompletionStatus: string;
+  updatedAt: string;
 };
 
 type ProjectConflictLookupRow = {
@@ -616,6 +618,7 @@ async function resolveProjectCompletedProgrammingContext(params: {
     teamName: normalizeText(team?.name) || normalizeText(concluded.team_id),
     foremanName,
     workCompletionStatus: normalizeText(concluded.work_completion_status),
+    updatedAt: normalizeText(concluded.updated_at),
   } satisfies ProjectConcludedProgrammingContext;
 }
 
@@ -635,7 +638,7 @@ function buildProjectCompletedConflictResponse(params: {
       executionDate: params.context.executionDate,
       startTime: "",
       endTime: "",
-      updatedAt: "",
+      updatedAt: params.context.updatedAt,
     },
   };
 }
@@ -4061,7 +4064,195 @@ export async function PUT(request: NextRequest) {
   return saveProgramming(request, "PUT");
 }
 
+async function saveProgrammingWorkCompletionStatus(request: NextRequest, payload: CancelProgrammingPayload) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para salvar Estado Trabalho da programacao.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const programmingId = normalizeText(payload.id);
+  const expectedUpdatedAt = normalizeText(payload.expectedUpdatedAt) || null;
+  const workCompletionStatus = normalizeWorkCompletionStatus(payload.workCompletionStatus);
+  const reason = normalizeNullableText(payload.reason) ?? "Reabertura de projeto concluido pelo modal.";
+
+  if (!programmingId) {
+    return NextResponse.json({ message: "Programacao invalida para salvar Estado Trabalho." }, { status: 400 });
+  }
+
+  if (!expectedUpdatedAt) {
+    return NextResponse.json({ message: "Atualize a grade antes de salvar Estado Trabalho." }, { status: 409 });
+  }
+
+  if (!workCompletionStatus) {
+    return NextResponse.json({ message: "Selecione um Estado Trabalho para salvar." }, { status: 400 });
+  }
+
+  if (isCompletedWorkStatus(workCompletionStatus)) {
+    return NextResponse.json(
+      { message: "Selecione um Estado Trabalho diferente de CONCLUIDO." },
+      { status: 400 },
+    );
+  }
+
+  const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    workCompletionStatus,
+  });
+
+  if (!selectedWorkCompletionStatus) {
+    return NextResponse.json({ message: "Estado Trabalho invalido para o tenant atual." }, { status: 400 });
+  }
+
+  const currentProgramming = await fetchProgrammingById(
+    resolution.supabase,
+    resolution.appUser.tenant_id,
+    programmingId,
+  );
+
+  if (!currentProgramming) {
+    return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
+  }
+
+  if (normalizeText(currentProgramming.updated_at) !== expectedUpdatedAt) {
+    return NextResponse.json(
+      {
+        error: "conflict",
+        reason: "CONCURRENT_MODIFICATION",
+        message: "Esta programacao foi alterada por outro usuario. Recarregue a grade antes de salvar novamente.",
+        currentRecord: {
+          id: currentProgramming.id,
+          projectId: currentProgramming.project_id,
+          teamId: currentProgramming.team_id,
+          status: currentProgramming.status,
+          executionDate: currentProgramming.execution_date,
+          startTime: formatTime(currentProgramming.start_time),
+          endTime: formatTime(currentProgramming.end_time),
+          updatedAt: currentProgramming.updated_at,
+        },
+        currentUpdatedAt: currentProgramming.updated_at,
+        changedFields: ["updatedAt"],
+      },
+      { status: 409 },
+    );
+  }
+
+  const previousWorkCompletionStatus = normalizeWorkCompletionStatus(currentProgramming.work_completion_status);
+
+  if (previousWorkCompletionStatus === workCompletionStatus) {
+    const schedule = await fetchProgrammingResponseItem(
+      resolution.supabase,
+      resolution.appUser.tenant_id,
+      programmingId,
+    );
+
+    return NextResponse.json({
+      success: true,
+      id: programmingId,
+      updatedAt: currentProgramming.updated_at,
+      schedule,
+      message: "Estado Trabalho ja estava salvo com o valor selecionado.",
+    });
+  }
+
+  const { data: updatedProgramming, error: updateError } = await resolution.supabase
+    .from("project_programming")
+    .update({
+      work_completion_status: workCompletionStatus,
+      updated_by: resolution.appUser.id,
+    })
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("id", programmingId)
+    .eq("updated_at", expectedUpdatedAt)
+    .select("id, updated_at")
+    .maybeSingle<{ id: string; updated_at: string }>();
+
+  if (updateError) {
+    return NextResponse.json(
+      { message: updateError.message ? `Falha ao salvar Estado Trabalho: ${updateError.message}` : "Falha ao salvar Estado Trabalho." },
+      { status: 500 },
+    );
+  }
+
+  if (!updatedProgramming) {
+    return NextResponse.json(
+      {
+        error: "conflict",
+        reason: "CONCURRENT_MODIFICATION",
+        message: "Esta programacao foi alterada por outro usuario. Recarregue a grade antes de salvar novamente.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const { data: historyResult, error: historyError } = await resolution.supabase.rpc(
+    "append_project_programming_history_record",
+    {
+      p_tenant_id: resolution.appUser.tenant_id,
+      p_actor_user_id: resolution.appUser.id,
+      p_programming_id: programmingId,
+      p_project_id: currentProgramming.project_id,
+      p_team_id: currentProgramming.team_id,
+      p_related_programming_id: null,
+      p_action_type: "UPDATE",
+      p_reason: reason,
+      p_changes: {
+        workCompletionStatus: {
+          from: previousWorkCompletionStatus,
+          to: workCompletionStatus,
+        },
+      },
+      p_metadata: {
+        action: "SAVE_WORK_COMPLETION_STATUS_FROM_COMPLETED_MODAL",
+      },
+      p_from_status: currentProgramming.status,
+      p_to_status: currentProgramming.status,
+      p_from_execution_date: currentProgramming.execution_date,
+      p_to_execution_date: currentProgramming.execution_date,
+      p_from_team_id: currentProgramming.team_id,
+      p_to_team_id: currentProgramming.team_id,
+      p_from_start_time: currentProgramming.start_time,
+      p_to_start_time: currentProgramming.start_time,
+      p_from_end_time: currentProgramming.end_time,
+      p_to_end_time: currentProgramming.end_time,
+      p_from_etapa_number: currentProgramming.etapa_number,
+      p_to_etapa_number: currentProgramming.etapa_number,
+    },
+  );
+
+  const parsedHistoryResult = (historyResult ?? {}) as { success?: boolean; message?: string };
+  const warning = historyError || parsedHistoryResult.success === false
+    ? "Estado Trabalho salvo, mas houve falha ao registrar o historico operacional."
+    : null;
+
+  const schedule = await fetchProgrammingResponseItem(
+    resolution.supabase,
+    resolution.appUser.tenant_id,
+    programmingId,
+  );
+
+  return NextResponse.json({
+    success: true,
+    id: programmingId,
+    updatedAt: updatedProgramming.updated_at,
+    schedule,
+    warning,
+    message: warning ? `Estado Trabalho salvo com sucesso. ${warning}` : "Estado Trabalho salvo com sucesso.",
+  });
+}
+
 export async function PATCH(request: NextRequest) {
+  const payload = (await request.json().catch(() => null)) as CancelProgrammingPayload | null;
+  const normalizedAction = normalizeText(payload?.action).toUpperCase();
+
+  if (normalizedAction === "SALVAR_ESTADO_TRABALHO") {
+    return saveProgrammingWorkCompletionStatus(request, payload ?? {});
+  }
+
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para cancelar programacao.",
     inactiveMessage: "Usuario inativo.",
@@ -4071,7 +4262,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
-  const payload = (await request.json().catch(() => null)) as CancelProgrammingPayload | null;
   const programmingId = normalizeText(payload?.id);
   const action = normalizeText(payload?.action).toUpperCase() === "ADIAR" ? "ADIADA" : "CANCELADA";
   const reason = normalizeNullableText(payload?.reason);
