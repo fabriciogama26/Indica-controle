@@ -26,6 +26,10 @@ type TrafoInstanceRow = {
   serial_number: string;
   lot_code: string;
   current_stock_center_id: string | null;
+  retired_at: string | null;
+  retired_by: string | null;
+  retired_reason: string | null;
+  retired_stock_center_id: string | null;
   last_stock_transfer_id: string | null;
   last_project_id: string | null;
   last_movement_type: "ENTRY" | "EXIT" | "TRANSFER";
@@ -98,6 +102,38 @@ type StockTransferReversalRow = {
   created_at: string;
 };
 
+type SerialRetirementRow = {
+  id: string;
+  trafo_instance_id: string;
+  material_id: string;
+  stock_center_id: string;
+  quantity: number;
+  reason: string | null;
+  created_at: string;
+  created_by: string | null;
+};
+
+type TrafoHistoryApiEntry = {
+  id: string;
+  transferId: string;
+  operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN" | "RET";
+  movementType: "ENTRY" | "EXIT" | "TRANSFER" | "RET";
+  quantity: number;
+  entryDate: string;
+  changedAt: string;
+  projectCode: string;
+  fromStockCenterName: string;
+  toStockCenterName: string;
+  updatedByName: string;
+  teamName: string | null;
+  foremanName: string | null;
+  notes: string | null;
+  isReversal: boolean;
+  isReversed: boolean;
+  reversalReason: string | null;
+  isRetirement?: boolean;
+};
+
 type TeamStockCenterState = {
   teamStockCenterId: string | null;
   operationKind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null;
@@ -124,8 +160,8 @@ function normalizeCode(value: string | null) {
 
 function normalizeCurrentStatus(value: string | null) {
   const normalized = String(value ?? "").trim().toUpperCase();
-  if (normalized === "EM_ESTOQUE" || normalized === "COM_EQUIPE" || normalized === "FORA_ESTOQUE") {
-    return normalized as "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE";
+  if (normalized === "EM_ESTOQUE" || normalized === "COM_EQUIPE" || normalized === "FORA_ESTOQUE" || normalized === "RET") {
+    return normalized as "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE" | "RET";
   }
   return "TODOS" as const;
 }
@@ -194,6 +230,19 @@ function resolveOperationKind(
   return transfer.to_stock_center_id === teamState.teamStockCenterId ? "REQUISITION" : "RETURN";
 }
 
+function normalizeRetirementReason(value: unknown) {
+  return String(value ?? "").trim() || null;
+}
+
+type SerialRetireRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  retirement_id?: string;
+  details?: unknown;
+};
+
 async function loadTrafoHistory(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar o historico do rastreio de serial.",
@@ -237,7 +286,18 @@ async function loadTrafoHistory(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar o historico do rastreio de serial." }, { status: 500 });
   }
 
-  if (!itemRows?.length) {
+  const { data: retirementRows, error: retirementsError } = await supabase
+    .from("serial_retirements")
+    .select("id, trafo_instance_id, material_id, stock_center_id, quantity, reason, created_at, created_by")
+    .eq("tenant_id", appUser.tenant_id)
+    .eq("trafo_instance_id", trafoInstance.id)
+    .returns<SerialRetirementRow[]>();
+
+  if (retirementsError) {
+    return NextResponse.json({ message: "Falha ao carregar o historico do rastreio de serial." }, { status: 500 });
+  }
+
+  if (!itemRows?.length && !retirementRows?.length) {
     return NextResponse.json({
       history: [],
       pagination: { page, pageSize, total: 0 },
@@ -257,7 +317,7 @@ async function loadTrafoHistory(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar o historico do rastreio de serial." }, { status: 500 });
   }
 
-  if (!transferHeaders?.length) {
+  if (!transferHeaders?.length && !retirementRows?.length) {
     return NextResponse.json({
       history: [],
       pagination: { page, pageSize, total: 0 },
@@ -266,11 +326,17 @@ async function loadTrafoHistory(request: NextRequest) {
 
   const transferMap = new Map(transferHeaders.map((row) => [row.id, row]));
   const stockCenterIds = Array.from(
-    new Set(transferHeaders.flatMap((row) => [row.from_stock_center_id, row.to_stock_center_id]).filter(Boolean)),
+    new Set([
+      ...transferHeaders.flatMap((row) => [row.from_stock_center_id, row.to_stock_center_id]).filter(Boolean),
+      ...(retirementRows ?? []).map((row) => row.stock_center_id).filter(Boolean),
+    ]),
   );
   const projectIds = Array.from(new Set(transferHeaders.map((row) => row.project_id).filter(Boolean)));
   const userIds = Array.from(
-    new Set(transferHeaders.flatMap((row) => [row.updated_by, row.created_by]).filter((value): value is string => Boolean(value))),
+    new Set([
+      ...transferHeaders.flatMap((row) => [row.updated_by, row.created_by]).filter((value): value is string => Boolean(value)),
+      ...(retirementRows ?? []).map((row) => row.created_by).filter((value): value is string => Boolean(value)),
+    ]),
   );
 
   const [
@@ -357,15 +423,15 @@ async function loadTrafoHistory(request: NextRequest) {
     (usersResult.data ?? []).map((row) => [row.id, String(row.display ?? row.login_name ?? "").trim() || "Nao informado"]),
   );
   const teamById = new Map((teamsResult.data ?? []).map((row) => [row.id, row]));
-    const teamOperationMap = new Map(
-      (teamOperationsResult.data ?? []).map((row) => [
-        row.transfer_id,
-        {
-          teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
-          operationKind: row.operation_kind,
-          teamName: row.team_name_snapshot,
-          foremanName: row.foreman_name_snapshot,
-        },
+  const teamOperationMap = new Map(
+    (teamOperationsResult.data ?? []).map((row) => [
+      row.transfer_id,
+      {
+        teamStockCenterId: teamById.get(row.team_id)?.stock_center_id ?? null,
+        operationKind: row.operation_kind,
+        teamName: row.team_name_snapshot,
+        foremanName: row.foreman_name_snapshot,
+      },
     ] as const),
   );
   const reversalByOriginalMap = new Map(
@@ -387,7 +453,7 @@ async function loadTrafoHistory(request: NextRequest) {
     ]),
   );
 
-  const historyEntries = itemRows
+  const movementHistoryEntries: TrafoHistoryApiEntry[] = itemRows
     .flatMap((item) => {
       const transfer = transferMap.get(item.stock_transfer_id);
       if (!transfer) {
@@ -419,7 +485,30 @@ async function loadTrafoHistory(request: NextRequest) {
           reversalReason: reversalFromOriginal?.reversalReason ?? reversalFromReversal?.reversalReason ?? null,
         },
       ];
-    })
+    });
+  const retirementHistoryEntries: TrafoHistoryApiEntry[] = (retirementRows ?? []).map((retirement) => ({
+    id: `retirement:${retirement.id}`,
+    transferId: "-",
+    operationKind: "RET" as const,
+    movementType: "RET" as const,
+    quantity: Number(retirement.quantity ?? 1),
+    entryDate: retirement.created_at.slice(0, 10),
+    changedAt: retirement.created_at,
+    projectCode: "-",
+    fromStockCenterName: stockCenterMap.get(retirement.stock_center_id) ?? "-",
+    toStockCenterName: "-",
+    updatedByName: userMap.get(retirement.created_by ?? "") ?? "Nao informado",
+    teamName: null,
+    foremanName: null,
+    notes: retirement.reason,
+    isReversal: false,
+    isReversed: false,
+    reversalReason: null,
+    isRetirement: true,
+  }));
+
+  const historyEntries = movementHistoryEntries
+    .concat(retirementHistoryEntries)
     .sort((left, right) => toTimestamp(right.changedAt) - toTimestamp(left.changedAt));
 
   const from = (page - 1) * pageSize;
@@ -468,6 +557,10 @@ export async function GET(request: NextRequest) {
           "serial_number",
           "lot_code",
           "current_stock_center_id",
+          "retired_at",
+          "retired_by",
+          "retired_reason",
+          "retired_stock_center_id",
           "last_stock_transfer_id",
           "last_project_id",
           "last_movement_type",
@@ -518,7 +611,13 @@ export async function GET(request: NextRequest) {
     );
     const teamById = new Map((teamResult.data ?? []).map((row) => [row.id, row]));
     const lastTransferIds = Array.from(new Set((data ?? []).map((row) => row.last_stock_transfer_id).filter((value): value is string => Boolean(value))));
-    const userIds = Array.from(new Set((data ?? []).map((row) => row.updated_by).filter((value): value is string => Boolean(value))));
+    const userIds = Array.from(
+      new Set(
+        (data ?? [])
+          .flatMap((row) => [row.updated_by, row.retired_by])
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
     const projectIds = Array.from(new Set((data ?? []).map((row) => row.last_project_id).filter((value): value is string => Boolean(value))));
 
     const [lastTransfersResult, usersResult, projectsResult, teamOperationsResult] = await Promise.all([
@@ -568,6 +667,7 @@ export async function GET(request: NextRequest) {
       new Set(
         [
           ...(data ?? []).map((row) => row.current_stock_center_id).filter((value): value is string => Boolean(value)),
+          ...(data ?? []).map((row) => row.retired_stock_center_id).filter((value): value is string => Boolean(value)),
           ...extraStockCenterIds,
         ],
       ),
@@ -624,22 +724,29 @@ export async function GET(request: NextRequest) {
       const lastTransfer = row.last_stock_transfer_id ? transferMap.get(row.last_stock_transfer_id) ?? null : null;
       const actualCurrentStockCenterId = row.current_stock_center_id;
       const isWithTeam = Boolean(actualCurrentStockCenterId && teamCenterIds.has(actualCurrentStockCenterId));
-      const physicalReferenceCenterId = resolvePhysicalReferenceCenterId(
-        actualCurrentStockCenterId,
-        lastTransfer,
-        stockCenterMap,
-        teamCenterIds,
-      );
+      const physicalReferenceCenterId = row.retired_at && row.retired_stock_center_id
+        ? row.retired_stock_center_id
+        : resolvePhysicalReferenceCenterId(
+            actualCurrentStockCenterId,
+            lastTransfer,
+            stockCenterMap,
+            teamCenterIds,
+          );
       const physicalReferenceCenterName = physicalReferenceCenterId
         ? stockCenterMap.get(physicalReferenceCenterId)?.name ?? null
         : null;
       const teamState = row.last_stock_transfer_id ? teamOperationMap.get(row.last_stock_transfer_id) ?? null : null;
-      const resolvedCurrentStatus = actualCurrentStockCenterId
-        ? isWithTeam
-          ? "COM_EQUIPE"
-          : "EM_ESTOQUE"
-        : "FORA_ESTOQUE";
-      const operationKind = lastTransfer
+      const isRetired = Boolean(row.retired_at);
+      const resolvedCurrentStatus = isRetired
+        ? "RET"
+        : actualCurrentStockCenterId
+          ? isWithTeam
+            ? "COM_EQUIPE"
+            : "EM_ESTOQUE"
+          : "FORA_ESTOQUE";
+      const operationKind = isRetired
+        ? "RET"
+        : lastTransfer
         ? resolveOperationKind(lastTransfer, teamState)
         : row.last_movement_type;
 
@@ -658,7 +765,11 @@ export async function GET(request: NextRequest) {
           currentStatus: resolvedCurrentStatus,
           currentTeamName: resolvedCurrentStatus === "COM_EQUIPE" ? teamState?.teamName ?? null : null,
           currentForemanName: resolvedCurrentStatus === "COM_EQUIPE" ? teamState?.foremanName ?? null : null,
-          canMove: resolvedCurrentStatus === "EM_ESTOQUE" && Boolean(physicalReferenceCenterId),
+          canMove: (resolvedCurrentStatus === "EM_ESTOQUE" || resolvedCurrentStatus === "RET") && Boolean(physicalReferenceCenterId),
+          canRetire: resolvedCurrentStatus === "EM_ESTOQUE" && Boolean(physicalReferenceCenterId),
+          retiredAt: row.retired_at,
+          retiredReason: row.retired_reason,
+          retiredByName: row.retired_by ? userMap.get(row.retired_by) ?? "Nao informado" : null,
           lastTransferId: row.last_stock_transfer_id,
           lastProjectId: row.last_project_id,
           lastProjectCode: projectMap.get(row.last_project_id ?? "") ?? null,
@@ -694,5 +805,86 @@ export async function GET(request: NextRequest) {
     });
   } catch {
     return NextResponse.json({ message: "Falha ao carregar o rastreio de serial." }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const resolution = await resolveAuthenticatedAppUser(request, {
+      invalidSessionMessage: "Sessao invalida para aplicar RET no rastreio de serial.",
+      inactiveMessage: "Usuario inativo.",
+    });
+
+    if ("error" in resolution) {
+      return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const payload = (await request.json().catch(() => ({}))) as {
+      action?: unknown;
+      trafoInstanceId?: unknown;
+      reason?: unknown;
+    };
+    const action = normalizeText(String(payload.action ?? "")).toUpperCase();
+    const trafoInstanceId = normalizeText(String(payload.trafoInstanceId ?? ""));
+    const reason = normalizeRetirementReason(payload.reason);
+
+    if (action !== "RET") {
+      return NextResponse.json({ message: "Acao invalida para o rastreio de serial." }, { status: 400 });
+    }
+
+    if (!trafoInstanceId) {
+      return NextResponse.json({ message: "trafoInstanceId e obrigatorio para aplicar RET." }, { status: 400 });
+    }
+
+    const { supabase, appUser } = resolution;
+    const { data, error } = await supabase.rpc("retire_serial_tracked_unit", {
+      p_tenant_id: appUser.tenant_id,
+      p_actor_user_id: appUser.id,
+      p_trafo_instance_id: trafoInstanceId,
+      p_reason: reason,
+    });
+
+    if (error) {
+      const normalized = String(error.message ?? "").toUpperCase();
+      const message = normalized.includes("SERIAL_TRACKED_UNIT_RETIRED")
+        ? "Esta unidade ja esta marcada como RET."
+        : "Falha ao aplicar RET no rastreio de serial.";
+
+      return NextResponse.json({ message, details: error.message }, { status: 500 });
+    }
+
+    const result = (data ?? {}) as SerialRetireRpcResult;
+    const normalizedReason = String(result.reason ?? "").trim().toUpperCase();
+    const mappedMessage =
+      normalizedReason === "SERIAL_INSTANCE_ALREADY_RETIRED"
+        ? "Esta unidade ja esta marcada como RET."
+        : normalizedReason === "SERIAL_INSTANCE_NOT_IN_STOCK"
+          ? "RET so pode ser aplicado em unidade presente em estoque fisico."
+          : normalizedReason === "INVALID_RET_STOCK_CENTER"
+            ? "RET exige unidade em centro proprio fisico que controla saldo."
+            : normalizedReason === "TEAM_STOCK_CENTER_NOT_ALLOWED"
+              ? "RET nao pode ser aplicado em centro vinculado a equipe."
+              : normalizedReason === "INSUFFICIENT_STOCK"
+                ? "Saldo disponivel insuficiente para aplicar RET nesta unidade."
+                : "";
+
+    if (result.success !== true) {
+      return NextResponse.json(
+        {
+          message: mappedMessage || result.message || "Falha ao aplicar RET no rastreio de serial.",
+          reason: normalizedReason || "UNKNOWN_ERROR",
+          details: result.details,
+        },
+        { status: Number(result.status ?? 500) },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      retirementId: String(result.retirement_id ?? ""),
+      message: result.message ?? "RET aplicado com sucesso.",
+    });
+  } catch {
+    return NextResponse.json({ message: "Falha ao aplicar RET no rastreio de serial." }, { status: 500 });
   }
 }

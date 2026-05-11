@@ -562,6 +562,7 @@
 - [x] Atualizar `docs/Tela_Programacao_Simples_SaaS.txt` a cada etapa estrutural da modularizacao, mapeando arquivos criados/alterados, funcoes tocadas e comportamento antes/depois.
 - [x] Formalizar regra de monolito modular verdadeiro em `AGENTS.md` e `docs/Auditoria_Completa_SaaS.txt`: modulo precisa preservar fronteira de dependencia, fachada publica, shared apenas universal e backend espelhando dominio.
 - [x] Generalizar rastreio unitario de materiais serializados para TRAFO, RELIGADOR e CHAVE, com serial_tracking_type, validacao de Serial/LP conforme tipo e tela Rastreio de SERIAL.
+- [x] Criar botao `RET` no Rastreio de SERIAL para baixar 1 do saldo disponivel, manter a unidade fisica no rastreio, registrar auditoria e permitir movimentacao fisica posterior sem recompor disponibilidade.
 - [x] Preservar e exibir saldo decimal no Estoque Atual, aceitando filtros com virgula ou ponto.
 - [x] Corrigir validacao de Serial/LP em `Operacoes de Equipe`, separando origem real de `Requisicao` (centro de estoque -> equipe) e `Devolucao` (equipe -> centro de estoque), com autocomplete somente de unidades registradas em estoque.
 - [x] Corrigir validacao de Serial/LP em `Movimentacao de Estoque`, mantendo `Entrada` para serial novo e restringindo `Saida`/`Transferencia` a unidades registradas no centro `DE` real.
