@@ -215,6 +215,35 @@ export async function postponeProgramming(params: {
   };
 }
 
+export async function saveProgrammingWorkCompletionStatus(params: {
+  accessToken: string;
+  id: string;
+  workCompletionStatus: string;
+  expectedUpdatedAt: string;
+  reason?: string;
+}) {
+  const response = await fetch("/api/programacao", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(params.accessToken),
+    },
+    body: JSON.stringify({
+      id: params.id,
+      action: "SALVAR_ESTADO_TRABALHO",
+      workCompletionStatus: params.workCompletionStatus,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+      reason: params.reason,
+    }),
+  });
+
+  return {
+    status: response.status,
+    ok: response.ok,
+    data: await readJson<SaveProgrammingResponse>(response),
+  };
+}
+
 export async function saveProgramming(params: {
   accessToken: string;
   isEditing: boolean;

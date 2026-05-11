@@ -189,6 +189,9 @@ export type SaveProgrammingResponse = {
   changedFields?: string[];
   currentRecord?: {
     id: string;
+    projectId?: string;
+    teamId?: string;
+    status?: string;
     executionDate: string;
     startTime: string;
     endTime: string;
@@ -230,6 +233,10 @@ export type AlertModalState = {
   spotlightMessage?: string;
   guidanceMessage?: string;
   showWorkCompletionSelector?: boolean;
+  workCompletionTarget?: {
+    id: string;
+    expectedUpdatedAt: string;
+  } | null;
 };
 
 export type FormState = {
