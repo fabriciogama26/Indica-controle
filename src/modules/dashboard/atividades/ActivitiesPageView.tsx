@@ -846,13 +846,13 @@ export function ActivitiesPageView() {
             />
           </label>
 
-          <label className={styles.field}>
+          <label className={`${styles.field} ${styles.fieldWide}`}>
             <span>Alcance</span>
-            <input
-              type="text"
+            <textarea
               value={form.scope}
               onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value }))}
-              placeholder="Alcance da atividade"
+              placeholder="Descreva o alcance da atividade"
+              rows={3}
             />
           </label>
 
