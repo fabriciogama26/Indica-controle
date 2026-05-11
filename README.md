@@ -7,7 +7,7 @@ Frontend web do SaaS para login, shell principal, operacao de estoque e cadastro
 ## Visao geral
 - Problema resolvido: separar o frontend web do app Android e manter o contexto tecnico do SaaS em uma estrutura propria.
 - Solucao proposta: projeto Next.js publicado no Vercel para servir a interface web, mantendo Auth, banco, RLS e Edge Functions no Supabase.
-- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Operacao, Almoxarifado, Cadastros e Cadastro Base, incluindo rastreio unitario de TRAFO, acessado por dominio web publico.
+- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Operacao, Almoxarifado, Cadastros e Cadastro Base, incluindo rastreio unitario de materiais por serial, acessado por dominio web publico.
 
 ---
 
@@ -128,7 +128,7 @@ vercel --prod
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros (incluindo `Status: Ativo/Inativo`), listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
-  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de TRAFO com consulta por `Serial + LP`, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos e atalho de movimentacao apenas quando a unidade estiver em estoque fisico.
+  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
 - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
@@ -178,7 +178,7 @@ vercel --prod
   - `api/team-stock-operations/reversal/route.ts`: executa estorno transacional das operacoes de equipe com permissao administrativa.
 - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, exclui centros de equipe da tela de Estoque Atual, recompõe materiais historicos com saldo `0` nos centros fisicos quando necessario e mantem historico enriquecido com `Equipe`/`Encarregado`, incluindo filtro por operacao/origem para localizar `Retorno de campo` via `CAMPO / INSTALADO`.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` fisicos/principais usados no filtro da tela de Estoque Atual.
-  - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada TRAFO a partir de `trafo_instances`, mantem o centro fisico de referencia na leitura principal, expõe historico por unidade com `Requisicao`, `Devolucao` e `Retorno de campo` e bloqueia o atalho de movimentacao quando a unidade estiver com equipe ou fora do estoque proprio.
+  - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada material rastreavel por serial a partir de `trafo_instances`, mantem o centro fisico de referencia na leitura principal, expõe historico por unidade com `Requisicao`, `Devolucao`, `Retorno de campo` e `RET`, e libera movimentacao fisica de unidade RET sem voltar a disponibilizar saldo.
   - `api/trafo-positions/meta/route.ts`: carrega os centros `OWN` fisicos ativos usados nos filtros da tela de posicao unitaria de TRAFO, excluindo centros vinculados a equipes.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado, paginacao e filtro por status (`ATIVO`/`INATIVO`).
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
@@ -239,8 +239,8 @@ vercel --prod
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de posicao unitaria.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
-  - `TrafoPositionPageView.tsx`: tela de Rastreio de TRAFO com filtros, lista paginada, detalhes, historico da unidade, status `Com equipe` e acao `Movimentar este TRAFO` apenas quando a unidade estiver em estoque fisico.
-  - `TrafoPositionPageView.module.css`: estilos da tela de Rastreio de TRAFO.
+  - `TrafoPositionPageView.tsx`: tela de Rastreio de SERIAL com filtros, lista paginada, detalhes, historico da unidade, status `Com equipe`, status `RET / sucateado`, acao `Movimentar esta unidade` para movimentacao fisica e acao `RET` para retirar o serial do saldo disponivel.
+  - `TrafoPositionPageView.module.css`: estilos da tela de Rastreio de SERIAL.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `tipo`, `categoria`, `grupo`, `alcance`, `valor`, `pontos` e `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - `ActivitiesPageView.module.css`: estilos da tela de atividades.
@@ -302,7 +302,7 @@ vercel --prod
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada e exportacao CSV.
-  - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de TRAFO com consulta em `trafo_instances` e atalho de movimentacao.
+  - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de SERIAL com consulta em `trafo_instances`, atalho de movimentacao e fluxo `RET`.
   - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Padrao_Cadastros_SaaS.txt`: referencia obrigatoria de padrao visual/comportamental para telas de cadastro.
@@ -378,7 +378,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 41. A rota `/permissoes` continua enviando convite pelo backend, mas a auditoria do invite passa a ser gravada pela RPC `append_user_invite_history`.
 42. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
 43. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
-44. A migration `180_require_service_activity_group_in_rpc.sql` recompila `save_service_activity_record` para exigir `group_name` no cadastro/edicao de Atividades.
+44. A migration `180_require_service_activity_group_in_rpc.sql` recompila `save_service_activity_record` para exigir `group_name` no cadastro/edicao de Atividades; a migration `181_create_serial_retirement_flow.sql` cria o fluxo `RET` de unidade por serial, com auditoria em `serial_retirements`, baixa de saldo disponivel, manutencao da presenca fisica em `trafo_instances` e movimentacao fisica posterior sem recompor disponibilidade.
 45. A migration `042_materials_price_status_and_history.sql` adiciona `unit_price`, status ativo/inativo e historicos de materiais, alem de remover `lp` e `serial` do cadastro base.
 46. No cadastro de projetos, o campo `Parceira` e preenchido automaticamente no backend usando `contract.name` do tenant ativo.
 47. A migration `029_create_project_table.sql` cria a tabela `project` com auditoria (`created_by`, `updated_by`, `created_at`, `updated_at`), RLS e indices de filtro; o fluxo operacional atual da tela usa apenas `Projeto (SOB)` e limita esse campo a `10` caracteres.

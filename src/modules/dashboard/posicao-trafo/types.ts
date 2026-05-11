@@ -10,7 +10,7 @@ export type TrafoPositionFilters = {
   materialCode: string;
   serialNumber: string;
   lotCode: string;
-  currentStatus: "TODOS" | "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE";
+  currentStatus: "TODOS" | "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE" | "RET";
 };
 
 export type TrafoPositionListItem = {
@@ -24,14 +24,18 @@ export type TrafoPositionListItem = {
   lotCode: string;
   currentStockCenterId: string | null;
   currentStockCenterName: string | null;
-  currentStatus: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE";
+  currentStatus: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE" | "RET";
   currentTeamName: string | null;
   currentForemanName: string | null;
   canMove: boolean;
+  canRetire: boolean;
+  retiredAt: string | null;
+  retiredReason: string | null;
+  retiredByName: string | null;
   lastTransferId: string | null;
   lastProjectId: string | null;
   lastProjectCode: string | null;
-  lastOperationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
+  lastOperationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN" | "RET";
   lastEntryDate: string;
   updatedAt: string | null;
   updatedByName: string;
@@ -55,8 +59,8 @@ export type TrafoPositionMetaResponse = {
 export type TrafoPositionHistoryEntry = {
   id: string;
   transferId: string;
-  operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
-  movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN" | "RET";
+  movementType: "ENTRY" | "EXIT" | "TRANSFER" | "RET";
   quantity: number;
   entryDate: string;
   changedAt: string;
@@ -70,6 +74,7 @@ export type TrafoPositionHistoryEntry = {
   isReversal: boolean;
   isReversed: boolean;
   reversalReason: string | null;
+  isRetirement?: boolean;
 };
 
 export type TrafoPositionHistoryResponse = {

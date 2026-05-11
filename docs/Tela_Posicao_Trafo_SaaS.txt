@@ -7,6 +7,7 @@ Visao geral
 - Complementa `Movimentacao de Estoque` e `Estoque Atual` com foco na identidade da unidade (`material + Serial` e, para TRAFO, tambem `LP`).
 - Permite acionar movimentacao da propria unidade, com pre-preenchimento do formulario de `/entrada`.
 - Exibe a cadeia completa de movimentacoes da unidade em modal de `Historico`, incluindo `Requisicao`, `Devolucao` e `Retorno de campo`.
+- Permite aplicar `RET` em unidade rastreada presente no estoque fisico, baixando `1` do saldo disponivel e mantendo a unidade visivel como material fisico sucateado/retirado de uso.
 
 Arquitetura
 -----------
@@ -27,6 +28,7 @@ Arquitetura
 - Banco:
   - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
+  - `supabase/migrations/181_create_serial_retirement_flow.sql`
 
 Cadastro
 --------
@@ -36,7 +38,7 @@ Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
   - `Centro fisico`
-  - `Situacao` (`Todos`, `Em estoque proprio`, `Com equipe`, `Fora do estoque proprio`)
+  - `Situacao` (`Todos`, `Em estoque proprio`, `Com equipe`, `RET / sucateado`, `Fora do estoque proprio`)
   - `Material (codigo)`
   - `Rastreio`
   - `Serial`
@@ -60,6 +62,7 @@ Filtros, auto-complete e listagem
   - `Situacao` deriva do estado atual da unidade:
     - `Em estoque proprio`: unidade em centro fisico `OWN`.
     - `Com equipe`: unidade atualmente entregue para equipe, mantendo o centro fisico de referencia na lista.
+    - `RET / sucateado`: unidade presente fisicamente no centro, mas retirada do saldo disponivel.
     - `Fora do estoque proprio`: unidade sem posicao atual em centro fisico `OWN`.
   - O filtro `Centro fisico` e a coluna principal excluem centros vinculados a equipes.
   - `Ultima operacao` traduz `ENTRY`, `EXIT`, `TRANSFER`, `REQUISITION`, `RETURN` e `FIELD_RETURN` para leitura operacional.
@@ -70,13 +73,24 @@ Filtros, auto-complete e listagem
   - `Detalhes`
   - `Historico`
   - `Movimentar esta unidade`
+  - `RET`
 - A acao `Movimentar esta unidade`:
   - fica habilitada apenas quando a unidade estiver efetivamente em centro fisico `OWN`;
   - redireciona para `/entrada`;
   - pre-preenche o modo dedicado de movimentacao da unidade com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1`;
   - permite concluir `Saida` ou `Transferencia`.
+- A acao `RET`:
+  - fica habilitada apenas quando a unidade estiver em estoque fisico proprio e ainda nao estiver marcada como RET;
+  - abre modal de confirmacao com observacao opcional;
+  - chama `POST /api/trafo-positions` com `action = RET`;
+  - grava via RPC `retire_serial_tracked_unit`;
+  - baixa `1` em `stock_center_balances` do centro fisico/material;
+  - mantem `trafo_instances.current_stock_center_id` no centro fisico para leitura de presenca no galpao;
+  - preenche `trafo_instances.retired_at`, `retired_by`, `retired_reason` e `retired_stock_center_id`;
+  - permite movimentacao fisica posterior (`Saida` para fornecedor ou `Transferencia` entre estoques) sem debitar/creditar o saldo disponivel novamente;
+  - bloqueia uso operacional por equipe para evitar que material RET seja requisitado como material disponivel.
 - O modal `Historico`:
-  - mostra a cadeia de movimentos da unidade, incluindo `Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo` e `Estorno`;
+  - mostra a cadeia de movimentos da unidade, incluindo `Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo`, `RET` e `Estorno`;
   - mostra `Centro DE`, `Centro PARA`, `Equipe`, `Encarregado`, `Projeto`, `Data da movimentacao` e `Observacao`.
 
 Boas praticas
@@ -86,21 +100,27 @@ Boas praticas
 - Nao duplicar linhas da grade para representar entregas por equipe; essa cadeia deve ficar no `Historico`.
 - Usar `/entrada` apenas como tela de acao; a fonte da posicao atual continua sendo `trafo_instances`.
 - Bloquear a acao `Movimentar esta unidade` quando a unidade estiver `Com equipe` ou `Fora do estoque proprio`.
+- Permitir movimentacao fisica quando a unidade estiver `RET / sucateado`.
+- RET deve ser tratado como retirada de uso, nao como bloqueio logistico da unidade.
 - Erros da tela devem ser registrados com tag `posicao_trafo` via `useErrorLogger`.
 
 Cancelamento e saldo
 --------------------
-- A tela nao grava saldo diretamente.
+- A listagem da tela nao grava saldo diretamente.
+- O botao `RET` grava saldo exclusivamente pela RPC `retire_serial_tracked_unit`.
 - A transferencia acionada pela tela continua sendo concluida na RPC `save_stock_transfer_record`.
 - `stock_center_balances` continua como saldo agregado por `centro + material`.
 - `trafo_instances` continua como rastreio unitario da unidade serializada.
 - O backend da tela passa a reinterpretar `Requisicao` para equipe como status `Com equipe`, sem trocar a leitura principal para o centro de equipe.
+- Quando `RET` e aplicado, `stock_center_balances.quantity` reduz `1`, mas `trafo_instances.current_stock_center_id` permanece no centro fisico para indicar presenca fisica sem disponibilidade.
+- Quando uma unidade RET e movimentada fisicamente, a RPC `save_stock_transfer_record` usa o wrapper da migration `181` para registrar a movimentacao e atualizar `trafo_instances`, sem alterar saldo disponivel.
 
 Atalhos
 -------
 - Rota ativa: `/posicao-trafo`
 - Endpoints:
   - `GET /api/trafo-positions`
+  - `POST /api/trafo-positions`
   - `GET /api/trafo-positions/meta`
   - `GET /api/trafo-positions?mode=history`
 - Exibida na secao `Almoxarifado` da sidebar.
@@ -143,14 +163,17 @@ Atualizacao 2026-04
   - A consulta passou de `materials.is_transformer = true` para `materials.serial_tracking_type <> NONE`.
   - RELIGADOR e CHAVE entram na mesma tela, exigindo Serial e usando `LP = '-'` tecnicamente.
   - O pre-preenchimento de `/entrada` passou a usar `prefillMode=serial-transfer`.
+  - Foi criado o botao `RET` nas acoes da linha para retirar a unidade do saldo disponivel sem remover a presenca fisica no rastreio.
+  - A migration `181_create_serial_retirement_flow.sql` adiciona colunas de RET em `trafo_instances`, cria `serial_retirements`, a RPC `retire_serial_tracked_unit` e wrapper de `save_stock_transfer_record` para movimentacao fisica de RET sem mexer novamente no saldo disponivel.
+  - O historico da unidade passa a incluir eventos `RET` vindos de `serial_retirements`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
-  - Responsavel por: carregar metadados, aplicar filtros, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade e redirecionar para movimentacao pre-preenchida quando elegivel.
+  - Responsavel por: carregar metadados, aplicar filtros, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade, aplicar RET com confirmacao e redirecionar para movimentacao pre-preenchida quando elegivel.
 - Caminho: `src/app/api/trafo-positions/route.ts`
-  - Responsavel por: listar a posicao unitaria de materiais rastreados por serial por tenant a partir de `trafo_instances`, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal e expor o historico por unidade.
+  - Responsavel por: listar a posicao unitaria de materiais rastreados por serial por tenant a partir de `trafo_instances`, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal, expor o historico por unidade e aplicar RET via RPC.
 - Caminho: `src/app/api/trafo-positions/meta/route.ts`
   - Responsavel por: listar centros ativos `OWN` fisicos para os filtros da tela, excluindo centros vinculados a equipes.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
@@ -163,6 +186,8 @@ Constantes e configuracoes
   - Responsavel por: mapear a rota `/posicao-trafo` para `page_key = posicao-trafo` e incluir o acesso padrao por perfil.
 - Caminho: `supabase/migrations/138_add_trafo_position_page_permissions.sql`
   - Responsavel por: cadastrar a tela em `app_pages` e fazer backfill de permissao por role e por usuario.
+- Caminho: `supabase/migrations/181_create_serial_retirement_flow.sql`
+  - Responsavel por: versionar o fluxo RET, auditoria em `serial_retirements`, baixa de saldo disponivel, marcacao em `trafo_instances` e movimentacao fisica posterior sem recompor disponibilidade.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/posicao-trafo/utils.ts`
@@ -191,19 +216,27 @@ Ajuda contextual
   - `src/components/ui/ActionIcon.tsx`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
   - `supabase/migrations/172_generalize_serial_tracked_materials.sql`
+  - `supabase/migrations/181_create_serial_retirement_flow.sql`
   - `docs/Tela_Posicao_Trafo_SaaS.txt`
 - Funcoes/hooks/constantes tocadas:
   - `TrafoPositionPageView`
   - `buildTrafoPositionQuery`
   - `openTransferPrefill`
+  - `openRetModal`
+  - `handleApplyRet`
   - `openHistoryModal`
   - `loadHistory`
   - `GET /api/trafo-positions`
+  - `POST /api/trafo-positions`
   - `GET /api/trafo-positions/meta`
   - `loadTrafoHistory`
   - `resolvePhysicalReferenceCenterId`
+  - `retire_serial_tracked_unit`
+  - `save_stock_transfer_record`
 - Comportamento antes/depois:
   - Antes: a rastreabilidade unitaria de TRAFO ficava difusa entre `Movimentacao de Estoque` e a leitura agregada do saldo.
   - Depois: a rastreabilidade unitaria passou a ter tela propria baseada em `trafo_instances`, com acao direta de movimentacao para a mesma unidade.
   - Antes: uma `Requisicao` para equipe podia trocar a leitura principal da unidade para o centro da equipe.
   - Depois: a leitura principal continua no centro fisico de referencia, enquanto a cadeia de `Requisicao/Devolucao` fica visivel no historico da unidade.
+  - Antes: nao havia acao para indicar que uma unidade estava fisicamente no galpao, mas indisponivel para uso.
+  - Depois: `RET` reduz o saldo disponivel, mantem o centro fisico no rastreio, registra auditoria e permite movimentacao fisica posterior sem recolocar o serial em disponibilidade.

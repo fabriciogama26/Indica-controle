@@ -37,6 +37,7 @@ function movementTypeLabel(value: string | null | undefined) {
   if (normalized === "REQUISITION") return "Requisicao";
   if (normalized === "RETURN") return "Devolucao";
   if (normalized === "FIELD_RETURN") return "Retorno de campo";
+  if (normalized === "RET") return "RET";
   return "-";
 }
 
@@ -48,6 +49,9 @@ function movementChipClass(value: string | null | undefined) {
   if (normalized === "EXIT" || normalized === "REQUISITION") {
     return `${styles.movementChip} ${styles.movementChipExit}`;
   }
+  if (normalized === "RET") {
+    return `${styles.movementChip} ${styles.movementChipRet}`;
+  }
   return `${styles.movementChip} ${styles.movementChipTransfer}`;
 }
 
@@ -56,28 +60,33 @@ function historyBadgeClass(value: string | null | undefined) {
   if (normalized === "ENTRY" || normalized === "RETURN" || normalized === "FIELD_RETURN") return `${styles.historyBadge} ${styles.historyBadgeEntry}`;
   if (normalized === "EXIT") return `${styles.historyBadge} ${styles.historyBadgeExit}`;
   if (normalized === "REQUISITION") return `${styles.historyBadge} ${styles.historyBadgeTeam}`;
+  if (normalized === "RET") return `${styles.historyBadge} ${styles.historyBadgeRet}`;
   return `${styles.historyBadge} ${styles.historyBadgeTransfer}`;
 }
 
-function currentStatusLabel(value: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE") {
+function currentStatusLabel(value: TrafoPositionListItem["currentStatus"]) {
   if (value === "EM_ESTOQUE") return "Em estoque proprio";
   if (value === "COM_EQUIPE") return "Com equipe";
+  if (value === "RET") return "RET / sucateado";
   return "Fora do estoque proprio";
 }
 
-function currentStatusChipClass(value: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE") {
+function currentStatusChipClass(value: TrafoPositionListItem["currentStatus"]) {
   if (value === "EM_ESTOQUE") return `${styles.statusChip} ${styles.statusChipOwn}`;
   if (value === "COM_EQUIPE") return `${styles.statusChip} ${styles.statusChipTeam}`;
+  if (value === "RET") return `${styles.statusChip} ${styles.statusChipRet}`;
   return `${styles.statusChip} ${styles.statusChipExternal}`;
 }
 
 function historyStatusLabel(entry: TrafoPositionHistoryEntry) {
+  if (entry.isRetirement) return "RET aplicado";
   if (entry.isReversal) return "Movimentacao de estorno";
   if (entry.isReversed) return "Movimentacao original estornada";
   return "Movimentacao ativa";
 }
 
 function historyStatusBadgeClass(entry: TrafoPositionHistoryEntry) {
+  if (entry.isRetirement) return `${styles.historyBadge} ${styles.historyBadgeRet}`;
   if (entry.isReversal) return `${styles.historyBadge} ${styles.historyBadgeReversal}`;
   if (entry.isReversed) return `${styles.historyBadge} ${styles.historyBadgeReversed}`;
   return `${styles.historyBadge} ${styles.historyBadgeNeutral}`;
@@ -103,6 +112,9 @@ export function TrafoPositionPageView() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [detailItem, setDetailItem] = useState<TrafoPositionListItem | null>(null);
   const [historyItem, setHistoryItem] = useState<TrafoPositionListItem | null>(null);
+  const [retItem, setRetItem] = useState<TrafoPositionListItem | null>(null);
+  const [retReason, setRetReason] = useState("");
+  const [isApplyingRet, setIsApplyingRet] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<TrafoPositionHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -112,6 +124,7 @@ export function TrafoPositionPageView() {
   const currentInOwnCount = items.filter((item) => item.currentStatus === "EM_ESTOQUE").length;
   const currentWithTeamCount = items.filter((item) => item.currentStatus === "COM_EQUIPE").length;
   const currentOutsideCount = items.filter((item) => item.currentStatus === "FORA_ESTOQUE").length;
+  const currentRetCount = items.filter((item) => item.currentStatus === "RET").length;
 
   useEffect(() => {
     if (!accessToken) {
@@ -333,6 +346,74 @@ export function TrafoPositionPageView() {
     router.push(`/entrada?${params.toString()}`);
   }
 
+  function openRetModal(item: TrafoPositionListItem) {
+    if (!item.canRetire) {
+      return;
+    }
+
+    setRetItem(item);
+    setRetReason("");
+    setFeedback(null);
+  }
+
+  function closeRetModal() {
+    if (isApplyingRet) {
+      return;
+    }
+
+    setRetItem(null);
+    setRetReason("");
+  }
+
+  async function handleApplyRet() {
+    if (!accessToken || !retItem) {
+      setFeedback({ type: "error", message: "Sessao invalida para aplicar RET." });
+      return;
+    }
+
+    setIsApplyingRet(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch("/api/trafo-positions", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "RET",
+          trafoInstanceId: retItem.id,
+          reason: normalizeText(retReason),
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        setFeedback({ type: "error", message: data.message ?? "Falha ao aplicar RET na unidade." });
+
+        await logError("Falha ao aplicar RET no rastreio de serial.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          trafoInstanceId: retItem.id,
+        });
+        return;
+      }
+
+      setRetItem(null);
+      setRetReason("");
+      setFeedback({ type: "success", message: data.message ?? "RET aplicado com sucesso." });
+      setPage(1);
+      setFilters((current) => ({ ...current }));
+    } catch (error) {
+      setFeedback({ type: "error", message: "Falha ao aplicar RET na unidade." });
+      await logError("Falha ao aplicar RET no rastreio de serial.", error, { trafoInstanceId: retItem.id });
+    } finally {
+      setIsApplyingRet(false);
+    }
+  }
+
   async function handleExportCsv() {
     if (!accessToken) {
       setFeedback({ type: "error", message: "Sessao invalida para exportar o rastreio de serial." });
@@ -387,7 +468,7 @@ export function TrafoPositionPageView() {
       }
 
       const lines = [
-        "centro_fisico;situacao;equipe_atual;encarregado_atual;projeto_ultimo;material_codigo;descricao;rastreio;serial;lp;ultima_operacao;data_ultima_movimentacao;atualizado_em;ultima_transferencia",
+        "centro_fisico;situacao;equipe_atual;encarregado_atual;projeto_ultimo;material_codigo;descricao;rastreio;serial;lp;ultima_operacao;data_ultima_movimentacao;atualizado_em;ultima_transferencia;ret_em;ret_por;ret_motivo",
         ...exportedItems.map((item) => [
           csvEscape(item.currentStockCenterName ?? "-"),
           csvEscape(currentStatusLabel(item.currentStatus)),
@@ -403,6 +484,9 @@ export function TrafoPositionPageView() {
           csvEscape(formatDate(item.lastEntryDate)),
           csvEscape(formatDateTime(item.updatedAt)),
           csvEscape(item.lastTransferId ?? "-"),
+          csvEscape(formatDateTime(item.retiredAt)),
+          csvEscape(item.retiredByName ?? "-"),
+          csvEscape(item.retiredReason ?? "-"),
         ].join(";")),
       ];
 
@@ -452,6 +536,7 @@ export function TrafoPositionPageView() {
               <option value="TODOS">Todos</option>
               <option value="EM_ESTOQUE">Em estoque proprio</option>
               <option value="COM_EQUIPE">Com equipe</option>
+              <option value="RET">RET / sucateado</option>
               <option value="FORA_ESTOQUE">Fora do estoque proprio</option>
             </select>
           </label>
@@ -506,7 +591,7 @@ export function TrafoPositionPageView() {
           <div>
             <h3 className={styles.cardTitle}>Rastreio de SERIAL</h3>
             <p className={styles.tableHint}>
-              A lista mantem uma linha por unidade e mostra o centro fisico de referencia. Requisicoes e devolucoes por equipe aparecem no historico da unidade, sem trocar a leitura principal para centro de equipe.
+              A lista mantem uma linha por unidade e mostra o centro fisico de referencia. RET baixa o saldo disponivel, mantem a unidade fisica no rastreio e permite movimentacao fisica sem reabrir disponibilidade.
             </p>
           </div>
 
@@ -532,6 +617,10 @@ export function TrafoPositionPageView() {
           <div className={styles.statCard}>
             <span className={styles.statLabel}>Com equipe</span>
             <strong className={styles.statValue}>{currentWithTeamCount}</strong>
+          </div>
+          <div className={styles.statCard}>
+            <span className={styles.statLabel}>RET</span>
+            <strong className={styles.statValue}>{currentRetCount}</strong>
           </div>
           <div className={styles.statCard}>
             <span className={styles.statLabel}>Fora do estoque proprio</span>
@@ -611,6 +700,16 @@ export function TrafoPositionPageView() {
                       >
                         <ActionIcon name="transfer" />
                       </button>
+                      <button
+                        type="button"
+                        className={`${styles.actionButton} ${styles.actionRet}`}
+                        onClick={() => openRetModal(item)}
+                        title={item.canRetire ? "Aplicar RET" : "RET indisponivel para esta unidade"}
+                        aria-label={`Aplicar RET na unidade ${item.materialCode} serial ${item.serialNumber}`}
+                        disabled={!item.canRetire}
+                      >
+                        RET
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -683,8 +782,61 @@ export function TrafoPositionPageView() {
                 <div><strong>Data ultima movimentacao:</strong> {formatDate(detailItem.lastEntryDate)}</div>
                 <div><strong>Atualizado em:</strong> {formatDateTime(detailItem.updatedAt)}</div>
                 <div><strong>Atualizado por:</strong> {detailItem.updatedByName}</div>
-                <div><strong>Movimentacao permitida:</strong> {detailItem.canMove ? "Sim" : "Nao"}</div>
+                <div><strong>Movimentacao fisica permitida:</strong> {detailItem.canMove ? "Sim" : "Nao"}</div>
+                <div><strong>RET aplicado em:</strong> {formatDateTime(detailItem.retiredAt)}</div>
+                <div><strong>RET aplicado por:</strong> {detailItem.retiredByName ?? "-"}</div>
+                <div className={styles.detailWide}><strong>Motivo RET:</strong> {detailItem.retiredReason ?? "-"}</div>
                 <div className={styles.detailWide}><strong>Ultima transferencia:</strong> {detailItem.lastTransferId ?? "-"}</div>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {retItem ? (
+        <div className={styles.modalOverlay} onClick={closeRetModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Aplicar RET</h4>
+                <p className={styles.modalSubtitle}>
+                  {retItem.materialCode} | Serial {retItem.serialNumber} | LP {retItem.lotCode}
+                </p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeRetModal} disabled={isApplyingRet}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.retWarning}>
+                <strong>Impacto no estoque:</strong> baixa 1 do saldo disponivel, mantem a unidade no centro fisico do rastreio e permite movimentacao fisica sem voltar para saldo disponivel.
+              </div>
+
+              <div className={styles.detailGrid}>
+                <div><strong>Centro fisico:</strong> {retItem.currentStockCenterName ?? "-"}</div>
+                <div><strong>Situacao atual:</strong> {currentStatusLabel(retItem.currentStatus)}</div>
+                <div><strong>Material:</strong> {retItem.materialCode}</div>
+                <div><strong>Rastreio:</strong> {serialTrackingLabel(retItem.serialTrackingType)}</div>
+              </div>
+
+              <label className={styles.field}>
+                <span>Observacao RET</span>
+                <textarea
+                  value={retReason}
+                  onChange={(event) => setRetReason(event.target.value)}
+                  placeholder="Ex.: material sucateado fisicamente no galpao"
+                  disabled={isApplyingRet}
+                />
+              </label>
+
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.ghostButton} onClick={closeRetModal} disabled={isApplyingRet}>
+                  Cancelar
+                </button>
+                <button type="button" className={styles.dangerButton} onClick={() => void handleApplyRet()} disabled={isApplyingRet}>
+                  {isApplyingRet ? "Aplicando..." : "Confirmar RET"}
+                </button>
               </div>
             </div>
           </article>
