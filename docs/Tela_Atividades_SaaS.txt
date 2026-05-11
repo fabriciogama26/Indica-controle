@@ -3,8 +3,8 @@ Tela: Atividades SaaS
 Visao geral
 -----------
 - Tela de cadastro de atividades para contratos e servicos por tenant.
-- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `tipo`, `categoria`, `valor`, `pontos` e `unidade`.
-- `grupo` e `alcance` permanecem opcionais para compatibilidade de dados.
+- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `tipo`, `categoria`, `grupo`, `valor`, `pontos` e `unidade`.
+- `grupo` e obrigatorio no cadastro/edicao; `alcance` permanece opcional.
 - Lista atividades cadastradas com filtro por codigo, descricao, tipo, categoria e status (`Ativo/Inativo`).
 - Lista atividades com paginacao no servidor e botao `Exportar Excel (CSV)`.
 - Lista, detalhes e exportacao exibem `Pontos` com origem em `service_activities.voice_point`.
@@ -26,6 +26,7 @@ Arquitetura
 - Banco (ajuste de voz/unidade por planilha JA10183409): `supabase/migrations/148_update_service_activities_voice_fields_ja10183409.sql`
 - Banco (desativacao por escopo da carga 147): `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
 - Banco (cadastro/edicao de pontos): `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
+- Banco (grupo obrigatorio em atividades): `supabase/migrations/180_require_service_activity_group_in_rpc.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
@@ -38,6 +39,7 @@ Cadastro
   - `Descricao`
   - `Tipo`
   - `Categoria`
+  - `Grupo`
   - `Valor`
   - `Pontos`
   - `Unidade`
@@ -45,9 +47,10 @@ Cadastro
   - `Codigo` e salvo em caixa alta.
   - `Valor` deve ser numerico e maior ou igual a zero.
   - `Pontos` deve ser numerico e maior que zero.
+  - `Grupo` deve ser preenchido.
   - `Tipo` deve existir e estar ativo em `team_types` no mesmo tenant.
   - `Categoria` deve existir e estar ativa em `types_service_activities` no mesmo tenant.
-  - `Grupo` e `Alcance` sao opcionais.
+  - `Alcance` e opcional.
   - `Codigo` deve ser unico por tenant.
   - Pre-validacao de codigo via RPC `precheck_activity_code_conflict` (bloqueia duplicidade antes de inserir/editar).
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear `last-write-wins`.
@@ -223,13 +226,37 @@ Atualizacao 2026-04-30
   - Depois: cadastro/edicao passam a exigir `Pontos` maior que zero e persistir `service_activities.voice_point` pela RPC transacional.
   - Depois: alteracoes de `Pontos` entram em `p_changes.voicePoint` e sao registradas em `app_entity_history` no historico da tela.
 
+Atualizacao 2026-05
+-------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `src/app/api/activities/route.ts`
+  - `supabase/migrations/180_require_service_activity_group_in_rpc.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ActivityFormState.group`
+  - `ActivityFormState.scope`
+  - `handleSubmit`
+  - `parseActivityInput`
+  - `POST /api/activities`
+  - `PUT /api/activities`
+  - `save_service_activity_record`
+- Comportamento antes/depois:
+  - Antes: o formulario de Atividades nao exibia `Grupo` nem `Alcance` no cadastro/edicao.
+  - Antes: `Grupo` podia chegar vazio no backend/RPC.
+  - Depois: o formulario exibe `Grupo *` e `Alcance`, exige `Grupo` no HTML, na API e na RPC transacional, e continua tratando `Alcance` como opcional.
+  - Depois: alteracoes de `Grupo` e `Alcance` continuam entrando no historico via `p_changes.group` e `p_changes.scope`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao com `Pontos`, filtros (incluindo `Status`), listagem paginada com `Pontos`, detalhes com `Pontos`, exportacao CSV, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
+  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao com `Grupo`, `Alcance` e `Pontos`, filtros (incluindo `Status`), listagem paginada com `Pontos`, detalhes com `Grupo`, `Alcance` e `Pontos`, exportacao CSV, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
 - Caminho: `src/app/api/activities/route.ts`
-  - Responsavel por: validar payload, validar `team_type_id`, `category_id` e `voicePoint`, listar com paginacao/historico, retornar `voicePoint` da atividade, aplicar filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
+  - Responsavel por: validar payload, validar `team_type_id`, `category_id`, `group` e `voicePoint`, listar com paginacao/historico, retornar `Grupo`, `Alcance` e `voicePoint` da atividade, aplicar filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 - Caminho: `src/app/api/activities/meta/route.ts`
   - Responsavel por: retornar opcoes de `Tipo` (`team_types`) e `Categoria` (`types_service_activities`) ativas do tenant.
 
@@ -254,6 +281,8 @@ Constantes e configuracoes
   - Responsavel por: desativar atividades fora do escopo de codigos da migration 147 no tenant alvo e registrar auditoria em `app_entity_history`.
 - Caminho: `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
   - Responsavel por: atualizar `save_service_activity_record` para persistir `voice_point` no cadastro/edicao e manter historico por `p_changes`.
+- Caminho: `supabase/migrations/180_require_service_activity_group_in_rpc.sql`
+  - Responsavel por: atualizar `save_service_activity_record` para rejeitar cadastro/edicao de atividade sem `group_name`, mantendo `scope` opcional.
 - Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
   - Responsavel por: criar `save_service_activity_record` e `set_service_activity_record_status` para escrita transacional da tela de atividades.
 - Caminho: `src/lib/auth/authorization.ts`

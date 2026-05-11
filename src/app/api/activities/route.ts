@@ -64,7 +64,7 @@ type CreateActivityPayload = {
   description: string;
   teamTypeId: string;
   categoryId: string;
-  group?: string;
+  group: string;
   value: string | number;
   voicePoint: string | number;
   unit: string;
@@ -689,6 +689,7 @@ export async function POST(request: NextRequest) {
       || !input.description
       || !input.teamTypeId
       || !input.categoryId
+      || !input.group
       || input.value === null
       || input.voicePoint === null
       || !input.unit
@@ -782,6 +783,7 @@ export async function PUT(request: NextRequest) {
       || !input.description
       || !input.teamTypeId
       || !input.categoryId
+      || !input.group
       || input.value === null
       || input.voicePoint === null
       || !input.unit
