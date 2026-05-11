@@ -96,6 +96,22 @@ export type TeamOperationListResponse = {
   message?: string;
 };
 
+export type SerialOption = {
+  id: string;
+  materialId: string;
+  materialCode: string;
+  serialTrackingType: SerialTrackingType;
+  serialNumber: string;
+  lotCode: string;
+  currentStockCenterId: string | null;
+  updatedAt: string | null;
+};
+
+export type SerialOptionsResponse = {
+  items?: SerialOption[];
+  message?: string;
+};
+
 export type TeamOperationHistoryResponse = {
   history?: TeamOperationHistoryEntry[];
   pagination?: { page: number; pageSize: number; total: number };

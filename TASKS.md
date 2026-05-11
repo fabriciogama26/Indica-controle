@@ -563,6 +563,8 @@
 - [x] Formalizar regra de monolito modular verdadeiro em `AGENTS.md` e `docs/Auditoria_Completa_SaaS.txt`: modulo precisa preservar fronteira de dependencia, fachada publica, shared apenas universal e backend espelhando dominio.
 - [x] Generalizar rastreio unitario de materiais serializados para TRAFO, RELIGADOR e CHAVE, com serial_tracking_type, validacao de Serial/LP conforme tipo e tela Rastreio de SERIAL.
 - [x] Preservar e exibir saldo decimal no Estoque Atual, aceitando filtros com virgula ou ponto.
+- [x] Corrigir validacao de Serial/LP em `Operacoes de Equipe`, separando origem real de `Requisicao` (centro de estoque -> equipe) e `Devolucao` (equipe -> centro de estoque), com autocomplete somente de unidades registradas em estoque.
+- 2026-05-11: `npm outdated` registrou pendencias em @supabase/supabase-js, @tanstack/react-query, @types/node, eslint, eslint-config-next, next, react, react-dom e typescript; nenhuma dependencia foi atualizada nesta tarefa.
 - [x] Revisar cadastro em massa para materiais rastreaveis, incluindo exemplos CSV de RELIGADOR, CHAVE e quantidade decimal.
 
 - [x] Revisar RLS publica e criar hardening sem policies DELETE/ALL.

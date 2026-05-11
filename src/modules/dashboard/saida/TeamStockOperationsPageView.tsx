@@ -16,6 +16,8 @@ import type {
   MassImportIssue,
   MassImportResultSummary,
   MetaResponse,
+  SerialOption,
+  SerialOptionsResponse,
   TeamOperationFormItem,
   TeamOperationHistoryEntry,
   TeamOperationHistoryResponse,
@@ -76,6 +78,10 @@ type TrafoPositionLookupResponse = {
   }>;
   message?: string;
 };
+
+function normalizeUnitText(value: string | null | undefined) {
+  return normalizeText(value).toUpperCase();
+}
 
 function operationSignalClass(value: TeamOperationKind | string | null | undefined) {
   const normalized = normalizeTeamOperationKind(value);
@@ -174,6 +180,7 @@ export function TeamStockOperationsPageView() {
   const [teams, setTeams] = useState<MetaResponse["teams"]>([]);
   const [projects, setProjects] = useState<MetaResponse["projects"]>([]);
   const [materials, setMaterials] = useState<MetaResponse["materials"]>([]);
+  const [serialOptions, setSerialOptions] = useState<SerialOption[]>([]);
   const [reversalReasons, setReversalReasons] = useState<MetaResponse["reversalReasons"]>([]);
   const [fieldReturnOriginName, setFieldReturnOriginName] = useState("CAMPO / INSTALADO");
 
@@ -195,6 +202,7 @@ export function TeamStockOperationsPageView() {
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingHistoryModal, setIsLoadingHistoryModal] = useState(false);
+  const [isLoadingSerialOptions, setIsLoadingSerialOptions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -244,6 +252,20 @@ export function TeamStockOperationsPageView() {
     : form.operationKind === "RETURN"
       ? (selectedTeam?.stockCenterName ?? "centro da equipe")
       : fieldReturnOriginName;
+  const matchedSerialOption = useMemo(
+    () => serialOptions.find((option) =>
+      option.materialId === form.materialId
+      && normalizeUnitText(option.serialNumber) === normalizeUnitText(form.serialNumber)
+      && normalizeUnitText(option.lotCode || "-") === normalizeUnitText(form.lotCode || "-"),
+    ) ?? null,
+    [form.lotCode, form.materialId, form.serialNumber, serialOptions],
+  );
+  const serialLotOptions = useMemo(
+    () => serialOptions.filter((option) =>
+      !form.serialNumber || normalizeUnitText(option.serialNumber) === normalizeUnitText(form.serialNumber),
+    ),
+    [form.serialNumber, serialOptions],
+  );
   function showError(message: string) {
     setFeedback({ type: "error", message });
     setAlertMessage(message);
@@ -443,6 +465,96 @@ export function TeamStockOperationsPageView() {
     };
   }, [accessToken, filters, historyPage, logError]);
 
+  useEffect(() => {
+    if (
+      !accessToken
+      || !requiresTransformerFields
+      || form.operationKind === "FIELD_RETURN"
+      || !form.stockCenterId
+      || !form.teamId
+      || !form.materialId
+      || !sourceStockCenterId
+    ) {
+      setSerialOptions([]);
+      setIsLoadingSerialOptions(false);
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setIsLoadingSerialOptions(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("operationKind", form.operationKind);
+        params.set("stockCenterId", form.stockCenterId);
+        params.set("teamId", form.teamId);
+        params.set("materialId", form.materialId);
+        params.set("pageSize", "50");
+        if (form.serialNumber) params.set("serialNumber", form.serialNumber);
+        const response = await fetch(`/api/team-stock-operations/serial-options?${params.toString()}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          signal: controller.signal,
+        });
+
+        const data = (await response.json().catch(() => ({}))) as SerialOptionsResponse;
+        if (!response.ok) {
+          if (isMounted) {
+            setSerialOptions([]);
+          }
+          await logError("Falha ao carregar seriais disponiveis da operacao de equipe.", undefined, {
+            responseStatus: response.status,
+            responseMessage: data.message ?? null,
+            operationKind: form.operationKind,
+            sourceStockCenterId,
+            materialId: form.materialId,
+          });
+          return;
+        }
+
+        if (isMounted) {
+          setSerialOptions(data.items ?? []);
+        }
+      } catch (error) {
+        if ((error as { name?: string })?.name === "AbortError") {
+          return;
+        }
+
+        if (isMounted) {
+          setSerialOptions([]);
+        }
+        await logError("Falha ao carregar seriais disponiveis da operacao de equipe.", error, {
+          operationKind: form.operationKind,
+          sourceStockCenterId,
+          materialId: form.materialId,
+        });
+      } finally {
+        if (isMounted) {
+          setIsLoadingSerialOptions(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    accessToken,
+    form.materialId,
+    form.operationKind,
+    form.serialNumber,
+    form.stockCenterId,
+    form.teamId,
+    logError,
+    requiresTransformerFields,
+    sourceStockCenterId,
+  ]);
+
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({
       ...current,
@@ -488,8 +600,8 @@ export function TeamStockOperationsPageView() {
         ? (matchedMaterial ? "SUCATA" : "")
         : normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
       quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? "1" : current.quantity,
-      serialNumber: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? current.serialNumber : "",
-      lotCode: requiresLotCode(matchedMaterial?.serialTrackingType) ? current.lotCode : "",
+      serialNumber: "",
+      lotCode: "",
     }));
   }
 
@@ -502,9 +614,39 @@ export function TeamStockOperationsPageView() {
     setForm((current) => ({
       ...current,
       operationKind: value,
+      serialNumber: "",
+      lotCode: "",
       entryType: value === "FIELD_RETURN"
         ? (current.materialId ? "SUCATA" : "")
         : normalizeMaterialEntryType(selectedMaterial?.materialType ?? ""),
+    }));
+  }
+
+  function handleStockCenterChange(value: string) {
+    if (form.items.length > 0) {
+      showError("Remova os itens adicionados antes de trocar o centro de estoque.");
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      stockCenterId: value,
+      serialNumber: "",
+      lotCode: "",
+    }));
+  }
+
+  function handleTeamChange(value: string) {
+    if (form.items.length > 0) {
+      showError("Remova os itens adicionados antes de trocar a equipe.");
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      teamId: value,
+      serialNumber: "",
+      lotCode: "",
     }));
   }
 
@@ -517,7 +659,26 @@ export function TeamStockOperationsPageView() {
     updateForm("quantity", value);
   }
 
-  function handleAddFormItem() {
+  function handleSerialNumberChange(value: string) {
+    const matchedOptions = serialOptions.filter((option) =>
+      normalizeUnitText(option.serialNumber) === normalizeUnitText(value),
+    );
+    const nextLotCode = requiresLotFields && matchedOptions.length === 1
+      ? matchedOptions[0].lotCode
+      : "";
+
+    setForm((current) => ({
+      ...current,
+      serialNumber: value,
+      lotCode: requiresLotFields ? nextLotCode : "",
+    }));
+  }
+
+  function handleLotCodeChange(value: string) {
+    updateForm("lotCode", value);
+  }
+
+  async function handleAddFormItem() {
     if (!form.materialId || !selectedMaterial) {
       showError("Selecione um material valido antes de adicionar.");
       return;
@@ -541,6 +702,27 @@ export function TeamStockOperationsPageView() {
     if (requiresLotFields && !normalizeText(form.lotCode)) {
       showError("LP e obrigatorio para material TRAFO.");
       return;
+    }
+
+    if (requiresTransformerFields && form.operationKind !== "FIELD_RETURN") {
+      if (!form.stockCenterId || !form.teamId || !sourceStockCenterId) {
+        showError("Selecione centro de estoque e equipe antes de adicionar material rastreavel por serial.");
+        return;
+      }
+
+      const sourceAvailability = await ensureSourceStockAvailability({
+        materialId: selectedMaterial.id,
+        materialCode: selectedMaterial.materialCode,
+        quantity,
+        serialNumber: normalizeText(form.serialNumber) || null,
+        lotCode: normalizeText(form.lotCode) || (requiresLotCode(selectedMaterial.serialTrackingType) ? null : "-"),
+        isTransformer: true,
+      });
+
+      if (!sourceAvailability.ok) {
+        showError(sourceAvailability.message);
+        return;
+      }
     }
 
     const normalizedEntryType = form.operationKind === "FIELD_RETURN"
@@ -687,21 +869,22 @@ export function TeamStockOperationsPageView() {
 
     if (params.isTransformer) {
       const searchParams = new URLSearchParams();
-      searchParams.set("page", "1");
-      searchParams.set("pageSize", "10");
-      searchParams.set("stockCenterId", sourceStockCenterId);
-      searchParams.set("materialCode", params.materialCode);
+      searchParams.set("operationKind", form.operationKind);
+      searchParams.set("stockCenterId", form.stockCenterId);
+      searchParams.set("teamId", form.teamId);
+      searchParams.set("materialId", params.materialId);
+      searchParams.set("pageSize", "20");
       searchParams.set("serialNumber", params.serialNumber ?? "");
       searchParams.set("lotCode", params.lotCode || "-");
 
-      const response = await fetch(`/api/trafo-positions?${searchParams.toString()}`, {
+      const response = await fetch(`/api/team-stock-operations/serial-options?${searchParams.toString()}`, {
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
 
-      const data = (await response.json().catch(() => ({}))) as TrafoPositionLookupResponse;
+      const data = (await response.json().catch(() => ({}))) as SerialOptionsResponse;
       if (!response.ok) {
         return {
           ok: false,
@@ -711,8 +894,8 @@ export function TeamStockOperationsPageView() {
 
       const matchedUnit = (data.items ?? []).find((item) =>
         item.materialId === params.materialId
-        && String(item.serialNumber ?? "").trim().toUpperCase() === String(params.serialNumber ?? "").trim().toUpperCase()
-        && String(item.lotCode ?? "").trim().toUpperCase() === String(params.lotCode || "-").trim().toUpperCase()
+        && normalizeUnitText(item.serialNumber) === normalizeUnitText(params.serialNumber ?? "")
+        && normalizeUnitText(item.lotCode || "-") === normalizeUnitText(params.lotCode || "-")
         && item.currentStockCenterId === sourceStockCenterId,
       );
 
@@ -1410,7 +1593,7 @@ export function TeamStockOperationsPageView() {
             </span>
             <select
               value={form.stockCenterId}
-              onChange={(event) => updateForm("stockCenterId", event.target.value)}
+              onChange={(event) => handleStockCenterChange(event.target.value)}
               disabled={isSubmitting || isLoadingMeta}
             >
               <option value="">Selecione</option>
@@ -1428,7 +1611,7 @@ export function TeamStockOperationsPageView() {
             </span>
             <select
               value={form.teamId}
-              onChange={(event) => updateForm("teamId", event.target.value)}
+              onChange={(event) => handleTeamChange(event.target.value)}
               disabled={isSubmitting || isLoadingMeta}
             >
               <option value="">Selecione</option>
@@ -1545,9 +1728,20 @@ export function TeamStockOperationsPageView() {
                 <input
                   type="text"
                   value={form.serialNumber}
-                  onChange={(event) => updateForm("serialNumber", event.target.value)}
+                  onChange={(event) => handleSerialNumberChange(event.target.value)}
+                  list={requiresTransformerFields && form.operationKind !== "FIELD_RETURN" ? "saida-serial-list" : undefined}
                   disabled={isSubmitting || !requiresTransformerFields}
+                  placeholder={requiresTransformerFields && form.operationKind !== "FIELD_RETURN" ? "Digite para selecionar do estoque" : ""}
                 />
+                {requiresTransformerFields && form.operationKind !== "FIELD_RETURN" ? (
+                  <small className={styles.fieldHint}>
+                    {isLoadingSerialOptions
+                      ? "Carregando seriais disponiveis..."
+                      : matchedSerialOption
+                        ? `Selecionado no estoque de origem: ${sourceStockCenterName}.`
+                        : "Use um serial listado no estoque de origem."}
+                  </small>
+                ) : null}
               </label>
 
               <label className={styles.field}>
@@ -1557,9 +1751,10 @@ export function TeamStockOperationsPageView() {
                 <input
                   type="text"
                   value={form.lotCode}
-                  onChange={(event) => updateForm("lotCode", event.target.value)}
+                  onChange={(event) => handleLotCodeChange(event.target.value)}
+                  list={requiresLotFields && form.operationKind !== "FIELD_RETURN" ? "saida-lp-list" : undefined}
                   disabled={isSubmitting || !requiresLotFields}
-                  placeholder={requiresLotFields ? "Informe o LP" : "Obrigatorio apenas para TRAFO"}
+                  placeholder={requiresLotFields ? "Selecione o LP do estoque" : "Obrigatorio apenas para TRAFO"}
                 />
               </label>
 
@@ -1567,7 +1762,7 @@ export function TeamStockOperationsPageView() {
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={handleAddFormItem}
+                  onClick={() => void handleAddFormItem()}
                   disabled={isSubmitting || isLoadingMeta}
                 >
                   Adicionar material
@@ -2187,6 +2382,20 @@ export function TeamStockOperationsPageView() {
         {(materials ?? []).map((material) => (
           <option key={material.id} value={material.materialCode}>
             {material.description}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="saida-serial-list">
+        {serialOptions.map((option) => (
+          <option key={option.id} value={option.serialNumber}>
+            {requiresLotCode(option.serialTrackingType) ? `LP ${option.lotCode}` : option.materialCode}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="saida-lp-list">
+        {serialLotOptions.map((option) => (
+          <option key={option.id} value={option.lotCode}>
+            Serial {option.serialNumber}
           </option>
         ))}
       </datalist>
