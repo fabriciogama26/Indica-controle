@@ -90,6 +90,7 @@ Ordem de aplicacao
 86. 086_add_service_activities_is_active_compat.sql
 171. 171_update_service_activity_voice_point_rpc.sql
 175. 175_add_team_supervisor_link.sql
+182. 182_create_operational_billing_dashboard_page.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -379,6 +380,9 @@ Resumo por arquivo
 
 180_require_service_activity_group_in_rpc.sql
 - Atualiza `save_service_activity_record` para exigir `group_name` no cadastro/edicao de Atividades, mantendo `scope` opcional e preservando validacoes por tenant/categoria.
+
+182_create_operational_billing_dashboard_page.sql
+- Cadastra a pagina `dash-operacional-faturamento` em `app_pages`, cria permissoes por role e faz backfill em `app_user_page_permissions` para liberar a tela conforme a matriz multi-tenant.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

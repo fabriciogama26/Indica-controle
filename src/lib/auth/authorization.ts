@@ -3,6 +3,7 @@ const ADMIN_ONLY_ROUTE_PREFIXES = ["/permissoes"] as const;
 const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/home", pageKey: "home" },
   { prefix: "/dashboard-medicao", pageKey: "dashboard-medicao" },
+  { prefix: "/dash-operacional-faturamento", pageKey: "dash-operacional-faturamento" },
   { prefix: "/projetos", pageKey: "projetos" },
   { prefix: "/locacao", pageKey: "locacao" },
   { prefix: "/programacao-simples", pageKey: "programacao-simples" },
@@ -53,6 +54,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   const defaultPageAccess = [
     "home",
     "dashboard-medicao",
+    "dash-operacional-faturamento",
     "projetos",
     "locacao",
     "programacao-simples",

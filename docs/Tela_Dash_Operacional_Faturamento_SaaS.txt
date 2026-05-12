@@ -1,0 +1,166 @@
+Tela: Dash Operacional e Faturamento SaaS
+
+Visao geral
+-----------
+- Tela de comparativo operacional por projeto.
+- Consolida os codigos de atividade usados em `Medicao`, `Medicao Asbuilt` e `Faturamento`.
+- Exibe uma linha unica por codigo de atividade, com somatorio de quantidade e valor por origem.
+- Indica codigos ausentes em alguma base e codigos divergentes por quantidade ou valor.
+- A tela nao possui filtro de data nem filtro de equipe.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/dash-operacional-faturamento/page.tsx`
+- View principal: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.module.css`
+- Fachada publica:
+  - `src/modules/dashboard/dash-operacional-faturamento/index.ts`
+- API da tela:
+  - `src/app/api/dash-operacional-faturamento/route.ts`
+- Banco:
+  - `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
+- Fontes de dados:
+  - `project_with_labels`
+  - `project_measurement_orders`
+  - `project_measurement_order_items`
+  - `project_asbuilt_measurement_orders`
+  - `project_asbuilt_measurement_order_items`
+  - `project_billing_orders`
+  - `project_billing_order_items`
+  - `service_activities`
+
+Cadastro
+--------
+- Nao ha cadastro nesta tela.
+- A tela apenas consulta dados ja registrados em Medicao, Medicao Asbuilt, Faturamento, Projetos e Atividades.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros obrigatorios:
+  - Centro de servico
+  - Projeto
+- Filtros complementares:
+  - Codigo de atividade
+  - Atividade ativa/inativa (`Todas`, `Ativas`, `Inativas`)
+  - Mostrar somente divergencias
+  - Mostrar somente codigos ausentes em alguma base
+- O filtro de Projeto fica limitado ao Centro de servico selecionado.
+- Ao selecionar um Projeto, a tela preenche automaticamente o Centro de servico correspondente.
+- A listagem exibe:
+  - Codigo
+  - Descricao
+  - Status da atividade
+  - Quantidade e valor da Medicao
+  - Quantidade e valor da Medicao Asbuilt
+  - Quantidade e valor do Faturamento
+  - Diferenca de quantidade Asbuilt x Medicao
+  - Diferenca de quantidade Faturamento x Medicao
+  - Diferenca de valor Asbuilt x Medicao
+  - Diferenca de valor Faturamento x Medicao
+  - Situacao (`Conferido`, `Divergente` ou `Ausente em ...`)
+- A tela possui exportacao CSV do resultado filtrado.
+- O botao `Exportar CSV` fica no bloco da tabela, acima do resumo de valores de Medicao, Asbuilt e Faturamento.
+- A tela carrega apenas os filtros ao abrir; a consulta da tabela nao e automatica ao alterar campos.
+- O usuario precisa clicar em `Filtrar` para atualizar a tabela e os resumos.
+
+Boas praticas
+-------------
+- Manter todas as consultas filtradas pelo tenant autenticado.
+- Considerar apenas ordens ativas e nao canceladas.
+- Considerar apenas Medicao `COM_PRODUCAO`.
+- Excluir projetos marcados como `Obra de teste` ou `RETIRADO DA CARTEIRA` do catalogo da tela.
+- Usar `service_activities.ativo` e snapshots de atividade dos itens de Faturamento/Asbuilt para classificar atividade ativa/inativa.
+- Registrar falhas da tela com `useErrorLogger("dash-operacional-faturamento")`.
+
+Cancelamento e saldo
+--------------------
+- Nao ha cancelamento funcional nesta tela.
+- Nao ha impacto em saldo de estoque.
+
+Atalhos
+-------
+- Rota ativa: `/dash-operacional-faturamento`
+- Endpoints:
+  - `GET /api/dash-operacional-faturamento`
+- Query params:
+  - `projectId`
+  - `serviceCenterId`
+  - `activityCode`
+  - `activityStatus`
+  - `onlyDivergences`
+  - `onlyMissing`
+
+Atualizacao 2026-05
+-------------------
+- Arquivos criados/alterados:
+  - `src/app/(dashboard)/dash-operacional-faturamento/page.tsx`
+  - `src/app/api/dash-operacional-faturamento/route.ts`
+  - `src/modules/dashboard/dash-operacional-faturamento/index.ts`
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
+  - `docs/Tela_Dash_Operacional_Faturamento_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - Havia pendencia para comparativo futuro entre Faturamento e Medicao Asbuilt.
+- Depois:
+  - Existe a primeira versao da tela `Dash operacional e faturamento`, comparando Medicao, Medicao Asbuilt e Faturamento por projeto e centro de servico, sem filtro de data/equipe, com filtros de codigo, status de atividade, divergencias e ausencias.
+  - A consulta da tabela e aplicada somente pelo botao `Filtrar`.
+  - A exportacao CSV fica no bloco da tabela, acima do resumo financeiro por origem.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - Responsavel por: renderizar filtros obrigatorios, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, exibir resumo, montar tabela comparativa e exportar CSV no bloco da tabela.
+- Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, aplicar filtros e devolver resumo.
+- Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
+  - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
+
+Constantes e configuracoes
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: incluir a tela em `Visao Geral` e configurar titulo/subtitulo da rota.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/dash-operacional-faturamento` para `page_key = dash-operacional-faturamento`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: incluir a tela no catalogo da matriz de permissoes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
+  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `addItem`, `finalizeRows`.
+- Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - Responsavel por: `formatNumber`, `formatCurrency`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `handleServiceCenterChange`, `handleProjectChange`, `exportRows`.
+
+Servicos e integracoes externas
+- `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
+- Supabase/Postgres com RLS ativo nas tabelas de origem.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/dash-operacional-faturamento/page.tsx`
+  - `src/app/api/dash-operacional-faturamento/route.ts`
+  - `src/modules/dashboard/dash-operacional-faturamento/index.ts`
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
+- Hooks/funcoes/constantes tocadas:
+  - `useState`
+  - `useEffect`
+  - `useMemo`
+  - `useCallback`
+  - `useErrorLogger("dash-operacional-faturamento")`
+  - `menuSections`
+  - `titleMap`
+  - `ROUTE_PAGE_KEYS`
+  - `permissionCatalog`
+- Comportamento antes/depois:
+  - Antes: nao havia tela para comparar codigos das tres origens.
+  - Depois: a rota `/dash-operacional-faturamento` consolida codigos por projeto e centro de servico, indicando divergencias e ausencias entre Medicao, Medicao Asbuilt e Faturamento.
