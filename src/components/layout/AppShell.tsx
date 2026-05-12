@@ -19,6 +19,7 @@ const menuSections = [
     items: [
       { href: "/home", label: "Dashboard Estoque", icon: "home" },
       { href: "/dashboard-medicao", label: "Dashboard Medicao", icon: "calendar" },
+      { href: "/dash-operacional-faturamento", label: "Dash operacional e faturamento", icon: "calendar" },
     ],
   },
   {
@@ -78,6 +79,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/dashboard-medicao": {
     title: "Dashboard Medicao",
     subtitle: "Indicadores de valor realizado, metas por ciclo e desempenho por encarregado.",
+  },
+  "/dash-operacional-faturamento": {
+    title: "Dash operacional e faturamento",
+    subtitle: "Comparativo de codigos entre Medicao, Medicao Asbuilt e Faturamento.",
   },
   "/pessoas": {
     title: "Pessoas",

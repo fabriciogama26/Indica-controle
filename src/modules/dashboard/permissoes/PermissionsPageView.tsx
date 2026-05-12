@@ -52,6 +52,7 @@ const roleOptions: RoleOption[] = [
 const permissionCatalog = [
   { pageKey: "home", label: "Dashboard Estoque", path: "/home", section: "Visao Geral" },
   { pageKey: "dashboard-medicao", label: "Dashboard Medicao", path: "/dashboard-medicao", section: "Visao Geral" },
+  { pageKey: "dash-operacional-faturamento", label: "Dash operacional e faturamento", path: "/dash-operacional-faturamento", section: "Visao Geral" },
   { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
   { pageKey: "locacao", label: "Locacao", path: "/locacao", section: "Operacao" },
   { pageKey: "programacao-simples", label: "Programacao", path: "/programacao-simples", section: "Operacao" },
@@ -95,6 +96,7 @@ function createPermissionSet(role: string): PermissionCard[] {
   const defaultPageAccess = [
     "home",
     "dashboard-medicao",
+    "dash-operacional-faturamento",
     "projetos",
     "locacao",
     "programacao-simples",

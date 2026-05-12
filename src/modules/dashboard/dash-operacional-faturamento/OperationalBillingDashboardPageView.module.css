@@ -1,0 +1,278 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: #001f5b;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(16, 37, 78, 0.06);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #002b7f;
+}
+
+.cardSubtitle {
+  margin: 4px 0 0;
+  color: #31456f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.actions,
+.tableActions,
+.valueSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.tableActions {
+  flex-direction: column;
+}
+
+.valueSummary {
+  color: #31456f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: #002b7f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.field select,
+.field input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid #c8d4ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #001f5b;
+  font: inherit;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.checkboxField {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #c8d4ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #001f5b;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.checkboxField input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 34px;
+  border-radius: 8px;
+  font-weight: 800;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 0;
+  background: #1f4ea3;
+  color: #ffffff;
+}
+
+.secondaryButton {
+  border: 1px solid #c8d4ea;
+  background: #ffffff;
+  color: #1f4ea3;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.field select:disabled,
+.field input:disabled,
+.checkboxField input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.metric {
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px 16px;
+}
+
+.metric span {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  color: #002b7f;
+  font-size: 22px;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+}
+
+.table {
+  width: 100%;
+  min-width: 1320px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th {
+  border-bottom: 1px solid #d9e1ef;
+  background: #eef2f8;
+  color: #002b7f;
+  text-align: left;
+  font-weight: 800;
+  padding: 10px;
+  white-space: nowrap;
+}
+
+.table td {
+  border-bottom: 1px solid #e2e8f3;
+  color: #001f5b;
+  padding: 10px;
+  vertical-align: top;
+}
+
+.table tbody tr:nth-child(even) {
+  background: #f8fbff;
+}
+
+.emptyRow {
+  color: #60708f;
+  text-align: center;
+}
+
+.statusActive,
+.statusInactive,
+.statusOk,
+.statusDivergent,
+.statusMissing {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.statusActive,
+.statusOk {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.statusInactive,
+.statusMissing {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+.statusDivergent {
+  background: #fef3c7;
+  color: #7c4a03;
+}
+
+.feedbackSuccess,
+.feedbackError {
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.feedbackSuccess {
+  border: 1px solid #86efac;
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.feedbackError {
+  border: 1px solid #fecaca;
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+@media (max-width: 1200px) {
+  .filterGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .cardHeader,
+  .actions,
+  .tableActions,
+  .valueSummary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filterGrid,
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
