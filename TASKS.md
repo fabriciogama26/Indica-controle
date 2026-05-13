@@ -610,3 +610,9 @@
 
 
 
+
+- [x] Ajustar Estado Trabalho da Programacao para salvar somente a programacao selecionada, removendo propagacao para outros dias do projeto e desativando o trigger legado de sincronizacao por Projeto + Data.
+
+- [x] Ajustar Status execucao da Medicao para usar o ultimo Estado Trabalho registrado do projeto, sem hierarquia fixa entre CONCLUIDO, PARCIAL e demais estados.
+
+- [x] Ajustar cascata de Estado Trabalho da Programacao para sincronizar somente outras equipes do mesmo Projeto + Data execucao, sem afetar outros dias.

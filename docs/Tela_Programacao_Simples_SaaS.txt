@@ -57,6 +57,10 @@ Arquitetura
   - Tabela: `programming_work_completion_catalog`
   - Vinculo em `project_programming`: FK (`tenant_id`, `work_completion_status`) -> (`tenant_id`, `code`)
   - RPC atualizada: `set_project_programming_execution_result` passa a validar Estado do Projeto pelo catalogo ativo do tenant.
+- Migration de limite da cascata de Estado Trabalho:
+  - `supabase/migrations/183_limit_work_completion_status_cascade_to_project_date.sql`
+  - Objetivo: garantir que a sincronizacao de `Estado Trabalho` ocorra somente entre programacoes ativas do mesmo `Projeto + Data de execucao`.
+  - Regra atual: alterar `Estado Trabalho` tambem atualiza outras equipes programadas no mesmo projeto e na mesma data, sem afetar outros dias.
 - Migration de Campo eletrico:
   - `supabase/migrations/110_add_programming_electrical_field_and_history_rpc.sql`
   - Campo em `project_programming`: `campo_eletrico`
@@ -160,8 +164,8 @@ Cadastro
   - Em edicao, a equipe da programacao pode ser trocada na propria tela, mantendo exatamente uma equipe selecionada.
   - Quando houver troca de equipe na edicao, a tela exibe aviso visual com `Equipe original` e `Nova equipe`.
   - Troca de equipe na edicao continua sendo tratada como reprogramacao e exige `Motivo da reprogramacao`.
-  - Em edicao, quando `Estado Trabalho` for alterado em uma equipe, o sistema sincroniza o mesmo valor para todas as equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
-  - Se `Estado Trabalho` for limpo na edicao, a limpeza tambem e replicada para todas as equipes ativas do mesmo `Projeto + Data de execucao`.
+  - Em edicao, quando `Estado Trabalho` for alterado, o sistema sincroniza o mesmo valor para outras equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
+  - `Estado Trabalho` nao e propagado por posicao visual da lista nem por outros dias do mesmo projeto.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
   - Para equipes `LV-xx`, a replicacao de documentos tambem alcanca as programacoes ativas do mesmo projeto com `Data de execucao` em ate `+7 dias` da programacao de origem.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
@@ -1144,3 +1148,19 @@ Atualizacao adicional 2026-05-11 (salvar Estado Trabalho no modal de projeto con
   - Antes: a troca rapida de estado no modal nao tinha contrato HTTP dedicado.
   - Depois: `PATCH /api/programacao` aceita `action = SALVAR_ESTADO_TRABALHO`, valida o catalogo do tenant, atualiza apenas `work_completion_status`, preserva `tenant_id`, registra historico operacional em `project_programming_history` e retorna o `schedule` atualizado.
   - Multi-tenant: todas as leituras/escritas filtram por `tenant_id`; o estado selecionado precisa existir ativo em `programming_work_completion_catalog` do tenant atual.
+
+Atualizacao adicional 2026-05-13 (Estado Trabalho somente no registro selecionado)
+----------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/183_limit_work_completion_status_cascade_to_project_date.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Removida a funcao interna `propagateWorkCompletionStatusToProjectDays`.
+  - Ajustada a validacao de projeto `CONCLUIDO` no `saveProgramming` para permitir reabertura direta somente quando a programacao selecionada for o proprio registro concluido.
+  - Recriado, via migration, o trigger `trg_project_programming_sync_work_completion_status` com escopo restrito a `Projeto + Data de execucao`.
+- Comportamento antes/depois:
+  - Antes: ao reabrir um projeto concluido pela edicao, a API propagava o novo `Estado Trabalho` para programacoes ativas de outros dias do mesmo projeto.
+  - Depois: a alteracao de `Estado Trabalho` sincroniza somente programacoes ativas de outras equipes no mesmo `Projeto + Data de execucao`, preservando `tenant_id`, catalogo por tenant, concorrencia por `expectedUpdatedAt` e historico dos registros alterados.
+  - Nao existe cascata baseada na posicao visual da tabela nem em outros dias do mesmo projeto.
