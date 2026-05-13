@@ -127,7 +127,7 @@ Filtros, auto-complete e listagem
   - Motivo sem producao (lista carregada de `measurement_no_production_reasons`; aceita `Todos`)
   - Programacao (`TODOS`, `Programada`, `Nao programada`)
   - Estado Trabalho (catalogo por tenant vindo de `programming_work_completion_catalog`, com opcoes dinamicas + `Nao informado`)
-  - Alerta Concluido/Parcial (`TODOS`, `Com alerta`, `Sem alerta`)
+  - Alerta Status execucao (`TODOS`, `Com alerta`, `Sem alerta`)
 - Listagem:
   - Numero da ordem
   - Projeto
@@ -136,6 +136,7 @@ Filtros, auto-complete e listagem
   - Encarregado
   - Programacao (`Programada` ou `Nao programada`)
   - Status execucao da programacao + alerta de atualizacao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
+  - `Status execucao` aceita todos os codigos ativos do catalogo de `Estado Trabalho` da Programacao, como `CONCLUIDO`, `PARCIAL`, `PENDENCIA` e outros estados cadastrados no tenant.
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados
@@ -422,6 +423,24 @@ Atualizacao 2026-04-16
   - Depois: o filtro de `Estado Trabalho` na Medicao passa a exibir apenas `Concluido`, `Parcial` e `Nao informado`.
   - Antes: o alerta de mudanca apos medicao comparava apenas o status do match do mesmo dia.
   - Depois: o alerta considera a ultima consolidacao economica do projeto (`CONCLUIDO` ou `PARCIAL`) em relacao ao momento da medicao.
+
+Atualizacao 2026-05-13
+----------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `resolveMeasurementWorkCompletionStatus`
+  - `measurementWorkCompletionRank`
+  - `loadProgrammingMatchMap`
+  - `workCompletionFilterOptions`
+  - Renderizacao do filtro `Estado Trabalho`
+- Comportamento antes/depois:
+  - Antes: a consolidacao da Medicao normalizava `Status execucao` para apenas `CONCLUIDO` ou `PARCIAL`; estados como `PENDENCIA` podiam aparecer como `Nao informado` e nao ficavam disponiveis no filtro.
+  - Depois: a Medicao preserva qualquer codigo de `Estado Trabalho` cadastrado na Programacao, incluindo `PENDENCIA`, exibe o label do catalogo na coluna `Status execucao` e permite filtrar por todos os estados ativos do tenant.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; a leitura continua limitada por `tenant_id` e o catalogo usado no filtro vem de `programming_work_completion_catalog` do tenant autenticado.
 
 Atualizacao 2026-04-24
 ----------------------

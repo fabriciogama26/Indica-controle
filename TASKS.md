@@ -462,6 +462,7 @@
 - [x] Embutir persistencia de `ETAPA UNICA` e `ETAPA FINAL` nas RPCs full (`single` e `batch`) por overload transacional, mantendo fallback compativel para ambientes sem a migration nova.
 - [x] Ajustar a Medicao para herdar `CONCLUIDO` por projeto global (independente de data/equipe), aplicando para ordens `Programada` e `Nao programada` e preservando alerta de alteracao apos medicao.
 - [x] Ajustar a Medicao para consolidacao economica de Estado Trabalho por projeto com hierarquia `CONCLUIDO > PARCIAL`, aplicando em ordens Programada/Nao programada e limitando o filtro da tela a Concluido, Parcial e Nao informado.
+- [x] Ajustar a Medicao para exibir e filtrar todos os estados ativos de `Estado Trabalho` vindos da Programacao no `Status execucao`, incluindo estados nao economicos como `PENDENCIA`, mantendo catalogo por tenant.
 
 - [x] Corrigir wrappers da Programacao com ETAPA UNICA/FINAL para eliminar chamada recursiva/assinatura invalida apos a migration 158, reaproveitando as bases save_project_programming_full/save_project_programming_batch_full e mantendo Ponto eletrico + N EQ + flags no mesmo fluxo.
 - [x] Enriquecer o erro de conflito de horario da Programacao para exibir Equipe e Encarregado no modal de falha (TEAM_TIME_CONFLICT), tanto no cadastro em lote quanto no save individual.
