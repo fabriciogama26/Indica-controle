@@ -76,6 +76,8 @@ type AggregatedRow = {
   activeSignals: Set<boolean>;
 };
 
+type DashboardRow = Omit<AggregatedRow, "activityIds" | "activeSignals">;
+
 type BillingCategoryRow = {
   categoryId: string;
   categoryName: string;
@@ -363,39 +365,46 @@ async function loadActivityCategoryMap(params: {
 }
 
 function buildBillingCategoryRows(params: {
+  rows: DashboardRow[];
   billingItems: CommercialItemRow[];
   activityToCategory: Map<string, string>;
   categoryNameById: Map<string, string>;
-  activityStatusMap: Map<string, boolean>;
-  activityCodeFilter: string;
-  activityStatusFilter: ActivityStatusFilter;
 }) {
   const categoryMap = new Map<string, BillingCategoryRow>();
+  const categoryByCode = new Map<string, { categoryId: string; categoryName: string }>();
 
   for (const item of params.billingItems) {
     const code = normalizeCode(item.activity_code);
     if (!code) continue;
-    if (params.activityCodeFilter && !code.includes(params.activityCodeFilter)) continue;
-
-    const activityActive = item.activity_active_snapshot ?? params.activityStatusMap.get(item.service_activity_id);
-    const activityStatus = activityActive === false ? "INATIVA" : "ATIVA";
-    if (params.activityStatusFilter !== "TODAS" && activityStatus !== params.activityStatusFilter) continue;
 
     const categoryId = params.activityToCategory.get(item.service_activity_id) ?? "__NO_CATEGORY__";
-    const current = categoryMap.get(categoryId) ?? {
+    categoryByCode.set(code, {
       categoryId,
       categoryName: categoryId === "__NO_CATEGORY__" ? "Nao identificada" : params.categoryNameById.get(categoryId) ?? "Nao identificada",
+    });
+  }
+
+  for (const row of params.rows) {
+    if (row.billing.itemCount <= 0) continue;
+
+    const category = categoryByCode.get(row.code) ?? {
+      categoryId: "__NO_CATEGORY__",
+      categoryName: "Nao identificada",
+    };
+    const current = categoryMap.get(category.categoryId) ?? {
+      categoryId: category.categoryId,
+      categoryName: category.categoryName,
       quantity: 0,
       value: 0,
       itemCount: 0,
       codes: [],
     };
 
-    current.quantity += numberValue(item.quantity);
-    current.value += numberValue(item.total_value);
-    current.itemCount += 1;
-    if (!current.codes.includes(code)) current.codes.push(code);
-    categoryMap.set(categoryId, current);
+    current.quantity += row.billing.quantity;
+    current.value += row.billing.value;
+    current.itemCount += row.billing.itemCount;
+    if (!current.codes.includes(row.code)) current.codes.push(row.code);
+    categoryMap.set(category.categoryId, current);
   }
 
   return Array.from(categoryMap.values())
@@ -433,7 +442,7 @@ function nearlyEqual(left: number, right: number, tolerance: number) {
   return Math.abs(left - right) <= tolerance;
 }
 
-function finalizeRows(rows: AggregatedRow[], activityStatusMap: Map<string, boolean>) {
+function finalizeRows(rows: AggregatedRow[], activityStatusMap: Map<string, boolean>): DashboardRow[] {
   return rows.map((row) => {
     for (const activityId of row.activityIds) {
       const active = activityStatusMap.get(activityId);
@@ -442,7 +451,7 @@ function finalizeRows(rows: AggregatedRow[], activityStatusMap: Map<string, bool
 
     const hasActive = row.activeSignals.has(true);
     const hasInactive = row.activeSignals.has(false);
-    const activityStatus = hasActive ? "ATIVA" : hasInactive ? "INATIVA" : "NAO_IDENTIFICADA";
+    const activityStatus: DashboardRow["activityStatus"] = hasActive ? "ATIVA" : hasInactive ? "INATIVA" : "NAO_IDENTIFICADA";
     const hasMeasurement = row.measurement.itemCount > 0;
     const hasAsbuilt = row.asbuilt.itemCount > 0;
     const hasBilling = row.billing.itemCount > 0;
@@ -587,12 +596,10 @@ export async function GET(request: NextRequest) {
       .sort((left, right) => left.code.localeCompare(right.code, "pt-BR"));
 
     const billingCategories = buildBillingCategoryRows({
+      rows: allRows,
       billingItems,
       activityToCategory: activityCategoryMap.activityToCategory,
       categoryNameById: activityCategoryMap.categoryNameById,
-      activityStatusMap,
-      activityCodeFilter,
-      activityStatusFilter,
     });
 
     const summary = allRows.reduce(

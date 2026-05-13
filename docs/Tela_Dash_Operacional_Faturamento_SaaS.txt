@@ -67,6 +67,7 @@ Filtros, auto-complete e listagem
   - Codigos cobrados
   - Itens
 - A tabela de categorias usa `service_activities.type_service` e `types_service_activities.name` para agrupar os codigos faturados.
+- A tabela de categorias e calculada a partir das mesmas linhas finais exibidas em `Codigos por origem`, considerando somente linhas com quantidade/valor de Faturamento apos os filtros aplicados.
 - Exemplo: se dois itens faturados da categoria `POSTE` tiverem quantidades 2 e 3 no mesmo projeto, a tabela mostra `POSTE` com quantidade cobrada 5.
 - A tela possui exportacao CSV do resultado filtrado.
 - O botao `Exportar CSV` fica no bloco da tabela, acima do resumo de valores de Medicao, Asbuilt e Faturamento.
@@ -123,6 +124,7 @@ Atualizacao 2026-05
   - A consulta da tabela e aplicada somente pelo botao `Filtrar`.
   - A exportacao CSV fica no bloco da tabela, acima do resumo financeiro por origem.
   - A tela passa a exibir a tabela `Categorias cobradas no faturamento`, agrupando os codigos faturados por categoria da atividade e somando quantidade/valor cobrado.
+  - A tabela `Categorias cobradas no faturamento` passa a usar o mesmo agregado final da tabela `Codigos por origem`, evitando ficar vazia quando existem codigos com valores de Faturamento no resultado filtrado.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -130,7 +132,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
   - Responsavel por: renderizar filtros obrigatorios, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, exibir resumo, montar tabela comparativa e exportar CSV no bloco da tabela.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, agregar categorias cobradas do Faturamento por `service_activities.type_service`, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, agregar categorias cobradas do Faturamento por `service_activities.type_service` a partir das linhas finais filtradas, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -145,6 +147,7 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
   - Responsavel por: `loadProjects`, `loadOrderIds`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildBillingCategoryRows`, `addItem`, `finalizeRows`.
+  - Comportamento ajustado: `buildBillingCategoryRows` recebe as linhas finais filtradas e soma apenas os codigos que possuem itens de Faturamento exibidos na tabela principal.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
   - Responsavel por: `formatNumber`, `formatCurrency`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `handleServiceCenterChange`, `handleProjectChange`, `exportRows`.
 
@@ -176,3 +179,4 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: nao havia tela para comparar codigos das tres origens.
   - Depois: a rota `/dash-operacional-faturamento` consolida codigos por projeto e centro de servico, indicando divergencias e ausencias entre Medicao, Medicao Asbuilt e Faturamento.
+  - Ajuste posterior: categorias cobradas deixam de depender de um agregado paralelo e passam a seguir o mesmo resultado exibido em `Codigos por origem`.
