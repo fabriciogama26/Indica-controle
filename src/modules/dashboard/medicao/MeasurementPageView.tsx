@@ -904,27 +904,19 @@ export function MeasurementPageView() {
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
-  const economicWorkCompletionOptions = useMemo(() => {
-    const map = new Map<EconomicWorkCompletionStatus, { code: EconomicWorkCompletionStatus; label: string }>();
+  const workCompletionFilterOptions = useMemo(() => {
+    const map = new Map<string, { code: string; label: string }>();
 
     for (const item of workCompletionCatalog) {
-      const economicStatus = resolveEconomicWorkCompletionStatus(item.code);
-      if (!economicStatus || map.has(economicStatus)) {
+      const code = normalizeWorkCompletionCodeToken(item.code);
+      if (!code || map.has(code)) {
         continue;
       }
 
-      map.set(economicStatus, {
-        code: economicStatus,
-        label: String(item.label ?? "").trim() || economicStatus,
+      map.set(code, {
+        code,
+        label: String(item.label ?? "").trim() || code,
       });
-    }
-
-    if (!map.has("CONCLUIDO")) {
-      map.set("CONCLUIDO", { code: "CONCLUIDO", label: "Concluido" });
-    }
-
-    if (!map.has("PARCIAL")) {
-      map.set("PARCIAL", { code: "PARCIAL", label: "Parcial" });
     }
 
     return Array.from(map.values());
@@ -934,9 +926,13 @@ export function MeasurementPageView() {
 
     for (const item of workCompletionCatalog) {
       const rawCode = String(item.code ?? "").trim().toUpperCase();
+      const normalizedCode = normalizeWorkCompletionCodeToken(item.code);
       const label = String(item.label ?? "").trim();
       if (rawCode) {
         map.set(rawCode, label || rawCode);
+      }
+      if (normalizedCode) {
+        map.set(normalizedCode, label || normalizedCode);
       }
 
       const economicStatus = resolveEconomicWorkCompletionStatus(item.code);
@@ -2897,7 +2893,7 @@ export function MeasurementPageView() {
             <span>Estado Trabalho</span>
             <select value={filterDraft.workCompletionStatus} onChange={(event) => setFilterDraft((current) => ({ ...current, workCompletionStatus: event.target.value as Filters["workCompletionStatus"] }))}>
               <option value="TODOS">Todos</option>
-              {economicWorkCompletionOptions
+              {workCompletionFilterOptions
                 .map((item) => (
                   <option key={item.code} value={item.code}>{item.label}</option>
                 ))}
@@ -2905,7 +2901,7 @@ export function MeasurementPageView() {
             </select>
           </label>
           <label className={styles.field}>
-            <span>Alerta Concluido/Parcial</span>
+            <span>Alerta Status execucao</span>
             <select value={filterDraft.completionAlert} onChange={(event) => setFilterDraft((current) => ({ ...current, completionAlert: event.target.value as Filters["completionAlert"] }))}>
               <option value="TODOS">Todos</option>
               <option value="SIM">Com alerta</option>

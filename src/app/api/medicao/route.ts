@@ -310,8 +310,12 @@ function normalizeWorkCompletionStatusToken(value: unknown) {
     .replace(/\s+/g, "_");
 }
 
-function resolveMeasurementEconomicCompletionStatus(value: unknown): ProgrammingWorkCompletionStatus {
+function resolveMeasurementWorkCompletionStatus(value: unknown): ProgrammingWorkCompletionStatus {
   const token = normalizeWorkCompletionStatusToken(value);
+  if (!token || token === "NAO_INFORMADO") {
+    return null;
+  }
+
   if (
     token === "CONCLUIDO"
     || token === "COMPLETO"
@@ -324,13 +328,14 @@ function resolveMeasurementEconomicCompletionStatus(value: unknown): Programming
     return "PARCIAL";
   }
 
-  return null;
+  return token;
 }
 
-function measurementEconomicCompletionRank(value: unknown) {
-  const normalized = resolveMeasurementEconomicCompletionStatus(value);
-  if (normalized === "CONCLUIDO") return 2;
-  if (normalized === "PARCIAL") return 1;
+function measurementWorkCompletionRank(value: unknown) {
+  const normalized = resolveMeasurementWorkCompletionStatus(value);
+  if (normalized === "CONCLUIDO") return 3;
+  if (normalized === "PARCIAL") return 2;
+  if (normalized) return 1;
   return 0;
 }
 
@@ -415,21 +420,21 @@ async function loadProgrammingMatchMap(params: {
     .not("work_completion_status", "is", null)
     .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "work_completion_status" | "updated_at">>>();
 
-  const projectEconomicStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; rank: number; updatedAt: string }>();
+  const projectWorkCompletionStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; rank: number; updatedAt: string }>();
   for (const row of projectCompletionRows ?? []) {
-    const completionStatus = resolveMeasurementEconomicCompletionStatus(row.work_completion_status);
-    const completionRank = measurementEconomicCompletionRank(completionStatus);
+    const completionStatus = resolveMeasurementWorkCompletionStatus(row.work_completion_status);
+    const completionRank = measurementWorkCompletionRank(completionStatus);
     if (!completionStatus || completionRank <= 0) {
       continue;
     }
 
-    const current = projectEconomicStatusMap.get(row.project_id);
+    const current = projectWorkCompletionStatusMap.get(row.project_id);
     if (
       !current
       || completionRank > current.rank
       || (completionRank === current.rank && String(row.updated_at) > String(current.updatedAt))
     ) {
-      projectEconomicStatusMap.set(row.project_id, {
+      projectWorkCompletionStatusMap.set(row.project_id, {
         completionStatus,
         rank: completionRank,
         updatedAt: String(row.updated_at),
@@ -465,11 +470,11 @@ async function loadProgrammingMatchMap(params: {
     const projectDateMatch = selectBestProgrammingMatch(groupedByProjectDate.get(projectDateKey) ?? []);
     const completionMatch = exactMatch ?? projectDateMatch;
 
-    const projectEconomicStatus = projectEconomicStatusMap.get(order.project_id);
-    const currentCompletion = resolveMeasurementEconomicCompletionStatus(completionMatch?.work_completion_status);
-    const snapshotCompletion = resolveMeasurementEconomicCompletionStatus(order.programming_completion_status_snapshot);
-    const effectiveCompletion = projectEconomicStatus?.completionStatus ?? currentCompletion ?? snapshotCompletion;
-    const effectiveCompletionUpdatedAt = projectEconomicStatus?.updatedAt ?? completionMatch?.updated_at ?? null;
+    const projectWorkCompletionStatus = projectWorkCompletionStatusMap.get(order.project_id);
+    const currentCompletion = resolveMeasurementWorkCompletionStatus(completionMatch?.work_completion_status);
+    const snapshotCompletion = resolveMeasurementWorkCompletionStatus(order.programming_completion_status_snapshot);
+    const effectiveCompletion = projectWorkCompletionStatus?.completionStatus ?? currentCompletion ?? snapshotCompletion;
+    const effectiveCompletionUpdatedAt = projectWorkCompletionStatus?.updatedAt ?? completionMatch?.updated_at ?? null;
     const changedBySnapshot = Boolean(snapshotCompletion && effectiveCompletion && snapshotCompletion !== effectiveCompletion);
 
     const changedAfterMeasurementWithoutSnapshot = Boolean(
