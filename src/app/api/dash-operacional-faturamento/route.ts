@@ -18,6 +18,16 @@ type ActivityRow = {
   ativo: boolean | null;
 };
 
+type ActivityCategoryRow = {
+  id: string;
+  type_service: string | null;
+};
+
+type TypeServiceRow = {
+  id: string;
+  name: string | null;
+};
+
 type OrderIdRow = {
   id: string;
 };
@@ -64,6 +74,15 @@ type AggregatedRow = {
   situation: string;
   activityIds: Set<string>;
   activeSignals: Set<boolean>;
+};
+
+type BillingCategoryRow = {
+  categoryId: string;
+  categoryName: string;
+  quantity: number;
+  value: number;
+  itemCount: number;
+  codes: string[];
 };
 
 function normalizeText(value: unknown) {
@@ -297,6 +316,96 @@ async function loadActivityStatusMap(params: {
   return result;
 }
 
+async function loadActivityCategoryMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  activityIds: string[];
+}) {
+  const activityToCategory = new Map<string, string>();
+  const categoryIds = new Set<string>();
+  const ids = Array.from(new Set(params.activityIds.filter(Boolean)));
+
+  for (const idChunk of chunk(ids, 500)) {
+    const { data, error } = await params.supabase
+      .from("service_activities")
+      .select("id, type_service")
+      .eq("tenant_id", params.tenantId)
+      .in("id", idChunk)
+      .returns<ActivityCategoryRow[]>();
+
+    if (error) throw new Error("Falha ao carregar categorias das atividades.");
+
+    for (const row of data ?? []) {
+      if (row.type_service) {
+        activityToCategory.set(row.id, row.type_service);
+        categoryIds.add(row.type_service);
+      }
+    }
+  }
+
+  const categoryNameById = new Map<string, string>();
+  for (const idChunk of chunk(Array.from(categoryIds), 500)) {
+    const { data, error } = await params.supabase
+      .from("types_service_activities")
+      .select("id, name")
+      .eq("tenant_id", params.tenantId)
+      .in("id", idChunk)
+      .returns<TypeServiceRow[]>();
+
+    if (error) throw new Error("Falha ao carregar nomes das categorias.");
+
+    for (const row of data ?? []) {
+      categoryNameById.set(row.id, normalizeText(row.name) || "Nao identificado");
+    }
+  }
+
+  return { activityToCategory, categoryNameById };
+}
+
+function buildBillingCategoryRows(params: {
+  billingItems: CommercialItemRow[];
+  activityToCategory: Map<string, string>;
+  categoryNameById: Map<string, string>;
+  activityStatusMap: Map<string, boolean>;
+  activityCodeFilter: string;
+  activityStatusFilter: ActivityStatusFilter;
+}) {
+  const categoryMap = new Map<string, BillingCategoryRow>();
+
+  for (const item of params.billingItems) {
+    const code = normalizeCode(item.activity_code);
+    if (!code) continue;
+    if (params.activityCodeFilter && !code.includes(params.activityCodeFilter)) continue;
+
+    const activityActive = item.activity_active_snapshot ?? params.activityStatusMap.get(item.service_activity_id);
+    const activityStatus = activityActive === false ? "INATIVA" : "ATIVA";
+    if (params.activityStatusFilter !== "TODAS" && activityStatus !== params.activityStatusFilter) continue;
+
+    const categoryId = params.activityToCategory.get(item.service_activity_id) ?? "__NO_CATEGORY__";
+    const current = categoryMap.get(categoryId) ?? {
+      categoryId,
+      categoryName: categoryId === "__NO_CATEGORY__" ? "Nao identificada" : params.categoryNameById.get(categoryId) ?? "Nao identificada",
+      quantity: 0,
+      value: 0,
+      itemCount: 0,
+      codes: [],
+    };
+
+    current.quantity += numberValue(item.quantity);
+    current.value += numberValue(item.total_value);
+    current.itemCount += 1;
+    if (!current.codes.includes(code)) current.codes.push(code);
+    categoryMap.set(categoryId, current);
+  }
+
+  return Array.from(categoryMap.values())
+    .map((row) => ({
+      ...row,
+      codes: row.codes.sort((left, right) => left.localeCompare(right, "pt-BR")),
+    }))
+    .sort((left, right) => left.categoryName.localeCompare(right.categoryName, "pt-BR"));
+}
+
 function addItem(
   target: Map<string, AggregatedRow>,
   origin: OriginKey,
@@ -406,6 +515,7 @@ export async function GET(request: NextRequest) {
         filters: { projects, serviceCenters },
         selectedProject: null,
         rows: [],
+        billingCategories: [],
         summary: null,
       });
     }
@@ -420,6 +530,7 @@ export async function GET(request: NextRequest) {
         filters: { projects, serviceCenters },
         selectedProject,
         rows: [],
+        billingCategories: [],
         summary: {
           totalRows: 0,
           divergentRows: 0,
@@ -462,13 +573,27 @@ export async function GET(request: NextRequest) {
     for (const item of billingItems) addItem(aggregate, "billing", item);
 
     const activityIds = Array.from(aggregate.values()).flatMap((row) => Array.from(row.activityIds));
-    const activityStatusMap = await loadActivityStatusMap({ supabase: resolution.supabase, tenantId, activityIds });
+    const billingActivityIds = billingItems.map((item) => item.service_activity_id);
+    const allActivityIds = Array.from(new Set([...activityIds, ...billingActivityIds].filter(Boolean)));
+    const [activityStatusMap, activityCategoryMap] = await Promise.all([
+      loadActivityStatusMap({ supabase: resolution.supabase, tenantId, activityIds: allActivityIds }),
+      loadActivityCategoryMap({ supabase: resolution.supabase, tenantId, activityIds: billingActivityIds }),
+    ]);
     const allRows = finalizeRows(Array.from(aggregate.values()), activityStatusMap)
       .filter((row) => !activityCodeFilter || row.code.includes(activityCodeFilter))
       .filter((row) => activityStatusFilter === "TODAS" || row.activityStatus === activityStatusFilter)
       .filter((row) => !onlyDivergences || row.isDivergent)
       .filter((row) => !onlyMissing || row.isMissingInAnyBase)
       .sort((left, right) => left.code.localeCompare(right.code, "pt-BR"));
+
+    const billingCategories = buildBillingCategoryRows({
+      billingItems,
+      activityToCategory: activityCategoryMap.activityToCategory,
+      categoryNameById: activityCategoryMap.categoryNameById,
+      activityStatusMap,
+      activityCodeFilter,
+      activityStatusFilter,
+    });
 
     const summary = allRows.reduce(
       (accumulator, row) => ({
@@ -495,6 +620,7 @@ export async function GET(request: NextRequest) {
       filters: { projects, serviceCenters },
       selectedProject,
       rows: allRows,
+      billingCategories,
       summary,
     });
   } catch (error) {

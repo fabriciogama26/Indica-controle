@@ -39,6 +39,15 @@ type DashboardRow = {
   situation: string;
 };
 
+type BillingCategoryRow = {
+  categoryId: string;
+  categoryName: string;
+  quantity: number;
+  value: number;
+  itemCount: number;
+  codes: string[];
+};
+
 type Summary = {
   totalRows: number;
   divergentRows: number;
@@ -57,6 +66,7 @@ type DashboardResponse = {
   };
   selectedProject?: ProjectOption | null;
   rows?: DashboardRow[];
+  billingCategories?: BillingCategoryRow[];
   summary?: Summary | null;
 };
 
@@ -101,6 +111,7 @@ export function OperationalBillingDashboardPageView() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<Option[]>([]);
   const [rows, setRows] = useState<DashboardRow[]>([]);
+  const [billingCategories, setBillingCategories] = useState<BillingCategoryRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
   const [serviceCenterId, setServiceCenterId] = useState("");
@@ -139,6 +150,7 @@ export function OperationalBillingDashboardPageView() {
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
       setRows([]);
+      setBillingCategories([]);
       setSummary(null);
       setFeedback(null);
     } catch (error) {
@@ -180,6 +192,7 @@ export function OperationalBillingDashboardPageView() {
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
       setRows(payload.rows ?? []);
+      setBillingCategories(payload.billingCategories ?? []);
       setSummary(payload.summary ?? null);
       setFeedback({ type: "success", message: "Comparativo atualizado." });
     } catch (error) {
@@ -207,6 +220,7 @@ export function OperationalBillingDashboardPageView() {
     if (currentProject && value && currentProject.serviceCenterId !== value) {
       setProjectId("");
       setRows([]);
+      setBillingCategories([]);
       setSummary(null);
     }
   }
@@ -442,6 +456,50 @@ export function OperationalBillingDashboardPageView() {
                 <tr>
                   <td colSpan={14} className={styles.emptyRow}>
                     {isLoading ? "Carregando comparativo..." : "Nenhum codigo encontrado para os filtros selecionados."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Categorias cobradas no faturamento</h2>
+            <p className={styles.cardSubtitle}>
+              Quantidade e valor cobrados por categoria dos codigos faturados no projeto selecionado.
+            </p>
+          </div>
+        </div>
+
+        <div className={styles.tableWrapper}>
+          <table className={styles.categoryTable}>
+            <thead>
+              <tr>
+                <th>Categoria</th>
+                <th>Quantidade cobrada</th>
+                <th>Valor cobrado</th>
+                <th>Codigos cobrados</th>
+                <th>Itens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {billingCategories.length ? (
+                billingCategories.map((category) => (
+                  <tr key={category.categoryId}>
+                    <td><strong>{category.categoryName}</strong></td>
+                    <td>{formatNumber(category.quantity)}</td>
+                    <td>{formatCurrency(category.value)}</td>
+                    <td>{category.codes.join(", ") || "Nao informado"}</td>
+                    <td>{category.itemCount}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className={styles.emptyRow}>
+                    {isLoading ? "Carregando categorias..." : "Nenhuma categoria cobrada no faturamento para os filtros selecionados."}
                   </td>
                 </tr>
               )}

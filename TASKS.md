@@ -601,6 +601,7 @@
 - [x] Permitir registrar codigo de atividade inativo em `Faturamento` e `Medicao Asbuilt`, salvando snapshot `activity_active_snapshot` no item sem alterar a regra da tela `Medicao`.
 - [x] Corrigir leitura de itens importados em massa no detalhe/edicao de `Faturamento` e `Medicao Asbuilt`, incluindo fallback para bancos sem `activity_active_snapshot` e migration incremental `178`.
 - [x] Criar tela `Dash operacional e faturamento` para comparar, por projeto, os codigos de atividade usados em `Medicao`, `Medicao Asbuilt` e `Faturamento`, consolidando uma linha unica por codigo com somatorio de quantidade e valor por origem; filtros obrigatorios: Projeto, Codigo de atividade, Atividade ativa/inativa, Mostrar somente divergencias, Mostrar somente codigos ausentes em alguma base e Centro de servico; sem filtro de data e sem filtro de equipe.
+- [x] Adicionar no `Dash operacional e faturamento` a tabela `Categorias cobradas no faturamento`, agrupando codigos faturados por categoria da atividade (`service_activities.type_service`) e somando quantidade e valor cobrado por projeto.
 - [x] Criar `docs/Tela_Medicao_Asbuilt_SaaS.txt` e registrar que o dashboard comparativo fica para etapa futura.
 - [x] Corrigir carregamento de `Operacoes de Equipe` apos a migration `179`, adicionando fallback de leitura para schema em transicao e logs tecnicos por etapa da API.
 
