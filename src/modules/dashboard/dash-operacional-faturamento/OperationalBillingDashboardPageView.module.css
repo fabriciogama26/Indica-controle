@@ -171,14 +171,23 @@
   border-radius: 8px;
 }
 
-.table {
+.table,
+.categoryTable {
   width: 100%;
-  min-width: 1320px;
   border-collapse: collapse;
   font-size: 12px;
 }
 
-.table th {
+.table {
+  min-width: 1320px;
+}
+
+.categoryTable {
+  min-width: 760px;
+}
+
+.table th,
+.categoryTable th {
   border-bottom: 1px solid #d9e1ef;
   background: #eef2f8;
   color: #002b7f;
@@ -188,14 +197,16 @@
   white-space: nowrap;
 }
 
-.table td {
+.table td,
+.categoryTable td {
   border-bottom: 1px solid #e2e8f3;
   color: #001f5b;
   padding: 10px;
   vertical-align: top;
 }
 
-.table tbody tr:nth-child(even) {
+.table tbody tr:nth-child(even),
+.categoryTable tbody tr:nth-child(even) {
   background: #f8fbff;
 }
 
