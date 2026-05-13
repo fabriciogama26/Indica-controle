@@ -616,3 +616,7 @@
 - [x] Ajustar Status execucao da Medicao para usar o ultimo Estado Trabalho registrado do projeto, sem hierarquia fixa entre CONCLUIDO, PARCIAL e demais estados.
 
 - [x] Ajustar cascata de Estado Trabalho da Programacao para sincronizar somente outras equipes do mesmo Projeto + Data execucao, sem afetar outros dias.
+- [ ] Ajustar o filtro `Projeto` do `Dash operacional e faturamento` para funcionar no mesmo padrao do filtro de `Projeto` da `Programacao Simples`: `input + datalist`, digitacao por SOB, validacao por codigo exato, preenchimento automatico do centro de servico quando o projeto for reconhecido e bloqueio de filtro com texto digitado sem projeto valido.
+- [ ] Evoluir a tabela `Categorias cobradas no faturamento` para responder quantos codigos distintos e quantos itens faturados existem por categoria, mantendo soma de quantidade e valor cobrado por projeto.
+- [ ] Definir e implementar classificacao operacional dos codigos faturados entre `Instalacao`, `Retirada`, `Misto/Ambiguo` e `Outros` antes de separar a tabela de categorias por instalacao/retirada; o catalogo atual possui categoria (`service_activities.type_service`) e grupo (`service_activities.group_name`), mas nao possui campo estruturado de natureza da atividade.
+- [x] Corrigir `Categorias cobradas no faturamento` do `Dash operacional e faturamento` para usar o mesmo agregado final de `Codigos por origem`, exibindo categorias sempre que houver quantidade/valor de Faturamento nas linhas filtradas.
