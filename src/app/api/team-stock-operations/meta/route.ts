@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
-import { isSerialTrackedMaterial, normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
+import { fetchActiveOperationalMaterials, toOperationalMaterialOption } from "@/lib/server/materialCatalog";
 
 type StockCenterRow = {
   id: string;
@@ -25,15 +25,6 @@ type PersonRow = {
 type ProjectRow = {
   id: string;
   sob: string;
-};
-
-type MaterialRow = {
-  id: string;
-  codigo: string;
-  descricao: string;
-  tipo: string;
-  is_transformer: boolean;
-  serial_tracking_type: SerialTrackingType | null;
 };
 
 type ReversalReasonRow = {
@@ -85,13 +76,7 @@ export async function GET(request: NextRequest) {
         .eq("is_active", true)
         .order("sob", { ascending: true })
         .returns<ProjectRow[]>(),
-      supabase
-        .from("materials")
-        .select("id, codigo, descricao, tipo, is_transformer, serial_tracking_type")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("is_active", true)
-        .order("codigo", { ascending: true })
-        .returns<MaterialRow[]>(),
+      fetchActiveOperationalMaterials(supabase, appUser.tenant_id),
       supabase
         .from("stock_transfer_reversal_reason_catalog")
         .select("code, label_pt, requires_notes")
@@ -153,14 +138,7 @@ export async function GET(request: NextRequest) {
         id: row.id,
         projectCode: row.sob,
       })),
-      materials: (materialsResult.data ?? []).map((row) => ({
-        id: row.id,
-        materialCode: row.codigo,
-        description: row.descricao,
-        materialType: String(row.tipo ?? "").trim().toUpperCase(),
-        isTransformer: isSerialTrackedMaterial(normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE"))),
-        serialTrackingType: normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE")),
-      })),
+      materials: (materialsResult.data ?? []).map(toOperationalMaterialOption),
       reversalReasons: reversalReasonsResult.error
         ? DEFAULT_REVERSAL_REASONS
         : (reversalReasonsResult.data ?? []).map((row) => ({
