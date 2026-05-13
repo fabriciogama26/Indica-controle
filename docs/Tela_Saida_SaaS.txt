@@ -224,6 +224,8 @@ Atualizacao 2026-05
 - Ajuste de regra: `Requisicao` passa a sugerir e validar Serial/LP a partir do centro de estoque principal, enquanto `Devolucao` passa a usar o centro proprio atual da equipe como origem real.
 - Ajuste de UX: o campo `Serial` da tela passa a listar somente unidades registradas em estoque para a origem real da operacao; `LP` tambem recebe lista quando o material exige esse campo.
 - Nova API `GET /api/team-stock-operations/serial-options` consulta `trafo_instances` por `tenant_id`, `material_id` e `current_stock_center_id`, sem expor centros de equipe na listagem publica de estoque.
+- Ajuste de catalogo operacional: `GET /api/team-stock-operations/meta` passa a carregar materiais ativos em paginas de 1000 registros pelo helper `fetchActiveOperationalMaterials`, evitando que codigos acima do limite padrao do Supabase/PostgREST deixem de aparecer no cadastro manual e no cadastro em massa.
+- O helper aplica fallback para schemas em transicao sem `materials.serial_tracking_type`, preservando a leitura por `is_transformer` quando necessario.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -234,6 +236,8 @@ Funcoes principais
   - Responsavel por: criar operacoes, listar historico operacional, montar o historico funcional por transferencia, omitir detalhes completos do cadastro inicial e aplicar fallback de leitura para schema em transicao.
 - Caminho: `src/app/api/team-stock-operations/import/route.ts`
   - Responsavel por: processar importacao em lote de requisicoes/devolucoes, validar saldo/TRAFO em sequencia e devolver erros por linha.
+- Caminho: `src/app/api/team-stock-operations/meta/route.ts`
+  - Responsavel por: carregar centros principais, equipes ativas, projetos, catalogo paginado de materiais ativos e motivos de estorno.
 - Caminho: `src/app/api/team-stock-operations/serial-options/route.ts`
   - Responsavel por: listar seriais e LPs disponiveis na origem real de `REQUISITION` ou `RETURN` para autocomplete e validacao previa.
 - Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
@@ -258,6 +262,8 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/saida/utils.ts`
   - Responsavel por: formatacao de datas, parser CSV, normalizacao da operacao, validacao decimal de quantidade e geracao do relatorio de erros.
+- Caminho: `src/lib/server/materialCatalog.ts`
+  - Responsavel por: carregar materiais ativos do tenant em paginas, normalizar `serial_tracking_type` e montar opcoes operacionais usadas no datalist e no parser de CSV.
 - Caminho: `src/hooks/useErrorLogger.ts`
   - Responsavel por: registrar falhas do modulo.
 
@@ -275,6 +281,7 @@ Ajuda contextual
   - `src/modules/dashboard/saida/utils.ts`
   - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
   - `src/modules/dashboard/saida/TeamStockOperationsPageView.module.css`
+  - `src/lib/server/materialCatalog.ts`
   - `src/app/api/team-stock-operations/meta/route.ts`
   - `src/app/api/team-stock-operations/serial-options/route.ts`
   - `src/app/api/team-stock-operations/route.ts`
@@ -294,6 +301,7 @@ Ajuda contextual
   - `TeamStockOperationsPageView`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `openHistoryModal`, `handleConfirmReversal`
   - `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`
   - `GET/POST` de `/api/team-stock-operations`
+  - `fetchActiveOperationalMaterials`, `toOperationalMaterialOption`
   - `GET` de `/api/team-stock-operations/serial-options`
   - `POST` de `/api/team-stock-operations/import`
   - `POST` de `/api/team-stock-operations/reversal`
@@ -315,3 +323,5 @@ Ajuda contextual
 - Depois: a API tenta fallback legado e registra a etapa tecnica no log do servidor para diagnostico sem expor detalhes ao usuario.
 - Antes: a validacao manual de serial reutilizava o rastreio publico, que mostra centro fisico de referencia quando a unidade esta com equipe.
 - Depois: a tela usa uma consulta propria por centro atual real; `REQUISITION` baixa do centro principal e `RETURN` baixa do centro proprio da equipe antes de creditar o centro principal.
+- Antes: o catalogo de materiais ativos do `meta` era carregado em uma unica consulta e podia ficar limitado pelo teto padrao da API.
+- Depois: o catalogo e carregado em paginas de 1000 registros, garantindo que materiais ativos do tenant continuem disponiveis no cadastro manual e no CSV mesmo com base grande.

@@ -271,6 +271,8 @@ Atualizacao 2026-05
 - Nova API `GET /api/stock-transfers/serial-options` consulta `trafo_instances` por `tenant_id`, `material_id` e `current_stock_center_id`, mantendo centros de equipe fora da movimentacao fisica.
 - O estorno passa a ser independente por item/linha da lista. A UI envia `transferItemId` e a API aciona a RPC de estorno por item, preservando o legado de estorno integral por `transferId`.
 - A tabela `stock_transfer_item_reversals` registra o vinculo `item original -> item de estorno` sem alterar registros historicos existentes.
+- Ajuste de catalogo operacional: `GET /api/stock-transfers/meta` passa a carregar materiais ativos em paginas de 1000 registros pelo helper `fetchActiveOperationalMaterials`, evitando que codigos acima do limite padrao do Supabase/PostgREST deixem de aparecer no cadastro manual e no cadastro em massa.
+- O helper aplica fallback para schemas em transicao sem `materials.serial_tracking_type`, preservando a leitura por `is_transformer` quando necessario.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -284,7 +286,7 @@ Funcoes principais
 - Caminho: `src/app/api/stock-transfers/reversal/route.ts`
   - Responsavel por: validar payload de estorno (`reversalReasonCode`/`reversalReasonNotes`) e acionar RPC transacional de reversao.
 - Caminho: `src/app/api/stock-transfers/meta/route.ts`
-  - Responsavel por: listar centros fisicos sem centros de equipe, projetos, materiais e catalogo de motivos de estorno para os selects/datalists.
+  - Responsavel por: listar centros fisicos sem centros de equipe, projetos, catalogo paginado de materiais ativos e catalogo de motivos de estorno para os selects/datalists.
 - Caminho: `src/app/api/stock-transfers/serial-options/route.ts`
   - Responsavel por: listar seriais e LPs disponiveis no centro `DE` real para `Saida` e `Transferencia`.
 - Caminho: `supabase/migrations/128_create_stock_transfer_module.sql`
@@ -313,6 +315,8 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: resolver usuario autenticado e tenant ativo para as rotas de entrada.
+- Caminho: `src/lib/server/materialCatalog.ts`
+  - Responsavel por: carregar materiais ativos do tenant em paginas, normalizar `serial_tracking_type` e montar opcoes operacionais usadas no datalist e no parser de CSV.
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: fornecer `accessToken` para chamadas autenticadas da tela.
 
@@ -330,6 +334,7 @@ Ajuda contextual
   - `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
   - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
   - `src/lib/server/stockTransfers.ts`
+  - `src/lib/server/materialCatalog.ts`
   - `src/app/api/stock-transfers/meta/route.ts`
   - `src/app/api/stock-transfers/serial-options/route.ts`
   - `src/app/api/stock-transfers/route.ts`
@@ -347,6 +352,7 @@ Ajuda contextual
   - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
   - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
   - `GET` de `/api/stock-transfers/meta`
+  - `fetchActiveOperationalMaterials`, `toOperationalMaterialOption`
   - `GET` de `/api/stock-transfers/serial-options`
   - `POST` de `/api/stock-transfers/import`
   - `POST` de `/api/stock-transfers/reversal`
@@ -380,3 +386,5 @@ Ajuda contextual
 - Depois: cada linha pode ser estornada separadamente por `transferItemId`, mantendo bloqueio de duplo estorno por item e preservando os estornos antigos por transferencia inteira.
 - Antes: o cadastro manual de `Saida`/`Transferencia` permitia digitar Serial/LP livremente e validava pela leitura publica do rastreio.
 - Depois: o cadastro manual usa opcoes por centro `DE` real, evitando aceitar unidade que esta fora do centro de origem.
+- Antes: o catalogo de materiais ativos do `meta` era carregado em uma unica consulta e podia ficar limitado pelo teto padrao da API.
+- Depois: o catalogo e carregado em paginas de 1000 registros, garantindo que materiais ativos do tenant continuem disponiveis no cadastro manual e no CSV mesmo com base grande.
