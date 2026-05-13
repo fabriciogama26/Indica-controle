@@ -643,34 +643,6 @@ function buildProjectCompletedConflictResponse(params: {
   };
 }
 
-async function propagateWorkCompletionStatusToProjectDays(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  projectId: string;
-  workCompletionStatus: string;
-}) {
-  const { error } = await params.supabase
-    .from("project_programming")
-    .update({
-      work_completion_status: params.workCompletionStatus,
-      updated_by: params.actorUserId,
-    })
-    .eq("tenant_id", params.tenantId)
-    .eq("project_id", params.projectId)
-    .in("status", ["PROGRAMADA", "REPROGRAMADA"]);
-
-  if (error) {
-    return {
-      ok: false,
-      status: 500,
-      message: "Programacao salva, mas houve falha ao sincronizar Estado Trabalho para os outros dias do projeto.",
-    } as const;
-  }
-
-  return { ok: true } as const;
-}
-
 function isNegativeNumericLikeText(value: string | null) {
   const normalized = normalizeText(value);
   if (!normalized) {
@@ -3800,7 +3772,8 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   if (completedProjectContext) {
     if (method === "PUT") {
       const isChangingFromCompletedToAnotherStatus = Boolean(workCompletionStatus) && !isCompletedWorkStatus(workCompletionStatus);
-      if (!isChangingFromCompletedToAnotherStatus) {
+      const isEditingCompletedRecord = normalizeText(currentProgramming?.id) === completedProjectContext.programmingId;
+      if (!isEditingCompletedRecord || !isChangingFromCompletedToAnotherStatus) {
         return NextResponse.json(
           buildProjectCompletedConflictResponse({
             message:
@@ -3968,25 +3941,6 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
     if (!etapaFlagsResult.ok) {
       return NextResponse.json({ message: etapaFlagsResult.message }, { status: etapaFlagsResult.status });
-    }
-  }
-
-  if (
-    method === "PUT"
-    && completedProjectContext
-    && normalizedWorkCompletionStatus
-    && !isCompletedWorkStatus(normalizedWorkCompletionStatus)
-  ) {
-    const propagationResult = await propagateWorkCompletionStatusToProjectDays({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      projectId,
-      workCompletionStatus: normalizedWorkCompletionStatus,
-    });
-
-    if (!propagationResult.ok) {
-      return NextResponse.json({ message: propagationResult.message }, { status: propagationResult.status });
     }
   }
 
