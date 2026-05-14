@@ -73,6 +73,7 @@ Filtros, auto-complete e listagem
 - A tabela de categorias e calculada a partir das mesmas linhas finais exibidas em `Codigos por origem`.
 - A tabela `Resumo por categoria` possui exportacao CSV propria.
 - As exportacoes CSV incluem o numero do Projeto (SOB) e o Centro de servico em todas as linhas.
+- As colunas de valor nas exportacoes CSV saem formatadas como moeda (`R$`).
 - A tela possui exportacao CSV do resultado filtrado.
 - O botao `Exportar CSV` fica no bloco da tabela, acima do resumo de valores de Medicao, Asbuilt e Faturamento.
 - A tela carrega apenas os filtros ao abrir; a consulta da tabela nao e automatica ao alterar campos.
@@ -133,6 +134,7 @@ Atualizacao 2026-05
   - A coluna `Total qtd.` foi removida do `Resumo por categoria`, mantendo `Total valor`, e a tabela recebeu botao proprio de `Exportar CSV`.
   - Os totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` passam a ser exibidos como cards no bloco `Codigos por origem`.
   - As exportacoes CSV de `Codigos por origem` e `Resumo por categoria` passam a incluir `projeto` e `centro_servico`.
+  - As colunas monetarias das exportacoes CSV passam a sair formatadas como moeda.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
