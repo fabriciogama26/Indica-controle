@@ -48,6 +48,9 @@ Filtros, auto-complete e listagem
   - Mostrar somente codigos ausentes em alguma base
 - O filtro de Projeto fica limitado ao Centro de servico selecionado.
 - Ao selecionar um Projeto, a tela preenche automaticamente o Centro de servico correspondente.
+- O filtro de Projeto usa `input + datalist`, permitindo digitar o SOB no mesmo padrao da Programacao Simples.
+- Quando o SOB digitado bate exatamente com um projeto do tenant, a tela grava o `projectId` e preenche o Centro de servico do projeto.
+- Se houver texto digitado sem projeto valido, o botao `Filtrar` bloqueia a consulta e solicita selecionar um Projeto valido da lista.
 - A listagem exibe:
   - Codigo
   - Descricao
@@ -60,15 +63,15 @@ Filtros, auto-complete e listagem
   - Diferenca de valor Asbuilt x Medicao
   - Diferenca de valor Faturamento x Medicao
   - Situacao (`Conferido`, `Divergente` ou `Ausente em ...`)
-- A tabela `Categorias cobradas no faturamento` exibe:
-  - Categoria
-  - Quantidade cobrada
-  - Valor cobrado
-  - Codigos cobrados
-  - Itens
-- A tabela de categorias usa `service_activities.type_service` e `types_service_activities.name` para agrupar os codigos faturados.
-- A tabela de categorias e calculada a partir das mesmas linhas finais exibidas em `Codigos por origem`, considerando somente linhas com quantidade/valor de Faturamento apos os filtros aplicados.
-- Exemplo: se dois itens faturados da categoria `POSTE` tiverem quantidades 2 e 3 no mesmo projeto, a tabela mostra `POSTE` com quantidade cobrada 5.
+- O bloco `Codigos por origem` exibe cards internos com os totais financeiros de `Medicao`, `Asbuilt` e `Faturamento`.
+- A tabela `Resumo por categoria` exibe:
+  - Origem (`Medicao`, `Medicao Asbuilt`, `Faturamento`)
+  - Colunas dinamicas por categoria do cadastro de atividades (`VOZ`, `POSTE`, `ESTRUTURA`, `CONDUTOR(REDE)`, `PODA` e demais categorias usadas pelos codigos do resultado)
+  - Total de valor
+- Cada celula de categoria mostra quantidade e valor para a origem correspondente.
+- A tabela de categorias usa `service_activities.type_service` e `types_service_activities.name` para agrupar os codigos exibidos no resultado filtrado.
+- A tabela de categorias e calculada a partir das mesmas linhas finais exibidas em `Codigos por origem`.
+- A tabela `Resumo por categoria` possui exportacao CSV propria.
 - A tela possui exportacao CSV do resultado filtrado.
 - O botao `Exportar CSV` fica no bloco da tabela, acima do resumo de valores de Medicao, Asbuilt e Faturamento.
 - A tela carrega apenas os filtros ao abrir; a consulta da tabela nao e automatica ao alterar campos.
@@ -123,16 +126,19 @@ Atualizacao 2026-05
   - Existe a primeira versao da tela `Dash operacional e faturamento`, comparando Medicao, Medicao Asbuilt e Faturamento por projeto e centro de servico, sem filtro de data/equipe, com filtros de codigo, status de atividade, divergencias e ausencias.
   - A consulta da tabela e aplicada somente pelo botao `Filtrar`.
   - A exportacao CSV fica no bloco da tabela, acima do resumo financeiro por origem.
-  - A tela passa a exibir a tabela `Categorias cobradas no faturamento`, agrupando os codigos faturados por categoria da atividade e somando quantidade/valor cobrado.
-  - A tabela `Categorias cobradas no faturamento` passa a usar o mesmo agregado final da tabela `Codigos por origem`, evitando ficar vazia quando existem codigos com valores de Faturamento no resultado filtrado.
+  - A tela passa a exibir a tabela `Resumo por categoria`, agrupando os codigos por categoria da atividade e somando quantidade/valor por origem.
+  - A tabela `Resumo por categoria` passa a usar o mesmo agregado final da tabela `Codigos por origem`, evitando ficar vazia quando existem codigos de Medicao ou Medicao Asbuilt mas ainda nao ha itens de Faturamento.
+  - O filtro `Projeto` passa a usar `input + datalist`, com digitacao por SOB, validacao por codigo exato e preenchimento automatico do Centro de servico.
+  - A coluna `Total qtd.` foi removida do `Resumo por categoria`, mantendo `Total valor`, e a tabela recebeu botao proprio de `Exportar CSV`.
+  - Os totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` passam a ser exibidos como cards no bloco `Codigos por origem`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar filtros obrigatorios, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, exibir resumo, montar tabela comparativa e exportar CSV no bloco da tabela.
+  - Responsavel por: renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal e no bloco de categorias.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, agregar categorias cobradas do Faturamento por `service_activities.type_service` a partir das linhas finais filtradas, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -146,10 +152,10 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildBillingCategoryRows`, `addItem`, `finalizeRows`.
-  - Comportamento ajustado: `buildBillingCategoryRows` recebe as linhas finais filtradas e soma apenas os codigos que possuem itens de Faturamento exibidos na tabela principal.
+  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildBillingCategoryRows`, `buildCategorySummary`, `addItem`, `finalizeRows`.
+  - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: `formatNumber`, `formatCurrency`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `handleServiceCenterChange`, `handleProjectChange`, `exportRows`.
+  - Responsavel por: `formatNumber`, `formatCurrency`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `handleServiceCenterChange`, `handleProjectSearchChange`, `exportRows`, `exportCategorySummary`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
@@ -179,4 +185,4 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: nao havia tela para comparar codigos das tres origens.
   - Depois: a rota `/dash-operacional-faturamento` consolida codigos por projeto e centro de servico, indicando divergencias e ausencias entre Medicao, Medicao Asbuilt e Faturamento.
-  - Ajuste posterior: categorias cobradas deixam de depender de um agregado paralelo e passam a seguir o mesmo resultado exibido em `Codigos por origem`.
+  - Ajuste posterior: categorias deixam de depender apenas de Faturamento e passam a seguir o mesmo resultado exibido em `Codigos por origem`, com colunas dinamicas por categoria, linhas por origem, sem coluna `Total qtd.` e com exportacao CSV propria.

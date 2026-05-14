@@ -48,6 +48,23 @@ type BillingCategoryRow = {
   codes: string[];
 };
 
+type CategoryTotals = OriginTotals & {
+  codes: string[];
+};
+
+type CategoryColumn = {
+  categoryId: string;
+  categoryName: string;
+};
+
+type CategorySummaryRow = {
+  origin: "measurement" | "asbuilt" | "billing";
+  label: string;
+  totalQuantity: number;
+  totalValue: number;
+  categories: Record<string, CategoryTotals>;
+};
+
 type Summary = {
   totalRows: number;
   divergentRows: number;
@@ -67,6 +84,8 @@ type DashboardResponse = {
   selectedProject?: ProjectOption | null;
   rows?: DashboardRow[];
   billingCategories?: BillingCategoryRow[];
+  categoryColumns?: CategoryColumn[];
+  categorySummaryRows?: CategorySummaryRow[];
   summary?: Summary | null;
 };
 
@@ -111,9 +130,11 @@ export function OperationalBillingDashboardPageView() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<Option[]>([]);
   const [rows, setRows] = useState<DashboardRow[]>([]);
-  const [billingCategories, setBillingCategories] = useState<BillingCategoryRow[]>([]);
+  const [categoryColumns, setCategoryColumns] = useState<CategoryColumn[]>([]);
+  const [categorySummaryRows, setCategorySummaryRows] = useState<CategorySummaryRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
   const [serviceCenterId, setServiceCenterId] = useState("");
   const [activityCode, setActivityCode] = useState("");
   const [activityStatus, setActivityStatus] = useState("TODAS");
@@ -125,6 +146,11 @@ export function OperationalBillingDashboardPageView() {
   const visibleProjects = useMemo(
     () => projects.filter((project) => !serviceCenterId || project.serviceCenterId === serviceCenterId),
     [projects, serviceCenterId],
+  );
+
+  const projectInputOptions = useMemo(
+    () => (serviceCenterId ? visibleProjects : projects),
+    [projects, serviceCenterId, visibleProjects],
   );
 
   const selectedProject = useMemo(
@@ -150,7 +176,8 @@ export function OperationalBillingDashboardPageView() {
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
       setRows([]);
-      setBillingCategories([]);
+      setCategoryColumns([]);
+      setCategorySummaryRows([]);
       setSummary(null);
       setFeedback(null);
     } catch (error) {
@@ -163,6 +190,11 @@ export function OperationalBillingDashboardPageView() {
 
   const loadDashboard = useCallback(async () => {
     if (!session?.accessToken) return;
+
+    if (projectSearch.trim() && !projectId) {
+      setFeedback({ type: "error", message: "Selecione um Projeto valido da lista para consultar." });
+      return;
+    }
 
     if (!projectId || !serviceCenterId) {
       setFeedback({ type: "error", message: "Selecione Centro de servico e Projeto para consultar." });
@@ -192,7 +224,8 @@ export function OperationalBillingDashboardPageView() {
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
       setRows(payload.rows ?? []);
-      setBillingCategories(payload.billingCategories ?? []);
+      setCategoryColumns(payload.categoryColumns ?? []);
+      setCategorySummaryRows(payload.categorySummaryRows ?? []);
       setSummary(payload.summary ?? null);
       setFeedback({ type: "success", message: "Comparativo atualizado." });
     } catch (error) {
@@ -208,7 +241,7 @@ export function OperationalBillingDashboardPageView() {
     } finally {
       setIsLoading(false);
     }
-  }, [activityCode, activityStatus, logError, onlyDivergences, onlyMissing, projectId, serviceCenterId, session?.accessToken]);
+  }, [activityCode, activityStatus, logError, onlyDivergences, onlyMissing, projectId, projectSearch, serviceCenterId, session?.accessToken]);
 
   useEffect(() => {
     void loadMetadata();
@@ -219,17 +252,22 @@ export function OperationalBillingDashboardPageView() {
     const currentProject = projects.find((project) => project.id === projectId);
     if (currentProject && value && currentProject.serviceCenterId !== value) {
       setProjectId("");
+      setProjectSearch("");
       setRows([]);
-      setBillingCategories([]);
+      setCategoryColumns([]);
+      setCategorySummaryRows([]);
       setSummary(null);
     }
   }
 
-  function handleProjectChange(value: string) {
-    setProjectId(value);
-    const nextProject = projects.find((project) => project.id === value);
-    if (nextProject?.serviceCenterId) {
-      setServiceCenterId(nextProject.serviceCenterId);
+  function handleProjectSearchChange(value: string) {
+    const searchValue = value;
+    const matchedProject = projects.find((project) => project.label.toLowerCase() === searchValue.trim().toLowerCase()) ?? null;
+
+    setProjectSearch(searchValue);
+    setProjectId(matchedProject?.id ?? "");
+    if (matchedProject?.serviceCenterId) {
+      setServiceCenterId(matchedProject.serviceCenterId);
     }
   }
 
@@ -277,6 +315,28 @@ export function OperationalBillingDashboardPageView() {
     ]);
   }
 
+  function exportCategorySummary() {
+    if (!categoryColumns.length || !categorySummaryRows.length) {
+      setFeedback({ type: "error", message: "Nenhuma categoria para exportar." });
+      return;
+    }
+
+    downloadCsv("dash_operacional_faturamento_categorias.csv", [
+      [
+        "origem",
+        ...categoryColumns.map((category) => `${category.categoryName}_quantidade`),
+        ...categoryColumns.map((category) => `${category.categoryName}_valor`),
+        "total_valor",
+      ],
+      ...categorySummaryRows.map((row) => [
+        row.label,
+        ...categoryColumns.map((category) => row.categories[category.categoryId]?.quantity ?? 0),
+        ...categoryColumns.map((category) => row.categories[category.categoryId]?.value ?? 0),
+        row.totalValue,
+      ]),
+    ]);
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -313,14 +373,20 @@ export function OperationalBillingDashboardPageView() {
 
           <label className={styles.field}>
             <span>Projeto *</span>
-            <select value={projectId} onChange={(event) => handleProjectChange(event.target.value)} disabled={isLoading || !serviceCenterId}>
-              <option value="">Selecione</option>
-              {visibleProjects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.label}
+            <input
+              list="operational-billing-projects"
+              value={projectSearch}
+              onChange={(event) => handleProjectSearchChange(event.target.value)}
+              placeholder="Digite o SOB do projeto"
+              disabled={isLoading}
+            />
+            <datalist id="operational-billing-projects">
+              {projectInputOptions.map((project) => (
+                <option key={project.id} value={project.label}>
+                  {project.serviceCenter}
                 </option>
               ))}
-            </select>
+            </datalist>
           </label>
 
           <label className={styles.field}>
@@ -396,11 +462,21 @@ export function OperationalBillingDashboardPageView() {
             <button type="button" className={styles.secondaryButton} onClick={exportRows} disabled={isLoading}>
               Exportar CSV
             </button>
-            <div className={styles.valueSummary}>
-              <span>Medicao: {formatCurrency(summary?.measurementValue ?? 0)}</span>
-              <span>Asbuilt: {formatCurrency(summary?.asbuiltValue ?? 0)}</span>
-              <span>Faturamento: {formatCurrency(summary?.billingValue ?? 0)}</span>
-            </div>
+          </div>
+        </div>
+
+        <div className={styles.valueCardGrid}>
+          <div className={styles.valueCard}>
+            <span>Medicao</span>
+            <strong>{formatCurrency(summary?.measurementValue ?? 0)}</strong>
+          </div>
+          <div className={styles.valueCard}>
+            <span>Asbuilt</span>
+            <strong>{formatCurrency(summary?.asbuiltValue ?? 0)}</strong>
+          </div>
+          <div className={styles.valueCard}>
+            <span>Faturamento</span>
+            <strong>{formatCurrency(summary?.billingValue ?? 0)}</strong>
           </div>
         </div>
 
@@ -467,10 +543,15 @@ export function OperationalBillingDashboardPageView() {
       <article className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <h2 className={styles.cardTitle}>Categorias cobradas no faturamento</h2>
+            <h2 className={styles.cardTitle}>Resumo por categoria</h2>
             <p className={styles.cardSubtitle}>
-              Quantidade e valor cobrados por categoria dos codigos faturados no projeto selecionado.
+              Quantidade e valor por categoria dos codigos do projeto selecionado.
             </p>
+          </div>
+          <div className={styles.tableActions}>
+            <button type="button" className={styles.secondaryButton} onClick={exportCategorySummary} disabled={isLoading}>
+              Exportar CSV
+            </button>
           </div>
         </div>
 
@@ -478,28 +559,38 @@ export function OperationalBillingDashboardPageView() {
           <table className={styles.categoryTable}>
             <thead>
               <tr>
-                <th>Categoria</th>
-                <th>Quantidade cobrada</th>
-                <th>Valor cobrado</th>
-                <th>Codigos cobrados</th>
-                <th>Itens</th>
+                <th>Origem</th>
+                {categoryColumns.map((category) => (
+                  <th key={category.categoryId}>{category.categoryName}</th>
+                ))}
+                <th>Total valor</th>
               </tr>
             </thead>
             <tbody>
-              {billingCategories.length ? (
-                billingCategories.map((category) => (
-                  <tr key={category.categoryId}>
-                    <td><strong>{category.categoryName}</strong></td>
-                    <td>{formatNumber(category.quantity)}</td>
-                    <td>{formatCurrency(category.value)}</td>
-                    <td>{category.codes.join(", ") || "Nao informado"}</td>
-                    <td>{category.itemCount}</td>
+              {categoryColumns.length ? (
+                categorySummaryRows.map((row) => (
+                  <tr key={row.origin}>
+                    <td><strong>{row.label}</strong></td>
+                    {categoryColumns.map((category) => {
+                      const totals = row.categories[category.categoryId];
+                      return (
+                        <td key={`${row.origin}-${category.categoryId}`}>
+                          {totals && totals.itemCount > 0 ? (
+                            <div className={styles.categoryCell}>
+                              <strong>{formatNumber(totals.quantity)}</strong>
+                              <span>{formatCurrency(totals.value)}</span>
+                            </div>
+                          ) : "-"}
+                        </td>
+                      );
+                    })}
+                    <td>{formatCurrency(row.totalValue)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className={styles.emptyRow}>
-                    {isLoading ? "Carregando categorias..." : "Nenhuma categoria cobrada no faturamento para os filtros selecionados."}
+                  <td colSpan={4} className={styles.emptyRow}>
+                    {isLoading ? "Carregando categorias..." : "Nenhuma categoria encontrada para os filtros selecionados."}
                   </td>
                 </tr>
               )}

@@ -36,8 +36,7 @@
 }
 
 .actions,
-.tableActions,
-.valueSummary {
+.tableActions {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -47,12 +46,6 @@
 
 .tableActions {
   flex-direction: column;
-}
-
-.valueSummary {
-  color: #31456f;
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .filterGrid {
@@ -141,6 +134,38 @@
   gap: 12px;
 }
 
+.valueCardGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.valueCard {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px 14px;
+}
+
+.valueCard span {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.valueCard strong {
+  color: #002b7f;
+  font-size: 18px;
+  font-weight: 900;
+}
+
 .metric {
   min-height: 78px;
   display: flex;
@@ -183,7 +208,7 @@
 }
 
 .categoryTable {
-  min-width: 760px;
+  min-width: 980px;
 }
 
 .table th,
@@ -208,6 +233,25 @@
 .table tbody tr:nth-child(even),
 .categoryTable tbody tr:nth-child(even) {
   background: #f8fbff;
+}
+
+.categoryCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 88px;
+}
+
+.categoryCell strong {
+  color: #002b7f;
+  font-size: 12px;
+}
+
+.categoryCell span {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .emptyRow {
@@ -276,14 +320,14 @@
 @media (max-width: 760px) {
   .cardHeader,
   .actions,
-  .tableActions,
-  .valueSummary {
+  .tableActions {
     flex-direction: column;
     align-items: stretch;
   }
 
   .filterGrid,
-  .summaryGrid {
+  .summaryGrid,
+  .valueCardGrid {
     grid-template-columns: 1fr;
   }
 }
