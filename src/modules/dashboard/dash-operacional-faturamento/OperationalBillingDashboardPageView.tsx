@@ -124,6 +124,14 @@ function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
   URL.revokeObjectURL(url);
 }
 
+function filenameToken(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "sem_projeto";
+}
+
 export function OperationalBillingDashboardPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("dash-operacional-faturamento");
@@ -280,7 +288,7 @@ export function OperationalBillingDashboardPageView() {
     const projectCode = selectedProject?.label ?? "";
     const serviceCenterName = selectedProject?.serviceCenter ?? "";
 
-    downloadCsv("dash_operacional_faturamento.csv", [
+    downloadCsv(`dash_operacional_faturamento_${filenameToken(projectCode)}.csv`, [
       [
         "projeto",
         "centro_servico",
@@ -331,7 +339,7 @@ export function OperationalBillingDashboardPageView() {
     const projectCode = selectedProject?.label ?? "";
     const serviceCenterName = selectedProject?.serviceCenter ?? "";
 
-    downloadCsv("dash_operacional_faturamento_categorias.csv", [
+    downloadCsv(`dash_operacional_faturamento_categorias_${filenameToken(projectCode)}.csv`, [
       [
         "projeto",
         "centro_servico",
