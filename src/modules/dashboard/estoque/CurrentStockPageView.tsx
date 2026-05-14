@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
@@ -15,6 +15,7 @@ import type {
   CurrentStockListItem,
   CurrentStockListResponse,
   CurrentStockMetaResponse,
+  CurrentStockUnitSummary,
   StockCenterOption,
 } from "./types";
 import {
@@ -53,6 +54,8 @@ function currentStockStatusLabel(entry: CurrentStockHistoryEntry) {
   return "Movimentacao ativa";
 }
 
+const PREFERRED_SUMMARY_UNITS = ["M", "UN", "KG"] as const;
+
 export function CurrentStockPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("estoque_atual");
@@ -62,6 +65,7 @@ export function CurrentStockPageView() {
   const [filterDraft, setFilterDraft] = useState<CurrentStockFilters>(INITIAL_FILTERS);
   const [filters, setFilters] = useState<CurrentStockFilters>(INITIAL_FILTERS);
   const [items, setItems] = useState<CurrentStockListItem[]>([]);
+  const [summaryByUnit, setSummaryByUnit] = useState<CurrentStockUnitSummary[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -86,7 +90,18 @@ export function CurrentStockPageView() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
-  const pageBalanceTotal = items.reduce((sum, item) => sum + item.balanceQuantity, 0);
+  const filteredBalanceTotalsByUnit = useMemo(() => {
+    const totals = new Map<string, number>();
+
+    PREFERRED_SUMMARY_UNITS.forEach((unit) => totals.set(unit, 0));
+
+    summaryByUnit.forEach((summary) => {
+      const unit = summary.unit.trim().toUpperCase() || "SEM UMB";
+      totals.set(unit, (totals.get(unit) ?? 0) + summary.balanceQuantity);
+    });
+
+    return Array.from(totals.entries()).map(([unit, balance]) => ({ unit, balance }));
+  }, [summaryByUnit]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -168,6 +183,7 @@ export function CurrentStockPageView() {
         if (!response.ok) {
           if (isMounted) {
             setItems([]);
+            setSummaryByUnit([]);
             setTotal(0);
             setFeedback({
               type: "error",
@@ -187,11 +203,13 @@ export function CurrentStockPageView() {
         if (isMounted) {
           setFeedback(null);
           setItems(data.items ?? []);
+          setSummaryByUnit(data.summaryByUnit ?? []);
           setTotal(data.pagination?.total ?? 0);
         }
       } catch (error) {
         if (isMounted) {
           setItems([]);
+          setSummaryByUnit([]);
           setTotal(0);
           setFeedback({ type: "error", message: "Falha ao carregar o estoque atual." });
         }
@@ -564,10 +582,12 @@ export function CurrentStockPageView() {
             <strong className={styles.statValue}>{formatInteger(total)}</strong>
           </div>
 
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Saldo total da pagina</span>
-            <strong className={styles.statValue}>{formatDecimal(pageBalanceTotal)}</strong>
-          </div>
+          {filteredBalanceTotalsByUnit.map((summary) => (
+            <div className={styles.statCard} key={summary.unit}>
+              <span className={styles.statLabel}>Saldo total {summary.unit}</span>
+              <strong className={styles.statValue}>{formatDecimal(summary.balance)}</strong>
+            </div>
+          ))}
         </div>
 
         <div className={styles.tableWrapper}>

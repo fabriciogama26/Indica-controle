@@ -51,7 +51,7 @@ Filtros, auto-complete e listagem
   - Materiais que ja passaram pelo centro fisico continuam aparecendo com saldo `0`, mesmo quando o saldo atual nao possui mais linha persistida em `stock_center_balances`.
   - `Ultima movimentacao` usa o timestamp mais recente entre o saldo atual e o historico de `stock_transfers` do centro fisico.
   - A lista e paginada no backend (`page`, `pageSize`, `total`).
-  - O cabecalho da lista exibe `Registros filtrados` e `Saldo total da pagina`.
+  - O cabecalho da lista exibe `Registros filtrados` e cards de `Saldo total` por UMB, priorizando `M`, `UN` e `KG`.
   - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos.
   - A coluna `Acoes` exibe:
     - `Detalhes`
@@ -124,15 +124,16 @@ Atualizacao 2026-04
 - Atualizacao 2026-05:
   - O `Saldo` deixou de ser arredondado no `GET /api/stock-balance`.
   - Filtros `Saldo minimo` e `Saldo maximo` passam a aceitar decimal com virgula ou ponto (`1,5` ou `1.5`).
-  - Lista, card `Saldo total da pagina`, modal de detalhes, historico e CSV passam a exibir valores decimais em formato pt-BR.
+  - Lista, cards de `Saldo total` por UMB, modal de detalhes, historico e CSV passam a exibir valores decimais em formato pt-BR.
+  - O resumo da lista passa a agrupar o saldo filtrado por `UMB`, antes da paginacao, exibindo cards dedicados para `M`, `UN`, `KG` e outras UMBs presentes.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
-  - Responsavel por: carregar centros, aplicar filtros, buscar a lista paginada, exportar CSV e exibir o saldo atual.
+  - Responsavel por: carregar centros, aplicar filtros, buscar a lista paginada, exportar CSV e exibir o saldo atual com resumo filtrado por UMB.
 - Caminho: `src/app/api/stock-balance/route.ts`
-  - Responsavel por: listar saldo atual por `tenant + centro + material`, com filtros, paginacao, exclusao de centros vinculados a equipes no modo da tela e recomposicao de linhas com saldo `0` via historico operacional quando o centro fisico ja movimentou aquele material.
+  - Responsavel por: listar saldo atual por `tenant + centro + material`, com filtros, paginacao, resumo filtrado por UMB, exclusao de centros vinculados a equipes no modo da tela e recomposicao de linhas com saldo `0` via historico operacional quando o centro fisico ja movimentou aquele material.
 - Caminho: `src/app/api/stock-balance/meta/route.ts`
   - Responsavel por: listar centros ativos `OWN` fisicos/principais para o filtro da tela.
 
@@ -168,6 +169,8 @@ Ajuda contextual
   - `docs/Tela_Estoque_SaaS.txt`
 - Funcoes/hooks/constantes tocadas:
   - `CurrentStockPageView`
+  - `PREFERRED_SUMMARY_UNITS`
+  - `CurrentStockUnitSummary`
   - `buildCurrentStockQuery`
   - `formatDateTime`
   - `formatInteger`
@@ -179,7 +182,7 @@ Ajuda contextual
 - `handleApplyHistoryFilters`
 - `handleClearHistoryFilters`
   - `useErrorLogger`
-  - `GET /api/stock-balance`
+  - `GET /api/stock-balance` (`summaryByUnit`)
   - `GET /api/stock-balance/meta`
 - Comportamento antes/depois:
   - Antes: a rota `/estoque` mostrava apenas um placeholder.
@@ -189,3 +192,4 @@ Ajuda contextual
   - Antes: material zerado podia desaparecer da lista principal quando a linha do saldo nao estivesse mais persistida.
   - Depois: o material continua visivel no centro fisico com saldo `0`, preservando a consulta do historico pelo proprio `Estoque Atual`.
   - Atualizacao (2026-05): antes o saldo era arredondado para inteiro; depois preserva e exibe decimal com virgula/ponto conforme entrada/filtro.
+  - Atualizacao (2026-05): antes o resumo exibia um unico `Saldo total da pagina`; depois exibe saldos totais filtrados separados por UMB.

@@ -726,9 +726,18 @@ export async function GET(request: NextRequest) {
       });
 
     const from = (page - 1) * pageSize;
+    const summaryByUnit = Array.from(
+      filteredItems.reduce((summary, item) => {
+        const unit = item.unit.trim().toUpperCase() || "SEM UMB";
+        summary.set(unit, (summary.get(unit) ?? 0) + item.balanceQuantity);
+        return summary;
+      }, new Map<string, number>()),
+      ([unit, balanceQuantity]) => ({ unit, balanceQuantity }),
+    ).sort((left, right) => left.unit.localeCompare(right.unit, "pt-BR"));
 
     return NextResponse.json({
       items: filteredItems.slice(from, from + pageSize),
+      summaryByUnit,
       pagination: {
         page,
         pageSize,
