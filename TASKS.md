@@ -623,3 +623,4 @@
 - [x] Ajustar categorias do `Dash operacional e faturamento` para serem montadas a partir de todos os codigos exibidos em `Codigos por origem`, evitando tabela vazia quando ha Medicao/Asbuilt e ainda nao ha itens de Faturamento.
 - [x] Remover coluna `Total qtd.` do `Resumo por categoria` do `Dash operacional e faturamento` e adicionar botao proprio de `Exportar CSV` para o resumo.
 - [x] Transformar totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` em cards dentro do bloco `Codigos por origem` no `Dash operacional e faturamento`.
+- [x] Incluir `projeto` e `centro_servico` nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
