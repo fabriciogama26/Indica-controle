@@ -87,6 +87,23 @@ type BillingCategoryRow = {
   codes: string[];
 };
 
+type CategoryColumn = {
+  categoryId: string;
+  categoryName: string;
+};
+
+type CategoryTotals = OriginTotals & {
+  codes: string[];
+};
+
+type CategorySummaryRow = {
+  origin: OriginKey;
+  label: string;
+  totalQuantity: number;
+  totalValue: number;
+  categories: Record<string, CategoryTotals>;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -118,6 +135,10 @@ function numberValue(value: unknown) {
 
 function emptyTotals(): OriginTotals {
   return { quantity: 0, value: 0, itemCount: 0 };
+}
+
+function emptyCategoryTotals(): CategoryTotals {
+  return { quantity: 0, value: 0, itemCount: 0, codes: [] };
 }
 
 function chunk<T>(items: T[], size: number) {
@@ -415,6 +436,73 @@ function buildBillingCategoryRows(params: {
     .sort((left, right) => left.categoryName.localeCompare(right.categoryName, "pt-BR"));
 }
 
+function buildCategorySummary(params: {
+  rows: DashboardRow[];
+  items: Array<MeasurementItemRow | CommercialItemRow>;
+  activityToCategory: Map<string, string>;
+  categoryNameById: Map<string, string>;
+}) {
+  const categoryByCode = new Map<string, { categoryId: string; categoryName: string }>();
+  for (const item of params.items) {
+    const code = normalizeCode(item.activity_code);
+    if (!code || categoryByCode.has(code)) continue;
+
+    const categoryId = params.activityToCategory.get(item.service_activity_id) ?? "__NO_CATEGORY__";
+    categoryByCode.set(code, {
+      categoryId,
+      categoryName: categoryId === "__NO_CATEGORY__" ? "Nao identificada" : params.categoryNameById.get(categoryId) ?? "Nao identificada",
+    });
+  }
+
+  const columnMap = new Map<string, CategoryColumn>();
+  const summaryRows: CategorySummaryRow[] = [
+    { origin: "measurement", label: "Medicao", totalQuantity: 0, totalValue: 0, categories: {} },
+    { origin: "asbuilt", label: "Medicao Asbuilt", totalQuantity: 0, totalValue: 0, categories: {} },
+    { origin: "billing", label: "Faturamento", totalQuantity: 0, totalValue: 0, categories: {} },
+  ];
+
+  for (const row of params.rows) {
+    const category = categoryByCode.get(row.code) ?? {
+      categoryId: "__NO_CATEGORY__",
+      categoryName: "Nao identificada",
+    };
+    columnMap.set(category.categoryId, category);
+
+    for (const summaryRow of summaryRows) {
+      const totals = row[summaryRow.origin];
+      if (totals.itemCount <= 0) continue;
+
+      const current = summaryRow.categories[category.categoryId] ?? emptyCategoryTotals();
+      current.quantity += totals.quantity;
+      current.value += totals.value;
+      current.itemCount += totals.itemCount;
+      if (!current.codes.includes(row.code)) current.codes.push(row.code);
+      summaryRow.categories[category.categoryId] = current;
+      summaryRow.totalQuantity += totals.quantity;
+      summaryRow.totalValue += totals.value;
+    }
+  }
+
+  const categoryColumns = Array.from(columnMap.values())
+    .sort((left, right) => left.categoryName.localeCompare(right.categoryName, "pt-BR"));
+
+  return {
+    categoryColumns,
+    categorySummaryRows: summaryRows.map((row) => ({
+      ...row,
+      categories: Object.fromEntries(
+        Object.entries(row.categories).map(([categoryId, totals]) => [
+          categoryId,
+          {
+            ...totals,
+            codes: totals.codes.sort((left, right) => left.localeCompare(right, "pt-BR")),
+          },
+        ]),
+      ),
+    })),
+  };
+}
+
 function addItem(
   target: Map<string, AggregatedRow>,
   origin: OriginKey,
@@ -586,7 +674,7 @@ export async function GET(request: NextRequest) {
     const allActivityIds = Array.from(new Set([...activityIds, ...billingActivityIds].filter(Boolean)));
     const [activityStatusMap, activityCategoryMap] = await Promise.all([
       loadActivityStatusMap({ supabase: resolution.supabase, tenantId, activityIds: allActivityIds }),
-      loadActivityCategoryMap({ supabase: resolution.supabase, tenantId, activityIds: billingActivityIds }),
+      loadActivityCategoryMap({ supabase: resolution.supabase, tenantId, activityIds: allActivityIds }),
     ]);
     const allRows = finalizeRows(Array.from(aggregate.values()), activityStatusMap)
       .filter((row) => !activityCodeFilter || row.code.includes(activityCodeFilter))
@@ -598,6 +686,12 @@ export async function GET(request: NextRequest) {
     const billingCategories = buildBillingCategoryRows({
       rows: allRows,
       billingItems,
+      activityToCategory: activityCategoryMap.activityToCategory,
+      categoryNameById: activityCategoryMap.categoryNameById,
+    });
+    const categorySummary = buildCategorySummary({
+      rows: allRows,
+      items: [...measurementItems, ...asbuiltItems, ...billingItems],
       activityToCategory: activityCategoryMap.activityToCategory,
       categoryNameById: activityCategoryMap.categoryNameById,
     });
@@ -628,6 +722,8 @@ export async function GET(request: NextRequest) {
       selectedProject,
       rows: allRows,
       billingCategories,
+      categoryColumns: categorySummary.categoryColumns,
+      categorySummaryRows: categorySummary.categorySummaryRows,
       summary,
     });
   } catch (error) {
