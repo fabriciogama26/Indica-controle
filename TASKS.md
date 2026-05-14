@@ -624,3 +624,4 @@
 - [x] Remover coluna `Total qtd.` do `Resumo por categoria` do `Dash operacional e faturamento` e adicionar botao proprio de `Exportar CSV` para o resumo.
 - [x] Transformar totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` em cards dentro do bloco `Codigos por origem` no `Dash operacional e faturamento`.
 - [x] Incluir `projeto` e `centro_servico` nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
+- [x] Formatar como moeda (`R$`) as colunas de valor nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
