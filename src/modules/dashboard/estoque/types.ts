@@ -26,8 +26,14 @@ export type CurrentStockListItem = {
   lastMovementAt: string | null;
 };
 
+export type CurrentStockUnitSummary = {
+  unit: string;
+  balanceQuantity: number;
+};
+
 export type CurrentStockListResponse = {
   items?: CurrentStockListItem[];
+  summaryByUnit?: CurrentStockUnitSummary[];
   pagination?: {
     page: number;
     pageSize: number;

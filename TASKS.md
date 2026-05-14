@@ -632,3 +632,5 @@
 - [x] Incluir o numero do Projeto (SOB) no nome dos arquivos CSV exportados em `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 
 - [x] Proteger Salvar operacao em Operacoes de Equipe e Movimentacao de Estoque contra duplo clique, travando submit antes das validacoes assincronas e exibindo estado visual de salvamento.
+
+- [x] Adicionar cards de Saldo total por UMB na Lista de Estoque Atual, usando resumo filtrado antes da paginacao e priorizando M, UN e KG.
