@@ -383,6 +383,9 @@ Resumo por arquivo
 
 182_create_operational_billing_dashboard_page.sql
 - Cadastra a pagina `dash-operacional-faturamento` em `app_pages`, cria permissoes por role e faz backfill em `app_user_page_permissions` para liberar a tela conforme a matriz multi-tenant.
+
+184_enforce_active_project_for_asbuilt_measurement.sql
+- Adiciona trigger em `project_asbuilt_measurement_orders` para impedir novas Medicoes Asbuilt com projeto inexistente ou inativo, inclusive em cadastro em massa/RPC.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

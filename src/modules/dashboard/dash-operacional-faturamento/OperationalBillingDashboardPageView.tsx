@@ -65,6 +65,12 @@ type CategorySummaryRow = {
   categories: Record<string, CategoryTotals>;
 };
 
+type ChartItem = {
+  key: string;
+  label: string;
+  value: number;
+};
+
 type Summary = {
   totalRows: number;
   divergentRows: number;
@@ -86,6 +92,7 @@ type DashboardResponse = {
   billingCategories?: BillingCategoryRow[];
   categoryColumns?: CategoryColumn[];
   categorySummaryRows?: CategorySummaryRow[];
+  chartItems?: ChartItem[];
   summary?: Summary | null;
 };
 
@@ -140,15 +147,20 @@ export function OperationalBillingDashboardPageView() {
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [categoryColumns, setCategoryColumns] = useState<CategoryColumn[]>([]);
   const [categorySummaryRows, setCategorySummaryRows] = useState<CategorySummaryRow[]>([]);
+  const [chartItems, setChartItems] = useState<ChartItem[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
   const [serviceCenterId, setServiceCenterId] = useState("");
+  const [chartProjectId, setChartProjectId] = useState("");
+  const [chartProjectSearch, setChartProjectSearch] = useState("");
+  const [chartServiceCenterId, setChartServiceCenterId] = useState("");
   const [activityCode, setActivityCode] = useState("");
   const [activityStatus, setActivityStatus] = useState("TODAS");
   const [onlyDivergences, setOnlyDivergences] = useState(false);
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isChartLoading, setIsChartLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const visibleProjects = useMemo(
@@ -161,9 +173,19 @@ export function OperationalBillingDashboardPageView() {
     [projects, serviceCenterId, visibleProjects],
   );
 
+  const chartVisibleProjects = useMemo(
+    () => projects.filter((project) => !chartServiceCenterId || project.serviceCenterId === chartServiceCenterId),
+    [chartServiceCenterId, projects],
+  );
+
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projectId, projects],
+  );
+
+  const chartMaxValue = useMemo(
+    () => Math.max(1, ...chartItems.map((item) => Number(item.value) || 0)),
+    [chartItems],
   );
 
   const loadMetadata = useCallback(async () => {
@@ -186,6 +208,7 @@ export function OperationalBillingDashboardPageView() {
       setRows([]);
       setCategoryColumns([]);
       setCategorySummaryRows([]);
+      setChartItems([]);
       setSummary(null);
       setFeedback(null);
     } catch (error) {
@@ -251,6 +274,46 @@ export function OperationalBillingDashboardPageView() {
     }
   }, [activityCode, activityStatus, logError, onlyDivergences, onlyMissing, projectId, projectSearch, serviceCenterId, session?.accessToken]);
 
+  const loadChart = useCallback(async () => {
+    if (!session?.accessToken) return;
+
+    if (chartProjectSearch.trim() && !chartProjectId) {
+      setFeedback({ type: "error", message: "Selecione um Projeto valido da lista para filtrar o grafico." });
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("includeChart", "true");
+    if (chartServiceCenterId) params.set("chartServiceCenterId", chartServiceCenterId);
+    if (chartProjectId) params.set("chartProjectId", chartProjectId);
+
+    setIsChartLoading(true);
+    try {
+      const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as DashboardResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Falha ao carregar grafico operacional.");
+      }
+
+      setProjects(payload.filters?.projects ?? []);
+      setServiceCenters(payload.filters?.serviceCenters ?? []);
+      setChartItems(payload.chartItems ?? []);
+      setFeedback({ type: "success", message: "Grafico atualizado." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar grafico operacional." });
+      await logError("Falha ao carregar grafico operacional", error, {
+        chartProjectId,
+        chartServiceCenterId,
+      });
+    } finally {
+      setIsChartLoading(false);
+    }
+  }, [chartProjectId, chartProjectSearch, chartServiceCenterId, logError, session?.accessToken]);
+
   useEffect(() => {
     void loadMetadata();
   }, [loadMetadata]);
@@ -276,6 +339,24 @@ export function OperationalBillingDashboardPageView() {
     setProjectId(matchedProject?.id ?? "");
     if (matchedProject?.serviceCenterId) {
       setServiceCenterId(matchedProject.serviceCenterId);
+    }
+  }
+
+  function handleChartServiceCenterChange(value: string) {
+    setChartServiceCenterId(value);
+    const currentProject = projects.find((project) => project.id === chartProjectId);
+    if (currentProject && value && currentProject.serviceCenterId !== value) {
+      setChartProjectId("");
+      setChartProjectSearch("");
+    }
+  }
+
+  function handleChartProjectSearchChange(value: string) {
+    const matchedProject = projects.find((project) => project.label.toLowerCase() === value.trim().toLowerCase()) ?? null;
+    setChartProjectSearch(value);
+    setChartProjectId(matchedProject?.id ?? "");
+    if (matchedProject?.serviceCenterId) {
+      setChartServiceCenterId(matchedProject.serviceCenterId);
     }
   }
 
@@ -471,6 +552,73 @@ export function OperationalBillingDashboardPageView() {
           <strong>{summary?.conferredRows ?? 0}</strong>
         </div>
       </div>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Grafico operacional</h2>
+            <p className={styles.cardSubtitle}>Comparativo independente entre total medido, medido em projetos com As Built, As Built e faturado.</p>
+          </div>
+          <div className={styles.actions}>
+            <button type="button" className={styles.primaryButton} onClick={() => void loadChart()} disabled={isChartLoading}>
+              {isChartLoading ? "Filtrando..." : "Filtrar grafico"}
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.chartFilterGrid}>
+          <label className={styles.field}>
+            <span>Centro de servico</span>
+            <select value={chartServiceCenterId} onChange={(event) => handleChartServiceCenterChange(event.target.value)} disabled={isChartLoading}>
+              <option value="">Todos</option>
+              {serviceCenters.map((serviceCenter) => (
+                <option key={serviceCenter.id} value={serviceCenter.id}>
+                  {serviceCenter.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Projeto</span>
+            <input
+              list="operational-billing-chart-projects"
+              value={chartProjectSearch}
+              onChange={(event) => handleChartProjectSearchChange(event.target.value)}
+              placeholder="Todos ou digite o SOB"
+              disabled={isChartLoading}
+            />
+            <datalist id="operational-billing-chart-projects">
+              {chartVisibleProjects.map((project) => (
+                <option key={project.id} value={project.label}>
+                  {project.serviceCenter}
+                </option>
+              ))}
+            </datalist>
+          </label>
+        </div>
+
+        <div className={styles.barChart}>
+          {chartItems.length ? (
+            chartItems.map((item) => {
+              const height = Math.max(4, (item.value / chartMaxValue) * 100);
+              return (
+                <div key={item.key} className={styles.barGroup}>
+                  <div className={styles.barValue}>{formatCurrency(item.value)}</div>
+                  <div className={styles.barTrack}>
+                    <div className={styles.barFill} style={{ height: `${height}%` }} />
+                  </div>
+                  <strong>{item.label}</strong>
+                </div>
+              );
+            })
+          ) : (
+            <div className={styles.emptyChart}>
+              {isChartLoading ? "Carregando grafico..." : "Use o filtro proprio do grafico e clique em Filtrar grafico."}
+            </div>
+          )}
+        </div>
+      </article>
 
       <article className={styles.card}>
         <div className={styles.cardHeader}>

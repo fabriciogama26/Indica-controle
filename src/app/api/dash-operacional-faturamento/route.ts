@@ -32,6 +32,11 @@ type OrderIdRow = {
   id: string;
 };
 
+type OrderProjectRow = {
+  id: string;
+  project_id: string;
+};
+
 type MeasurementItemRow = {
   service_activity_id: string;
   activity_code: string;
@@ -102,6 +107,12 @@ type CategorySummaryRow = {
   totalQuantity: number;
   totalValue: number;
   categories: Record<string, CategoryTotals>;
+};
+
+type ChartItem = {
+  key: string;
+  label: string;
+  value: number;
 };
 
 function normalizeText(value: unknown) {
@@ -270,6 +281,40 @@ async function loadOrderIds(params: {
   }
 
   return (data ?? []).map((item) => item.id);
+}
+
+async function loadOrderProjectRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  table: "project_measurement_orders" | "project_asbuilt_measurement_orders" | "project_billing_orders";
+  projectIds: string[];
+}) {
+  const rows: OrderProjectRow[] = [];
+  const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
+
+  for (const projectIdChunk of chunk(projectIds, 500)) {
+    let query = params.supabase
+      .from(params.table)
+      .select("id, project_id")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .neq("status", "CANCELADA")
+      .in("project_id", projectIdChunk)
+      .limit(50000);
+
+    if (params.table === "project_measurement_orders") {
+      query = query.eq("measurement_kind", "COM_PRODUCAO");
+    }
+
+    const { data, error } = await query.returns<OrderProjectRow[]>();
+    if (error) {
+      throw new Error("Falha ao carregar ordens do grafico.");
+    }
+
+    rows.push(...(data ?? []));
+  }
+
+  return rows;
 }
 
 async function loadMeasurementItems(params: {
@@ -503,6 +548,121 @@ function buildCategorySummary(params: {
   };
 }
 
+async function sumItemsByOrderIds(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  table: "project_measurement_order_items" | "project_asbuilt_measurement_order_items" | "project_billing_order_items";
+  orderColumn: "measurement_order_id" | "asbuilt_measurement_order_id" | "billing_order_id";
+  orderIds: string[];
+}) {
+  let total = 0;
+  const orderIds = Array.from(new Set(params.orderIds.filter(Boolean)));
+
+  for (const orderIdChunk of chunk(orderIds, 500)) {
+    const { data, error } = await params.supabase
+      .from(params.table)
+      .select("total_value")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .in(params.orderColumn, orderIdChunk)
+      .returns<Array<{ total_value: number | string }>>();
+
+    if (error) {
+      throw new Error("Falha ao somar valores do grafico.");
+    }
+
+    total += (data ?? []).reduce((sum, item) => sum + numberValue(item.total_value), 0);
+  }
+
+  return total;
+}
+
+async function buildChartItems(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projects: Array<{ id: string; serviceCenterId: string | null }>;
+  serviceCenterId: string | null;
+  projectId: string | null;
+}) {
+  const scopedProjectIds = params.projects
+    .filter((project) => !params.serviceCenterId || project.serviceCenterId === params.serviceCenterId)
+    .filter((project) => !params.projectId || project.id === params.projectId)
+    .map((project) => project.id);
+
+  if (!scopedProjectIds.length) {
+    return [
+      { key: "totalMeasurement", label: "Total medido", value: 0 },
+      { key: "measurementAsbuilt", label: "Medido (AS BUILT)", value: 0 },
+      { key: "asbuilt", label: "As Built", value: 0 },
+      { key: "billing", label: "Faturado", value: 0 },
+    ] satisfies ChartItem[];
+  }
+
+  const [measurementOrders, asbuiltOrders, billingOrders] = await Promise.all([
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_orders",
+      projectIds: scopedProjectIds,
+    }),
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_asbuilt_measurement_orders",
+      projectIds: scopedProjectIds,
+    }),
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_billing_orders",
+      projectIds: scopedProjectIds,
+    }),
+  ]);
+
+  const asbuiltProjectIds = new Set(asbuiltOrders.map((order) => order.project_id));
+  const measurementAsbuiltOrderIds = measurementOrders
+    .filter((order) => asbuiltProjectIds.has(order.project_id))
+    .map((order) => order.id);
+
+  const [totalMeasurement, measurementAsbuilt, asbuilt, billing] = await Promise.all([
+    sumItemsByOrderIds({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_order_items",
+      orderColumn: "measurement_order_id",
+      orderIds: measurementOrders.map((order) => order.id),
+    }),
+    sumItemsByOrderIds({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_order_items",
+      orderColumn: "measurement_order_id",
+      orderIds: measurementAsbuiltOrderIds,
+    }),
+    sumItemsByOrderIds({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_asbuilt_measurement_order_items",
+      orderColumn: "asbuilt_measurement_order_id",
+      orderIds: asbuiltOrders.map((order) => order.id),
+    }),
+    sumItemsByOrderIds({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_billing_order_items",
+      orderColumn: "billing_order_id",
+      orderIds: billingOrders.map((order) => order.id),
+    }),
+  ]);
+
+  return [
+    { key: "totalMeasurement", label: "Total medido", value: totalMeasurement },
+    { key: "measurementAsbuilt", label: "Medido (AS BUILT)", value: measurementAsbuilt },
+    { key: "asbuilt", label: "As Built", value: asbuilt },
+    { key: "billing", label: "Faturado", value: billing },
+  ] satisfies ChartItem[];
+}
+
 function addItem(
   target: Map<string, AggregatedRow>,
   origin: OriginKey,
@@ -596,6 +756,9 @@ export async function GET(request: NextRequest) {
   const activityStatusFilter = normalizeActivityStatusFilter(request.nextUrl.searchParams.get("activityStatus"));
   const onlyDivergences = normalizeBoolean(request.nextUrl.searchParams.get("onlyDivergences"));
   const onlyMissing = normalizeBoolean(request.nextUrl.searchParams.get("onlyMissing"));
+  const includeChart = normalizeBoolean(request.nextUrl.searchParams.get("includeChart"));
+  const chartProjectId = normalizeUuid(request.nextUrl.searchParams.get("chartProjectId"));
+  const chartServiceCenterId = normalizeUuid(request.nextUrl.searchParams.get("chartServiceCenterId"));
 
   try {
     const projects = await loadProjects(resolution.supabase, tenantId);
@@ -608,11 +771,22 @@ export async function GET(request: NextRequest) {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     if (!projectId) {
+      const chartItems = includeChart
+        ? await buildChartItems({
+            supabase: resolution.supabase,
+            tenantId,
+            projects,
+            serviceCenterId: chartServiceCenterId,
+            projectId: chartProjectId,
+          })
+        : [];
+
       return NextResponse.json({
         filters: { projects, serviceCenters },
         selectedProject: null,
         rows: [],
         billingCategories: [],
+        chartItems,
         summary: null,
       });
     }

@@ -108,6 +108,7 @@ export function AsbuiltMeasurementPageView() {
   const [filters, setFilters] = useState<AsbuiltMeasurementFilters>(INITIAL_FILTERS);
   const [filterDraft, setFilterDraft] = useState<AsbuiltMeasurementFilters>(INITIAL_FILTERS);
   const [orders, setOrders] = useState<AsbuiltMeasurementListItem[]>([]);
+  const [listSummary, setListSummary] = useState({ totalAmount: 0, itemCount: 0 });
   const [pagination, setPagination] = useState({ page: 1, pageSize: ASBUILT_MEASUREMENT_PAGE_SIZE, total: 0 });
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -147,10 +148,7 @@ export function AsbuiltMeasurementPageView() {
     [form.items],
   );
 
-  const listTotalAmount = useMemo(
-    () => orders.reduce((sum, item) => sum + Number(item.totalAmount ?? 0), 0),
-    [orders],
-  );
+  const listTotalAmount = listSummary.totalAmount;
 
   const selectedProject = useMemo(
     () => projects.find((item) => item.id === form.projectId) ?? null,
@@ -245,6 +243,10 @@ export function AsbuiltMeasurementPageView() {
         throw new Error(payload.message ?? "Falha ao carregar medicoes asbuilt.");
       }
       setOrders(payload.orders ?? []);
+      setListSummary({
+        totalAmount: Number(payload.summary?.totalAmount ?? 0),
+        itemCount: Number(payload.summary?.itemCount ?? 0),
+      });
       setPagination({
         page: payload.pagination?.page ?? page,
         pageSize: payload.pagination?.pageSize ?? ASBUILT_MEASUREMENT_PAGE_SIZE,
@@ -979,7 +981,7 @@ export function AsbuiltMeasurementPageView() {
         <div className={styles.summaryBar}>
           <div><span>Medicoes Asbuilt na pagina</span><strong>{orders.length}</strong></div>
           <div><span>Total filtrado</span><strong>{pagination.total}</strong></div>
-          <div><span>Valor total</span><strong>{formatCurrency(listTotalAmount)}</strong></div>
+          <div><span>Valor total filtrado</span><strong>{formatCurrency(listTotalAmount)}</strong></div>
         </div>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>

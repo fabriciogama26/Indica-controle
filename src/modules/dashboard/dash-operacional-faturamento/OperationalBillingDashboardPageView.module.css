@@ -55,6 +55,14 @@
   align-items: end;
 }
 
+.chartFilterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 320px));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -164,6 +172,69 @@
   color: #002b7f;
   font-size: 18px;
   font-weight: 900;
+}
+
+.barChart {
+  min-height: 310px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  align-items: end;
+  gap: 18px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 18px 18px 14px;
+}
+
+.barGroup {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.barGroup strong {
+  min-height: 32px;
+  color: #002b7f;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.barValue {
+  min-height: 18px;
+  color: #001f5b;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.barTrack {
+  width: min(76px, 70%);
+  height: 190px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  border-bottom: 1px solid #cfd8e8;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef2f8 100%);
+}
+
+.barFill {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 6px 6px 0 0;
+  background: #1f4ea3;
+  transition: height 0.2s ease;
+}
+
+.emptyChart {
+  grid-column: 1 / -1;
+  align-self: center;
+  color: #60708f;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
 }
 
 .metric {
@@ -315,6 +386,10 @@
   .filterGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .barChart {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -326,8 +401,13 @@
   }
 
   .filterGrid,
+  .chartFilterGrid,
   .summaryGrid,
   .valueCardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .barChart {
     grid-template-columns: 1fr;
   }
 }

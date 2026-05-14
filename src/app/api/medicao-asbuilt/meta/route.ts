@@ -6,6 +6,7 @@ import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 type ProjectRow = {
   id: string;
   sob: string | null;
+  is_active: boolean;
 };
 
 type NoProductionReasonRow = {
@@ -58,8 +59,9 @@ export async function GET(request: NextRequest) {
   const [projectResult, noProductionReasonResult] = await Promise.all([
     resolution.supabase
       .from("project")
-      .select("id, sob")
+      .select("id, sob, is_active")
       .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("is_active", true)
       .order("sob", { ascending: true })
       .returns<ProjectRow[]>(),
     resolution.supabase

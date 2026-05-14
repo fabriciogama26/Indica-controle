@@ -92,7 +92,10 @@ type ProgrammingMatchRow = {
 
 type ProgrammingWorkCompletionHistoryRow = {
   id: string;
+  programming_id: string;
   project_id: string | null;
+  from_execution_date: string | null;
+  to_execution_date: string | null;
   changes: Record<string, unknown> | null;
   created_at: string;
 };
@@ -355,6 +358,24 @@ function buildProgrammingProjectDateKey(projectId: string, executionDate: string
   return `${projectId}|${executionDate}`;
 }
 
+function resolveProgrammingHistoryProjectDateKey(
+  row: ProgrammingWorkCompletionHistoryRow,
+  programmingProjectDateMap: Map<string, string>,
+) {
+  const projectId = normalizeUuid(row.project_id);
+  if (!projectId) {
+    return null;
+  }
+
+  const historyExecutionDate = normalizeIsoDate(row.to_execution_date)
+    ?? normalizeIsoDate(row.from_execution_date);
+  if (historyExecutionDate) {
+    return buildProgrammingProjectDateKey(projectId, historyExecutionDate);
+  }
+
+  return programmingProjectDateMap.get(row.programming_id) ?? null;
+}
+
 function extractWorkCompletionStatusFromChanges(changes: Record<string, unknown> | null) {
   const change = changes?.workCompletionStatus;
   if (!change || typeof change !== "object") {
@@ -420,19 +441,18 @@ async function loadProgrammingMatchMap(params: {
         }))
     : { data: preferred.data ?? [] };
 
-  const { data: projectCompletionRows } = await params.supabase
-    .from("project_programming")
-    .select("project_id, work_completion_status, updated_at")
-    .eq("tenant_id", params.tenantId)
-    .in("project_id", projectIds)
-    .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "work_completion_status" | "updated_at">>>();
+  const programmingProjectDateMap = new Map<string, string>();
+  for (const row of data ?? []) {
+    programmingProjectDateMap.set(row.id, buildProgrammingProjectDateKey(row.project_id, row.execution_date));
+  }
 
-  const projectWorkCompletionStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
-  for (const row of projectCompletionRows ?? []) {
+  const projectDateWorkCompletionStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
+  for (const row of data ?? []) {
+    const projectDateKey = buildProgrammingProjectDateKey(row.project_id, row.execution_date);
     const completionStatus = resolveMeasurementWorkCompletionStatus(row.work_completion_status);
-    const current = projectWorkCompletionStatusMap.get(row.project_id);
+    const current = projectDateWorkCompletionStatusMap.get(projectDateKey);
     if (!current || String(row.updated_at) > String(current.updatedAt)) {
-      projectWorkCompletionStatusMap.set(row.project_id, {
+      projectDateWorkCompletionStatusMap.set(projectDateKey, {
         completionStatus,
         updatedAt: String(row.updated_at),
       });
@@ -441,21 +461,21 @@ async function loadProgrammingMatchMap(params: {
 
   const { data: projectCompletionHistoryRows } = await params.supabase
     .from("project_programming_history")
-    .select("id, project_id, changes, created_at")
+    .select("id, programming_id, project_id, from_execution_date, to_execution_date, changes, created_at")
     .eq("tenant_id", params.tenantId)
     .in("project_id", projectIds)
     .contains("changes", { workCompletionStatus: {} })
     .order("created_at", { ascending: false })
     .returns<ProgrammingWorkCompletionHistoryRow[]>();
 
-  const projectWorkCompletionHistoryMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
+  const projectDateWorkCompletionHistoryMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
   for (const row of projectCompletionHistoryRows ?? []) {
-    const projectId = normalizeUuid(row.project_id);
-    if (!projectId || projectWorkCompletionHistoryMap.has(projectId)) {
+    const projectDateKey = resolveProgrammingHistoryProjectDateKey(row, programmingProjectDateMap);
+    if (!projectDateKey || projectDateWorkCompletionHistoryMap.has(projectDateKey)) {
       continue;
     }
 
-    projectWorkCompletionHistoryMap.set(projectId, {
+    projectDateWorkCompletionHistoryMap.set(projectDateKey, {
       completionStatus: extractWorkCompletionStatusFromChanges(row.changes),
       updatedAt: String(row.created_at),
     });
@@ -489,16 +509,25 @@ async function loadProgrammingMatchMap(params: {
     const projectDateMatch = selectBestProgrammingMatch(groupedByProjectDate.get(projectDateKey) ?? []);
     const completionMatch = exactMatch ?? projectDateMatch;
 
-    const projectWorkCompletionStatus = projectWorkCompletionHistoryMap.get(order.project_id)
-      ?? projectWorkCompletionStatusMap.get(order.project_id)
+    const projectDateWorkCompletionStatus = projectDateWorkCompletionHistoryMap.get(projectDateKey)
+      ?? projectDateWorkCompletionStatusMap.get(projectDateKey)
       ?? null;
     const currentCompletion = resolveMeasurementWorkCompletionStatus(completionMatch?.work_completion_status);
     const snapshotCompletion = resolveMeasurementWorkCompletionStatus(order.programming_completion_status_snapshot);
-    const effectiveCompletion = projectWorkCompletionStatus
-      ? projectWorkCompletionStatus.completionStatus
-      : currentCompletion ?? snapshotCompletion;
-    const effectiveCompletionUpdatedAt = projectWorkCompletionStatus?.updatedAt ?? completionMatch?.updated_at ?? null;
-    const changedBySnapshot = Boolean(snapshotCompletion && projectWorkCompletionStatus && snapshotCompletion !== effectiveCompletion);
+    const effectiveCompletion = currentCompletion
+      ?? (projectDateWorkCompletionStatus ? projectDateWorkCompletionStatus.completionStatus : null)
+      ?? snapshotCompletion;
+    const effectiveCompletionUpdatedAt = currentCompletion
+      ? (completionMatch?.updated_at ?? null)
+      : (projectDateWorkCompletionStatus?.updatedAt ?? null);
+    const changedBySnapshot = Boolean(
+      snapshotCompletion
+      && (
+        currentCompletion
+          ? snapshotCompletion !== currentCompletion
+          : projectDateWorkCompletionStatus && snapshotCompletion !== projectDateWorkCompletionStatus.completionStatus
+      ),
+    );
 
     const changedAfterMeasurementWithoutSnapshot = Boolean(
       !snapshotCompletion

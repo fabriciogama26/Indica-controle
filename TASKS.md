@@ -372,6 +372,7 @@
 - [x] Adicionar filtro `Equipe` na lista da Medicao, integrado ao `GET /api/medicao`, paginacao, totalizacao e exportacoes.
 - [x] Corrigir heranca de `Estado Trabalho` na Medicao para aceitar qualquer codigo do catalogo e usar fallback de snapshot da ordem quando necessario.
 - [x] Corrigir heranca de `Status execucao` na Medicao para fallback por `Projeto + Data` quando nao houver match de equipe, mantendo `Programacao` como `Nao programada` nesse caso.
+- [x] Corrigir atualizacao de `Status execucao` na Medicao apos mudanca do `Estado Trabalho` na Programacao, consolidando por `Projeto + Data execucao` e priorizando o match exato `Projeto + Equipe + Data execucao`.
 - [x] Implementar acao `Abrir` para ordens `FECHADA` na Medicao, com modal de motivo obrigatorio e registro transacional no banco/historico.
 - [x] Ajustar regra de cancelamento da Medicao para permitir em `ABERTA` e `FECHADA`, mantendo bloqueio apenas para `CANCELADA` e registro de historico no RPC.
 - [x] Adicionar suporte a quantidade composta (`MVA*hora`) na Medicao: campos `MVA` e `Horas` na tela/importacao, persistencia em `project_measurement_order_items` e calculo automatico de `quantity`.
@@ -599,9 +600,11 @@
 - [x] Criar tela `Medicao Asbuilt` separada, baseada no fluxo do `Faturamento`, com rota, menu, permissao, API, tabelas/RLS/RPCs proprias, historico e status `ABERTA`, `FECHADA` e `CANCELADA`.
 - [x] Ajustar o Faturamento para remover valor manual por item e calcular automaticamente o valor pela mesma regra da Medicao: `Pontos x Quantidade x Taxa x Valor unitario`, persistindo o total calculado no banco/RPC.
 - [x] Alinhar o modelo de itens entre `Faturamento` e `Medicao Asbuilt` por `Projeto + Atividade + Pontos + Quantidade + Taxa + Valor unitario + Valor calculado`, preservando `tenant_id`, RLS, historico e `expectedUpdatedAt`.
+- [x] Corrigir o resumo `Valor total filtrado` da lista de `Medicao Asbuilt` para somar todos os registros retornados pelos filtros, independente da pagina visivel.
 - [x] Corrigir parser decimal do cadastro em massa em `Faturamento` e `Medicao Asbuilt` para aceitar `1,5`, `1.5`, `1.234,56` e `1,234.56` sem transformar decimal em inteiro.
 - [x] Permitir registrar codigo de atividade inativo em `Faturamento` e `Medicao Asbuilt`, salvando snapshot `activity_active_snapshot` no item sem alterar a regra da tela `Medicao`.
 - [x] Corrigir leitura de itens importados em massa no detalhe/edicao de `Faturamento` e `Medicao Asbuilt`, incluindo fallback para bancos sem `activity_active_snapshot` e migration incremental `178`.
+- [x] Bloquear cadastro manual e em massa de `Medicao Asbuilt` para projetos inativos, filtrando o catalogo por projetos ativos e adicionando trava de banco na migration `184`.
 - [x] Criar tela `Dash operacional e faturamento` para comparar, por projeto, os codigos de atividade usados em `Medicao`, `Medicao Asbuilt` e `Faturamento`, consolidando uma linha unica por codigo com somatorio de quantidade e valor por origem; filtros obrigatorios: Projeto, Codigo de atividade, Atividade ativa/inativa, Mostrar somente divergencias, Mostrar somente codigos ausentes em alguma base e Centro de servico; sem filtro de data e sem filtro de equipe.
 - [x] Adicionar no `Dash operacional e faturamento` a tabela `Categorias cobradas no faturamento`, agrupando codigos faturados por categoria da atividade (`service_activities.type_service`) e somando quantidade e valor cobrado por projeto.
 - [x] Criar `docs/Tela_Medicao_Asbuilt_SaaS.txt` e registrar que o dashboard comparativo fica para etapa futura.
@@ -613,7 +616,7 @@
 
 - [x] Ajustar Estado Trabalho da Programacao para salvar somente a programacao selecionada, removendo propagacao para outros dias do projeto e desativando o trigger legado de sincronizacao por Projeto + Data.
 
-- [x] Ajustar Status execucao da Medicao para usar o ultimo Estado Trabalho registrado do projeto, sem hierarquia fixa entre CONCLUIDO, PARCIAL e demais estados.
+- [x] Ajustar Status execucao da Medicao para usar o Estado Trabalho por `Projeto + Data execucao`, sem hierarquia fixa entre CONCLUIDO, PARCIAL e demais estados.
 
 - [x] Ajustar cascata de Estado Trabalho da Programacao para sincronizar somente outras equipes do mesmo Projeto + Data execucao, sem afetar outros dias.
 - [x] Ajustar o filtro `Projeto` do `Dash operacional e faturamento` para funcionar no mesmo padrao do filtro de `Projeto` da `Programacao Simples`: `input + datalist`, digitacao por SOB, validacao por codigo exato, preenchimento automatico do centro de servico quando o projeto for reconhecido e bloqueio de filtro com texto digitado sem projeto valido.
@@ -623,6 +626,7 @@
 - [x] Ajustar categorias do `Dash operacional e faturamento` para serem montadas a partir de todos os codigos exibidos em `Codigos por origem`, evitando tabela vazia quando ha Medicao/Asbuilt e ainda nao ha itens de Faturamento.
 - [x] Remover coluna `Total qtd.` do `Resumo por categoria` do `Dash operacional e faturamento` e adicionar botao proprio de `Exportar CSV` para o resumo.
 - [x] Transformar totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` em cards dentro do bloco `Codigos por origem` no `Dash operacional e faturamento`.
+- [x] Adicionar no `Dash operacional e faturamento` o grafico operacional com filtro proprio para comparar `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`, considerando `Medido (AS BUILT)` como o valor medido nos projetos que possuem registro em Medicao Asbuilt.
 - [x] Incluir `projeto` e `centro_servico` nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Formatar como moeda (`R$`) as colunas de valor nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Incluir o numero do Projeto (SOB) no nome dos arquivos CSV exportados em `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.

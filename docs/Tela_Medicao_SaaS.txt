@@ -137,7 +137,7 @@ Filtros, auto-complete e listagem
   - Programacao (`Programada` ou `Nao programada`)
   - Status execucao da programacao + alerta de atualizacao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
   - `Status execucao` aceita todos os codigos ativos do catalogo de `Estado Trabalho` da Programacao, como `CONCLUIDO`, `PARCIAL`, `PENDENCIA` e outros estados cadastrados no tenant.
-  - `Status execucao` exibe o ultimo `Estado Trabalho` registrado para o projeto, sem hierarquia fixa entre os codigos.
+  - `Status execucao` exibe o `Estado Trabalho` da Programacao vinculada por `Projeto + Equipe + Data execucao`; quando nao ha match de equipe, usa fallback de `Projeto + Data execucao`.
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados
@@ -442,8 +442,8 @@ Atualizacao 2026-05-13
   - Depois: a Medicao preserva qualquer codigo de `Estado Trabalho` cadastrado na Programacao, incluindo `PENDENCIA`, exibe o label do catalogo na coluna `Status execucao` e permite filtrar por todos os estados ativos do tenant.
   - Impacto multi-tenant: sem alteracao de schema/RLS; a leitura continua limitada por `tenant_id` e o catalogo usado no filtro vem de `programming_work_completion_catalog` do tenant autenticado.
 
-Atualizacao adicional 2026-05-13 (ultimo Estado Trabalho do projeto)
----------------------------------------------------------------------
+Atualizacao adicional 2026-05-13 (Estado Trabalho sem hierarquia fixa)
+----------------------------------------------------------------------
 - Arquivos alterados/criados:
   - `src/app/api/medicao/route.ts`
   - `docs/Tela_Medicao_SaaS.txt`
@@ -455,10 +455,27 @@ Atualizacao adicional 2026-05-13 (ultimo Estado Trabalho do projeto)
   - `projectWorkCompletionHistoryMap`
   - `projectWorkCompletionStatusMap`
 - Comportamento antes/depois:
-  - Antes: a Medicao escolhia o `Status execucao` consolidado do projeto por ranking (`CONCLUIDO > PARCIAL > demais`) e desempate por `updated_at`.
-  - Depois: a Medicao usa o ultimo `Estado Trabalho` registrado para o projeto, priorizando o historico operacional `project_programming_history` e usando `project_programming.updated_at` como fallback de compatibilidade.
-  - Depois: se o ultimo estado do projeto for `PENDENCIA`, a Medicao exibe `PENDENCIA`, mesmo que exista registro anterior `CONCLUIDO`.
+  - Antes: a Medicao escolhia o `Status execucao` consolidado por ranking (`CONCLUIDO > PARCIAL > demais`) e desempate por `updated_at`.
+  - Depois: a Medicao preserva o ultimo `Estado Trabalho` resolvido para o contexto da Programacao, sem hierarquia fixa entre os codigos.
+  - Depois: se o estado resolvido for `PENDENCIA`, a Medicao exibe `PENDENCIA`, mesmo que exista registro anterior `CONCLUIDO`.
   - Impacto multi-tenant: leitura limitada por `tenant_id`, sem alteracao de schema/RLS.
+
+Atualizacao 2026-05-14 (Status execucao por Projeto + Data)
+-----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingWorkCompletionHistoryRow`
+  - `resolveProgrammingHistoryProjectDateKey`
+  - `loadProgrammingMatchMap`
+  - `projectDateWorkCompletionStatusMap`
+  - `projectDateWorkCompletionHistoryMap`
+- Comportamento antes/depois:
+  - Antes: a consolidacao do `Status execucao` usava o ultimo `Estado Trabalho` por `Projeto`, podendo sobrescrever na Medicao o estado da Programacao do dia por um estado de outra data do mesmo projeto.
+  - Depois: a consolidacao usa `Projeto + Data execucao`, prioriza o match exato `Projeto + Equipe + Data execucao` e usa `Projeto + Data execucao` apenas como fallback quando nao ha match de equipe.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; todas as leituras continuam filtradas por `tenant_id`.
 
 Atualizacao 2026-04-24
 ----------------------
