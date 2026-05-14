@@ -115,6 +115,10 @@ export type AsbuiltMeasurementHistoryEntry = {
 
 export type AsbuiltMeasurementListResponse = {
   orders?: AsbuiltMeasurementListItem[];
+  summary?: {
+    totalAmount: number;
+    itemCount: number;
+  };
   pagination?: {
     page: number;
     pageSize: number;

@@ -54,6 +54,7 @@ Cadastro
   - Observacao do item
 - Regras:
   - Projeto e obrigatorio.
+  - Projeto deve estar ativo no cadastro manual e no cadastro em massa.
   - Ao menos uma atividade com quantidade e taxa e obrigatoria.
   - Quantidade e taxa devem ser maiores que zero.
   - O valor do item e calculado por `voice_point x quantity x rate x unit_value`.
@@ -74,7 +75,7 @@ Filtros, auto-complete e listagem
   - Tipo
   - Motivo sem producao
 - Auto-complete:
-  - Projeto usa `project.sob`.
+  - Projeto usa `project.sob` e lista somente projetos ativos.
   - Atividade usa `service_activities.code/description`.
 - Listagem:
   - Numero
@@ -85,6 +86,10 @@ Filtros, auto-complete e listagem
   - Valor total
   - Status
   - Atualizado em
+- Resumo da listagem:
+  - `Medicoes Asbuilt na pagina` conta somente os registros exibidos na pagina atual.
+  - `Total filtrado` conta todos os registros encontrados pelos filtros aplicados.
+  - `Valor total filtrado` soma todos os itens de todos os registros filtrados, independente da paginacao visivel.
 - Acoes:
   - Detalhes
   - Historico
@@ -131,6 +136,7 @@ Atalhos
   - Valores obrigatorios: `projeto`, `tipo_medicao_asbuilt`, `codigo_atividade`, `quantidade` e `taxa`.
   - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
   - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
+  - Linhas com projeto inativo sao rejeitadas e retornam erro no resultado da importacao parcial.
 
 Atualizacao 2026-05
 -------------------
@@ -149,6 +155,7 @@ Atualizacao 2026-05
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
   - `supabase/migrations/177_create_measurement_asbuilt_page.sql`
+  - `supabase/migrations/184_enforce_active_project_for_asbuilt_measurement.sql`
   - `docs/Tela_Medicao_Asbuilt_SaaS.txt`
   - `docs/00_Indice_SaaS.txt`
   - `supabase/migrations/README.txt`
@@ -166,6 +173,7 @@ Atualizacao 2026-05
   - Permitido registrar codigo de atividade inativo em Medicao Asbuilt, salvando snapshot `activity_active_snapshot` no item e exibindo `Status atividade`.
   - Detalhe e edicao passam a tratar ambientes ainda sem `activity_active_snapshot`, evitando que itens importados em massa aparecam como lista vazia quando o banco estiver defasado.
   - Migration `178_patch_billing_asbuilt_mass_import_items.sql` recompila as RPCs de save/lote parcial para preservar atividades do cadastro em massa em ambientes que ja tinham aplicado `177`.
+  - Cadastro manual e cadastro em massa passam a aceitar somente projetos ativos; a migration `184_enforce_active_project_for_asbuilt_measurement.sql` adiciona trava no banco para novas ordens Asbuilt.
 - Lacunas explicitas:
   - O dashboard comparativo entre Faturamento e Medicao Asbuilt fica para etapa futura.
 
@@ -175,9 +183,9 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
   - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico e status.
 - Caminho: `src/app/api/medicao-asbuilt/route.ts`
-  - Responsavel por: validacao de payload, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
+  - Responsavel por: validacao de payload, validacao de projeto ativo no cadastro manual/lote, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
 - Caminho: `src/app/api/medicao-asbuilt/meta/route.ts`
-  - Responsavel por: carregar projetos e motivos de sem producao por tenant.
+  - Responsavel por: carregar projetos ativos e motivos de sem producao por tenant.
 - Caminho: `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
   - Responsavel por: pesquisar atividades em `service_activities`.
 
@@ -190,6 +198,8 @@ Constantes e configuracoes
   - Responsavel por: tabelas, RLS, RPCs e permissao da pagina `medicao-asbuilt`.
 - Caminho: `supabase/migrations/178_patch_billing_asbuilt_mass_import_items.sql`
   - Responsavel por: patch incremental para coluna `activity_active_snapshot` e RPCs de save/lote parcial em bases ja migradas.
+- Caminho: `supabase/migrations/184_enforce_active_project_for_asbuilt_measurement.sql`
+  - Responsavel por: trigger de banco que impede insert/update de `project_id` em Medicao Asbuilt quando o projeto nao esta ativo.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`
@@ -206,11 +216,15 @@ Ajuda contextual
   - Depois: Medicao Asbuilt existe como tela separada baseada no Faturamento, com itens por quantidade/taxa e valor calculado pela regra da Medicao.
   - Ajuste de precificacao: os campos antigos de cobranca e validacao manual nao existem na tela; o total e derivado de pontos, quantidade, taxa e valor unitario.
   - Ajuste de importacao: atividades salvas pelo cadastro em massa continuam vinculadas ao detalhe/edicao; se o banco estiver sem a coluna nova, a API usa leitura compativel ate a migration `178` ser aplicada.
+  - Ajuste de resumo: o `Valor total filtrado` da lista passou a vir do agregado completo da API, somando todos os itens dos registros filtrados e nao apenas a pagina visivel.
+  - Ajuste de projeto: cadastro manual e em massa rejeitam projeto inativo, e o auto-complete exibe apenas projetos ativos.
 - Arquivos alterados/criados:
   - Listados em `Atualizacao 2026-05`.
 - Hooks/funcoes/constantes tocadas:
   - `AsbuiltMeasurementPageView`
   - `resolveAsbuiltMeasurementContext`
+  - `buildAsbuiltMeasurementAggregateMap`
   - `save_project_asbuilt_measurement_order`
+  - `loadActiveProjectIdSet`
   - `set_project_asbuilt_measurement_order_status`
   - `save_project_asbuilt_measurement_order_batch_partial`

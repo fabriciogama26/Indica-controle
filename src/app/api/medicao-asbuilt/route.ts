@@ -64,6 +64,10 @@ type AppUserRow = {
   login_name: string | null;
 };
 
+type ActiveProjectRow = {
+  id: string;
+};
+
 type SaveAsbuiltMeasurementPayload = {
   action?: string;
   id?: string;
@@ -223,6 +227,54 @@ function findDuplicateActivityId(items: Array<{ activityId: string }>) {
 function resolveAppUserName(user: AppUserRow | undefined) {
   if (!user) return "Nao identificado";
   return normalizeText(user.login_name) || normalizeText(user.display) || "Nao identificado";
+}
+
+function buildAsbuiltMeasurementAggregateMap(items: AsbuiltMeasurementAggregateItem[] | null | undefined) {
+  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number }>();
+  for (const item of items ?? []) {
+    const current = aggregateMap.get(item.asbuilt_measurement_order_id) ?? { totalAmount: 0, itemCount: 0 };
+    current.totalAmount += Number(item.total_value ?? 0);
+    current.itemCount += 1;
+    aggregateMap.set(item.asbuilt_measurement_order_id, current);
+  }
+  return aggregateMap;
+}
+
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function loadActiveProjectIdSet(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projectIds: Array<string | null>;
+}) {
+  const activeProjectIds = new Set<string>();
+  const projectIds = Array.from(new Set(params.projectIds.filter((item): item is string => Boolean(item))));
+
+  for (const projectIdChunk of chunk(projectIds, 500)) {
+    const { data, error } = await params.supabase
+      .from("project")
+      .select("id")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .in("id", projectIdChunk)
+      .returns<ActiveProjectRow[]>();
+
+    if (error) {
+      throw new Error("Falha ao validar projetos ativos do medicao-asbuilt.");
+    }
+
+    for (const project of data ?? []) {
+      activeProjectIds.add(project.id);
+    }
+  }
+
+  return activeProjectIds;
 }
 
 function asbuiltMeasurementModuleMigrationHint(message: string | undefined) {
@@ -499,17 +551,21 @@ export async function GET(request: NextRequest) {
   const safePage = Math.min(page, totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const pagedBaseOrders = (orders ?? []).slice(startIndex, startIndex + pageSize);
-  const pagedOrderIds = pagedBaseOrders.map((item) => item.id);
+  const allOrderIds = (orders ?? []).map((item) => item.id);
 
-  const { data: aggregateItems } = pagedOrderIds.length
+  const { data: aggregateItems, error: aggregateError } = allOrderIds.length
     ? await resolution.supabase
       .from("project_asbuilt_measurement_order_items")
         .select("asbuilt_measurement_order_id, total_value")
         .eq("tenant_id", resolution.appUser.tenant_id)
         .eq("is_active", true)
-        .in("asbuilt_measurement_order_id", pagedOrderIds)
+        .in("asbuilt_measurement_order_id", allOrderIds)
         .returns<AsbuiltMeasurementAggregateItem[]>()
-    : { data: [] as AsbuiltMeasurementAggregateItem[] };
+    : { data: [] as AsbuiltMeasurementAggregateItem[], error: null };
+
+  if (aggregateError) {
+    return NextResponse.json({ message: "Falha ao calcular totais das medicoes asbuilt." }, { status: 500 });
+  }
 
   const userIds = Array.from(new Set((orders ?? []).flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))));
   const userMap = await fetchAppUserMap({
@@ -518,13 +574,14 @@ export async function GET(request: NextRequest) {
     ids: userIds,
   });
 
-  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number }>();
-  for (const item of aggregateItems ?? []) {
-    const current = aggregateMap.get(item.asbuilt_measurement_order_id) ?? { totalAmount: 0, itemCount: 0 };
-    current.totalAmount += Number(item.total_value ?? 0);
-    current.itemCount += 1;
-    aggregateMap.set(item.asbuilt_measurement_order_id, current);
-  }
+  const aggregateMap = buildAsbuiltMeasurementAggregateMap(aggregateItems);
+  const summary = Array.from(aggregateMap.values()).reduce(
+    (current, item) => ({
+      totalAmount: current.totalAmount + item.totalAmount,
+      itemCount: current.itemCount + item.itemCount,
+    }),
+    { totalAmount: 0, itemCount: 0 },
+  );
 
   const pagedOrders = pagedBaseOrders.map((item) => {
     const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0 };
@@ -551,6 +608,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     orders: pagedOrders,
+    summary,
     pagination: {
       page: safePage,
       pageSize,
@@ -585,6 +643,19 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
 
   if (!projectId) {
     return NextResponse.json({ message: "Projeto e obrigatorio para cadastrar medicao-asbuilt." }, { status: 400 });
+  }
+
+  const activeProjectIds = await loadActiveProjectIdSet({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectIds: [projectId],
+  });
+
+  if (!activeProjectIds.has(projectId)) {
+    return NextResponse.json({
+      message: "Projeto inativo nao pode ser usado no medicao-asbuilt.",
+      reason: "PROJECT_INACTIVE",
+    }, { status: 400 });
   }
 
   if (asbuiltMeasurementKind === "SEM_PRODUCAO" && !noProductionReasonId) {
@@ -677,10 +748,36 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     items: hasInvalidAsbuiltMeasurementItemValues(row.items) ? [] : normalizeAsbuiltMeasurementItems(row.items),
   }));
 
+  const activeProjectIds = await loadActiveProjectIdSet({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectIds: rows.map((row) => row.projectId),
+  });
+  const inactiveProjectResults = rows
+    .filter((row) => row.projectId && !activeProjectIds.has(row.projectId))
+    .map((row) => ({
+      rowNumbers: row.rowNumbers,
+      success: false,
+      reason: "PROJECT_INACTIVE",
+      message: "Projeto inativo nao pode ser usado no medicao-asbuilt.",
+      asbuiltMeasurementOrderId: null,
+    }));
+  const rowsWithActiveProjects = rows.filter((row) => !row.projectId || activeProjectIds.has(row.projectId));
+
+  if (!rowsWithActiveProjects.length) {
+    return NextResponse.json({
+      success: true,
+      savedCount: 0,
+      errorCount: inactiveProjectResults.length,
+      results: inactiveProjectResults,
+      message: "Importacao parcial de medicao-asbuilt concluida.",
+    });
+  }
+
   const { data, error } = await resolution.supabase.rpc("save_project_asbuilt_measurement_order_batch_partial", {
     p_tenant_id: resolution.appUser.tenant_id,
     p_actor_user_id: resolution.appUser.id,
-    p_rows: rows,
+    p_rows: rowsWithActiveProjects,
   });
 
   if (error) {
@@ -696,14 +793,17 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
   return NextResponse.json({
     success: true,
     savedCount: Number(result.savedCount ?? 0),
-    errorCount: Number(result.errorCount ?? 0),
-    results: (Array.isArray(result.results) ? result.results : []).map((item) => ({
-      rowNumbers: normalizePositiveIntegerArray(item.rowNumbers),
-      success: item.success === true,
-      reason: normalizeText(item.reason) || null,
-      message: normalizeText(item.message) || "Falha ao processar linha do lote.",
-      asbuiltMeasurementOrderId: normalizeUuid(item.asbuiltMeasurementOrderId ?? "") ?? null,
-    })),
+    errorCount: Number(result.errorCount ?? 0) + inactiveProjectResults.length,
+    results: [
+      ...inactiveProjectResults,
+      ...(Array.isArray(result.results) ? result.results : []).map((item) => ({
+        rowNumbers: normalizePositiveIntegerArray(item.rowNumbers),
+        success: item.success === true,
+        reason: normalizeText(item.reason) || null,
+        message: normalizeText(item.message) || "Falha ao processar linha do lote.",
+        asbuiltMeasurementOrderId: normalizeUuid(item.asbuiltMeasurementOrderId ?? "") ?? null,
+      })),
+    ],
     message: normalizeText(result.message) || "Importacao parcial de medicao-asbuilt concluida.",
   });
 }
