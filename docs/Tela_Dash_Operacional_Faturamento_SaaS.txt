@@ -74,6 +74,7 @@ Filtros, auto-complete e listagem
 - A tabela `Resumo por categoria` possui exportacao CSV propria.
 - As exportacoes CSV incluem o numero do Projeto (SOB) e o Centro de servico em todas as linhas.
 - As colunas de valor nas exportacoes CSV saem formatadas como moeda (`R$`).
+- O nome dos arquivos CSV inclui o numero do Projeto (SOB), por exemplo `dash_operacional_faturamento_categorias_A044811036.csv`.
 - A tela possui exportacao CSV do resultado filtrado.
 - O botao `Exportar CSV` fica no bloco da tabela, acima do resumo de valores de Medicao, Asbuilt e Faturamento.
 - A tela carrega apenas os filtros ao abrir; a consulta da tabela nao e automatica ao alterar campos.
@@ -135,6 +136,7 @@ Atualizacao 2026-05
   - Os totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` passam a ser exibidos como cards no bloco `Codigos por origem`.
   - As exportacoes CSV de `Codigos por origem` e `Resumo por categoria` passam a incluir `projeto` e `centro_servico`.
   - As colunas monetarias das exportacoes CSV passam a sair formatadas como moeda.
+  - Os nomes dos arquivos CSV passam a incluir o numero do Projeto (SOB).
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -159,7 +161,7 @@ Funcoes utilitarias relacionadas
   - Responsavel por: `loadProjects`, `loadOrderIds`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildBillingCategoryRows`, `buildCategorySummary`, `addItem`, `finalizeRows`.
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: `formatNumber`, `formatCurrency`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `handleServiceCenterChange`, `handleProjectSearchChange`, `exportRows`, `exportCategorySummary`.
+  - Responsavel por: `formatNumber`, `formatCurrency`, `filenameToken`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `handleServiceCenterChange`, `handleProjectSearchChange`, `exportRows`, `exportCategorySummary`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
