@@ -226,12 +226,13 @@ Atualizacao 2026-05
 - Nova API `GET /api/team-stock-operations/serial-options` consulta `trafo_instances` por `tenant_id`, `material_id` e `current_stock_center_id`, sem expor centros de equipe na listagem publica de estoque.
 - Ajuste de catalogo operacional: `GET /api/team-stock-operations/meta` passa a carregar materiais ativos em paginas de 1000 registros pelo helper `fetchActiveOperationalMaterials`, evitando que codigos acima do limite padrao do Supabase/PostgREST deixem de aparecer no cadastro manual e no cadastro em massa.
 - O helper aplica fallback para schemas em transicao sem `materials.serial_tracking_type`, preservando a leitura por `is_transformer` quando necessario.
+- Ajuste de UX: o `Salvar operacao` passa a travar imediatamente com `Salvando...`, spinner e `aria-busy` antes das validacoes assincronas de saldo/serial, evitando duplo clique e duplo envio.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
-  - Responsavel por: formulario, filtros, importacao CSV, lista, detalhes, historico e estorno da tela.
+  - Responsavel por: formulario, filtros, importacao CSV, lista, detalhes, historico, estorno da tela e trava visual/funcional do submit manual.
 - Caminho: `src/app/api/team-stock-operations/route.ts`
   - Responsavel por: criar operacoes, listar historico operacional, montar o historico funcional por transferencia, omitir detalhes completos do cadastro inicial e aplicar fallback de leitura para schema em transicao.
 - Caminho: `src/app/api/team-stock-operations/import/route.ts`
@@ -250,6 +251,8 @@ Funcoes principais
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/saida/constants.ts`
   - Responsavel por: filtros iniciais, labels do historico e template CSV da tela.
+- Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+  - Responsavel por: estilo compartilhado dos botoes principais da Movimentacao de Estoque e Operacoes de Equipe, incluindo spinner de salvamento.
 - Caminho: `supabase/migrations/140_create_team_stock_operations.sql`
   - Responsavel por: modelo relacional, politicas RLS e RPCs do fluxo operacional por equipe.
 - Caminho: `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`

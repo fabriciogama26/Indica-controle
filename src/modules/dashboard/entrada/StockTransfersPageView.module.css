@@ -234,14 +234,39 @@
 }
 
 .primaryButton {
+  position: relative;
   background: linear-gradient(180deg, #17347a 0%, #2750a3 100%);
   color: #f7fbff;
   box-shadow: 0 12px 24px rgba(23, 52, 122, 0.2);
 }
 
+.primaryButton[data-loading="true"] {
+  padding-left: 44px;
+}
+
+.primaryButton[data-loading="true"]::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 999px;
+  border: 2px solid rgba(247, 251, 255, 0.4);
+  border-top-color: #f7fbff;
+  animation: buttonSpin 0.7s linear infinite;
+}
+
 .primaryButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@keyframes buttonSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .secondaryButton {
