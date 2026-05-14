@@ -630,3 +630,5 @@
 - [x] Incluir `projeto` e `centro_servico` nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Formatar como moeda (`R$`) as colunas de valor nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Incluir o numero do Projeto (SOB) no nome dos arquivos CSV exportados em `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
+
+- [x] Proteger Salvar operacao em Operacoes de Equipe e Movimentacao de Estoque contra duplo clique, travando submit antes das validacoes assincronas e exibindo estado visual de salvamento.

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
@@ -506,6 +506,7 @@ export function StockTransfersPageView() {
   const logError = useErrorLogger("movimentacao_estoque");
   const router = useRouter();
   const searchParams = useSearchParams();
+  const submitLockRef = useRef(false);
   const canReverseStockMovement = useMemo(() => {
     const normalizedRole = String(session?.user.role ?? "").trim().toUpperCase();
     return normalizedRole === "ADMIN" || normalizedRole === "MASTER" || normalizedRole === "USER";
@@ -1413,6 +1414,10 @@ export function StockTransfersPageView() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (submitLockRef.current) {
+      return;
+    }
+
     if (!session?.accessToken) {
       showError("Sessao invalida para salvar movimentacao de estoque.");
       return;
@@ -1455,45 +1460,46 @@ export function StockTransfersPageView() {
       return;
     }
 
-    for (const item of form.items) {
-      if (item.quantity <= 0) {
-        showError(`Material ${item.materialCode}: quantidade invalida.`);
-        return;
-      }
-
-      if (item.isTransformer) {
-        if (!isTransformerQuantityValid(item.quantity)) {
-          showError(`Material rastreavel ${item.materialCode}: quantidade deve ser exatamente 1.`);
-          return;
-        }
-
-        if (!normalizeText(item.serialNumber)) {
-          showError(`Material rastreavel ${item.materialCode}: Serial e obrigatorio.`);
-          return;
-        }
-
-        if (requiresLotCode(item.serialTrackingType) && !normalizeText(item.lotCode)) {
-          showError(`Material TRAFO ${item.materialCode}: LP e obrigatorio.`);
-          return;
-        }
-      }
-
-      const sourceAvailability = await ensureSourceStockAvailability(item);
-      if (!sourceAvailability.ok) {
-        showError(sourceAvailability.message);
-        return;
-      }
-    }
-
     if (isTransformerMovementMode && form.items.length !== 1) {
       showError("O modo de movimentacao por serial pre-preenchido exige exatamente um item na lista.");
       return;
     }
 
+    submitLockRef.current = true;
     setIsSubmitting(true);
     setFeedback(null);
 
     try {
+      for (const item of form.items) {
+        if (item.quantity <= 0) {
+          showError(`Material ${item.materialCode}: quantidade invalida.`);
+          return;
+        }
+
+        if (item.isTransformer) {
+          if (!isTransformerQuantityValid(item.quantity)) {
+            showError(`Material rastreavel ${item.materialCode}: quantidade deve ser exatamente 1.`);
+            return;
+          }
+
+          if (!normalizeText(item.serialNumber)) {
+            showError(`Material rastreavel ${item.materialCode}: Serial e obrigatorio.`);
+            return;
+          }
+
+          if (requiresLotCode(item.serialTrackingType) && !normalizeText(item.lotCode)) {
+            showError(`Material TRAFO ${item.materialCode}: LP e obrigatorio.`);
+            return;
+          }
+        }
+
+        const sourceAvailability = await ensureSourceStockAvailability(item);
+        if (!sourceAvailability.ok) {
+          showError(sourceAvailability.message);
+          return;
+        }
+      }
+
       const response = await fetch("/api/stock-transfers", {
         method: "POST",
         cache: "no-store",
@@ -1551,6 +1557,7 @@ export function StockTransfersPageView() {
         itemCount: form.items.length,
       });
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -2399,7 +2406,13 @@ export function StockTransfersPageView() {
           </label>
 
           <div className={`${styles.actions} ${styles.fullWidth}`}>
-            <button type="submit" className={styles.primaryButton} disabled={isSubmitting || isLoadingMeta || form.items.length === 0}>
+            <button
+              type="submit"
+              className={styles.primaryButton}
+              disabled={isSubmitting || isLoadingMeta || form.items.length === 0}
+              aria-busy={isSubmitting}
+              data-loading={isSubmitting ? "true" : undefined}
+            >
               {submitButtonLabel}
             </button>
             {isTransformerMovementMode ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
@@ -170,6 +170,7 @@ export function TeamStockOperationsPageView() {
   const accessToken = session?.accessToken ?? null;
   const logError = useErrorLogger("operacoes_equipe");
   const exportCooldown = useExportCooldown();
+  const submitLockRef = useRef(false);
   const canReverseTeamOperation = useMemo(() => {
     const normalizedRole = String(session?.user.role ?? "").trim().toUpperCase();
     return normalizedRole === "ADMIN" || normalizedRole === "MASTER" || normalizedRole === "USER";
@@ -956,6 +957,10 @@ export function TeamStockOperationsPageView() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (submitLockRef.current) {
+      return;
+    }
+
     if (!accessToken) {
       showError("Sessao invalida para salvar operacao de equipe.");
       return;
@@ -989,47 +994,48 @@ export function TeamStockOperationsPageView() {
       return;
     }
 
-    for (const item of form.items) {
-      if (item.quantity <= 0) {
-        showError(`Quantidade invalida para o material ${item.materialCode}.`);
-        return;
-      }
-
-      if (item.isTransformer) {
-        if (!isTransformerQuantityValid(item.quantity)) {
-          showError(`Material ${serialTrackingLabel(item.serialTrackingType)} ${item.materialCode} permite somente quantidade 1 por operacao.`);
-          return;
-        }
-
-        if (!normalizeText(item.serialNumber)) {
-          showError(`Serial e obrigatorio para o material ${serialTrackingLabel(item.serialTrackingType)} ${item.materialCode}.`);
-          return;
-        }
-
-        if (requiresLotCode(item.serialTrackingType) && !normalizeText(item.lotCode)) {
-          showError(`LP e obrigatorio para o material TRAFO ${item.materialCode}.`);
-          return;
-        }
-      }
-
-      const sourceAvailability = await ensureSourceStockAvailability({
-        materialId: item.materialId,
-        materialCode: item.materialCode,
-        quantity: item.quantity,
-        serialNumber: normalizeText(item.serialNumber) || null,
-        lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
-        isTransformer: item.isTransformer,
-      });
-      if (!sourceAvailability.ok) {
-        showError(sourceAvailability.message);
-        return;
-      }
-    }
-
+    submitLockRef.current = true;
     setIsSubmitting(true);
     setFeedback(null);
 
     try {
+      for (const item of form.items) {
+        if (item.quantity <= 0) {
+          showError(`Quantidade invalida para o material ${item.materialCode}.`);
+          return;
+        }
+
+        if (item.isTransformer) {
+          if (!isTransformerQuantityValid(item.quantity)) {
+            showError(`Material ${serialTrackingLabel(item.serialTrackingType)} ${item.materialCode} permite somente quantidade 1 por operacao.`);
+            return;
+          }
+
+          if (!normalizeText(item.serialNumber)) {
+            showError(`Serial e obrigatorio para o material ${serialTrackingLabel(item.serialTrackingType)} ${item.materialCode}.`);
+            return;
+          }
+
+          if (requiresLotCode(item.serialTrackingType) && !normalizeText(item.lotCode)) {
+            showError(`LP e obrigatorio para o material TRAFO ${item.materialCode}.`);
+            return;
+          }
+        }
+
+        const sourceAvailability = await ensureSourceStockAvailability({
+          materialId: item.materialId,
+          materialCode: item.materialCode,
+          quantity: item.quantity,
+          serialNumber: normalizeText(item.serialNumber) || null,
+          lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
+          isTransformer: item.isTransformer,
+        });
+        if (!sourceAvailability.ok) {
+          showError(sourceAvailability.message);
+          return;
+        }
+      }
+
       const response = await fetch("/api/team-stock-operations", {
         method: "POST",
         headers: {
@@ -1084,6 +1090,7 @@ export function TeamStockOperationsPageView() {
       showError("Falha ao salvar operacao de equipe.");
       await logError("Falha ao salvar operacao de equipe.", error, { form });
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -1827,7 +1834,13 @@ export function TeamStockOperationsPageView() {
           </div>
 
           <div className={styles.actions}>
-            <button type="submit" className={styles.primaryButton} disabled={isSubmitting || isLoadingMeta || form.items.length === 0}>
+            <button
+              type="submit"
+              className={styles.primaryButton}
+              disabled={isSubmitting || isLoadingMeta || form.items.length === 0}
+              aria-busy={isSubmitting}
+              data-loading={isSubmitting ? "true" : undefined}
+            >
               {submitButtonLabel}
             </button>
             <button type="button" className={styles.secondaryButton} onClick={openImportModal} disabled={isSubmitting || isLoadingMeta}>

@@ -273,12 +273,13 @@ Atualizacao 2026-05
 - A tabela `stock_transfer_item_reversals` registra o vinculo `item original -> item de estorno` sem alterar registros historicos existentes.
 - Ajuste de catalogo operacional: `GET /api/stock-transfers/meta` passa a carregar materiais ativos em paginas de 1000 registros pelo helper `fetchActiveOperationalMaterials`, evitando que codigos acima do limite padrao do Supabase/PostgREST deixem de aparecer no cadastro manual e no cadastro em massa.
 - O helper aplica fallback para schemas em transicao sem `materials.serial_tracking_type`, preservando a leitura por `is_transformer` quando necessario.
+- Ajuste de UX: o `Salvar operacao` passa a travar imediatamente com `Salvando...`, spinner e `aria-busy` antes das validacoes assincronas de saldo/serial, evitando duplo clique e duplo envio.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
-  - Responsavel por: cadastro manual, validacoes de regra por operacao, importacao CSV em modal, filtros, lista, modais de detalhes/historico e modo de movimentacao por serial.
+  - Responsavel por: cadastro manual, validacoes de regra por operacao, importacao CSV em modal, filtros, lista, modais de detalhes/historico, modo de movimentacao por serial e trava visual/funcional do submit manual.
 - Caminho: `src/app/api/stock-transfers/route.ts`
   - Responsavel por: criar movimentacao, listar somente movimentacoes fisicas, bloquear centro vinculado a equipe e listar historico de alteracoes por transferencia.
 - Caminho: `src/app/api/stock-transfers/import/route.ts`
@@ -309,6 +310,8 @@ Funcoes principais
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
   - Responsavel por: `HISTORY_PAGE_SIZE`, `INITIAL_FORM` e mapeamento de labels do historico.
+- Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+  - Responsavel por: estilos da tela e estado visual de loading do botao principal.
 - Caminho: `src/lib/server/stockTransfers.ts`
   - Responsavel por: normalizacao de payload e chamada padronizada das RPCs `save_stock_transfer_record`, `reverse_stock_transfer_record_v2` e `reverse_stock_transfer_item_record_v1`.
 
