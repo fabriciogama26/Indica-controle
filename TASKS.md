@@ -372,7 +372,7 @@
 - [x] Adicionar filtro `Equipe` na lista da Medicao, integrado ao `GET /api/medicao`, paginacao, totalizacao e exportacoes.
 - [x] Corrigir heranca de `Estado Trabalho` na Medicao para aceitar qualquer codigo do catalogo e usar fallback de snapshot da ordem quando necessario.
 - [x] Corrigir heranca de `Status execucao` na Medicao para fallback por `Projeto + Data` quando nao houver match de equipe, mantendo `Programacao` como `Nao programada` nesse caso.
-- [x] Corrigir atualizacao de `Status execucao` na Medicao apos mudanca do `Estado Trabalho` na Programacao, consolidando por `Projeto + Data execucao` e priorizando o match exato `Projeto + Equipe + Data execucao`.
+- [x] Corrigir atualizacao de `Status execucao` na Medicao apos mudanca do `Estado Trabalho` na Programacao, usando o ultimo estado nao vazio do projeto e fallback por `Projeto + Equipe + Data execucao` / `Projeto + Data execucao`.
 - [x] Implementar acao `Abrir` para ordens `FECHADA` na Medicao, com modal de motivo obrigatorio e registro transacional no banco/historico.
 - [x] Ajustar regra de cancelamento da Medicao para permitir em `ABERTA` e `FECHADA`, mantendo bloqueio apenas para `CANCELADA` e registro de historico no RPC.
 - [x] Adicionar suporte a quantidade composta (`MVA*hora`) na Medicao: campos `MVA` e `Horas` na tela/importacao, persistencia em `project_measurement_order_items` e calculo automatico de `quantity`.
@@ -616,7 +616,7 @@
 
 - [x] Ajustar Estado Trabalho da Programacao para salvar somente a programacao selecionada, removendo propagacao para outros dias do projeto e desativando o trigger legado de sincronizacao por Projeto + Data.
 
-- [x] Ajustar Status execucao da Medicao para usar o Estado Trabalho por `Projeto + Data execucao`, sem hierarquia fixa entre CONCLUIDO, PARCIAL e demais estados.
+- [x] Ajustar Status execucao da Medicao para usar o ultimo Estado Trabalho nao vazio do projeto, sem hierarquia fixa entre CONCLUIDO, PARCIAL e demais estados.
 
 - [x] Ajustar cascata de Estado Trabalho da Programacao para sincronizar somente outras equipes do mesmo Projeto + Data execucao, sem afetar outros dias.
 - [x] Ajustar o filtro `Projeto` do `Dash operacional e faturamento` para funcionar no mesmo padrao do filtro de `Projeto` da `Programacao Simples`: `input + datalist`, digitacao por SOB, validacao por codigo exato, preenchimento automatico do centro de servico quando o projeto for reconhecido e bloqueio de filtro com texto digitado sem projeto valido.
