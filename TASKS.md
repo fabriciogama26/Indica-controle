@@ -449,6 +449,7 @@
 - [x] Adicionar compatibilidade de Estado Trabalho por UUID (work_completion_status_id) com backfill e trigger de sincronismo codigo/UUID, mantendo fallback legado para CONCLUIDO em /api/projects sem perda de historico.
 - [x] Corrigir fallback de leitura em /api/programacao para ambientes sem coluna etapa_final, preservando work_completion_status e evitando filtro Estado Trabalho zerado por downgrade indevido de select.
 - [x] Corrigir falha de "Sessao invalida para editar programacao" no submit da Programacao Simples, com refresh de token via `supabase.auth.getSession()` e retry unico no `PUT` quando houver `401`.
+- [x] Corrigir agrupamento da `Extracao ENEL NOVO` para consolidar encarregados por `SOB + Data Execucao`, evitando multiplas linhas do mesmo projeto quando houver mais de um encarregado.
 
 
 
