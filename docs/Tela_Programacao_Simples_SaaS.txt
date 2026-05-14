@@ -752,6 +752,19 @@ Atualizacao adicional 2026-04-15 (ETAPA FINAL e consolidacao da Extracao ENEL NO
   - Antes: `Responsável Execução` trazia apenas um encarregado por linha.
   - Depois: `Responsável Execução` passa a listar todos os encarregados do grupo separados por ` / `.
 
+Atualizacao adicional 2026-05 (Extracao ENEL NOVO - agrupamento por SOB)
+------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `buildEnelNovoWorkbookData`
+  - `buildEnelNovoGroupKey`
+- Comportamento antes/depois:
+  - Antes: a `Extracao ENEL NOVO` podia gerar mais de uma linha para o mesmo projeto quando programacoes com encarregados diferentes nao caiam no mesmo agrupamento interno.
+  - Depois: o agrupamento passa a usar `SOB + Data Execucao` normalizada, consolidando os encarregados em `Responsavel Execucao` separados por ` / `.
+
 Atualizacao adicional 2026-04-15 (ETAPA UNICA x ETAPA FINAL)
 ------------------------------------------------------------
 - Arquivos alterados/criados:

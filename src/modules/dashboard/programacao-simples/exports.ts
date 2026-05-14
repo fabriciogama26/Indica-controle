@@ -293,6 +293,14 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
   return buildCsvContent(header, rows);
 }
 
+function buildEnelNovoGroupKey(schedule: ScheduleItem, project?: ProjectItem) {
+  const projectCode = String(project?.code ?? "").trim();
+  const projectKey = projectCode ? projectCode.toUpperCase() : schedule.projectId;
+  const executionDateKey = String(schedule.date ?? "").trim().slice(0, 10);
+
+  return `${projectKey}__${executionDateKey}`;
+}
+
 export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: ExportContext) {
   const exportSchedules = schedules.filter((schedule) => {
     const project = projectMap.get(schedule.projectId);
@@ -362,7 +370,7 @@ export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: Ex
   }>();
 
   for (const schedule of exportSchedules) {
-    const key = `${schedule.projectId}__${schedule.date}`;
+    const key = buildEnelNovoGroupKey(schedule, projectMap.get(schedule.projectId));
     const current = groupedAccumulator.get(key) ?? {
       baseSchedule: schedule,
       schedules: [],
