@@ -8,6 +8,7 @@ Visao geral
 - Indica codigos ausentes em alguma base e codigos divergentes por quantidade ou valor.
 - Exibe uma segunda tabela de categorias cobradas no Faturamento, somando quantidade e valor por categoria da atividade.
 - Exibe grafico operacional com `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`.
+- Exibe tabela abaixo do grafico com valor, quantidade de projetos e quantidade de medicoes para cada indicador.
 - A tela nao possui filtro de data nem filtro de equipe.
 
 Arquitetura
@@ -85,6 +86,7 @@ Filtros, auto-complete e listagem
 - `Medido (AS BUILT)` soma o valor da Medicao apenas dos projetos que possuem registro em Medicao Asbuilt dentro do filtro proprio do grafico.
 - `As Built` soma o valor da Medicao Asbuilt.
 - `Faturado` soma o valor do Faturamento.
+- A tabela do grafico exibe `Projetos` como quantidade de projetos distintos e `Medicoes` como quantidade de ordens consideradas em cada indicador.
 
 Boas praticas
 -------------
@@ -138,6 +140,7 @@ Atualizacao 2026-05
   - A tela passa a exibir a tabela `Resumo por categoria`, agrupando os codigos por categoria da atividade e somando quantidade/valor por origem.
   - A tabela `Resumo por categoria` passa a usar o mesmo agregado final da tabela `Codigos por origem`, evitando ficar vazia quando existem codigos de Medicao ou Medicao Asbuilt mas ainda nao ha itens de Faturamento.
   - A tela passa a exibir grafico operacional com filtros proprios para comparar `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`.
+  - O grafico operacional passa a exibir tabela complementar com valor, projetos e medicoes para cada indicador.
   - O filtro `Projeto` passa a usar `input + datalist`, com digitacao por SOB, validacao por codigo exato e preenchimento automatico do Centro de servico.
   - A coluna `Total qtd.` foi removida do `Resumo por categoria`, mantendo `Total valor`, e a tabela recebeu botao proprio de `Exportar CSV`.
   - Os totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` passam a ser exibidos como cards no bloco `Codigos por origem`.
@@ -149,9 +152,9 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal e no bloco de categorias.
+  - Responsavel por: renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal e no bloco de categorias.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar dados do grafico operacional por filtro proprio, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -166,6 +169,7 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
   - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `sumItemsByOrderIds`, `addItem`, `finalizeRows`.
+  - Comportamento ajustado: `buildChartItems` passa a devolver, alem do valor financeiro, quantidade de projetos distintos e quantidade de ordens consideradas por indicador do grafico.
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
   - Responsavel por: `formatNumber`, `formatCurrency`, `filenameToken`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `loadChart`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`.
@@ -199,3 +203,4 @@ Ajuda contextual
   - Antes: nao havia tela para comparar codigos das tres origens.
   - Depois: a rota `/dash-operacional-faturamento` consolida codigos por projeto e centro de servico, indicando divergencias e ausencias entre Medicao, Medicao Asbuilt e Faturamento.
   - Ajuste posterior: categorias deixam de depender apenas de Faturamento e passam a seguir o mesmo resultado exibido em `Codigos por origem`, com colunas dinamicas por categoria, linhas por origem, sem coluna `Total qtd.` e com exportacao CSV propria.
+  - Ajuste posterior: o `Grafico operacional` passa a exibir tabela complementar com valor, quantidade de projetos e quantidade de medicoes por indicador.

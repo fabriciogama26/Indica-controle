@@ -237,6 +237,40 @@
   text-align: center;
 }
 
+.chartTableWrapper {
+  margin-top: 14px;
+  overflow-x: auto;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+}
+
+.chartTable {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.chartTable th {
+  border-bottom: 1px solid #d9e1ef;
+  background: #eef2f8;
+  color: #002b7f;
+  text-align: left;
+  font-weight: 800;
+  padding: 10px;
+  white-space: nowrap;
+}
+
+.chartTable td {
+  border-bottom: 1px solid #e2e8f3;
+  color: #001f5b;
+  padding: 10px;
+}
+
+.chartTable tbody tr:nth-child(even) {
+  background: #f8fbff;
+}
+
 .metric {
   min-height: 78px;
   display: flex;
