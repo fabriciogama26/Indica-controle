@@ -277,8 +277,13 @@ export function OperationalBillingDashboardPageView() {
       return;
     }
 
+    const projectCode = selectedProject?.label ?? "";
+    const serviceCenterName = selectedProject?.serviceCenter ?? "";
+
     downloadCsv("dash_operacional_faturamento.csv", [
       [
+        "projeto",
+        "centro_servico",
         "codigo",
         "descricao",
         "unidade",
@@ -296,6 +301,8 @@ export function OperationalBillingDashboardPageView() {
         "situacao",
       ],
       ...rows.map((row) => [
+        projectCode,
+        serviceCenterName,
         row.code,
         row.description,
         row.unit,
@@ -321,14 +328,21 @@ export function OperationalBillingDashboardPageView() {
       return;
     }
 
+    const projectCode = selectedProject?.label ?? "";
+    const serviceCenterName = selectedProject?.serviceCenter ?? "";
+
     downloadCsv("dash_operacional_faturamento_categorias.csv", [
       [
+        "projeto",
+        "centro_servico",
         "origem",
         ...categoryColumns.map((category) => `${category.categoryName}_quantidade`),
         ...categoryColumns.map((category) => `${category.categoryName}_valor`),
         "total_valor",
       ],
       ...categorySummaryRows.map((row) => [
+        projectCode,
+        serviceCenterName,
         row.label,
         ...categoryColumns.map((category) => row.categories[category.categoryId]?.quantity ?? 0),
         ...categoryColumns.map((category) => row.categories[category.categoryId]?.value ?? 0),
