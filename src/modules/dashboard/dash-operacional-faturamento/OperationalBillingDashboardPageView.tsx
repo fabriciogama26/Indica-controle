@@ -69,6 +69,8 @@ type ChartItem = {
   key: string;
   label: string;
   value: number;
+  projectCount: number;
+  measurementCount: number;
 };
 
 type Summary = {
@@ -618,6 +620,31 @@ export function OperationalBillingDashboardPageView() {
             </div>
           )}
         </div>
+
+        {chartItems.length ? (
+          <div className={styles.chartTableWrapper}>
+            <table className={styles.chartTable}>
+              <thead>
+                <tr>
+                  <th>Indicador</th>
+                  <th>Valor</th>
+                  <th>Projetos</th>
+                  <th>Medicoes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chartItems.map((item) => (
+                  <tr key={`chart-table-${item.key}`}>
+                    <td><strong>{item.label}</strong></td>
+                    <td>{formatCurrency(item.value)}</td>
+                    <td>{formatNumber(item.projectCount)}</td>
+                    <td>{formatNumber(item.measurementCount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </article>
 
       <article className={styles.card}>

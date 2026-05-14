@@ -113,6 +113,8 @@ type ChartItem = {
   key: string;
   label: string;
   value: number;
+  projectCount: number;
+  measurementCount: number;
 };
 
 function normalizeText(value: unknown) {
@@ -591,10 +593,10 @@ async function buildChartItems(params: {
 
   if (!scopedProjectIds.length) {
     return [
-      { key: "totalMeasurement", label: "Total medido", value: 0 },
-      { key: "measurementAsbuilt", label: "Medido (AS BUILT)", value: 0 },
-      { key: "asbuilt", label: "As Built", value: 0 },
-      { key: "billing", label: "Faturado", value: 0 },
+      { key: "totalMeasurement", label: "Total medido", value: 0, projectCount: 0, measurementCount: 0 },
+      { key: "measurementAsbuilt", label: "Medido (AS BUILT)", value: 0, projectCount: 0, measurementCount: 0 },
+      { key: "asbuilt", label: "As Built", value: 0, projectCount: 0, measurementCount: 0 },
+      { key: "billing", label: "Faturado", value: 0, projectCount: 0, measurementCount: 0 },
     ] satisfies ChartItem[];
   }
 
@@ -620,9 +622,16 @@ async function buildChartItems(params: {
   ]);
 
   const asbuiltProjectIds = new Set(asbuiltOrders.map((order) => order.project_id));
+  const measurementProjectIds = new Set(measurementOrders.map((order) => order.project_id));
+  const billingProjectIds = new Set(billingOrders.map((order) => order.project_id));
   const measurementAsbuiltOrderIds = measurementOrders
     .filter((order) => asbuiltProjectIds.has(order.project_id))
     .map((order) => order.id);
+  const measurementAsbuiltProjectIds = new Set(
+    measurementOrders
+      .filter((order) => asbuiltProjectIds.has(order.project_id))
+      .map((order) => order.project_id),
+  );
 
   const [totalMeasurement, measurementAsbuilt, asbuilt, billing] = await Promise.all([
     sumItemsByOrderIds({
@@ -656,10 +665,34 @@ async function buildChartItems(params: {
   ]);
 
   return [
-    { key: "totalMeasurement", label: "Total medido", value: totalMeasurement },
-    { key: "measurementAsbuilt", label: "Medido (AS BUILT)", value: measurementAsbuilt },
-    { key: "asbuilt", label: "As Built", value: asbuilt },
-    { key: "billing", label: "Faturado", value: billing },
+    {
+      key: "totalMeasurement",
+      label: "Total medido",
+      value: totalMeasurement,
+      projectCount: measurementProjectIds.size,
+      measurementCount: measurementOrders.length,
+    },
+    {
+      key: "measurementAsbuilt",
+      label: "Medido (AS BUILT)",
+      value: measurementAsbuilt,
+      projectCount: measurementAsbuiltProjectIds.size,
+      measurementCount: measurementAsbuiltOrderIds.length,
+    },
+    {
+      key: "asbuilt",
+      label: "As Built",
+      value: asbuilt,
+      projectCount: asbuiltProjectIds.size,
+      measurementCount: asbuiltOrders.length,
+    },
+    {
+      key: "billing",
+      label: "Faturado",
+      value: billing,
+      projectCount: billingProjectIds.size,
+      measurementCount: billingOrders.length,
+    },
   ] satisfies ChartItem[];
 }
 

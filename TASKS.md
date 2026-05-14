@@ -628,6 +628,7 @@
 - [x] Remover coluna `Total qtd.` do `Resumo por categoria` do `Dash operacional e faturamento` e adicionar botao proprio de `Exportar CSV` para o resumo.
 - [x] Transformar totais financeiros de `Medicao`, `Asbuilt` e `Faturamento` em cards dentro do bloco `Codigos por origem` no `Dash operacional e faturamento`.
 - [x] Adicionar no `Dash operacional e faturamento` o grafico operacional com filtro proprio para comparar `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`, considerando `Medido (AS BUILT)` como o valor medido nos projetos que possuem registro em Medicao Asbuilt.
+- [x] Adicionar tabela no `Grafico operacional` do `Dash operacional e faturamento` mostrando valor, quantidade de projetos e quantidade de medicoes para `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`.
 - [x] Incluir `projeto` e `centro_servico` nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Formatar como moeda (`R$`) as colunas de valor nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Incluir o numero do Projeto (SOB) no nome dos arquivos CSV exportados em `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
