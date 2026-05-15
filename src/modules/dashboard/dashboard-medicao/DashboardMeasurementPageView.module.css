@@ -122,6 +122,13 @@
   gap: 12px;
 }
 
+.cycleMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 240px));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .metric {
   min-height: 78px;
   display: flex;
@@ -459,7 +466,7 @@
   display: flex;
   align-items: end;
   justify-content: center;
-  gap: 82px;
+  gap: 52px;
   border-top: 1px solid #edf1f8;
   padding: 28px 16px 4px;
 }
@@ -582,6 +589,26 @@
   background: #f8fbff;
 }
 
+.table tfoot td {
+  background: #eef2f8;
+  color: #002b7f;
+  font-weight: 800;
+}
+
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:hover td,
+.clickableRow:focus td {
+  background: #eaf3ff;
+}
+
+.clickableRow:focus {
+  outline: 2px solid #4b77c7;
+  outline-offset: -2px;
+}
+
 .emptyRow {
   text-align: center;
   color: #60708f;
@@ -680,6 +707,19 @@
   font-size: 16px;
 }
 
+.modalSubtitle {
+  margin: 4px 0 0;
+  color: #42557d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modalActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .modalBody {
   overflow: auto;
   padding: 18px;
@@ -708,14 +748,16 @@
 
 @media (max-width: 700px) {
   .cardHeader,
-  .chartActions {
+  .chartActions,
+  .modalActions {
     flex-direction: column;
     align-items: stretch;
   }
 
   .filterGrid,
   .periodFields,
-  .summaryGrid {
+  .summaryGrid,
+  .cycleMetricGrid {
     grid-template-columns: 1fr;
   }
 

@@ -24,6 +24,26 @@ type MeasurementOrderItemRow = {
 type ProjectTestRow = {
   id: string;
   is_test: boolean | null;
+  service_center: string | null;
+};
+
+type ProjectServiceCenterRow = {
+  id: string;
+  name: string | null;
+};
+
+type ProjectMeta = {
+  isTest: boolean;
+  serviceCenterId: string | null;
+  serviceCenterName: string;
+};
+
+type ProjectProductionDetail = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  totalValue: number;
+  orderCount: number;
 };
 
 type TeamRow = {
@@ -77,6 +97,8 @@ type ForemanAggregate = {
   metaValue: number;
   standardMetaValue: number;
   workedMetaValue: number;
+  projectIds: Set<string>;
+  projects: Map<string, ProjectProductionDetail>;
   teamIds: Set<string>;
   daysByTeam: Map<string, Set<string>>;
 };
@@ -86,6 +108,8 @@ type SupervisorAggregate = {
   supervisorName: string;
   totalValue: number;
   orderCount: number;
+  projectIds: Set<string>;
+  projects: Map<string, ProjectProductionDetail>;
   productiveTeamIds: Set<string>;
   potentialTeamIds: Set<string>;
 };
@@ -113,13 +137,8 @@ function normalizeCompletionStatus(value: unknown) {
 
   if (token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO")) return "CONCLUIDO";
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) return "PARCIAL";
+  if (token === "PENDENCIA" || token === "PENDENCIAS" || token.startsWith("PENDEN")) return "PENDENCIA";
   return "NAO_INFORMADO";
-}
-
-function completionRank(value: string) {
-  if (value === "CONCLUIDO") return 2;
-  if (value === "PARCIAL") return 1;
-  return 0;
 }
 
 function createUtcDate(year: number, monthIndex: number, day: number) {
@@ -217,23 +236,42 @@ function formatPeriodLabel(period: string) {
   return `${month}/${year}`;
 }
 
-async function fetchProjectIsTestMap(params: {
+async function fetchProjectMetaMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   projectIds: string[];
 }) {
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
-  if (!projectIds.length) return new Map<string, boolean>();
+  if (!projectIds.length) return new Map<string, ProjectMeta>();
 
   const { data, error } = await params.supabase
     .from("project")
-    .select("id, is_test")
+    .select("id, is_test, service_center")
     .eq("tenant_id", params.tenantId)
     .in("id", projectIds)
     .returns<ProjectTestRow[]>();
 
-  if (error) return new Map<string, boolean>();
-  return new Map((data ?? []).map((item) => [item.id, Boolean(item.is_test)]));
+  if (error) return new Map<string, ProjectMeta>();
+
+  const serviceCenterIds = Array.from(new Set((data ?? []).map((item) => item.service_center).filter((id): id is string => Boolean(id))));
+  const serviceCentersResult = serviceCenterIds.length
+    ? await params.supabase
+        .from("project_service_centers")
+        .select("id, name")
+        .eq("tenant_id", params.tenantId)
+        .in("id", serviceCenterIds)
+        .returns<ProjectServiceCenterRow[]>()
+    : { data: [] as ProjectServiceCenterRow[], error: null };
+  const serviceCenterMap = new Map((serviceCentersResult.data ?? []).map((item) => [item.id, normalizeText(item.name)]));
+
+  return new Map((data ?? []).map((item) => [
+    item.id,
+    {
+      isTest: Boolean(item.is_test),
+      serviceCenterId: item.service_center,
+      serviceCenterName: item.service_center ? serviceCenterMap.get(item.service_center) || "Centro nao identificado" : "Centro nao informado",
+    },
+  ]));
 }
 
 async function fetchProjectCompletionMap(params: {
@@ -254,14 +292,13 @@ async function fetchProjectCompletionMap(params: {
 
   if (error) return new Map<string, string>();
 
-  const result = new Map<string, { status: string; rank: number; updatedAt: string }>();
+  const result = new Map<string, { status: string; updatedAt: string }>();
   for (const row of data ?? []) {
     const status = normalizeCompletionStatus(row.work_completion_status);
-    const rank = completionRank(status);
-    if (!rank) continue;
+    if (status === "NAO_INFORMADO") continue;
     const current = result.get(row.project_id);
-    if (!current || rank > current.rank || (rank === current.rank && row.updated_at > current.updatedAt)) {
-      result.set(row.project_id, { status, rank, updatedAt: row.updated_at });
+    if (!current || String(row.updated_at) > String(current.updatedAt)) {
+      result.set(row.project_id, { status, updatedAt: row.updated_at });
     }
   }
 
@@ -304,7 +341,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar medicoes para dashboard." }, { status: 500 });
   }
 
-  const projectIsTestMap = await fetchProjectIsTestMap({
+  const projectMetaMap = await fetchProjectMetaMap({
     supabase: resolution.supabase,
     tenantId,
     projectIds: (orders ?? []).map((item) => item.project_id),
@@ -312,7 +349,7 @@ export async function GET(request: NextRequest) {
 
   const validOrders = (orders ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
-    .filter((order) => !projectIsTestMap.get(order.project_id));
+    .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
 
   const cycleMap = new Map<string, ReturnType<typeof buildCycleFromMeasurementDate>>();
   for (const order of validOrders) {
@@ -460,7 +497,7 @@ export async function GET(request: NextRequest) {
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
     if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
-    if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL") && orderCompletionMap.get(order.id) !== completionFilter) return false;
+    if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL" || completionFilter === "PENDENCIA") && orderCompletionMap.get(order.id) !== completionFilter) return false;
     return true;
   });
 
@@ -470,7 +507,7 @@ export async function GET(request: NextRequest) {
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
     if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
-    if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL") && orderCompletionMap.get(order.id) !== completionFilter) return false;
+    if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL" || completionFilter === "PENDENCIA") && orderCompletionMap.get(order.id) !== completionFilter) return false;
     return true;
   });
 
@@ -524,36 +561,47 @@ export async function GET(request: NextRequest) {
   const workedDays = Math.round(Number(selectedCycleRecord?.worked_days ?? 0));
 
   function createCompletionTotals() {
-    return new Map<string, { value: number; orders: number }>([
-      ["CONCLUIDO", { value: 0, orders: 0 }],
-      ["PARCIAL", { value: 0, orders: 0 }],
-      ["NAO_INFORMADO", { value: 0, orders: 0 }],
+    return new Map<string, { value: number; orders: number; projectIds: Set<string> }>([
+      ["CONCLUIDO", { value: 0, orders: 0, projectIds: new Set<string>() }],
+      ["PARCIAL", { value: 0, orders: 0, projectIds: new Set<string>() }],
+      ["PENDENCIA", { value: 0, orders: 0, projectIds: new Set<string>() }],
+      ["NAO_INFORMADO", { value: 0, orders: 0, projectIds: new Set<string>() }],
     ]);
   }
 
-  function addCompletionTotals(target: Map<string, { value: number; orders: number }>, order: MeasurementOrderRow) {
+  function addCompletionTotals(target: Map<string, { value: number; orders: number; projectIds: Set<string> }>, order: MeasurementOrderRow) {
     const totalValue = valueByOrder.get(order.id) ?? 0;
     const completion = orderCompletionMap.get(order.id) ?? "NAO_INFORMADO";
-    const completionTotal = target.get(completion) ?? { value: 0, orders: 0 };
+    const completionTotal = target.get(completion) ?? { value: 0, orders: 0, projectIds: new Set<string>() };
     completionTotal.value += totalValue;
     completionTotal.orders += 1;
+    completionTotal.projectIds.add(order.project_id);
     target.set(completion, completionTotal);
   }
 
-  function buildCompletionChart(target: Map<string, { value: number; orders: number }>) {
+  function buildCompletionChart(target: Map<string, { value: number; orders: number; projectIds: Set<string> }>) {
     const totalValue = Array.from(target.values()).reduce((sum, item) => sum + item.value, 0);
     return [
       {
         label: "Concluidos",
         value: target.get("CONCLUIDO")?.value ?? 0,
         orders: target.get("CONCLUIDO")?.orders ?? 0,
+        projectCount: target.get("CONCLUIDO")?.projectIds.size ?? 0,
         percentage: totalValue > 0 ? ((target.get("CONCLUIDO")?.value ?? 0) / totalValue) * 100 : 0,
       },
       {
         label: "Parciais",
         value: target.get("PARCIAL")?.value ?? 0,
         orders: target.get("PARCIAL")?.orders ?? 0,
+        projectCount: target.get("PARCIAL")?.projectIds.size ?? 0,
         percentage: totalValue > 0 ? ((target.get("PARCIAL")?.value ?? 0) / totalValue) * 100 : 0,
+      },
+      {
+        label: "Pendencias",
+        value: target.get("PENDENCIA")?.value ?? 0,
+        orders: target.get("PENDENCIA")?.orders ?? 0,
+        projectCount: target.get("PENDENCIA")?.projectIds.size ?? 0,
+        percentage: totalValue > 0 ? ((target.get("PENDENCIA")?.value ?? 0) / totalValue) * 100 : 0,
       },
     ];
   }
@@ -583,6 +631,8 @@ export async function GET(request: NextRequest) {
         supervisorName,
         totalValue: 0,
         orderCount: 0,
+        projectIds: new Set<string>(),
+        projects: new Map<string, ProjectProductionDetail>(),
         productiveTeamIds: new Set<string>(),
         potentialTeamIds: new Set<string>(),
       };
@@ -590,6 +640,23 @@ export async function GET(request: NextRequest) {
       map.set(supervisorKey, currentSupervisor);
     }
     return map;
+  }
+
+  function addProjectProduction(target: Map<string, ProjectProductionDetail>, order: MeasurementOrderRow, totalValue: number) {
+    const current = target.get(order.project_id) ?? {
+      projectId: order.project_id,
+      projectCode: normalizeText(order.project_code_snapshot) || "Projeto sem codigo",
+      serviceCenter: projectMetaMap.get(order.project_id)?.serviceCenterName || "Centro nao informado",
+      totalValue: 0,
+      orderCount: 0,
+    };
+    current.totalValue += totalValue;
+    current.orderCount += 1;
+    target.set(order.project_id, current);
+  }
+
+  function buildProjectProductionRows(target: Map<string, ProjectProductionDetail>) {
+    return Array.from(target.values()).sort((left, right) => right.totalValue - left.totalValue);
   }
 
   function addForemanOrder(target: Map<string, ForemanAggregate>, order: MeasurementOrderRow) {
@@ -604,10 +671,14 @@ export async function GET(request: NextRequest) {
       metaValue: 0,
       standardMetaValue: 0,
       workedMetaValue: 0,
+      projectIds: new Set<string>(),
+      projects: new Map<string, ProjectProductionDetail>(),
       teamIds: new Set<string>(),
       daysByTeam: new Map<string, Set<string>>(),
     };
     current.totalValue += totalValue;
+    current.projectIds.add(order.project_id);
+    addProjectProduction(current.projects, order, totalValue);
     current.teamIds.add(order.team_id);
     const dates = current.daysByTeam.get(order.team_id) ?? new Set<string>();
     dates.add(order.execution_date);
@@ -626,11 +697,15 @@ export async function GET(request: NextRequest) {
       supervisorName,
       totalValue: 0,
       orderCount: 0,
+      projectIds: new Set<string>(),
+      projects: new Map<string, ProjectProductionDetail>(),
       productiveTeamIds: new Set<string>(),
       potentialTeamIds: new Set<string>(),
     };
     currentSupervisor.totalValue += totalValue;
     currentSupervisor.orderCount += 1;
+    currentSupervisor.projectIds.add(order.project_id);
+    addProjectProduction(currentSupervisor.projects, order, totalValue);
     currentSupervisor.productiveTeamIds.add(order.team_id);
     if (activeTeamMap.has(order.team_id)) {
       currentSupervisor.potentialTeamIds.add(order.team_id);
@@ -671,6 +746,8 @@ export async function GET(request: NextRequest) {
           metaValue,
           standardMetaValue,
           workedMetaValue,
+          projectCount: foreman.projectIds.size,
+          projects: buildProjectProductionRows(foreman.projects),
           teamCount: foreman.teamIds.size,
           metaDays: metaWorkdays,
           standardMetaDays: standardMetaWorkdays,
@@ -691,6 +768,8 @@ export async function GET(request: NextRequest) {
           supervisorName: supervisor.supervisorName,
           totalValue: supervisor.totalValue,
           orderCount: supervisor.orderCount,
+          projectCount: supervisor.projectIds.size,
+          projects: buildProjectProductionRows(supervisor.projects),
           productiveTeamCount: supervisor.productiveTeamIds.size,
           potentialTeamCount: supervisor.potentialTeamIds.size,
           productiveMetaValue,
@@ -733,6 +812,8 @@ export async function GET(request: NextRequest) {
 
   const foremenRows = buildForemanRows(foremanMap, workdays, defaultWorkdays);
   const realizedValue = filteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
+  const projectCount = new Set(filteredOrders.map((order) => order.project_id)).size;
+  const averageTicketValue = projectCount > 0 ? realizedValue / projectCount : 0;
   const supervisorsProductionRows = buildSupervisorRows(supervisorProductionMap, workdays, realizedValue);
   const percentage = cycleMetaValue > 0 ? (realizedValue / cycleMetaValue) * 100 : 0;
   const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
@@ -769,7 +850,10 @@ export async function GET(request: NextRequest) {
       forecastDifference,
       completedValue: cycleCompletionTotals.get("CONCLUIDO")?.value ?? 0,
       partialValue: cycleCompletionTotals.get("PARCIAL")?.value ?? 0,
+      pendingValue: cycleCompletionTotals.get("PENDENCIA")?.value ?? 0,
       noStatusValue: cycleCompletionTotals.get("NAO_INFORMADO")?.value ?? 0,
+      projectCount,
+      averageTicketValue,
     },
     completionChart: buildCompletionChart(periodCompletionTotals),
     cycleCompletionChart: buildCompletionChart(cycleCompletionTotals),
@@ -783,6 +867,8 @@ export async function GET(request: NextRequest) {
       workdays,
       defaultWorkdays,
       workedDays,
+      projectCount,
+      averageTicketValue,
       executedWorkdays,
       averageDailyValue,
       forecastValue,
