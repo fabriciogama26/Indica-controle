@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./DashboardMeasurementPageView.module.css";
@@ -39,13 +39,17 @@ type Summary = {
   forecastDifference: number;
   completedValue: number;
   partialValue: number;
+  pendingValue: number;
   noStatusValue: number;
+  projectCount: number;
+  averageTicketValue: number;
 };
 
 type CompletionChartItem = {
   label: string;
   value: number;
   orders: number;
+  projectCount: number;
   percentage: number;
 };
 
@@ -58,6 +62,8 @@ type CycleComparison = {
   workdays: number;
   defaultWorkdays: number;
   workedDays: number;
+  projectCount: number;
+  averageTicketValue: number;
   executedWorkdays: number;
   averageDailyValue: number;
   forecastValue: number;
@@ -66,12 +72,22 @@ type CycleComparison = {
   percentage: number;
 };
 
+type ProjectProductionDetail = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  totalValue: number;
+  orderCount: number;
+};
+
 type ForemanRow = {
   foremanName: string;
   totalValue: number;
   metaValue: number;
   standardMetaValue: number;
   workedMetaValue: number;
+  projectCount: number;
+  projects: ProjectProductionDetail[];
   teamCount: number;
   metaDays?: number;
   standardMetaDays?: number;
@@ -84,6 +100,8 @@ type SupervisorProductionRow = {
   supervisorName: string;
   totalValue: number;
   orderCount: number;
+  projectCount: number;
+  projects: ProjectProductionDetail[];
   productiveTeamCount: number;
   potentialTeamCount: number;
   productiveMetaValue: number;
@@ -123,6 +141,13 @@ type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | "foreman
 type ForemanMetaMode = "cycle" | "standard" | "worked";
 type SupervisorMetaBase = "productive" | "potential";
 
+type ProjectDetailModal = {
+  title: string;
+  subtitle: string;
+  rows: ProjectProductionDetail[];
+  filename: string;
+} | null;
+
 const foremanMetaLabels: Record<ForemanMetaMode, string> = {
   cycle: "Meta ciclo",
   standard: "Meta ciclo padrao",
@@ -140,6 +165,12 @@ const foremanMetaColors: Record<ForemanMetaMode | "value", string> = {
   cycle: "#f07f2f",
   standard: "#17a884",
   worked: "#7b61ff",
+};
+
+const completionChartColors: Record<string, string> = {
+  Concluidos: "#4b77c7",
+  Parciais: "#f07f2f",
+  Pendencias: "#e25555",
 };
 
 const chartStatusColors = {
@@ -167,6 +198,24 @@ function formatPercent(value: number) {
 
 function maxValue(values: number[]) {
   return Math.max(1, ...values.map((value) => Number(value) || 0));
+}
+
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function filenameToken(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase() || "detalhe";
+}
+
+function todayToken() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function getCurrentYearPeriod() {
@@ -255,6 +304,7 @@ export function DashboardMeasurementPageView() {
   const [supervisorsProduction, setSupervisorsProduction] = useState<SupervisorProductionRow[]>([]);
   const [supervisorsProductionByWeek, setSupervisorsProductionByWeek] = useState<Record<string, SupervisorProductionRow[]>>({});
   const [supervisorWeekFilter, setSupervisorWeekFilter] = useState("");
+  const [projectDetailModal, setProjectDetailModal] = useState<ProjectDetailModal>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -446,6 +496,56 @@ export function DashboardMeasurementPageView() {
     setEndDate(periodEndDraft);
   }
 
+  function openForemanProjectDetails(row: ForemanRow) {
+    setProjectDetailModal({
+      title: `Projetos de ${row.foremanName}`,
+      subtitle: selectedForemanPeriodLabel,
+      rows: row.projects,
+      filename: `dashboard_medicao_encarregado_${filenameToken(row.foremanName)}_${todayToken()}.csv`,
+    });
+  }
+
+  function openSupervisorProjectDetails(row: SupervisorProductionRow) {
+    setProjectDetailModal({
+      title: `Projetos de ${row.supervisorName}`,
+      subtitle: selectedSupervisorPeriodLabel,
+      rows: row.projects,
+      filename: `dashboard_medicao_supervisor_${filenameToken(row.supervisorName)}_${todayToken()}.csv`,
+    });
+  }
+
+  function handleProjectDetailRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, callback: () => void) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      callback();
+    }
+  }
+
+  function exportProjectDetailsCsv() {
+    if (!projectDetailModal?.rows.length) {
+      setFeedback({ type: "error", message: "Nenhum projeto encontrado para exportar." });
+      return;
+    }
+
+    const header = ["Projeto", "Centro", "Valor cobrado", "Ordens"];
+    const rows = projectDetailModal.rows.map((item) => [
+      item.projectCode,
+      item.serviceCenter,
+      item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      item.orderCount,
+    ]);
+    const csv = `\uFEFF${[header, ...rows].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = projectDetailModal.filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   function renderExpandButton(chart: Exclude<ExpandedChart, null>, title: string) {
     return (
       <button type="button" className={styles.expandButton} onClick={() => openChart(chart)} aria-label={`Ampliar ${title}`} title={`Ampliar ${title}`}>
@@ -533,6 +633,7 @@ export function DashboardMeasurementPageView() {
               <th>Status</th>
               <th>Valor</th>
               <th>Ordens</th>
+              <th>Projetos</th>
               <th>%Valor</th>
             </tr>
           </thead>
@@ -542,6 +643,7 @@ export function DashboardMeasurementPageView() {
                 <td>{item.label}</td>
                 <td>{formatCurrency(item.value)}</td>
                 <td>{item.orders}</td>
+                <td>{item.projectCount}</td>
                 <td>{formatPercent(item.percentage)}</td>
               </tr>
             ))}
@@ -555,13 +657,16 @@ export function DashboardMeasurementPageView() {
     const completionMax = maxValue(items.map((item) => item.value));
     return (
       <div className={`${styles.dualChart} ${isExpanded ? styles.chartExpanded : ""}`}>
-        {items.map((item, index) => (
+        {items.map((item) => (
           <div key={item.label} className={styles.verticalBarGroup}>
             <div className={styles.valueLabel}>{formatCurrency(item.value)}</div>
             <div className={isExpanded ? styles.verticalBarTrackExpanded : styles.verticalBarTrack}>
               <div
-                className={index === 0 ? styles.barBlue : styles.barOrange}
-                style={{ height: `${Math.max(4, (item.value / completionMax) * 100)}%` }}
+                className={styles.dynamicBar}
+                style={{
+                  background: completionChartColors[item.label] ?? foremanMetaColors.value,
+                  height: `${Math.max(4, (item.value / completionMax) * 100)}%`,
+                }}
               />
             </div>
             <strong>{item.label}</strong>
@@ -951,6 +1056,7 @@ export function DashboardMeasurementPageView() {
               <option value="TODOS">Todos</option>
               <option value="CONCLUIDO">Concluidos</option>
               <option value="PARCIAL">Parciais</option>
+              <option value="PENDENCIA">Pendencias</option>
             </select>
           </label>
         </div>
@@ -1016,12 +1122,24 @@ export function DashboardMeasurementPageView() {
           </div>
         </div>
 
+        <div className={styles.cycleMetricGrid}>
+          <div className={styles.metric}>
+            <span>Ticket medio</span>
+            <strong>{formatCurrency(cycleComparison?.averageTicketValue ?? 0)}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Projetos no ciclo</span>
+            <strong>{cycleComparison?.projectCount ?? 0}</strong>
+          </div>
+        </div>
+
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
               <tr>
                 <th>Ciclo</th>
                 <th>Valor</th>
+                <th>Projetos</th>
                 {cycleMetaMode !== "worked" ? <th>Projecao de fechamento</th> : null}
                 <th>{foremanMetaLabels[cycleMetaMode]}</th>
                 <th>{metaDayLabels[cycleMetaMode]}</th>
@@ -1037,6 +1155,7 @@ export function DashboardMeasurementPageView() {
                 <tr>
                   <td>{cycleComparison.label}</td>
                   <td>{formatCurrency(cycleComparison.value)}</td>
+                  <td>{cycleComparison.projectCount}</td>
                   {cycleMetaMode !== "worked" ? <td>{formatCurrency(resolveCycleForecastValue(cycleComparison, cycleMetaMode))}</td> : null}
                   <td>{formatCurrency(resolveCycleMetaValue(cycleComparison, cycleMetaMode))}</td>
                   <td>{resolveCycleDays(cycleComparison, cycleMetaMode)}</td>
@@ -1048,7 +1167,7 @@ export function DashboardMeasurementPageView() {
                 </tr>
               ) : (
                 <tr>
-                  <td colSpan={cycleMetaMode === "worked" ? 5 : 10} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
+                  <td colSpan={cycleMetaMode === "worked" ? 6 : 11} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
                 </tr>
               )}
             </tbody>
@@ -1100,6 +1219,7 @@ export function DashboardMeasurementPageView() {
               <tr>
                 <th>Nomes</th>
                 <th>Total equipes</th>
+                <th>Projetos</th>
                 {foremanMetaModes.map((mode) => (
                   <th key={`${mode}-meta`}>{foremanMetaLabels[mode]}</th>
                 ))}
@@ -1115,9 +1235,18 @@ export function DashboardMeasurementPageView() {
               {selectedForemen.length ? (
                 selectedForemen.map((item) => {
                   return (
-                    <tr key={item.foremanName}>
+                    <tr
+                      key={item.foremanName}
+                      className={styles.clickableRow}
+                      role="button"
+                      tabIndex={0}
+                      title={`Ver projetos de ${item.foremanName}`}
+                      onClick={() => openForemanProjectDetails(item)}
+                      onKeyDown={(event) => handleProjectDetailRowKeyDown(event, () => openForemanProjectDetails(item))}
+                    >
                       <td>{item.foremanName}</td>
                       <td>{formatCurrency(item.totalValue)}</td>
+                      <td>{item.projectCount}</td>
                       {foremanMetaModes.map((mode) => (
                         <td key={`${item.foremanName}-${mode}-meta`}>{formatCurrency(resolveForemanMetaValue(item, mode))}</td>
                       ))}
@@ -1137,7 +1266,7 @@ export function DashboardMeasurementPageView() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={2 + (foremanMetaModes.length * 3)} className={styles.emptyRow}>Nenhum encarregado encontrado no ciclo.</td>
+                  <td colSpan={3 + (foremanMetaModes.length * 3)} className={styles.emptyRow}>Nenhum encarregado encontrado no ciclo.</td>
                 </tr>
               )}
             </tbody>
@@ -1200,6 +1329,7 @@ export function DashboardMeasurementPageView() {
               <tr>
                 <th>Supervisor</th>
                 <th>Valor produzido</th>
+                <th>Projetos</th>
                 <th>Equipes com producao</th>
                 <th>Equipes vinculadas</th>
                 <th>Ordens</th>
@@ -1212,9 +1342,18 @@ export function DashboardMeasurementPageView() {
             <tbody>
               {selectedSupervisorsProduction.length ? (
                 selectedSupervisorsProduction.map((item) => (
-                  <tr key={item.supervisorId ?? item.supervisorName}>
+                  <tr
+                    key={item.supervisorId ?? item.supervisorName}
+                    className={styles.clickableRow}
+                    role="button"
+                    tabIndex={0}
+                    title={`Ver projetos de ${item.supervisorName}`}
+                    onClick={() => openSupervisorProjectDetails(item)}
+                    onKeyDown={(event) => handleProjectDetailRowKeyDown(event, () => openSupervisorProjectDetails(item))}
+                  >
                     <td>{item.supervisorName}</td>
                     <td>{formatCurrency(item.totalValue)}</td>
+                    <td>{item.projectCount}</td>
                     <td>{item.productiveTeamCount}</td>
                     <td>{item.potentialTeamCount}</td>
                     <td>{item.orderCount}</td>
@@ -1226,7 +1365,7 @@ export function DashboardMeasurementPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyRow}>Nenhum supervisor encontrado no recorte selecionado.</td>
+                  <td colSpan={10} className={styles.emptyRow}>Nenhum supervisor encontrado no recorte selecionado.</td>
                 </tr>
               )}
             </tbody>
@@ -1272,6 +1411,7 @@ export function DashboardMeasurementPageView() {
                         <tr>
                           <th>Supervisor</th>
                           <th>Valor produzido</th>
+                          <th>Projetos</th>
                           <th>Equipes com producao</th>
                           <th>Equipes vinculadas</th>
                           <th>Ordens</th>
@@ -1283,9 +1423,18 @@ export function DashboardMeasurementPageView() {
                       </thead>
                       <tbody>
                         {selectedSupervisorsProduction.map((item) => (
-                          <tr key={item.supervisorId ?? item.supervisorName}>
+                          <tr
+                            key={item.supervisorId ?? item.supervisorName}
+                            className={styles.clickableRow}
+                            role="button"
+                            tabIndex={0}
+                            title={`Ver projetos de ${item.supervisorName}`}
+                            onClick={() => openSupervisorProjectDetails(item)}
+                            onKeyDown={(event) => handleProjectDetailRowKeyDown(event, () => openSupervisorProjectDetails(item))}
+                          >
                             <td>{item.supervisorName}</td>
                             <td>{formatCurrency(item.totalValue)}</td>
+                            <td>{item.projectCount}</td>
                             <td>{item.productiveTeamCount}</td>
                             <td>{item.potentialTeamCount}</td>
                             <td>{item.orderCount}</td>
@@ -1301,6 +1450,65 @@ export function DashboardMeasurementPageView() {
                   {renderSupervisorProductionChart(true)}
                 </>
               ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {projectDetailModal ? (
+        <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-label={projectDetailModal.title}>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2>{projectDetailModal.title}</h2>
+                <p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p>
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={exportProjectDetailsCsv}>
+                  Exportar Excel (CSV)
+                </button>
+                <button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)} aria-label="Fechar detalhe de projetos">
+                  x
+                </button>
+              </div>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.tableWrapper}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Projeto</th>
+                      <th>Centro</th>
+                      <th>Valor cobrado</th>
+                      <th>Ordens</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectDetailModal.rows.length ? (
+                      projectDetailModal.rows.map((item) => (
+                        <tr key={item.projectId}>
+                          <td>{item.projectCode}</td>
+                          <td>{item.serviceCenter}</td>
+                          <td>{formatCurrency(item.totalValue)}</td>
+                          <td>{item.orderCount}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className={styles.emptyRow}>Nenhum projeto encontrado no recorte selecionado.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td>Total</td>
+                      <td>{projectDetailModal.rows.length} projetos</td>
+                      <td>{formatCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td>
+                      <td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           </div>
         </div>

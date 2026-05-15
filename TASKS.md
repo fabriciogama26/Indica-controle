@@ -547,6 +547,8 @@
 - [x] Ajustar bullet chart de metas com margem no eixo para exibir melhor o marcador de meta e remover a legenda global antiga dos encarregados.
 
 - [x] Ocultar Projecao de fechamento no Ciclo da medicao quando a meta selecionada for Meta ciclo trabalhado.
+- [x] Incluir Pendencias nos graficos Concluidos x Parciais do Dashboard Medicao, adicionar coluna de projetos nas tabelas de status/ciclo/encarregados/supervisor e card de Ticket medio no Ciclo da medicao.
+- [x] Adicionar modal de projetos por Encarregado/Supervisor no Dashboard Medicao, com valor cobrado, centro, totalizador e exportacao Excel CSV.
 - [x] Decisao arquitetural (2026-05-03): manter o SaaS como monolito modular, evitando microservicos/deploys separados e priorizando melhoria dos limites internos por modulo.
 - [x] Iniciar modularizacao interna da `Programacao Simples` sem mudanca funcional, extraindo os contratos TypeScript para `src/modules/dashboard/programacao-simples/types.ts`.
 - [x] Continuar modularizacao interna da `Programacao Simples`: extrair constantes para `constants.ts` mantendo comportamento e payloads atuais.
