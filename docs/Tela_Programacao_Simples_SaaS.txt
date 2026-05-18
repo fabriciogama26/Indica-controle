@@ -202,7 +202,7 @@ Filtros, auto-complete e listagem
 - Listagem:
   - Acima de `Cadastro de Programacao`, a tela mostra um painel de prazos das obras baseado em `Projeto (SOB) + Data limite`.
   - O painel traz cards-resumo com prioridade visual (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`) e cards por `SOB` em carrossel horizontal (6 por pagina), para obras com data limite ate a janela selecionada.
-  - Existe alternancia de janela no proprio bloco: `15 dias` e `30 dias`.
+  - Existe alternancia de janela no proprio bloco: `15 dias`, `30 dias`, `60 dias` e `90 dias`.
   - O botao `Ver todos` abre modal com a listagem completa da janela selecionada, incluindo `Centro de servico` e `Prioridade`, e botao de `Exportar Excel (CSV)`.
   - Projetos com qualquer programacao no periodo carregado com `Estado Trabalho = CONCLUIDO` sao removidos da contagem e dos cards de prazo.
   - Hierarquia visual dos cards SOB: `Muito atrasado (>=30 dias)` em vermelho escuro, `Pouco atrasado` em vermelho, `Vence hoje` em vermelho com destaque de borda e `Vence em breve` em laranja.
@@ -590,7 +590,7 @@ Atualizacao adicional 2026-04-08
   - `deadlineProjects`, `deadlineSummary`, `deadlineSobCards`
 - Comportamento antes/depois:
   - Antes: o topo da tela de cadastro da Programacao nao trazia nenhum resumo de prazo das obras.
-  - Depois: a tela passa a exibir um bloco de cards acima de `Cadastro de Programacao` com contadores por status de vencimento em prioridade (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`), cards de `SOB` em carrossel horizontal (`6` por pagina), alternancia de janela (`15 dias`, `30 dias`), botao `Ver todos` com modal e exportacao CSV, e exclusao de projetos com `Estado Trabalho = CONCLUIDO`.
+  - Depois: a tela passa a exibir um bloco de cards acima de `Cadastro de Programacao` com contadores por status de vencimento em prioridade (`Vence hoje`, `Vence em breve`, `Vencida`, `No prazo`), cards de `SOB` em carrossel horizontal (`6` por pagina), alternancia de janela (`15 dias`, `30 dias`, `60 dias`, `90 dias`), botao `Ver todos` com modal e exportacao CSV, e exclusao de projetos com `Estado Trabalho = CONCLUIDO`.
   - Antes: o usuario precisava inferir urgencia de prazo fora da tela de Programacao.
   - Depois: os cards por `SOB` destacam `Data limite` e `Status do prazo` com cor (vermelho forte para vencida, alerta para hoje/proximo e neutro para no prazo), com navegacao por setas para avancar/voltar os proximos `6` cards.
 
@@ -945,7 +945,7 @@ Atualizacao adicional 2026-05-03 (modularizacao interna - constantes)
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
-  - Constantes movidas para `constants.ts`: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `DEADLINE_CAROUSEL_PAGE_SIZE`, `DEADLINE_WINDOW_SHORT_DAYS`, `DEADLINE_WINDOW_LONG_DAYS`, `DOCUMENT_KEYS`, `HISTORY_FIELD_LABELS`, `HISTORY_ALLOWED_ACTIONS`, `HISTORY_HIDDEN_FIELDS` e `VALIDATION_FIELD_LABELS`.
+  - Constantes movidas para `constants.ts`: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `DEADLINE_CAROUSEL_PAGE_SIZE`, `DEADLINE_WINDOW_SHORT_DAYS`, `DEADLINE_WINDOW_LONG_DAYS`, `DEADLINE_WINDOW_EXTENDED_DAYS`, `DEADLINE_WINDOW_MAX_DAYS`, `DOCUMENT_KEYS`, `HISTORY_FIELD_LABELS`, `HISTORY_ALLOWED_ACTIONS`, `HISTORY_HIDDEN_FIELDS` e `VALIDATION_FIELD_LABELS`.
 - Comportamento antes/depois:
   - Antes: constantes de paginacao, documentos, historico e validacao ficavam no topo de `ProgrammingSimplePageView.tsx`.
   - Depois: as constantes ficam em `constants.ts` e o PageView apenas importa esses contratos estaticos.
@@ -1220,3 +1220,23 @@ Atualizacao adicional 2026-05-18 (Prioridade no modal de prazos)
   - Antes: ao clicar em `Ver todos`, o modal de prazos e sua exportacao CSV nao exibiam a prioridade da obra.
   - Depois: o modal e a exportacao passam a exibir `Prioridade`, usando o valor ja carregado em `ProjectItem.priority` e fallback `Sem prioridade`.
   - Multi-tenant: nao houve alteracao de consulta, RPC, migration ou regra RLS; o dado segue vindo do payload filtrado por tenant da API de Programacao.
+
+Atualizacao adicional 2026-05-18 (janelas 60 e 90 dias nos prazos)
+-------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/constants.ts`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `DeadlineViewMode`: passa a aceitar `15`, `30`, `60` e `90`.
+  - `DEADLINE_WINDOW_EXTENDED_DAYS` e `DEADLINE_WINDOW_MAX_DAYS`: novas constantes de janela.
+  - `resolveDeadlineWindowDays`: resolve a janela ativa a partir do modo selecionado.
+  - `formatDeadlineRangeLabel`: passa a classificar tambem `31 a 60 dias` e `61 a 90 dias`.
+  - `ProgrammingDeadlinePanel`: adiciona botoes `60 dias` e `90 dias`.
+- Comportamento antes/depois:
+  - Antes: o painel `Prazos das Obras` permitia consultar somente `15 dias` e `30 dias`.
+  - Depois: o painel, o modal `Ver todos` e a exportacao CSV passam a respeitar tambem as janelas `60 dias` e `90 dias`.
+  - Multi-tenant: nao houve alteracao de consulta, RPC, migration ou regra RLS; a filtragem continua sobre os dados de projetos ja carregados para o tenant atual.

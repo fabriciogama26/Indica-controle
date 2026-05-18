@@ -5,6 +5,8 @@ export const HISTORY_PAGE_SIZE = 5;
 export const DEADLINE_CAROUSEL_PAGE_SIZE = 6;
 export const DEADLINE_WINDOW_SHORT_DAYS = 15;
 export const DEADLINE_WINDOW_LONG_DAYS = 30;
+export const DEADLINE_WINDOW_EXTENDED_DAYS = 60;
+export const DEADLINE_WINDOW_MAX_DAYS = 90;
 
 export const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
   { key: "sgd", label: "SGD" },
