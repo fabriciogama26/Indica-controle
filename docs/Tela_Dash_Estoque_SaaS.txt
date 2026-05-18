@@ -1,0 +1,261 @@
+Tela: Dashboard Estoque SaaS
+
+Visao geral
+-----------
+- Tela read-only de indicadores do estoque.
+- Consolida 6 graficos iniciais:
+  - Dispersao Requisicao/Devolucao
+  - Materiais criticos e zerados
+  - Top materiais por saldo
+  - Materiais sem giro
+  - Curva ABC do estoque
+  - Evolucao de movimentacoes
+- Centro de estoque e usado somente como filtro operacional, sem ranking por centro.
+- A tela preserva o escopo multi-tenant por `tenant_id` e valida permissao pela pagina `dash-estoque`.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/dash-estoque/page.tsx`
+- View principal: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
+- API da tela: `src/app/api/dash-estoque/route.ts`
+- Menu e titulo: `src/components/layout/AppShell.tsx`
+- Autorizacao de rota: `src/lib/auth/authorization.ts`
+- Matriz de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Migration de pagina/permissao: `supabase/migrations/186_create_stock_dashboard_page.sql`
+- Hook de erro usado pela tela: `src/hooks/useErrorLogger.ts`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Data inicial`
+  - `Data final`
+  - `Centro de estoque`
+  - `Equipe`
+  - `Projeto`
+  - `Material`
+  - `Tipo`
+  - `Limite critico`
+- Graficos:
+  - `Dispersao de materiais`
+    - Botao `Requisicao`
+    - Botao `Devolucao`
+    - Botao `Expandir`
+    - Alternancia de escala entre `Raiz` e `Linear`
+    - Controle de `Zoom` no modal expandido para alterar o dominio da escala e separar visualmente pontos sobrepostos
+    - Lista lateral completa com rolagem para selecionar material
+    - Foco individual: ao selecionar um material na lista, o grafico exibe somente o circulo correspondente
+    - Eixo X: quantidade movimentada
+    - Eixo Y: numero de operacoes, com rotulo `Operacoes` por extenso e na horizontal
+    - Tamanho do ponto: saldo atual do material
+    - Cor do ponto: faixa de quantidade movimentada, com legenda no grafico (`<= 50`, `51-100`, `101-200` e depois intervalos de 200 em 200)
+  - `Materiais criticos e zerados`
+    - Materiais com saldo menor ou igual ao limite critico
+  - `Top materiais por saldo`
+    - Materiais com maior saldo consolidado
+  - `Materiais sem giro`
+    - Faixas por ultima movimentacao conhecida
+  - `Curva ABC do estoque`
+    - Alternancia por botao entre `Valor` e `Quantidade`
+    - Modo `Valor`: classificacao por `saldo x unit_price`
+    - Modo `Quantidade`: classificacao por quantidade em estoque
+  - `Evolucao de movimentacoes`
+    - Linhas mensais por tipo de operacao
+    - Nao soma quantidades de UMB diferentes no mesmo grafico
+- Cards:
+  - Materiais
+  - Criticos
+  - Zerados
+  - Valor estimado
+  - Resumo por UMB
+
+Boas praticas
+-------------
+- Manter toda consulta filtrada por `tenant_id`.
+- Nao expor centros de estoque proprios de equipes como centros publicos de estoque.
+- Nao recalcular saldo no frontend.
+- Usar a API agregada para preparar os dados dos graficos.
+- Registrar erros com `useErrorLogger("dash_estoque")`.
+- Manter `Centro de estoque` apenas como filtro, sem ranking por centro.
+- Aplicar filtros somente pelo botao `Filtrar`; alteracoes nos campos nao recarregam automaticamente a tela.
+- Para evolucao temporal, usar contagem de linhas/movimentacoes quando houver mistura de UMB no periodo.
+- Excluir movimentacoes estornadas e movimentacoes de estorno dos agregados quando houver vinculo em `stock_transfer_reversals` ou `stock_transfer_item_reversals`.
+
+Cancelamento e saldo
+--------------------
+- A tela nao grava movimentacao, cancelamento ou estorno.
+- A tela apenas consulta:
+  - `stock_center_balances`
+  - `stock_transfers`
+  - `stock_transfer_items`
+  - `stock_transfer_team_operations`
+  - `materials`
+  - `teams`
+  - `project`
+- O saldo atual vem do backend e e exibido de forma consolidada por material.
+- O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta linhas por tipo de operacao.
+
+Atalhos
+-------
+- Rota ativa: `/dash-estoque`
+- Endpoint:
+  - `GET /api/dash-estoque`
+- Page key:
+  - `dash-estoque`
+
+Atualizacao 2026-05
+-------------------
+- Arquivos criados:
+  - `src/app/(dashboard)/dash-estoque/page.tsx`
+  - `src/app/api/dash-estoque/route.ts`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
+  - `supabase/migrations/186_create_stock_dashboard_page.sql`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `TASKS.md`
+- Antes:
+  - Nao existia tela dedicada de dashboard do estoque com os 6 graficos definidos.
+  - Depois:
+    - `/dash-estoque` passa a exibir os indicadores iniciais de saldo, giro, criticidade, ABC, evolucao e dispersao Requisicao/Devolucao.
+    - A sidebar passa a exibir `Dashboard Estoque` em `Visao Geral`.
+    - A matriz de permissoes passa a reconhecer `dash-estoque`.
+    - A tela `Home` deixa de usar o rotulo visual `Dashboard Estoque`.
+    - A dispersao passa a ter modal ampliado, escala `Raiz`/`Linear`, controle de zoom por dominio, lista completa com rolagem, foco individual por material selecionado e legenda de cores por faixa de quantidade.
+    - Os filtros passam a executar nova consulta somente pelo botao `Filtrar`, sem recarregamento automatico ao alterar campos.
+    - A evolucao passa a contar linhas/movimentacoes por mes e tipo, sem somar quantidades de UMB diferentes.
+    - A Curva ABC passa a alternar entre classificacao por valor e por quantidade em estoque.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/api/dash-estoque/route.ts`
+  - Responsavel por: autenticar usuario, validar permissao da pagina, carregar centros fisicos, saldos, movimentacoes, itens, operacoes de equipe, projetos e equipes, e devolver agregados para os 6 graficos.
+- Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - Responsavel por: filtros, carregamento da API, cards de resumo, modal de dispersao e renderizacao dos graficos.
+- Caminho: `src/app/(dashboard)/dash-estoque/page.tsx`
+  - Responsavel por: expor a rota da tela no App Router.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: incluir item de menu e titulo/subtitulo da rota.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/dash-estoque` para `page_key = dash-estoque`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: exibir `Dashboard Estoque` na matriz de permissoes.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - Responsavel por:
+    - `operationLabels`
+    - `ScatterScale`
+    - `evolutionKeys`
+    - periodo inicial do ano corrente
+- Caminho: `supabase/migrations/186_create_stock_dashboard_page.sql`
+  - Responsavel por: inserir/atualizar `app_pages`, `role_page_permissions` e `app_user_page_permissions` para `dash-estoque`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/app/api/dash-estoque/route.ts`
+  - Responsavel por:
+    - `ensureDashPageAccess`
+    - `resolveDashContext`
+    - `loadPhysicalStockCenters`
+    - `loadBalances`
+    - `loadTransfers`
+    - `loadTransferItems`
+    - `loadTeamOperations`
+    - `loadProjects`
+    - `loadTeams`
+    - `loadReversalSets`
+    - `buildCriticalRows`
+    - `buildTopBalanceRows`
+    - `buildIdleBuckets`
+    - `buildAbcRows`
+    - `buildEvolutionRows`
+    - `buildScatterRows`
+- Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - Responsavel por:
+    - `BarList`
+    - `IdleChart`
+    - `AbcChart`
+    - `abcMode`
+    - `EvolutionChart`
+    - `ScatterChart`
+    - `scaleScatterValue`
+    - `scatterOffset`
+    - `scatterZoom`
+    - `scatterQuantityPalette`
+    - `buildScatterQuantityBands`
+    - `getScatterQuantityBand`
+    - `selectedScatterMaterialId`
+    - `selectedScatterPoint`
+    - `handleScatterOperationChange`
+    - `hasLoadedInitialDashboard`
+    - `loadDashboard`
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Tabelas consultadas:
+  - `stock_center_balances`
+  - `stock_transfers`
+  - `stock_transfer_items`
+  - `stock_transfer_team_operations`
+  - `stock_transfer_reversals`
+  - `stock_transfer_item_reversals`
+  - `stock_centers`
+  - `materials`
+  - `teams`
+  - `project`
+  - `app_user_page_permissions`
+  - `role_page_permissions`
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/dash-estoque/page.tsx`
+  - `src/app/api/dash-estoque/route.ts`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/186_create_stock_dashboard_page.sql`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `StockDashboardPage`
+  - `StockDashboardPageView`
+  - `loadDashboard`
+  - `BarList`
+  - `IdleChart`
+  - `AbcChart`
+  - `EvolutionChart`
+  - `ScatterChart`
+  - `scaleScatterValue`
+  - `scatterOffset`
+  - `scatterZoom`
+  - `GET /api/dash-estoque`
+  - `ensureDashPageAccess`
+  - `resolveDashContext`
+  - `loadPhysicalStockCenters`
+  - `buildScatterRows`
+  - `menuSections`
+  - `titleMap`
+  - `permissionCatalog`
+  - `resolveDefaultPageAccess`
+  - `ROUTE_PAGE_KEYS`
+- Comportamento antes/depois:
+  - Antes: nao havia rota `/dash-estoque`.
+  - Depois: existe dashboard read-only com 6 graficos iniciais.
+  - Antes: `dash-estoque` nao existia em menu/permissao.
+  - Depois: `dash-estoque` esta cadastrado em sidebar, autorizacao client-side, catalogo de permissoes e migration de backfill.
+  - Antes: a dispersao expandida mantinha muitos pontos sobrepostos e abreviava o eixo Y como `Ops`.
+  - Depois: a dispersao expandida permite rolar e selecionar materiais na lista lateral, foca somente o circulo selecionado, usa zoom por dominio e exibe `Operacoes` por extenso na horizontal.
+  - Antes: todos os circulos da dispersao usavam praticamente a mesma cor por operacao.
+  - Depois: a cor dos circulos indica a faixa de quantidade movimentada, com legenda visivel no grafico.
+  - Antes: cada alteracao de filtro podia disparar nova carga automaticamente por dependencia do `useEffect`.
+  - Depois: a tela faz carga inicial uma unica vez e novas consultas dependem do clique em `Filtrar`.
+  - Antes: a evolucao somava quantidades mensais, misturando unidades como `M`, `KG` e `UN`.
+  - Depois: a evolucao mostra contagem de linhas/movimentacoes por tipo, que e comparavel mesmo com UMB diferentes.
+  - Antes: a Curva ABC era calculada apenas por valor estimado (`saldo x preco`).
+  - Depois: a Curva ABC permite alternar entre valor estimado e quantidade em estoque.

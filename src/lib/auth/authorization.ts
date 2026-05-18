@@ -2,6 +2,7 @@ const ADMIN_ONLY_ROUTE_PREFIXES = ["/permissoes"] as const;
 
 const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/home", pageKey: "home" },
+  { prefix: "/dash-estoque", pageKey: "dash-estoque" },
   { prefix: "/dashboard-medicao", pageKey: "dashboard-medicao" },
   { prefix: "/dash-operacional-faturamento", pageKey: "dash-operacional-faturamento" },
   { prefix: "/projetos", pageKey: "projetos" },
@@ -53,6 +54,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   const normalized = normalizeRole(role);
   const defaultPageAccess = [
     "home",
+    "dash-estoque",
     "dashboard-medicao",
     "dash-operacional-faturamento",
     "projetos",
@@ -93,7 +95,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   }
 
   if (normalized === "viewer") {
-    return ["home", "estoque", "posicao-trafo"];
+    return ["home", "dash-estoque", "estoque", "posicao-trafo"];
   }
 
   return defaultPageAccess;

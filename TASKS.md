@@ -642,3 +642,14 @@
 - [x] Ajustar Extracao ENEL NOVO para preencher km com o valor informado em REDE (quantidade) sem somar equipes do mesmo projeto/data, e permitir REDE decimal com virgula ou ponto na Programacao Simples.
 - [x] Incluir a coluna `Prioridade` no modal `Todos os prazos das obras` da Programacao Simples e na exportacao CSV de prazos.
 - [x] Adicionar filtros de `60 dias` e `90 dias` no painel `Prazos das Obras` da Programacao Simples, refletindo tambem no modal `Ver todos` e na exportacao CSV.
+
+- [x] Definir e implementar escopo funcional inicial do `Dashboard Estoque` com 6 graficos: `Dispersao Requisicao/Devolucao`, `Materiais criticos e zerados`, `Top materiais por saldo`, `Materiais sem giro`, `Curva ABC do estoque` e `Evolucao de movimentacoes`; centro de estoque mantido apenas como filtro, sem ranking por centro.
+- [x] Implementar o grafico de dispersao de materiais em `Operacoes de Equipe`, com alternancia por botao entre `Requisicao` e `Devolucao`, filtros por periodo, centro de estoque, equipe, projeto, material e tipo (`NOVO`/`SUCATA`), preservando escopo por `tenant_id`.
+- [x] Implementar endpoint agregado para o `Dashboard Estoque` lendo `stock_transfers`, `stock_transfer_items`, `stock_transfer_team_operations`, `stock_center_balances`, `materials`, `teams` e `project`, sem recalcular saldo no frontend e sem expor centros de equipe na consulta publica de estoque.
+- [x] Criar tela, rota, permissao, menu e documentacao `/docs/Tela_Dash_Estoque_SaaS.txt` para o `Dashboard Estoque`, seguindo o padrao dos dashboards existentes e registrando impacto multi-tenant/RLS.
+- [x] Ajustar rotulos da navegacao para `/home` como `Home` e `/dash-estoque` como `Dashboard Estoque`, com modal ampliado e escala `Raiz`/`Linear` no grafico de dispersao de materiais.
+- [x] Adicionar controle de zoom no modal expandido da dispersao de materiais do `Dashboard Estoque`, mantendo escala `Raiz`/`Linear` e separando melhor os circulos sobrepostos.
+- [x] Melhorar a dispersao expandida do `Dashboard Estoque` com lista lateral rolavel, selecao de material para foco unico e eixo `Operacoes` por extenso.
+- [x] Colorir os circulos da dispersao do `Dashboard Estoque` por faixa de quantidade, com legenda no grafico usando faixas `<= 50`, `51-100`, `101-200` e intervalos de 200 em 200.
+- [x] Ajustar filtros do `Dashboard Estoque` para consultar somente pelo botao `Filtrar` e alterar `Evolucao de movimentacoes` para contar linhas mensais por tipo, sem somar UMB diferentes.
+- [x] Adicionar modo `Quantidade` na `Curva ABC do estoque`, mantendo alternancia com o modo `Valor` no `Dashboard Estoque`.
