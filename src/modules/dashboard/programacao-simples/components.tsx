@@ -306,11 +306,10 @@ export function ProgrammingFormPanel({
         <label className={`${styles.field} ${isFieldInvalid("redeQty") ? styles.fieldInvalid : ""}`}>
           <span>REDE (quantidade)</span>
           <input
-            type="number"
-            min="0"
-            step="1"
+            type="text"
+            inputMode="decimal"
             value={form.redeQty}
-            onChange={(event) => onFormFieldChange("redeQty", event.target.value)}
+            onChange={(event) => onFormFieldChange("redeQty", event.target.value.replace(/[^\d.,]/g, ""))}
           />
         </label>
 

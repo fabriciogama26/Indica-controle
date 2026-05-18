@@ -580,6 +580,24 @@ export function parseNonNegativeInteger(value: string) {
   return parsed;
 }
 
+export function parseNonNegativeDecimal(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) {
+    return 0;
+  }
+
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return Number(parsed.toFixed(2));
+}
+
 export function parseOptionalPositiveInteger(value: string) {
   const normalized = value.trim();
   if (!normalized) {
@@ -697,12 +715,18 @@ export function formatHistoryValue(field: string, value: string | null) {
     || field === "posteQty"
     || field === "estruturaQty"
     || field === "trafoQty"
-    || field === "redeQty"
     || field === "affectedCustomers"
   ) {
     const numericValue = Number(value);
     if (Number.isFinite(numericValue)) {
       return String(Math.trunc(numericValue));
+    }
+  }
+
+  if (field === "redeQty") {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) {
+      return Number.isInteger(numericValue) ? String(numericValue) : String(numericValue).replace(".", ",");
     }
   }
 

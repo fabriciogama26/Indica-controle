@@ -1177,3 +1177,29 @@ Atualizacao adicional 2026-05-13 (Estado Trabalho somente no registro selecionad
   - Antes: ao reabrir um projeto concluido pela edicao, a API propagava o novo `Estado Trabalho` para programacoes ativas de outros dias do mesmo projeto.
   - Depois: a alteracao de `Estado Trabalho` sincroniza somente programacoes ativas de outras equipes no mesmo `Projeto + Data de execucao`, preservando `tenant_id`, catalogo por tenant, concorrencia por `expectedUpdatedAt` e historico dos registros alterados.
   - Nao existe cascata baseada na posicao visual da tabela nem em outros dias do mesmo projeto.
+
+Atualizacao adicional 2026-05-18 (REDE decimal e km da Extracao ENEL NOVO)
+---------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/185_programming_rede_decimal_qty.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `parseNonNegativeDecimal`: novo parser local para aceitar `REDE (quantidade)` com virgula ou ponto.
+  - `handleSubmit`: passa a validar `REDE` como decimal nao negativo e mantem `POSTE`, `ESTRUTURA`, `TRAFO` e `Nº Clientes Afetados` como inteiros.
+  - `normalizeNonNegativeDecimal`: protecao backend para `redeQty` decimal.
+  - `applyProgrammingRedeQtyDecimal`: aplica o valor decimal exato em `project_programming.rede_qty` apos a RPC full existente.
+  - `set_project_programming_rede_qty_decimal`: RPC versionada para atualizar `rede_qty` decimal por `tenant_id`, registrar historico e manter RLS assumida.
+  - `buildEnelNovoWorkbookData`: preenche a coluna `km` com `schedule.redeQty` do registro-base consolidado.
+- Comportamento antes/depois:
+  - Antes: `REDE (quantidade)` era validado como inteiro no frontend/backend e o input numerico do navegador nao aceitava virgula.
+  - Depois: `REDE (quantidade)` aceita valores como `1,5` ou `1.5`, normaliza para decimal e persiste em `project_programming.rede_qty` como `numeric`.
+  - Antes: a coluna `km` da `Extracao ENEL NOVO` ficava em branco.
+  - Depois: a coluna `km` recebe o valor informado em `REDE (quantidade)` da programacao base do grupo `SOB + Data Execucao`.
+  - A exportacao continua consolidando uma linha por `SOB + Data Execucao` e nao soma `REDE` quando o mesmo projeto tiver 2 ou mais equipes programadas.
+  - Multi-tenant: a atualizacao decimal filtra por `tenant_id` e `programming_id`; o helper registra historico operacional com `append_project_programming_history_record`.

@@ -806,6 +806,32 @@ function normalizePositiveNumber(value: unknown) {
   return Number(parsed.toFixed(2));
 }
 
+function normalizeNonNegativeDecimal(value: unknown) {
+  const raw = normalizeText(value).replace(",", ".");
+  if (!raw) {
+    return 0;
+  }
+
+  if (!/^\d+(\.\d+)?$/.test(raw)) {
+    return null;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return Number(parsed.toFixed(2));
+}
+
+function hasDecimalFraction(value: number) {
+  return Number.isFinite(value) && !Number.isInteger(value);
+}
+
+function normalizeStructureRpcInteger(value: number) {
+  return Math.trunc(Number.isFinite(value) ? value : 0);
+}
+
 function normalizeQuestionnaireAnswers(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -2060,7 +2086,7 @@ async function saveProgrammingFullViaRpc(params: {
     p_poste_qty: params.posteQty,
     p_estrutura_qty: params.estruturaQty,
     p_trafo_qty: params.trafoQty,
-    p_rede_qty: params.redeQty,
+    p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
     p_etapa_number: params.etapaNumber,
     p_work_completion_status: params.workCompletionStatus,
     p_affected_customers: params.affectedCustomers,
@@ -2106,7 +2132,7 @@ async function saveProgrammingFullViaRpc(params: {
         p_poste_qty: params.posteQty,
         p_estrutura_qty: params.estruturaQty,
         p_trafo_qty: params.trafoQty,
-        p_rede_qty: params.redeQty,
+        p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
         p_etapa_number: params.etapaNumber,
         p_work_completion_status: params.workCompletionStatus,
         p_affected_customers: params.affectedCustomers,
@@ -2224,7 +2250,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_poste_qty: params.posteQty,
     p_estrutura_qty: params.estruturaQty,
     p_trafo_qty: params.trafoQty,
-    p_rede_qty: params.redeQty,
+    p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
     p_etapa_number: params.etapaNumber,
     p_work_completion_status: params.workCompletionStatus,
     p_affected_customers: params.affectedCustomers,
@@ -2265,7 +2291,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
         p_poste_qty: params.posteQty,
         p_estrutura_qty: params.estruturaQty,
         p_trafo_qty: params.trafoQty,
-        p_rede_qty: params.redeQty,
+        p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
         p_etapa_number: params.etapaNumber,
         p_work_completion_status: params.workCompletionStatus,
         p_affected_customers: params.affectedCustomers,
@@ -2370,6 +2396,55 @@ async function resolveProgrammingWorkCompletionStatus(params: {
   }
 
   return data;
+}
+
+async function applyProgrammingRedeQtyDecimal(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingIds: string[];
+  redeQty: number;
+  historyAction: "UPDATE" | "BATCH_CREATE";
+  historyReason?: string | null;
+  historyMetadata?: Record<string, unknown> | null;
+}) {
+  if (!hasDecimalFraction(params.redeQty)) {
+    return { ok: true } as const;
+  }
+
+  for (const programmingId of params.programmingIds) {
+    const { data, error } = await params.supabase.rpc("set_project_programming_rede_qty_decimal", {
+      p_tenant_id: params.tenantId,
+      p_actor_user_id: params.actorUserId,
+      p_programming_id: programmingId,
+      p_rede_qty: params.redeQty,
+      p_history_action: params.historyAction,
+      p_history_reason: params.historyReason ?? null,
+      p_history_metadata: params.historyMetadata ?? {},
+    });
+
+    if (error) {
+      return {
+        ok: false,
+        status: 500,
+        message: error.message
+          ? `Falha ao salvar REDE decimal da programacao: ${error.message}`
+          : "Falha ao salvar REDE decimal da programacao.",
+      } as const;
+    }
+
+    const result = (data ?? {}) as { success?: boolean; status?: number; message?: string; reason?: string };
+    if (result.success !== true) {
+      return {
+        ok: false,
+        status: Number(result.status ?? 400),
+        message: result.message ?? "Falha ao salvar REDE decimal da programacao.",
+        reason: result.reason ?? null,
+      } as const;
+    }
+  }
+
+  return { ok: true } as const;
 }
 
 async function resolveProgrammingEqCatalog(params: {
@@ -3156,7 +3231,7 @@ async function saveProgrammingBatch(request: NextRequest) {
     const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
     const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
     const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
-    const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
+    const redeQty = normalizeNonNegativeDecimal(payload?.redeQty);
     const etapaNumberRaw = normalizeText(payload?.etapaNumber);
     const parsedEtapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
     const etapaUnica = normalizeBoolean(payload?.etapaUnica) ?? false;
@@ -3263,7 +3338,7 @@ async function saveProgrammingBatch(request: NextRequest) {
 
     if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
       return NextResponse.json(
-        { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
+        { message: "POSTE, ESTRUTURA e TRAFO devem ser inteiros maiores ou iguais a zero. REDE aceita decimal com virgula ou ponto." },
         { status: 400 },
       );
     }
@@ -3455,6 +3530,20 @@ async function saveProgrammingBatch(request: NextRequest) {
       return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
     }
 
+    const redeDecimalResult = await applyProgrammingRedeQtyDecimal({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      programmingIds: fullBatchSaveResult.items.map((item) => item.programmingId),
+      redeQty,
+      historyAction: "BATCH_CREATE",
+      historyMetadata: { source: "programacao-api", mode: "batch", field: "redeQty" },
+    });
+
+    if (!redeDecimalResult.ok) {
+      return NextResponse.json({ message: redeDecimalResult.message }, { status: redeDecimalResult.status });
+    }
+
     if (!fullBatchSaveResult.flagsEmbedded) {
       const batchProgrammingIds = fullBatchSaveResult.items.map((item) => item.programmingId);
       const etapaFlagsResult = await setProgrammingEtapaFlagsValue({
@@ -3517,7 +3606,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   const posteQty = normalizeNonNegativeInteger(payload?.posteQty);
   const estruturaQty = normalizeNonNegativeInteger(payload?.estruturaQty);
   const trafoQty = normalizeNonNegativeInteger(payload?.trafoQty);
-  const redeQty = normalizeNonNegativeInteger(payload?.redeQty);
+  const redeQty = normalizeNonNegativeDecimal(payload?.redeQty);
   const etapaNumberRaw = normalizeText(payload?.etapaNumber);
   const parsedEtapaNumber = etapaNumberRaw ? normalizePositiveInteger(etapaNumberRaw) : null;
   const etapaUnica = normalizeBoolean(payload?.etapaUnica) ?? false;
@@ -3592,7 +3681,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
   if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null) {
     return NextResponse.json(
-      { message: "As quantidades de POSTE, ESTRUTURA, TRAFO e REDE devem ser inteiros maiores ou iguais a zero." },
+      { message: "POSTE, ESTRUTURA e TRAFO devem ser inteiros maiores ou iguais a zero. REDE aceita decimal com virgula ou ponto." },
       { status: 400 },
     );
   }
@@ -3916,6 +4005,21 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     }
 
     return NextResponse.json({ message: fullSaveResult.message }, { status: fullSaveResult.status });
+  }
+
+  const redeDecimalResult = await applyProgrammingRedeQtyDecimal({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingIds: [fullSaveResult.programmingId],
+    redeQty: redeQty ?? 0,
+    historyAction: "UPDATE",
+    historyReason: isPotentialReschedule ? changeReason : null,
+    historyMetadata: { source: "programacao-api", field: "redeQty" },
+  });
+
+  if (!redeDecimalResult.ok) {
+    return NextResponse.json({ message: redeDecimalResult.message }, { status: redeDecimalResult.status });
   }
 
   const saveResult = {

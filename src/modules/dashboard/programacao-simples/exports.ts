@@ -462,7 +462,7 @@ export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: Ex
       "",
       "",
       "",
-      "",
+      schedule.redeQty ?? "",
       "",
       "",
       "",
