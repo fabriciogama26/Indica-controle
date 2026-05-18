@@ -640,3 +640,4 @@
 - [x] Adicionar cards de Saldo total por UMB na Lista de Estoque Atual, usando resumo filtrado antes da paginacao e priorizando M, UN e KG.
 
 - [x] Ajustar Extracao ENEL NOVO para preencher km com o valor informado em REDE (quantidade) sem somar equipes do mesmo projeto/data, e permitir REDE decimal com virgula ou ponto na Programacao Simples.
+- [x] Incluir a coluna `Prioridade` no modal `Todos os prazos das obras` da Programacao Simples e na exportacao CSV de prazos.
