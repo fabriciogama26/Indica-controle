@@ -61,6 +61,7 @@ import {
   normalizeHistoryItemsForDisplay,
   normalizeSgdNumberForExport,
   normalizeWorkCompletionCode,
+  parseNonNegativeDecimal,
   parseNonNegativeInteger,
   parseOptionalPositiveInteger,
   resolveDeadlineStatus,
@@ -1457,13 +1458,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const posteQty = parseNonNegativeInteger(form.posteQty);
     const estruturaQty = parseNonNegativeInteger(form.estruturaQty);
     const trafoQty = parseNonNegativeInteger(form.trafoQty);
-    const redeQty = parseNonNegativeInteger(form.redeQty);
+    const redeQty = parseNonNegativeDecimal(form.redeQty);
     const etapaNumberInput = parseOptionalPositiveInteger(form.etapaNumber);
     const affectedCustomers = parseNonNegativeInteger(form.affectedCustomers);
     if (posteQty === null || estruturaQty === null || trafoQty === null || redeQty === null || affectedCustomers === null) {
       flagInvalidFields(
         ["posteQty", "estruturaQty", "trafoQty", "redeQty", "affectedCustomers"],
-        "POSTE, ESTRUTURA, TRAFO, REDE e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero.",
+        "POSTE, ESTRUTURA, TRAFO e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero. REDE aceita decimal com virgula ou ponto.",
       );
       return;
     }
