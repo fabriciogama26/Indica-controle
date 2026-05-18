@@ -72,6 +72,13 @@ type DeadlinePanelItem = {
   visualVariant: DeadlineVisualVariant;
 };
 
+const DEADLINE_VIEW_OPTIONS: Array<{ value: DeadlineViewMode; label: string }> = [
+  { value: "15", label: "15 dias" },
+  { value: "30", label: "30 dias" },
+  { value: "60", label: "60 dias" },
+  { value: "90", label: "90 dias" },
+];
+
 type UpdateFormField = <Key extends keyof FormState>(field: Key, value: FormState[Key]) => void;
 
 type ProgrammingFormPanelProps = {
@@ -766,24 +773,18 @@ export function ProgrammingDeadlinePanel(props: {
           <p>Cards por obra com data limite, status do prazo e alerta visual.</p>
         </div>
         <div className={styles.deadlineViewToggle} role="group" aria-label="Janela de prazo dos cards SOB">
-          <button
-            type="button"
-            className={`${styles.deadlineViewToggleButton} ${
-              viewMode === "15" ? styles.deadlineViewToggleButtonActive : ""
-            }`}
-            onClick={() => onViewModeChange("15")}
-          >
-            15 dias
-          </button>
-          <button
-            type="button"
-            className={`${styles.deadlineViewToggleButton} ${
-              viewMode === "30" ? styles.deadlineViewToggleButtonActive : ""
-            }`}
-            onClick={() => onViewModeChange("30")}
-          >
-            30 dias
-          </button>
+          {DEADLINE_VIEW_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`${styles.deadlineViewToggleButton} ${
+                viewMode === option.value ? styles.deadlineViewToggleButtonActive : ""
+              }`}
+              onClick={() => onViewModeChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
           <button type="button" className={styles.secondaryButton} onClick={onOpenModal}>
             Ver todos
           </button>

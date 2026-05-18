@@ -641,3 +641,4 @@
 
 - [x] Ajustar Extracao ENEL NOVO para preencher km com o valor informado em REDE (quantidade) sem somar equipes do mesmo projeto/data, e permitir REDE decimal com virgula ou ponto na Programacao Simples.
 - [x] Incluir a coluna `Prioridade` no modal `Todos os prazos das obras` da Programacao Simples e na exportacao CSV de prazos.
+- [x] Adicionar filtros de `60 dias` e `90 dias` no painel `Prazos das Obras` da Programacao Simples, refletindo tambem no modal `Ver todos` e na exportacao CSV.

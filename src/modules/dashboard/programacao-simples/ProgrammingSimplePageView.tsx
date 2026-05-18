@@ -29,7 +29,9 @@ import {
 } from "./api";
 import {
   DEADLINE_CAROUSEL_PAGE_SIZE,
+  DEADLINE_WINDOW_EXTENDED_DAYS,
   DEADLINE_WINDOW_LONG_DAYS,
+  DEADLINE_WINDOW_MAX_DAYS,
   DEADLINE_WINDOW_SHORT_DAYS,
   DOCUMENT_KEYS,
   HISTORY_PAGE_SIZE,
@@ -116,6 +118,41 @@ function downloadCsvFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function resolveDeadlineWindowDays(viewMode: DeadlineViewMode) {
+  if (viewMode === "90") {
+    return DEADLINE_WINDOW_MAX_DAYS;
+  }
+
+  if (viewMode === "60") {
+    return DEADLINE_WINDOW_EXTENDED_DAYS;
+  }
+
+  if (viewMode === "30") {
+    return DEADLINE_WINDOW_LONG_DAYS;
+  }
+
+  return DEADLINE_WINDOW_SHORT_DAYS;
+}
+
+function formatDeadlineRangeLabel(daysDiff: number) {
+  if (daysDiff < 0) {
+    return "Vencida";
+  }
+
+  if (daysDiff <= DEADLINE_WINDOW_SHORT_DAYS) {
+    return "Ate 15 dias";
+  }
+
+  if (daysDiff <= DEADLINE_WINDOW_LONG_DAYS) {
+    return "16 a 30 dias";
+  }
+
+  if (daysDiff <= DEADLINE_WINDOW_EXTENDED_DAYS) {
+    return "31 a 60 dias";
+  }
+
+  return "61 a 90 dias";
+}
 
 export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: ProgrammingSimplePageViewMode }) {
   const { session } = useAuth();
@@ -411,7 +448,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }, [schedules]);
 
   const deadlineWindowDays = useMemo(
-    () => (deadlineViewMode === "15" ? DEADLINE_WINDOW_SHORT_DAYS : DEADLINE_WINDOW_LONG_DAYS),
+    () => resolveDeadlineWindowDays(deadlineViewMode),
     [deadlineViewMode],
   );
 
@@ -473,7 +510,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           deadlineStatus,
           visualVariant: resolveDeadlineVisualVariant(item.daysDiff, deadlineWindowDays),
           statusLabel: formatDeadlineStatusLabel(item.daysDiff, deadlineWindowDays),
-          rangeLabel: item.daysDiff < 0 ? "Vencida" : item.daysDiff <= DEADLINE_WINDOW_SHORT_DAYS ? "Ate 15 dias" : "16 a 30 dias",
+          rangeLabel: formatDeadlineRangeLabel(item.daysDiff),
         };
       })
       .sort((left, right) => {
@@ -517,9 +554,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   }, [deadlineSobCards]);
 
   const totalDeadlineCarouselPages = Math.max(1, deadlineSobPages.length);
-  const deadlineWindowHeading = deadlineViewMode === "15"
-    ? "SOB com vencimento ate 15 dias"
-    : "SOB com vencimento ate 30 dias";
+  const deadlineWindowHeading = `SOB com vencimento ate ${deadlineWindowDays} dias`;
 
   useEffect(() => {
     setPage(1);

@@ -286,5 +286,5 @@ export type FilterState = {
 
 export type DeadlineStatus = "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
 export type DeadlineVisualVariant = "OVERDUE_CRITICAL" | "OVERDUE" | "TODAY" | "SOON" | "NORMAL";
-export type DeadlineViewMode = "15" | "30";
+export type DeadlineViewMode = "15" | "30" | "60" | "90";
 export type ProgrammingSimplePageViewMode = "cadastro" | "visualizacao";
