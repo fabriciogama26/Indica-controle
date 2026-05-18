@@ -432,6 +432,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           id: project.id,
           sob: project.code,
           serviceCenter: project.base || "Sem base",
+          priority: project.priority || "Sem prioridade",
           executionDeadline,
           daysDiff,
         };
@@ -440,6 +441,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         id: string;
         sob: string;
         serviceCenter: string;
+        priority: string;
         executionDeadline: string;
         daysDiff: number;
       } => Boolean(item));
