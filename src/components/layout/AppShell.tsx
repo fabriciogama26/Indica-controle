@@ -17,7 +17,8 @@ const menuSections = [
   {
     title: "Visao Geral",
     items: [
-      { href: "/home", label: "Dashboard Estoque", icon: "home" },
+      { href: "/home", label: "Home", icon: "home" },
+      { href: "/dash-estoque", label: "Dashboard Estoque", icon: "box" },
       { href: "/dashboard-medicao", label: "Dashboard Medicao", icon: "calendar" },
       { href: "/dash-operacional-faturamento", label: "Dash operacional e faturamento", icon: "calendar" },
     ],
@@ -79,6 +80,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/dashboard-medicao": {
     title: "Dashboard Medicao",
     subtitle: "Indicadores de valor realizado, metas por ciclo e desempenho por encarregado.",
+  },
+  "/dash-estoque": {
+    title: "Dashboard Estoque",
+    subtitle: "Indicadores de saldo, giro, criticidade e operacoes de estoque.",
   },
   "/dash-operacional-faturamento": {
     title: "Dash operacional e faturamento",

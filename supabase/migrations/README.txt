@@ -386,6 +386,12 @@ Resumo por arquivo
 
 184_enforce_active_project_for_asbuilt_measurement.sql
 - Adiciona trigger em `project_asbuilt_measurement_orders` para impedir novas Medicoes Asbuilt com projeto inexistente ou inativo, inclusive em cadastro em massa/RPC.
+
+186_create_stock_dashboard_page.sql
+- Cadastra a pagina `dash-estoque` em `app_pages`, cria permissoes por role e faz backfill em `app_user_page_permissions` para liberar o Dashboard Estoque na matriz multi-tenant.
+
+187_update_stock_dashboard_labels.sql
+- Atualiza rotulos de `home` para `Home` e de `dash-estoque` para `Dashboard Estoque` em `app_pages`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

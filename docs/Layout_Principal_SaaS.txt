@@ -41,7 +41,7 @@ Cancelamento e saldo
 Atalhos
 -------
 - Links de navegacao laterais para:
-  - `Visao Geral`: Home (`Dashboard Estoque`), Dashboard Medicao e Dash operacional e faturamento
+  - `Visao Geral`: Home, Dashboard Estoque, Dashboard Medicao e Dash operacional e faturamento
   - `Operacao`: Projetos, Locacao, Programacao e Medicao
   - `Almoxarifado`: Estoque Atual, Rastreio de SERIAL, Movimentacao de Estoque e Operacoes de Equipe
   - `Cadastros`: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
@@ -77,6 +77,8 @@ Atualizacao 2026-03
 - `Meta` e `Atividades` movidas para a secao `Cadastros`.
 - `Dashboard Medicao` adicionada em `Visao Geral`, com titulo dedicado no shell e bloqueio por `pageAccess`.
 - `Dash operacional e faturamento` adicionado em `Visao Geral`, com titulo dedicado no shell e bloqueio por `pageAccess`.
+- `Dashboard Estoque` adicionado em `Visao Geral`, com titulo dedicado no shell e bloqueio por `pageAccess`.
+- Atalho de `/home` renomeado visualmente para `Home`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -114,3 +116,4 @@ Ajuda contextual
 - Estado atual: a tela `Permissoes` fica acessivel pelo icone de engrenagem no topo e nao participa da navegacao principal.
 - Estado atual: a sidebar passa a expor a rota `/posicao-trafo` quando a `page_key = posicao-trafo` estiver liberada para o usuario.
 - Estado atual: a sidebar passa a expor a rota `/dashboard-medicao` quando a `page_key = dashboard-medicao` estiver liberada para o usuario.
+- Estado atual: a sidebar passa a expor a rota `/dash-estoque` como `Dashboard Estoque` quando a `page_key = dash-estoque` estiver liberada para o usuario.

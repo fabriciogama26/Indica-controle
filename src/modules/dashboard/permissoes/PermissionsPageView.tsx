@@ -50,7 +50,8 @@ const roleOptions: RoleOption[] = [
 // 2) Incluir pageKey/path/section no catalogo abaixo.
 // 3) Atualizar menuSections/titleMap no AppShell para manter navegacao e titulo consistentes.
 const permissionCatalog = [
-  { pageKey: "home", label: "Dashboard Estoque", path: "/home", section: "Visao Geral" },
+  { pageKey: "home", label: "Home", path: "/home", section: "Visao Geral" },
+  { pageKey: "dash-estoque", label: "Dashboard Estoque", path: "/dash-estoque", section: "Visao Geral" },
   { pageKey: "dashboard-medicao", label: "Dashboard Medicao", path: "/dashboard-medicao", section: "Visao Geral" },
   { pageKey: "dash-operacional-faturamento", label: "Dash operacional e faturamento", path: "/dash-operacional-faturamento", section: "Visao Geral" },
   { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
@@ -95,6 +96,7 @@ const permissionCatalog = [
 function createPermissionSet(role: string): PermissionCard[] {
   const defaultPageAccess = [
     "home",
+    "dash-estoque",
     "dashboard-medicao",
     "dash-operacional-faturamento",
     "projetos",
@@ -138,7 +140,7 @@ function createPermissionSet(role: string): PermissionCard[] {
     if (role === "viewer") {
       return {
         ...item,
-        enabled: ["home", "estoque", "posicao-trafo"].includes(item.pageKey),
+        enabled: ["home", "dash-estoque", "estoque", "posicao-trafo"].includes(item.pageKey),
       };
     }
 
