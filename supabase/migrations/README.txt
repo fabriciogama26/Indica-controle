@@ -392,6 +392,9 @@ Resumo por arquivo
 
 187_update_stock_dashboard_labels.sql
 - Atualiza rotulos de `home` para `Home` e de `dash-estoque` para `Dashboard Estoque` em `app_pages`.
+
+188_create_team_type_history_for_measurement_goals.sql
+- Cria `team_type_history` com RLS por tenant, backfill por `app_entity_history` de Equipes e trigger para sincronizar alteracoes de `teams.team_type_id`, permitindo que o Dashboard Medicao calcule metas por tipo vigente da equipe no periodo real.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

@@ -32,6 +32,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
 - Base SQL: `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
 - Base SQL: `supabase/migrations/175_add_team_supervisor_link.sql`
+- Base SQL: `supabase/migrations/188_create_team_type_history_for_measurement_goals.sql`
 
 Cadastro
 --------
@@ -57,6 +58,7 @@ Cadastro
   - No fluxo atual, esse centro proprio e criado automaticamente junto com a equipe e mantido exclusivo por equipe.
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear escrita concorrente.
   - A troca de encarregado alimenta `team_foreman_history`, mantendo vigencia historica usada pela Medicao para resolver o encarregado pela `Data execucao`.
+  - A troca de tipo alimenta `team_type_history`, mantendo vigencia historica usada pelo Dashboard Medicao para calcular meta por tipo efetivo da equipe dentro do ciclo.
 - Fluxos de acao:
   - `Cadastrar`
   - `Editar`
@@ -153,6 +155,12 @@ Atualizacao 2026-05
 - A API de metadados retorna supervisores separadamente de encarregados.
 - A listagem, filtros, detalhes, exportacao CSV e historico passam a considerar `Supervisor`.
 - A migration `175_add_team_supervisor_link.sql` adiciona o campo, indice por tenant/supervisor e republica `save_team_record` com `p_supervisor_person_id`.
+- Atualizacao 2026-05 (historico de tipo para metas):
+  - A migration `188_create_team_type_history_for_measurement_goals.sql` cria `team_type_history`.
+  - O backfill usa `app_entity_history` da tela Equipes, campo `changes.teamTypeName`, para reconstruir periodos anteriores por nome de tipo.
+  - A trigger `trg_sync_team_type_history` sincroniza novas inclusoes e alteracoes de `teams.team_type_id`.
+  - O Dashboard Medicao passa a usar esse historico para calcular meta por `equipe + tipo + periodo`, evitando aplicar meta cheia do tipo atual quando a equipe mudou de tipo no ciclo.
+  - Impacto multi-tenant: `team_type_history` possui RLS por `tenant_id`, FK composta com `team_types` e leitura filtrada por tenant no dashboard.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -193,6 +201,8 @@ Constantes e configuracoes
   - Responsavel por: corrigir vigencias iniciais e snapshots de Medicao ja gravados com encarregado atual indevido.
 - Caminho: `supabase/migrations/175_add_team_supervisor_link.sql`
   - Responsavel por: adicionar `teams.supervisor_person_id`, FK por tenant para `people`, indice por supervisor e nova assinatura de `save_team_record` com validacao de cargo `SUPERVISOR`.
+- Caminho: `supabase/migrations/188_create_team_type_history_for_measurement_goals.sql`
+  - Responsavel por: criar `team_type_history`, fazer backfill por `app_entity_history.changes.teamTypeName`, sincronizar alteracoes de `teams.team_type_id` e disponibilizar vigencia historica para metas da Medicao.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
