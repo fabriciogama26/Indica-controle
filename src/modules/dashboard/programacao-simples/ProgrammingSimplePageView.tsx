@@ -291,12 +291,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   });
   const selectedProject = projects.find((item) => item.id === form.projectId) ?? null;
   const availableTeams = useMemo(() => {
-    if (!selectedProject) {
-      return teams;
-    }
-
-    return teams.filter((team) => team.serviceCenterName === selectedProject.base);
-  }, [selectedProject, teams]);
+    return teams;
+  }, [teams]);
 
   const visibleTeamOptions = useMemo(() => {
     const search = form.teamSearch.trim().toLowerCase();

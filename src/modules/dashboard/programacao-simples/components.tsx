@@ -509,10 +509,10 @@ export function ProgrammingFormPanel({
               </p>
             ) : selectedProject ? (
               <p className={styles.helperText}>
-                Base do projeto selecionado: <strong>{selectedProject.base}</strong>. Somente equipes dessa base sao exibidas.
+                Base do projeto selecionado: <strong>{selectedProject.base}</strong>. Equipes ativas de qualquer centro podem ser selecionadas.
               </p>
             ) : (
-              <p className={styles.helperText}>Selecione um projeto para limitar as equipes pela base.</p>
+              <p className={styles.helperText}>Selecione um projeto para programar uma das equipes ativas disponiveis.</p>
             )}
             {hasEditingTeamChanged ? (
               <div className={styles.warningCard}>
