@@ -666,3 +666,5 @@
 - [x] Reordenar o modal `Todos os prazos das obras` da Programacao Simples e seu CSV para exibir `SOB`, `Centro de servico`, `Prioridade`, `Tipo de obra`, `Data limite`, `Data Programacao`, `Motivo`, `Status do prazo`, `Dias para vencimento` e `Faixa`.
 
 - [x] Incluir a coluna `Estado Trabalho` depois de `Motivo` no modal `Todos os prazos das obras` da Programacao Simples e na exportacao CSV de prazos.
+
+- [x] Preencher automaticamente `Estado Trabalho = PARCIAL` no primeiro cadastro de Programacao de cada projeto por tenant.
