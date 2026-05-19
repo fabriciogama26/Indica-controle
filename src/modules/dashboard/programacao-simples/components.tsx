@@ -51,7 +51,10 @@ type DeadlineModalItem = {
   sob: string;
   serviceCenter: string;
   priority: string;
+  workType: string;
   executionDeadline: string;
+  latestProgrammingDate: string;
+  reason: string;
   statusLabel: string;
   daysDiff: number;
   rangeLabel: string;
@@ -1065,7 +1068,10 @@ export function ProgrammingDeadlineModal(props: {
                   <th>SOB</th>
                   <th>Centro de servico</th>
                   <th>Prioridade</th>
+                  <th>Tipo de obra</th>
                   <th>Data limite</th>
+                  <th>Data Programacao</th>
+                  <th>Motivo</th>
                   <th>Status do prazo</th>
                   <th>Dias para vencimento</th>
                   <th>Faixa</th>
@@ -1078,7 +1084,10 @@ export function ProgrammingDeadlineModal(props: {
                       <td>{item.sob}</td>
                       <td>{item.serviceCenter}</td>
                       <td>{item.priority}</td>
+                      <td>{item.workType}</td>
                       <td>{formatDate(item.executionDeadline)}</td>
+                      <td>{item.latestProgrammingDate ? formatDate(item.latestProgrammingDate) : "-"}</td>
+                      <td>{item.reason || "-"}</td>
                       <td>{item.statusLabel}</td>
                       <td>{item.daysDiff}</td>
                       <td>{item.rangeLabel}</td>
@@ -1086,7 +1095,7 @@ export function ProgrammingDeadlineModal(props: {
                   ))
                 ) : (
                   <tr>
-                    <td className={styles.emptyRow} colSpan={7}>
+                    <td className={styles.emptyRow} colSpan={10}>
                       Nenhuma obra encontrada para a janela selecionada.
                     </td>
                   </tr>

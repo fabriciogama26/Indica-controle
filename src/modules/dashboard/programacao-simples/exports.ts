@@ -28,7 +28,10 @@ type DeadlineExportItem = {
   sob: string;
   serviceCenter: string;
   priority: string;
+  workType: string;
   executionDeadline: string;
+  latestProgrammingDate: string;
+  reason: string;
   statusLabel: string;
   daysDiff: number;
   rangeLabel: string;
@@ -49,12 +52,27 @@ export function buildDeadlineCsvContent(params: {
   items: DeadlineExportItem[];
   deadlineWindowDays: number;
 }) {
-  const header = ["SOB", "Centro de servico", "Prioridade", "Data limite", "Status do prazo", "Dias para vencimento", "Faixa", "Janela selecionada"];
+  const header = [
+    "SOB",
+    "Centro de servico",
+    "Prioridade",
+    "Tipo de obra",
+    "Data limite",
+    "Data Programacao",
+    "Motivo",
+    "Status do prazo",
+    "Dias para vencimento",
+    "Faixa",
+    "Janela selecionada",
+  ];
   const rows = params.items.map((item) => [
     item.sob,
     item.serviceCenter,
     item.priority,
+    item.workType,
     formatDate(item.executionDeadline),
+    item.latestProgrammingDate ? formatDate(item.latestProgrammingDate) : "",
+    item.reason,
     item.statusLabel,
     item.daysDiff,
     item.rangeLabel,

@@ -448,6 +448,23 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     [deadlineViewMode],
   );
 
+  const latestScheduleByProjectId = useMemo(() => {
+    const latestByProjectId = new Map<string, ScheduleItem>();
+
+    for (const schedule of schedules) {
+      const current = latestByProjectId.get(schedule.projectId);
+      if (
+        !current
+        || schedule.date > current.date
+        || (schedule.date === current.date && schedule.updatedAt > current.updatedAt)
+      ) {
+        latestByProjectId.set(schedule.projectId, schedule);
+      }
+    }
+
+    return latestByProjectId;
+  }, [schedules]);
+
   const deadlineProjects = useMemo(() => {
     return projects
       .map((project) => {
@@ -461,12 +478,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         }
 
         const daysDiff = calculateDateDiffInDays(executionDeadline, today);
+        const latestSchedule = latestScheduleByProjectId.get(project.id);
+
         return {
           id: project.id,
           sob: project.code,
           serviceCenter: project.base || "Sem base",
           priority: project.priority || "Sem prioridade",
+          workType: project.serviceType || "Sem tipo",
           executionDeadline,
+          latestProgrammingDate: latestSchedule?.date ?? "",
+          reason: latestSchedule?.lastReschedule?.reason ?? "",
           daysDiff,
         };
       })
@@ -475,10 +497,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         sob: string;
         serviceCenter: string;
         priority: string;
+        workType: string;
         executionDeadline: string;
+        latestProgrammingDate: string;
+        reason: string;
         daysDiff: number;
       } => Boolean(item));
-  }, [concludedProjectIds, projects, today]);
+  }, [concludedProjectIds, latestScheduleByProjectId, projects, today]);
 
   const deadlineSummary = useMemo(() => {
     const overdue = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "OVERDUE").length;
