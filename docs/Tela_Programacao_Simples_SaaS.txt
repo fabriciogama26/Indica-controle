@@ -166,6 +166,7 @@ Cadastro
   - Troca de equipe na edicao continua sendo tratada como reprogramacao e exige `Motivo da reprogramacao`.
   - Em edicao, quando `Estado Trabalho` for alterado, o sistema sincroniza o mesmo valor para outras equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
   - `Estado Trabalho` nao e propagado por posicao visual da lista nem por outros dias do mesmo projeto.
+  - No primeiro cadastro de programacao de um projeto dentro do tenant, o backend preenche automaticamente `Estado Trabalho = PARCIAL`.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
   - Para equipes `LV-xx`, a replicacao de documentos tambem alcanca as programacoes ativas do mesmo projeto com `Data de execucao` em ate `+7 dias` da programacao de origem.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
@@ -1261,3 +1262,20 @@ Atualizacao adicional 2026-05-19 (ordem e campos do modal de prazos)
   - Depois: o modal e o CSV exibem `SOB`, `Centro de servico`, `Prioridade`, `Tipo de obra`, `Data limite`, `Data Programacao`, `Motivo`, `Estado Trabalho`, `Status do prazo`, `Dias para vencimento` e `Faixa`, nesta ordem.
   - `Data Programacao` usa a maior data de programacao carregada para o mesmo `SOB`; `Motivo` usa o motivo da ultima reprogramacao do registro mais recente quando existir; `Estado Trabalho` usa o rotulo do catalogo do tenant quando disponivel.
   - Multi-tenant: nao houve alteracao de consulta, RPC, migration ou regra RLS; os dados continuam vindo do snapshot autenticado da Programacao filtrado por `tenant_id`.
+
+Atualizacao adicional 2026-05-19 (PARCIAL automatico na primeira programacao)
+------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `hasProjectProgramming`: verifica se o projeto ja possui qualquer programacao no tenant.
+  - `resolveInitialProjectWorkCompletionStatus`: resolve `PARCIAL` somente quando o projeto ainda nao tem programacao anterior.
+  - `saveProgrammingBatch`: envia `PARCIAL` para a RPC de cadastro em lote quando for a primeira programacao do projeto.
+  - `saveProgramming`: aplica a mesma regra para cadastro simples via `POST`.
+- Comportamento antes/depois:
+  - Antes: o primeiro cadastro de programacao deixava `Estado Trabalho` vazio.
+  - Depois: o primeiro cadastro de programacao do projeto recebe `Estado Trabalho = PARCIAL` automaticamente, desde que `PARCIAL` esteja ativo em `programming_work_completion_catalog` para o tenant.
+  - Programacoes posteriores do mesmo projeto continuam sem preenchimento automatico de `Estado Trabalho`.
+  - Multi-tenant: a verificacao de existencia e a validacao do catalogo filtram por `tenant_id`; nao houve alteracao de schema, migration ou RLS.

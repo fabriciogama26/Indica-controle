@@ -2398,6 +2398,65 @@ async function resolveProgrammingWorkCompletionStatus(params: {
   return data;
 }
 
+async function hasProjectProgramming(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("project_programming")
+    .select("id")
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .limit(1)
+    .returns<Array<{ id: string }>>();
+
+  if (error) {
+    return { ok: false, exists: false, message: error.message } as const;
+  }
+
+  return { ok: true, exists: Boolean(data?.length) } as const;
+}
+
+async function resolveInitialProjectWorkCompletionStatus(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+}) {
+  const existingProgramming = await hasProjectProgramming(params);
+  if (!existingProgramming.ok) {
+    return {
+      ok: false,
+      status: 500,
+      workCompletionStatus: null,
+      message: existingProgramming.message
+        ? `Falha ao verificar programacoes existentes do projeto: ${existingProgramming.message}`
+        : "Falha ao verificar programacoes existentes do projeto.",
+    } as const;
+  }
+
+  if (existingProgramming.exists) {
+    return { ok: true, workCompletionStatus: null } as const;
+  }
+
+  const partialStatus = await resolveProgrammingWorkCompletionStatus({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    workCompletionStatus: "PARCIAL",
+  });
+
+  if (!partialStatus) {
+    return {
+      ok: false,
+      status: 409,
+      workCompletionStatus: null,
+      message: "Estado Trabalho PARCIAL nao esta ativo no catalogo do tenant atual.",
+    } as const;
+  }
+
+  return { ok: true, workCompletionStatus: "PARCIAL" } as const;
+}
+
 async function applyProgrammingRedeQtyDecimal(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -3449,6 +3508,19 @@ async function saveProgrammingBatch(request: NextRequest) {
       );
     }
 
+    const initialWorkCompletionStatus = await resolveInitialProjectWorkCompletionStatus({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+    });
+
+    if (!initialWorkCompletionStatus.ok) {
+      return NextResponse.json(
+        { message: initialWorkCompletionStatus.message },
+        { status: initialWorkCompletionStatus.status },
+      );
+    }
+
     const fullBatchSaveResult = await saveProgrammingBatchFullViaRpc({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -3475,7 +3547,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       etapaNumber,
       etapaUnica,
       etapaFinal,
-      workCompletionStatus: null,
+      workCompletionStatus: initialWorkCompletionStatus.workCompletionStatus,
       affectedCustomers: affectedCustomers ?? 0,
       sgdTypeId,
       electricalEqCatalogId,
@@ -3884,10 +3956,25 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     }
   }
 
+  const initialWorkCompletionStatus = method === "POST"
+    ? await resolveInitialProjectWorkCompletionStatus({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        projectId,
+      })
+    : { ok: true, workCompletionStatus: null } as const;
+
+  if (!initialWorkCompletionStatus.ok) {
+    return NextResponse.json(
+      { message: initialWorkCompletionStatus.message },
+      { status: initialWorkCompletionStatus.status },
+    );
+  }
+
   const normalizedWorkCompletionStatus =
     method === "PUT"
       ? workCompletionStatus
-      : null;
+      : initialWorkCompletionStatus.workCompletionStatus;
 
   const isPotentialReschedule = currentProgramming
     ? (
