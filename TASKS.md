@@ -658,3 +658,7 @@
 - [x] Corrigir graficos do Dashboard Medicao para consolidar `Concluidos`, `Parciais` e `Pendencias` pelo Estado Trabalho vigente em `Data + Projeto`, sem aplicar estados futuros em ciclos passados.
 - [x] Refinar a legenda de cores da dispersao do `Dashboard Estoque` para usar faixas de 10 em 10 ate 50, mantendo intervalos maiores acima disso.
 - [x] Ajustar meta de encarregados/supervisores no Dashboard Medicao para usar historico de tipo da equipe por periodo real, somando valor diario do tipo x dias no tipo quando houver troca no ciclo.
+
+- [x] Corrigir filtro de equipes selecionaveis na Programacao Simples para listar todas as equipes ativas do tenant, sem limitar pelo centro de servico do projeto.
+
+- [x] Liberar a Programacao e a copia de Programacao para usar equipes ativas de qualquer centro de servico, mantendo validacoes por tenant, equipe ativa, conflito de horario e concorrencia.

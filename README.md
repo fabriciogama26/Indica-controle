@@ -337,6 +337,7 @@ vercel --prod
 - `supabase/migrations/086_add_service_activities_is_active_compat.sql`: cria compatibilidade entre `ativo` e `is_active` em `service_activities`, estabilizando as RPCs de Programacao em lote.
 - `supabase/migrations/174_add_project_is_withdrawn.sql`: adiciona `project.is_withdrawn`, republica `project_with_labels` e atualiza `save_project_record` para o marcador `RETIRADO DA CARTEIRA`.
 - `supabase/migrations/175_add_team_supervisor_link.sql`: adiciona `teams.supervisor_person_id`, FK por tenant para `people` e republica `save_team_record` com supervisor opcional.
+- `supabase/migrations/189_allow_cross_service_center_programming.sql`: libera a Programacao e a copia de programacao para usar equipes ativas de qualquer centro de servico, mantendo validacao por tenant e equipe ativa.
 
 ---
 
@@ -459,6 +460,9 @@ npm run build
 - A programacao foi salva no banco, mas nao apareceu na lista da `Programacao Simples`:
   - Causa: o registro pode ter sido salvo fora dos filtros ativos de `Data`, `Projeto`, `Equipe` ou `Status`.
   - Solucao: revisar o feedback de sucesso da tela, que agora informa quando o item ficou fora do recorte filtrado, ou ajustar os filtros para incluir a nova `Data execucao`.
+- A edicao da `Programacao Simples` nao mostra equipe selecionavel:
+  - Causa: a tela estava limitando as equipes pela base do projeto ou o banco ainda estava bloqueando equipe de centro diferente.
+  - Solucao: aplicar `189_allow_cross_service_center_programming.sql`, recarregar a tela e selecionar qualquer equipe ativa do tenant.
 - `Projeto inativo nao pode ser editado.`:
   - Causa: tentativa de editar obra ja cancelada/inativada.
   - Solucao: editar somente projetos ativos ou criar novo projeto conforme processo operacional.

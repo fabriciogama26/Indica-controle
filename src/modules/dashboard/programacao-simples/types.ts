@@ -23,6 +23,7 @@ export type TeamItem = {
   id: string;
   name: string;
   vehiclePlate?: string;
+  serviceCenterId?: string | null;
   serviceCenterName: string;
   teamTypeName?: string;
   foremanName?: string;

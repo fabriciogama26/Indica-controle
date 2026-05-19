@@ -380,3 +380,23 @@ Atualizacao 2026-04-13
 - Comportamento antes/depois:
   - Antes: o retorno de `GET /api/programacao` incluia projetos e agendas de obras marcadas para teste.
   - Depois: o retorno passa a excluir obras de teste (`is_test = true`) do catalogo de projetos e da grade de agendas entregue para as telas operacionais.
+
+Atualizacao 2026-05-19
+----------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `supabase/migrations/189_allow_cross_service_center_programming.sql`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `availableTeams`
+  - `ProgrammingFormPanel`
+  - `TeamItem`
+- Comportamento antes/depois:
+  - Antes: a selecao de equipes da Programacao Simples limitava as opcoes pela base do projeto, podendo zerar as equipes selecionaveis quando nao havia equipe ativa cadastrada naquela base.
+  - Depois: a tela exibe todas as equipes ativas do tenant para programar qualquer projeto, independente do centro de servico.
+  - Antes: a RPC `save_project_programming` bloqueava salvar quando a base da equipe era diferente da base da obra.
+  - Depois: as RPCs de salvar e copiar programacao permitem usar equipe ativa de qualquer centro, mantendo as validacoes de tenant, equipe ativa, conflito de horario, concorrencia e demais regras da Programacao.
