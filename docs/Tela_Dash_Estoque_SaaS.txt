@@ -48,7 +48,7 @@ Filtros, auto-complete e listagem
     - Eixo X: quantidade movimentada
     - Eixo Y: numero de operacoes, com rotulo `Operacoes` por extenso e na horizontal
     - Tamanho do ponto: saldo atual do material
-    - Cor do ponto: faixa de quantidade movimentada, com legenda no grafico (`<= 50`, `51-100`, `101-200` e depois intervalos de 200 em 200)
+    - Cor do ponto: faixa de quantidade movimentada, com legenda no grafico (`<= 10`, `11-20`, `21-30`, `31-40`, `41-50`, `51-100`, `101-200` e depois intervalos de 200 em 200)
   - `Materiais criticos e zerados`
     - Materiais com saldo menor ou igual ao limite critico
   - `Top materiais por saldo`

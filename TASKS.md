@@ -656,3 +656,4 @@
 
 - [x] Corrigir Status execucao da Medicao para usar o ultimo Estado Trabalho por `Data + Projeto`, considerando Programacao do mesmo projeto com data menor ou igual a data da Medicao e desempate por `updated_at`.
 - [x] Corrigir graficos do Dashboard Medicao para consolidar `Concluidos`, `Parciais` e `Pendencias` pelo Estado Trabalho vigente em `Data + Projeto`, sem aplicar estados futuros em ciclos passados.
+- [x] Refinar a legenda de cores da dispersao do `Dashboard Estoque` para usar faixas de 10 em 10 ate 50, mantendo intervalos maiores acima disso.
