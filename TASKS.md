@@ -662,3 +662,5 @@
 - [x] Corrigir filtro de equipes selecionaveis na Programacao Simples para listar todas as equipes ativas do tenant, sem limitar pelo centro de servico do projeto.
 
 - [x] Liberar a Programacao e a copia de Programacao para usar equipes ativas de qualquer centro de servico, mantendo validacoes por tenant, equipe ativa, conflito de horario e concorrencia.
+
+- [x] Reordenar o modal `Todos os prazos das obras` da Programacao Simples e seu CSV para exibir `SOB`, `Centro de servico`, `Prioridade`, `Tipo de obra`, `Data limite`, `Data Programacao`, `Motivo`, `Status do prazo`, `Dias para vencimento` e `Faixa`.

@@ -101,6 +101,13 @@ export type ScheduleItem = {
   updatedByName: string;
   statusReason?: string;
   statusChangedAt?: string;
+  lastReschedule?: {
+    id: string;
+    changedAt: string;
+    reason: string;
+    fromDate: string;
+    toDate: string;
+  } | null;
   expectedMinutes: number;
   feeder: string;
   support: string;
