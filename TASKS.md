@@ -653,3 +653,6 @@
 - [x] Colorir os circulos da dispersao do `Dashboard Estoque` por faixa de quantidade, com legenda no grafico usando faixas `<= 50`, `51-100`, `101-200` e intervalos de 200 em 200.
 - [x] Ajustar filtros do `Dashboard Estoque` para consultar somente pelo botao `Filtrar` e alterar `Evolucao de movimentacoes` para contar linhas mensais por tipo, sem somar UMB diferentes.
 - [x] Adicionar modo `Quantidade` na `Curva ABC do estoque`, mantendo alternancia com o modo `Valor` no `Dashboard Estoque`.
+
+- [x] Corrigir Status execucao da Medicao para usar o ultimo Estado Trabalho por `Data + Projeto`, considerando Programacao do mesmo projeto com data menor ou igual a data da Medicao e desempate por `updated_at`.
+- [x] Corrigir graficos do Dashboard Medicao para consolidar `Concluidos`, `Parciais` e `Pendencias` pelo Estado Trabalho vigente em `Data + Projeto`, sem aplicar estados futuros em ciclos passados.
