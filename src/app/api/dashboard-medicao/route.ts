@@ -55,6 +55,13 @@ type TeamRow = {
   ativo?: boolean | null;
 };
 
+type TeamTypeHistoryRow = {
+  team_id: string;
+  team_type_id: string | null;
+  valid_from: string;
+  valid_to: string | null;
+};
+
 type PersonRow = {
   id: string;
   nome: string | null;
@@ -490,8 +497,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar equipes ativas para metas de supervisores." }, { status: 500 });
   }
 
+  const teamTypeHistoryTeamIds = Array.from(
+    new Set([...allVisibleTeamIds, ...(activeTeamsResult.data ?? []).map((team) => team.id).filter(Boolean)]),
+  );
+  const teamTypeHistoryResult = teamTypeHistoryTeamIds.length
+    ? await resolution.supabase
+        .from("team_type_history")
+        .select("team_id, team_type_id, valid_from, valid_to")
+        .eq("tenant_id", tenantId)
+        .in("team_id", teamTypeHistoryTeamIds)
+        .returns<TeamTypeHistoryRow[]>()
+    : { data: [] as TeamTypeHistoryRow[], error: null };
+
+  if (teamTypeHistoryResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar historico de tipo das equipes." }, { status: 500 });
+  }
+
   const teamMap = new Map((teamsResult.data ?? []).map((team) => [team.id, team]));
   const activeTeamMap = new Map((activeTeamsResult.data ?? []).map((team) => [team.id, team]));
+  const teamTypeHistoryByTeam = new Map<string, TeamTypeHistoryRow[]>();
+  for (const entry of teamTypeHistoryResult.data ?? []) {
+    const entries = teamTypeHistoryByTeam.get(entry.team_id) ?? [];
+    entries.push(entry);
+    teamTypeHistoryByTeam.set(entry.team_id, entries);
+  }
+  for (const entries of teamTypeHistoryByTeam.values()) {
+    entries.sort((left, right) => right.valid_from.localeCompare(left.valid_from));
+  }
+
   const personIds = Array.from(
     new Set(
       [...(teamsResult.data ?? []), ...(activeTeamsResult.data ?? [])]
@@ -666,6 +699,55 @@ export async function GET(request: NextRequest) {
     return true;
   });
 
+  function resolveTeamTypeForDate(teamId: string, isoDate: string) {
+    const history = teamTypeHistoryByTeam.get(teamId) ?? [];
+    const effectiveEntry = history.find((entry) => (
+      entry.valid_from <= isoDate
+      && (!entry.valid_to || entry.valid_to >= isoDate)
+    ));
+
+    if (effectiveEntry?.team_type_id) return effectiveEntry.team_type_id;
+
+    return (teamMap.get(teamId) ?? activeTeamMap.get(teamId))?.team_type_id ?? null;
+  }
+
+  function listBusinessDayIsoDates(startDate: string, endDate: string) {
+    const start = parseIsoDate(startDate);
+    const end = parseIsoDate(endDate);
+    const dates: string[] = [];
+    for (let current = start; current <= end; current = addDays(current, 1)) {
+      const day = current.getUTCDay();
+      if (day !== 0 && day !== 6) dates.push(toIsoDate(current));
+    }
+    return dates;
+  }
+
+  function calculateTeamMetaForWindow(teamId: string, startDate: string, endDate: string, metaWorkdays: number) {
+    if (metaWorkdays <= 0) return 0;
+
+    const businessDays = listBusinessDayIsoDates(startDate, endDate);
+    if (!businessDays.length) return 0;
+
+    const dayWeight = metaWorkdays / businessDays.length;
+    return businessDays.reduce((total, isoDate) => {
+      const teamTypeId = resolveTeamTypeForDate(teamId, isoDate);
+      if (!teamTypeId) return total;
+      return total + ((dailyMetaByTeamType.get(teamTypeId) ?? 0) * dayWeight);
+    }, 0);
+  }
+
+  function calculateWorkedTeamMeta(daysByTeam: Map<string, Set<string>>) {
+    let total = 0;
+    for (const [teamId, dates] of daysByTeam) {
+      for (const isoDate of dates) {
+        const teamTypeId = resolveTeamTypeForDate(teamId, isoDate);
+        if (!teamTypeId) continue;
+        total += dailyMetaByTeamType.get(teamTypeId) ?? 0;
+      }
+    }
+    return total;
+  }
+
   function createForemanMap() {
     return new Map<string, ForemanAggregate>();
   }
@@ -763,32 +845,30 @@ export async function GET(request: NextRequest) {
     target.set(supervisorKey, currentSupervisor);
   }
 
-  function calculateSupervisorMeta(teamIds: Set<string>, metaWorkdays: number) {
-    let total = 0;
-    for (const teamId of teamIds) {
-      const team = activeTeamMap.get(teamId) ?? teamMap.get(teamId);
-      if (!team?.team_type_id) continue;
-      total += (dailyMetaByTeamType.get(team.team_type_id) ?? 0) * metaWorkdays;
-    }
-    return total;
+  function calculateSupervisorMeta(teamIds: Set<string>, metaWorkdays: number, startDate: string, endDate: string) {
+    return Array.from(teamIds).reduce(
+      (total, teamId) => total + calculateTeamMetaForWindow(teamId, startDate, endDate, metaWorkdays),
+      0,
+    );
   }
 
-  function buildForemanRows(target: Map<string, ForemanAggregate>, metaWorkdays: number, standardMetaWorkdays: number) {
+  function buildForemanRows(
+    target: Map<string, ForemanAggregate>,
+    metaWorkdays: number,
+    standardMetaWorkdays: number,
+    startDate: string,
+    endDate: string,
+  ) {
     return Array.from(target.values())
       .map((foreman) => {
         let metaValue = 0;
         let standardMetaValue = 0;
-        let workedMetaValue = 0;
+        const workedMetaValue = calculateWorkedTeamMeta(foreman.daysByTeam);
         const dayCounts = Array.from(foreman.daysByTeam.values()).map((dates) => dates.size);
         const rowWorkedDays = dayCounts.length ? Math.round(dayCounts.reduce((sum, value) => sum + value, 0) / dayCounts.length) : 0;
         for (const teamId of foreman.teamIds) {
-          const team = teamMap.get(teamId);
-          if (team?.team_type_id) {
-            const dailyMeta = dailyMetaByTeamType.get(team.team_type_id) ?? 0;
-            metaValue += dailyMeta * metaWorkdays;
-            standardMetaValue += dailyMeta * standardMetaWorkdays;
-            workedMetaValue += dailyMeta * rowWorkedDays;
-          }
+          metaValue += calculateTeamMetaForWindow(teamId, startDate, endDate, metaWorkdays);
+          standardMetaValue += calculateTeamMetaForWindow(teamId, startDate, endDate, standardMetaWorkdays);
         }
         return {
           foremanName: foreman.foremanName,
@@ -808,11 +888,17 @@ export async function GET(request: NextRequest) {
       .sort((left, right) => right.totalValue - left.totalValue);
   }
 
-  function buildSupervisorRows(target: Map<string, SupervisorAggregate>, metaWorkdays: number, totalRealized: number) {
+  function buildSupervisorRows(
+    target: Map<string, SupervisorAggregate>,
+    metaWorkdays: number,
+    totalRealized: number,
+    startDate: string,
+    endDate: string,
+  ) {
     return Array.from(target.values())
       .map((supervisor) => {
-        const productiveMetaValue = calculateSupervisorMeta(supervisor.productiveTeamIds, metaWorkdays);
-        const potentialMetaValue = calculateSupervisorMeta(supervisor.potentialTeamIds, metaWorkdays);
+        const productiveMetaValue = calculateSupervisorMeta(supervisor.productiveTeamIds, metaWorkdays, startDate, endDate);
+        const potentialMetaValue = calculateSupervisorMeta(supervisor.potentialTeamIds, metaWorkdays, startDate, endDate);
         return {
           supervisorId: supervisor.supervisorId,
           supervisorName: supervisor.supervisorName,
@@ -856,15 +942,15 @@ export async function GET(request: NextRequest) {
       addSupervisorOrder(weekSupervisorMap, order);
     }
     const weekRealizedValue = weekOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
-    foremenByWeek[week.id] = buildForemanRows(weekForemanMap, week.workdays, week.workdays);
-    supervisorsProductionByWeek[week.id] = buildSupervisorRows(weekSupervisorMap, week.workdays, weekRealizedValue);
+    foremenByWeek[week.id] = buildForemanRows(weekForemanMap, week.workdays, week.workdays, week.startDate, week.endDate);
+    supervisorsProductionByWeek[week.id] = buildSupervisorRows(weekSupervisorMap, week.workdays, weekRealizedValue, week.startDate, week.endDate);
   }
 
-  const foremenRows = buildForemanRows(foremanMap, workdays, defaultWorkdays);
+  const foremenRows = buildForemanRows(foremanMap, workdays, defaultWorkdays, selectedCycle.cycleStart, selectedCycle.cycleEnd);
   const realizedValue = filteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
   const projectCount = new Set(filteredOrders.map((order) => order.project_id)).size;
   const averageTicketValue = projectCount > 0 ? realizedValue / projectCount : 0;
-  const supervisorsProductionRows = buildSupervisorRows(supervisorProductionMap, workdays, realizedValue);
+  const supervisorsProductionRows = buildSupervisorRows(supervisorProductionMap, workdays, realizedValue, selectedCycle.cycleStart, selectedCycle.cycleEnd);
   const percentage = cycleMetaValue > 0 ? (realizedValue / cycleMetaValue) * 100 : 0;
   const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
   const averageDailyValue = executedWorkdays > 0 ? realizedValue / executedWorkdays : 0;
