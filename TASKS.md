@@ -664,3 +664,5 @@
 - [x] Liberar a Programacao e a copia de Programacao para usar equipes ativas de qualquer centro de servico, mantendo validacoes por tenant, equipe ativa, conflito de horario e concorrencia.
 
 - [x] Reordenar o modal `Todos os prazos das obras` da Programacao Simples e seu CSV para exibir `SOB`, `Centro de servico`, `Prioridade`, `Tipo de obra`, `Data limite`, `Data Programacao`, `Motivo`, `Status do prazo`, `Dias para vencimento` e `Faixa`.
+
+- [x] Incluir a coluna `Estado Trabalho` depois de `Motivo` no modal `Todos os prazos das obras` da Programacao Simples e na exportacao CSV de prazos.

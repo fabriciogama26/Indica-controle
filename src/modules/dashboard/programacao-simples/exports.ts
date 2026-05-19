@@ -32,6 +32,7 @@ type DeadlineExportItem = {
   executionDeadline: string;
   latestProgrammingDate: string;
   reason: string;
+  workCompletionStatus: string;
   statusLabel: string;
   daysDiff: number;
   rangeLabel: string;
@@ -60,6 +61,7 @@ export function buildDeadlineCsvContent(params: {
     "Data limite",
     "Data Programacao",
     "Motivo",
+    "Estado Trabalho",
     "Status do prazo",
     "Dias para vencimento",
     "Faixa",
@@ -73,6 +75,7 @@ export function buildDeadlineCsvContent(params: {
     formatDate(item.executionDeadline),
     item.latestProgrammingDate ? formatDate(item.latestProgrammingDate) : "",
     item.reason,
+    item.workCompletionStatus,
     item.statusLabel,
     item.daysDiff,
     item.rangeLabel,

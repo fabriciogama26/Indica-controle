@@ -489,6 +489,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           executionDeadline,
           latestProgrammingDate: latestSchedule?.date ?? "",
           reason: latestSchedule?.lastReschedule?.reason ?? "",
+          workCompletionStatus: latestSchedule?.workCompletionStatus
+            ? (workCompletionLabelMap.get(latestSchedule.workCompletionStatus) ?? latestSchedule.workCompletionStatus)
+            : "",
           daysDiff,
         };
       })
@@ -501,9 +504,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         executionDeadline: string;
         latestProgrammingDate: string;
         reason: string;
+        workCompletionStatus: string;
         daysDiff: number;
       } => Boolean(item));
-  }, [concludedProjectIds, latestScheduleByProjectId, projects, today]);
+  }, [concludedProjectIds, latestScheduleByProjectId, projects, today, workCompletionLabelMap]);
 
   const deadlineSummary = useMemo(() => {
     const overdue = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "OVERDUE").length;
