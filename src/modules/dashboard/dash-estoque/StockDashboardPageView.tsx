@@ -152,6 +152,9 @@ const scatterQuantityPalette = [
   { color: "#d97706", stroke: "#b45309" },
   { color: "#dc2626", stroke: "#b91c1c" },
   { color: "#9333ea", stroke: "#7e22ce" },
+  { color: "#db2777", stroke: "#be185d" },
+  { color: "#4f46e5", stroke: "#4338ca" },
+  { color: "#0f766e", stroke: "#115e59" },
 ] as const;
 
 function getCurrentYearPeriod() {
@@ -207,7 +210,7 @@ function scatterOffset(seed: string, index: number, expanded: boolean) {
 
 function buildScatterQuantityBands(points: ScatterPoint[]) {
   const maxQuantity = maxValue(points.map((point) => point.quantity));
-  const thresholds = [50, 100, 200];
+  const thresholds = [10, 20, 30, 40, 50, 100, 200];
   for (let upper = 400; upper < maxQuantity + 200; upper += 200) {
     thresholds.push(upper);
   }
