@@ -100,6 +100,7 @@ Boas praticas
 - Usar somente medicoes `COM_PRODUCAO`, ativas e nao canceladas para indicadores de valor.
 - Excluir obras de teste das consolidacoes.
 - Usar a Meta cadastrada como fonte oficial para comparacao de ciclo.
+- Consolidar `Status execucao` por vigencia de `Projeto + Data`: para cada medicao, usar o ultimo `Estado Trabalho` nao vazio do mesmo projeto com `Data execucao` menor ou igual a data da medicao, sem aplicar estados futuros em ciclos passados.
 
 Cancelamento e saldo
 --------------------
@@ -170,7 +171,24 @@ Atualizacao 2026-05
   - As tabelas desses graficos passam a exibir `Projetos`, calculado por projetos distintos dentro de cada status.
   - A tabela `Ciclo da medicao` passa a exibir `Projetos` e o bloco ganha cards de `Ticket medio` e `Projetos no ciclo`.
   - As tabelas `Encarregados no ciclo` e `Supervisor no ciclo` passam a exibir `Projetos` por linha.
-  - O backend do dashboard passa a usar o ultimo `Estado Trabalho` nao vazio por projeto para consolidar status economico/pendencia, mantendo o escopo por `tenant_id`.
+  - O backend do dashboard passou a usar `Estado Trabalho` da Programacao para consolidar status economico/pendencia, mantendo o escopo por `tenant_id`; a regra atual de vigencia por `Data + Projeto` esta detalhada abaixo.
+- Atualizacao 2026-05 (Status execucao por Data + Projeto):
+  - Arquivos alterados:
+    - `src/app/api/dashboard-medicao/route.ts`
+    - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+    - `TASKS.md`
+  - Funcoes/constantes tocadas:
+    - `ProgrammingCompletionRow`
+    - `ProgrammingCompletionTimelineItem`
+    - `fetchProjectCompletionTimeline`
+    - `resolveProjectCompletionAtOrBefore`
+  - Antes:
+    - O dashboard podia reclassificar ciclos antigos porque consolidava `Concluidos`, `Parciais` e `Pendencias` pelo ultimo `Estado Trabalho` global do projeto por `updated_at`.
+  - Depois:
+    - O dashboard resolve cada ordem de medicao pelo ultimo `Estado Trabalho` do mesmo projeto com `Data execucao` menor ou igual a data da ordem, escolhendo a maior data e, em empate, o `updated_at` mais recente.
+    - Estados lancados em datas futuras passam a valer para medicoes daquela data em diante, sem alterar graficos de ciclos anteriores.
+  - Impacto multi-tenant:
+    - Sem alteracao de schema/RLS; a consulta continua filtrada por `tenant_id` e pelos projetos visiveis no recorte do dashboard.
 - Atualizacao 2026-05 (detalhe de projetos por responsavel):
   - As linhas das tabelas `Encarregados no ciclo` e `Supervisor no ciclo` passam a ser clicaveis.
   - Ao clicar, a tela abre modal com lista de projetos do encarregado/supervisor no ciclo ou semana selecionada.

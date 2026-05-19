@@ -79,8 +79,15 @@ type CycleTargetItemRow = {
 
 type ProgrammingCompletionRow = {
   project_id: string;
+  execution_date: string;
   work_completion_status: string | null;
   updated_at: string;
+};
+
+type ProgrammingCompletionTimelineItem = {
+  executionDate: string;
+  status: string;
+  updatedAt: string;
 };
 
 type CycleWeek = {
@@ -274,35 +281,72 @@ async function fetchProjectMetaMap(params: {
   ]));
 }
 
-async function fetchProjectCompletionMap(params: {
+async function fetchProjectCompletionTimeline(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   projectIds: string[];
+  endDate: string;
 }) {
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
-  if (!projectIds.length) return new Map<string, string>();
+  if (!projectIds.length) return new Map<string, ProgrammingCompletionTimelineItem[]>();
 
   const { data, error } = await params.supabase
     .from("project_programming")
-    .select("project_id, work_completion_status, updated_at")
+    .select("project_id, execution_date, work_completion_status, updated_at")
     .eq("tenant_id", params.tenantId)
     .in("project_id", projectIds)
+    .lte("execution_date", params.endDate)
     .not("work_completion_status", "is", null)
     .returns<ProgrammingCompletionRow[]>();
 
-  if (error) return new Map<string, string>();
+  if (error) return new Map<string, ProgrammingCompletionTimelineItem[]>();
 
-  const result = new Map<string, { status: string; updatedAt: string }>();
+  const result = new Map<string, ProgrammingCompletionTimelineItem[]>();
   for (const row of data ?? []) {
     const status = normalizeCompletionStatus(row.work_completion_status);
-    if (status === "NAO_INFORMADO") continue;
-    const current = result.get(row.project_id);
-    if (!current || String(row.updated_at) > String(current.updatedAt)) {
-      result.set(row.project_id, { status, updatedAt: row.updated_at });
+    const executionDate = normalizeIsoDate(row.execution_date);
+    if (status === "NAO_INFORMADO" || !executionDate) continue;
+
+    const current = result.get(row.project_id) ?? [];
+    current.push({
+      executionDate,
+      status,
+      updatedAt: row.updated_at,
+    });
+    result.set(row.project_id, current);
+  }
+
+  for (const items of result.values()) {
+    items.sort((left, right) => {
+      const byExecutionDate = right.executionDate.localeCompare(left.executionDate);
+      if (byExecutionDate !== 0) {
+        return byExecutionDate;
+      }
+
+      return right.updatedAt.localeCompare(left.updatedAt);
+    });
+  }
+
+  return result;
+}
+
+function resolveProjectCompletionAtOrBefore(
+  timeline: Map<string, ProgrammingCompletionTimelineItem[]>,
+  projectId: string,
+  executionDate: string,
+) {
+  const orderExecutionDate = normalizeIsoDate(executionDate);
+  if (!orderExecutionDate) {
+    return null;
+  }
+
+  for (const item of timeline.get(projectId) ?? []) {
+    if (item.executionDate <= orderExecutionDate) {
+      return item.status;
     }
   }
 
-  return new Map(Array.from(result.entries()).map(([projectId, item]) => [projectId, item.status]));
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -403,16 +447,22 @@ export async function GET(request: NextRequest) {
       })
     : cycleOrders;
 
-  const projectCompletionMap = await fetchProjectCompletionMap({
+  const completionOrders = [...cycleOrders, ...periodOrders];
+  const completionOrderDates = completionOrders.map((order) => order.execution_date).sort();
+  const projectCompletionTimeline = await fetchProjectCompletionTimeline({
     supabase: resolution.supabase,
     tenantId,
-    projectIds: [...cycleOrders, ...periodOrders].map((order) => order.project_id),
+    projectIds: completionOrders.map((order) => order.project_id),
+    endDate: completionOrderDates[completionOrderDates.length - 1] ?? selectedCycle.cycleEnd,
   });
 
   const orderCompletionMap = new Map<string, string>();
-  for (const order of [...cycleOrders, ...periodOrders]) {
+  for (const order of completionOrders) {
     const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
-    orderCompletionMap.set(order.id, projectCompletionMap.get(order.project_id) ?? snapshot);
+    orderCompletionMap.set(
+      order.id,
+      resolveProjectCompletionAtOrBefore(projectCompletionTimeline, order.project_id, order.execution_date) ?? snapshot,
+    );
   }
 
   const allVisibleTeamIds = Array.from(new Set([...cycleOrders, ...periodOrders].map((order) => order.team_id).filter(Boolean)));
