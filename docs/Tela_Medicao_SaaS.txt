@@ -137,7 +137,7 @@ Filtros, auto-complete e listagem
   - Programacao (`Programada` ou `Nao programada`)
   - Status execucao da programacao + alerta de atualizacao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
   - `Status execucao` aceita todos os codigos ativos do catalogo de `Estado Trabalho` da Programacao, como `CONCLUIDO`, `PARCIAL`, `PENDENCIA` e outros estados cadastrados no tenant.
-  - `Status execucao` exibe o ultimo `Estado Trabalho` nao vazio registrado para o mesmo `Projeto` com `Data execucao` menor ou igual a data da Medicao; se houver mais de uma Programacao na mesma data, usa o `updated_at` mais recente.
+  - `Status execucao` exibe o ultimo `Estado Trabalho` nao vazio registrado para o mesmo `Projeto`, independente da data da Medicao; a Programacao mais recente por `Data execucao` prevalece e, em empate, usa o `updated_at` mais recente.
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados
@@ -495,6 +495,23 @@ Atualizacao 2026-05-19 (Status execucao por Data + Projeto)
   - Depois: a Medicao resolve o `Status execucao` pelo mesmo `Projeto` com `Data execucao` menor ou igual a data da Medicao, escolhendo a maior data e, em empate, o `updated_at` mais recente.
   - Exemplo: se a Medicao e de `18/05/2026` e a Programacao do mesmo projeto nessa data esta `PENDENCIA`, a Medicao exibe `PENDENCIA` mesmo que exista `PARCIAL` em outra data do mesmo projeto.
   - Impacto multi-tenant: sem alteracao de schema/RLS; a busca continua limitada por `tenant_id` e `project_id`.
+
+Atualizacao 2026-05-20 (Status execucao pelo ultimo estado global do projeto)
+------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `loadProgrammingMatchMap`
+  - `buildProjectWorkCompletionTimeline`
+  - `resolveLatestProjectWorkCompletion`
+- Comportamento antes/depois:
+  - Antes: a Medicao considerava somente `Estado Trabalho` de Programacoes com `Data execucao` menor ou igual a data da ordem de Medicao.
+  - Depois: a Medicao usa o ultimo `Estado Trabalho` nao vazio do projeto, independente da data da ordem, escolhendo a maior `Data execucao` da Programacao e, em empate, o `updated_at` mais recente.
+  - Exemplo: uma ordem de Medicao de `24/03/2026` passa a exibir `CONCLUIDO` quando a ultima Programacao do mesmo projeto esta `CONCLUIDO` em `13/05/2026`.
+  - A coluna `Programacao` continua indicando match direto por `Projeto + Equipe + Data`; a mudanca afeta apenas `Status execucao`.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; a leitura permanece filtrada por `tenant_id` e `project_id`.
 
 Atualizacao 2026-04-24
 ----------------------

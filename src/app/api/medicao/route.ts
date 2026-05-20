@@ -392,17 +392,11 @@ function buildProjectWorkCompletionTimeline(
   return result;
 }
 
-function resolveProjectWorkCompletionAtOrBefore(
+function resolveLatestProjectWorkCompletion(
   timeline: Map<string, Array<{ executionDate: string; completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>>,
   projectId: string,
-  executionDate: string,
 ) {
-  const orderExecutionDate = normalizeIsoDate(executionDate);
-  if (!orderExecutionDate) {
-    return null;
-  }
-
-  return (timeline.get(projectId) ?? []).find((item) => item.executionDate <= orderExecutionDate) ?? null;
+  return (timeline.get(projectId) ?? [])[0] ?? null;
 }
 
 function resolveProgrammingHistoryProjectDateKey(
@@ -498,7 +492,6 @@ async function loadProgrammingMatchMap(params: {
     .select("project_id, execution_date, work_completion_status, updated_at")
     .eq("tenant_id", params.tenantId)
     .in("project_id", projectIds)
-    .lte("execution_date", endDate)
     .not("work_completion_status", "is", null)
     .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>();
 
@@ -574,10 +567,9 @@ async function loadProgrammingMatchMap(params: {
     const projectDateWorkCompletionStatus = projectDateWorkCompletionHistoryMap.get(projectDateKey)
       ?? projectDateWorkCompletionStatusMap.get(projectDateKey)
       ?? null;
-    const projectWorkCompletionStatus = resolveProjectWorkCompletionAtOrBefore(
+    const projectWorkCompletionStatus = resolveLatestProjectWorkCompletion(
       projectWorkCompletionTimeline,
       order.project_id,
-      order.execution_date,
     );
     const currentCompletion = resolveMeasurementWorkCompletionStatus(completionMatch?.work_completion_status);
     const snapshotCompletion = resolveMeasurementWorkCompletionStatus(order.programming_completion_status_snapshot);
