@@ -668,3 +668,5 @@
 - [x] Incluir a coluna `Estado Trabalho` depois de `Motivo` no modal `Todos os prazos das obras` da Programacao Simples e na exportacao CSV de prazos.
 
 - [x] Preencher automaticamente `Estado Trabalho = PARCIAL` no primeiro cadastro de Programacao de cada projeto por tenant.
+
+- [x] Ajustar `Status execucao` da Medicao para usar o ultimo `Estado Trabalho` global do projeto, independente da data da ordem de Medicao.
