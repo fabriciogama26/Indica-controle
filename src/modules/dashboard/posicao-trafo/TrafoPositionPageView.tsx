@@ -17,6 +17,7 @@ import type {
   TrafoPositionListItem,
   TrafoPositionListResponse,
   TrafoPositionMetaResponse,
+  TrafoPositionSummary,
 } from "./types";
 import {
   buildTrafoPositionQuery,
@@ -102,6 +103,12 @@ export function TrafoPositionPageView() {
   const [filterDraft, setFilterDraft] = useState<TrafoPositionFilters>(INITIAL_FILTERS);
   const [filters, setFilters] = useState<TrafoPositionFilters>(INITIAL_FILTERS);
   const [items, setItems] = useState<TrafoPositionListItem[]>([]);
+  const [summary, setSummary] = useState<TrafoPositionSummary>({
+    inOwnCount: 0,
+    withTeamCount: 0,
+    outsideCount: 0,
+    retCount: 0,
+  });
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -121,10 +128,6 @@ export function TrafoPositionPageView() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
-  const currentInOwnCount = items.filter((item) => item.currentStatus === "EM_ESTOQUE").length;
-  const currentWithTeamCount = items.filter((item) => item.currentStatus === "COM_EQUIPE").length;
-  const currentOutsideCount = items.filter((item) => item.currentStatus === "FORA_ESTOQUE").length;
-  const currentRetCount = items.filter((item) => item.currentStatus === "RET").length;
 
   useEffect(() => {
     if (!accessToken) {
@@ -199,6 +202,7 @@ export function TrafoPositionPageView() {
         if (!response.ok) {
           if (isMounted) {
             setItems([]);
+            setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
             setTotal(0);
             setFeedback({ type: "error", message: data.message ?? "Falha ao carregar o rastreio de serial." });
           }
@@ -215,11 +219,13 @@ export function TrafoPositionPageView() {
         if (isMounted) {
           setFeedback(null);
           setItems(data.items ?? []);
+          setSummary(data.summary ?? { inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
           setTotal(data.pagination?.total ?? 0);
         }
       } catch (error) {
         if (isMounted) {
           setItems([]);
+          setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
           setTotal(0);
           setFeedback({ type: "error", message: "Falha ao carregar o rastreio de serial." });
         }
@@ -453,9 +459,10 @@ export function TrafoPositionPageView() {
 
         const pageItems = data.items ?? [];
         exportTotal = data.pagination?.total ?? exportTotal;
+        const responsePageSize = data.pagination?.pageSize ?? EXPORT_PAGE_SIZE;
         exportedItems.push(...pageItems);
 
-        if (pageItems.length === 0 || exportedItems.length >= exportTotal || pageItems.length < EXPORT_PAGE_SIZE) {
+        if (pageItems.length === 0 || exportedItems.length >= exportTotal || pageItems.length < responsePageSize) {
           break;
         }
 
@@ -612,19 +619,19 @@ export function TrafoPositionPageView() {
           </div>
           <div className={styles.statCard}>
             <span className={styles.statLabel}>Em estoque proprio</span>
-            <strong className={styles.statValue}>{currentInOwnCount}</strong>
+            <strong className={styles.statValue}>{summary.inOwnCount}</strong>
           </div>
           <div className={styles.statCard}>
             <span className={styles.statLabel}>Com equipe</span>
-            <strong className={styles.statValue}>{currentWithTeamCount}</strong>
+            <strong className={styles.statValue}>{summary.withTeamCount}</strong>
           </div>
           <div className={styles.statCard}>
             <span className={styles.statLabel}>RET</span>
-            <strong className={styles.statValue}>{currentRetCount}</strong>
+            <strong className={styles.statValue}>{summary.retCount}</strong>
           </div>
           <div className={styles.statCard}>
             <span className={styles.statLabel}>Fora do estoque proprio</span>
-            <strong className={styles.statValue}>{currentOutsideCount}</strong>
+            <strong className={styles.statValue}>{summary.outsideCount}</strong>
           </div>
         </div>
 

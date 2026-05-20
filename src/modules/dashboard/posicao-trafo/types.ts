@@ -41,8 +41,16 @@ export type TrafoPositionListItem = {
   updatedByName: string;
 };
 
+export type TrafoPositionSummary = {
+  inOwnCount: number;
+  withTeamCount: number;
+  outsideCount: number;
+  retCount: number;
+};
+
 export type TrafoPositionListResponse = {
   items?: TrafoPositionListItem[];
+  summary?: TrafoPositionSummary;
   pagination?: {
     page: number;
     pageSize: number;
