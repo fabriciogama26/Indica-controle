@@ -1,7 +1,7 @@
-Edge Function: import_project_forecast
+Edge Function: import_project_activity_forecast
 
 Objetivo
-- Importar planilha XLSX de materiais previstos para um ou varios projetos.
+- Importar planilha XLSX de atividades previstas para um ou varios projetos.
 - Fluxo protegido por RPC antes da gravacao.
 
 Secrets obrigatorios
@@ -11,10 +11,10 @@ Secrets obrigatorios
 Dependencias
 - public.app_users com auth_user_id preenchido e ativo
 - public.project
-- public.materials
-- public.project_material_forecast
-- RPC `precheck_project_material_forecast_import`
-- RPC `append_project_material_forecast`
+- public.service_activities
+- public.project_activity_forecast
+- RPC `precheck_project_activity_forecast_import`
+- RPC `append_project_activity_forecast`
 
 Autenticacao
 - Header `apikey` com `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -29,12 +29,12 @@ Protecoes de importacao
 - Permite varios projetos no mesmo arquivo.
 - Bloqueia codigo duplicado no mesmo projeto dentro do arquivo (`DUPLICATE_CODE_IN_FILE`).
 - Bloqueia codigo ja importado para o projeto (`CODE_ALREADY_IMPORTED`).
-- Bloqueia codigo inexistente no cadastro `materials` do tenant.
+- Bloqueia codigo inexistente ou inativo no cadastro `service_activities` do tenant.
 - Retorna `errorRows` para geracao de CSV de erros (`linha`, `coluna`, `valor`, `erro`).
 
 Resposta de sucesso
 - `success: true`
 - `summary.rowsRead`
 - `summary.projectsProcessed`
-- `summary.materialsRegistered`
+- `summary.activitiesRegistered`
 - `summary.sourceFile`

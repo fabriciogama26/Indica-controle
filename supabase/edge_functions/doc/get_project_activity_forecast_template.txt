@@ -1,7 +1,7 @@
-Edge Function: get_project_forecast_template
+Edge Function: get_project_activity_forecast_template
 
 Objetivo
-- Baixar o modelo XLSX oficial para importacao de materiais previstos no projeto.
+- Baixar o modelo XLSX oficial para importacao de atividades previstas no projeto.
 - Colunas do modelo: `projeto`, `codigo`, `quantidade`.
 
 Secrets obrigatorios
@@ -17,4 +17,4 @@ Autenticacao
 
 Resposta
 - Arquivo XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`)
-- Nome sugerido: `modelo_materiais_previstos.xlsx`
+- Nome sugerido: `modelo_atividades_previstas.xlsx`

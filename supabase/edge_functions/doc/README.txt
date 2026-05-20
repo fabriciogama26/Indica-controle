@@ -52,16 +52,16 @@ get_responsaveis
 - Baixa responsaveis permitidos: ENCARREGADO e SUPERVISOR.
 
 get_project_forecast_template
-- Baixa o modelo XLSX oficial de materiais previstos por projeto.
+- Baixa o modelo XLSX oficial de materiais previstos por projeto com colunas `projeto`, `codigo` e `quantidade`.
 
 import_project_forecast
-- Importa planilha XLSX de materiais previstos com protecao RPC anti-duplicidade.
+- Importa planilha XLSX de materiais previstos para varios projetos com protecao RPC anti-duplicidade e retorno de erros por linha.
 
 get_project_activity_forecast_template
-- Baixa o modelo XLSX oficial de atividades previstas por projeto.
+- Baixa o modelo XLSX oficial de atividades previstas por projeto com colunas `projeto`, `codigo` e `quantidade`.
 
 import_project_activity_forecast
-- Importa planilha XLSX de atividades previstas com protecao RPC anti-duplicidade.
+- Importa planilha XLSX de atividades previstas para varios projetos com protecao RPC anti-duplicidade e retorno de erros por linha.
 
 Secrets obrigatorios para todas
 - SUPABASE_URL

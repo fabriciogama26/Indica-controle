@@ -1,5 +1,5 @@
 ﻿// Edge Function: get_project_forecast_template
-// Returns XLSX template for project forecast import (codigo, quantidade).
+// Returns XLSX template for project forecast import (projeto, codigo, quantidade).
 
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -30,11 +30,11 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 function buildWorkbookArrayBuffer() {
   const workbook = XLSX.utils.book_new()
   const worksheet = XLSX.utils.aoa_to_sheet([
-    ['codigo', 'quantidade'],
-    ['210232', '1'],
+    ['projeto', 'codigo', 'quantidade'],
+    ['SOB123', '210232', '1'],
   ])
 
-  worksheet['!cols'] = [{ wch: 22 }, { wch: 22 }]
+  worksheet['!cols'] = [{ wch: 22 }, { wch: 22 }, { wch: 22 }]
   XLSX.utils.book_append_sheet(workbook, worksheet, 'MateriaisPrevistos')
 
   return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
