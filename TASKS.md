@@ -136,6 +136,7 @@
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.
 - [x] Corrigir exibicao da coluna `UMB` na lista de `Materiais`, normalizando vazio/espacos e aplicando fallback tecnico de `requisicao_itens.umb` quando o cadastro base estiver sem valor.
 - [x] Atualizar cadastro de `Materiais` para permitir `is_transformer`, tornar `Preco` opcional e limitar `Tipo` ao select `NOVO`/`SUCATA` com validacao na API/RPC.
+- [x] Adicionar `Cadastro em massa` na tela de `Materiais` no padrao da tela de `Medicao`, com modelo CSV, processamento parcial, CSV de erros e `UMB` obrigatorio no cadastro manual/lote/API/RPC.
 - [x] Implementar tela de `Entrada` com formulario, validacoes, auditoria e integracao ao fluxo de estoque (transferencia entre centros com debito/credito transacional, cadastro em massa CSV e historico em `material_history`).
 - [x] Evoluir estoque para tela unica de movimentacao (`Entrada`, `Saida`, `Transferencia`) com regra de centro `OWN`/`THIRD_PARTY`, filtro automatico de `DE/PARA`, `Tipo` automatico pelo material (nao selecionavel), bloqueio de `DE/PARA` iguais, `Serial/LP` apenas para TRAFO, cadastro em massa modal e lista com modais de `Detalhes`/`Historico`.
 - [x] Implementar a rota `/saida` como tela operacional propria de `Operacoes de Equipe`, com `Requisicao`/`Devolucao`, cadastro manual, cadastro em massa, historico e estorno.
