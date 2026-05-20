@@ -485,6 +485,11 @@ export async function GET(request: NextRequest) {
     }
 
     const allRows = finalizeRows(Array.from(aggregate.values()));
+    const materialOptions = allRows.map((row) => ({
+      id: row.materialId,
+      code: row.materialCode,
+      description: row.description,
+    }));
     const rows = materialCode
       ? allRows.filter((row) => row.materialCode.includes(materialCode))
       : allRows;
@@ -520,6 +525,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       filters: { projects },
       selectedProject,
+      materialOptions,
       rows,
       chartRows,
       summary,

@@ -4,11 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import styles from "./ProjectConsumptionPageView.module.css";
 
 type ProjectOption = {
   id: string;
   label: string;
+};
+
+type MaterialOption = {
+  id: string;
+  code: string;
+  description: string;
 };
 
 type ConsumptionRow = {
@@ -41,6 +48,7 @@ type ConsumptionResponse = {
     projects: ProjectOption[];
   };
   selectedProject?: ProjectOption | null;
+  materialOptions?: MaterialOption[];
   rows?: ConsumptionRow[];
   chartRows?: ConsumptionRow[];
   summary?: Summary | null;
@@ -55,6 +63,48 @@ function formatDecimal(value: number) {
 
 function normalizeCompare(value: string) {
   return value.trim().toUpperCase();
+}
+
+function csvEscape(value: unknown) {
+  const normalized = String(value ?? "").replace(/"/g, '""');
+  return `"${normalized}"`;
+}
+
+function downloadCsv(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function toIsoDate(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function findProjectOption(value: string, options: ProjectOption[]) {
+  const normalized = normalizeCompare(value);
+  if (!normalized) return null;
+  return options.find((project) => normalizeCompare(project.label) === normalized) ?? null;
+}
+
+function findMaterialOption(value: string, options: MaterialOption[]) {
+  const normalized = normalizeCompare(value);
+  if (!normalized) return null;
+
+  const codeCandidate = normalizeCompare(value.split("-")[0] ?? value);
+  return (
+    options.find((material) => normalizeCompare(material.code) === normalized)
+    ?? options.find((material) => normalizeCompare(material.code) === codeCandidate)
+    ?? null
+  );
 }
 
 function maxValue(values: number[]) {
@@ -122,6 +172,7 @@ export function ProjectConsumptionPageView() {
   const logError = useErrorLogger("consumo_projeto");
   const hasLoadedInitialData = useRef(false);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [materialOptions, setMaterialOptions] = useState<MaterialOption[]>([]);
   const [projectQuery, setProjectQuery] = useState("");
   const [materialCode, setMaterialCode] = useState("");
   const [selectedProject, setSelectedProject] = useState<ProjectOption | null>(null);
@@ -131,11 +182,9 @@ export function ProjectConsumptionPageView() {
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const projectByQuery = useMemo(() => {
-    const normalized = normalizeCompare(projectQuery);
-    if (!normalized) return null;
-    return projects.find((project) => normalizeCompare(project.label) === normalized) ?? null;
-  }, [projectQuery, projects]);
+  const projectByQuery = useMemo(() => findProjectOption(projectQuery, projects), [projectQuery, projects]);
+
+  const materialByQuery = useMemo(() => findMaterialOption(materialCode, materialOptions), [materialCode, materialOptions]);
 
   const loadConsumption = useCallback(
     async (projectId?: string | null) => {
@@ -143,7 +192,7 @@ export function ProjectConsumptionPageView() {
 
       const params = new URLSearchParams();
       if (projectId) params.set("projectId", projectId);
-      if (materialCode.trim()) params.set("materialCode", materialCode.trim());
+      if (materialCode.trim()) params.set("materialCode", materialByQuery?.code ?? materialCode.trim());
 
       setIsLoading(true);
       try {
@@ -160,6 +209,7 @@ export function ProjectConsumptionPageView() {
         }
 
         setProjects(payload.filters?.projects ?? []);
+        setMaterialOptions(payload.materialOptions ?? []);
         setSelectedProject(payload.selectedProject ?? null);
         setRows(payload.rows ?? []);
         setChartRows(payload.chartRows ?? []);
@@ -177,7 +227,7 @@ export function ProjectConsumptionPageView() {
         setIsLoading(false);
       }
     },
-    [logError, materialCode, projectQuery, session?.accessToken],
+    [logError, materialByQuery?.code, materialCode, projectQuery, session?.accessToken],
   );
 
   useEffect(() => {
@@ -202,6 +252,43 @@ export function ProjectConsumptionPageView() {
     }
 
     void loadConsumption(projectByQuery.id);
+  }
+
+  function exportRows() {
+    if (!rows.length) {
+      setFeedback({ type: "error", message: "Nao ha materiais para exportar." });
+      return;
+    }
+
+    const header = [
+      "Projeto",
+      "Codigo do Material",
+      "Descricao",
+      "UMB",
+      "Quantidade prevista",
+      "Quantidade Requisicao",
+      "Quantidade Devolucao",
+      "Qtd Liquida",
+      "Desvio",
+      "Status",
+    ];
+    const projectLabel = selectedProject?.label ?? projectByQuery?.label ?? "projeto";
+    const lines = rows.map((row) => [
+      projectLabel,
+      row.materialCode,
+      row.description,
+      row.unit,
+      formatDecimal(row.plannedQuantity),
+      formatDecimal(row.requisitionQuantity),
+      formatDecimal(row.returnQuantity),
+      formatDecimal(row.netQuantity),
+      formatDecimal(row.deviationQuantity),
+      deviationLabel(row),
+    ]);
+    const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
+    const filenameProject = projectLabel.replace(/[^a-zA-Z0-9_-]+/g, "_") || "projeto";
+    downloadCsv(csv, `consumo_projeto_${filenameProject}_${toIsoDate(new Date())}.csv`);
+    setFeedback({ type: "success", message: "Materiais do projeto exportados com sucesso." });
   }
 
   return (
@@ -241,8 +328,12 @@ export function ProjectConsumptionPageView() {
             <span>Codigo do material</span>
             <input
               value={materialCode}
-              onChange={(event) => setMaterialCode(event.target.value)}
-              placeholder="Todos"
+              onChange={(event) => {
+                setMaterialCode(event.target.value);
+                setFeedback(null);
+              }}
+              list="consumo-material-list"
+              placeholder="Digite ou selecione o codigo"
               disabled={isLoading}
             />
           </label>
@@ -293,6 +384,12 @@ export function ProjectConsumptionPageView() {
                 {selectedProject ? `Projeto selecionado: ${selectedProject.label}` : "Nenhum projeto selecionado."}
               </p>
             </div>
+            <CsvExportButton
+              onClick={exportRows}
+              disabled={!rows.length || isLoading}
+              className={styles.secondaryButton}
+              idleLabel="Extrair Excel"
+            />
           </div>
 
           <div className={styles.tableWrapper}>
@@ -352,6 +449,13 @@ export function ProjectConsumptionPageView() {
       <datalist id="consumo-projeto-list">
         {projects.map((project) => (
           <option key={project.id} value={project.label} />
+        ))}
+      </datalist>
+      <datalist id="consumo-material-list">
+        {materialOptions.map((material) => (
+          <option key={material.id} value={material.code}>
+            {material.description}
+          </option>
         ))}
       </datalist>
     </section>
