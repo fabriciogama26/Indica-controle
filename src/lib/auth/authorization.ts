@@ -18,6 +18,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/posicao-trafo", pageKey: "posicao-trafo" },
   { prefix: "/entrada", pageKey: "entrada" },
   { prefix: "/saida", pageKey: "saida" },
+  { prefix: "/consumo-projeto", pageKey: "consumo-projeto" },
   { prefix: "/materiais", pageKey: "materiais" },
   { prefix: "/pessoas", pageKey: "pessoas" },
   { prefix: "/cargo", pageKey: "cargo" },
@@ -69,6 +70,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
     "posicao-trafo",
     "entrada",
     "saida",
+    "consumo-projeto",
     "materiais",
     "pessoas",
     "cargo",
@@ -95,7 +97,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   }
 
   if (normalized === "viewer") {
-    return ["home", "dash-estoque", "estoque", "posicao-trafo"];
+    return ["home", "dash-estoque", "estoque", "posicao-trafo", "consumo-projeto"];
   }
 
   return defaultPageAccess;

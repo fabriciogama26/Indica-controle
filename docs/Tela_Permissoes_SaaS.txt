@@ -60,7 +60,7 @@ Filtros, auto-complete e listagem
 - A listagem atual considera as telas do SaaS web:
   - Visao Geral: Home, Dashboard Medicao e Dash operacional e faturamento
   - Operacao: Projetos, Locacao, Programacao, Medicao
-  - Almoxarifado: Estoque Atual, Rastreio de SERIAL, Movimentacao de Estoque, Operacoes de Equipe
+  - Almoxarifado: Estoque Atual, Rastreio de SERIAL, Movimentacao de Estoque, Operacoes de Equipe, Consumo por Projeto
   - Cadastros: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
   - Cadastro Base: Prioridade, Centro de Servico, Contrato, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 
@@ -141,6 +141,7 @@ Atualizacao 2026-03
 - Migration `138_add_trafo_position_page_permissions.sql` criada para incluir `posicao-trafo` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Catalogo frontend de permissao atualizado para incluir `Rastreio de TRAFO` na secao `Almoxarifado`.
 - Atualizacao (2026-05): o mesmo `page_key = posicao-trafo` passou a aparecer como `Rastreio de SERIAL` no catalogo frontend.
+- Atualizacao (2026-05): catalogo frontend de permissao atualizado para incluir `Consumo por Projeto` na secao `Almoxarifado`.
 - `authorization.ts` passou a reconhecer a rota `/posicao-trafo` e o fallback padrao da role `viewer` tambem passou a considerar essa consulta unitaria.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -186,6 +187,8 @@ Constantes e configuracoes
   - Responsavel por: criar `append_user_invite_history` para registrar o historico de `INVITE_SENT` sem `insert` direto na route.
 - Caminho: `supabase/migrations/138_add_trafo_position_page_permissions.sql`
   - Responsavel por: cadastrar `posicao-trafo` em `app_pages` e fazer backfill de permissao por role/usuario.
+- Caminho: `supabase/migrations/191_create_project_consumption_page.sql`
+  - Responsavel por: cadastrar `consumo-projeto` em `app_pages` e fazer backfill de permissao por role/usuario.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
@@ -200,6 +203,7 @@ Ajuda contextual
   - `src/lib/auth/authorization.ts`
   - `src/components/layout/AppShell.tsx`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
+  - `supabase/migrations/191_create_project_consumption_page.sql`
   - `src/app/api/app-users/[userId]/permissions/route.ts`
   - `src/app/api/app-users/[userId]/invite/route.ts`
   - `src/lib/server/concurrency.ts`
@@ -222,6 +226,7 @@ Ajuda contextual
 - Estado atual: o save de `role`, `status` e matriz de paginas passa a ser executado por RPC transacional no banco.
 - Estado atual: a auditoria do `Invite` tambem passa a ser executada por RPC, mesmo com o envio do email permanecendo no backend do Next.
 - Estado atual: a tela passou a incluir a pagina `Rastreio de SERIAL` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
+- Estado atual: a tela passou a incluir a pagina `Consumo por Projeto` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.
 - Antes: parte das tabelas de cadastro/permissao ainda usava policy `FOR ALL`, que tambem permitia caminho de `DELETE`.
 - Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.
