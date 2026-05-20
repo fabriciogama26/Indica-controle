@@ -171,6 +171,7 @@ type ProjectForecastImportResponse = {
     projectsProcessed?: number;
     materialsRegistered?: number;
     activitiesRegistered?: number;
+    skippedRows?: number;
     sourceFile: string;
   };
 };
@@ -1888,14 +1889,21 @@ export function ProjectsPageView() {
         return;
       }
 
+      const successReport = buildImportErrorReport(data, "materiais_previstos_import_erros");
+      if (successReport) {
+        setForecastImportErrorReport(successReport);
+      }
       setFeedback({
         type: "success",
-        message:
-          data.message ?? "Materiais previstos importados com sucesso.",
+        message: `${data.message ?? "Materiais previstos importados com sucesso."}${
+          successReport ? " Baixe o CSV de erros para revisar as linhas ignoradas." : ""
+        }`,
       });
-      closeForecastImportModal();
       if (forecastProject) {
         await loadForecast(forecastProject.id);
+      }
+      if (!successReport) {
+        closeForecastImportModal();
       }
     } catch {
       setFeedback({
@@ -1955,14 +1963,21 @@ export function ProjectsPageView() {
         return;
       }
 
+      const successReport = buildImportErrorReport(data, "atividades_previstas_import_erros");
+      if (successReport) {
+        setActivityForecastImportErrorReport(successReport);
+      }
       setFeedback({
         type: "success",
-        message:
-          data.message ?? "Atividades previstas importadas com sucesso.",
+        message: `${data.message ?? "Atividades previstas importadas com sucesso."}${
+          successReport ? " Baixe o CSV de erros para revisar as linhas ignoradas." : ""
+        }`,
       });
-      closeActivityForecastImportModal();
       if (activityForecastProject) {
         await loadActivityForecast(activityForecastProject.id);
+      }
+      if (!successReport) {
+        closeActivityForecastImportModal();
       }
     } catch {
       setFeedback({

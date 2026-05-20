@@ -98,6 +98,7 @@ Cadastro
   - Permite editar `quantidade` e `observacao` diretamente na linha.
   - Permite abrir o modal `Cadastro em massa` para baixar o modelo e importar planilha XLSX com `projeto`, `codigo` e `quantidade`, adicionando materiais previstos de varios projetos no mesmo arquivo.
   - Quando a importacao possui erro, gera CSV de erros com `linha`, `coluna`, `valor` e `erro`.
+  - Quando o codigo ja existe no projeto, a linha e ignorada e as demais linhas novas continuam sendo cadastradas.
   - A inclusao manual e a edicao em linha passam pela RPC `save_project_material_forecast`.
   - A inclusao manual e a edicao em linha limitam quantidade a `100000` no frontend e na RPC.
   - A edicao em linha envia `expectedUpdatedAt` para bloquear sobrescrita silenciosa por concorrencia.
@@ -110,6 +111,7 @@ Cadastro
   - O botao `Adicionar atividade` segue o mesmo posicionamento visual do `Adicionar material` da aba `Materiais previstos`.
   - Permite abrir o modal `Cadastro em massa` para baixar o modelo e importar planilha XLSX com `projeto`, `codigo` e `quantidade`, adicionando atividades previstas de varios projetos no mesmo arquivo.
   - Quando a importacao possui erro, gera CSV de erros com `linha`, `coluna`, `valor` e `erro`.
+  - Quando o codigo ja existe no projeto, a linha e ignorada e as demais linhas novas continuam sendo cadastradas.
   - Permite editar `quantidade` e `observacao` diretamente na linha.
   - Bloqueia quantidade `<= 0` no backend via RPC `save_project_activity_forecast`.
   - A inclusao manual e a edicao em linha limitam quantidade a `100000` no frontend e na RPC.
@@ -176,6 +178,7 @@ Boas praticas
 - A planilha de importacao de previstos deve conter `projeto`, `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
 - A planilha de importacao de atividades previstas deve conter `projeto`, `codigo` e `quantidade`; descricao/unidade/tipo/valor unitario vem do cadastro base `service_activities`.
 - Importacoes invalidas devem gerar arquivo CSV de erros no padrao `linha;coluna;valor;erro`.
+- Codigos ja existentes no projeto nao bloqueiam o arquivo inteiro; a linha e ignorada, registrada no CSV de erros/avisos e as linhas novas sao cadastradas.
 - `Atividades previstas` do projeto devem ser mantidas com quantidade maior que zero e servem de base para bootstrap inicial da aba `Atividades previstas` na `Locacao`.
 - Exigir controle de concorrencia por `updated_at` na edicao em linha de `Materiais previstos` e `Atividades previstas`.
 - Aplicar limite superior `<= 100000` para quantidades manuais e para edicao em linha dos previstos do projeto.
@@ -583,3 +586,4 @@ Atualizacao adicional 2026-05-20
   - Depois: a validacao continua restrita ao `tenant_id`, resolvendo `project.sob`, `materials.codigo` e `service_activities.code` dentro do tenant autenticado.
   - Depois: o acionamento visual da importacao passa a seguir o padrao das demais telas, com botao e modal nomeados como `Cadastro em massa`.
   - Depois: o botao externo `Baixar modelo (.xlsx)` foi removido das abas; o download do modelo fica apenas dentro do modal `Cadastro em massa`.
+  - Depois: codigos ja existentes no projeto deixam de bloquear a importacao inteira; a linha e ignorada, entra no CSV de erros/avisos e os codigos novos sao cadastrados.

@@ -306,13 +306,43 @@ serve(async (req) => {
     rowsByProject.set(project.id, current)
   })
 
-  const precheckIssues: ImportIssue[] = []
+  let inserted = 0
+  let skipped = 0
+  const skippedIssues: ImportIssue[] = []
+  const processedProjectIds = new Set<string>()
+
   for (const [projectId, projectRows] of rowsByProject.entries()) {
     const materialIdsInProject = projectRows.map((row) => materialByCode.get(row.code)?.id).filter(Boolean) as string[]
+    const { data: existingRows, error: existingError } = await supabase
+      .from('project_material_forecast')
+      .select('material_id')
+      .eq('tenant_id', appUser.tenant_id)
+      .eq('project_id', projectId)
+      .in('material_id', materialIdsInProject)
+
+    if (existingError) {
+      return respond(500, { success: false, message: 'Falha ao validar materiais ja cadastrados no projeto.' })
+    }
+
+    const existingMaterialIds = new Set((existingRows ?? []).map((item: { material_id: string }) => String(item.material_id)))
+    const rowsToInsert = projectRows.filter((row) => {
+      const materialId = materialByCode.get(row.code)?.id ?? ''
+      if (existingMaterialIds.has(materialId)) {
+        skipped += 1
+        skippedIssues.push(makeIssue(row.line, 'codigo', row.code, 'Codigo ja existe no projeto. Linha ignorada.'))
+        return false
+      }
+      return true
+    })
+
+    if (rowsToInsert.length === 0) {
+      continue
+    }
+
     const { data: precheckData, error: precheckError } = await supabase.rpc('precheck_project_material_forecast_import', {
       p_tenant_id: appUser.tenant_id,
       p_project_id: projectId,
-      p_material_ids: materialIdsInProject,
+      p_material_ids: rowsToInsert.map((row) => materialByCode.get(row.code)?.id).filter(Boolean) as string[],
     })
 
     if (precheckError) {
@@ -321,41 +351,15 @@ serve(async (req) => {
 
     const precheckResult = (precheckData ?? {}) as Record<string, unknown>
     if (precheckResult.success !== true) {
-      const reason = String(precheckResult.reason ?? '')
-      const blockedCodes = Array.isArray(precheckResult.codes) ? precheckResult.codes.map((v) => String(v)) : []
-
-      if (reason === 'CODE_ALREADY_IMPORTED') {
-        projectRows
-          .filter((row) => blockedCodes.includes(row.code))
-          .forEach((row) => {
-            precheckIssues.push(makeIssue(row.line, 'codigo', row.code, 'Codigo ja importado anteriormente para este projeto.'))
-          })
-      } else if (reason === 'DUPLICATE_CODE_IN_FILE') {
-        projectRows
-          .filter((row) => blockedCodes.includes(row.code))
-          .forEach((row) => {
-            precheckIssues.push(makeIssue(row.line, 'codigo', row.code, 'Codigo duplicado dentro da planilha.'))
-          })
-      } else {
-        precheckIssues.push(makeIssue(projectRows[0]?.line ?? 1, 'arquivo', reason, 'Importacao bloqueada pela validacao de protecao.'))
-      }
+      return respond(409, {
+        success: false,
+        message: 'Importacao bloqueada pela validacao de materiais previstos.',
+        reason: String(precheckResult.reason ?? ''),
+        codes: precheckResult.codes ?? [],
+      })
     }
-  }
 
-  if (precheckIssues.length > 0) {
-    return respond(409, {
-      success: false,
-      message: 'Importacao bloqueada por codigos duplicados ou ja importados.',
-      errors: precheckIssues.slice(0, 30).map((issue) => `Linha ${issue.line}: ${issue.error}`),
-      errorRows: precheckIssues.slice(0, 200),
-    })
-  }
-
-  let inserted = 0
-  const processedProjectIds = new Set<string>()
-
-  for (const [projectId, projectRows] of rowsByProject.entries()) {
-    const payload = projectRows.map((row) => ({
+    const payload = rowsToInsert.map((row) => ({
       material_id: materialByCode.get(row.code)?.id,
       qty_planned: row.qtyPlanned,
     }))
@@ -388,11 +392,16 @@ serve(async (req) => {
 
   return respond(200, {
     success: true,
-    message: `Materiais previstos importados com sucesso. Projetos processados: ${processedProjectIds.size}.`,
+    message:
+      skipped > 0
+        ? `Materiais previstos importados parcialmente. ${inserted} linhas cadastradas e ${skipped} linhas ignoradas por ja existirem no projeto.`
+        : `Materiais previstos importados com sucesso. Projetos processados: ${processedProjectIds.size}.`,
+    ...(skippedIssues.length > 0 ? { errorRows: skippedIssues.slice(0, 200) } : {}),
     summary: {
       rowsRead: parsed.rows.length,
       projectsProcessed: processedProjectIds.size,
       materialsRegistered: inserted,
+      skippedRows: skipped,
       sourceFile: file.name,
     },
   })
