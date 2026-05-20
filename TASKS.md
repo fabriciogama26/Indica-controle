@@ -678,3 +678,5 @@
 - [x] Remover botao externo Baixar modelo (.xlsx) das abas Materiais previstos e Atividades previstas, mantendo o download apenas no modal Cadastro em massa.
 
 - [x] Ajustar importacao em massa de previstos em Projetos para ignorar codigos ja existentes no projeto e cadastrar somente os codigos novos, gerando CSV de erros/avisos para linhas ignoradas.
+
+- [x] Corrigir selecao de Projeto (SOB) em Materiais previstos e Atividades previstas para usar catalogo completo do tenant e carregar a lista mesmo quando o projeto nao esta na pagina atual.
