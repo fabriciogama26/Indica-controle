@@ -793,10 +793,27 @@ export async function GET(request: NextRequest) {
 
     transformedItems.sort((left, right) => toTimestamp(right.updatedAt) - toTimestamp(left.updatedAt));
 
+    const summary = transformedItems.reduce(
+      (current, item) => {
+        if (item.currentStatus === "EM_ESTOQUE") current.inOwnCount += 1;
+        if (item.currentStatus === "COM_EQUIPE") current.withTeamCount += 1;
+        if (item.currentStatus === "FORA_ESTOQUE") current.outsideCount += 1;
+        if (item.currentStatus === "RET") current.retCount += 1;
+        return current;
+      },
+      {
+        inOwnCount: 0,
+        withTeamCount: 0,
+        outsideCount: 0,
+        retCount: 0,
+      },
+    );
+
     const from = (page - 1) * pageSize;
 
     return NextResponse.json({
       items: transformedItems.slice(from, from + pageSize),
+      summary,
       pagination: {
         page,
         pageSize,

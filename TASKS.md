@@ -640,6 +640,7 @@
 
 - [x] Adicionar cards de Saldo total por UMB na Lista de Estoque Atual, usando resumo filtrado antes da paginacao e priorizando M, UN e KG.
 - [x] Corrigir exportacao CSV da Lista de Estoque Atual para respeitar o `pageSize` efetivo da API e exportar todos os registros filtrados; documentar que os cards usam resumo filtrado completo antes da paginacao.
+- [x] Corrigir cards e exportacao CSV do Rastreio de SERIAL para usar resumo filtrado completo antes da paginacao e respeitar o `pageSize` efetivo da API.
 
 - [x] Ajustar Extracao ENEL NOVO para preencher km com o valor informado em REDE (quantidade) sem somar equipes do mesmo projeto/data, e permitir REDE decimal com virgula ou ponto na Programacao Simples.
 - [x] Incluir a coluna `Prioridade` no modal `Todos os prazos das obras` da Programacao Simples e na exportacao CSV de prazos.
