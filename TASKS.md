@@ -670,3 +670,9 @@
 - [x] Preencher automaticamente `Estado Trabalho = PARCIAL` no primeiro cadastro de Programacao de cada projeto por tenant.
 
 - [x] Ajustar `Status execucao` da Medicao para usar o ultimo `Estado Trabalho` global do projeto, independente da data da ordem de Medicao.
+
+- [x] Ajustar cadastro em massa de Materiais previstos e Atividades previstas em Projetos para aceitar XLSX com `projeto`, `codigo` e `quantidade`, permitindo varios projetos no mesmo arquivo e gerando CSV de erros por linha/coluna.
+
+- [x] Padronizar o acionamento de importacao de Materiais previstos e Atividades previstas em Projetos como botao/modal Cadastro em massa, mantendo modelo XLSX e CSV de erros.
+
+- [x] Remover botao externo Baixar modelo (.xlsx) das abas Materiais previstos e Atividades previstas, mantendo o download apenas no modal Cadastro em massa.

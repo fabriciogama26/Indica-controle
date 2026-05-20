@@ -1,5 +1,5 @@
 // Edge Function: import_project_activity_forecast
-// Imports project activity forecast XLSX (codigo, quantidade) with RPC guard.
+// Imports project activity forecast XLSX (projeto, codigo, quantidade) with RPC guard.
 
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -65,16 +65,33 @@ const parsePositiveNumber = (value: unknown) => {
 
 type ParsedRow = {
   line: number
+  projectSob: string
   code: string
   qtyPlanned: number
 }
 
-function parseWorkbook(content: ArrayBuffer): { rows: ParsedRow[]; errors: string[] } {
+type ImportIssue = {
+  line: number
+  column: string
+  value: string
+  error: string
+}
+
+function makeIssue(line: number, column: string, value: unknown, error: string): ImportIssue {
+  return {
+    line,
+    column,
+    value: normalizeText(value),
+    error,
+  }
+}
+
+function parseWorkbook(content: ArrayBuffer): { rows: ParsedRow[]; issues: ImportIssue[] } {
   const workbook = XLSX.read(content, { type: 'array', cellDates: false, raw: false })
   const firstSheetName = workbook.SheetNames[0]
 
   if (!firstSheetName) {
-    return { rows: [], errors: ['Planilha XLSX sem abas.'] }
+    return { rows: [], issues: [makeIssue(1, 'arquivo', '', 'Planilha XLSX sem abas.')] }
   }
 
   const worksheet = workbook.Sheets[firstSheetName]
@@ -84,7 +101,7 @@ function parseWorkbook(content: ArrayBuffer): { rows: ParsedRow[]; errors: strin
   })
 
   if (rawRows.length === 0) {
-    return { rows: [], errors: ['Planilha vazia. Preencha ao menos uma linha.'] }
+    return { rows: [], issues: [makeIssue(1, 'arquivo', '', 'Planilha vazia. Preencha ao menos uma linha.')] }
   }
 
   const firstRow = rawRows[0] ?? {}
@@ -93,46 +110,61 @@ function parseWorkbook(content: ArrayBuffer): { rows: ParsedRow[]; errors: strin
     normalizedToOriginal.set(normalizeHeader(key), key)
   }
 
+  const projectKey = normalizedToOriginal.get('projeto') ?? normalizedToOriginal.get('sob') ?? ''
   const codeKey = normalizedToOriginal.get('codigo') ?? ''
   const qtyKey = normalizedToOriginal.get('quantidade') ?? ''
 
-  if (!codeKey || !qtyKey) {
+  if (!projectKey || !codeKey || !qtyKey) {
     return {
       rows: [],
-      errors: ['Cabecalho invalido. Use o modelo oficial com as colunas: codigo, quantidade.'],
+      issues: [
+        makeIssue(
+          1,
+          'cabecalho',
+          Object.keys(firstRow).join('; '),
+          'Cabecalho invalido. Use o modelo oficial com as colunas: projeto, codigo, quantidade.',
+        ),
+      ],
     }
   }
 
   const rows: ParsedRow[] = []
-  const errors: string[] = []
+  const issues: ImportIssue[] = []
 
   rawRows.forEach((row, index) => {
     const line = index + 2
+    const projectSob = normalizeText(row[projectKey]).toUpperCase()
     const code = normalizeText(row[codeKey]).toUpperCase()
     const qty = parsePositiveNumber(row[qtyKey])
 
-    if (!code && !normalizeText(row[qtyKey])) {
+    if (!projectSob && !code && !normalizeText(row[qtyKey])) {
       return
+    }
+
+    if (!projectSob) {
+      issues.push(makeIssue(line, 'projeto', row[projectKey], 'Projeto obrigatorio.'))
     }
 
     if (!code) {
-      errors.push(`Linha ${line}: codigo obrigatorio.`)
-      return
+      issues.push(makeIssue(line, 'codigo', row[codeKey], 'Codigo obrigatorio.'))
     }
 
     if (qty === null) {
-      errors.push(`Linha ${line}: quantidade invalida.`)
+      issues.push(makeIssue(line, 'quantidade', row[qtyKey], 'Quantidade invalida.'))
+    }
+
+    if (!projectSob || !code || qty === null) {
       return
     }
 
-    rows.push({ line, code, qtyPlanned: qty })
+    rows.push({ line, projectSob, code, qtyPlanned: qty })
   })
 
-  if (rows.length === 0 && errors.length === 0) {
-    errors.push('Nenhuma linha valida encontrada para importacao.')
+  if (rows.length === 0 && issues.length === 0) {
+    issues.push(makeIssue(1, 'arquivo', '', 'Nenhuma linha valida encontrada para importacao.'))
   }
 
-  return { rows, errors }
+  return { rows, issues }
 }
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -179,12 +211,7 @@ serve(async (req) => {
     return respond(400, { success: false, message: 'Falha ao ler o formulario enviado.' })
   }
 
-  const projectId = normalizeText(formData.get('projectId'))
   const file = formData.get('file')
-
-  if (!projectId) {
-    return respond(400, { success: false, message: 'projectId obrigatorio.' })
-  }
 
   if (!(file instanceof File)) {
     return respond(400, { success: false, message: 'Arquivo XLSX obrigatorio.' })
@@ -198,27 +225,34 @@ serve(async (req) => {
     return respond(400, { success: false, message: 'Arquivo maior que 5MB nao e permitido.' })
   }
 
-  const { data: project, error: projectError } = await supabase
-    .from('project')
-    .select('id, sob')
-    .eq('tenant_id', appUser.tenant_id)
-    .eq('id', projectId)
-    .maybeSingle()
-
-  if (projectError || !project?.id) {
-    return respond(404, { success: false, message: 'Projeto nao encontrado no tenant informado.' })
-  }
-
   const parsed = parseWorkbook(await file.arrayBuffer())
-  if (parsed.errors.length > 0) {
+  if (parsed.issues.length > 0) {
     return respond(400, {
       success: false,
       message: 'Falha ao validar planilha de atividades previstas.',
-      errors: parsed.errors.slice(0, 30),
+      errors: parsed.issues.slice(0, 30).map((issue) => `Linha ${issue.line}: ${issue.error}`),
+      errorRows: parsed.issues.slice(0, 200),
     })
   }
 
-  const codeList = parsed.rows.map((item) => item.code)
+  const projectSobList = Array.from(new Set(parsed.rows.map((item) => item.projectSob)))
+  const codeList = Array.from(new Set(parsed.rows.map((item) => item.code)))
+
+  const { data: projects, error: projectsError } = await supabase
+    .from('project')
+    .select('id, sob')
+    .eq('tenant_id', appUser.tenant_id)
+    .in('sob', projectSobList)
+
+  if (projectsError) {
+    return respond(500, { success: false, message: 'Falha ao validar projetos da planilha.' })
+  }
+
+  const projectBySob = new Map<string, { id: string; sob: string }>()
+  ;(projects ?? []).forEach((item: { id: string; sob: string }) => {
+    projectBySob.set(normalizeText(item.sob).toUpperCase(), item)
+  })
+
   const { data: activities, error: activitiesError } = await supabase
     .from('service_activities')
     .select('id, code')
@@ -230,103 +264,136 @@ serve(async (req) => {
     return respond(500, { success: false, message: 'Falha ao validar atividades da planilha.' })
   }
 
+  const validationIssues: ImportIssue[] = []
+
   const activityByCode = new Map<string, { id: string; code: string }>()
   ;(activities ?? []).forEach((item: { id: string; code: string }) => {
     activityByCode.set(normalizeText(item.code).toUpperCase(), item)
   })
 
-  const missingCodes = codeList.filter((code) => !activityByCode.has(code))
-  if (missingCodes.length > 0) {
+  const firstOccurrence = new Map<string, ParsedRow>()
+  parsed.rows.forEach((row) => {
+    if (!projectBySob.has(row.projectSob)) {
+      validationIssues.push(makeIssue(row.line, 'projeto', row.projectSob, 'Projeto nao encontrado no tenant informado.'))
+    }
+
+    if (!activityByCode.has(row.code)) {
+      validationIssues.push(makeIssue(row.line, 'codigo', row.code, 'Atividade ativa nao encontrada no tenant.'))
+    }
+
+    const duplicateKey = `${row.projectSob}|${row.code}`
+    if (firstOccurrence.has(duplicateKey)) {
+      validationIssues.push(makeIssue(row.line, 'codigo', row.code, 'Codigo duplicado para o mesmo projeto dentro da planilha.'))
+    } else {
+      firstOccurrence.set(duplicateKey, row)
+    }
+  })
+
+  if (validationIssues.length > 0) {
     return respond(400, {
       success: false,
-      message: 'Existem codigos de atividade nao cadastrados no tenant.',
-      errors: missingCodes.slice(0, 50).map((code) => `Atividade nao encontrada: ${code}`),
+      message: 'Existem erros de validacao na planilha de atividades previstas.',
+      errors: validationIssues.slice(0, 30).map((issue) => `Linha ${issue.line}: ${issue.error}`),
+      errorRows: validationIssues.slice(0, 200),
     })
   }
 
-  const activityIdsInFile = parsed.rows.map((row) => activityByCode.get(row.code)?.id).filter(Boolean) as string[]
-
-  const { data: precheckData, error: precheckError } = await supabase.rpc('precheck_project_activity_forecast_import', {
-    p_tenant_id: appUser.tenant_id,
-    p_project_id: project.id,
-    p_activity_ids: activityIdsInFile,
-  })
-
-  if (precheckError) {
-    return respond(500, { success: false, message: 'Falha ao validar protecao de importacao.' })
-  }
-
-  const precheckResult = (precheckData ?? {}) as Record<string, unknown>
-  if (precheckResult.success !== true) {
-    const reason = String(precheckResult.reason ?? '')
-    const blockedCodes = Array.isArray(precheckResult.codes) ? precheckResult.codes.map((v) => String(v)) : []
-
-    if (reason === 'CODE_ALREADY_IMPORTED') {
-      return respond(409, {
-        success: false,
-        message: 'Importacao bloqueada: codigo ja importado anteriormente para este projeto.',
-        reason,
-        codes: blockedCodes,
-      })
-    }
-
-    if (reason === 'DUPLICATE_CODE_IN_FILE') {
-      return respond(409, {
-        success: false,
-        message: 'Importacao bloqueada: codigo duplicado dentro da planilha.',
-        reason,
-        codes: blockedCodes,
-      })
-    }
-
-    return respond(409, {
-      success: false,
-      message: 'Importacao bloqueada pela validacao de protecao.',
-      reason,
-    })
-  }
-
-  const mergedByCode = new Map<string, number>()
+  const rowsByProject = new Map<string, ParsedRow[]>()
   parsed.rows.forEach((row) => {
-    const current = mergedByCode.get(row.code) ?? 0
-    mergedByCode.set(row.code, current + row.qtyPlanned)
+    const project = projectBySob.get(row.projectSob)
+    if (!project?.id) return
+    const current = rowsByProject.get(project.id) ?? []
+    current.push(row)
+    rowsByProject.set(project.id, current)
   })
 
-  const payload = Array.from(mergedByCode.entries()).map(([code, qty]) => ({
-    activity_id: activityByCode.get(code)?.id,
-    qty_planned: qty,
-  }))
+  const precheckIssues: ImportIssue[] = []
+  for (const [projectId, projectRows] of rowsByProject.entries()) {
+    const activityIdsInProject = projectRows.map((row) => activityByCode.get(row.code)?.id).filter(Boolean) as string[]
+    const { data: precheckData, error: precheckError } = await supabase.rpc('precheck_project_activity_forecast_import', {
+      p_tenant_id: appUser.tenant_id,
+      p_project_id: projectId,
+      p_activity_ids: activityIdsInProject,
+    })
 
-  const { data: appendData, error: appendError } = await supabase.rpc('append_project_activity_forecast', {
-    p_tenant_id: appUser.tenant_id,
-    p_project_id: project.id,
-    p_actor_user_id: appUser.id,
-    p_items: payload,
-    p_source: 'IMPORT_XLSX_EDGE',
-  })
+    if (precheckError) {
+      return respond(500, { success: false, message: 'Falha ao validar protecao de importacao.' })
+    }
 
-  if (appendError) {
-    return respond(500, { success: false, message: 'Falha ao registrar atividades previstas do projeto.' })
+    const precheckResult = (precheckData ?? {}) as Record<string, unknown>
+    if (precheckResult.success !== true) {
+      const reason = String(precheckResult.reason ?? '')
+      const blockedCodes = Array.isArray(precheckResult.codes) ? precheckResult.codes.map((v) => String(v)) : []
+
+      if (reason === 'CODE_ALREADY_IMPORTED') {
+        projectRows
+          .filter((row) => blockedCodes.includes(row.code))
+          .forEach((row) => {
+            precheckIssues.push(makeIssue(row.line, 'codigo', row.code, 'Codigo ja importado anteriormente para este projeto.'))
+          })
+      } else if (reason === 'DUPLICATE_CODE_IN_FILE') {
+        projectRows
+          .filter((row) => blockedCodes.includes(row.code))
+          .forEach((row) => {
+            precheckIssues.push(makeIssue(row.line, 'codigo', row.code, 'Codigo duplicado dentro da planilha.'))
+          })
+      } else {
+        precheckIssues.push(makeIssue(projectRows[0]?.line ?? 1, 'arquivo', reason, 'Importacao bloqueada pela validacao de protecao.'))
+      }
+    }
   }
 
-  const appendResult = (appendData ?? {}) as Record<string, unknown>
-  if (appendResult.success !== true) {
+  if (precheckIssues.length > 0) {
     return respond(409, {
       success: false,
-      message: 'Importacao bloqueada pela validacao de atividades previstas.',
-      reason: String(appendResult.reason ?? ''),
-      codes: appendResult.codes ?? [],
+      message: 'Importacao bloqueada por codigos duplicados ou ja importados.',
+      errors: precheckIssues.slice(0, 30).map((issue) => `Linha ${issue.line}: ${issue.error}`),
+      errorRows: precheckIssues.slice(0, 200),
     })
+  }
+
+  let inserted = 0
+  const processedProjectIds = new Set<string>()
+
+  for (const [projectId, projectRows] of rowsByProject.entries()) {
+    const payload = projectRows.map((row) => ({
+      activity_id: activityByCode.get(row.code)?.id,
+      qty_planned: row.qtyPlanned,
+    }))
+
+    const { data: appendData, error: appendError } = await supabase.rpc('append_project_activity_forecast', {
+      p_tenant_id: appUser.tenant_id,
+      p_project_id: projectId,
+      p_actor_user_id: appUser.id,
+      p_items: payload,
+      p_source: 'IMPORT_XLSX_EDGE',
+    })
+
+    if (appendError) {
+      return respond(500, { success: false, message: 'Falha ao registrar atividades previstas do projeto.' })
+    }
+
+    const appendResult = (appendData ?? {}) as Record<string, unknown>
+    if (appendResult.success !== true) {
+      return respond(409, {
+        success: false,
+        message: 'Importacao bloqueada pela validacao de atividades previstas.',
+        reason: String(appendResult.reason ?? ''),
+        codes: appendResult.codes ?? [],
+      })
+    }
+
+    inserted += Number(appendResult.inserted ?? 0)
+    processedProjectIds.add(projectId)
   }
 
   return respond(200, {
     success: true,
-    message: `Atividades previstas do projeto ${String(project.sob ?? '')} importadas com sucesso.`,
+    message: `Atividades previstas importadas com sucesso. Projetos processados: ${processedProjectIds.size}.`,
     summary: {
-      projectId: String(project.id),
-      projectSob: String(project.sob ?? ''),
       rowsRead: parsed.rows.length,
-      activitiesRegistered: Number(appendResult.inserted ?? 0),
+      projectsProcessed: processedProjectIds.size,
+      activitiesRegistered: inserted,
       sourceFile: file.name,
     },
   })

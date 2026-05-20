@@ -161,15 +161,33 @@ type ProjectForecastImportResponse = {
   success?: boolean;
   message?: string;
   errors?: string[];
+  errorRows?: ProjectForecastImportIssue[];
   reason?: string;
   codes?: string[];
   summary?: {
-    projectId: string;
-    projectSob: string;
+    projectId?: string;
+    projectSob?: string;
     rowsRead: number;
-    materialsRegistered: number;
+    projectsProcessed?: number;
+    materialsRegistered?: number;
+    activitiesRegistered?: number;
     sourceFile: string;
   };
+};
+
+type ProjectForecastImportIssue = {
+  line?: number;
+  rowNumber?: number;
+  column?: string;
+  value?: string;
+  error?: string;
+};
+
+type ProjectForecastImportErrorReport = {
+  fileName: string;
+  content: string;
+  errorRows: number;
+  totalIssues: number;
 };
 
 type ProjectActivityForecastItem = {
@@ -489,6 +507,70 @@ function downloadCsvFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function buildImportErrorReport(
+  response: ProjectForecastImportResponse,
+  filePrefix: string,
+): ProjectForecastImportErrorReport | null {
+  const issues: Array<{ line: number; column: string; value: string; error: string }> = [];
+
+  (response.errorRows ?? []).forEach((issue) => {
+    issues.push({
+      line: Number(issue.line ?? issue.rowNumber ?? 0),
+      column: String(issue.column ?? "arquivo"),
+      value: String(issue.value ?? ""),
+      error: String(issue.error ?? "Erro de validacao."),
+    });
+  });
+
+  if (issues.length === 0) {
+    (response.errors ?? []).forEach((error, index) => {
+      issues.push({
+        line: index + 1,
+        column: "arquivo",
+        value: "",
+        error,
+      });
+    });
+  }
+
+  if (issues.length === 0) {
+    (response.codes ?? []).forEach((code, index) => {
+      issues.push({
+        line: index + 1,
+        column: "codigo",
+        value: code,
+        error: "Codigo bloqueado na importacao.",
+      });
+    });
+  }
+
+  if (issues.length === 0) {
+    return null;
+  }
+
+  const sortedIssues = [...issues].sort((left, right) => {
+    if (left.line !== right.line) {
+      return left.line - right.line;
+    }
+    return left.column.localeCompare(right.column);
+  });
+  const errorRows = new Set(sortedIssues.map((issue) => issue.line)).size;
+  const fileDate = new Date().toISOString().slice(0, 10);
+  const lines = [
+    "linha;coluna;valor;erro",
+    ...sortedIssues.map((issue) =>
+      [issue.line, issue.column, issue.value, issue.error].map((item) => escapeCsvValue(item)).join(";"),
+    ),
+  ];
+
+  return {
+    fileName: `${filePrefix}_${fileDate}.csv`,
+    content: `\uFEFF${lines.join("\n")}\n`,
+    errorRows,
+    totalIssues: sortedIssues.length,
+  };
+}
+
 function downloadBlobFile(content: Blob, filename: string) {
   const url = URL.createObjectURL(content);
   const link = document.createElement("a");
@@ -641,6 +723,7 @@ export function ProjectsPageView() {
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const [isForecastImportModalOpen, setIsForecastImportModalOpen] = useState(false);
   const [forecastImportFile, setForecastImportFile] = useState<File | null>(null);
+  const [forecastImportErrorReport, setForecastImportErrorReport] = useState<ProjectForecastImportErrorReport | null>(null);
   const [isImportingForecast, setIsImportingForecast] = useState(false);
   const [activityForecastProject, setActivityForecastProject] = useState<{ id: string; sob: string } | null>(null);
   const [activityForecastProjectSearch, setActivityForecastProjectSearch] = useState("");
@@ -649,6 +732,8 @@ export function ProjectsPageView() {
   const [isDownloadingActivityForecastTemplate, setIsDownloadingActivityForecastTemplate] = useState(false);
   const [isActivityForecastImportModalOpen, setIsActivityForecastImportModalOpen] = useState(false);
   const [activityForecastImportFile, setActivityForecastImportFile] = useState<File | null>(null);
+  const [activityForecastImportErrorReport, setActivityForecastImportErrorReport] =
+    useState<ProjectForecastImportErrorReport | null>(null);
   const [isImportingActivityForecast, setIsImportingActivityForecast] = useState(false);
   const [isExportingActivityForecast, setIsExportingActivityForecast] = useState(false);
   const exportActivityForecastCooldown = useExportCooldown();
@@ -1730,45 +1815,33 @@ export function ProjectsPageView() {
   }
 
   function openForecastImportModal() {
-    if (!forecastProject) {
-      setFeedback({
-        type: "error",
-        message: "Selecione um projeto para importar materiais previstos.",
-      });
-      return;
-    }
-
     setForecastImportFile(null);
+    setForecastImportErrorReport(null);
     setIsForecastImportModalOpen(true);
   }
 
   function closeForecastImportModal() {
     setIsForecastImportModalOpen(false);
     setForecastImportFile(null);
+    setForecastImportErrorReport(null);
     setIsImportingForecast(false);
   }
 
   function openActivityForecastImportModal() {
-    if (!activityForecastProject) {
-      setFeedback({
-        type: "error",
-        message: "Selecione um projeto para importar atividades previstas.",
-      });
-      return;
-    }
-
     setActivityForecastImportFile(null);
+    setActivityForecastImportErrorReport(null);
     setIsActivityForecastImportModalOpen(true);
   }
 
   function closeActivityForecastImportModal() {
     setIsActivityForecastImportModalOpen(false);
     setActivityForecastImportFile(null);
+    setActivityForecastImportErrorReport(null);
     setIsImportingActivityForecast(false);
   }
 
   async function submitForecastImport() {
-    if (!session?.accessToken || !forecastProject || !forecastImportFile) {
+    if (!session?.accessToken || !forecastImportFile) {
       return;
     }
 
@@ -1783,9 +1856,9 @@ export function ProjectsPageView() {
     }
 
     setIsImportingForecast(true);
+    setForecastImportErrorReport(null);
     try {
       const payload = new FormData();
-      payload.set("projectId", forecastProject.id);
       payload.set("file", forecastImportFile);
 
       const response = await fetch(`${functionsBaseUrl}/functions/v1/import_project_forecast`, {
@@ -1800,13 +1873,17 @@ export function ProjectsPageView() {
 
       const data = (await response.json().catch(() => ({}))) as ProjectForecastImportResponse;
       if (!response.ok) {
+        const report = buildImportErrorReport(data, "materiais_previstos_import_erros");
+        setForecastImportErrorReport(report);
         const errorList = (data.errors ?? []).slice(0, 5);
         const blockedCodes = (data.codes ?? []).slice(0, 5);
         const details = [...errorList, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
         const errorDetails = details.length > 0 ? ` (${details.join(" | ")})` : "";
         setFeedback({
           type: "error",
-          message: `${data.message ?? "Falha ao importar materiais previstos."}${errorDetails}`,
+          message: `${data.message ?? "Falha ao importar materiais previstos."}${errorDetails}${
+            report ? " Baixe o CSV de erros para corrigir." : ""
+          }`,
         });
         return;
       }
@@ -1814,11 +1891,12 @@ export function ProjectsPageView() {
       setFeedback({
         type: "success",
         message:
-          data.message ??
-          `Materiais previstos do projeto ${forecastProject.sob} importados com sucesso.`,
+          data.message ?? "Materiais previstos importados com sucesso.",
       });
       closeForecastImportModal();
-      await loadForecast(forecastProject.id);
+      if (forecastProject) {
+        await loadForecast(forecastProject.id);
+      }
     } catch {
       setFeedback({
         type: "error",
@@ -1830,7 +1908,7 @@ export function ProjectsPageView() {
   }
 
   async function submitActivityForecastImport() {
-    if (!session?.accessToken || !activityForecastProject || !activityForecastImportFile) {
+    if (!session?.accessToken || !activityForecastImportFile) {
       return;
     }
 
@@ -1845,9 +1923,9 @@ export function ProjectsPageView() {
     }
 
     setIsImportingActivityForecast(true);
+    setActivityForecastImportErrorReport(null);
     try {
       const payload = new FormData();
-      payload.set("projectId", activityForecastProject.id);
       payload.set("file", activityForecastImportFile);
 
       const response = await fetch(`${functionsBaseUrl}/functions/v1/import_project_activity_forecast`, {
@@ -1862,13 +1940,17 @@ export function ProjectsPageView() {
 
       const data = (await response.json().catch(() => ({}))) as ProjectForecastImportResponse;
       if (!response.ok) {
+        const report = buildImportErrorReport(data, "atividades_previstas_import_erros");
+        setActivityForecastImportErrorReport(report);
         const errorList = (data.errors ?? []).slice(0, 5);
         const blockedCodes = (data.codes ?? []).slice(0, 5);
         const details = [...errorList, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
         const errorDetails = details.length > 0 ? ` (${details.join(" | ")})` : "";
         setFeedback({
           type: "error",
-          message: `${data.message ?? "Falha ao importar atividades previstas."}${errorDetails}`,
+          message: `${data.message ?? "Falha ao importar atividades previstas."}${errorDetails}${
+            report ? " Baixe o CSV de erros para corrigir." : ""
+          }`,
         });
         return;
       }
@@ -1876,11 +1958,12 @@ export function ProjectsPageView() {
       setFeedback({
         type: "success",
         message:
-          data.message ??
-          `Atividades previstas do projeto ${activityForecastProject.sob} importadas com sucesso.`,
+          data.message ?? "Atividades previstas importadas com sucesso.",
       });
       closeActivityForecastImportModal();
-      await loadActivityForecast(activityForecastProject.id);
+      if (activityForecastProject) {
+        await loadActivityForecast(activityForecastProject.id);
+      }
     } catch {
       setFeedback({
         type: "error",
@@ -2613,19 +2696,11 @@ export function ProjectsPageView() {
             <div className={styles.actions}>
               <button
                 type="button"
-                className={styles.secondaryButton}
-                onClick={() => void handleDownloadForecastTemplate()}
-                disabled={isDownloadingTemplate}
-              >
-                {isDownloadingTemplate ? "Baixando modelo..." : "Baixar modelo (.xlsx)"}
-              </button>
-              <button
-                type="button"
                 className={styles.primaryButton}
                 onClick={openForecastImportModal}
-                disabled={!forecastProject || isLoadingForecast || isImportingForecast}
+                disabled={isImportingForecast}
               >
-                Importar planilha XLSX
+                Cadastro em massa
               </button>
               <button
                 type="button"
@@ -2639,7 +2714,8 @@ export function ProjectsPageView() {
 
             <div className={styles.forecastRules}>
               <strong>Regras da importacao:</strong>
-              <span>Use o modelo oficial com colunas: `codigo`, `quantidade`.</span>
+              <span>Use o modelo oficial com colunas: `projeto`, `codigo`, `quantidade`.</span>
+              <span>O mesmo arquivo pode conter materiais de varios projetos.</span>
               <span>Somente arquivo XLSX e permitido.</span>
               <span>Codigos sao validados no cadastro de materiais do tenant.</span>
               <span>A inclusao manual usa o mesmo cadastro base e tambem exige quantidade maior que zero.</span>
@@ -2717,19 +2793,11 @@ export function ProjectsPageView() {
             <div className={styles.actions}>
               <button
                 type="button"
-                className={styles.secondaryButton}
-                onClick={() => void handleDownloadActivityForecastTemplate()}
-                disabled={isDownloadingActivityForecastTemplate}
-              >
-                {isDownloadingActivityForecastTemplate ? "Baixando modelo..." : "Baixar modelo (.xlsx)"}
-              </button>
-              <button
-                type="button"
                 className={styles.primaryButton}
                 onClick={openActivityForecastImportModal}
-                disabled={!activityForecastProject || isLoadingActivityForecast || isImportingActivityForecast}
+                disabled={isImportingActivityForecast}
               >
-                Importar planilha XLSX
+                Cadastro em massa
               </button>
               <button
                 type="button"
@@ -2744,7 +2812,8 @@ export function ProjectsPageView() {
             <div className={styles.forecastRules}>
               <strong>Regras das atividades previstas:</strong>
               <span>Selecione uma atividade ativa do cadastro base do tenant.</span>
-              <span>O modelo XLSX tambem usa apenas as colunas: `codigo`, `quantidade`.</span>
+              <span>O modelo XLSX usa as colunas: `projeto`, `codigo`, `quantidade`.</span>
+              <span>O mesmo arquivo pode conter atividades de varios projetos.</span>
               <span>A quantidade prevista deve ser maior que zero.</span>
               <span>A lista da Locacao passa a consumir essa base quando o projeto for aberto.</span>
             </div>
@@ -3421,9 +3490,9 @@ export function ProjectsPageView() {
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Importar planilha XLSX</h4>
+                <h4>Cadastro em massa</h4>
                 <p className={styles.modalSubtitle}>
-                  Projeto: {forecastProject?.sob ?? "-"}
+                  O arquivo pode conter materiais de varios projetos.
                 </p>
               </div>
               <button type="button" className={styles.modalCloseButton} onClick={closeForecastImportModal}>
@@ -3455,7 +3524,7 @@ export function ProjectsPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Campos obrigatorios: codigo e quantidade.</p>
+                    <p>Campos obrigatorios: projeto, codigo e quantidade.</p>
                   </div>
                 </div>
               </section>
@@ -3472,10 +3541,28 @@ export function ProjectsPageView() {
                   <input
                     type="file"
                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    onChange={(event) => setForecastImportFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) => {
+                      setForecastImportFile(event.target.files?.[0] ?? null);
+                      setForecastImportErrorReport(null);
+                    }}
                   />
                   <span>{forecastImportFile ? forecastImportFile.name : "Clique para selecionar o arquivo XLSX"}</span>
                 </label>
+                {forecastImportErrorReport ? (
+                  <div className={styles.importErrorReport}>
+                    <span>
+                      {forecastImportErrorReport.errorRows} linhas com erro. Total de apontamentos:{" "}
+                      {forecastImportErrorReport.totalIssues}.
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => downloadCsvFile(forecastImportErrorReport.content, forecastImportErrorReport.fileName)}
+                    >
+                      Baixar CSV de erros
+                    </button>
+                  </div>
+                ) : null}
                 <div className={styles.actions}>
                   <button
                     type="button"
@@ -3497,9 +3584,9 @@ export function ProjectsPageView() {
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Importar atividades previstas</h4>
+                <h4>Cadastro em massa</h4>
                 <p className={styles.modalSubtitle}>
-                  Projeto: {activityForecastProject?.sob ?? "-"}
+                  O arquivo pode conter atividades de varios projetos.
                 </p>
               </div>
               <button type="button" className={styles.modalCloseButton} onClick={closeActivityForecastImportModal}>
@@ -3531,7 +3618,7 @@ export function ProjectsPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Campos obrigatorios: codigo e quantidade.</p>
+                    <p>Campos obrigatorios: projeto, codigo e quantidade.</p>
                   </div>
                 </div>
               </section>
@@ -3548,10 +3635,30 @@ export function ProjectsPageView() {
                   <input
                     type="file"
                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    onChange={(event) => setActivityForecastImportFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) => {
+                      setActivityForecastImportFile(event.target.files?.[0] ?? null);
+                      setActivityForecastImportErrorReport(null);
+                    }}
                   />
                   <span>{activityForecastImportFile ? activityForecastImportFile.name : "Clique para selecionar o arquivo XLSX"}</span>
                 </label>
+                {activityForecastImportErrorReport ? (
+                  <div className={styles.importErrorReport}>
+                    <span>
+                      {activityForecastImportErrorReport.errorRows} linhas com erro. Total de apontamentos:{" "}
+                      {activityForecastImportErrorReport.totalIssues}.
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() =>
+                        downloadCsvFile(activityForecastImportErrorReport.content, activityForecastImportErrorReport.fileName)
+                      }
+                    >
+                      Baixar CSV de erros
+                    </button>
+                  </div>
+                ) : null}
                 <div className={styles.actions}>
                   <button
                     type="button"

@@ -96,8 +96,8 @@ Cadastro
   - Permite pesquisar material ativo por `codigo` ou `descricao`.
   - Permite incluir material previsto manualmente com `quantidade`.
   - Permite editar `quantidade` e `observacao` diretamente na linha.
-  - Permite baixar modelo XLSX oficial.
-  - Permite importar planilha XLSX (somente `codigo` e `quantidade`) para adicionar materiais previstos.
+  - Permite abrir o modal `Cadastro em massa` para baixar o modelo e importar planilha XLSX com `projeto`, `codigo` e `quantidade`, adicionando materiais previstos de varios projetos no mesmo arquivo.
+  - Quando a importacao possui erro, gera CSV de erros com `linha`, `coluna`, `valor` e `erro`.
   - A inclusao manual e a edicao em linha passam pela RPC `save_project_material_forecast`.
   - A inclusao manual e a edicao em linha limitam quantidade a `100000` no frontend e na RPC.
   - A edicao em linha envia `expectedUpdatedAt` para bloquear sobrescrita silenciosa por concorrencia.
@@ -108,8 +108,8 @@ Cadastro
   - Permite pesquisar atividade ativa por `codigo` ou `descricao`.
   - Permite incluir atividade prevista com `quantidade`.
   - O botao `Adicionar atividade` segue o mesmo posicionamento visual do `Adicionar material` da aba `Materiais previstos`.
-  - Permite baixar modelo XLSX oficial de atividades previstas.
-  - Permite importar planilha XLSX (somente `codigo` e `quantidade`) para adicionar atividades previstas.
+  - Permite abrir o modal `Cadastro em massa` para baixar o modelo e importar planilha XLSX com `projeto`, `codigo` e `quantidade`, adicionando atividades previstas de varios projetos no mesmo arquivo.
+  - Quando a importacao possui erro, gera CSV de erros com `linha`, `coluna`, `valor` e `erro`.
   - Permite editar `quantidade` e `observacao` diretamente na linha.
   - Bloqueia quantidade `<= 0` no backend via RPC `save_project_activity_forecast`.
   - A inclusao manual e a edicao em linha limitam quantidade a `100000` no frontend e na RPC.
@@ -173,8 +173,9 @@ Boas praticas
 - Preferir RPC transacional para escrita da tela principal, concentrando update, status e historico no banco.
 - Tratar `Materiais previstos` como planejamento: nao movimenta saldo fisico nem saldo liquido de projeto.
 - Validar importacao XLSX por tenant (projeto/material e projeto/atividade) antes de persistir.
-- A planilha de importacao de previstos deve conter somente `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
-- A planilha de importacao de atividades previstas deve conter somente `codigo` e `quantidade`; descricao/unidade/tipo/valor unitario vem do cadastro base `service_activities`.
+- A planilha de importacao de previstos deve conter `projeto`, `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
+- A planilha de importacao de atividades previstas deve conter `projeto`, `codigo` e `quantidade`; descricao/unidade/tipo/valor unitario vem do cadastro base `service_activities`.
+- Importacoes invalidas devem gerar arquivo CSV de erros no padrao `linha;coluna;valor;erro`.
 - `Atividades previstas` do projeto devem ser mantidas com quantidade maior que zero e servem de base para bootstrap inicial da aba `Atividades previstas` na `Locacao`.
 - Exigir controle de concorrencia por `updated_at` na edicao em linha de `Materiais previstos` e `Atividades previstas`.
 - Aplicar limite superior `<= 100000` para quantidades manuais e para edicao em linha dos previstos do projeto.
@@ -336,9 +337,9 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/concurrency.ts`
   - Responsavel por: normalizar e comparar `expectedUpdatedAt` por instante, mantendo bloqueio de concorrencia real e removendo falso conflito por formato textual.
 - Caminho: `supabase/edge_functions/import_project_forecast/index.ts`
-  - Responsavel por: validar parse do XLSX (`codigo`, `quantidade`) e preparar payload para RPC.
+  - Responsavel por: validar parse do XLSX (`projeto`, `codigo`, `quantidade`), gerar erros por linha/coluna e preparar payload por projeto para RPC.
 - Caminho: `supabase/edge_functions/import_project_activity_forecast/index.ts`
-  - Responsavel por: validar parse do XLSX (`codigo`, `quantidade`) e preparar payload para RPC de atividades.
+  - Responsavel por: validar parse do XLSX (`projeto`, `codigo`, `quantidade`), gerar erros por linha/coluna e preparar payload por projeto para RPC de atividades.
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS.
@@ -553,3 +554,32 @@ Atualizacao adicional 2026-05-11
   - Antes: os filtros da tela de `Projetos` nao permitiam recorte por `Centro de Servico`.
   - Depois: o bloco `Filtros` exibe `Centro de Servico *`, alimentado por `meta.serviceCenters`, e envia `serviceCenter` para `/api/projects`.
   - Depois: o backend aplica `service_center_text` dentro do mesmo `tenant_id` na listagem paginada, exportacao CSV e consolidacao dos cards da carteira.
+
+Atualizacao adicional 2026-05-20
+--------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+  - `supabase/edge_functions/get_project_forecast_template/index.ts`
+  - `supabase/edge_functions/import_project_forecast/index.ts`
+  - `supabase/edge_functions/get_project_activity_forecast_template/index.ts`
+  - `supabase/edge_functions/import_project_activity_forecast/index.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProjectForecastImportResponse`
+  - `buildImportErrorReport`
+  - `openForecastImportModal`
+  - `openActivityForecastImportModal`
+  - `submitForecastImport`
+  - `submitActivityForecastImport`
+  - `parseWorkbook` das Edge Functions de importacao
+  - `buildWorkbookArrayBuffer` das Edge Functions de modelo
+- Comportamento antes/depois:
+  - Antes: a importacao em massa de `Materiais previstos` e `Atividades previstas` exigia projeto selecionado na tela e aceitava apenas `codigo` e `quantidade`.
+  - Depois: o XLSX passa a aceitar `projeto`, `codigo` e `quantidade`, permitindo importar itens de varios projetos no mesmo arquivo.
+  - Antes: erros da importacao eram exibidos apenas no feedback resumido da tela.
+  - Depois: erros de validacao retornam estrutura por linha/coluna e a tela gera CSV de erros no padrao `linha;coluna;valor;erro`.
+  - Depois: a validacao continua restrita ao `tenant_id`, resolvendo `project.sob`, `materials.codigo` e `service_activities.code` dentro do tenant autenticado.
+  - Depois: o acionamento visual da importacao passa a seguir o padrao das demais telas, com botao e modal nomeados como `Cadastro em massa`.
+  - Depois: o botao externo `Baixar modelo (.xlsx)` foi removido das abas; o download do modelo fica apenas dentro do modal `Cadastro em massa`.
