@@ -1236,6 +1236,37 @@ export function ProjectsPageView() {
     await loadForecast(project.id);
   }
 
+  async function resolveProjectBySob(normalizedSob: string) {
+    const localProject = projects.find((project) => normalizeSob(project.sob) === normalizedSob);
+    if (localProject) {
+      return { id: localProject.id, sob: localProject.sob };
+    }
+
+    if (!session?.accessToken) {
+      return null;
+    }
+
+    const params = new URLSearchParams();
+    params.set("sob", normalizedSob);
+    params.set("page", "1");
+    params.set("pageSize", "20");
+
+    const response = await fetch(`/api/projects?${params.toString()}`, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+    });
+
+    const data = (await response.json().catch(() => ({}))) as ProjectListResponse;
+    if (!response.ok) {
+      return null;
+    }
+
+    const remoteProject = (data.projects ?? []).find((project) => normalizeSob(project.sob) === normalizedSob);
+    return remoteProject ? { id: remoteProject.id, sob: remoteProject.sob } : null;
+  }
+
   async function handleForecastProjectSelection(projectId: string) {
     if (!projectId) {
       setForecastProject(null);
@@ -1263,7 +1294,7 @@ export function ProjectsPageView() {
     await loadForecast(projectId);
   }
 
-  function handleForecastProjectSearchChange(value: string) {
+  async function handleForecastProjectSearchChange(value: string) {
     const normalizedSob = normalizeSob(value);
     setForecastProjectSearch(normalizedSob);
 
@@ -1272,9 +1303,9 @@ export function ProjectsPageView() {
       return;
     }
 
-    const matchedProject = projects.find((project) => normalizeSob(project.sob) === normalizedSob);
+    const matchedProject = await resolveProjectBySob(normalizedSob);
     if (matchedProject) {
-      void handleForecastProjectSelection(matchedProject.id);
+      await handleForecastProjectSelection(matchedProject.id);
       return;
     }
 
@@ -1531,7 +1562,7 @@ export function ProjectsPageView() {
     await loadActivityForecast(projectId);
   }
 
-  function handleActivityForecastProjectSearchChange(value: string) {
+  async function handleActivityForecastProjectSearchChange(value: string) {
     const normalizedSob = normalizeSob(value);
     setActivityForecastProjectSearch(normalizedSob);
 
@@ -1540,9 +1571,9 @@ export function ProjectsPageView() {
       return;
     }
 
-    const matchedProject = projects.find((project) => normalizeSob(project.sob) === normalizedSob);
+    const matchedProject = await resolveProjectBySob(normalizedSob);
     if (matchedProject) {
-      void handleActivityForecastProjectSelection(matchedProject.id);
+      await handleActivityForecastProjectSelection(matchedProject.id);
       return;
     }
 
@@ -2649,7 +2680,7 @@ export function ProjectsPageView() {
                 type="text"
                 list="forecast-sob-list"
                 value={forecastProjectSearch}
-                onChange={(event) => handleForecastProjectSearchChange(event.target.value)}
+                onChange={(event) => void handleForecastProjectSearchChange(event.target.value)}
                 placeholder="Digite o SOB do projeto"
               />
             </label>
@@ -2746,7 +2777,7 @@ export function ProjectsPageView() {
                 type="text"
                 list="forecast-sob-list"
                 value={activityForecastProjectSearch}
-                onChange={(event) => handleActivityForecastProjectSearchChange(event.target.value)}
+                onChange={(event) => void handleActivityForecastProjectSearchChange(event.target.value)}
                 placeholder="Digite o SOB do projeto"
               />
             </label>
@@ -3874,8 +3905,8 @@ export function ProjectsPageView() {
       </datalist>
 
       <datalist id="forecast-sob-list">
-        {projects.map((project) => (
-          <option key={project.id} value={project.sob} />
+        {meta.sobCatalog.map((project) => (
+          <option key={project.sob} value={project.sob} />
         ))}
       </datalist>
 
