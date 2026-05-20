@@ -410,12 +410,13 @@ export function CurrentStockPageView() {
 
         const pageItems = data.items ?? [];
         exportTotal = data.pagination?.total ?? exportTotal;
+        const responsePageSize = data.pagination?.pageSize ?? EXPORT_PAGE_SIZE;
         exportedItems.push(...pageItems);
 
         if (
           pageItems.length === 0
           || exportedItems.length >= exportTotal
-          || pageItems.length < EXPORT_PAGE_SIZE
+          || pageItems.length < responsePageSize
         ) {
           break;
         }
