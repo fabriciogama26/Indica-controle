@@ -50,6 +50,11 @@ type CreateMaterialPayload = {
   serialTrackingType?: SerialTrackingType | string | null;
 };
 
+type MaterialBatchImportPayload = {
+  action?: string;
+  rows?: Array<CreateMaterialPayload & { rowNumber?: number }>;
+};
+
 type UpdateMaterialPayload = CreateMaterialPayload & {
   id: string;
   expectedUpdatedAt?: string | null;
@@ -167,8 +172,8 @@ function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialIn
 }
 
 function validateRequiredMaterialFields(input: MaterialInput) {
-  if (!input.codigo || !input.descricao || !input.tipo) {
-    return "Preencha os campos obrigatorios: Codigo, Descricao e Tipo.";
+  if (!input.codigo || !input.descricao || !input.tipo || !input.umb) {
+    return "Preencha os campos obrigatorios: Codigo, Descricao, Tipo e UMB.";
   }
 
   if (input.tipo !== "NOVO" && input.tipo !== "SUCATA") {
@@ -366,6 +371,87 @@ async function saveMaterialViaRpc(params: {
   }
 
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
+}
+
+async function importMaterialBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: Array<CreateMaterialPayload & { rowNumber?: number }>;
+}) {
+  const results: Array<{
+    rowNumber: number;
+    success: boolean;
+    message: string;
+    code?: string;
+  }> = [];
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0
+      ? Number(row.rowNumber)
+      : index + 2;
+    const input = parseMaterialInput(row);
+    const validationError = validateRequiredMaterialFields(input);
+
+    if (validationError) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: validationError,
+      });
+      continue;
+    }
+
+    const precheck = await precheckMaterialCodeConflict(params.supabase, params.tenantId, null, input.codigo);
+    if (!precheck.ok) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: precheck.message,
+        code: precheck.status === 409 ? "DUPLICATE_MATERIAL_CODE" : undefined,
+      });
+      continue;
+    }
+
+    const saveResult = await saveMaterialViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      materialId: null,
+      codigo: input.codigo,
+      descricao: input.descricao,
+      umb: input.umb,
+      tipo: input.tipo,
+      isTransformer: input.isTransformer,
+      serialTrackingType: input.serialTrackingType,
+      unitPrice: input.unitPrice,
+    });
+
+    if (!saveResult.ok) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: saveResult.message,
+        code: saveResult.reason ?? undefined,
+      });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({
+      rowNumber,
+      success: true,
+      message: `Material ${input.codigo} registrado com sucesso.`,
+    });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
 }
 
 async function setMaterialStatusViaRpc(params: {
@@ -629,7 +715,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    const body = (await request.json().catch(() => ({}))) as Partial<CreateMaterialPayload>;
+    const body = (await request.json().catch(() => ({}))) as Partial<CreateMaterialPayload> & MaterialBatchImportPayload;
+    const { supabase, appUser } = resolution;
+
+    if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+
+      if (!rows.length) {
+        return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+      }
+
+      if (rows.length > 500) {
+        return NextResponse.json({ message: "Cadastro em massa limitado a 500 linhas por arquivo." }, { status: 400 });
+      }
+
+      const result = await importMaterialBatch({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        rows,
+      });
+
+      return NextResponse.json({
+        ...result,
+        message:
+          result.errorCount > 0
+            ? `Cadastro em massa processado com ${result.savedCount} materiais salvos e ${result.errorCount} linhas com erro.`
+            : `Cadastro em massa concluido com ${result.savedCount} materiais salvos.`,
+      });
+    }
+
     const input = parseMaterialInput(body);
     const validationError = validateRequiredMaterialFields(input);
 
@@ -639,7 +754,6 @@ export async function POST(request: NextRequest) {
 
     const unitPrice = input.unitPrice;
 
-    const { supabase, appUser } = resolution;
     const precheck = await precheckMaterialCodeConflict(supabase, appUser.tenant_id, null, input.codigo);
     if (!precheck.ok) {
       return NextResponse.json({ message: precheck.message }, { status: precheck.status });

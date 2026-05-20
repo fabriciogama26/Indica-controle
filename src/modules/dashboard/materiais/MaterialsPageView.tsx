@@ -66,6 +66,42 @@ type MaterialHistoryResponse = {
   message?: string;
 };
 
+type MassImportIssue = {
+  rowNumber: number;
+  column: string;
+  value: string;
+  error: string;
+};
+
+type MassImportErrorReportData = {
+  fileName: string;
+  content: string;
+  errorRows: number;
+  totalIssues: number;
+};
+
+type MassImportResultSummary = {
+  status: "success" | "partial" | "error";
+  message: string;
+  successCount: number;
+  errorRows: number;
+};
+
+type MaterialBatchImportResultItem = {
+  rowNumber: number;
+  success: boolean;
+  message: string;
+  code?: string;
+};
+
+type MaterialBatchImportResponse = {
+  success?: boolean;
+  message?: string;
+  savedCount?: number;
+  errorCount?: number;
+  results?: MaterialBatchImportResultItem[];
+};
+
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 100;
@@ -141,6 +177,105 @@ function escapeCsvValue(value: string | number | null | undefined) {
   return raw;
 }
 
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ";" && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function normalizeCsvHeader(value: string) {
+  return normalizeText(value)
+    .replace(/^\uFEFF/, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function resolveCsvValue(row: Record<string, string>, aliases: string[]) {
+  for (const alias of aliases) {
+    const value = row[alias];
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function normalizeSerialTrackingInput(value: string): SerialTrackingType | null {
+  const normalized = normalizeCsvHeader(value);
+  if (!normalized || normalized === "nao" || normalized === "none" || normalized === "sem_rastreio") {
+    return "NONE";
+  }
+
+  if (normalized === "trafo" || normalized === "transformador") {
+    return "TRAFO";
+  }
+
+  if (normalized === "religador") {
+    return "RELIGADOR";
+  }
+
+  if (normalized === "chave" || normalized === "chaves") {
+    return "CHAVE";
+  }
+
+  return null;
+}
+
+function parseNonNegativeCurrency(value: string) {
+  const raw = normalizeText(value);
+  if (!raw) {
+    return 0;
+  }
+
+  const withoutSpaces = raw.replace(/\s+/g, "");
+  const lastComma = withoutSpaces.lastIndexOf(",");
+  const lastDot = withoutSpaces.lastIndexOf(".");
+  const decimalSeparator = lastComma > lastDot ? "," : lastDot > -1 ? "." : "";
+  const normalized = decimalSeparator
+    ? withoutSpaces
+        .replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "")
+        .replace(decimalSeparator, ".")
+    : withoutSpaces;
+  const parsed = Number(normalized);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return Number(parsed.toFixed(2));
+}
+
 function buildMaterialsCsv(materialItems: MaterialItem[]) {
   const header = [
     "Codigo",
@@ -171,6 +306,32 @@ function buildMaterialsCsv(materialItems: MaterialItem[]) {
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
   return `\uFEFF${csvLines.join("\n")}`;
+}
+
+function buildMassImportErrorCsv(issues: MassImportIssue[]) {
+  const header = ["linha", "coluna", "valor", "erro"];
+  const rows = issues.map((issue) => [
+    issue.rowNumber,
+    issue.column,
+    issue.value,
+    issue.error,
+  ]);
+  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+  return `\uFEFF${csvLines.join("\n")}`;
+}
+
+function createMassImportErrorReport(issues: MassImportIssue[]) {
+  if (!issues.length) {
+    return null;
+  }
+
+  const errorRows = new Set(issues.map((issue) => issue.rowNumber)).size;
+  return {
+    fileName: `materiais_erros_${new Date().toISOString().slice(0, 10)}.csv`,
+    content: buildMassImportErrorCsv(issues),
+    errorRows,
+    totalIssues: issues.length,
+  };
 }
 
 function downloadCsvFile(content: string, filename: string) {
@@ -284,6 +445,11 @@ export function MaterialsPageView() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [isMassImportModalOpen, setIsMassImportModalOpen] = useState(false);
+  const [massImportFile, setMassImportFile] = useState<File | null>(null);
+  const [massImportErrorReport, setMassImportErrorReport] = useState<MassImportErrorReportData | null>(null);
+  const [massImportResult, setMassImportResult] = useState<MassImportResultSummary | null>(null);
+  const [isImportingMass, setIsImportingMass] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
@@ -674,6 +840,256 @@ export function MaterialsPageView() {
     }
   }
 
+  function downloadMassTemplate() {
+    const model = "\uFEFFcodigo;descricao;tipo;umb;preco;rastreio_por_serial\nMAT-001;Cabo multiplexado;NOVO;M;12,50;NAO\nMAT-002;Religador automatico;NOVO;UN;0;RELIGADOR\nMAT-003;Chave faca;SUCATA;UN;;CHAVE\n";
+    downloadCsvFile(model, "modelo_materiais_cadastro_em_massa.csv");
+  }
+
+  function downloadLastMassImportErrorReport() {
+    if (!massImportErrorReport) {
+      return;
+    }
+
+    downloadCsvFile(massImportErrorReport.content, massImportErrorReport.fileName);
+  }
+
+  function openMassImportModal() {
+    setMassImportFile(null);
+    setMassImportErrorReport(null);
+    setMassImportResult(null);
+    setIsMassImportModalOpen(true);
+  }
+
+  function closeMassImportModal() {
+    if (isImportingMass) {
+      return;
+    }
+
+    setMassImportFile(null);
+    setMassImportErrorReport(null);
+    setMassImportResult(null);
+    setIsMassImportModalOpen(false);
+  }
+
+  async function handleMassImportFile(file: File) {
+    if (!session?.accessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para importar materiais em massa." });
+      return;
+    }
+
+    setIsImportingMass(true);
+    setMassImportErrorReport(null);
+    setMassImportResult(null);
+
+    try {
+      const content = await file.text();
+      const lines = content.split(/\r?\n/).filter((line) => normalizeText(line));
+      const importIssues: MassImportIssue[] = [];
+
+      if (lines.length < 2) {
+        importIssues.push({
+          rowNumber: 1,
+          column: "arquivo",
+          value: file.name,
+          error: "Arquivo CSV sem linhas de dados.",
+        });
+      }
+
+      const headers = parseCsvLine(lines[0] ?? "").map(normalizeCsvHeader);
+      const requiredHeaders = ["codigo", "descricao", "tipo", "umb"];
+      for (const header of requiredHeaders) {
+        if (!headers.includes(header)) {
+          importIssues.push({
+            rowNumber: 1,
+            column: header,
+            value: "",
+            error: `Coluna obrigatoria ausente: ${header}.`,
+          });
+        }
+      }
+
+      const validRows: Array<{
+        rowNumber: number;
+        codigo: string;
+        descricao: string;
+        tipo: string;
+        umb: string;
+        unitPrice: number;
+        serialTrackingType: SerialTrackingType;
+      }> = [];
+      const seenCodes = new Set<string>();
+
+      if (!importIssues.some((issue) => issue.rowNumber === 1 && issue.column !== "arquivo")) {
+        for (let index = 1; index < lines.length; index += 1) {
+          const rowNumber = index + 1;
+          const values = parseCsvLine(lines[index]);
+          const row = headers.reduce<Record<string, string>>((accumulator, header, headerIndex) => {
+            accumulator[header] = values[headerIndex] ?? "";
+            return accumulator;
+          }, {});
+
+          const codigo = normalizeCode(resolveCsvValue(row, ["codigo", "cod"]));
+          const descricao = normalizeText(resolveCsvValue(row, ["descricao", "description"]));
+          const tipo = normalizeMaterialType(resolveCsvValue(row, ["tipo", "type"]));
+          const umb = normalizeText(resolveCsvValue(row, ["umb", "unidade", "unidade_medida"]));
+          const unitPriceRaw = resolveCsvValue(row, ["preco", "preco_unitario", "unit_price"]);
+          const serialRaw = resolveCsvValue(row, ["rastreio_por_serial", "rastreio", "serial_tracking_type"]);
+          const unitPrice = parseNonNegativeCurrency(unitPriceRaw);
+          const serialTrackingType = normalizeSerialTrackingInput(serialRaw);
+          const rowIssuesBefore = importIssues.length;
+
+          if (!codigo) {
+            importIssues.push({ rowNumber, column: "codigo", value: codigo, error: "Codigo obrigatorio." });
+          } else if (seenCodes.has(codigo)) {
+            importIssues.push({ rowNumber, column: "codigo", value: codigo, error: "Codigo duplicado no arquivo." });
+          }
+
+          if (!descricao) {
+            importIssues.push({ rowNumber, column: "descricao", value: descricao, error: "Descricao obrigatoria." });
+          }
+
+          if (!tipo) {
+            importIssues.push({ rowNumber, column: "tipo", value: resolveCsvValue(row, ["tipo", "type"]), error: "Tipo invalido. Use NOVO ou SUCATA." });
+          }
+
+          if (!umb) {
+            importIssues.push({ rowNumber, column: "umb", value: umb, error: "UMB obrigatorio." });
+          }
+
+          if (unitPrice === null) {
+            importIssues.push({ rowNumber, column: "preco", value: unitPriceRaw, error: "Preco invalido. Informe valor maior ou igual a zero." });
+          }
+
+          if (!serialTrackingType) {
+            importIssues.push({ rowNumber, column: "rastreio_por_serial", value: serialRaw, error: "Rastreio invalido. Use NAO, TRAFO, RELIGADOR ou CHAVE." });
+          }
+
+          if (importIssues.length === rowIssuesBefore) {
+            validRows.push({
+              rowNumber,
+              codigo,
+              descricao,
+              tipo,
+              umb,
+              unitPrice: unitPrice ?? 0,
+              serialTrackingType: serialTrackingType ?? "NONE",
+            });
+            seenCodes.add(codigo);
+          } else if (codigo) {
+            seenCodes.add(codigo);
+          }
+        }
+      }
+
+      if (!validRows.length) {
+        const report = createMassImportErrorReport(importIssues);
+        setMassImportErrorReport(report);
+        setMassImportResult({
+          status: "error",
+          message: "Nenhum material valido foi encontrado para importar.",
+          successCount: 0,
+          errorRows: report?.errorRows ?? 0,
+        });
+        setFeedback({ type: "error", message: "Nenhum material valido foi encontrado para importar. Baixe o CSV de erros para corrigir." });
+        return;
+      }
+
+      const response = await fetch("/api/materials", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          action: "BATCH_IMPORT",
+          rows: validRows,
+        }),
+      });
+
+      const data = (await response.json().catch(() => null)) as MaterialBatchImportResponse | null;
+      if (!response.ok) {
+        importIssues.push({
+          rowNumber: 1,
+          column: "salvamento",
+          value: file.name,
+          error: data?.message ?? "Falha ao importar materiais em massa.",
+        });
+      }
+
+      for (const result of data?.results ?? []) {
+        if (result.success) {
+          continue;
+        }
+
+        importIssues.push({
+          rowNumber: result.rowNumber,
+          column: result.code === "DUPLICATE_MATERIAL_CODE" ? "codigo" : "salvamento",
+          value: "",
+          error: result.message || "Falha ao salvar material.",
+        });
+      }
+
+      const successCount = Number(data?.savedCount ?? 0);
+      const report = createMassImportErrorReport(importIssues);
+      const errorRows = report?.errorRows ?? 0;
+      setMassImportErrorReport(report);
+
+      if (successCount > 0) {
+        await loadMaterials(1, activeFilters);
+        setPage(1);
+      }
+
+      if (!successCount) {
+        setMassImportResult({
+          status: "error",
+          message: `Cadastro em massa sem sucesso. 0 materiais salvos e ${errorRows} linhas com erro.`,
+          successCount: 0,
+          errorRows,
+        });
+        setFeedback({ type: "error", message: `Cadastro em massa sem sucesso. ${errorRows} linhas com erro.` });
+        return;
+      }
+
+      if (errorRows > 0) {
+        setMassImportResult({
+          status: "partial",
+          message: `Cadastro em massa parcial: ${successCount} materiais salvos e ${errorRows} linhas com erro.`,
+          successCount,
+          errorRows,
+        });
+        setFeedback({ type: "success", message: `Cadastro em massa parcial: ${successCount} materiais salvos e ${errorRows} linhas com erro.` });
+        return;
+      }
+
+      setMassImportResult({
+        status: "success",
+        message: "Incluido com sucesso.",
+        successCount,
+        errorRows: 0,
+      });
+      setFeedback({ type: "success", message: `Cadastro em massa concluido com sucesso. ${successCount} materiais salvos.` });
+    } catch {
+      setMassImportResult({
+        status: "error",
+        message: "Falha ao importar materiais em massa.",
+        successCount: 0,
+        errorRows: 0,
+      });
+      setFeedback({ type: "error", message: "Falha ao importar materiais em massa." });
+    } finally {
+      setIsImportingMass(false);
+    }
+  }
+
+  async function submitMassImport() {
+    if (!massImportFile) {
+      return;
+    }
+
+    await handleMassImportFile(massImportFile);
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -765,12 +1181,15 @@ export function MaterialsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>UMB</span>
+            <span>
+              UMB <span className="requiredMark">*</span>
+            </span>
             <input
               type="text"
               value={form.umb}
               onChange={(event) => updateFormField("umb", event.target.value)}
               placeholder="Ex.: UN"
+              required
             />
           </label>
 
@@ -778,6 +1197,11 @@ export function MaterialsPageView() {
             <button type="submit" className={styles.primaryButton} disabled={isSubmitting}>
               {isSubmitting ? (isEditing ? "Salvando..." : "Registrando...") : isEditing ? "Salvar alteracoes" : "Registrar material"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={openMassImportModal}>
+                Cadastro em massa
+              </button>
+            ) : null}
             {isEditing ? (
               <button type="button" className={styles.ghostButton} onClick={resetFormState} disabled={isSubmitting}>
                 Cancelar edicao
@@ -1040,6 +1464,88 @@ export function MaterialsPageView() {
                   </div>
                 </div>
               ) : null}
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {isMassImportModalOpen ? (
+        <div className={styles.modalOverlay} onClick={closeMassImportModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Cadastro em massa</h4>
+                <p className={styles.modalSubtitle}>Importe um CSV para cadastrar materiais em lote.</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeMassImportModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>1</span>
+                  <div>
+                    <strong>Baixe o modelo</strong>
+                    <p>Use o arquivo modelo com as colunas obrigatorias.</p>
+                  </div>
+                </div>
+                <button type="button" className={styles.secondaryButton} onClick={downloadMassTemplate}>
+                  Baixar modelo CSV
+                </button>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>2</span>
+                  <div>
+                    <strong>Preencha a planilha</strong>
+                    <p>Colunas obrigatorias: codigo, descricao, tipo e umb. Rastreio aceita NAO, TRAFO, RELIGADOR ou CHAVE.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>3</span>
+                  <div>
+                    <strong>Envie o arquivo</strong>
+                    <p>Somente arquivo CSV separado por ponto e virgula.</p>
+                  </div>
+                </div>
+                <label className={styles.importDropzone}>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => setMassImportFile(event.target.files?.[0] ?? null)}
+                  />
+                  <span>{massImportFile ? massImportFile.name : "Clique para selecionar o arquivo CSV"}</span>
+                </label>
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => void submitMassImport()}
+                    disabled={!massImportFile || isImportingMass}
+                  >
+                    {isImportingMass ? "Importando..." : "Importar planilha"}
+                  </button>
+                  {massImportErrorReport ? (
+                    <button type="button" className={styles.secondaryButton} onClick={downloadLastMassImportErrorReport}>
+                      Baixar erros (CSV)
+                    </button>
+                  ) : null}
+                </div>
+                {massImportResult ? (
+                  <div className={massImportResult.status === "error" ? styles.feedbackError : styles.feedbackSuccess}>
+                    <strong>{massImportResult.status === "success" ? "Incluido com sucesso." : massImportResult.status === "partial" ? "Importacao parcial." : "Importacao com erros."}</strong>
+                    <div>{massImportResult.successCount} materiais salvos.</div>
+                    {massImportResult.errorRows > 0 ? <div>{massImportResult.errorRows} linhas com erro.</div> : null}
+                    {massImportResult.message ? <div>{massImportResult.message}</div> : null}
+                  </div>
+                ) : null}
+              </section>
             </div>
           </article>
         </div>

@@ -22,6 +22,7 @@ Arquitetura
 - Banco (tenants + vinculo de acesso por usuario): `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
 - Banco (FK tenant global em tabelas com tenant_id): `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
+- Banco (UMB obrigatorio na RPC de escrita): `supabase/migrations/190_require_material_umb_in_save_rpc.sql`
 
 Cadastro
 --------
@@ -29,9 +30,9 @@ Cadastro
   - `Codigo`
   - `Descricao`
   - `Tipo`
+  - `UMB`
 - Campo opcional:
   - `Preco`
-  - `UMB`
   - `Rastreio por serial` (`serial_tracking_type`)
 - Campos `LP` e `Serial` removidos do cadastro base de `materials`.
 - `LP` e `Serial` permanecem apenas nos fluxos de movimentacao (`Entrada`, `Saida`, `Requisicao`, `Devolucao`).
@@ -40,6 +41,18 @@ Cadastro
 - Regra de tipo:
   - Obrigatorio e nao pode ficar vazio.
   - Cadastro/edicao via select fixo: `NOVO` ou `SUCATA`.
+- Regra de UMB:
+  - Obrigatorio no formulario, no `POST`/`PUT` da API e na RPC `save_material_record`.
+  - Registros legados sem `UMB` continuam listando fallback tecnico via `requisicao_itens.umb` quando existir.
+- Cadastro em massa:
+  - Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao.
+  - Abre modal no mesmo padrao da tela de Medicao, com etapas para baixar modelo CSV, preencher e enviar arquivo.
+  - Modelo CSV: `codigo;descricao;tipo;umb;preco;rastreio_por_serial`.
+  - Colunas obrigatorias: `codigo`, `descricao`, `tipo`, `umb`.
+  - `tipo` aceita somente `NOVO` ou `SUCATA`.
+  - `rastreio_por_serial` aceita `NAO`, `TRAFO`, `RELIGADOR` ou `CHAVE`.
+  - Erros parciais geram CSV de retorno com `linha`, `coluna`, `valor` e `erro`.
+  - A API processa linhas validas e retorna erros por linha sem bloquear todo o arquivo quando houver falhas parciais.
 - Regra de rastreio por serial:
   - `Material TRAFO` grava `serial_tracking_type = TRAFO` e exige `Serial + LP` na movimentacao.
   - `Material RELIGADOR` grava `serial_tracking_type = RELIGADOR` e exige `Serial` na movimentacao.
@@ -143,18 +156,23 @@ Atualizacao 2026-03
   - Criada coluna logica `serial_tracking_type` para diferenciar materiais que exigem `Serial` e os que tambem exigem `LP`.
   - A lista, exportacao CSV e historico passam a exibir `Rastreio por serial` em vez de apenas `Trafo`.
   - Migration `172_generalize_serial_tracked_materials.sql` mantem `is_transformer` sincronizado para compatibilidade com TRAFO.
+- Atualizacao (2026-05):
+  - Incluido botao `Cadastro em massa` no cadastro de Materiais, seguindo o modal por etapas da tela de Medicao.
+  - Cadastro em massa passa a importar CSV com `codigo`, `descricao`, `tipo`, `umb`, `preco` e `rastreio_por_serial`, salvando linhas validas e gerando CSV de erros por linha.
+  - Campo `UMB` passou a ser obrigatorio no formulario manual, no lote da API e na RPC `save_material_record`.
+  - Criada migration `190_require_material_umb_in_save_rpc.sql` para bloquear escrita transacional de material sem `UMB`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
-  - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao e modais de historico/cancelamento, incluindo envio de `expectedUpdatedAt` e refresh da lista quando houver conflito.
+  - Responsavel por: estado da tela, cadastro, edicao, cadastro em massa CSV, filtros, paginacao e modais de historico/cancelamento, incluindo envio de `expectedUpdatedAt` e refresh da lista quando houver conflito.
 - Caminho: `src/app/api/materials/route.ts`
-  - Responsavel por: validar payload, listar/historico, executar pre-check de codigo e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`.
+  - Responsavel por: validar payload manual/lote, listar/historico, executar pre-check de codigo e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
-  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+  - Responsavel por: `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS` e tipos do resultado de cadastro em massa.
 - Caminho: `supabase/migrations/042_materials_price_status_and_history.sql`
   - Responsavel por: preco, status, historico e regras de consistencia de cancelamento em materiais.
 - Caminho: `supabase/migrations/044_material_code_precheck_rpc.sql`
@@ -188,6 +206,7 @@ Ajuda contextual
   - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
   - `src/modules/dashboard/materiais/MaterialsPageView.module.css`
   - `src/app/api/materials/route.ts`
+  - `supabase/migrations/190_require_material_umb_in_save_rpc.sql`
   - `src/lib/materialSerialTracking.ts`
   - `supabase/migrations/172_generalize_serial_tracked_materials.sql`
   - `src/lib/server/concurrency.ts`
@@ -198,8 +217,10 @@ Ajuda contextual
   - `src/lib/server/appUsersAdmin.ts`
 - Funcoes/hooks/constantes tocadas:
   - `MaterialsPageView`, `loadMaterials`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`
+  - `downloadMassTemplate`, `handleMassImportFile`, `submitMassImport`, `createMassImportErrorReport`
   - `updateSerialTrackingType`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/materials`
+  - `importMaterialBatch`
   - `precheck_material_code_conflict` (RPC de validacao antes de insert/update)
   - `saveMaterialViaRpc`, `setMaterialStatusViaRpc`
   - `save_material_record`, `set_material_record_status`
@@ -208,8 +229,9 @@ Ajuda contextual
   - `PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`
 - Comportamento antes/depois:
   - Antes: tela de Materiais sem CRUD.
-  - Depois: cadastro completo com historico, preco obrigatorio, inativacao/ativacao com motivo e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
+  - Depois: cadastro completo com historico, preco opcional, inativacao/ativacao com motivo e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
   - Atualizacao (2026-05): antes o cadastro distinguia apenas TRAFO; depois passa a distinguir TRAFO, RELIGADOR e CHAVE para rastreio por serial.
+  - Atualizacao (2026-05): antes o cadastro nao tinha importacao em massa e `UMB` era opcional; depois o cadastro manual/lote exige `UMB` e a tela oferece importacao CSV com retorno de erros.
   - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios do cadastro e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Arquivos alterados/criados (2026-03-24):
