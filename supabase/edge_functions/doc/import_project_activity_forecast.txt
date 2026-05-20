@@ -28,13 +28,14 @@ Protecoes de importacao
 - Resolve `projeto` por `project.sob` dentro do tenant autenticado.
 - Permite varios projetos no mesmo arquivo.
 - Bloqueia codigo duplicado no mesmo projeto dentro do arquivo (`DUPLICATE_CODE_IN_FILE`).
-- Bloqueia codigo ja importado para o projeto (`CODE_ALREADY_IMPORTED`).
+- Ignora codigo ja importado para o projeto e continua cadastrando as linhas novas.
 - Bloqueia codigo inexistente ou inativo no cadastro `service_activities` do tenant.
-- Retorna `errorRows` para geracao de CSV de erros (`linha`, `coluna`, `valor`, `erro`).
+- Retorna `errorRows` para geracao de CSV de erros/avisos (`linha`, `coluna`, `valor`, `erro`).
 
 Resposta de sucesso
 - `success: true`
 - `summary.rowsRead`
 - `summary.projectsProcessed`
 - `summary.activitiesRegistered`
+- `summary.skippedRows`
 - `summary.sourceFile`

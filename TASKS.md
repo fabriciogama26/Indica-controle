@@ -676,3 +676,5 @@
 - [x] Padronizar o acionamento de importacao de Materiais previstos e Atividades previstas em Projetos como botao/modal Cadastro em massa, mantendo modelo XLSX e CSV de erros.
 
 - [x] Remover botao externo Baixar modelo (.xlsx) das abas Materiais previstos e Atividades previstas, mantendo o download apenas no modal Cadastro em massa.
+
+- [x] Ajustar importacao em massa de previstos em Projetos para ignorar codigos ja existentes no projeto e cadastrar somente os codigos novos, gerando CSV de erros/avisos para linhas ignoradas.
