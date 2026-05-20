@@ -22,7 +22,7 @@ Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
   - `Projeto`: input com `datalist`, validado por SOB exato.
-  - `Codigo do material`: filtro opcional por codigo.
+  - `Codigo do material`: input com `datalist`, sugerindo os codigos e descricoes do projeto selecionado.
 - Listagem:
   - Codigo do Material
   - Descricao
@@ -54,6 +54,9 @@ Filtros, auto-complete e listagem
   - Barra verde: quantidade liquida dentro/abaixo do previsto.
   - Barra vermelha: quantidade liquida acima do previsto.
   - Exibe os maiores desvios absolutos, limitado a 12 materiais.
+- Exportacao:
+  - Botao `Extrair Excel` no bloco `Materiais do projeto`.
+  - Exporta a tabela filtrada em CSV com BOM UTF-8 e separador `;`.
 
 Boas praticas
 -------------
@@ -115,6 +118,9 @@ Atualizacao 2026-05
   - A sidebar passa a exibir `Consumo por Projeto` em `Almoxarifado`.
   - A matriz de permissoes passa a reconhecer `consumo-projeto`.
   - A API exclui transferencias/itens estornados dos agregados.
+- Atualizacao (2026-05):
+  - Campo `Codigo do material` passou a usar sugestoes por `datalist` com os materiais do projeto selecionado.
+  - Bloco `Materiais do projeto` passou a ter botao `Extrair Excel` para exportar a tabela atual em CSV.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -122,7 +128,7 @@ Funcoes principais
 - Caminho: `src/app/api/consumo-projeto/route.ts`
   - Responsavel por: autenticar usuario, validar permissao da pagina, carregar projetos, materiais previstos, operacoes de equipe e consolidar quantidades por material.
 - Caminho: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx`
-  - Responsavel por: filtros, carregamento da API, cards de resumo, tabela e grafico `Consumo x Previsto`.
+  - Responsavel por: filtros, carregamento da API, cards de resumo, tabela, exportacao CSV e grafico `Consumo x Previsto`.
 - Caminho: `src/app/(dashboard)/consumo-projeto/page.tsx`
   - Responsavel por: expor a rota no App Router.
 
@@ -155,10 +161,14 @@ Funcoes utilitarias relacionadas
   - Responsavel por:
     - `loadConsumption`
     - `handleFilter`
+    - `exportRows`
     - `ConsumptionChart`
     - `deviationLabel`
     - `deviationClass`
+    - `findProjectOption`
+    - `findMaterialOption`
     - `formatDecimal`
+    - `downloadCsv`
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS.
@@ -193,6 +203,7 @@ Ajuda contextual
   - `resolveOperationKind`
   - `createAggregate`
   - `finalizeRows`
+  - `materialOptions`
   - `menuSections`
   - `titleMap`
   - `permissionCatalog`
@@ -201,3 +212,4 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: o usuario precisava consultar previsao do projeto e operacoes de equipe em telas separadas.
   - Depois: a tela consolida previsto, requisicao, devolucao, qtd liquida e desvio por projeto em uma unica consulta.
+  - Atualizacao (2026-05): antes nao havia exportacao da tabela nem sugestao de codigo de material; depois a tabela pode ser extraida e o filtro de material sugere os codigos do projeto selecionado.

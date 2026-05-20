@@ -683,3 +683,5 @@
 - [x] Corrigir selecao de Projeto (SOB) em Materiais previstos e Atividades previstas para usar catalogo completo do tenant e carregar a lista mesmo quando o projeto nao esta na pagina atual.
 
 - [x] Criar tela `Consumo por Projeto` em Almoxarifado, com selecao de projeto, tabela de Codigo do Material, Descricao, Quantidade prevista, Quantidade Requisicao, Quantidade Devolucao, Qtd Liquida e Desvio, alem do grafico `Consumo x Previsto`.
+
+- [x] Ajustar a tela `Consumo por Projeto` para sugerir `Codigo do material` por datalist, mantendo `Projeto` no padrao digitavel da Medicao, e adicionar botao `Extrair Excel` na tabela `Materiais do projeto`.
