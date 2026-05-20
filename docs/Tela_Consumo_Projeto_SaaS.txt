@@ -1,0 +1,203 @@
+Tela: Consumo por Projeto SaaS
+
+Visao geral
+-----------
+- Tela read-only para comparar materiais previstos, requisitados e devolvidos por projeto.
+- O usuario seleciona um projeto e visualiza Codigo do Material, Descricao, Quantidade prevista, Quantidade Requisicao, Quantidade Devolucao, Qtd Liquida e Desvio.
+- A tela fica na secao `Almoxarifado` da sidebar.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/consumo-projeto/page.tsx`
+- View: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx`
+- Estilo: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.module.css`
+- API da tela: `src/app/api/consumo-projeto/route.ts`
+- Menu e titulo: `src/components/layout/AppShell.tsx`
+- Autorizacao de rota: `src/lib/auth/authorization.ts`
+- Matriz de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Migration de pagina/permissao: `supabase/migrations/191_create_project_consumption_page.sql`
+- Hook de erro usado pela tela: `src/hooks/useErrorLogger.ts`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Projeto`: input com `datalist`, validado por SOB exato.
+  - `Codigo do material`: filtro opcional por codigo.
+- Listagem:
+  - Codigo do Material
+  - Descricao
+  - UMB
+  - Quantidade prevista
+  - Quantidade Requisicao
+  - Quantidade Devolucao
+  - Qtd Liquida
+  - Desvio
+  - Status
+- Status da linha:
+  - `Conferido`: desvio igual a zero.
+  - `Abaixo`: quantidade liquida menor que prevista.
+  - `Acima`: quantidade liquida maior que prevista.
+  - `Nao previsto`: material sem previsao e com consumo liquido.
+- Cards:
+  - Materiais
+  - Previsto
+  - Requisicao
+  - Devolucao
+  - Qtd liquida
+  - Desvio
+  - Acima previsto
+  - Nao previstos
+- Grafico:
+  - `Consumo x Previsto`
+  - Barras horizontais por material.
+  - Barra cinza: quantidade prevista.
+  - Barra verde: quantidade liquida dentro/abaixo do previsto.
+  - Barra vermelha: quantidade liquida acima do previsto.
+  - Exibe os maiores desvios absolutos, limitado a 12 materiais.
+
+Boas praticas
+-------------
+- Manter a tela como consulta, sem gravar movimentacao ou alterar saldo.
+- Filtrar todos os dados por `tenant_id` no backend.
+- Validar permissao por `page_key = consumo-projeto`.
+- Nao recalcular saldo fisico no frontend.
+- Excluir operacoes estornadas e itens estornados dos agregados.
+- Registrar falhas de carregamento com `useErrorLogger("consumo_projeto")`.
+
+Cancelamento e saldo
+--------------------
+- A tela nao executa cancelamento, estorno ou movimentacao.
+- A tela apenas consulta:
+  - `project`
+  - `project_material_forecast`
+  - `stock_transfers`
+  - `stock_transfer_items`
+  - `stock_transfer_team_operations`
+  - `stock_transfer_reversals`
+  - `stock_transfer_item_reversals`
+  - `materials`
+  - `teams`
+- `Quantidade prevista` vem de `project_material_forecast`.
+- `Quantidade Requisicao` e `Quantidade Devolucao` vem das operacoes de equipe vinculadas ao projeto.
+- `Qtd Liquida = Quantidade Requisicao - Quantidade Devolucao`.
+- `Desvio = Qtd Liquida - Quantidade prevista`.
+- `FIELD_RETURN` nao entra em `Quantidade Devolucao`; a tela considera apenas `RETURN` como devolucao.
+
+Atalhos
+-------
+- Rota ativa: `/consumo-projeto`
+- Endpoint:
+  - `GET /api/consumo-projeto`
+- Page key:
+  - `consumo-projeto`
+
+Atualizacao 2026-05
+-------------------
+- Arquivos criados:
+  - `src/app/(dashboard)/consumo-projeto/page.tsx`
+  - `src/app/api/consumo-projeto/route.ts`
+  - `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx`
+  - `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.module.css`
+  - `supabase/migrations/191_create_project_consumption_page.sql`
+  - `docs/Tela_Consumo_Projeto_SaaS.txt`
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `docs/00_Indice_SaaS.txt`
+  - `docs/Tela_Permissoes_SaaS.txt`
+  - `docs/Layout_Principal_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - Nao existia tela dedicada para comparar previsto x requisitado/devolvido por projeto.
+- Depois:
+  - `/consumo-projeto` permite selecionar projeto e consultar tabela consolidada com descricao, qtd liquida e desvio.
+  - A sidebar passa a exibir `Consumo por Projeto` em `Almoxarifado`.
+  - A matriz de permissoes passa a reconhecer `consumo-projeto`.
+  - A API exclui transferencias/itens estornados dos agregados.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/api/consumo-projeto/route.ts`
+  - Responsavel por: autenticar usuario, validar permissao da pagina, carregar projetos, materiais previstos, operacoes de equipe e consolidar quantidades por material.
+- Caminho: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx`
+  - Responsavel por: filtros, carregamento da API, cards de resumo, tabela e grafico `Consumo x Previsto`.
+- Caminho: `src/app/(dashboard)/consumo-projeto/page.tsx`
+  - Responsavel por: expor a rota no App Router.
+
+Constantes e configuracoes
+- Caminho: `supabase/migrations/191_create_project_consumption_page.sql`
+  - Responsavel por: inserir/atualizar `app_pages`, `role_page_permissions` e `app_user_page_permissions` para `consumo-projeto`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: incluir item de menu e titulo/subtitulo da rota.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/consumo-projeto` para `page_key = consumo-projeto`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: exibir `Consumo por Projeto` na matriz de permissoes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/app/api/consumo-projeto/route.ts`
+  - Responsavel por:
+    - `resolveProjectConsumptionContext`
+    - `ensureProjectConsumptionPageAccess`
+    - `loadProjects`
+    - `loadForecast`
+    - `loadProjectTransfers`
+    - `loadTeamOperations`
+    - `loadTransferItems`
+    - `loadTeams`
+    - `loadReversalSets`
+    - `resolveOperationKind`
+    - `createAggregate`
+    - `finalizeRows`
+- Caminho: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx`
+  - Responsavel por:
+    - `loadConsumption`
+    - `handleFilter`
+    - `ConsumptionChart`
+    - `deviationLabel`
+    - `deviationClass`
+    - `formatDecimal`
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handler (`/api/consumo-projeto`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/consumo-projeto/page.tsx`
+  - `src/app/api/consumo-projeto/route.ts`
+  - `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx`
+  - `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/191_create_project_consumption_page.sql`
+  - `docs/Tela_Consumo_Projeto_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProjectConsumptionPageView`
+  - `ConsumptionChart`
+  - `loadConsumption`
+  - `GET /api/consumo-projeto`
+  - `resolveProjectConsumptionContext`
+  - `ensureProjectConsumptionPageAccess`
+  - `loadProjects`
+  - `loadForecast`
+  - `loadProjectTransfers`
+  - `loadTeamOperations`
+  - `loadTransferItems`
+  - `loadTeams`
+  - `loadReversalSets`
+  - `resolveOperationKind`
+  - `createAggregate`
+  - `finalizeRows`
+  - `menuSections`
+  - `titleMap`
+  - `permissionCatalog`
+  - `resolveDefaultPageAccess`
+  - `ROUTE_PAGE_KEYS`
+- Comportamento antes/depois:
+  - Antes: o usuario precisava consultar previsao do projeto e operacoes de equipe em telas separadas.
+  - Depois: a tela consolida previsto, requisicao, devolucao, qtd liquida e desvio por projeto em uma unica consulta.

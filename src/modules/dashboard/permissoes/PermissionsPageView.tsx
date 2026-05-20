@@ -70,6 +70,7 @@ const permissionCatalog = [
   { pageKey: "posicao-trafo", label: "Rastreio de SERIAL", path: "/posicao-trafo", section: "Almoxarifado" },
   { pageKey: "entrada", label: "Movimentacao de Estoque", path: "/entrada", section: "Almoxarifado" },
   { pageKey: "saida", label: "Operacoes de Equipe", path: "/saida", section: "Almoxarifado" },
+  { pageKey: "consumo-projeto", label: "Consumo por Projeto", path: "/consumo-projeto", section: "Almoxarifado" },
   { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },
   { pageKey: "pessoas", label: "Pessoas", path: "/pessoas", section: "Cadastros" },
   { pageKey: "cargo", label: "Cargo", path: "/cargo", section: "Cadastros" },
@@ -111,6 +112,7 @@ function createPermissionSet(role: string): PermissionCard[] {
     "posicao-trafo",
     "entrada",
     "saida",
+    "consumo-projeto",
     "materiais",
     "pessoas",
     "cargo",
@@ -140,7 +142,7 @@ function createPermissionSet(role: string): PermissionCard[] {
     if (role === "viewer") {
       return {
         ...item,
-        enabled: ["home", "dash-estoque", "estoque", "posicao-trafo"].includes(item.pageKey),
+        enabled: ["home", "dash-estoque", "estoque", "posicao-trafo", "consumo-projeto"].includes(item.pageKey),
       };
     }
 

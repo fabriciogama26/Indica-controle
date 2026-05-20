@@ -681,3 +681,5 @@
 - [x] Ajustar importacao em massa de previstos em Projetos para ignorar codigos ja existentes no projeto e cadastrar somente os codigos novos, gerando CSV de erros/avisos para linhas ignoradas.
 
 - [x] Corrigir selecao de Projeto (SOB) em Materiais previstos e Atividades previstas para usar catalogo completo do tenant e carregar a lista mesmo quando o projeto nao esta na pagina atual.
+
+- [x] Criar tela `Consumo por Projeto` em Almoxarifado, com selecao de projeto, tabela de Codigo do Material, Descricao, Quantidade prevista, Quantidade Requisicao, Quantidade Devolucao, Qtd Liquida e Desvio, alem do grafico `Consumo x Previsto`.
