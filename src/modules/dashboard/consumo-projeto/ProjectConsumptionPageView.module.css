@@ -144,7 +144,7 @@
 
 .table {
   width: 100%;
-  min-width: 1280px;
+  min-width: 1120px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -175,9 +175,7 @@
 .table td:nth-child(6),
 .table td:nth-child(7),
 .table td:nth-child(8),
-.table td:nth-child(9),
-.table td:nth-child(10),
-.table td:nth-child(11) {
+.table td:nth-child(9) {
   text-align: right;
   white-space: nowrap;
 }
@@ -257,33 +255,6 @@
 
 .rowPending td {
   background: #f8fafc;
-}
-
-.situationGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
-}
-
-.situationCard {
-  min-height: 86px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.situationCard strong {
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.situationCard span,
-.situationCard small {
-  font-size: 11px;
-  font-weight: 800;
 }
 
 .chartList {
@@ -432,8 +403,7 @@
   }
 
   .filterGrid,
-  .summaryGrid,
-  .situationGrid {
+  .summaryGrid {
     grid-template-columns: 1fr;
   }
 

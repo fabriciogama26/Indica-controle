@@ -688,4 +688,10 @@
 
 - [x] Ajustar a tela `Consumo por Projeto` para sugerir `Codigo do material` por datalist, mantendo `Projeto` no padrao digitavel da Medicao, e adicionar botao `Extrair Excel` na tabela `Materiais do projeto`.
 
-- [x] Evoluir `Consumo por Projeto` com colunas `Em estoque`, `Saldo necessario`, `Falta em estoque` e `Situacao`, usando cores por situacao e resumo operacional sem criar tabela nova no Supabase.
+- [x] Evoluir `Consumo por Projeto` com colunas `Em estoque` e `Situacao`, usando cores por situacao sem criar tabela nova no Supabase.
+
+- [x] Remover `Saldo necessario` e `Falta em estoque` da tabela e da exportacao de `Consumo por Projeto`, mantendo os calculos apenas para classificacao interna da situacao.
+
+- [x] Remover o bloco `Resumo por situacao` de `Consumo por Projeto`, mantendo a situacao apenas na linha do material.
+
+- [x] Ajustar os cards de `Consumo por Projeto` para exibir apenas contagens de materiais distintos: `Materiais`, `Requisicao`, `Devolucao`, `Em estoque` e `Falta em estoque`.

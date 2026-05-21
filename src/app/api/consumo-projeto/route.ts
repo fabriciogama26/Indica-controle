@@ -630,49 +630,18 @@ export async function GET(request: NextRequest) {
     const summary = rows.reduce(
       (accumulator, row) => ({
         materialCount: accumulator.materialCount + 1,
-        plannedQuantity: accumulator.plannedQuantity + row.plannedQuantity,
-        requisitionQuantity: accumulator.requisitionQuantity + row.requisitionQuantity,
-        returnQuantity: accumulator.returnQuantity + row.returnQuantity,
-        netQuantity: accumulator.netQuantity + row.netQuantity,
-        deviationQuantity: accumulator.deviationQuantity + row.deviationQuantity,
-        stockQuantity: accumulator.stockQuantity + row.stockQuantity,
-        requiredQuantity: accumulator.requiredQuantity + row.requiredQuantity,
-        stockShortageQuantity: accumulator.stockShortageQuantity + row.stockShortageQuantity,
-        overPlannedCount: accumulator.overPlannedCount + (row.deviationQuantity > 0 ? 1 : 0),
-        unplannedConsumedCount:
-          accumulator.unplannedConsumedCount + (row.plannedQuantity <= 0 && row.netQuantity > 0 ? 1 : 0),
+        requisitionMaterialCount: accumulator.requisitionMaterialCount + (row.requisitionQuantity > 0 ? 1 : 0),
+        returnMaterialCount: accumulator.returnMaterialCount + (row.returnQuantity > 0 ? 1 : 0),
+        stockMaterialCount: accumulator.stockMaterialCount + (row.stockQuantity > 0 ? 1 : 0),
+        stockShortageMaterialCount: accumulator.stockShortageMaterialCount + (row.stockShortageQuantity > 0 ? 1 : 0),
       }),
       {
         materialCount: 0,
-        plannedQuantity: 0,
-        requisitionQuantity: 0,
-        returnQuantity: 0,
-        netQuantity: 0,
-        deviationQuantity: 0,
-        stockQuantity: 0,
-        requiredQuantity: 0,
-        stockShortageQuantity: 0,
-        overPlannedCount: 0,
-        unplannedConsumedCount: 0,
+        requisitionMaterialCount: 0,
+        returnMaterialCount: 0,
+        stockMaterialCount: 0,
+        stockShortageMaterialCount: 0,
       },
-    );
-
-    const situationSummary = Array.from(
-      rows.reduce((summaryMap, row) => {
-        const current = summaryMap.get(row.situationCode) ?? {
-          situationCode: row.situationCode,
-          situationLabel: row.situationLabel,
-          materialCount: 0,
-          requiredQuantity: 0,
-          stockShortageQuantity: 0,
-        };
-        current.materialCount += 1;
-        current.requiredQuantity += row.requiredQuantity;
-        current.stockShortageQuantity += row.stockShortageQuantity;
-        summaryMap.set(row.situationCode, current);
-        return summaryMap;
-      }, new Map<SituationCode, { situationCode: SituationCode; situationLabel: string; materialCount: number; requiredQuantity: number; stockShortageQuantity: number }>()),
-      ([, value]) => value,
     );
 
     const chartRows = [...rows]
@@ -685,7 +654,6 @@ export async function GET(request: NextRequest) {
       materialOptions,
       rows,
       chartRows,
-      situationSummary,
       summary,
     });
   } catch (error) {
