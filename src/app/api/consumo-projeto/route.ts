@@ -70,6 +70,30 @@ type ItemReversalRow = {
   reversal_stock_transfer_item_id: string | null;
 };
 
+type TeamStockCenterRow = {
+  stock_center_id: string | null;
+};
+
+type StockCenterRow = {
+  id: string;
+  center_type: "OWN" | "THIRD_PARTY" | string | null;
+  controls_balance: boolean | null;
+  is_active: boolean | null;
+};
+
+type StockBalanceRow = {
+  material_id: string;
+  quantity: number | string | null;
+};
+
+type SituationCode =
+  | "CONFERIDO"
+  | "ABAIXO_COM_ESTOQUE"
+  | "ABAIXO_SEM_ESTOQUE"
+  | "ACIMA_PREVISTO"
+  | "FORA_PREVISTO"
+  | "PREVISTO_SEM_REQUISICAO";
+
 type ConsumptionAggregate = {
   materialId: string;
   materialCode: string;
@@ -81,6 +105,11 @@ type ConsumptionAggregate = {
   returnQuantity: number;
   netQuantity: number;
   deviationQuantity: number;
+  stockQuantity: number;
+  requiredQuantity: number;
+  stockShortageQuantity: number;
+  situationCode: SituationCode;
+  situationLabel: string;
 };
 
 function normalizeText(value: unknown) {
@@ -379,10 +408,89 @@ async function loadReversalSets(context: AuthenticatedAppUserContext, transferId
   return { reversedTransferIds, reversalTransferIds, reversedItemIds, reversalItemIds };
 }
 
+async function loadAvailableStockByMaterial(context: AuthenticatedAppUserContext) {
+  const [stockCentersResult, teamCentersResult] = await Promise.all([
+    context.supabase
+      .from("stock_centers")
+      .select("id, center_type, controls_balance, is_active")
+      .eq("tenant_id", context.appUser.tenant_id)
+      .eq("is_active", true)
+      .eq("center_type", "OWN")
+      .returns<StockCenterRow[]>(),
+    context.supabase
+      .from("teams")
+      .select("stock_center_id")
+      .eq("tenant_id", context.appUser.tenant_id)
+      .returns<TeamStockCenterRow[]>(),
+  ]);
+
+  if (stockCentersResult.error || teamCentersResult.error) {
+    throw new Error("Falha ao carregar saldo em estoque.");
+  }
+
+  const teamCenterIds = new Set(
+    (teamCentersResult.data ?? [])
+      .map((team) => normalizeText(team.stock_center_id))
+      .filter(Boolean),
+  );
+  const stockCenterIds = (stockCentersResult.data ?? [])
+    .map((center) => center.id)
+    .filter((id) => !teamCenterIds.has(id));
+
+  const balanceByMaterial = new Map<string, number>();
+  for (const ids of chunk(stockCenterIds, 500)) {
+    const { data, error } = await context.supabase
+      .from("stock_center_balances")
+      .select("material_id, quantity")
+      .eq("tenant_id", context.appUser.tenant_id)
+      .in("stock_center_id", ids)
+      .returns<StockBalanceRow[]>();
+
+    if (error) {
+      throw new Error("Falha ao carregar saldo em estoque.");
+    }
+
+    for (const row of data ?? []) {
+      balanceByMaterial.set(row.material_id, (balanceByMaterial.get(row.material_id) ?? 0) + numberValue(row.quantity));
+    }
+  }
+
+  return balanceByMaterial;
+}
+
 function resolveOperationKind(transfer: TransferRow, team: TeamRow | null, operationKind: TeamOperationRow["operation_kind"]) {
   if (operationKind) return operationKind;
   if (team?.stock_center_id && transfer.to_stock_center_id === team.stock_center_id) return "REQUISITION";
   return "RETURN";
+}
+
+function resolveSituation(params: {
+  plannedQuantity: number;
+  netQuantity: number;
+  stockQuantity: number;
+  requiredQuantity: number;
+}): { code: SituationCode; label: string } {
+  if (params.plannedQuantity <= 0 && params.netQuantity > 0) {
+    return { code: "FORA_PREVISTO", label: "Requisitado fora do previsto" };
+  }
+
+  if (params.plannedQuantity > 0 && params.netQuantity === 0) {
+    return { code: "PREVISTO_SEM_REQUISICAO", label: "Previsto sem requisicao" };
+  }
+
+  if (params.netQuantity > params.plannedQuantity) {
+    return { code: "ACIMA_PREVISTO", label: "Acima do previsto" };
+  }
+
+  if (params.netQuantity < params.plannedQuantity) {
+    if (params.stockQuantity >= params.requiredQuantity) {
+      return { code: "ABAIXO_COM_ESTOQUE", label: "Abaixo do previsto com estoque" };
+    }
+
+    return { code: "ABAIXO_SEM_ESTOQUE", label: "Abaixo do previsto sem estoque" };
+  }
+
+  return { code: "CONFERIDO", label: "Conferido" };
 }
 
 function createAggregate(materialId: string, material: MaterialRow | null): ConsumptionAggregate {
@@ -397,16 +505,40 @@ function createAggregate(materialId: string, material: MaterialRow | null): Cons
     returnQuantity: 0,
     netQuantity: 0,
     deviationQuantity: 0,
+    stockQuantity: 0,
+    requiredQuantity: 0,
+    stockShortageQuantity: 0,
+    situationCode: "CONFERIDO",
+    situationLabel: "Conferido",
   };
 }
 
-function finalizeRows(rows: ConsumptionAggregate[]) {
+function finalizeRows(rows: ConsumptionAggregate[], stockByMaterial: Map<string, number>) {
   return rows
     .map((row) => ({
       ...row,
       netQuantity: row.requisitionQuantity - row.returnQuantity,
       deviationQuantity: row.requisitionQuantity - row.returnQuantity - row.plannedQuantity,
+      stockQuantity: stockByMaterial.get(row.materialId) ?? 0,
     }))
+    .map((row) => {
+      const requiredQuantity = Math.max(row.plannedQuantity - row.netQuantity, 0);
+      const stockShortageQuantity = Math.max(requiredQuantity - row.stockQuantity, 0);
+      const situation = resolveSituation({
+        plannedQuantity: row.plannedQuantity,
+        netQuantity: row.netQuantity,
+        stockQuantity: row.stockQuantity,
+        requiredQuantity,
+      });
+
+      return {
+        ...row,
+        requiredQuantity,
+        stockShortageQuantity,
+        situationCode: situation.code,
+        situationLabel: situation.label,
+      };
+    })
     .sort((left, right) => left.materialCode.localeCompare(right.materialCode, "pt-BR"));
 }
 
@@ -437,9 +569,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Projeto nao encontrado para o tenant atual." }, { status: 404 });
     }
 
-    const [forecastRows, transfers] = await Promise.all([
+    const [forecastRows, transfers, stockByMaterial] = await Promise.all([
       loadForecast(context, projectId),
       loadProjectTransfers(context, projectId),
+      loadAvailableStockByMaterial(context),
     ]);
 
     const aggregate = new Map<string, ConsumptionAggregate>();
@@ -484,7 +617,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const allRows = finalizeRows(Array.from(aggregate.values()));
+    const allRows = finalizeRows(Array.from(aggregate.values()), stockByMaterial);
     const materialOptions = allRows.map((row) => ({
       id: row.materialId,
       code: row.materialCode,
@@ -502,6 +635,9 @@ export async function GET(request: NextRequest) {
         returnQuantity: accumulator.returnQuantity + row.returnQuantity,
         netQuantity: accumulator.netQuantity + row.netQuantity,
         deviationQuantity: accumulator.deviationQuantity + row.deviationQuantity,
+        stockQuantity: accumulator.stockQuantity + row.stockQuantity,
+        requiredQuantity: accumulator.requiredQuantity + row.requiredQuantity,
+        stockShortageQuantity: accumulator.stockShortageQuantity + row.stockShortageQuantity,
         overPlannedCount: accumulator.overPlannedCount + (row.deviationQuantity > 0 ? 1 : 0),
         unplannedConsumedCount:
           accumulator.unplannedConsumedCount + (row.plannedQuantity <= 0 && row.netQuantity > 0 ? 1 : 0),
@@ -513,9 +649,30 @@ export async function GET(request: NextRequest) {
         returnQuantity: 0,
         netQuantity: 0,
         deviationQuantity: 0,
+        stockQuantity: 0,
+        requiredQuantity: 0,
+        stockShortageQuantity: 0,
         overPlannedCount: 0,
         unplannedConsumedCount: 0,
       },
+    );
+
+    const situationSummary = Array.from(
+      rows.reduce((summaryMap, row) => {
+        const current = summaryMap.get(row.situationCode) ?? {
+          situationCode: row.situationCode,
+          situationLabel: row.situationLabel,
+          materialCount: 0,
+          requiredQuantity: 0,
+          stockShortageQuantity: 0,
+        };
+        current.materialCount += 1;
+        current.requiredQuantity += row.requiredQuantity;
+        current.stockShortageQuantity += row.stockShortageQuantity;
+        summaryMap.set(row.situationCode, current);
+        return summaryMap;
+      }, new Map<SituationCode, { situationCode: SituationCode; situationLabel: string; materialCount: number; requiredQuantity: number; stockShortageQuantity: number }>()),
+      ([, value]) => value,
     );
 
     const chartRows = [...rows]
@@ -528,6 +685,7 @@ export async function GET(request: NextRequest) {
       materialOptions,
       rows,
       chartRows,
+      situationSummary,
       summary,
     });
   } catch (error) {

@@ -100,7 +100,7 @@
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
   gap: 12px;
 }
 
@@ -144,7 +144,7 @@
 
 .table {
   width: 100%;
-  min-width: 980px;
+  min-width: 1280px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -174,15 +174,20 @@
 .table td:nth-child(5),
 .table td:nth-child(6),
 .table td:nth-child(7),
-.table td:nth-child(8) {
+.table td:nth-child(8),
+.table td:nth-child(9),
+.table td:nth-child(10),
+.table td:nth-child(11) {
   text-align: right;
   white-space: nowrap;
 }
 
-.statusOk,
-.statusUnder,
-.statusOver,
-.statusUnplanned {
+.situationOk,
+.situationWithStock,
+.situationWithoutStock,
+.situationOver,
+.situationUnplanned,
+.situationPending {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -194,23 +199,91 @@
   white-space: nowrap;
 }
 
-.statusOk {
+.situationOk {
   border: 1px solid #86efac;
   background: #dcfce7;
   color: #14532d;
 }
 
-.statusUnder {
+.situationWithStock {
   border: 1px solid #bfdbfe;
   background: #dbeafe;
   color: #1e3a8a;
 }
 
-.statusOver,
-.statusUnplanned {
+.situationWithoutStock {
   border: 1px solid #fecaca;
   background: #fee2e2;
   color: #7f1d1d;
+}
+
+.situationOver {
+  border: 1px solid #fed7aa;
+  background: #ffedd5;
+  color: #7c2d12;
+}
+
+.situationUnplanned {
+  border: 1px solid #ddd6fe;
+  background: #ede9fe;
+  color: #4c1d95;
+}
+
+.situationPending {
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.rowOk td {
+  background: #f0fdf4;
+}
+
+.rowWithStock td {
+  background: #eff6ff;
+}
+
+.rowWithoutStock td {
+  background: #fff1f2;
+}
+
+.rowOver td {
+  background: #fff7ed;
+}
+
+.rowUnplanned td {
+  background: #f5f3ff;
+}
+
+.rowPending td {
+  background: #f8fafc;
+}
+
+.situationGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.situationCard {
+  min-height: 86px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.situationCard strong {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.situationCard span,
+.situationCard small {
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .chartList {
@@ -359,7 +432,8 @@
   }
 
   .filterGrid,
-  .summaryGrid {
+  .summaryGrid,
+  .situationGrid {
     grid-template-columns: 1fr;
   }
 
