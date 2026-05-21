@@ -33,8 +33,6 @@ Filtros, auto-complete e listagem
   - Qtd Liquida
   - Desvio
   - Em estoque
-  - Saldo necessario
-  - Falta em estoque
   - Situacao
 - Situacao da linha:
   - `Conferido`: desvio igual a zero.
@@ -51,17 +49,11 @@ Filtros, auto-complete e listagem
   - Roxo: requisitado fora do previsto.
   - Cinza: previsto sem requisicao.
 - Cards:
-  - Materiais
-  - Previsto
-  - Requisicao
-  - Devolucao
-  - Qtd liquida
-  - Desvio
-  - Acima previsto
-  - Nao previstos
-- Resumo por situacao:
-  - Agrupa materiais por situacao.
-  - Exibe quantidade de materiais, saldo necessario e falta em estoque.
+  - Materiais: quantidade de materiais distintos na consulta.
+  - Requisicao: quantidade de materiais distintos com requisicao maior que zero.
+  - Devolucao: quantidade de materiais distintos com devolucao maior que zero.
+  - Em estoque: quantidade de materiais distintos com saldo em estoque maior que zero.
+  - Falta em estoque: quantidade de materiais distintos com falta em estoque maior que zero.
 - Grafico:
   - `Consumo x Previsto`
   - Barras horizontais por material.
@@ -100,8 +92,8 @@ Cancelamento e saldo
 - `Qtd Liquida = Quantidade Requisicao - Quantidade Devolucao`.
 - `Desvio = Qtd Liquida - Quantidade prevista`.
 - `Em estoque` vem de `stock_center_balances`, somando centros proprios fisicos do almoxarifado e excluindo centros vinculados a equipes.
-- `Saldo necessario = max(Quantidade prevista - Qtd Liquida, 0)`.
-- `Falta em estoque = max(Saldo necessario - Em estoque, 0)`.
+- `Saldo necessario = max(Quantidade prevista - Qtd Liquida, 0)` e usado apenas no backend para classificar a situacao, sem aparecer como coluna.
+- `Falta em estoque = max(Saldo necessario - Em estoque, 0)` e usado no backend para classificar a situacao e para contar materiais distintos no card `Falta em estoque`, sem aparecer como coluna.
 - `FIELD_RETURN` nao entra em `Quantidade Devolucao`; a tela considera apenas `RETURN` como devolucao.
 
 Atalhos
@@ -140,10 +132,18 @@ Atualizacao 2026-05
   - Campo `Codigo do material` passou a usar sugestoes por `datalist` com os materiais do projeto selecionado.
   - Bloco `Materiais do projeto` passou a ter botao `Extrair Excel` para exportar a tabela atual em CSV.
 - Atualizacao (2026-05):
-  - Tabela passou a exibir `Em estoque`, `Saldo necessario`, `Falta em estoque` e `Situacao`.
+  - Tabela passou a exibir `Em estoque` e `Situacao`.
   - Coluna `Status` foi substituida por `Situacao`.
   - Linhas e badges passaram a receber cores conforme a situacao operacional.
-  - Criado bloco `Resumo por situacao` sem criar tabela nova no Supabase.
+  - Situacao e exibida somente na tabela, sem criar tabela nova no Supabase.
+- Atualizacao (2026-05):
+  - Colunas `Saldo necessario` e `Falta em estoque` foram removidas da tabela e da exportacao por serem redundantes.
+  - Os calculos continuam internos para definir `Abaixo do previsto com estoque` ou `Abaixo do previsto sem estoque`.
+- Atualizacao (2026-05):
+  - Bloco `Resumo por situacao` foi removido por ser redundante com a coluna `Situacao`.
+- Atualizacao (2026-05):
+  - Cards foram reduzidos para `Materiais`, `Requisicao`, `Devolucao`, `Em estoque` e `Falta em estoque`.
+  - Todos os cards exibem contagem de materiais distintos, nao soma de quantidades.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -233,7 +233,6 @@ Ajuda contextual
   - `createAggregate`
   - `finalizeRows`
   - `materialOptions`
-  - `situationSummary`
   - `menuSections`
   - `titleMap`
   - `permissionCatalog`
@@ -244,3 +243,6 @@ Ajuda contextual
   - Depois: a tela consolida previsto, requisicao, devolucao, qtd liquida e desvio por projeto em uma unica consulta.
   - Atualizacao (2026-05): antes nao havia exportacao da tabela nem sugestao de codigo de material; depois a tabela pode ser extraida e o filtro de material sugere os codigos do projeto selecionado.
   - Atualizacao (2026-05): antes a coluna operacional era `Status` e nao considerava estoque; depois a coluna passa a ser `Situacao`, considerando previsto, requisitado, devolvido e saldo fisico disponivel no almoxarifado.
+  - Atualizacao (2026-05): antes `Saldo necessario` e `Falta em estoque` apareciam como colunas; depois ficam apenas como calculos internos da classificacao.
+  - Atualizacao (2026-05): antes existia bloco `Resumo por situacao`; depois a situacao fica apenas na linha do material para reduzir redundancia.
+  - Atualizacao (2026-05): antes os cards exibiam somas de quantidade e indicadores extras; depois exibem apenas contagens de materiais distintos para materiais, requisicao, devolucao, estoque e falta.
