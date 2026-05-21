@@ -29,6 +29,17 @@ type ConsumptionRow = {
   returnQuantity: number;
   netQuantity: number;
   deviationQuantity: number;
+  stockQuantity: number;
+  requiredQuantity: number;
+  stockShortageQuantity: number;
+  situationCode:
+    | "CONFERIDO"
+    | "ABAIXO_COM_ESTOQUE"
+    | "ABAIXO_SEM_ESTOQUE"
+    | "ACIMA_PREVISTO"
+    | "FORA_PREVISTO"
+    | "PREVISTO_SEM_REQUISICAO";
+  situationLabel: string;
 };
 
 type Summary = {
@@ -38,8 +49,19 @@ type Summary = {
   returnQuantity: number;
   netQuantity: number;
   deviationQuantity: number;
+  stockQuantity: number;
+  requiredQuantity: number;
+  stockShortageQuantity: number;
   overPlannedCount: number;
   unplannedConsumedCount: number;
+};
+
+type SituationSummary = {
+  situationCode: ConsumptionRow["situationCode"];
+  situationLabel: string;
+  materialCount: number;
+  requiredQuantity: number;
+  stockShortageQuantity: number;
 };
 
 type ConsumptionResponse = {
@@ -51,6 +73,7 @@ type ConsumptionResponse = {
   materialOptions?: MaterialOption[];
   rows?: ConsumptionRow[];
   chartRows?: ConsumptionRow[];
+  situationSummary?: SituationSummary[];
   summary?: Summary | null;
 };
 
@@ -111,18 +134,22 @@ function maxValue(values: number[]) {
   return Math.max(1, ...values.map((value) => Math.abs(Number(value) || 0)));
 }
 
-function deviationLabel(row: ConsumptionRow) {
-  if (row.plannedQuantity <= 0 && row.netQuantity > 0) return "Nao previsto";
-  if (row.deviationQuantity > 0) return "Acima";
-  if (row.deviationQuantity < 0) return "Abaixo";
-  return "Conferido";
+function situationClass(code: ConsumptionRow["situationCode"]) {
+  if (code === "CONFERIDO") return styles.situationOk;
+  if (code === "ABAIXO_COM_ESTOQUE") return styles.situationWithStock;
+  if (code === "ABAIXO_SEM_ESTOQUE") return styles.situationWithoutStock;
+  if (code === "ACIMA_PREVISTO") return styles.situationOver;
+  if (code === "FORA_PREVISTO") return styles.situationUnplanned;
+  return styles.situationPending;
 }
 
-function deviationClass(row: ConsumptionRow) {
-  if (row.plannedQuantity <= 0 && row.netQuantity > 0) return styles.statusUnplanned;
-  if (row.deviationQuantity > 0) return styles.statusOver;
-  if (row.deviationQuantity < 0) return styles.statusUnder;
-  return styles.statusOk;
+function rowSituationClass(code: ConsumptionRow["situationCode"]) {
+  if (code === "CONFERIDO") return styles.rowOk;
+  if (code === "ABAIXO_COM_ESTOQUE") return styles.rowWithStock;
+  if (code === "ABAIXO_SEM_ESTOQUE") return styles.rowWithoutStock;
+  if (code === "ACIMA_PREVISTO") return styles.rowOver;
+  if (code === "FORA_PREVISTO") return styles.rowUnplanned;
+  return styles.rowPending;
 }
 
 function ConsumptionChart({ rows }: { rows: ConsumptionRow[] }) {
@@ -178,6 +205,7 @@ export function ProjectConsumptionPageView() {
   const [selectedProject, setSelectedProject] = useState<ProjectOption | null>(null);
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
   const [chartRows, setChartRows] = useState<ConsumptionRow[]>([]);
+  const [situationSummary, setSituationSummary] = useState<SituationSummary[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -213,6 +241,7 @@ export function ProjectConsumptionPageView() {
         setSelectedProject(payload.selectedProject ?? null);
         setRows(payload.rows ?? []);
         setChartRows(payload.chartRows ?? []);
+        setSituationSummary(payload.situationSummary ?? []);
         setSummary(payload.summary ?? null);
         setFeedback(projectId ? { type: "success", message: "Consumo por Projeto atualizado." } : null);
       } catch (error) {
@@ -247,6 +276,7 @@ export function ProjectConsumptionPageView() {
       setSelectedProject(null);
       setRows([]);
       setChartRows([]);
+      setSituationSummary([]);
       setSummary(null);
       return;
     }
@@ -270,7 +300,10 @@ export function ProjectConsumptionPageView() {
       "Quantidade Devolucao",
       "Qtd Liquida",
       "Desvio",
-      "Status",
+      "Em estoque",
+      "Saldo necessario",
+      "Falta em estoque",
+      "Situacao",
     ];
     const projectLabel = selectedProject?.label ?? projectByQuery?.label ?? "projeto";
     const lines = rows.map((row) => [
@@ -283,7 +316,10 @@ export function ProjectConsumptionPageView() {
       formatDecimal(row.returnQuantity),
       formatDecimal(row.netQuantity),
       formatDecimal(row.deviationQuantity),
-      deviationLabel(row),
+      formatDecimal(row.stockQuantity),
+      formatDecimal(row.requiredQuantity),
+      formatDecimal(row.stockShortageQuantity),
+      row.situationLabel,
     ]);
     const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
     const filenameProject = projectLabel.replace(/[^a-zA-Z0-9_-]+/g, "_") || "projeto";
@@ -366,6 +402,18 @@ export function ProjectConsumptionPageView() {
           <strong>{formatDecimal(summary?.deviationQuantity ?? 0)}</strong>
         </div>
         <div className={styles.metric}>
+          <span>Em estoque</span>
+          <strong>{formatDecimal(summary?.stockQuantity ?? 0)}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Saldo necessario</span>
+          <strong>{formatDecimal(summary?.requiredQuantity ?? 0)}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Falta em estoque</span>
+          <strong>{formatDecimal(summary?.stockShortageQuantity ?? 0)}</strong>
+        </div>
+        <div className={styles.metric}>
           <span>Acima previsto</span>
           <strong>{summary?.overPlannedCount ?? 0}</strong>
         </div>
@@ -374,6 +422,30 @@ export function ProjectConsumptionPageView() {
           <strong>{summary?.unplannedConsumedCount ?? 0}</strong>
         </div>
       </div>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Resumo por situacao</h2>
+            <p className={styles.cardSubtitle}>Agrupamento dos materiais conforme previsto, requisitado e saldo disponivel.</p>
+          </div>
+        </div>
+
+        <div className={styles.situationGrid}>
+          {situationSummary.length ? (
+            situationSummary.map((item) => (
+              <div key={item.situationCode} className={`${styles.situationCard} ${situationClass(item.situationCode)}`}>
+                <strong>{item.situationLabel}</strong>
+                <span>{item.materialCount} materiais</span>
+                <small>Necessario: {formatDecimal(item.requiredQuantity)}</small>
+                <small>Falta estoque: {formatDecimal(item.stockShortageQuantity)}</small>
+              </div>
+            ))
+          ) : (
+            <div className={styles.emptyState}>Selecione um projeto para visualizar as situacoes.</div>
+          )}
+        </div>
+      </article>
 
       <div className={styles.contentGrid}>
         <article className={styles.tableCard}>
@@ -404,12 +476,15 @@ export function ProjectConsumptionPageView() {
                   <th>Quantidade Devolucao</th>
                   <th>Qtd Liquida</th>
                   <th>Desvio</th>
-                  <th>Status</th>
+                  <th>Em estoque</th>
+                  <th>Saldo necessario</th>
+                  <th>Falta em estoque</th>
+                  <th>Situacao</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.materialId}>
+                  <tr key={row.materialId} className={rowSituationClass(row.situationCode)}>
                     <td><strong>{row.materialCode}</strong></td>
                     <td>{row.description}</td>
                     <td>{row.unit}</td>
@@ -418,14 +493,17 @@ export function ProjectConsumptionPageView() {
                     <td>{formatDecimal(row.returnQuantity)}</td>
                     <td>{formatDecimal(row.netQuantity)}</td>
                     <td>{formatDecimal(row.deviationQuantity)}</td>
+                    <td>{formatDecimal(row.stockQuantity)}</td>
+                    <td>{formatDecimal(row.requiredQuantity)}</td>
+                    <td>{formatDecimal(row.stockShortageQuantity)}</td>
                     <td>
-                      <span className={deviationClass(row)}>{deviationLabel(row)}</span>
+                      <span className={situationClass(row.situationCode)}>{row.situationLabel}</span>
                     </td>
                   </tr>
                 ))}
                 {!rows.length ? (
                   <tr>
-                    <td colSpan={9} className={styles.emptyRow}>
+                    <td colSpan={12} className={styles.emptyRow}>
                       {selectedProject ? "Nenhum material encontrado para o filtro." : "Selecione um projeto e clique em Filtrar."}
                     </td>
                   </tr>

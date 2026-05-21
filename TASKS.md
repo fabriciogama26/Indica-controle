@@ -687,3 +687,5 @@
 - [x] Criar tela `Consumo por Projeto` em Almoxarifado, com selecao de projeto, tabela de Codigo do Material, Descricao, Quantidade prevista, Quantidade Requisicao, Quantidade Devolucao, Qtd Liquida e Desvio, alem do grafico `Consumo x Previsto`.
 
 - [x] Ajustar a tela `Consumo por Projeto` para sugerir `Codigo do material` por datalist, mantendo `Projeto` no padrao digitavel da Medicao, e adicionar botao `Extrair Excel` na tabela `Materiais do projeto`.
+
+- [x] Evoluir `Consumo por Projeto` com colunas `Em estoque`, `Saldo necessario`, `Falta em estoque` e `Situacao`, usando cores por situacao e resumo operacional sem criar tabela nova no Supabase.
