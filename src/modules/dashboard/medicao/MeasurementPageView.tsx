@@ -123,6 +123,7 @@ type OrderItem = {
   status: MeasurementStatus;
   notes: string;
   projectCode: string;
+  projectServiceCenter: string;
   teamName: string;
   foremanName: string;
   updatedAt: string;
@@ -175,6 +176,7 @@ type OrderDetail = {
   noProductionReasonName: string;
   status: MeasurementStatus;
   notes: string;
+  projectServiceCenter: string;
   programmingMatchStatus: ProgrammingMatchStatus;
   matchedProgrammingId: string | null;
   programmingCompletionStatus: WorkCompletionStatus;
@@ -273,8 +275,15 @@ type MassImportBatchResponse = {
 
 type StatusAction = "FECHAR" | "CANCELAR" | "ABRIR";
 
+type ExportProgress = {
+  title: string;
+  message: string;
+  percent: number;
+};
+
 const PAGE_SIZE = 20;
 const EXPORT_PAGE_SIZE = 200;
+const EXPORT_DETAIL_BATCH_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
@@ -890,6 +899,7 @@ export function MeasurementPageView() {
   const [isImportingMass, setIsImportingMass] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingDetails, setIsExportingDetails] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [isMassImportModalOpen, setIsMassImportModalOpen] = useState(false);
   const [massImportFile, setMassImportFile] = useState<File | null>(null);
   const [massImportErrorReport, setMassImportErrorReport] = useState<MassImportErrorReportData | null>(null);
@@ -993,6 +1003,7 @@ export function MeasurementPageView() {
     }, 0);
   }, [form.items, form.manualRate, form.measurementKind]);
   const shouldShowRateSuggestionHint = !form.id && form.measurementKind === "COM_PRODUCAO" && Boolean(form.projectId);
+  const isGeneratingExport = Boolean(exportProgress);
   const rateSuggestionHint = shouldShowRateSuggestionHint
     ? (
       isLoadingRateSuggestion
@@ -1048,7 +1059,9 @@ export function MeasurementPageView() {
     [accessToken],
   );
 
-  const loadAllOrdersForExport = useCallback(async () => {
+  const loadAllOrdersForExport = useCallback(async (options?: {
+    onProgress?: (progress: { loaded: number; total: number; page: number; totalPages: number }) => void;
+  }) => {
     if (!accessToken) {
       return [] as OrderItem[];
     }
@@ -1065,6 +1078,12 @@ export function MeasurementPageView() {
 
       collected.push(...result.orders);
       exportTotalPages = Math.max(1, Math.ceil((result.pagination.total ?? 0) / EXPORT_PAGE_SIZE));
+      options?.onProgress?.({
+        loaded: collected.length,
+        total: result.pagination.total ?? collected.length,
+        page: exportPage,
+        totalPages: exportTotalPages,
+      });
       exportPage += 1;
     } while (exportPage <= exportTotalPages);
 
@@ -2467,17 +2486,30 @@ export function MeasurementPageView() {
       setFeedback({ type: "error", message: "Nenhuma ordem encontrada para exportar com os filtros atuais." });
       return;
     }
+    if (isGeneratingExport) return;
 
     setIsExporting(true);
+    setExportProgress({ title: "Gerando...", message: "Carregando ordens filtradas.", percent: 5 });
     try {
-      const exportOrders = await loadAllOrdersForExport();
+      const exportOrders = await loadAllOrdersForExport({
+        onProgress: ({ loaded, total: exportTotal }) => {
+          const base = exportTotal > 0 ? loaded / exportTotal : 1;
+          setExportProgress({
+            title: "Gerando...",
+            message: `Carregando ordens (${loaded}/${exportTotal || loaded}).`,
+            percent: Math.min(85, Math.max(10, Math.round(base * 80))),
+          });
+        },
+      });
       if (!exportOrders.length) {
         throw new Error("Nenhuma ordem encontrada para exportar com os filtros atuais.");
       }
 
+      setExportProgress({ title: "Gerando...", message: "Montando arquivo CSV.", percent: 92 });
       const header = [
         "Ordem",
         "Projeto",
+        "Centro de Servicos",
         "Data execucao",
         "Equipe",
         "Encarregado",
@@ -2498,6 +2530,7 @@ export function MeasurementPageView() {
         return [
           order.orderNumber,
           order.projectCode,
+          order.projectServiceCenter || "Sem base",
           formatDate(order.executionDate),
           order.teamName,
           order.foremanName || "-",
@@ -2522,10 +2555,12 @@ export function MeasurementPageView() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar ordens de medicao." });
     } finally {
       setIsExporting(false);
+      setExportProgress(null);
     }
   }
 
@@ -2535,15 +2570,37 @@ export function MeasurementPageView() {
       return;
     }
     if (!accessToken) return;
+    if (isGeneratingExport) return;
 
     setIsExportingDetails(true);
+    setExportProgress({ title: "Gerando...", message: "Carregando ordens filtradas.", percent: 5 });
     try {
-      const exportOrders = await loadAllOrdersForExport();
+      const exportOrders = await loadAllOrdersForExport({
+        onProgress: ({ loaded, total: exportTotal }) => {
+          const base = exportTotal > 0 ? loaded / exportTotal : 1;
+          setExportProgress({
+            title: "Gerando...",
+            message: `Carregando ordens (${loaded}/${exportTotal || loaded}).`,
+            percent: Math.min(35, Math.max(8, Math.round(base * 30))),
+          });
+        },
+      });
       if (!exportOrders.length) {
         throw new Error("Nenhuma ordem encontrada para exportar detalhamento.");
       }
 
-      const detailResults = await Promise.allSettled(exportOrders.map((order) => loadOrderDetail(order.id)));
+      const detailResults: PromiseSettledResult<OrderDetail | null>[] = [];
+      for (let index = 0; index < exportOrders.length; index += EXPORT_DETAIL_BATCH_SIZE) {
+        const batch = exportOrders.slice(index, index + EXPORT_DETAIL_BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map((order) => loadOrderDetail(order.id)));
+        detailResults.push(...batchResults);
+        const loadedDetails = Math.min(index + batch.length, exportOrders.length);
+        setExportProgress({
+          title: "Gerando...",
+          message: `Carregando detalhes (${loadedDetails}/${exportOrders.length}).`,
+          percent: Math.min(88, 35 + Math.round((loadedDetails / exportOrders.length) * 50)),
+        });
+      }
       const details = detailResults
         .filter((result): result is PromiseFulfilledResult<OrderDetail | null> => result.status === "fulfilled")
         .map((result) => result.value)
@@ -2554,9 +2611,11 @@ export function MeasurementPageView() {
         throw new Error("Falha ao carregar detalhes das ordens para exportar.");
       }
 
+      setExportProgress({ title: "Gerando...", message: "Montando arquivo CSV detalhado.", percent: 93 });
       const header = [
         "Ordem",
         "Projeto",
+        "Centro de Servicos",
         "Data execucao",
         "Equipe",
         "Encarregado",
@@ -2583,6 +2642,7 @@ export function MeasurementPageView() {
       for (const detail of details) {
         const summary = exportOrders.find((order) => order.id === detail.id);
         const projectCode = summary?.projectCode ?? projectMap.get(detail.projectId)?.code ?? detail.projectId;
+        const projectServiceCenter = summary?.projectServiceCenter ?? detail.projectServiceCenter ?? "Sem base";
         const teamName = summary?.teamName ?? teamMap.get(detail.teamId)?.name ?? detail.teamId;
         const foremanName = summary?.foremanName ?? teamMap.get(detail.teamId)?.foremanName ?? "-";
         const programmingLabel = programmingMatchLabel(detail.programmingMatchStatus);
@@ -2615,6 +2675,7 @@ export function MeasurementPageView() {
           rows.push([
             detail.orderNumber,
             projectCode,
+            projectServiceCenter,
             formatDate(detail.executionDate),
             teamName,
             foremanName || "-",
@@ -2650,6 +2711,7 @@ export function MeasurementPageView() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
 
       if (failedCount > 0) {
         setFeedback({ type: "success", message: `Detalhamento exportado com sucesso. ${failedCount} ordens foram ignoradas por falha ao carregar detalhes.` });
@@ -2658,6 +2720,7 @@ export function MeasurementPageView() {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar detalhamento da medicao." });
     } finally {
       setIsExportingDetails(false);
+      setExportProgress(null);
     }
   }
 
@@ -2669,6 +2732,21 @@ export function MeasurementPageView() {
 
   return (
     <section className={styles.wrapper}>
+      {exportProgress ? (
+        <div className={styles.exportModalOverlay} role="dialog" aria-modal="true" aria-labelledby="measurement-export-title">
+          <article className={styles.exportModalCard}>
+            <div className={styles.exportSpinner} aria-hidden="true" />
+            <div className={styles.exportModalContent}>
+              <h4 id="measurement-export-title">{exportProgress.title}</h4>
+              <p>{exportProgress.message}</p>
+              <div className={styles.exportProgressTrack} aria-hidden="true">
+                <div className={styles.exportProgressBar} style={{ width: `${Math.max(0, Math.min(100, exportProgress.percent))}%` }} />
+              </div>
+              <strong>{Math.max(0, Math.min(100, exportProgress.percent))}%</strong>
+            </div>
+          </article>
+        </div>
+      ) : null}
       {feedback ? <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div> : null}
 
       <article className={`${styles.card} ${form.id ? styles.editingCard : ""}`}>
@@ -2921,7 +2999,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.secondaryButton}
               onClick={() => void exportOrdersCsv()}
-              disabled={isExporting || isExportingDetails || isRefreshingList || isLoadingOrders || total <= 0}
+              disabled={isGeneratingExport || isExporting || isExportingDetails || isRefreshingList || isLoadingOrders || total <= 0}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
@@ -2929,7 +3007,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={() => void exportOrdersDetailedCsv()}
-              disabled={isExportingDetails || isExporting || isRefreshingList || isLoadingOrders || total <= 0}
+              disabled={isGeneratingExport || isExportingDetails || isExporting || isRefreshingList || isLoadingOrders || total <= 0}
             >
               {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
             </button>
@@ -2937,7 +3015,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={refreshMeasurementList}
-              disabled={isRefreshingList || isLoadingSources || isLoadingMeta || isLoadingOrders || isLoadingFilteredTotal || isExporting || isExportingDetails}
+              disabled={isGeneratingExport || isRefreshingList || isLoadingSources || isLoadingMeta || isLoadingOrders || isLoadingFilteredTotal || isExporting || isExportingDetails}
             >
               {isRefreshingList ? "Atualizando..." : "Atualizar lista"}
             </button>

@@ -371,6 +371,7 @@
 - [x] Ajustar o layout de `Status execucao` na lista da Medicao para exibir `CONCLUIDO` e `Atualizado apos medicao` em linhas separadas.
 - [x] Ajustar filtro `Estado Trabalho` da Medicao para consumir o catalogo por tenant (`programming_work_completion_catalog`), com opcoes dinamicas e `Nao informado`, integrado ao `GET /api/medicao`.
 - [x] Adicionar filtro `Equipe` na lista da Medicao, integrado ao `GET /api/medicao`, paginacao, totalizacao e exportacoes.
+- [x] Incluir `Centro de Servicos` nos CSVs de Medicao e exibir modal `Gerando...` com progresso durante exportacoes, bloqueando cliques na pagina ate concluir.
 - [x] Corrigir heranca de `Estado Trabalho` na Medicao para aceitar qualquer codigo do catalogo e usar fallback de snapshot da ordem quando necessario.
 - [x] Corrigir heranca de `Status execucao` na Medicao para fallback por `Projeto + Data` quando nao houver match de equipe, mantendo `Programacao` como `Nao programada` nesse caso.
 - [x] Corrigir atualizacao de `Status execucao` na Medicao apos mudanca do `Estado Trabalho` na Programacao, usando o ultimo estado nao vazio do projeto e fallback por `Projeto + Equipe + Data execucao` / `Projeto + Data execucao`.
