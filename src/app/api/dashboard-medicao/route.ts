@@ -46,6 +46,13 @@ type ProjectProductionDetail = {
   orderCount: number;
 };
 
+type CompletionAggregate = {
+  value: number;
+  orders: number;
+  projectIds: Set<string>;
+  projects: Map<string, ProjectProductionDetail>;
+};
+
 type TeamRow = {
   id: string;
   name: string;
@@ -150,6 +157,9 @@ function normalizeCompletionStatus(value: unknown) {
     .replace(/\s+/g, "_");
 
   if (token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO")) return "CONCLUIDO";
+  if (token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO" || token === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO") {
+    return "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO";
+  }
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) return "PARCIAL";
   if (token === "PENDENCIA" || token === "PENDENCIAS" || token.startsWith("PENDEN")) return "PENDENCIA";
   return "NAO_INFORMADO";
@@ -580,7 +590,15 @@ export async function GET(request: NextRequest) {
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
     if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
-    if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL" || completionFilter === "PENDENCIA") && orderCompletionMap.get(order.id) !== completionFilter) return false;
+    if (
+      (
+        completionFilter === "CONCLUIDO"
+        || completionFilter === "PARCIAL"
+        || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
+        || completionFilter === "PENDENCIA"
+      )
+      && orderCompletionMap.get(order.id) !== completionFilter
+    ) return false;
     return true;
   });
 
@@ -590,7 +608,15 @@ export async function GET(request: NextRequest) {
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
     if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
-    if ((completionFilter === "CONCLUIDO" || completionFilter === "PARCIAL" || completionFilter === "PENDENCIA") && orderCompletionMap.get(order.id) !== completionFilter) return false;
+    if (
+      (
+        completionFilter === "CONCLUIDO"
+        || completionFilter === "PARCIAL"
+        || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
+        || completionFilter === "PENDENCIA"
+      )
+      && orderCompletionMap.get(order.id) !== completionFilter
+    ) return false;
     return true;
   });
 
@@ -644,25 +670,32 @@ export async function GET(request: NextRequest) {
   const workedDays = Math.round(Number(selectedCycleRecord?.worked_days ?? 0));
 
   function createCompletionTotals() {
-    return new Map<string, { value: number; orders: number; projectIds: Set<string> }>([
-      ["CONCLUIDO", { value: 0, orders: 0, projectIds: new Set<string>() }],
-      ["PARCIAL", { value: 0, orders: 0, projectIds: new Set<string>() }],
-      ["PENDENCIA", { value: 0, orders: 0, projectIds: new Set<string>() }],
-      ["NAO_INFORMADO", { value: 0, orders: 0, projectIds: new Set<string>() }],
+    return new Map<string, CompletionAggregate>([
+      ["CONCLUIDO", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
+      ["PARCIAL", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
+      ["PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
+      ["PENDENCIA", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
+      ["NAO_INFORMADO", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
     ]);
   }
 
-  function addCompletionTotals(target: Map<string, { value: number; orders: number; projectIds: Set<string> }>, order: MeasurementOrderRow) {
+  function addCompletionTotals(target: Map<string, CompletionAggregate>, order: MeasurementOrderRow) {
     const totalValue = valueByOrder.get(order.id) ?? 0;
     const completion = orderCompletionMap.get(order.id) ?? "NAO_INFORMADO";
-    const completionTotal = target.get(completion) ?? { value: 0, orders: 0, projectIds: new Set<string>() };
+    const completionTotal = target.get(completion) ?? {
+      value: 0,
+      orders: 0,
+      projectIds: new Set<string>(),
+      projects: new Map<string, ProjectProductionDetail>(),
+    };
     completionTotal.value += totalValue;
     completionTotal.orders += 1;
     completionTotal.projectIds.add(order.project_id);
+    addProjectProduction(completionTotal.projects, order, totalValue);
     target.set(completion, completionTotal);
   }
 
-  function buildCompletionChart(target: Map<string, { value: number; orders: number; projectIds: Set<string> }>) {
+  function buildCompletionChart(target: Map<string, CompletionAggregate>) {
     const totalValue = Array.from(target.values()).reduce((sum, item) => sum + item.value, 0);
     return [
       {
@@ -670,6 +703,7 @@ export async function GET(request: NextRequest) {
         value: target.get("CONCLUIDO")?.value ?? 0,
         orders: target.get("CONCLUIDO")?.orders ?? 0,
         projectCount: target.get("CONCLUIDO")?.projectIds.size ?? 0,
+        projects: buildProjectProductionRows(target.get("CONCLUIDO")?.projects ?? new Map<string, ProjectProductionDetail>()),
         percentage: totalValue > 0 ? ((target.get("CONCLUIDO")?.value ?? 0) / totalValue) * 100 : 0,
       },
       {
@@ -677,13 +711,23 @@ export async function GET(request: NextRequest) {
         value: target.get("PARCIAL")?.value ?? 0,
         orders: target.get("PARCIAL")?.orders ?? 0,
         projectCount: target.get("PARCIAL")?.projectIds.size ?? 0,
+        projects: buildProjectProductionRows(target.get("PARCIAL")?.projects ?? new Map<string, ProjectProductionDetail>()),
         percentage: totalValue > 0 ? ((target.get("PARCIAL")?.value ?? 0) / totalValue) * 100 : 0,
+      },
+      {
+        label: "Parcial planejado beneficio atingido",
+        value: target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.value ?? 0,
+        orders: target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.orders ?? 0,
+        projectCount: target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.projectIds.size ?? 0,
+        projects: buildProjectProductionRows(target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.projects ?? new Map<string, ProjectProductionDetail>()),
+        percentage: totalValue > 0 ? ((target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.value ?? 0) / totalValue) * 100 : 0,
       },
       {
         label: "Pendencias",
         value: target.get("PENDENCIA")?.value ?? 0,
         orders: target.get("PENDENCIA")?.orders ?? 0,
         projectCount: target.get("PENDENCIA")?.projectIds.size ?? 0,
+        projects: buildProjectProductionRows(target.get("PENDENCIA")?.projects ?? new Map<string, ProjectProductionDetail>()),
         percentage: totalValue > 0 ? ((target.get("PENDENCIA")?.value ?? 0) / totalValue) * 100 : 0,
       },
     ];

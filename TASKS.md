@@ -699,3 +699,5 @@
 - [x] Adicionar filtros locais em `Materiais do projeto` para `Requisicao <> 0`, `Devolucao <> 0`, `Em estoque <> 0`, `Liquida <> 0` e `Situacao`, aplicando tambem na exportacao.
 
 - [x] Reposicionar a coluna `Em estoque` antes de `Quantidade prevista` na tabela e na exportacao de `Consumo por Projeto`.
+
+- [x] Incluir `Parcial planejado beneficio atingido` nos graficos/tabelas de status do Dashboard Medicao e abrir modal de projetos ao clicar nas linhas das tabelas de status.
