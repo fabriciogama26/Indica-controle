@@ -317,12 +317,12 @@ export function ProjectConsumptionPageView() {
       "Codigo do Material",
       "Descricao",
       "UMB",
+      "Em estoque",
       "Quantidade prevista",
       "Quantidade Requisicao",
       "Quantidade Devolucao",
       "Qtd Liquida",
       "Desvio",
-      "Em estoque",
       "Situacao",
     ];
     const projectLabel = selectedProject?.label ?? projectByQuery?.label ?? "projeto";
@@ -331,12 +331,12 @@ export function ProjectConsumptionPageView() {
       row.materialCode,
       row.description,
       row.unit,
+      formatDecimal(row.stockQuantity),
       formatDecimal(row.plannedQuantity),
       formatDecimal(row.requisitionQuantity),
       formatDecimal(row.returnQuantity),
       formatDecimal(row.netQuantity),
       formatDecimal(row.deviationQuantity),
-      formatDecimal(row.stockQuantity),
       row.situationLabel,
     ]);
     const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
@@ -495,12 +495,12 @@ export function ProjectConsumptionPageView() {
                   <th>Codigo do Material</th>
                   <th>Descricao</th>
                   <th>UMB</th>
+                  <th>Em estoque</th>
                   <th>Quantidade prevista</th>
                   <th>Quantidade Requisicao</th>
                   <th>Quantidade Devolucao</th>
                   <th>Qtd Liquida</th>
                   <th>Desvio</th>
-                  <th>Em estoque</th>
                   <th>Situacao</th>
                 </tr>
               </thead>
@@ -510,12 +510,12 @@ export function ProjectConsumptionPageView() {
                     <td><strong>{row.materialCode}</strong></td>
                     <td>{row.description}</td>
                     <td>{row.unit}</td>
+                    <td>{formatDecimal(row.stockQuantity)}</td>
                     <td>{formatDecimal(row.plannedQuantity)}</td>
                     <td>{formatDecimal(row.requisitionQuantity)}</td>
                     <td>{formatDecimal(row.returnQuantity)}</td>
                     <td>{formatDecimal(row.netQuantity)}</td>
                     <td>{formatDecimal(row.deviationQuantity)}</td>
-                    <td>{formatDecimal(row.stockQuantity)}</td>
                     <td>
                       <span className={situationClass(row.situationCode)}>{row.situationLabel}</span>
                     </td>
