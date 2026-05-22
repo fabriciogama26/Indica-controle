@@ -32,13 +32,14 @@ Cadastro
   - `movement_type` (`ENTRY`, `EXIT`, `TRANSFER`)
   - `from_stock_center_id`
   - `to_stock_center_id`
-  - `project_id`
+  - `project_id` (dispensado somente quando `movement_type = ENTRY` e `direct_purchase = true`)
   - `entry_date` (campo unico de data da movimentacao)
   - Bloco `Materiais da Movimentacao` com:
     - `material_id` (selecionado por `material_code`)
     - `quantity`
     - `entry_type` (`SUCATA` ou `NOVO`)
 - Campos opcionais:
+  - `direct_purchase` (`Compra direta`, permitido somente para `Entrada`)
   - `serial_number` (no bloco `Material da Operacao`)
   - `lot_code` (no bloco `Material da Operacao`)
   - `notes`
@@ -62,12 +63,15 @@ Cadastro
   - Campo `Quantidade` fica travado em `1` quando o material selecionado for rastreavel por serial.
   - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
   - Material precisa estar ativo no tenant.
-  - Projeto precisa estar ativo no tenant.
+  - Projeto precisa estar ativo no tenant quando informado.
+  - `Compra direta` remove a obrigatoriedade de `Projeto` apenas para `Entrada`; `Saida` e `Transferencia` continuam exigindo projeto.
   - Edicao direta de movimentacao e bloqueada por regra de negocio; o caminho funcional e `estorno/cancelamento`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Campo `Projeto` no cadastro manual segue padrao digitavel (`input + datalist`), no mesmo comportamento de `Material (codigo)`.
+- Checkbox `Compra direta` fica abaixo de `Projeto` e aparece somente quando a operacao selecionada e `Entrada`.
+- Quando `Compra direta` esta marcado, o campo `Projeto` fica desabilitado/limpo e o marcador obrigatorio e removido.
 - Cadastro manual com auto-complete por `material_code` (`input + datalist`).
 - Cadastro manual com auto-complete por `Serial` para material rastreavel em `Saida` e `Transferencia`, carregando apenas unidades registradas em `trafo_instances.current_stock_center_id = Centro DE`.
 - Cadastro manual com auto-complete por `LP` quando o material exige LP (`TRAFO`), filtrando pelas unidades disponiveis no centro `DE`.
@@ -274,6 +278,8 @@ Atualizacao 2026-05
 - Ajuste de catalogo operacional: `GET /api/stock-transfers/meta` passa a carregar materiais ativos em paginas de 1000 registros pelo helper `fetchActiveOperationalMaterials`, evitando que codigos acima do limite padrao do Supabase/PostgREST deixem de aparecer no cadastro manual e no cadastro em massa.
 - O helper aplica fallback para schemas em transicao sem `materials.serial_tracking_type`, preservando a leitura por `is_transformer` quando necessario.
 - Ajuste de UX: o `Salvar operacao` passa a travar imediatamente com `Salvando...`, spinner e `aria-busy` antes das validacoes assincronas de saldo/serial, evitando duplo clique e duplo envio.
+- Ajuste de cadastro: `Entrada` ganhou checkbox `Compra direta`; quando marcado, a movimentacao pode ser salva sem `Projeto`, gravando `stock_transfers.direct_purchase = true` e `project_id = null`. `Saida` e `Transferencia` mantem `Projeto` obrigatorio.
+- Migration `193_allow_direct_purchase_stock_entry.sql` adiciona `stock_transfers.direct_purchase`, torna `stock_transfers.project_id` nullable e ajusta a RPC `save_stock_transfer_record` para aceitar compra direta sem projeto, preservando estorno de entradas de compra direta.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -306,10 +312,12 @@ Funcoes principais
   - Responsavel por: endurecer validacao unitario de TRAFO na RPC `save_stock_transfer_record`.
 - Caminho: `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
   - Responsavel por: criar `trafo_instances`, fazer backfill da posicao unitaria e migrar a validacao de TRAFO para a nova fonte de verdade.
+- Caminho: `supabase/migrations/193_allow_direct_purchase_stock_entry.sql`
+  - Responsavel por: permitir `project_id` nulo em `stock_transfers` quando a movimentacao for `Entrada` com `direct_purchase = true`, registrar a flag e manter a RPC transacional compativel com estorno.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
-  - Responsavel por: `HISTORY_PAGE_SIZE`, `INITIAL_FORM` e mapeamento de labels do historico.
+  - Responsavel por: `HISTORY_PAGE_SIZE`, `INITIAL_FORM`, `directPurchase` no estado do formulario e mapeamento de labels do historico.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
   - Responsavel por: estilos da tela e estado visual de loading do botao principal.
 - Caminho: `src/lib/server/stockTransfers.ts`
@@ -336,6 +344,7 @@ Ajuda contextual
   - `supabase/migrations/131_add_stock_transfer_reversal.sql`
   - `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
   - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
+  - `supabase/migrations/193_allow_direct_purchase_stock_entry.sql`
   - `src/lib/server/stockTransfers.ts`
   - `src/lib/server/materialCatalog.ts`
   - `src/app/api/stock-transfers/meta/route.ts`
@@ -352,7 +361,7 @@ Ajuda contextual
   - `src/app/(dashboard)/saida/page.tsx`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
 - Funcoes/hooks/constantes tocadas:
-  - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
+  - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `handleDirectPurchaseChange`, `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
   - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
   - `GET` de `/api/stock-transfers/meta`
   - `fetchActiveOperationalMaterials`, `toOperationalMaterialOption`
@@ -391,3 +400,5 @@ Ajuda contextual
 - Depois: o cadastro manual usa opcoes por centro `DE` real, evitando aceitar unidade que esta fora do centro de origem.
 - Antes: o catalogo de materiais ativos do `meta` era carregado em uma unica consulta e podia ficar limitado pelo teto padrao da API.
 - Depois: o catalogo e carregado em paginas de 1000 registros, garantindo que materiais ativos do tenant continuem disponiveis no cadastro manual e no CSV mesmo com base grande.
+- Antes: toda movimentacao manual exigia `Projeto`, inclusive compra fisica direta de material para estoque.
+- Depois: somente `Entrada` pode ser marcada como `Compra direta` e salva sem `Projeto`; `Saida` e `Transferencia` seguem bloqueadas sem projeto.

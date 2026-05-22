@@ -80,8 +80,9 @@ type TransferListItem = {
   fromStockCenterName: string;
   toStockCenterId: string;
   toStockCenterName: string;
-  projectId: string;
+  projectId: string | null;
   projectCode: string;
+  directPurchase: boolean;
   notes: string | null;
   isReversed: boolean;
   reversalTransferId: string | null;
@@ -167,6 +168,7 @@ type FormState = {
   toStockCenterId: string;
   projectCode: string;
   projectId: string;
+  directPurchase: boolean;
   materialCode: string;
   materialId: string;
   description: string;
@@ -199,6 +201,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   toStockCenter: "Centro PARA",
   originalTransferId: "Transferencia original",
   reversalTransferId: "Transferencia de estorno",
+  directPurchase: "Compra direta",
+  direct_purchase: "Compra direta",
   projectId: "Projeto",
   projectCode: "Projeto",
   materialCode: "Material (codigo)",
@@ -231,6 +235,7 @@ const INITIAL_FORM: FormState = {
   toStockCenterId: "",
   projectCode: "",
   projectId: "",
+  directPurchase: false,
   materialCode: "",
   materialId: "",
   description: "",
@@ -587,6 +592,7 @@ export function StockTransfersPageView() {
   const requiresSerialFields = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
   const requiresLotFields = requiresLotCode(selectedMaterial?.serialTrackingType);
   const isTransformerMovementMode = Boolean(transformerMovementMode);
+  const isDirectPurchaseProjectOptional = form.movementType === "ENTRY" && form.directPurchase;
   const formEntryDateLabel = movementDateLabel(form.movementType);
   const fromStockCenterName = centerMap.get(form.fromStockCenterId)?.name ?? "centro DE";
   const matchedSerialOption = useMemo(
@@ -749,6 +755,7 @@ export function StockTransfersPageView() {
         "centro_de",
         "centro_para",
         "projeto",
+        "compra_direta",
         "material_codigo",
         "descricao",
         "quantidade",
@@ -768,6 +775,7 @@ export function StockTransfersPageView() {
         item.fromStockCenterName,
         item.toStockCenterName,
         item.projectCode,
+        item.directPurchase ? "Sim" : "Nao",
         item.materialCode,
         item.description,
         String(item.quantity),
@@ -835,6 +843,7 @@ export function StockTransfersPageView() {
       toStockCenterId: "",
       projectCode: "",
       projectId: "",
+      directPurchase: false,
       materialCode: matchedMaterial.materialCode,
       materialId: matchedMaterial.id,
       description: matchedMaterial.description,
@@ -981,6 +990,10 @@ export function StockTransfersPageView() {
   }
 
   function handleProjectCodeChange(value: string) {
+    if (isDirectPurchaseProjectOptional) {
+      return;
+    }
+
     const normalizedProjectCode = normalizeCode(value);
     const matchedProject = projects.find((project) => normalizeCode(project.projectCode) === normalizedProjectCode) ?? null;
 
@@ -988,6 +1001,15 @@ export function StockTransfersPageView() {
       ...current,
       projectCode: normalizedProjectCode,
       projectId: matchedProject?.id ?? "",
+    }));
+  }
+
+  function handleDirectPurchaseChange(checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      directPurchase: current.movementType === "ENTRY" ? checked : false,
+      projectCode: checked && current.movementType === "ENTRY" ? "" : current.projectCode,
+      projectId: checked && current.movementType === "ENTRY" ? "" : current.projectId,
     }));
   }
 
@@ -1001,6 +1023,9 @@ export function StockTransfersPageView() {
       movementType: value,
       fromStockCenterId: isTransformerMovementMode ? current.fromStockCenterId : "",
       toStockCenterId: "",
+      directPurchase: value === "ENTRY" ? current.directPurchase : false,
+      projectCode: value === "ENTRY" ? current.projectCode : "",
+      projectId: value === "ENTRY" ? current.projectId : "",
       serialNumber: isTransformerMovementMode ? current.serialNumber : "",
       lotCode: isTransformerMovementMode ? current.lotCode : "",
     }));
@@ -1068,8 +1093,12 @@ export function StockTransfersPageView() {
   function validateManualForm() {
     const today = toIsoDate(new Date());
 
-    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || !form.projectId || !form.entryDate) {
+    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || (!form.projectId && !isDirectPurchaseProjectOptional) || !form.entryDate) {
       return "Preencha todos os campos obrigatorios do cabecalho.";
+    }
+
+    if (form.directPurchase && form.movementType !== "ENTRY") {
+      return "Compra direta e permitida somente para operacao Entrada.";
     }
 
     if (form.fromStockCenterId === form.toStockCenterId) {
@@ -1424,8 +1453,13 @@ export function StockTransfersPageView() {
     }
 
     const today = toIsoDate(new Date());
-    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || !form.projectId || !form.entryDate) {
-      showError("Preencha operacao, centros, projeto e data antes de salvar.");
+    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || (!form.projectId && !isDirectPurchaseProjectOptional) || !form.entryDate) {
+      showError("Preencha operacao, centros, projeto e data antes de salvar. Projeto e opcional somente em Entrada com Compra direta.");
+      return;
+    }
+
+    if (form.directPurchase && form.movementType !== "ENTRY") {
+      showError("Compra direta e permitida somente para operacao Entrada.");
       return;
     }
 
@@ -1511,7 +1545,8 @@ export function StockTransfersPageView() {
           movementType: form.movementType,
           fromStockCenterId: form.fromStockCenterId,
           toStockCenterId: form.toStockCenterId,
-          projectId: form.projectId,
+          projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
+          directPurchase: isDirectPurchaseProjectOptional,
           entryDate: form.entryDate,
           entryType: operationEntryType,
           notes: normalizeText(form.notes) || null,
@@ -1533,7 +1568,8 @@ export function StockTransfersPageView() {
           movementType: form.movementType,
           fromStockCenterId: form.fromStockCenterId,
           toStockCenterId: form.toStockCenterId,
-          projectId: form.projectId,
+          projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
+          directPurchase: isDirectPurchaseProjectOptional,
           itemCount: form.items.length,
         });
         return;
@@ -1553,7 +1589,8 @@ export function StockTransfersPageView() {
         movementType: form.movementType,
         fromStockCenterId: form.fromStockCenterId,
         toStockCenterId: form.toStockCenterId,
-        projectId: form.projectId,
+        projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
+        directPurchase: isDirectPurchaseProjectOptional,
         itemCount: form.items.length,
       });
     } finally {
@@ -2173,9 +2210,9 @@ export function StockTransfersPageView() {
             </select>
           </label>
 
-          <label className={styles.field}>
+          <div className={styles.field}>
             <span>
-              Projeto <span className={styles.requiredMark}>*</span>
+              Projeto {!isDirectPurchaseProjectOptional ? <span className={styles.requiredMark}>*</span> : null}
             </span>
             <input
               type="text"
@@ -2183,14 +2220,25 @@ export function StockTransfersPageView() {
               onChange={(event) => handleProjectCodeChange(event.target.value)}
               list="entrada-projeto-form-list"
               placeholder="Digite o codigo do projeto"
-              disabled={isSubmitting || isLoadingMeta}
+              disabled={isSubmitting || isLoadingMeta || isDirectPurchaseProjectOptional}
             />
             <datalist id="entrada-projeto-form-list">
               {projects.map((project) => (
                 <option key={project.id} value={project.projectCode} />
               ))}
             </datalist>
-          </label>
+            {form.movementType === "ENTRY" ? (
+              <label className={styles.checkboxField}>
+                <input
+                  type="checkbox"
+                  checked={form.directPurchase}
+                  onChange={(event) => handleDirectPurchaseChange(event.target.checked)}
+                  disabled={isSubmitting || isLoadingMeta}
+                />
+                <span>Compra direta</span>
+              </label>
+            ) : null}
+          </div>
 
           <label className={styles.field}>
             <span>
@@ -2767,6 +2815,7 @@ export function StockTransfersPageView() {
                 <div><strong>Atualizado em:</strong> {formatDateTime(detailItem.updatedAt)}</div>
                 <div><strong>Usuario:</strong> {detailItem.updatedByName}</div>
                 <div><strong>Projeto:</strong> {detailItem.projectCode}</div>
+                <div><strong>Compra direta:</strong> {detailItem.directPurchase ? "Sim" : "Nao"}</div>
                 <div><strong>Estornada:</strong> {detailItem.isReversed ? "Sim" : "Nao"}</div>
                 <div><strong>Tipo:</strong> {detailItem.entryType ?? "-"}</div>
                 <div><strong>Operacao:</strong> {movementTypeLabel(detailItem.movementType)}</div>
