@@ -13,7 +13,8 @@ export type SaveStockTransferPayload = {
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
   fromStockCenterId: string;
   toStockCenterId: string;
-  projectId: string;
+  projectId: string | null;
+  directPurchase?: boolean;
   entryDate: string;
   entryType: "SUCATA" | "NOVO";
   notes?: string | null;
@@ -103,6 +104,7 @@ export async function saveStockTransferViaRpc(
     p_entry_type: payload.entryType,
     p_notes: payload.notes ?? null,
     p_items: payload.items,
+    p_direct_purchase: payload.directPurchase ?? false,
   });
 
   if (error) {

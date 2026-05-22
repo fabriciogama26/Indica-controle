@@ -32,7 +32,8 @@ type StockTransferHeaderRow = {
   movement_type: "ENTRY" | "EXIT" | "TRANSFER";
   from_stock_center_id: string;
   to_stock_center_id: string;
-  project_id: string;
+  project_id: string | null;
+  direct_purchase?: boolean | null;
   entry_date: string;
   entry_type: "SUCATA" | "NOVO";
   notes: string | null;
@@ -97,6 +98,7 @@ type TransferPayload = {
   fromStockCenterId?: unknown;
   toStockCenterId?: unknown;
   projectId?: unknown;
+  directPurchase?: unknown;
   entryDate?: unknown;
   entryType?: unknown;
   notes?: unknown;
@@ -132,8 +134,9 @@ type TransferListItem = {
   fromStockCenterName: string;
   toStockCenterId: string;
   toStockCenterName: string;
-  projectId: string;
+  projectId: string | null;
   projectCode: string;
+  directPurchase: boolean;
   notes: string | null;
   isReversed: boolean;
   reversalTransferId: string | null;
@@ -369,7 +372,7 @@ async function loadTransferList(request: NextRequest) {
   let transfersQuery = supabase
     .from("stock_transfers")
     .select(
-      "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by",
+      "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, direct_purchase, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by",
     )
     .eq("tenant_id", appUser.tenant_id)
     .order("updated_at", { ascending: false })
@@ -427,7 +430,13 @@ async function loadTransferList(request: NextRequest) {
         .filter(Boolean),
     ),
   );
-  const projectIds = Array.from(new Set((transferHeaders ?? []).map((row) => row.project_id).filter(Boolean)));
+  const projectIds = Array.from(
+    new Set(
+      (transferHeaders ?? [])
+        .map((row) => row.project_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
   const userIds = Array.from(
     new Set(
       (transferHeaders ?? [])
@@ -599,7 +608,10 @@ async function loadTransferList(request: NextRequest) {
     const material = materialMap.get(item.material_id);
     const fromStockCenterName = stockCenterMap.get(transfer.from_stock_center_id) ?? "-";
     const toStockCenterName = stockCenterMap.get(transfer.to_stock_center_id) ?? "-";
-    const projectCode = projectMap.get(transfer.project_id) ?? "-";
+    const directPurchase = Boolean(transfer.direct_purchase);
+    const projectCode = directPurchase && !transfer.project_id
+      ? "Compra direta"
+      : projectMap.get(transfer.project_id ?? "") ?? "-";
 
     const reversalFromOriginal = reversalByOriginalMap.get(transfer.id) ?? null;
     const reversalFromReversal = originalByReversalMap.get(transfer.id) ?? null;
@@ -629,6 +641,7 @@ async function loadTransferList(request: NextRequest) {
         toStockCenterName,
         projectId: transfer.project_id,
         projectCode,
+        directPurchase,
         notes: transfer.notes,
         isReversed: Boolean(reversalFromOriginal || itemReversalFromOriginal),
         reversalTransferId: reversalFromOriginal?.reversalTransferId ?? itemReversalFromOriginal?.reversalTransferId ?? null,
@@ -874,18 +887,26 @@ export async function POST(request: NextRequest) {
     const movementType = normalizeMovementType(payload.movementType);
     const fromStockCenterId = normalizeText(payload.fromStockCenterId);
     const toStockCenterId = normalizeText(payload.toStockCenterId);
-    const projectId = normalizeText(payload.projectId);
+    const directPurchase = payload.directPurchase === true;
+    const projectId = directPurchase && movementType === "ENTRY" ? null : normalizeText(payload.projectId);
     const entryDate = normalizeDateInput(payload.entryDate);
     const entryType = normalizeEntryType(payload.entryType);
     const notes = normalizeText(payload.notes) || null;
     const items = buildTransferItems(payload);
     const today = toIsoDate(new Date());
 
-    if (!movementType || !fromStockCenterId || !toStockCenterId || !projectId || !entryDate || !entryType) {
+    if (directPurchase && movementType !== "ENTRY") {
+      return NextResponse.json(
+        { message: "Compra direta e permitida somente para operacao Entrada." },
+        { status: 400 },
+      );
+    }
+
+    if (!movementType || !fromStockCenterId || !toStockCenterId || (!projectId && !directPurchase) || !entryDate || !entryType) {
       return NextResponse.json(
         {
           message:
-            "Campos obrigatorios: movementType, fromStockCenterId, toStockCenterId, projectId, entryDate e entryType.",
+            "Campos obrigatorios: movementType, fromStockCenterId, toStockCenterId, projectId, entryDate e entryType. Projeto e opcional somente em Entrada com Compra direta.",
         },
         { status: 400 },
       );
@@ -945,6 +966,7 @@ export async function POST(request: NextRequest) {
       fromStockCenterId,
       toStockCenterId,
       projectId,
+      directPurchase,
       entryDate,
       entryType,
       notes,

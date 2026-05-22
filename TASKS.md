@@ -175,6 +175,7 @@
 - [x] Padronizar os alertas manuais da `Movimentacao de Estoque` com modal operacional e mensagens por `material_code`, no mesmo modelo da tela `Operacoes de Equipe`.
 - [x] Separar semanticamente `Movimentacao de Estoque` e `Operacoes de Equipe`, ocultando requisicoes/devolucoes/retornos da lista fisica, bloqueando centros de equipe em `DE/PARA`, resumindo cadastro inicial no historico de equipe e aceitando quantidade decimal com virgula ou ponto.
 - [x] Permitir estorno independente por item/linha em `Movimentacao de Estoque` e `Operacoes de Equipe`, evitando que o estorno de uma linha reverta todos os materiais da mesma transferencia.
+- [x] Adicionar `Compra direta` no cadastro de `Movimentacao de Estoque` somente para `Entrada`, permitindo salvar sem `Projeto` com `stock_transfers.direct_purchase = true` e mantendo `Projeto` obrigatorio para `Saida` e `Transferencia`.
 - [x] Renomear a tela `Rastreio de TRAFO` no shell, catalogo de permissao e documentacao, substituindo o nome anterior `Posicao Unitaria TRAFO`.
 - [x] Remover `Operacao cancelada` e `Outro` do catalogo de motivo padrao do estorno e bloquear esses codigos tambem no backend/RPC.
 - [x] Endurecer `GET /api/stock-transfers` para nao derrubar a lista quando consultas auxiliares de detalhes/metadados falharem.
@@ -372,6 +373,7 @@
 - [x] Ajustar filtro `Estado Trabalho` da Medicao para consumir o catalogo por tenant (`programming_work_completion_catalog`), com opcoes dinamicas e `Nao informado`, integrado ao `GET /api/medicao`.
 - [x] Adicionar filtro `Equipe` na lista da Medicao, integrado ao `GET /api/medicao`, paginacao, totalizacao e exportacoes.
 - [x] Incluir `Centro de Servicos` nos CSVs de Medicao e exibir modal `Gerando...` com progresso durante exportacoes, bloqueando cliques na pagina ate concluir.
+- [x] Criar metas de pontos por tipo (`MK`, `LV`, `CESTO`) e adicionar `Exportar pontuacao` na Medicao com status por pontos e compensatorio por meta financeira.
 - [x] Corrigir heranca de `Estado Trabalho` na Medicao para aceitar qualquer codigo do catalogo e usar fallback de snapshot da ordem quando necessario.
 - [x] Corrigir heranca de `Status execucao` na Medicao para fallback por `Projeto + Data` quando nao houver match de equipe, mantendo `Programacao` como `Nao programada` nesse caso.
 - [x] Corrigir atualizacao de `Status execucao` na Medicao apos mudanca do `Estado Trabalho` na Programacao, usando o ultimo estado nao vazio do projeto e fallback por `Projeto + Equipe + Data execucao` / `Projeto + Data execucao`.

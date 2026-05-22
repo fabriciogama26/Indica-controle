@@ -398,6 +398,9 @@ Resumo por arquivo
 
 191_create_project_consumption_page.sql
 - Cadastra a pagina `consumo-projeto` em `app_pages`, cria permissoes por role e faz backfill em `app_user_page_permissions` para liberar a tela Consumo por Projeto na matriz multi-tenant.
+
+193_allow_direct_purchase_stock_entry.sql
+- Adiciona `stock_transfers.direct_purchase`, permite `stock_transfers.project_id` nulo e ajusta `save_stock_transfer_record` para aceitar `Entrada` de compra direta sem projeto, mantendo escopo por tenant e estorno transacional.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
