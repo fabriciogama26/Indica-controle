@@ -147,8 +147,9 @@ Filtros, auto-complete e listagem
   - Cor do status na lista: `ABERTA` em verde, `FECHADA` e `CANCELADA` em vermelho
   - Atualizado em
   - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
-  - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela.
-  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`.
+  - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela, incluindo `Centro de Servicos` do projeto.
+  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade` e `Centro de Servicos` do projeto.
+  - Ao exportar, a tela exibe modal `Gerando...` com percentual de progresso e bloqueia os cliques da pagina ate concluir a geracao do arquivo.
   - Botao `Atualizar lista` ao lado de `Detalhamento (CSV)` para recarregar lista, filtros aplicados e consolidacoes com os dados mais recentes.
 - Acoes:
   - Detalhes
@@ -567,3 +568,26 @@ Atualizacao 2026-04-24 - filtro por Equipe
   - Antes: os filtros da lista permitiam recortar por data, projeto, status, tipo, motivo, programacao, estado de trabalho e alerta, mas nao por equipe.
   - Depois: o filtro da Medicao passa a exibir `Equipe`, enviar `teamId` para `/api/medicao` e aplicar `eq("team_id", teamId)` no backend antes da paginacao, totalizacao e exportacao.
   - Impacto multi-tenant: sem alteracao de schema/RLS; o filtro adicional atua dentro da query ja limitada por `tenant_id`.
+
+Atualizacao 2026-05-22 (Exports com Centro de Servicos e modal de geracao)
+----------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchProjectServiceCenterMap`
+  - `fetchMeasurementOrderDetail`
+  - `GET /api/medicao`
+  - `loadAllOrdersForExport`
+  - `exportOrdersCsv`
+  - `exportOrdersDetailedCsv`
+  - Estado `exportProgress`
+  - Constante `EXPORT_DETAIL_BATCH_SIZE`
+- Comportamento antes/depois:
+  - Antes: os CSVs da Medicao nao exibiam o Centro de Servicos do projeto e os exports apenas alteravam o texto dos botoes acionados.
+  - Depois: `Exportar Excel (CSV)` e `Detalhamento (CSV)` incluem a coluna `Centro de Servicos`, preenchida a partir de `project.service_center_text`.
+  - Depois: ao iniciar exportacao, a tela exibe modal `Gerando...` com percentual de progresso e bloqueia cliques na pagina ate o arquivo ser gerado.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; a busca do Centro de Servicos usa `tenant_id` e IDs de projetos ja retornados pela listagem da Medicao.

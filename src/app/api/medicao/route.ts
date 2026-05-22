@@ -105,6 +105,11 @@ type ProjectTestRow = {
   is_test: boolean | null;
 };
 
+type ProjectServiceCenterRow = {
+  id: string;
+  service_center_text: string | null;
+};
+
 type SaveMeasurementPayload = {
   action?: string;
   id?: string;
@@ -664,6 +669,30 @@ async function fetchProjectIsTestMap(params: {
   return new Map((fallback.data ?? []).map((item) => [item.id, false]));
 }
 
+async function fetchProjectServiceCenterMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projectIds: string[];
+}) {
+  if (!params.projectIds.length) {
+    return new Map<string, string>();
+  }
+
+  const uniqueProjectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
+  const { data, error } = await params.supabase
+    .from("project")
+    .select("id, service_center_text")
+    .eq("tenant_id", params.tenantId)
+    .in("id", uniqueProjectIds)
+    .returns<ProjectServiceCenterRow[]>();
+
+  if (error) {
+    return new Map<string, string>();
+  }
+
+  return new Map((data ?? []).map((item) => [item.id, normalizeText(item.service_center_text) || "Sem base"]));
+}
+
 async function fetchAppUserMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -738,6 +767,11 @@ async function fetchMeasurementOrderDetail(params: {
     tenantId: params.tenantId,
     orders: [order],
   });
+  const projectServiceCenterMap = await fetchProjectServiceCenterMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds: [order.project_id],
+  });
   const programmingMatch = programmingMatchMap.get(order.id) ?? {
     status: "NAO_PROGRAMADA" as ProgrammingMatchStatus,
     programmingId: null,
@@ -761,6 +795,7 @@ async function fetchMeasurementOrderDetail(params: {
     status: order.status,
     notes: normalizeText(order.notes),
     projectCode: normalizeText(order.project_code_snapshot),
+    projectServiceCenter: projectServiceCenterMap.get(order.project_id) ?? "Sem base",
     teamName: normalizeText(order.team_name_snapshot),
     foremanName: normalizeText(order.foreman_name_snapshot),
     isActive: Boolean(order.is_active),
@@ -920,6 +955,11 @@ export async function GET(request: NextRequest) {
     tenantId: resolution.appUser.tenant_id,
     projectIds: (orders ?? []).map((item) => item.project_id),
   });
+  const projectServiceCenterMap = await fetchProjectServiceCenterMap({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectIds: (orders ?? []).map((item) => item.project_id),
+  });
 
   const baseOrders = (orders ?? []).map((item) => {
       const programmingMatch = programmingMatchMap.get(item.id) ?? {
@@ -944,6 +984,7 @@ export async function GET(request: NextRequest) {
         status: item.status,
         notes: normalizeText(item.notes),
         projectCode: normalizeText(item.project_code_snapshot),
+        projectServiceCenter: projectServiceCenterMap.get(item.project_id) ?? "Sem base",
         teamName: normalizeText(item.team_name_snapshot),
         foremanName: normalizeText(item.foreman_name_snapshot),
         cancellationReason: normalizeText(item.cancellation_reason),
