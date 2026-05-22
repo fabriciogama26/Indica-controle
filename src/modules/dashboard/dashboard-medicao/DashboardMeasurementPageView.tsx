@@ -50,6 +50,7 @@ type CompletionChartItem = {
   value: number;
   orders: number;
   projectCount: number;
+  projects: ProjectProductionDetail[];
   percentage: number;
 };
 
@@ -170,6 +171,7 @@ const foremanMetaColors: Record<ForemanMetaMode | "value", string> = {
 const completionChartColors: Record<string, string> = {
   Concluidos: "#4b77c7",
   Parciais: "#f07f2f",
+  "Parcial planejado beneficio atingido": "#17a884",
   Pendencias: "#e25555",
 };
 
@@ -216,6 +218,13 @@ function filenameToken(value: string) {
 
 function todayToken() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatDatePtBr(value: string | null | undefined) {
+  if (!value) return "";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
 }
 
 function getCurrentYearPeriod() {
@@ -514,6 +523,15 @@ export function DashboardMeasurementPageView() {
     });
   }
 
+  function openCompletionProjectDetails(row: CompletionChartItem, subtitle: string, filenamePrefix: string) {
+    setProjectDetailModal({
+      title: `Projetos - ${row.label}`,
+      subtitle,
+      rows: row.projects,
+      filename: `${filenamePrefix}_${filenameToken(row.label)}_${todayToken()}.csv`,
+    });
+  }
+
   function handleProjectDetailRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, callback: () => void) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -624,7 +642,7 @@ export function DashboardMeasurementPageView() {
     );
   }
 
-  function renderCompletionTable(items: CompletionChartItem[]) {
+  function renderCompletionTable(items: CompletionChartItem[], subtitle: string, filenamePrefix: string) {
     return (
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
@@ -639,7 +657,15 @@ export function DashboardMeasurementPageView() {
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.label}>
+              <tr
+                key={item.label}
+                className={styles.clickableRow}
+                role="button"
+                tabIndex={0}
+                title={`Ver projetos de ${item.label}`}
+                onClick={() => openCompletionProjectDetails(item, subtitle, filenamePrefix)}
+                onKeyDown={(event) => handleProjectDetailRowKeyDown(event, () => openCompletionProjectDetails(item, subtitle, filenamePrefix))}
+              >
                 <td>{item.label}</td>
                 <td>{formatCurrency(item.value)}</td>
                 <td>{item.orders}</td>
@@ -1053,12 +1079,13 @@ export function DashboardMeasurementPageView() {
           <label className={styles.field}>
             <span>Status execucao</span>
             <select value={completionStatusDraft} onChange={(event) => setCompletionStatusDraft(event.target.value)} disabled={isLoading}>
-              <option value="TODOS">Todos</option>
-              <option value="CONCLUIDO">Concluidos</option>
-              <option value="PARCIAL">Parciais</option>
-              <option value="PENDENCIA">Pendencias</option>
-            </select>
-          </label>
+                <option value="TODOS">Todos</option>
+                <option value="CONCLUIDO">Concluidos</option>
+                <option value="PARCIAL">Parciais</option>
+                <option value="PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO">Parcial planejado beneficio atingido</option>
+                <option value="PENDENCIA">Pendencias</option>
+              </select>
+            </label>
         </div>
       </article>
 
@@ -1071,7 +1098,7 @@ export function DashboardMeasurementPageView() {
           </div>
           {renderExpandButton("completionCycle", "Concluidos X parciais no ciclo")}
         </div>
-        {renderCompletionTable(cycleCompletionChart)}
+        {renderCompletionTable(cycleCompletionChart, selectedCycleLabel, "dashboard_medicao_status_ciclo")}
         {renderCompletionChart(cycleCompletionChart)}
       </article>
 
@@ -1098,7 +1125,11 @@ export function DashboardMeasurementPageView() {
             {renderExpandButton("completionPeriod", "Concluidos X parciais por periodo")}
           </div>
         </div>
-        {renderCompletionTable(periodCompletionChart)}
+        {renderCompletionTable(
+          periodCompletionChart,
+          `Periodo ${formatDatePtBr(startDate) || "inicio"} a ${formatDatePtBr(endDate) || "fim"}`,
+          "dashboard_medicao_status_periodo",
+        )}
         {renderCompletionChart(periodCompletionChart)}
       </article>
       </div>
@@ -1387,13 +1418,17 @@ export function DashboardMeasurementPageView() {
             <div className={styles.modalBody}>
               {expandedChart === "completionCycle" ? (
                 <>
-                  {renderCompletionTable(cycleCompletionChart)}
+                  {renderCompletionTable(cycleCompletionChart, selectedCycleLabel, "dashboard_medicao_status_ciclo")}
                   {renderCompletionChart(cycleCompletionChart, true)}
                 </>
               ) : null}
               {expandedChart === "completionPeriod" ? (
                 <>
-                  {renderCompletionTable(periodCompletionChart)}
+                  {renderCompletionTable(
+                    periodCompletionChart,
+                    `Periodo ${formatDatePtBr(startDate) || "inicio"} a ${formatDatePtBr(endDate) || "fim"}`,
+                    "dashboard_medicao_status_periodo",
+                  )}
                   {renderCompletionChart(periodCompletionChart, true)}
                 </>
               ) : null}
