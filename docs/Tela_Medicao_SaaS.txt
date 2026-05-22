@@ -588,6 +588,6 @@ Atualizacao 2026-05-22 (Exports com Centro de Servicos e modal de geracao)
   - Constante `EXPORT_DETAIL_BATCH_SIZE`
 - Comportamento antes/depois:
   - Antes: os CSVs da Medicao nao exibiam o Centro de Servicos do projeto e os exports apenas alteravam o texto dos botoes acionados.
-  - Depois: `Exportar Excel (CSV)` e `Detalhamento (CSV)` incluem a coluna `Centro de Servicos`, preenchida a partir de `project.service_center_text`.
+  - Depois: `Exportar Excel (CSV)` e `Detalhamento (CSV)` incluem a coluna `Centro de Servicos`, preenchida a partir de `project_with_labels.service_center_text`, com fallback para `project.service_center_text` e lookup `project_service_centers`.
   - Depois: ao iniciar exportacao, a tela exibe modal `Gerando...` com percentual de progresso e bloqueia cliques na pagina ate o arquivo ser gerado.
   - Impacto multi-tenant: sem alteracao de schema/RLS; a busca do Centro de Servicos usa `tenant_id` e IDs de projetos ja retornados pela listagem da Medicao.
