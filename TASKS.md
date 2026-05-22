@@ -697,3 +697,5 @@
 - [x] Ajustar os cards de `Consumo por Projeto` para exibir apenas contagens de materiais distintos: `Materiais`, `Requisicao`, `Devolucao`, `Em estoque` e `Falta em estoque`.
 
 - [x] Adicionar filtros locais em `Materiais do projeto` para `Requisicao <> 0`, `Devolucao <> 0`, `Em estoque <> 0`, `Liquida <> 0` e `Situacao`, aplicando tambem na exportacao.
+
+- [x] Reposicionar a coluna `Em estoque` antes de `Quantidade prevista` na tabela e na exportacao de `Consumo por Projeto`.

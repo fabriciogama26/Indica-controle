@@ -34,12 +34,12 @@ Filtros, auto-complete e listagem
   - Codigo do Material
   - Descricao
   - UMB
+  - Em estoque
   - Quantidade prevista
   - Quantidade Requisicao
   - Quantidade Devolucao
   - Qtd Liquida
   - Desvio
-  - Em estoque
   - Situacao
 - Situacao da linha:
   - `Conferido`: desvio igual a zero.
@@ -154,6 +154,8 @@ Atualizacao 2026-05
 - Atualizacao (2026-05):
   - Bloco `Materiais do projeto` recebeu filtros locais por `Requisicao <> 0`, `Devolucao <> 0`, `Em estoque <> 0`, `Liquida <> 0` e `Situacao`.
   - Exportacao CSV passou a respeitar os filtros locais da tabela.
+- Atualizacao (2026-05):
+  - Coluna `Em estoque` foi reposicionada antes de `Quantidade prevista` na tabela e na exportacao.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -262,3 +264,4 @@ Ajuda contextual
   - Atualizacao (2026-05): antes existia bloco `Resumo por situacao`; depois a situacao fica apenas na linha do material para reduzir redundancia.
   - Atualizacao (2026-05): antes os cards exibiam somas de quantidade e indicadores extras; depois exibem apenas contagens de materiais distintos para materiais, requisicao, devolucao, estoque e falta.
   - Atualizacao (2026-05): antes o bloco `Materiais do projeto` exibia todas as linhas retornadas pela API; depois permite filtrar localmente por quantidades diferentes de zero e por situacao, inclusive na exportacao.
+  - Atualizacao (2026-05): antes `Em estoque` ficava apos `Desvio`; depois fica antes de `Quantidade prevista`.
