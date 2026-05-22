@@ -48,6 +48,14 @@ type Summary = {
   stockShortageMaterialCount: number;
 };
 
+type TableFilters = {
+  requisitionNonZero: boolean;
+  returnNonZero: boolean;
+  stockNonZero: boolean;
+  netNonZero: boolean;
+  situationCode: "" | ConsumptionRow["situationCode"];
+};
+
 type ConsumptionResponse = {
   message?: string;
   filters?: {
@@ -189,12 +197,46 @@ export function ProjectConsumptionPageView() {
   const [rows, setRows] = useState<ConsumptionRow[]>([]);
   const [chartRows, setChartRows] = useState<ConsumptionRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [tableFilters, setTableFilters] = useState<TableFilters>({
+    requisitionNonZero: false,
+    returnNonZero: false,
+    stockNonZero: false,
+    netNonZero: false,
+    situationCode: "",
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const projectByQuery = useMemo(() => findProjectOption(projectQuery, projects), [projectQuery, projects]);
 
   const materialByQuery = useMemo(() => findMaterialOption(materialCode, materialOptions), [materialCode, materialOptions]);
+
+  const situationOptions = useMemo(() => {
+    const options = new Map<ConsumptionRow["situationCode"], string>();
+    rows.forEach((row) => {
+      options.set(row.situationCode, row.situationLabel);
+    });
+    return Array.from(options, ([code, label]) => ({ code, label })).sort((left, right) =>
+      left.label.localeCompare(right.label, "pt-BR"),
+    );
+  }, [rows]);
+
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (tableFilters.requisitionNonZero && row.requisitionQuantity === 0) return false;
+        if (tableFilters.returnNonZero && row.returnQuantity === 0) return false;
+        if (tableFilters.stockNonZero && row.stockQuantity === 0) return false;
+        if (tableFilters.netNonZero && row.netQuantity === 0) return false;
+        if (tableFilters.situationCode && row.situationCode !== tableFilters.situationCode) return false;
+        return true;
+      }),
+    [rows, tableFilters],
+  );
+
+  function updateTableFilter<K extends keyof TableFilters>(key: K, value: TableFilters[K]) {
+    setTableFilters((current) => ({ ...current, [key]: value }));
+  }
 
   const loadConsumption = useCallback(
     async (projectId?: string | null) => {
@@ -265,7 +307,7 @@ export function ProjectConsumptionPageView() {
   }
 
   function exportRows() {
-    if (!rows.length) {
+    if (!filteredRows.length) {
       setFeedback({ type: "error", message: "Nao ha materiais para exportar." });
       return;
     }
@@ -284,7 +326,7 @@ export function ProjectConsumptionPageView() {
       "Situacao",
     ];
     const projectLabel = selectedProject?.label ?? projectByQuery?.label ?? "projeto";
-    const lines = rows.map((row) => [
+    const lines = filteredRows.map((row) => [
       projectLabel,
       row.materialCode,
       row.description,
@@ -386,10 +428,64 @@ export function ProjectConsumptionPageView() {
             </div>
             <CsvExportButton
               onClick={exportRows}
-              disabled={!rows.length || isLoading}
+              disabled={!filteredRows.length || isLoading}
               className={styles.secondaryButton}
               idleLabel="Extrair Excel"
             />
+          </div>
+
+          <div className={styles.tableFilters}>
+            <div className={styles.checkboxGroup} aria-label="Filtros de quantidade">
+              <label className={styles.checkboxField}>
+                <input
+                  type="checkbox"
+                  checked={tableFilters.requisitionNonZero}
+                  onChange={(event) => updateTableFilter("requisitionNonZero", event.target.checked)}
+                />
+                <span>Requisicao &lt;&gt; 0</span>
+              </label>
+              <label className={styles.checkboxField}>
+                <input
+                  type="checkbox"
+                  checked={tableFilters.returnNonZero}
+                  onChange={(event) => updateTableFilter("returnNonZero", event.target.checked)}
+                />
+                <span>Devolucao &lt;&gt; 0</span>
+              </label>
+              <label className={styles.checkboxField}>
+                <input
+                  type="checkbox"
+                  checked={tableFilters.stockNonZero}
+                  onChange={(event) => updateTableFilter("stockNonZero", event.target.checked)}
+                />
+                <span>Em estoque &lt;&gt; 0</span>
+              </label>
+              <label className={styles.checkboxField}>
+                <input
+                  type="checkbox"
+                  checked={tableFilters.netNonZero}
+                  onChange={(event) => updateTableFilter("netNonZero", event.target.checked)}
+                />
+                <span>Liquida &lt;&gt; 0</span>
+              </label>
+            </div>
+
+            <label className={`${styles.field} ${styles.compactField}`}>
+              <span>Situacao</span>
+              <select
+                value={tableFilters.situationCode}
+                onChange={(event) =>
+                  updateTableFilter("situationCode", event.target.value as TableFilters["situationCode"])
+                }
+              >
+                <option value="">Todas</option>
+                {situationOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className={styles.tableWrapper}>
@@ -409,7 +505,7 @@ export function ProjectConsumptionPageView() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {filteredRows.map((row) => (
                   <tr key={row.materialId} className={rowSituationClass(row.situationCode)}>
                     <td><strong>{row.materialCode}</strong></td>
                     <td>{row.description}</td>
@@ -425,10 +521,12 @@ export function ProjectConsumptionPageView() {
                     </td>
                   </tr>
                 ))}
-                {!rows.length ? (
+                {!filteredRows.length ? (
                   <tr>
                     <td colSpan={10} className={styles.emptyRow}>
-                      {selectedProject ? "Nenhum material encontrado para o filtro." : "Selecione um projeto e clique em Filtrar."}
+                      {selectedProject
+                        ? "Nenhum material encontrado para os filtros selecionados."
+                        : "Selecione um projeto e clique em Filtrar."}
                     </td>
                   </tr>
                 ) : null}
