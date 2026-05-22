@@ -129,6 +129,10 @@ type OrderItem = {
   updatedAt: string;
   totalAmount: number;
   itemCount: number;
+  scorePoints: number;
+  teamTypeName: string;
+  pointTarget: number;
+  financialTarget: number;
   programmingMatchStatus: ProgrammingMatchStatus;
   matchedProgrammingId: string | null;
   programmingCompletionStatus: WorkCompletionStatus;
@@ -434,6 +438,13 @@ function formatDateTime(value: string) {
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function formatDecimal(value: number, digits = 2) {
+  return Number(value ?? 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
 }
 
 function measurementKindLabel(value: MeasurementKind) {
@@ -899,6 +910,7 @@ export function MeasurementPageView() {
   const [isImportingMass, setIsImportingMass] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingDetails, setIsExportingDetails] = useState(false);
+  const [isExportingScore, setIsExportingScore] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [isMassImportModalOpen, setIsMassImportModalOpen] = useState(false);
   const [massImportFile, setMassImportFile] = useState<File | null>(null);
@@ -2724,6 +2736,71 @@ export function MeasurementPageView() {
     }
   }
 
+  async function exportScoreCsv() {
+    if (!total) {
+      setFeedback({ type: "error", message: "Nenhuma ordem encontrada para exportar pontuacao." });
+      return;
+    }
+    if (isGeneratingExport) return;
+
+    setIsExportingScore(true);
+    setExportProgress({ title: "Gerando...", message: "Carregando ordens para pontuacao.", percent: 5 });
+    try {
+      const exportOrders = await loadAllOrdersForExport({
+        onProgress: ({ loaded, total: exportTotal }) => {
+          const base = exportTotal > 0 ? loaded / exportTotal : 1;
+          setExportProgress({
+            title: "Gerando...",
+            message: `Carregando pontuacao (${loaded}/${exportTotal || loaded}).`,
+            percent: Math.min(85, Math.max(10, Math.round(base * 80))),
+          });
+        },
+      });
+      if (!exportOrders.length) {
+        throw new Error("Nenhuma ordem encontrada para exportar pontuacao.");
+      }
+
+      setExportProgress({ title: "Gerando...", message: "Montando arquivo CSV de pontuacao.", percent: 92 });
+      const header = ["Tipo", "Nome", "Data", "Projeto", "Pontos", "Valor", "Status", "Compensatorio"];
+      const rows = exportOrders.map((order) => {
+        const points = Number(order.scorePoints ?? 0);
+        const pointTarget = Number(order.pointTarget ?? 0);
+        const financialTarget = Number(order.financialTarget ?? 0);
+        const totalAmount = Number(order.totalAmount ?? 0);
+        const scoreStatus = pointTarget > 0 && points >= pointTarget ? "Superou Ponto" : "Nao Superou Ponto";
+        const compensatory = financialTarget > 0 && totalAmount >= financialTarget ? "NAO" : "SIM";
+        return [
+          order.teamTypeName || "Nao identificado",
+          order.foremanName || order.teamName || "Nao identificado",
+          formatDate(order.executionDate),
+          order.projectCode,
+          formatDecimal(points),
+          formatCurrency(totalAmount),
+          scoreStatus,
+          compensatory,
+        ];
+      });
+
+      const csvLines = [header, ...rows].map((line) => line.map((item) => csvEscape(item)).join(";"));
+      const csv = `\uFEFF${csvLines.join("\n")}`;
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `ordens_medicao_pontuacao_${toIsoDate(new Date())}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar pontuacao da medicao." });
+    } finally {
+      setIsExportingScore(false);
+      setExportProgress(null);
+    }
+  }
+
   const formForemanName = form.id
     && form.teamId === form.originalTeamId
     && form.executionDate === form.originalExecutionDate
@@ -2999,7 +3076,7 @@ export function MeasurementPageView() {
               type="button"
               className={styles.secondaryButton}
               onClick={() => void exportOrdersCsv()}
-              disabled={isGeneratingExport || isExporting || isExportingDetails || isRefreshingList || isLoadingOrders || total <= 0}
+              disabled={isGeneratingExport || isExporting || isExportingDetails || isExportingScore || isRefreshingList || isLoadingOrders || total <= 0}
             >
               {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
             </button>
@@ -3007,15 +3084,23 @@ export function MeasurementPageView() {
               type="button"
               className={styles.ghostButton}
               onClick={() => void exportOrdersDetailedCsv()}
-              disabled={isGeneratingExport || isExportingDetails || isExporting || isRefreshingList || isLoadingOrders || total <= 0}
+              disabled={isGeneratingExport || isExportingDetails || isExporting || isExportingScore || isRefreshingList || isLoadingOrders || total <= 0}
             >
               {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
             </button>
             <button
               type="button"
               className={styles.ghostButton}
+              onClick={() => void exportScoreCsv()}
+              disabled={isGeneratingExport || isExportingScore || isExporting || isExportingDetails || isRefreshingList || isLoadingOrders || total <= 0}
+            >
+              {isExportingScore ? "Gerando..." : "Exportar pontuacao"}
+            </button>
+            <button
+              type="button"
+              className={styles.ghostButton}
               onClick={refreshMeasurementList}
-              disabled={isGeneratingExport || isRefreshingList || isLoadingSources || isLoadingMeta || isLoadingOrders || isLoadingFilteredTotal || isExporting || isExportingDetails}
+              disabled={isGeneratingExport || isRefreshingList || isLoadingSources || isLoadingMeta || isLoadingOrders || isLoadingFilteredTotal || isExporting || isExportingDetails || isExportingScore}
             >
               {isRefreshingList ? "Atualizando..." : "Atualizar lista"}
             </button>

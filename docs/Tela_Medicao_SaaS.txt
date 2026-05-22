@@ -149,6 +149,10 @@ Filtros, auto-complete e listagem
   - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
   - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela, incluindo `Centro de Servicos` do projeto.
   - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade` e `Centro de Servicos` do projeto.
+  - Botao `Exportar pontuacao` para baixar CSV com `Tipo`, `Nome`, `Data`, `Projeto`, `Pontos`, `Valor`, `Status` e `Compensatorio`.
+  - A `Pontuacao` nao fica visivel na lista; e calculada para exportacao por `sum(Pontos da atividade x Quantidade)`.
+  - No CSV de pontuacao, `Status` compara `Pontos` com `measurement_score_targets.target_points` do tipo da equipe (`MK`, `LV` ou `CESTO`).
+  - No CSV de pontuacao, `Compensatorio` compara `Valor` com a meta diaria financeira do tipo/equipe no ciclo salvo em `measurement_cycle_target_items.daily_value`, com fallback em `measurement_team_type_targets.daily_value`.
   - Ao exportar, a tela exibe modal `Gerando...` com percentual de progresso e bloqueia os cliques da pagina ate concluir a geracao do arquivo.
   - Botao `Atualizar lista` ao lado de `Detalhamento (CSV)` para recarregar lista, filtros aplicados e consolidacoes com os dados mais recentes.
 - Acoes:
@@ -298,6 +302,8 @@ Constantes e configuracoes
   - Responsavel por: criar `measurement_activities`, migrar base inicial e vincular os itens da ordem de medicao a esse catalogo.
 - Caminho: `supabase/migrations/120_unify_measurement_with_service_activities.sql`
   - Responsavel por: unificar Medicao em `service_activities`, migrar IDs legados dos itens e restaurar FK para `service_activities`.
+- Caminho: `supabase/migrations/192_create_measurement_score_targets.sql`
+  - Responsavel por: criar a tabela `measurement_score_targets` com metas de pontos por tipo de equipe (`MK`, `LV`, `CESTO`) para o export `Exportar pontuacao`.
 - Caminho: `supabase/migrations/123_support_measurement_without_production.sql`
   - Responsavel por: criar catalogo de motivos de `Sem producao`, ampliar o cabecalho da Medicao com `measurement_kind/no_production_reason` e ajustar as RPCs do save manual e em lote.
 - Caminho: `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
@@ -591,3 +597,28 @@ Atualizacao 2026-05-22 (Exports com Centro de Servicos e modal de geracao)
   - Depois: `Exportar Excel (CSV)` e `Detalhamento (CSV)` incluem a coluna `Centro de Servicos`, preenchida a partir de `project_with_labels.service_center_text`, com fallback para `project.service_center_text` e lookup `project_service_centers`.
   - Depois: ao iniciar exportacao, a tela exibe modal `Gerando...` com percentual de progresso e bloqueia cliques na pagina ate o arquivo ser gerado.
   - Impacto multi-tenant: sem alteracao de schema/RLS; a busca do Centro de Servicos usa `tenant_id` e IDs de projetos ja retornados pela listagem da Medicao.
+
+Atualizacao 2026-05-22 (Exportacao de pontuacao)
+-------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/192_create_measurement_score_targets.sql`
+  - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `fetchTeamTypeResolutionMaps`
+  - `resolveOrderTeamType`
+  - `fetchPointTargetMap`
+  - `fetchFinancialTargetMap`
+  - `measurementScoreTypeLabel`
+  - `GET /api/medicao`
+  - `exportScoreCsv`
+  - Estado `isExportingScore`
+- Comportamento antes/depois:
+  - Antes: a Medicao nao tinha exportacao especifica de pontuacao nem meta de pontos por tipo.
+  - Depois: a tabela `measurement_score_targets` guarda metas de pontos por tipo de equipe, com seed inicial `MK = 50,17`, `LV = 28,52` e `CESTO = 50,17`.
+  - Depois: `GET /api/medicao` calcula `scorePoints = sum(voice_point x quantity)`, resolve o tipo efetivo da equipe pela data da medicao, carrega a meta de pontos e a meta financeira diaria.
+  - Depois: o botao `Exportar pontuacao` gera CSV com `Tipo`, `Nome`, `Data`, `Projeto`, `Pontos`, `Valor`, `Status` e `Compensatorio`.
+  - Depois: `Status` usa pontos; `Compensatorio` usa valor financeiro contra a meta diaria do tipo/equipe.
+  - Impacto multi-tenant: tabela nova com `tenant_id`, RLS por `user_can_access_tenant`, FK composta para `team_types` e leituras filtradas pelo tenant autenticado.

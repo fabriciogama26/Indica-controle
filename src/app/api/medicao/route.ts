@@ -78,6 +78,7 @@ type MeasurementOrderAggregateItem = {
   measurement_order_id: string;
   total_value: number | string;
   quantity: number | string;
+  voice_point: number | string;
 };
 
 type ProgrammingMatchRow = {
@@ -114,6 +115,45 @@ type ProjectServiceCenterRow = {
 type ProjectServiceCenterLookupRow = {
   id: string;
   name: string | null;
+};
+
+type TeamRow = {
+  id: string;
+  team_type_id: string | null;
+};
+
+type TeamTypeRow = {
+  id: string;
+  name: string | null;
+};
+
+type TeamTypeHistoryRow = {
+  team_id: string;
+  team_type_id: string | null;
+  team_type_name_snapshot: string | null;
+  valid_from: string;
+  valid_to: string | null;
+};
+
+type MeasurementScoreTargetRow = {
+  team_type_id: string;
+  target_points: number | string;
+};
+
+type MeasurementTeamTypeTargetRow = {
+  team_type_id: string;
+  daily_value: number | string;
+};
+
+type CycleWorkdaysRow = {
+  id: string;
+  cycle_start: string;
+};
+
+type CycleTargetItemRow = {
+  cycle_id: string;
+  team_type_id: string;
+  daily_value: number | string;
 };
 
 type SaveMeasurementPayload = {
@@ -224,6 +264,59 @@ function normalizeUuid(value: unknown) {
 function normalizeIsoDate(value: unknown) {
   const normalized = normalizeText(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function createUtcDate(year: number, monthIndex: number, day: number) {
+  return new Date(Date.UTC(year, monthIndex, day));
+}
+
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split("-").map((item) => Number(item));
+  return createUtcDate(year, month - 1, day);
+}
+
+function toUtcIsoDate(value: Date) {
+  const year = value.getUTCFullYear();
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(value.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addMonths(value: Date, months: number) {
+  return createUtcDate(value.getUTCFullYear(), value.getUTCMonth() + months, value.getUTCDate());
+}
+
+function resolveCycleStart(reference: Date) {
+  const year = reference.getUTCFullYear();
+  const monthIndex = reference.getUTCMonth();
+  const day = reference.getUTCDate();
+  return day >= 21 ? createUtcDate(year, monthIndex, 21) : createUtcDate(year, monthIndex - 1, 21);
+}
+
+function buildMeasurementCycleStart(value: string) {
+  const measurementDate = parseIsoDate(value);
+  const start = resolveCycleStart(measurementDate);
+  const end = addMonths(start, 1);
+  end.setUTCDate(20);
+  return toUtcIsoDate(start);
+}
+
+function normalizeTeamTypeToken(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function measurementScoreTypeLabel(value: unknown) {
+  const original = normalizeText(value);
+  const token = normalizeTeamTypeToken(original);
+  if (token === "MK" || token === "LM" || token === "LINHA_MORTA") return "MK";
+  if (token === "LV" || token === "LINHA_VIVA") return "LV";
+  if (token === "CESTO" || token === "CETO") return "CESTO";
+  return original || "Nao identificado";
 }
 
 function normalizeMeasurementKind(value: unknown): MeasurementKind {
@@ -739,6 +832,176 @@ async function fetchProjectServiceCenterMap(params: {
   }));
 }
 
+async function fetchTeamTypeResolutionMaps(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  orders: Array<{ team_id?: string; teamId?: string }>;
+}) {
+  const teamIds = Array.from(new Set(params.orders.map((item) => item.team_id ?? item.teamId ?? "").filter(Boolean)));
+  if (!teamIds.length) {
+    return {
+      teamTypeByTeam: new Map<string, string | null>(),
+      teamTypeNameById: new Map<string, string>(),
+      historyByTeam: new Map<string, TeamTypeHistoryRow[]>(),
+    };
+  }
+
+  const [teamsResult, historyResult] = await Promise.all([
+    params.supabase
+      .from("teams")
+      .select("id, team_type_id")
+      .eq("tenant_id", params.tenantId)
+      .in("id", teamIds)
+      .returns<TeamRow[]>(),
+    params.supabase
+      .from("team_type_history")
+      .select("team_id, team_type_id, team_type_name_snapshot, valid_from, valid_to")
+      .eq("tenant_id", params.tenantId)
+      .in("team_id", teamIds)
+      .returns<TeamTypeHistoryRow[]>(),
+  ]);
+
+  const teamTypeByTeam = new Map((teamsResult.data ?? []).map((item) => [item.id, item.team_type_id]));
+  const historyByTeam = new Map<string, TeamTypeHistoryRow[]>();
+  for (const entry of historyResult.data ?? []) {
+    const entries = historyByTeam.get(entry.team_id) ?? [];
+    entries.push(entry);
+    historyByTeam.set(entry.team_id, entries);
+  }
+  for (const entries of historyByTeam.values()) {
+    entries.sort((left, right) => right.valid_from.localeCompare(left.valid_from));
+  }
+
+  const teamTypeIds = Array.from(
+    new Set([
+      ...(teamsResult.data ?? []).map((item) => item.team_type_id),
+      ...(historyResult.data ?? []).map((item) => item.team_type_id),
+    ].filter((item): item is string => Boolean(item))),
+  );
+  const teamTypesResult = teamTypeIds.length
+    ? await params.supabase
+        .from("team_types")
+        .select("id, name")
+        .eq("tenant_id", params.tenantId)
+        .in("id", teamTypeIds)
+        .returns<TeamTypeRow[]>()
+    : { data: [] as TeamTypeRow[] };
+
+  return {
+    teamTypeByTeam,
+    teamTypeNameById: new Map((teamTypesResult.data ?? []).map((item) => [item.id, normalizeText(item.name)])),
+    historyByTeam,
+  };
+}
+
+function resolveOrderTeamType(params: {
+  teamId: string;
+  executionDate: string;
+  teamTypeByTeam: Map<string, string | null>;
+  teamTypeNameById: Map<string, string>;
+  historyByTeam: Map<string, TeamTypeHistoryRow[]>;
+}) {
+  const history = params.historyByTeam.get(params.teamId) ?? [];
+  const effectiveEntry = history.find((entry) => (
+    entry.valid_from <= params.executionDate
+    && (!entry.valid_to || entry.valid_to >= params.executionDate)
+  ));
+
+  if (effectiveEntry) {
+    const teamTypeId = effectiveEntry.team_type_id;
+    return {
+      teamTypeId,
+      teamTypeName: teamTypeId
+        ? params.teamTypeNameById.get(teamTypeId) ?? normalizeText(effectiveEntry.team_type_name_snapshot)
+        : normalizeText(effectiveEntry.team_type_name_snapshot),
+    };
+  }
+
+  const teamTypeId = params.teamTypeByTeam.get(params.teamId) ?? null;
+  return {
+    teamTypeId,
+    teamTypeName: teamTypeId ? params.teamTypeNameById.get(teamTypeId) ?? "" : "",
+  };
+}
+
+async function fetchPointTargetMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  teamTypeIds: string[];
+}) {
+  const teamTypeIds = Array.from(new Set(params.teamTypeIds.filter(Boolean)));
+  if (!teamTypeIds.length) {
+    return new Map<string, number>();
+  }
+
+  const { data } = await params.supabase
+    .from("measurement_score_targets")
+    .select("team_type_id, target_points")
+    .eq("tenant_id", params.tenantId)
+    .eq("ativo", true)
+    .in("team_type_id", teamTypeIds)
+    .returns<MeasurementScoreTargetRow[]>();
+
+  return new Map((data ?? []).map((item) => [item.team_type_id, Number(item.target_points ?? 0)]));
+}
+
+async function fetchFinancialTargetMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  orders: Array<{ execution_date?: string; executionDate?: string }>;
+  teamTypeIds: string[];
+}) {
+  const teamTypeIds = Array.from(new Set(params.teamTypeIds.filter(Boolean)));
+  if (!teamTypeIds.length) {
+    return {
+      cycleTargetMap: new Map<string, number>(),
+      fallbackTargetMap: new Map<string, number>(),
+    };
+  }
+
+  const cycleStarts = Array.from(new Set(params.orders.map((item) => buildMeasurementCycleStart(item.execution_date ?? item.executionDate ?? ""))));
+  const cyclesResult = cycleStarts.length
+    ? await params.supabase
+        .from("measurement_cycle_workdays")
+        .select("id, cycle_start")
+        .eq("tenant_id", params.tenantId)
+        .in("cycle_start", cycleStarts)
+        .returns<CycleWorkdaysRow[]>()
+    : { data: [] as CycleWorkdaysRow[] };
+
+  const cycleById = new Map((cyclesResult.data ?? []).map((item) => [item.id, item.cycle_start]));
+  const cycleIds = Array.from(cycleById.keys());
+  const cycleItemsResult = cycleIds.length
+    ? await params.supabase
+        .from("measurement_cycle_target_items")
+        .select("cycle_id, team_type_id, daily_value")
+        .eq("tenant_id", params.tenantId)
+        .in("cycle_id", cycleIds)
+        .in("team_type_id", teamTypeIds)
+        .returns<CycleTargetItemRow[]>()
+    : { data: [] as CycleTargetItemRow[] };
+
+  const cycleTargetMap = new Map<string, number>();
+  for (const item of cycleItemsResult.data ?? []) {
+    const cycleStart = cycleById.get(item.cycle_id);
+    if (!cycleStart) continue;
+    cycleTargetMap.set(`${cycleStart}:${item.team_type_id}`, Number(item.daily_value ?? 0));
+  }
+
+  const fallbackResult = await params.supabase
+    .from("measurement_team_type_targets")
+    .select("team_type_id, daily_value")
+    .eq("tenant_id", params.tenantId)
+    .eq("ativo", true)
+    .in("team_type_id", teamTypeIds)
+    .returns<MeasurementTeamTypeTargetRow[]>();
+
+  return {
+    cycleTargetMap,
+    fallbackTargetMap: new Map((fallbackResult.data ?? []).map((item) => [item.team_type_id, Number(item.daily_value ?? 0)])),
+  };
+}
+
 async function fetchAppUserMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -1083,30 +1346,79 @@ export async function GET(request: NextRequest) {
   const pagedBaseOrders = filteredByNoProductionReason.slice(startIndex, startIndex + pageSize);
   const pagedOrderIds = pagedBaseOrders.map((item) => item.id);
 
+  const teamTypeResolutionMaps = await fetchTeamTypeResolutionMaps({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    orders: pagedBaseOrders,
+  });
+  const orderTeamTypeMap = new Map<string, { teamTypeId: string | null; teamTypeName: string; typeLabel: string }>();
+  for (const item of pagedBaseOrders) {
+    const resolvedTeamType = resolveOrderTeamType({
+      teamId: item.teamId,
+      executionDate: item.executionDate,
+      teamTypeByTeam: teamTypeResolutionMaps.teamTypeByTeam,
+      teamTypeNameById: teamTypeResolutionMaps.teamTypeNameById,
+      historyByTeam: teamTypeResolutionMaps.historyByTeam,
+    });
+    orderTeamTypeMap.set(item.id, {
+      ...resolvedTeamType,
+      typeLabel: measurementScoreTypeLabel(resolvedTeamType.teamTypeName),
+    });
+  }
+  const scoreTeamTypeIds = Array.from(
+    new Set(Array.from(orderTeamTypeMap.values()).map((item) => item.teamTypeId).filter((item): item is string => Boolean(item))),
+  );
+  const [pointTargetMap, financialTargets] = await Promise.all([
+    fetchPointTargetMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      teamTypeIds: scoreTeamTypeIds,
+    }),
+    fetchFinancialTargetMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      orders: pagedBaseOrders,
+      teamTypeIds: scoreTeamTypeIds,
+    }),
+  ]);
+
   const { data: aggregateItems } = pagedOrderIds.length
     ? await resolution.supabase
         .from("project_measurement_order_items")
-        .select("measurement_order_id, total_value, quantity")
+        .select("measurement_order_id, total_value, quantity, voice_point")
         .eq("tenant_id", resolution.appUser.tenant_id)
         .eq("is_active", true)
         .in("measurement_order_id", pagedOrderIds)
         .returns<MeasurementOrderAggregateItem[]>()
     : { data: [] as MeasurementOrderAggregateItem[] };
 
-  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number }>();
+  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number; scorePoints: number }>();
   for (const item of aggregateItems ?? []) {
-    const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0 };
+    const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0, scorePoints: 0 };
     current.totalAmount += Number(item.total_value ?? 0);
     current.itemCount += 1;
+    current.scorePoints += Number(item.voice_point ?? 0) * Number(item.quantity ?? 0);
     aggregateMap.set(item.measurement_order_id, current);
   }
 
   const pagedOrders = pagedBaseOrders.map((item) => {
-    const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0 };
+    const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0, scorePoints: 0 };
+    const teamType = orderTeamTypeMap.get(item.id) ?? { teamTypeId: null, teamTypeName: "", typeLabel: "Nao identificado" };
+    const cycleStart = buildMeasurementCycleStart(item.executionDate);
+    const financialTarget = teamType.teamTypeId
+      ? financialTargets.cycleTargetMap.get(`${cycleStart}:${teamType.teamTypeId}`)
+        ?? financialTargets.fallbackTargetMap.get(teamType.teamTypeId)
+        ?? 0
+      : 0;
     return {
       ...item,
       totalAmount: Number(aggregate.totalAmount ?? 0),
       itemCount: Number(aggregate.itemCount ?? 0),
+      scorePoints: Number(aggregate.scorePoints ?? 0),
+      teamTypeId: teamType.teamTypeId,
+      teamTypeName: teamType.typeLabel,
+      pointTarget: teamType.teamTypeId ? pointTargetMap.get(teamType.teamTypeId) ?? 0 : 0,
+      financialTarget,
     };
   });
 
