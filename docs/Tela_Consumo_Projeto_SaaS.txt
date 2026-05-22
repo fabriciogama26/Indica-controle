@@ -23,6 +23,13 @@ Filtros, auto-complete e listagem
 - Filtros:
   - `Projeto`: input com `datalist`, validado por SOB exato.
   - `Codigo do material`: input com `datalist`, sugerindo os codigos e descricoes do projeto selecionado.
+- Filtros locais em `Materiais do projeto`:
+  - Checkbox `Requisicao <> 0`.
+  - Checkbox `Devolucao <> 0`.
+  - Checkbox `Em estoque <> 0`.
+  - Checkbox `Liquida <> 0`.
+  - Select `Situacao`.
+  - Os filtros locais afetam a tabela e a exportacao CSV, sem nova consulta ao backend.
 - Listagem:
   - Codigo do Material
   - Descricao
@@ -144,6 +151,9 @@ Atualizacao 2026-05
 - Atualizacao (2026-05):
   - Cards foram reduzidos para `Materiais`, `Requisicao`, `Devolucao`, `Em estoque` e `Falta em estoque`.
   - Todos os cards exibem contagem de materiais distintos, nao soma de quantidades.
+- Atualizacao (2026-05):
+  - Bloco `Materiais do projeto` recebeu filtros locais por `Requisicao <> 0`, `Devolucao <> 0`, `Em estoque <> 0`, `Liquida <> 0` e `Situacao`.
+  - Exportacao CSV passou a respeitar os filtros locais da tabela.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -151,7 +161,7 @@ Funcoes principais
 - Caminho: `src/app/api/consumo-projeto/route.ts`
   - Responsavel por: autenticar usuario, validar permissao da pagina, carregar projetos, materiais previstos, saldo fisico em estoque, operacoes de equipe e consolidar quantidades/situacoes por material.
 - Caminho: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx`
-  - Responsavel por: filtros, carregamento da API, cards de resumo, tabela, exportacao CSV e grafico `Consumo x Previsto`.
+  - Responsavel por: filtros, carregamento da API, cards de resumo, filtros locais da tabela, exportacao CSV e grafico `Consumo x Previsto`.
 - Caminho: `src/app/(dashboard)/consumo-projeto/page.tsx`
   - Responsavel por: expor a rota no App Router.
 
@@ -188,10 +198,11 @@ Funcoes utilitarias relacionadas
     - `handleFilter`
     - `exportRows`
     - `ConsumptionChart`
-    - `deviationLabel`
-    - `deviationClass`
     - `findProjectOption`
     - `findMaterialOption`
+    - `situationOptions`
+    - `filteredRows`
+    - `updateTableFilter`
     - `situationClass`
     - `rowSituationClass`
     - `formatDecimal`
@@ -217,6 +228,10 @@ Ajuda contextual
   - `ProjectConsumptionPageView`
   - `ConsumptionChart`
   - `loadConsumption`
+  - `tableFilters`
+  - `situationOptions`
+  - `filteredRows`
+  - `updateTableFilter`
   - `GET /api/consumo-projeto`
   - `resolveProjectConsumptionContext`
   - `ensureProjectConsumptionPageAccess`
@@ -246,3 +261,4 @@ Ajuda contextual
   - Atualizacao (2026-05): antes `Saldo necessario` e `Falta em estoque` apareciam como colunas; depois ficam apenas como calculos internos da classificacao.
   - Atualizacao (2026-05): antes existia bloco `Resumo por situacao`; depois a situacao fica apenas na linha do material para reduzir redundancia.
   - Atualizacao (2026-05): antes os cards exibiam somas de quantidade e indicadores extras; depois exibem apenas contagens de materiais distintos para materiais, requisicao, devolucao, estoque e falta.
+  - Atualizacao (2026-05): antes o bloco `Materiais do projeto` exibia todas as linhas retornadas pela API; depois permite filtrar localmente por quantidades diferentes de zero e por situacao, inclusive na exportacao.

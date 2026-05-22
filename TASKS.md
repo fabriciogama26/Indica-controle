@@ -695,3 +695,5 @@
 - [x] Remover o bloco `Resumo por situacao` de `Consumo por Projeto`, mantendo a situacao apenas na linha do material.
 
 - [x] Ajustar os cards de `Consumo por Projeto` para exibir apenas contagens de materiais distintos: `Materiais`, `Requisicao`, `Devolucao`, `Em estoque` e `Falta em estoque`.
+
+- [x] Adicionar filtros locais em `Materiais do projeto` para `Requisicao <> 0`, `Devolucao <> 0`, `Em estoque <> 0`, `Liquida <> 0` e `Situacao`, aplicando tambem na exportacao.
