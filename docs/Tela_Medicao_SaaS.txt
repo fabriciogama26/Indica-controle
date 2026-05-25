@@ -644,3 +644,19 @@ Atualizacao 2026-05-25 (Listagem completa sem limite padrao)
   - Depois: a paginacao visual de 20 registros continua igual, mas o total e as paginas passam a considerar todos os registros retornados pelos filtros do periodo/projeto/equipe/status.
   - Depois: o bloqueio de duplicidade por programacao permanece no banco; com a lista completa, a ordem ja cadastrada fica localizavel pelos filtros de projeto, equipe e data.
   - Impacto multi-tenant: sem alteracao de schema/RLS; todas as buscas paginadas continuam filtradas por `tenant_id` do usuario autenticado.
+
+Atualizacao 2026-05-25 (Modal de detalhes mais amplo)
+------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Renderizacao do modal `Detalhes da Ordem`
+  - Classe CSS `detailModalCard`
+- Comportamento antes/depois:
+  - Antes: o modal de detalhes usava a largura padrao de `980px`, comprimindo a tabela de itens e exigindo rolagem horizontal mesmo em telas largas.
+  - Depois: somente o modal de detalhes usa largura maxima de `1440px`, respeitando `calc(100vw - 36px)` para nao ultrapassar a tela.
+  - Depois: os demais modais da Medicao mantem a largura padrao.
+  - Impacto multi-tenant: sem alteracao de dados, queries, schema ou RLS.

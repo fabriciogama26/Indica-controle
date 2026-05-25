@@ -380,6 +380,10 @@
   gap: 14px;
 }
 
+.detailModalCard {
+  width: min(1440px, calc(100vw - 36px));
+}
+
 .modalHeader {
   display: flex;
   justify-content: space-between;
