@@ -140,7 +140,7 @@ Filtros, auto-complete e listagem
   - `Status execucao` exibe o ultimo `Estado Trabalho` nao vazio registrado para o mesmo `Projeto`, independente da data da Medicao; a Programacao mais recente por `Data execucao` prevalece e, em empate, usa o `updated_at` mais recente.
   - Quantidade de itens
   - Valor total
-  - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados
+  - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados e sem computar ordens com `Status = CANCELADA`
   - Tipo da medicao
   - Motivo sem producao
   - Status
@@ -677,3 +677,18 @@ Atualizacao 2026-05-25 (Duplicidade por programacao reprogramada)
   - Depois: a RPC bloqueia duplicidade apenas quando ja existe ordem para a mesma Programacao no mesmo Projeto + Equipe + Data execucao.
   - Depois: listas continuam filtradas pela `execution_date` gravada na ordem; uma ordem historica permanece pesquisavel na data em que foi medida.
   - Impacto multi-tenant: migration preserva `tenant_id` no indice unico e na regra da RPC; nao altera RLS.
+
+Atualizacao 2026-05-25 (Valor total sem canceladas)
+----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `loadFilteredOrdersTotalAmount`
+  - Estado `filteredOrdersTotalAmount`
+- Comportamento antes/depois:
+  - Antes: o resumo `Valor total` da Lista de Ordens de Medicao somava `totalAmount` de todas as ordens filtradas, incluindo ordens com `Status = CANCELADA`.
+  - Depois: o resumo `Valor total` continua considerando o resultado filtrado completo em todas as paginas, mas ignora ordens canceladas.
+  - Depois: o valor individual da linha cancelada permanece visivel na tabela e exportacoes para conferencia operacional.
+  - Impacto multi-tenant: sem alteracao de dados, queries, schema ou RLS; o ajuste ocorre sobre as ordens ja retornadas para o tenant autenticado.
