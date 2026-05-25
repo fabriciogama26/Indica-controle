@@ -3289,7 +3289,7 @@ export function MeasurementPageView() {
 
       {detailOrder ? (
         <div className={styles.modalOverlay} onClick={() => setDetailOrder(null)}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+          <article className={`${styles.modalCard} ${styles.detailModalCard}`} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
                 <h4>Detalhes da Ordem {detailOrder.orderNumber}</h4>

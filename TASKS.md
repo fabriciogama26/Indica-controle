@@ -706,3 +706,5 @@
 - [x] Incluir `Parcial planejado beneficio atingido` nos graficos/tabelas de status do Dashboard Medicao e abrir modal de projetos ao clicar nas linhas das tabelas de status.
 
 - [x] Corrigir a Lista de Ordens de Medicao para buscar registros em lotes no backend e nao depender do limite padrao do Supabase/PostgREST, mantendo filtros por tenant, periodo, projeto, equipe e status.
+
+- [x] Ampliar o modal de Detalhes da Ordem de Medicao para exibir mais colunas da tabela em telas largas, mantendo os demais modais no tamanho padrao.
