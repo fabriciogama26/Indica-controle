@@ -272,6 +272,18 @@ export function TeamStockOperationsPageView() {
     setAlertMessage(message);
   }
 
+  function formatQuantityValue(value: number) {
+    return value.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+  }
+
+  function formatSourceAvailabilitySummary(messages: string[]) {
+    if (messages.length <= 1) {
+      return messages[0] ?? "Saldo indisponivel para salvar a operacao.";
+    }
+
+    return `Foram encontrados ${messages.length} materiais sem saldo suficiente para salvar a operacao: ${messages.join(" ")}`;
+  }
+
   useEffect(() => {
     if (!selectedMaterial) {
       setForm((current) => ({
@@ -940,14 +952,15 @@ export function TeamStockOperationsPageView() {
     if (!matchedBalance || Number(matchedBalance.balanceQuantity ?? 0) <= 0) {
       return {
         ok: false,
-        message: `Material ${params.materialCode}: nao existe saldo disponivel no estoque de origem (${sourceStockCenterName}).`,
+        message: `Material ${params.materialCode}: saldo zerado no estoque de origem (${sourceStockCenterName}). Solicitado: ${formatQuantityValue(params.quantity)}.`,
       } as const;
     }
 
-    if (Number(matchedBalance.balanceQuantity ?? 0) < params.quantity) {
+    const availableQuantity = Number(matchedBalance.balanceQuantity ?? 0);
+    if (availableQuantity < params.quantity) {
       return {
         ok: false,
-        message: `Material ${params.materialCode}: saldo insuficiente no estoque de origem (${sourceStockCenterName}). Saldo atual: ${Number(matchedBalance.balanceQuantity ?? 0).toLocaleString("pt-BR")}.`,
+        message: `Material ${params.materialCode}: saldo insuficiente no estoque de origem (${sourceStockCenterName}). Saldo atual: ${formatQuantityValue(availableQuantity)}. Solicitado: ${formatQuantityValue(params.quantity)}. Falta: ${formatQuantityValue(params.quantity - availableQuantity)}.`,
       } as const;
     }
 
@@ -999,6 +1012,8 @@ export function TeamStockOperationsPageView() {
     setFeedback(null);
 
     try {
+      const sourceAvailabilityErrors: string[] = [];
+
       for (const item of form.items) {
         if (item.quantity <= 0) {
           showError(`Quantidade invalida para o material ${item.materialCode}.`);
@@ -1031,9 +1046,14 @@ export function TeamStockOperationsPageView() {
           isTransformer: item.isTransformer,
         });
         if (!sourceAvailability.ok) {
-          showError(sourceAvailability.message);
-          return;
+          sourceAvailabilityErrors.push(sourceAvailability.message);
+          continue;
         }
+      }
+
+      if (sourceAvailabilityErrors.length > 0) {
+        showError(formatSourceAvailabilitySummary(sourceAvailabilityErrors));
+        return;
       }
 
       const response = await fetch("/api/team-stock-operations", {

@@ -156,6 +156,8 @@ Boas praticas
 - Para `EXIT` e `TRANSFER`, validar cada item da lista local antes do save:
   - material comum por saldo em `stock_center_balances`
   - TRAFO por `material + serial + lp` em `trafo_instances`
+- Quando houver mais de um material sem saldo, o submit manual consolida todos os bloqueios e mostra codigo, saldo atual, quantidade solicitada e falta/zerado antes de chamar o save.
+- Se o saldo mudar entre a pre-validacao e a RPC, a resposta `INSUFFICIENT_STOCK` do backend tambem preserva os detalhes por material retornados pelo banco.
 - Para `ENTRY` de TRAFO, bloquear unidade ja registrada em estoque proprio ou vinculada a outra operacao ativa.
 - Registrar trilha por item em `material_history` para auditoria funcional.
 - Usar `trafo_instances` como fonte unitaria de verdade para rastrear a posicao atual de cada TRAFO; `stock_center_balances` continua agregado por material.
@@ -280,12 +282,13 @@ Atualizacao 2026-05
 - Ajuste de UX: o `Salvar operacao` passa a travar imediatamente com `Salvando...`, spinner e `aria-busy` antes das validacoes assincronas de saldo/serial, evitando duplo clique e duplo envio.
 - Ajuste de cadastro: `Entrada` ganhou checkbox `Compra direta`; quando marcado, a movimentacao pode ser salva sem `Projeto`, gravando `stock_transfers.direct_purchase = true` e `project_id = null`. `Saida` e `Transferencia` mantem `Projeto` obrigatorio.
 - Migration `193_allow_direct_purchase_stock_entry.sql` adiciona `stock_transfers.direct_purchase`, torna `stock_transfers.project_id` nullable e ajusta a RPC `save_stock_transfer_record` para aceitar compra direta sem projeto, preservando estorno de entradas de compra direta.
+- Ajuste de feedback de saldo: o submit manual de `Saida`/`Transferencia` passa a listar todos os materiais bloqueados por saldo zerado ou insuficiente, com `Material`, `Saldo atual`, `Solicitado` e `Falta`; o helper `saveStockTransferViaRpc` tambem converte `details` da RPC `INSUFFICIENT_STOCK` em mensagem detalhada quando a falha ocorre no banco.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
-  - Responsavel por: cadastro manual, validacoes de regra por operacao, importacao CSV em modal, filtros, lista, modais de detalhes/historico, modo de movimentacao por serial e trava visual/funcional do submit manual.
+  - Responsavel por: cadastro manual, validacoes de regra por operacao, consolidacao de erros de saldo por material, importacao CSV em modal, filtros, lista, modais de detalhes/historico, modo de movimentacao por serial e trava visual/funcional do submit manual.
 - Caminho: `src/app/api/stock-transfers/route.ts`
   - Responsavel por: criar movimentacao, listar somente movimentacoes fisicas, bloquear centro vinculado a equipe e listar historico de alteracoes por transferencia.
 - Caminho: `src/app/api/stock-transfers/import/route.ts`
@@ -321,7 +324,7 @@ Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
   - Responsavel por: estilos da tela e estado visual de loading do botao principal.
 - Caminho: `src/lib/server/stockTransfers.ts`
-  - Responsavel por: normalizacao de payload e chamada padronizada das RPCs `save_stock_transfer_record`, `reverse_stock_transfer_record_v2` e `reverse_stock_transfer_item_record_v1`.
+  - Responsavel por: normalizacao de payload, detalhamento de `INSUFFICIENT_STOCK` por material e chamada padronizada das RPCs `save_stock_transfer_record`, `reverse_stock_transfer_record_v2` e `reverse_stock_transfer_item_record_v1`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -362,6 +365,7 @@ Ajuda contextual
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
 - Funcoes/hooks/constantes tocadas:
   - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `handleDirectPurchaseChange`, `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
+  - `formatQuantityValue`, `formatSourceAvailabilitySummary`
   - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
   - `GET` de `/api/stock-transfers/meta`
   - `fetchActiveOperationalMaterials`, `toOperationalMaterialOption`
@@ -369,6 +373,7 @@ Ajuda contextual
   - `POST` de `/api/stock-transfers/import`
   - `POST` de `/api/stock-transfers/reversal`
   - `saveStockTransferViaRpc`, `reverseStockTransferViaRpc`, `normalizeEntryType`, `normalizeMovementType`, `parsePositiveNumber`
+  - `formatStockQuantity`, `formatInsufficientStockMessage`
 - Comportamento antes/depois:
   - Antes: movimentacao sem acao de estorno na UI e sem endpoint dedicado para reversao transacional.
   - Depois: botao `Estornar` com modal (motivo + data), endpoint dedicado e RPC de estorno com bloqueio de duplo estorno.
@@ -402,3 +407,5 @@ Ajuda contextual
 - Depois: o catalogo e carregado em paginas de 1000 registros, garantindo que materiais ativos do tenant continuem disponiveis no cadastro manual e no CSV mesmo com base grande.
 - Antes: toda movimentacao manual exigia `Projeto`, inclusive compra fisica direta de material para estoque.
 - Depois: somente `Entrada` pode ser marcada como `Compra direta` e salva sem `Projeto`; `Saida` e `Transferencia` seguem bloqueadas sem projeto.
+- Antes: quando o save final retornava `INSUFFICIENT_STOCK`, a API podia exibir apenas mensagem generica de saldo insuficiente.
+- Depois: a tela e o helper server mostram quais materiais estao com saldo zerado/insuficiente e as quantidades envolvidas.

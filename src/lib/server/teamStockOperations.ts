@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { StockTransferItemInput } from "@/lib/server/stockTransfers";
+import { formatInsufficientStockMessage, StockTransferItemInput } from "@/lib/server/stockTransfers";
 
 export type TeamOperationKind = "REQUISITION" | "RETURN" | "FIELD_RETURN";
 
@@ -160,7 +160,9 @@ export async function saveTeamStockOperationViaRpc(
   const result = (data ?? {}) as TeamOperationRpcResult;
   const normalizedReason = String(result.reason ?? "").trim().toUpperCase();
   const normalizedMessage = String(result.message ?? "").trim();
-  const mappedMessage = mapTeamOperationErrorMessage(normalizedReason);
+  const mappedMessage = normalizedReason === "INSUFFICIENT_STOCK"
+    ? formatInsufficientStockMessage(result.details, "estoque de origem")
+    : mapTeamOperationErrorMessage(normalizedReason);
 
   if (result.success !== true) {
     return {
@@ -278,7 +280,11 @@ export async function reverseTeamStockOperationViaRpc(
       ok: false,
       status: Number(result.status ?? 500),
       reason: normalizedReason || "UNKNOWN_ERROR",
-      message: mapTeamOperationErrorMessage(normalizedReason) || normalizedMessage || "Falha ao estornar operacao de equipe.",
+      message: (
+        normalizedReason === "INSUFFICIENT_STOCK"
+          ? formatInsufficientStockMessage(result.details, "estoque de origem")
+          : mapTeamOperationErrorMessage(normalizedReason)
+      ) || normalizedMessage || "Falha ao estornar operacao de equipe.",
       details: result.details,
     } as const;
   }
