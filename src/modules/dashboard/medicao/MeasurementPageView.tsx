@@ -1239,7 +1239,13 @@ export function MeasurementPageView() {
         const exportOrders = await loadAllOrdersForExport();
         if (ignore) return;
         const sum = exportOrders.reduce(
-          (accumulator, order) => accumulator + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0),
+          (accumulator, order) => {
+            if (order.status === "CANCELADA") {
+              return accumulator;
+            }
+
+            return accumulator + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0);
+          },
           0,
         );
         setFilteredOrdersTotalAmount(sum);

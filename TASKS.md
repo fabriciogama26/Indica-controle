@@ -712,3 +712,5 @@
 - [x] Ajustar a duplicidade da Medicao para permitir nova ordem quando a mesma Programacao foi reprogramada para outra data, mantendo bloqueio por Programacao + Projeto + Equipe + Data.
 
 - [x] Corrigir Operacoes de Equipe para chamar a assinatura atual de save_stock_transfer_record com p_direct_purchase => false, evitando erro generico em requisicao para equipe CESTO mesmo com saldo disponivel.
+
+- [x] Corrigir o resumo `Valor total` da Lista de Ordens de Medicao para ignorar ordens com `Status = CANCELADA`, mantendo o valor individual da linha para conferencia.
