@@ -86,6 +86,14 @@ Filtros, auto-complete e listagem
 - `Medido (AS BUILT)` soma o valor da Medicao apenas dos projetos que possuem registro em Medicao Asbuilt dentro do filtro proprio do grafico.
 - `As Built` soma o valor da Medicao Asbuilt.
 - `Faturado` soma o valor do Faturamento.
+- Na interface, `Medido (AS BUILT)` e exibido como `Medido com AS Built` para deixar claro que se trata da base medida comparavel ao AS Built.
+- Cada barra do grafico possui icone de ajuda contextual explicando a origem do valor.
+- Abaixo do grafico, a tela exibe cards de leitura:
+  - `Fora da base AS Built`: `Total medido - Medido com AS Built`.
+  - `Dif. AS Built x Medido`: `As Built - Medido com AS Built`.
+  - `Dif. Faturado x AS Built`: `Faturado - As Built`.
+- Os cards de leitura tambem exibem percentual de conversao entre as etapas comparaveis.
+- Barra com valor zerado usa destaque neutro para indicar ausencia de valor sem parecer falha de renderizacao.
 - A tabela do grafico exibe `Projetos` como quantidade de projetos distintos e `Medicoes` como quantidade de ordens consideradas em cada indicador.
 
 Boas praticas
@@ -147,12 +155,13 @@ Atualizacao 2026-05
   - As exportacoes CSV de `Codigos por origem` e `Resumo por categoria` passam a incluir `projeto` e `centro_servico`.
   - As colunas monetarias das exportacoes CSV passam a sair formatadas como moeda.
   - Os nomes dos arquivos CSV passam a incluir o numero do Projeto (SOB).
+  - O grafico operacional passa a exibir icone de ajuda por barra, rotulo `Medido com AS Built`, cards de diferenca real entre as etapas e percentuais de conversao.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal e no bloco de categorias.
+  - Responsavel por: renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal e no bloco de categorias.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
   - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
@@ -172,7 +181,7 @@ Funcoes utilitarias relacionadas
   - Comportamento ajustado: `buildChartItems` passa a devolver, alem do valor financeiro, quantidade de projetos distintos e quantidade de ordens consideradas por indicador do grafico.
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: `formatNumber`, `formatCurrency`, `filenameToken`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `loadChart`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`.
+  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `loadChart`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
@@ -204,3 +213,4 @@ Ajuda contextual
   - Depois: a rota `/dash-operacional-faturamento` consolida codigos por projeto e centro de servico, indicando divergencias e ausencias entre Medicao, Medicao Asbuilt e Faturamento.
   - Ajuste posterior: categorias deixam de depender apenas de Faturamento e passam a seguir o mesmo resultado exibido em `Codigos por origem`, com colunas dinamicas por categoria, linhas por origem, sem coluna `Total qtd.` e com exportacao CSV propria.
   - Ajuste posterior: o `Grafico operacional` passa a exibir tabela complementar com valor, quantidade de projetos e quantidade de medicoes por indicador.
+  - Ajuste posterior: o `Grafico operacional` passa a exibir ajuda contextual por barra, `Medido com AS Built` como rotulo de leitura, cards de diferenca real entre etapas e percentuais de conversao.

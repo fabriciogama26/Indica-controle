@@ -718,3 +718,7 @@
 - [x] Corrigir o resumo `Valor total` da Lista de Ordens de Medicao para ignorar ordens com `Status = CANCELADA`, mantendo o valor individual da linha para conferencia.
 
 - [x] Detalhar erros de saldo zerado/insuficiente ao salvar Movimentacao de Estoque e Operacoes de Equipe, listando materiais afetados, saldo atual, quantidade solicitada e falta.
+
+- [x] Analisar impacto de alterar `materials.codigo` em materiais ja cadastrados, confirmando que o saldo de almoxarifado permanece vinculado por `material_id` e que as telas passam a exibir o codigo atual do cadastro.
+
+- [x] Melhorar leitura do Grafico operacional no Dash operacional e faturamento, adicionando ajuda contextual por barra, diferencas reais entre Medido, AS Built e Faturado, e percentuais de conversao.

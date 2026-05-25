@@ -112,6 +112,22 @@ function formatCurrency(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function formatSignedCurrency(value: number) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  if (safeValue > 0) return `+${formatCurrency(safeValue)}`;
+  if (safeValue < 0) return `-${formatCurrency(Math.abs(safeValue))}`;
+  return formatCurrency(0);
+}
+
+function formatPercent(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "Sem base";
+  return new Intl.NumberFormat("pt-BR", {
+    style: "percent",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function csvValue(value: unknown) {
   const text = String(value ?? "");
   if (/[;\n"]/.test(text)) {
@@ -140,6 +156,17 @@ function filenameToken(value: string) {
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "") || "sem_projeto";
 }
+
+function chartDisplayLabel(item: ChartItem) {
+  return item.key === "measurementAsbuilt" ? "Medido com AS Built" : item.label;
+}
+
+const chartHelpByKey: Record<string, string> = {
+  totalMeasurement: "Soma de todas as medicoes com producao nos projetos filtrados.",
+  measurementAsbuilt: "Soma da Medicao somente dos projetos que tambem possuem Medicao As Built.",
+  asbuilt: "Soma dos valores registrados na Medicao As Built dos projetos filtrados.",
+  billing: "Soma dos valores registrados no Faturamento dos projetos filtrados.",
+};
 
 export function OperationalBillingDashboardPageView() {
   const { session } = useAuth();
@@ -189,6 +216,38 @@ export function OperationalBillingDashboardPageView() {
     () => Math.max(1, ...chartItems.map((item) => Number(item.value) || 0)),
     [chartItems],
   );
+
+  const chartInsightItems = useMemo(() => {
+    const valueByKey = new Map(chartItems.map((item) => [item.key, Number(item.value) || 0]));
+    const totalMeasurement = valueByKey.get("totalMeasurement") ?? 0;
+    const measurementAsbuilt = valueByKey.get("measurementAsbuilt") ?? 0;
+    const asbuilt = valueByKey.get("asbuilt") ?? 0;
+    const billing = valueByKey.get("billing") ?? 0;
+
+    return [
+      {
+        key: "outside-asbuilt",
+        label: "Fora da base AS Built",
+        value: totalMeasurement - measurementAsbuilt,
+        percent: totalMeasurement > 0 ? measurementAsbuilt / totalMeasurement : null,
+        detail: "Percentual mostra quanto do Total medido esta em projetos com AS Built.",
+      },
+      {
+        key: "asbuilt-measurement",
+        label: "Dif. AS Built x Medido",
+        value: asbuilt - measurementAsbuilt,
+        percent: measurementAsbuilt > 0 ? asbuilt / measurementAsbuilt : null,
+        detail: "Compara As Built contra o Medido com AS Built.",
+      },
+      {
+        key: "billing-asbuilt",
+        label: "Dif. Faturado x AS Built",
+        value: billing - asbuilt,
+        percent: asbuilt > 0 ? billing / asbuilt : null,
+        detail: "Compara Faturado contra As Built.",
+      },
+    ];
+  }, [chartItems]);
 
   const loadMetadata = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -604,13 +663,20 @@ export function OperationalBillingDashboardPageView() {
           {chartItems.length ? (
             chartItems.map((item) => {
               const height = Math.max(4, (item.value / chartMaxValue) * 100);
+              const helpText = chartHelpByKey[item.key] ?? "Indicador do grafico operacional.";
+              const displayLabel = chartDisplayLabel(item);
               return (
                 <div key={item.key} className={styles.barGroup}>
                   <div className={styles.barValue}>{formatCurrency(item.value)}</div>
                   <div className={styles.barTrack}>
-                    <div className={styles.barFill} style={{ height: `${height}%` }} />
+                    <div className={item.value > 0 ? styles.barFill : styles.barFillEmpty} style={{ height: `${height}%` }} />
                   </div>
-                  <strong>{item.label}</strong>
+                  <div className={styles.barLabel}>
+                    <strong>{displayLabel}</strong>
+                    <span className={styles.infoIcon} title={helpText} aria-label={helpText}>
+                      i
+                    </span>
+                  </div>
                 </div>
               );
             })
@@ -620,6 +686,21 @@ export function OperationalBillingDashboardPageView() {
             </div>
           )}
         </div>
+
+        {chartItems.length ? (
+          <div className={styles.chartInsightGrid}>
+            {chartInsightItems.map((item) => (
+              <div key={item.key} className={styles.chartInsightCard}>
+                <span>{item.label}</span>
+                <strong className={item.value < 0 ? styles.negativeValue : item.value > 0 ? styles.positiveValue : styles.neutralValue}>
+                  {formatSignedCurrency(item.value)}
+                </strong>
+                <small>{formatPercent(item.percent)}</small>
+                <p>{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {chartItems.length ? (
           <div className={styles.chartTableWrapper}>
@@ -635,7 +716,7 @@ export function OperationalBillingDashboardPageView() {
               <tbody>
                 {chartItems.map((item) => (
                   <tr key={`chart-table-${item.key}`}>
-                    <td><strong>{item.label}</strong></td>
+                    <td><strong>{chartDisplayLabel(item)}</strong></td>
                     <td>{formatCurrency(item.value)}</td>
                     <td>{formatNumber(item.projectCount)}</td>
                     <td>{formatNumber(item.measurementCount)}</td>

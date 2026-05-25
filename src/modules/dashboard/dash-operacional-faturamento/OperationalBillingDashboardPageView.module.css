@@ -194,12 +194,36 @@
   gap: 10px;
 }
 
-.barGroup strong {
+.barLabel {
   min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.barLabel strong {
   color: #002b7f;
   font-size: 12px;
   font-weight: 900;
-  text-align: center;
+}
+
+.infoIcon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #9fb2d4;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1f4ea3;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: help;
 }
 
 .barValue {
@@ -226,6 +250,70 @@
   border-radius: 6px 6px 0 0;
   background: #1f4ea3;
   transition: height 0.2s ease;
+}
+
+.barFillEmpty {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 6px 6px 0 0;
+  background: #7b879c;
+  transition: height 0.2s ease;
+}
+
+.chartInsightGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.chartInsightCard {
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.chartInsightCard span {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chartInsightCard strong {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.chartInsightCard small {
+  color: #001f5b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chartInsightCard p {
+  margin: 0;
+  color: #60708f;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.positiveValue {
+  color: #92400e;
+}
+
+.negativeValue {
+  color: #991b1b;
+}
+
+.neutralValue {
+  color: #14532d;
 }
 
 .emptyChart {
@@ -437,7 +525,8 @@
   .filterGrid,
   .chartFilterGrid,
   .summaryGrid,
-  .valueCardGrid {
+  .valueCardGrid,
+  .chartInsightGrid {
     grid-template-columns: 1fr;
   }
 
