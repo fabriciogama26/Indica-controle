@@ -708,3 +708,5 @@
 - [x] Corrigir a Lista de Ordens de Medicao para buscar registros em lotes no backend e nao depender do limite padrao do Supabase/PostgREST, mantendo filtros por tenant, periodo, projeto, equipe e status.
 
 - [x] Ampliar o modal de Detalhes da Ordem de Medicao para exibir mais colunas da tabela em telas largas, mantendo os demais modais no tamanho padrao.
+
+- [x] Ajustar a duplicidade da Medicao para permitir nova ordem quando a mesma Programacao foi reprogramada para outra data, mantendo bloqueio por Programacao + Projeto + Equipe + Data.
