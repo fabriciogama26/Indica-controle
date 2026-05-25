@@ -40,6 +40,56 @@ type StockTransferRpcResult = {
   details?: unknown;
 };
 
+export function formatStockQuantity(value: unknown) {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric)) {
+    return String(value ?? "0");
+  }
+
+  return numeric.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+}
+
+export function formatInsufficientStockMessage(details: unknown, sourceLabel = "centro de estoque de origem") {
+  if (!Array.isArray(details) || details.length === 0) {
+    return "";
+  }
+
+  const stockIssues = details
+    .map((detail) => {
+      if (!detail || typeof detail !== "object") {
+        return "";
+      }
+
+      const item = detail as {
+        materialCode?: unknown;
+        materialId?: unknown;
+        availableQuantity?: unknown;
+        requestedQuantity?: unknown;
+      };
+      const materialCode = String(item.materialCode ?? item.materialId ?? "").trim();
+      const availableQuantity = Number(item.availableQuantity ?? 0);
+      const requestedQuantity = Number(item.requestedQuantity ?? 0);
+      const missingQuantity = Math.max(requestedQuantity - availableQuantity, 0);
+
+      if (!materialCode) {
+        return "";
+      }
+
+      if (availableQuantity <= 0) {
+        return `Material ${materialCode}: saldo zerado no ${sourceLabel}; solicitado: ${formatStockQuantity(requestedQuantity)}.`;
+      }
+
+      return `Material ${materialCode}: saldo atual ${formatStockQuantity(availableQuantity)} no ${sourceLabel}; solicitado: ${formatStockQuantity(requestedQuantity)}; falta: ${formatStockQuantity(missingQuantity)}.`;
+    })
+    .filter(Boolean);
+
+  if (stockIssues.length === 0) {
+    return "";
+  }
+
+  return `Saldo indisponivel. ${stockIssues.join(" ")}`;
+}
+
 function mapStockTransferValidationMessage(details: unknown) {
   if (!Array.isArray(details) || details.length === 0) {
     return "";
@@ -124,7 +174,7 @@ export async function saveStockTransferViaRpc(
   const mappedSerialTrackedReasonMessage = mapSerialTrackedDatabaseError(normalizedReason);
   const mappedErrorMessage =
     normalizedReason === "INSUFFICIENT_STOCK"
-      ? "Saldo insuficiente no centro de estoque de origem."
+      ? formatInsufficientStockMessage(result.details) || "Saldo insuficiente no centro de estoque de origem."
       : mappedSerialTrackedReasonMessage
         ? mappedSerialTrackedReasonMessage
       : normalizedReason === "TRANSFORMER_UNIT_NOT_IN_FROM_CENTER"

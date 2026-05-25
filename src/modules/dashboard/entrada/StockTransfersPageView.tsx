@@ -963,6 +963,18 @@ export function StockTransfersPageView() {
     setAlertMessage(message);
   }
 
+  function formatQuantityValue(value: number) {
+    return value.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+  }
+
+  function formatSourceAvailabilitySummary(messages: string[]) {
+    if (messages.length <= 1) {
+      return messages[0] ?? "Saldo indisponivel para salvar a movimentacao.";
+    }
+
+    return `Foram encontrados ${messages.length} materiais sem saldo suficiente para salvar a movimentacao: ${messages.join(" ")}`;
+  }
+
   function clearTransformerMovementMode() {
     setTransformerMovementMode(null);
     setPrefillApplied(false);
@@ -1426,14 +1438,15 @@ export function StockTransfersPageView() {
     if (!matchedBalance || Number(matchedBalance.balanceQuantity ?? 0) <= 0) {
       return {
         ok: false,
-        message: `Material ${item.materialCode}: nao existe saldo disponivel no centro DE (${fromCenterName}).`,
+        message: `Material ${item.materialCode}: saldo zerado no centro DE (${fromCenterName}). Solicitado: ${formatQuantityValue(item.quantity)}.`,
       } as const;
     }
 
-    if (Number(matchedBalance.balanceQuantity ?? 0) < item.quantity) {
+    const availableQuantity = Number(matchedBalance.balanceQuantity ?? 0);
+    if (availableQuantity < item.quantity) {
       return {
         ok: false,
-        message: `Material ${item.materialCode}: saldo insuficiente no centro DE (${fromCenterName}). Saldo atual: ${Number(matchedBalance.balanceQuantity ?? 0).toLocaleString("pt-BR")}.`,
+        message: `Material ${item.materialCode}: saldo insuficiente no centro DE (${fromCenterName}). Saldo atual: ${formatQuantityValue(availableQuantity)}. Solicitado: ${formatQuantityValue(item.quantity)}. Falta: ${formatQuantityValue(item.quantity - availableQuantity)}.`,
       } as const;
     }
 
@@ -1504,6 +1517,8 @@ export function StockTransfersPageView() {
     setFeedback(null);
 
     try {
+      const sourceAvailabilityErrors: string[] = [];
+
       for (const item of form.items) {
         if (item.quantity <= 0) {
           showError(`Material ${item.materialCode}: quantidade invalida.`);
@@ -1529,9 +1544,14 @@ export function StockTransfersPageView() {
 
         const sourceAvailability = await ensureSourceStockAvailability(item);
         if (!sourceAvailability.ok) {
-          showError(sourceAvailability.message);
-          return;
+          sourceAvailabilityErrors.push(sourceAvailability.message);
+          continue;
         }
+      }
+
+      if (sourceAvailabilityErrors.length > 0) {
+        showError(formatSourceAvailabilitySummary(sourceAvailabilityErrors));
+        return;
       }
 
       const response = await fetch("/api/stock-transfers", {

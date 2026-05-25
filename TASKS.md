@@ -714,3 +714,5 @@
 - [x] Corrigir Operacoes de Equipe para chamar a assinatura atual de save_stock_transfer_record com p_direct_purchase => false, evitando erro generico em requisicao para equipe CESTO mesmo com saldo disponivel.
 
 - [x] Corrigir o resumo `Valor total` da Lista de Ordens de Medicao para ignorar ordens com `Status = CANCELADA`, mantendo o valor individual da linha para conferencia.
+
+- [x] Detalhar erros de saldo zerado/insuficiente ao salvar Movimentacao de Estoque e Operacoes de Equipe, listando materiais afetados, saldo atual, quantidade solicitada e falta.

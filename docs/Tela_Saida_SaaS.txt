@@ -135,6 +135,8 @@ Boas praticas
 - Usar `stock_transfer_team_operations` apenas como mapeamento funcional `transfer -> team`, sem duplicar o ledger principal.
 - Registrar erros da tela com `useErrorLogger("operacoes_equipe")`.
 - Respeitar cooldown de `10` segundos na exportacao.
+- No submit manual, consolidar todos os materiais com saldo zerado ou insuficiente antes de bloquear a operacao, informando codigo, saldo atual, quantidade solicitada e falta.
+- Preservar os detalhes de `INSUFFICIENT_STOCK` retornados pela RPC quando o saldo muda entre a pre-validacao da tela e o save transacional.
 
 Cancelamento e saldo
 --------------------
@@ -230,12 +232,13 @@ Atualizacao 2026-05
 - Atualizacao 2026-05: `save_team_stock_operation_record` passa a chamar `save_stock_transfer_record` com `p_direct_purchase => false`, evitando falha tecnica na resolucao da RPC apos a criacao da assinatura de compra direta.
 - Antes: em ambientes com a migration de compra direta aplicada, a requisicao de equipe podia retornar erro generico antes de concluir a validacao transacional de saldo.
 - Depois: requisicoes, inclusive para equipe CESTO, seguem pelo fluxo normal de `TRANSFER` entre centro principal e centro proprio da equipe, mantendo o escopo por `tenant_id` e retornando a mensagem real da regra de saldo quando houver bloqueio.
+- Ajuste de feedback de saldo: `Salvar operacao` passa a listar todos os materiais bloqueados por saldo zerado ou insuficiente na pre-validacao e o helper `saveTeamStockOperationViaRpc` passa a detalhar `INSUFFICIENT_STOCK` usando os `details` retornados pela RPC base.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
-  - Responsavel por: formulario, filtros, importacao CSV, lista, detalhes, historico, estorno da tela e trava visual/funcional do submit manual.
+  - Responsavel por: formulario, filtros, consolidacao de erros de saldo por material, importacao CSV, lista, detalhes, historico, estorno da tela e trava visual/funcional do submit manual.
 - Caminho: `src/app/api/team-stock-operations/route.ts`
   - Responsavel por: criar operacoes, listar historico operacional, montar o historico funcional por transferencia, omitir detalhes completos do cadastro inicial e aplicar fallback de leitura para schema em transicao.
 - Caminho: `src/app/api/team-stock-operations/import/route.ts`
@@ -247,7 +250,7 @@ Funcoes principais
 - Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
   - Responsavel por: validar payload de estorno e chamar a RPC transacional de reversao por item ou por transferencia legada.
 - Caminho: `src/lib/server/teamStockOperations.ts`
-  - Responsavel por: encapsular chamadas para `save_team_stock_operation_record`, `reverse_team_stock_operation_record_v2` e `reverse_team_stock_operation_item_record_v1`.
+  - Responsavel por: encapsular chamadas para `save_team_stock_operation_record`, detalhar `INSUFFICIENT_STOCK` por material e chamar `reverse_team_stock_operation_record_v2`/`reverse_team_stock_operation_item_record_v1`.
 - Caminho: `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
   - Responsavel por: criar `stock_transfer_item_reversals`, RPC `reverse_stock_transfer_item_record_v1`, RPC `reverse_team_stock_operation_item_record_v1` e preservar estornos integrais legados.
 
@@ -312,12 +315,14 @@ Ajuda contextual
 - Funcoes/hooks/constantes tocadas:
   - `TeamStockOperationsPageView`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `openHistoryModal`, `handleConfirmReversal`
   - `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`
+  - `formatQuantityValue`, `formatSourceAvailabilitySummary`
   - `GET/POST` de `/api/team-stock-operations`
   - `fetchActiveOperationalMaterials`, `toOperationalMaterialOption`
   - `GET` de `/api/team-stock-operations/serial-options`
   - `POST` de `/api/team-stock-operations/import`
   - `POST` de `/api/team-stock-operations/reversal`
   - `saveTeamStockOperationViaRpc`, `saveTeamStockOperationBatchViaRpc`, `reverseTeamStockOperationViaRpc`
+  - `formatInsufficientStockMessage`
   - `save_team_stock_operation_record`
 - Comportamento antes/depois:
 - Antes: `/saida` nao tinha fluxo proprio.
@@ -340,3 +345,5 @@ Ajuda contextual
 - Depois: o catalogo e carregado em paginas de 1000 registros, garantindo que materiais ativos do tenant continuem disponiveis no cadastro manual e no CSV mesmo com base grande.
 - Antes: `save_team_stock_operation_record` chamava `save_stock_transfer_record` sem informar `p_direct_purchase`, podendo cair em erro tecnico apos a assinatura nova de compra direta.
 - Depois: a RPC de equipe informa `p_direct_purchase => false` e preserva a regra de saldo da movimentacao de equipe.
+- Antes: falhas de saldo no save final podiam chegar como erro generico, sem apontar os materiais afetados.
+- Depois: a UI e o helper server mostram materiais zerados/insuficientes com saldo atual, solicitado e falta.
