@@ -92,6 +92,7 @@ Ordem de aplicacao
 175. 175_add_team_supervisor_link.sql
 182. 182_create_operational_billing_dashboard_page.sql
 195. 195_create_job_titles_page.sql
+197. 197_enforce_people_unique_matriculation.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -408,6 +409,9 @@ Resumo por arquivo
 
 196_fix_team_stock_operation_direct_purchase_rpc_call.sql
 - Republica `save_team_stock_operation_record` para chamar `save_stock_transfer_record` com `p_direct_purchase => false`, preservando o fluxo de requisicao/devolucao de equipe apos a assinatura de compra direta.
+
+197_enforce_people_unique_matriculation.sql
+- Garante `people.matriculation` unica por tenant, valida duplicidades legadas antes do indice unico e atualiza a RPC `save_person_record` para retornar conflito especifico de matricula.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
