@@ -710,3 +710,5 @@
 - [x] Ampliar o modal de Detalhes da Ordem de Medicao para exibir mais colunas da tabela em telas largas, mantendo os demais modais no tamanho padrao.
 
 - [x] Ajustar a duplicidade da Medicao para permitir nova ordem quando a mesma Programacao foi reprogramada para outra data, mantendo bloqueio por Programacao + Projeto + Equipe + Data.
+
+- [x] Corrigir Operacoes de Equipe para chamar a assinatura atual de save_stock_transfer_record com p_direct_purchase => false, evitando erro generico em requisicao para equipe CESTO mesmo com saldo disponivel.

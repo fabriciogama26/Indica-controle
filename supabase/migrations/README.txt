@@ -405,6 +405,9 @@ Resumo por arquivo
 
 195_create_job_titles_page.sql
 - Adiciona cancelamento/ativacao em `job_titles`, checks obrigatorios de codigo/nome e indices de apoio para a tela Cargo manter `job_titles`, `job_title_types` e `job_levels`.
+
+196_fix_team_stock_operation_direct_purchase_rpc_call.sql
+- Republica `save_team_stock_operation_record` para chamar `save_stock_transfer_record` com `p_direct_purchase => false`, preservando o fluxo de requisicao/devolucao de equipe apos a assinatura de compra direta.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

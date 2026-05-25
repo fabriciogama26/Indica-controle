@@ -227,6 +227,9 @@ Atualizacao 2026-05
 - Ajuste de catalogo operacional: `GET /api/team-stock-operations/meta` passa a carregar materiais ativos em paginas de 1000 registros pelo helper `fetchActiveOperationalMaterials`, evitando que codigos acima do limite padrao do Supabase/PostgREST deixem de aparecer no cadastro manual e no cadastro em massa.
 - O helper aplica fallback para schemas em transicao sem `materials.serial_tracking_type`, preservando a leitura por `is_transformer` quando necessario.
 - Ajuste de UX: o `Salvar operacao` passa a travar imediatamente com `Salvando...`, spinner e `aria-busy` antes das validacoes assincronas de saldo/serial, evitando duplo clique e duplo envio.
+- Atualizacao 2026-05: `save_team_stock_operation_record` passa a chamar `save_stock_transfer_record` com `p_direct_purchase => false`, evitando falha tecnica na resolucao da RPC apos a criacao da assinatura de compra direta.
+- Antes: em ambientes com a migration de compra direta aplicada, a requisicao de equipe podia retornar erro generico antes de concluir a validacao transacional de saldo.
+- Depois: requisicoes, inclusive para equipe CESTO, seguem pelo fluxo normal de `TRANSFER` entre centro principal e centro proprio da equipe, mantendo o escopo por `tenant_id` e retornando a mensagem real da regra de saldo quando houver bloqueio.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -261,6 +264,8 @@ Constantes e configuracoes
   - Responsavel por: garantir save atomico no cadastro em massa da tela.
 - Caminho: `supabase/migrations/144_add_field_return_team_operations.sql`
   - Responsavel por: abrir `Retorno de campo`, centro tecnico e persistencia explicita do tipo operacional.
+- Caminho: `supabase/migrations/196_fix_team_stock_operation_direct_purchase_rpc_call.sql`
+  - Responsavel por: republicar `save_team_stock_operation_record` com chamada explicita a `save_stock_transfer_record(..., p_direct_purchase => false)`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/saida/utils.ts`
@@ -300,6 +305,10 @@ Ajuda contextual
   - `supabase/migrations/140_create_team_stock_operations.sql`
   - `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
   - `supabase/migrations/143_create_team_stock_operation_batch_full.sql`
+  - `supabase/migrations/196_fix_team_stock_operation_direct_purchase_rpc_call.sql`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
   - `TeamStockOperationsPageView`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `openHistoryModal`, `handleConfirmReversal`
   - `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`
@@ -309,6 +318,7 @@ Ajuda contextual
   - `POST` de `/api/team-stock-operations/import`
   - `POST` de `/api/team-stock-operations/reversal`
   - `saveTeamStockOperationViaRpc`, `saveTeamStockOperationBatchViaRpc`, `reverseTeamStockOperationViaRpc`
+  - `save_team_stock_operation_record`
 - Comportamento antes/depois:
 - Antes: `/saida` nao tinha fluxo proprio.
 - Depois: `/saida` passa a registrar requisicoes, devolucoes e retornos de campo reais com saldo, historico, snapshot de `Equipe/Encarregado` e estorno no mesmo padrao operacional do almoxarifado.
@@ -328,3 +338,5 @@ Ajuda contextual
 - Depois: a tela usa uma consulta propria por centro atual real; `REQUISITION` baixa do centro principal e `RETURN` baixa do centro proprio da equipe antes de creditar o centro principal.
 - Antes: o catalogo de materiais ativos do `meta` era carregado em uma unica consulta e podia ficar limitado pelo teto padrao da API.
 - Depois: o catalogo e carregado em paginas de 1000 registros, garantindo que materiais ativos do tenant continuem disponiveis no cadastro manual e no CSV mesmo com base grande.
+- Antes: `save_team_stock_operation_record` chamava `save_stock_transfer_record` sem informar `p_direct_purchase`, podendo cair em erro tecnico apos a assinatura nova de compra direta.
+- Depois: a RPC de equipe informa `p_direct_purchase => false` e preserva a regra de saldo da movimentacao de equipe.
