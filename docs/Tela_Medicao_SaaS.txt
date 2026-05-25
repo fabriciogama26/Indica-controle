@@ -622,3 +622,25 @@ Atualizacao 2026-05-22 (Exportacao de pontuacao)
   - Depois: o botao `Exportar pontuacao` gera CSV com `Tipo`, `Nome`, `Data`, `Projeto`, `Pontos`, `Valor`, `Status` e `Compensatorio`.
   - Depois: `Status` usa pontos; `Compensatorio` usa valor financeiro contra a meta diaria do tipo/equipe.
   - Impacto multi-tenant: tabela nova com `tenant_id`, RLS por `user_can_access_tenant`, FK composta para `team_types` e leituras filtradas pelo tenant autenticado.
+
+Atualizacao 2026-05-25 (Listagem completa sem limite padrao)
+-------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Constante `SUPABASE_LIST_PAGE_SIZE`
+  - Constante `MEASUREMENT_ORDER_SELECT`
+  - Tipo `SupabasePageResult`
+  - Funcao `fetchPagedSupabaseRows`
+  - Funcao `loadProgrammingMatchMap`
+  - Funcao `fetchMeasurementOrderDetail`
+  - `GET /api/medicao`
+- Comportamento antes/depois:
+  - Antes: `GET /api/medicao` consultava ordens sem `range` explicito e podia receber somente o primeiro bloco padrao do Supabase/PostgREST, deixando ordens antigas ou fora dos primeiros registros invisiveis na lista.
+  - Antes: filtros calculados depois da leitura inicial, como `Programacao`, `Status execucao`, `Tipo da medicao`, `Motivo sem producao` e exportacoes, trabalhavam apenas sobre esse conjunto truncado.
+  - Depois: a API busca ordens, programacoes relacionadas, historico de estado de trabalho e itens agregados em blocos de 1000 registros ate completar o resultado elegivel.
+  - Depois: a paginacao visual de 20 registros continua igual, mas o total e as paginas passam a considerar todos os registros retornados pelos filtros do periodo/projeto/equipe/status.
+  - Depois: o bloqueio de duplicidade por programacao permanece no banco; com a lista completa, a ordem ja cadastrada fica localizavel pelos filtros de projeto, equipe e data.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; todas as buscas paginadas continuam filtradas por `tenant_id` do usuario autenticado.

@@ -252,6 +252,14 @@ type SetMeasurementStatusRpcResult = {
   measurement_status?: MeasurementOrderStatus;
 };
 
+const SUPABASE_LIST_PAGE_SIZE = 1000;
+const MEASUREMENT_ORDER_SELECT = "id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at";
+
+type SupabasePageResult<T> = {
+  data: T[] | null;
+  error: { message: string } | null;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -462,6 +470,32 @@ function buildProgrammingProjectDateKey(projectId: string, executionDate: string
   return `${projectId}|${executionDate}`;
 }
 
+async function fetchPagedSupabaseRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<SupabasePageResult<T>>,
+) {
+  const rows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_LIST_PAGE_SIZE - 1;
+    const { data, error } = await fetchPage(from, to);
+    if (error) {
+      return { data: rows, error };
+    }
+
+    const pageRows = data ?? [];
+    rows.push(...pageRows);
+
+    if (pageRows.length < SUPABASE_LIST_PAGE_SIZE) {
+      break;
+    }
+
+    from += SUPABASE_LIST_PAGE_SIZE;
+  }
+
+  return { data: rows, error: null };
+}
+
 function buildProjectWorkCompletionTimeline(
   rows: Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>,
 ) {
@@ -563,43 +597,53 @@ async function loadProgrammingMatchMap(params: {
   const startDate = executionDates[0];
   const endDate = executionDates[executionDates.length - 1];
 
-  const preferred = await params.supabase
-    .from("project_programming")
-    .select("id, project_id, team_id, execution_date, status, work_completion_status, updated_at")
-    .eq("tenant_id", params.tenantId)
-    .in("project_id", projectIds)
-    .gte("execution_date", startDate)
-    .lte("execution_date", endDate)
-    .returns<ProgrammingMatchRow[]>();
+  const preferred = await fetchPagedSupabaseRows<ProgrammingMatchRow>((from, to) =>
+    params.supabase
+      .from("project_programming")
+      .select("id, project_id, team_id, execution_date, status, work_completion_status, updated_at")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", projectIds)
+      .gte("execution_date", startDate)
+      .lte("execution_date", endDate)
+      .range(from, to)
+      .returns<ProgrammingMatchRow[]>(),
+  );
 
-  const { data } = preferred.error
-    ? await params.supabase
-        .from("project_programming")
-        .select("id, project_id, team_id, execution_date, status, updated_at")
-        .eq("tenant_id", params.tenantId)
-        .in("project_id", projectIds)
-        .gte("execution_date", startDate)
-        .lte("execution_date", endDate)
-        .returns<Array<Omit<ProgrammingMatchRow, "work_completion_status">>>()
-        .then((fallback) => ({
-          data: (fallback.data ?? []).map((item) => ({ ...item, work_completion_status: null })),
-        }))
-    : { data: preferred.data ?? [] };
+  const fallback = preferred.error
+    ? await fetchPagedSupabaseRows<Omit<ProgrammingMatchRow, "work_completion_status">>((from, to) =>
+        params.supabase
+          .from("project_programming")
+          .select("id, project_id, team_id, execution_date, status, updated_at")
+          .eq("tenant_id", params.tenantId)
+          .in("project_id", projectIds)
+          .gte("execution_date", startDate)
+          .lte("execution_date", endDate)
+          .range(from, to)
+          .returns<Array<Omit<ProgrammingMatchRow, "work_completion_status">>>(),
+      )
+    : null;
+
+  const data = preferred.error
+    ? (fallback?.data ?? []).map((item) => ({ ...item, work_completion_status: null }))
+    : preferred.data;
 
   const programmingProjectDateMap = new Map<string, string>();
   for (const row of data ?? []) {
     programmingProjectDateMap.set(row.id, buildProgrammingProjectDateKey(row.project_id, row.execution_date));
   }
 
-  const { data: projectCompletionRows } = await params.supabase
-    .from("project_programming")
-    .select("project_id, execution_date, work_completion_status, updated_at")
-    .eq("tenant_id", params.tenantId)
-    .in("project_id", projectIds)
-    .not("work_completion_status", "is", null)
-    .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>();
+  const projectCompletionRows = await fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>((from, to) =>
+    params.supabase
+      .from("project_programming")
+      .select("project_id, execution_date, work_completion_status, updated_at")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", projectIds)
+      .not("work_completion_status", "is", null)
+      .range(from, to)
+      .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
+  );
 
-  const projectWorkCompletionTimeline = buildProjectWorkCompletionTimeline(projectCompletionRows ?? []);
+  const projectWorkCompletionTimeline = buildProjectWorkCompletionTimeline(projectCompletionRows.data ?? []);
 
   const projectDateWorkCompletionStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
   for (const row of data ?? []) {
@@ -618,17 +662,20 @@ async function loadProgrammingMatchMap(params: {
     }
   }
 
-  const { data: projectCompletionHistoryRows } = await params.supabase
-    .from("project_programming_history")
-    .select("id, programming_id, project_id, from_execution_date, to_execution_date, changes, created_at")
-    .eq("tenant_id", params.tenantId)
-    .in("project_id", projectIds)
-    .contains("changes", { workCompletionStatus: {} })
-    .order("created_at", { ascending: false })
-    .returns<ProgrammingWorkCompletionHistoryRow[]>();
+  const projectCompletionHistoryRows = await fetchPagedSupabaseRows<ProgrammingWorkCompletionHistoryRow>((from, to) =>
+    params.supabase
+      .from("project_programming_history")
+      .select("id, programming_id, project_id, from_execution_date, to_execution_date, changes, created_at")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", projectIds)
+      .contains("changes", { workCompletionStatus: {} })
+      .order("created_at", { ascending: false })
+      .range(from, to)
+      .returns<ProgrammingWorkCompletionHistoryRow[]>(),
+  );
 
   const projectDateWorkCompletionHistoryMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
-  for (const row of projectCompletionHistoryRows ?? []) {
+  for (const row of projectCompletionHistoryRows.data ?? []) {
     const projectDateKey = resolveProgrammingHistoryProjectDateKey(row, programmingProjectDateMap);
     if (!projectDateKey || projectDateWorkCompletionHistoryMap.has(projectDateKey)) {
       continue;
@@ -1028,7 +1075,7 @@ async function fetchMeasurementOrderDetail(params: {
 }) {
   const { data: order, error: orderError } = await params.supabase
     .from("project_measurement_orders")
-    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
+    .select(MEASUREMENT_ORDER_SELECT)
     .eq("tenant_id", params.tenantId)
     .eq("id", params.orderId)
     .maybeSingle<MeasurementOrderRow>();
@@ -1216,26 +1263,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "startDate e endDate sao obrigatorios." }, { status: 400 });
   }
 
-  let query = resolution.supabase
-    .from("project_measurement_orders")
-    .select("id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .gte("execution_date", startDate)
-    .lte("execution_date", endDate)
-    .order("execution_date", { ascending: false })
-    .order("updated_at", { ascending: false });
+  const ordersResult = await fetchPagedSupabaseRows<MeasurementOrderRow>((from, to) => {
+    let query = resolution.supabase
+      .from("project_measurement_orders")
+      .select(MEASUREMENT_ORDER_SELECT)
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .gte("execution_date", startDate)
+      .lte("execution_date", endDate)
+      .order("execution_date", { ascending: false })
+      .order("updated_at", { ascending: false })
+      .range(from, to);
 
-  if (projectId) {
-    query = query.eq("project_id", projectId);
-  }
-  if (teamId) {
-    query = query.eq("team_id", teamId);
-  }
-  if (statusFilter && statusFilter !== "TODOS") {
-    query = query.eq("status", statusFilter);
-  }
+    if (projectId) {
+      query = query.eq("project_id", projectId);
+    }
+    if (teamId) {
+      query = query.eq("team_id", teamId);
+    }
+    if (statusFilter && statusFilter !== "TODOS") {
+      query = query.eq("status", statusFilter);
+    }
 
-  const { data: orders, error } = await query.returns<MeasurementOrderRow[]>();
+    return query.returns<MeasurementOrderRow[]>();
+  });
+  const orders = ordersResult.data;
+  const error = ordersResult.error;
   if (error) {
     const hint = measurementModuleMigrationHint(error.message);
     return NextResponse.json({ message: `Falha ao listar ordens de medicao.${hint}`.trim() }, { status: 500 });
@@ -1243,7 +1295,7 @@ export async function GET(request: NextRequest) {
 
   const userIds = Array.from(
     new Set(
-      (orders ?? [])
+      orders
         .flatMap((item) => [item.created_by, item.updated_by])
         .filter((item): item is string => Boolean(item)),
     ),
@@ -1257,20 +1309,20 @@ export async function GET(request: NextRequest) {
   const programmingMatchMap = await loadProgrammingMatchMap({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
-    orders: orders ?? [],
+    orders,
   });
   const projectIsTestMap = await fetchProjectIsTestMap({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
-    projectIds: (orders ?? []).map((item) => item.project_id),
+    projectIds: orders.map((item) => item.project_id),
   });
   const projectServiceCenterMap = await fetchProjectServiceCenterMap({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
-    projectIds: (orders ?? []).map((item) => item.project_id),
+    projectIds: orders.map((item) => item.project_id),
   });
 
-  const baseOrders = (orders ?? []).map((item) => {
+  const baseOrders = orders.map((item) => {
       const programmingMatch = programmingMatchMap.get(item.id) ?? {
         status: "NAO_PROGRAMADA" as ProgrammingMatchStatus,
         programmingId: null,
@@ -1382,18 +1434,24 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
-  const { data: aggregateItems } = pagedOrderIds.length
-    ? await resolution.supabase
-        .from("project_measurement_order_items")
-        .select("measurement_order_id, total_value, quantity, voice_point")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("is_active", true)
-        .in("measurement_order_id", pagedOrderIds)
-        .returns<MeasurementOrderAggregateItem[]>()
-    : { data: [] as MeasurementOrderAggregateItem[] };
+  const aggregateItemsResult = pagedOrderIds.length
+    ? await fetchPagedSupabaseRows<MeasurementOrderAggregateItem>((from, to) =>
+        resolution.supabase
+          .from("project_measurement_order_items")
+          .select("measurement_order_id, total_value, quantity, voice_point")
+          .eq("tenant_id", resolution.appUser.tenant_id)
+          .eq("is_active", true)
+          .in("measurement_order_id", pagedOrderIds)
+          .range(from, to)
+          .returns<MeasurementOrderAggregateItem[]>(),
+      )
+    : { data: [] as MeasurementOrderAggregateItem[], error: null };
+  if (aggregateItemsResult.error) {
+    return NextResponse.json({ message: "Falha ao consolidar totais das ordens de medicao." }, { status: 500 });
+  }
 
   const aggregateMap = new Map<string, { totalAmount: number; itemCount: number; scorePoints: number }>();
-  for (const item of aggregateItems ?? []) {
+  for (const item of aggregateItemsResult.data ?? []) {
     const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0, scorePoints: 0 };
     current.totalAmount += Number(item.total_value ?? 0);
     current.itemCount += 1;
