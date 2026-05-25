@@ -131,6 +131,7 @@
 - [x] Garantir fallback de auditoria (`Nao identificado`) quando `Criado por`/`Atualizado por` vier vazio e exibir esses campos no modal de `Detalhes da Programacao` (alinhando o padrao nos detalhes das telas).
 - [x] Exibir autor por evento no `Historico da Programacao` (`quem editou o que`) via `changedByName` resolvido de `project_programming_history.created_by`.
 - [x] Proteger cadastro/edicao de `Pessoas` contra duplicidade pela combinacao `Nome + Matricula + Cargo + Tipo + Nivel` com validacao na API e trigger no banco.
+- [x] Ajustar duplicidade de `Pessoas` para bloquear `Matricula` unica por tenant na API e no banco, independente de nome, cargo, tipo ou nivel.
 - [x] Endurecer `Pessoas` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
 - [x] Migrar as escritas de `Pessoas` para RPC transacional (`save_person_record` e `set_person_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.

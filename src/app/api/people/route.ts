@@ -193,6 +193,18 @@ function mapPersonDbError(error: unknown, fallbackMessage: string) {
   const hint = normalizeDbErrorText(dbError.hint);
   const combined = `${message} ${details} ${hint}`.trim();
 
+  if (
+    combined.includes("people_unique_tenant_matriculation_key")
+    || combined.includes("idx_people_unique_tenant_matriculation")
+    || combined.includes("pessoa duplicada para matricula")
+  ) {
+    return {
+      status: 409,
+      message: "Ja existe pessoa com esta matricula no tenant atual.",
+      reason: "DUPLICATE_PERSON_MATRICULATION",
+    } as const;
+  }
+
   if (combined.includes("duplicate key") || combined.includes("people_unique_identity")) {
     return {
       status: 409,
@@ -422,42 +434,17 @@ async function fetchPersonById(
   return data;
 }
 
-async function findDuplicatePerson(
+async function findDuplicatePersonByMatriculation(
   supabase: SupabaseClient,
   tenantId: string,
-  input: {
-    name: string;
-    matriculation: string | null;
-    jobTitleId: string;
-    jobTitleTypeId: string | null;
-    jobLevel: string | null;
-  },
+  matriculation: string,
   excludeId?: string,
 ) {
   let query = supabase
     .from("people")
     .select("id, nome")
     .eq("tenant_id", tenantId)
-    .ilike("nome", input.name)
-    .eq("job_title_id", input.jobTitleId);
-
-  if (input.matriculation) {
-    query = query.eq("matriculation", input.matriculation);
-  } else {
-    query = query.is("matriculation", null);
-  }
-
-  if (input.jobTitleTypeId) {
-    query = query.eq("job_title_type_id", input.jobTitleTypeId);
-  } else {
-    query = query.is("job_title_type_id", null);
-  }
-
-  if (input.jobLevel) {
-    query = query.eq("job_level", input.jobLevel);
-  } else {
-    query = query.is("job_level", null);
-  }
+    .eq("matriculation", matriculation);
 
   if (excludeId) {
     query = query.neq("id", excludeId);
@@ -971,10 +958,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const duplicatedPerson = await findDuplicatePerson(supabase, appUser.tenant_id, input);
+    const duplicatedPerson = await findDuplicatePersonByMatriculation(
+      supabase,
+      appUser.tenant_id,
+      input.matriculation,
+    );
     if (duplicatedPerson) {
       return NextResponse.json(
-        { message: "Ja existe pessoa com o mesmo nome, matricula, cargo, tipo e nivel no tenant atual." },
+        { message: "Ja existe pessoa com esta matricula no tenant atual." },
         { status: 409 },
       );
     }
@@ -1084,10 +1075,15 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const duplicatedPerson = await findDuplicatePerson(supabase, appUser.tenant_id, input, personId);
+    const duplicatedPerson = await findDuplicatePersonByMatriculation(
+      supabase,
+      appUser.tenant_id,
+      input.matriculation,
+      personId,
+    );
     if (duplicatedPerson) {
       return NextResponse.json(
-        { message: "Ja existe pessoa com o mesmo nome, matricula, cargo, tipo e nivel no tenant atual." },
+        { message: "Ja existe pessoa com esta matricula no tenant atual." },
         { status: 409 },
       );
     }

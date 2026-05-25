@@ -339,6 +339,7 @@ vercel --prod
 - `supabase/migrations/174_add_project_is_withdrawn.sql`: adiciona `project.is_withdrawn`, republica `project_with_labels` e atualiza `save_project_record` para o marcador `RETIRADO DA CARTEIRA`.
 - `supabase/migrations/175_add_team_supervisor_link.sql`: adiciona `teams.supervisor_person_id`, FK por tenant para `people` e republica `save_team_record` com supervisor opcional.
 - `supabase/migrations/189_allow_cross_service_center_programming.sql`: libera a Programacao e a copia de programacao para usar equipes ativas de qualquer centro de servico, mantendo validacao por tenant e equipe ativa.
+- `supabase/migrations/197_enforce_people_unique_matriculation.sql`: garante matricula unica por tenant em `Pessoas`, com indice unico normalizado, trigger e retorno especifico da RPC.
 
 ---
 
@@ -388,7 +389,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 37. A rota `/dashboard-medicao` exibe indicadores da Medicao por ciclo operacional 21 a 20, compara valor realizado com a Meta, separa Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias em grafico do ciclo e grafico por periodo `De/Para` independente do ciclo selecionado, lado a lado em desktop, mostra tabela acima de cada grafico com coluna de projetos, inicia o periodo no ano calendario corrente, aplica filtros gerais somente pelo botao `Filtrar`, aplica o periodo somente pelo botao `Filtrar periodo`, calcula dias trabalhados por datas distintas de `Data execucao` com medicao `Com producao` no ciclo, mostra card de Ticket medio e Projetos no ciclo, exibe `Projecao de fechamento` entre Valor realizado e Meta, com ritmo atual, dias da meta selecionada e diferenca prevista contra a meta selecionada, ocultando a projecao quando a selecao for `Meta ciclo trabalhado`, filtra Projeto por SOB digitavel, filtra Supervisor pelo vinculo da equipe, filtra Status execucao tambem por Pendencias e Parcial planejado beneficio atingido, mostra `Supervisor no ciclo` com alternancia entre meta por equipes que produziram e meta por todas as equipes vinculadas, filtros locais por semana nos blocos `Encarregados no ciclo` e `Supervisor no ciclo`, coluna de projetos nas tabelas de status/ciclo/encarregados/supervisor, modal de projetos por status/encarregado/supervisor com valor cobrado, centro, ordens, totalizador e exportacao Excel CSV, quadro grafico com `% atingimento`, `Bullet de meta` e `Gap financeiro`, legendas por grafico acima do texto do ciclo/semana, detalha encarregados com tabela unica, ranking % com linha 100% centralizada, bullet chart de metas, gap financeiro, expansao individual dos graficos de encarregados, legenda e checkboxes de metas, ajusta a coluna Dias conforme a meta e amplia graficos em modal.
 38. A rota `/atividades` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar atividades no tenant atual, exigindo `codigo`, `descricao`, `tipo`, `categoria`, `grupo`, `valor`, `pontos` e `unidade`, com `alcance` opcional em texto livre, usando `/api/activities` com listagem paginada no servidor e escrita delegada para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 39. A rota `/programacao` passa a usar `project_programming_history` como timeline operacional dedicada da agenda, com `REPROGRAMADA` salvo fisicamente em `project_programming` e historico de `CREATE/UPDATE/RESCHEDULE/BATCH_CREATE` gravado dentro das RPCs transacionais full, sem depender de `app_entity_history` nem de historico complementar pos-commit na API.
-40. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`.
+40. A rota `/pessoas` permite cadastrar, editar, consultar detalhes/historico e cancelar/ativar pessoas no tenant atual, usando `/api/people` com escrita delegada para as RPCs `save_person_record` e `set_person_record_status`, mantendo `Matricula` unica por tenant.
 41. A rota `/permissoes` continua enviando convite pelo backend, mas a auditoria do invite passa a ser gravada pela RPC `append_user_invite_history`.
 42. A migration `050_activity_code_precheck_and_optional_fields.sql` torna `grupo/alcance` opcionais em `service_activities` e adiciona o RPC `precheck_activity_code_conflict` para bloquear codigo duplicado por tenant.
 43. A migration `051_create_app_entity_history_and_activity_status.sql` cria `app_entity_history` (historico generico reutilizavel por outras telas) e adiciona em `service_activities` os campos de cancelamento/ativacao com motivo e data.
@@ -572,6 +573,12 @@ npm run build
 - `Falha ao salvar cargo.` ou erro em `cancellation_reason` na tela `/cargo`:
   - Causa: migration da tela de Cargo ainda nao aplicada no banco remoto.
   - Solucao: aplicar `195_create_job_titles_page.sql` e repetir a operacao.
+- `Ja existe pessoa com esta matricula no tenant atual.`:
+  - Causa: tentativa de cadastrar/editar pessoa com `Matricula` ja usada no mesmo tenant.
+  - Solucao: editar o registro existente ou informar uma matricula ainda nao cadastrada.
+- `Existem matriculas duplicadas em people. Regularize antes de aplicar a trava`:
+  - Causa: a migration `197_enforce_people_unique_matriculation.sql` encontrou dados legados com a mesma matricula no mesmo tenant.
+  - Solucao: corrigir/remover as duplicidades no banco e reaplicar a migration.
 - `Nao foi encontrado contrato ativo com campo name para preencher Parceira automaticamente.`:
   - Causa: tabela `contract` sem registro ativo para o tenant autenticado.
   - Solucao: cadastrar/ativar um contrato por tenant com `name` preenchido.
