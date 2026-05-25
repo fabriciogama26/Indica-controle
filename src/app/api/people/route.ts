@@ -74,6 +74,11 @@ type CreatePersonPayload = {
   jobLevel?: string | null;
 };
 
+type PersonBatchImportPayload = {
+  action?: string;
+  rows?: Array<CreatePersonPayload & { rowNumber?: number }>;
+};
+
 type UpdatePersonPayload = CreatePersonPayload & {
   id: string;
   expectedUpdatedAt?: string | null;
@@ -139,6 +144,24 @@ function normalizeNullableText(value: unknown) {
 function normalizeNullableMatriculation(value: unknown) {
   const normalized = normalizeMatriculation(value);
   return normalized || null;
+}
+
+function parsePersonInput(payload: Partial<CreatePersonPayload>) {
+  return {
+    name: normalizeText(payload.name),
+    matriculation: normalizeNullableMatriculation(payload.matriculation),
+    jobTitleId: normalizeText(payload.jobTitleId),
+    jobTitleTypeId: normalizeNullableText(payload.jobTitleTypeId),
+    jobLevel: normalizeNullableText(payload.jobLevel),
+  };
+}
+
+function validateRequiredPersonFields(input: ReturnType<typeof parsePersonInput>) {
+  if (!input.name || !input.matriculation || !input.jobTitleId || !input.jobTitleTypeId) {
+    return "Preencha os campos obrigatorios da pessoa.";
+  }
+
+  return null;
 }
 
 function normalizeDbErrorText(value: unknown) {
@@ -607,6 +630,138 @@ async function savePersonViaRpc(params: {
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
+async function importPersonBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: Array<CreatePersonPayload & { rowNumber?: number }>;
+}) {
+  const results: Array<{
+    rowNumber: number;
+    success: boolean;
+    message: string;
+    code?: string;
+  }> = [];
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0
+      ? Number(row.rowNumber)
+      : index + 2;
+    const input = parsePersonInput(row);
+    const validationError = validateRequiredPersonFields(input);
+
+    if (validationError) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: validationError,
+      });
+      continue;
+    }
+    if (!input.matriculation) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Matricula obrigatoria para salvar pessoa.",
+      });
+      continue;
+    }
+    const matriculation = input.matriculation;
+
+    const jobTitle = await fetchJobTitleById(params.supabase, params.tenantId, input.jobTitleId);
+    if (!jobTitle) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Cargo invalido para o tenant atual.",
+        code: "INVALID_JOB_TITLE",
+      });
+      continue;
+    }
+
+    const jobTitleType = await fetchJobTitleTypeById(
+      params.supabase,
+      params.tenantId,
+      input.jobTitleId,
+      input.jobTitleTypeId,
+    );
+    if (!jobTitleType) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Tipo invalido para o cargo selecionado.",
+        code: "INVALID_JOB_TITLE_TYPE",
+      });
+      continue;
+    }
+
+    if (input.jobLevel) {
+      const jobLevel = await fetchJobLevelByValue(params.supabase, params.tenantId, input.jobLevel);
+      if (!jobLevel) {
+        results.push({
+          rowNumber,
+          success: false,
+          message: "Nivel invalido para o tenant atual.",
+          code: "INVALID_JOB_LEVEL",
+        });
+        continue;
+      }
+    }
+
+    const duplicatedPerson = await findDuplicatePersonByMatriculation(
+      params.supabase,
+      params.tenantId,
+      matriculation,
+    );
+    if (duplicatedPerson) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Ja existe pessoa com esta matricula no tenant atual.",
+        code: "DUPLICATE_PERSON_MATRICULATION",
+      });
+      continue;
+    }
+
+    const saveResult = await savePersonViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      personId: null,
+      name: input.name,
+      matriculation,
+      jobTitleId: input.jobTitleId,
+      jobTitleTypeId: input.jobTitleTypeId,
+      jobLevel: input.jobLevel,
+    });
+
+    if (!saveResult.ok) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: saveResult.message,
+        code: saveResult.reason ?? undefined,
+      });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({
+      rowNumber,
+      success: true,
+      message: `Pessoa ${input.name} cadastrada com sucesso.`,
+    });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
+}
+
 async function setPersonStatusViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -923,18 +1078,45 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as Partial<CreatePersonPayload>;
-    const input = {
-      name: normalizeText(body.name),
-      matriculation: normalizeNullableMatriculation(body.matriculation),
-      jobTitleId: normalizeText(body.jobTitleId),
-      jobTitleTypeId: normalizeNullableText(body.jobTitleTypeId),
-      jobLevel: normalizeNullableText(body.jobLevel),
-    };
+    const body = (await request.json().catch(() => ({}))) as Partial<CreatePersonPayload> & PersonBatchImportPayload;
 
-    if (!input.name || !input.matriculation || !input.jobTitleId || !input.jobTitleTypeId) {
-      return NextResponse.json({ message: "Preencha os campos obrigatorios da pessoa." }, { status: 400 });
+    if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+
+      if (!rows.length) {
+        return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+      }
+
+      if (rows.length > 500) {
+        return NextResponse.json({ message: "Cadastro em massa limitado a 500 linhas por arquivo." }, { status: 400 });
+      }
+
+      const result = await importPersonBatch({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        rows,
+      });
+
+      return NextResponse.json({
+        ...result,
+        message:
+          result.errorCount > 0
+            ? `Cadastro em massa processado com ${result.savedCount} pessoas salvas e ${result.errorCount} linhas com erro.`
+            : `Cadastro em massa concluido com ${result.savedCount} pessoas salvas.`,
+      });
     }
+
+    const input = parsePersonInput(body);
+    const validationError = validateRequiredPersonFields(input);
+
+    if (validationError) {
+      return NextResponse.json({ message: validationError }, { status: 400 });
+    }
+    if (!input.matriculation) {
+      return NextResponse.json({ message: "Matricula obrigatoria para salvar pessoa." }, { status: 400 });
+    }
+    const matriculation = input.matriculation;
 
     const jobTitle = await fetchJobTitleById(supabase, appUser.tenant_id, input.jobTitleId);
     if (!jobTitle) {
@@ -961,7 +1143,7 @@ export async function POST(request: NextRequest) {
     const duplicatedPerson = await findDuplicatePersonByMatriculation(
       supabase,
       appUser.tenant_id,
-      input.matriculation,
+      matriculation,
     );
     if (duplicatedPerson) {
       return NextResponse.json(
@@ -976,7 +1158,7 @@ export async function POST(request: NextRequest) {
       actorUserId: appUser.id,
       personId: null,
       name: input.name,
-      matriculation: input.matriculation,
+      matriculation,
       jobTitleId: input.jobTitleId,
       jobTitleTypeId: input.jobTitleTypeId,
       jobLevel: input.jobLevel,
@@ -1010,13 +1192,7 @@ export async function PUT(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Partial<UpdatePersonPayload>;
     const personId = normalizeText(body.id);
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
-    const input = {
-      name: normalizeText(body.name),
-      matriculation: normalizeNullableMatriculation(body.matriculation),
-      jobTitleId: normalizeText(body.jobTitleId),
-      jobTitleTypeId: normalizeNullableText(body.jobTitleTypeId),
-      jobLevel: normalizeNullableText(body.jobLevel),
-    };
+    const input = parsePersonInput(body);
 
     if (!personId) {
       return NextResponse.json({ message: "Pessoa invalida para edicao." }, { status: 400 });
@@ -1026,9 +1202,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Atualize a lista antes de editar a pessoa." }, { status: 400 });
     }
 
-    if (!input.name || !input.matriculation || !input.jobTitleId || !input.jobTitleTypeId) {
-      return NextResponse.json({ message: "Preencha os campos obrigatorios da pessoa." }, { status: 400 });
+    const validationError = validateRequiredPersonFields(input);
+    if (validationError) {
+      return NextResponse.json({ message: validationError }, { status: 400 });
     }
+    if (!input.matriculation) {
+      return NextResponse.json({ message: "Matricula obrigatoria para salvar pessoa." }, { status: 400 });
+    }
+    const matriculation = input.matriculation;
 
     const currentPerson = await fetchPersonById(supabase, appUser.tenant_id, personId);
     if (!currentPerson) {
@@ -1078,7 +1259,7 @@ export async function PUT(request: NextRequest) {
     const duplicatedPerson = await findDuplicatePersonByMatriculation(
       supabase,
       appUser.tenant_id,
-      input.matriculation,
+      matriculation,
       personId,
     );
     if (duplicatedPerson) {
@@ -1108,7 +1289,7 @@ export async function PUT(request: NextRequest) {
       actorUserId: appUser.id,
       personId,
       name: input.name,
-      matriculation: input.matriculation,
+      matriculation,
       jobTitleId: input.jobTitleId,
       jobTitleTypeId: input.jobTitleTypeId,
       jobLevel: input.jobLevel,

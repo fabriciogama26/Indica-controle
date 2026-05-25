@@ -88,6 +88,42 @@ type PersonHistoryResponse = {
   message?: string;
 };
 
+type MassImportIssue = {
+  rowNumber: number;
+  column: string;
+  value: string;
+  error: string;
+};
+
+type MassImportErrorReportData = {
+  fileName: string;
+  content: string;
+  errorRows: number;
+  totalIssues: number;
+};
+
+type MassImportResultSummary = {
+  status: "success" | "partial" | "error";
+  message: string;
+  successCount: number;
+  errorRows: number;
+};
+
+type PersonBatchImportResultItem = {
+  rowNumber: number;
+  success: boolean;
+  message: string;
+  code?: string;
+};
+
+type PersonBatchImportResponse = {
+  success?: boolean;
+  message?: string;
+  savedCount?: number;
+  errorCount?: number;
+  results?: PersonBatchImportResultItem[];
+};
+
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 100;
@@ -164,6 +200,60 @@ function escapeCsvValue(value: string | number | null | undefined) {
   return raw;
 }
 
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ";" && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function normalizeCsvHeader(value: string) {
+  return normalizeText(value)
+    .replace(/^\uFEFF/, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function resolveCsvValue(row: Record<string, string>, aliases: string[]) {
+  for (const alias of aliases) {
+    const value = row[alias];
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
 function buildPeopleCsv(personItems: PersonItem[]) {
   const header = [
     "Nome",
@@ -194,6 +284,32 @@ function buildPeopleCsv(personItems: PersonItem[]) {
   return `\uFEFF${csvLines.join("\n")}`;
 }
 
+function buildMassImportErrorCsv(issues: MassImportIssue[]) {
+  const header = ["linha", "coluna", "valor", "erro"];
+  const rows = issues.map((issue) => [
+    issue.rowNumber,
+    issue.column,
+    issue.value,
+    issue.error,
+  ]);
+  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
+  return `\uFEFF${csvLines.join("\n")}`;
+}
+
+function createMassImportErrorReport(issues: MassImportIssue[]) {
+  if (!issues.length) {
+    return null;
+  }
+
+  const errorRows = new Set(issues.map((issue) => issue.rowNumber)).size;
+  return {
+    fileName: `pessoas_erros_${new Date().toISOString().slice(0, 10)}.csv`,
+    content: buildMassImportErrorCsv(issues),
+    errorRows,
+    totalIssues: issues.length,
+  };
+}
+
 function downloadCsvFile(content: string, filename: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -220,6 +336,14 @@ function formatDateTime(value: string | null) {
 function formatAuditActor(value: string | null | undefined) {
   const normalized = String(value ?? "").trim();
   return normalized || "Nao identificado";
+}
+
+function normalizeLookupKey(value: string | null | undefined) {
+  return normalizeText(String(value ?? ""))
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
 }
 
 function formatHistoryValue(field: string, value: string | null) {
@@ -278,6 +402,11 @@ export function PeoplePageView() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [isMassImportModalOpen, setIsMassImportModalOpen] = useState(false);
+  const [massImportFile, setMassImportFile] = useState<File | null>(null);
+  const [massImportErrorReport, setMassImportErrorReport] = useState<MassImportErrorReportData | null>(null);
+  const [massImportResult, setMassImportResult] = useState<MassImportResultSummary | null>(null);
+  const [isImportingMass, setIsImportingMass] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
@@ -747,6 +876,296 @@ export function PeoplePageView() {
     }
   }
 
+  function downloadMassTemplate() {
+    const model = "\uFEFFnome;matricula;cargo;tipo;nivel\nGABRIEL GONCALVES VELASCO;6126;Encarregado de Turma;LINHA MORTA;2\n";
+    downloadCsvFile(model, "modelo_pessoas_cadastro_em_massa.csv");
+  }
+
+  function downloadLastMassImportErrorReport() {
+    if (!massImportErrorReport) {
+      return;
+    }
+
+    downloadCsvFile(massImportErrorReport.content, massImportErrorReport.fileName);
+  }
+
+  function openMassImportModal() {
+    setMassImportFile(null);
+    setMassImportErrorReport(null);
+    setMassImportResult(null);
+    setIsMassImportModalOpen(true);
+  }
+
+  function closeMassImportModal() {
+    if (isImportingMass) {
+      return;
+    }
+
+    setMassImportFile(null);
+    setMassImportErrorReport(null);
+    setMassImportResult(null);
+    setIsMassImportModalOpen(false);
+  }
+
+  function resolveJobTitleFromCsv(value: string) {
+    const key = normalizeLookupKey(value);
+    if (!key) {
+      return null;
+    }
+
+    return jobTitles.find((jobTitle) => (
+      normalizeLookupKey(jobTitle.id) === key
+      || normalizeLookupKey(jobTitle.code) === key
+      || normalizeLookupKey(jobTitle.name) === key
+    )) ?? null;
+  }
+
+  function resolveJobTitleTypeFromCsv(jobTitleId: string, value: string) {
+    const key = normalizeLookupKey(value);
+    if (!key) {
+      return null;
+    }
+
+    return jobTitleTypes.find((jobTitleType) => (
+      jobTitleType.jobTitleId === jobTitleId
+      && (
+        normalizeLookupKey(jobTitleType.id) === key
+        || normalizeLookupKey(jobTitleType.name) === key
+      )
+    )) ?? null;
+  }
+
+  function resolveJobLevelFromCsv(value: string) {
+    const raw = normalizeText(value);
+    if (!raw) {
+      return "";
+    }
+
+    const key = normalizeLookupKey(raw);
+    return jobLevels.find((level) => normalizeLookupKey(level.level) === key)?.level ?? null;
+  }
+
+  async function handleMassImportFile(file: File) {
+    if (!session?.accessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para importar pessoas em massa." });
+      return;
+    }
+
+    if (!hasJobTitles) {
+      setFeedback({
+        type: "error",
+        message: "Nao ha cargos ativos para cadastro. Cadastre ao menos um cargo em Cadastro Base > Cargo.",
+      });
+      return;
+    }
+
+    setIsImportingMass(true);
+    setMassImportErrorReport(null);
+    setMassImportResult(null);
+
+    try {
+      const content = await file.text();
+      const lines = content.split(/\r?\n/).filter((line) => normalizeText(line));
+      const importIssues: MassImportIssue[] = [];
+
+      if (lines.length < 2) {
+        importIssues.push({
+          rowNumber: 1,
+          column: "arquivo",
+          value: file.name,
+          error: "Arquivo CSV sem linhas de dados.",
+        });
+      }
+
+      const headers = parseCsvLine(lines[0] ?? "").map(normalizeCsvHeader);
+      const requiredHeaders = ["nome", "matricula", "cargo", "tipo"];
+      for (const header of requiredHeaders) {
+        if (!headers.includes(header)) {
+          importIssues.push({
+            rowNumber: 1,
+            column: header,
+            value: "",
+            error: `Coluna obrigatoria ausente: ${header}.`,
+          });
+        }
+      }
+
+      const validRows: Array<{
+        rowNumber: number;
+        name: string;
+        matriculation: string;
+        jobTitleId: string;
+        jobTitleTypeId: string;
+        jobLevel: string | null;
+      }> = [];
+      const seenMatriculations = new Set<string>();
+
+      if (!importIssues.some((issue) => issue.rowNumber === 1 && issue.column !== "arquivo")) {
+        for (let index = 1; index < lines.length; index += 1) {
+          const rowNumber = index + 1;
+          const values = parseCsvLine(lines[index]);
+          const row = headers.reduce<Record<string, string>>((accumulator, header, headerIndex) => {
+            accumulator[header] = values[headerIndex] ?? "";
+            return accumulator;
+          }, {});
+
+          const name = normalizeText(resolveCsvValue(row, ["nome", "name"]));
+          const matriculation = normalizeMatriculation(resolveCsvValue(row, ["matricula", "matriculation"]));
+          const jobTitleRaw = resolveCsvValue(row, ["cargo", "cargo_codigo", "job_title", "job_title_code"]);
+          const jobTitle = resolveJobTitleFromCsv(jobTitleRaw);
+          const jobTitleTypeRaw = resolveCsvValue(row, ["tipo", "tipo_cargo", "job_title_type"]);
+          const jobTitleType = jobTitle ? resolveJobTitleTypeFromCsv(jobTitle.id, jobTitleTypeRaw) : null;
+          const jobLevelRaw = resolveCsvValue(row, ["nivel", "level", "job_level"]);
+          const jobLevel = resolveJobLevelFromCsv(jobLevelRaw);
+          const rowIssuesBefore = importIssues.length;
+
+          if (!name) {
+            importIssues.push({ rowNumber, column: "nome", value: name, error: "Nome obrigatorio." });
+          }
+
+          if (!matriculation) {
+            importIssues.push({ rowNumber, column: "matricula", value: matriculation, error: "Matricula obrigatoria." });
+          } else if (seenMatriculations.has(matriculation)) {
+            importIssues.push({ rowNumber, column: "matricula", value: matriculation, error: "Matricula duplicada no arquivo." });
+          }
+
+          if (!jobTitle) {
+            importIssues.push({ rowNumber, column: "cargo", value: jobTitleRaw, error: "Cargo nao encontrado ou inativo." });
+          }
+
+          if (!jobTitleType) {
+            importIssues.push({ rowNumber, column: "tipo", value: jobTitleTypeRaw, error: "Tipo nao encontrado para o cargo informado." });
+          }
+
+          if (jobLevel === null) {
+            importIssues.push({ rowNumber, column: "nivel", value: jobLevelRaw, error: "Nivel nao encontrado ou inativo." });
+          }
+
+          if (importIssues.length === rowIssuesBefore && jobTitle && jobTitleType) {
+            validRows.push({
+              rowNumber,
+              name,
+              matriculation,
+              jobTitleId: jobTitle.id,
+              jobTitleTypeId: jobTitleType.id,
+              jobLevel: jobLevel || null,
+            });
+            seenMatriculations.add(matriculation);
+          } else if (matriculation) {
+            seenMatriculations.add(matriculation);
+          }
+        }
+      }
+
+      if (!validRows.length) {
+        const report = createMassImportErrorReport(importIssues);
+        setMassImportErrorReport(report);
+        setMassImportResult({
+          status: "error",
+          message: "Nenhuma pessoa valida foi encontrada para importar.",
+          successCount: 0,
+          errorRows: report?.errorRows ?? 0,
+        });
+        setFeedback({ type: "error", message: "Nenhuma pessoa valida foi encontrada para importar. Baixe o CSV de erros para corrigir." });
+        return;
+      }
+
+      const response = await fetch("/api/people", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          action: "BATCH_IMPORT",
+          rows: validRows,
+        }),
+      });
+
+      const data = (await response.json().catch(() => null)) as PersonBatchImportResponse | null;
+      if (!response.ok) {
+        importIssues.push({
+          rowNumber: 1,
+          column: "salvamento",
+          value: file.name,
+          error: data?.message ?? "Falha ao importar pessoas em massa.",
+        });
+      }
+
+      for (const result of data?.results ?? []) {
+        if (result.success) {
+          continue;
+        }
+
+        importIssues.push({
+          rowNumber: result.rowNumber,
+          column: result.code === "DUPLICATE_PERSON_MATRICULATION" ? "matricula" : "salvamento",
+          value: "",
+          error: result.message || "Falha ao salvar pessoa.",
+        });
+      }
+
+      const successCount = Number(data?.savedCount ?? 0);
+      const report = createMassImportErrorReport(importIssues);
+      const errorRows = report?.errorRows ?? 0;
+      setMassImportErrorReport(report);
+
+      if (successCount > 0) {
+        await loadPeople(1, activeFilters);
+        setPage(1);
+      }
+
+      if (!successCount) {
+        setMassImportResult({
+          status: "error",
+          message: `Cadastro em massa sem sucesso. 0 pessoas salvas e ${errorRows} linhas com erro.`,
+          successCount: 0,
+          errorRows,
+        });
+        setFeedback({ type: "error", message: `Cadastro em massa sem sucesso. ${errorRows} linhas com erro.` });
+        return;
+      }
+
+      if (errorRows > 0) {
+        setMassImportResult({
+          status: "partial",
+          message: `Cadastro em massa parcial: ${successCount} pessoas salvas e ${errorRows} linhas com erro.`,
+          successCount,
+          errorRows,
+        });
+        setFeedback({ type: "success", message: `Cadastro em massa parcial: ${successCount} pessoas salvas e ${errorRows} linhas com erro.` });
+        return;
+      }
+
+      setMassImportResult({
+        status: "success",
+        message: "Incluido com sucesso.",
+        successCount,
+        errorRows: 0,
+      });
+      setFeedback({ type: "success", message: `Cadastro em massa concluido com sucesso. ${successCount} pessoas salvas.` });
+    } catch {
+      setMassImportResult({
+        status: "error",
+        message: "Falha ao importar pessoas em massa.",
+        successCount: 0,
+        errorRows: 0,
+      });
+      setFeedback({ type: "error", message: "Falha ao importar pessoas em massa." });
+    } finally {
+      setIsImportingMass(false);
+    }
+  }
+
+  async function submitMassImport() {
+    if (!massImportFile) {
+      return;
+    }
+
+    await handleMassImportFile(massImportFile);
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -862,6 +1281,16 @@ export function PeoplePageView() {
             <button type="submit" className={styles.primaryButton} disabled={!canSubmitPersonForm}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={openMassImportModal}
+                disabled={isLoadingMeta || !hasJobTitles}
+              >
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -1124,6 +1553,88 @@ export function PeoplePageView() {
           </div>
         </div>
       </article>
+
+      {isMassImportModalOpen ? (
+        <div className={styles.modalOverlay} onClick={closeMassImportModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Cadastro em massa</h4>
+                <p className={styles.modalSubtitle}>Importe um CSV para cadastrar pessoas em lote.</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeMassImportModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>1</span>
+                  <div>
+                    <strong>Baixe o modelo</strong>
+                    <p>Use o arquivo modelo com as colunas obrigatorias.</p>
+                  </div>
+                </div>
+                <button type="button" className={styles.secondaryButton} onClick={downloadMassTemplate}>
+                  Baixar modelo CSV
+                </button>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>2</span>
+                  <div>
+                    <strong>Preencha a planilha</strong>
+                    <p>Colunas obrigatorias: nome, matricula, cargo e tipo. Nivel e opcional.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className={styles.importStep}>
+                <div className={styles.importStepHeader}>
+                  <span className={styles.importStepNumber}>3</span>
+                  <div>
+                    <strong>Envie o arquivo</strong>
+                    <p>Somente arquivo CSV separado por ponto e virgula.</p>
+                  </div>
+                </div>
+                <label className={styles.importDropzone}>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => setMassImportFile(event.target.files?.[0] ?? null)}
+                  />
+                  <span>{massImportFile ? massImportFile.name : "Clique para selecionar o arquivo CSV"}</span>
+                </label>
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => void submitMassImport()}
+                    disabled={!massImportFile || isImportingMass}
+                  >
+                    {isImportingMass ? "Importando..." : "Importar planilha"}
+                  </button>
+                  {massImportErrorReport ? (
+                    <button type="button" className={styles.secondaryButton} onClick={downloadLastMassImportErrorReport}>
+                      Baixar erros (CSV)
+                    </button>
+                  ) : null}
+                </div>
+                {massImportResult ? (
+                  <div className={massImportResult.status === "error" ? styles.feedbackError : styles.feedbackSuccess}>
+                    <strong>{massImportResult.status === "success" ? "Incluido com sucesso." : massImportResult.status === "partial" ? "Importacao parcial." : "Importacao com erros."}</strong>
+                    <div>{massImportResult.successCount} pessoas salvas.</div>
+                    {massImportResult.errorRows > 0 ? <div>{massImportResult.errorRows} linhas com erro.</div> : null}
+                    {massImportResult.message ? <div>{massImportResult.message}</div> : null}
+                  </div>
+                ) : null}
+              </section>
+            </div>
+          </article>
+        </div>
+      ) : null}
 
       {detailPerson ? (
         <div className={styles.modalOverlay} onClick={() => setDetailPerson(null)}>

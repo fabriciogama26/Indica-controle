@@ -43,8 +43,18 @@ Cadastro
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear sobrescrita silenciosa.
 - Fluxos:
   - `POST /api/people` para cadastro.
+  - `POST /api/people` com `action = BATCH_IMPORT` para cadastro em massa.
   - `PUT /api/people` para edicao.
   - `PATCH /api/people` para cancelamento/ativacao com motivo obrigatorio.
+- Cadastro em massa:
+  - Botao `Cadastro em massa` no bloco de cadastro, visivel fora do modo de edicao.
+  - Modelo CSV separado por ponto e virgula.
+  - Colunas obrigatorias: `nome`, `matricula`, `cargo`, `tipo`.
+  - Coluna opcional: `nivel`.
+  - `Cargo` pode ser resolvido por codigo, nome ou id carregado em metadados.
+  - `Tipo` precisa pertencer ao cargo informado.
+  - Gera CSV de erros com `linha`, `coluna`, `valor` e `erro` quando houver falhas.
+  - Processamento parcial: linhas validas podem ser salvas mesmo quando outras linhas tiverem erro.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -120,14 +130,15 @@ Atualizacao 2026-05
 - `Matricula` passou a ser unica por tenant.
 - O cadastro/edicao bloqueia qualquer pessoa com a mesma matricula, mesmo quando nome, cargo, tipo ou nivel forem diferentes.
 - A migration `197_enforce_people_unique_matriculation.sql` valida duplicidades legadas antes de criar o indice unico.
+- Criado cadastro em massa de Pessoas no mesmo padrao da tela Materiais, com modelo CSV, pre-validacao no frontend, envio em lote para `/api/people` e relatorio CSV de erros.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/pessoas/PeoplePageView.tsx`
-  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status, incluindo envio de `expectedUpdatedAt` e refresh quando houver conflito.
+  - Responsavel por: formulario, filtros, listagem, exportacao, cadastro em massa, detalhes, historico e status, incluindo envio de `expectedUpdatedAt` e refresh quando houver conflito.
 - Caminho: `src/app/api/people/route.ts`
-  - Responsavel por: validar tenant/cargo/tipo/nivel, listar/historico e delegar insert/update/status para as RPCs `save_person_record` e `set_person_record_status`.
+  - Responsavel por: validar tenant/cargo/tipo/nivel, listar/historico, processar cadastro em massa e delegar insert/update/status para as RPCs `save_person_record` e `set_person_record_status`.
 - Caminho: `src/app/api/people/meta/route.ts`
   - Responsavel por: carregar metadados de cargos, tipos por cargo e niveis.
 
@@ -167,9 +178,11 @@ Ajuda contextual
   - `supabase/migrations/197_enforce_people_unique_matriculation.sql`
 - Funcoes/hooks/constantes tocadas:
   - `loadMeta`, `loadPeople`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`, `handleExportPeople`
+  - `downloadMassTemplate`, `handleMassImportFile`, `submitMassImport`, `createMassImportErrorReport`
   - `hasJobTitles`, `hasTypeOptionsForSelectedJob`, `canSubmitPersonForm` (bloqueio de submit sem pre-requisitos de cargo/tipo)
   - `buildQuery`, `savePersonViaRpc`, `setPersonStatusViaRpc`, `isMatriculationNumericTypeMismatchError`, `listPeople`
   - `findDuplicatePersonByMatriculation`, `mapPersonDbError`
+  - `importPersonBatch`, `parsePersonInput`, `validateRequiredPersonFields`
   - `save_person_record`, `set_person_record_status`
   - `prevent_people_duplicate_identity`
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
@@ -182,6 +195,7 @@ Ajuda contextual
   - Depois (2026-03-20): cadastro/edicao de pessoa tenta fallback com cast numerico da matricula tambem quando a RPC devolve `success=false` por incompatibilidade de tipo.
   - Depois (2026-03-29): o filtro de `Matricula` da lista continua usando busca parcial em bancos atualizados (`text`) e recua para busca exata em ambientes legados (`numeric`) sem quebrar a listagem.
   - Depois (2026-05): a matricula passa a ser unica por tenant no cadastro, edicao, RPC e trigger de banco.
+  - Depois (2026-05): a tela passa a cadastrar pessoas em massa por CSV, com pre-validacao de cabecalho/linhas, bloqueio de matricula duplicada no arquivo e retorno parcial de erros do backend.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir os campos obrigatorios do cadastro e metadados de auditoria da lista (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Arquivos alterados/criados (2026-03-24):
   - `src/modules/dashboard/pessoas/PeoplePageView.tsx`
