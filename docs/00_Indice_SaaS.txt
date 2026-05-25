@@ -58,5 +58,5 @@ Estado atual resumido
 - Navegacao lateral reorganizada em Visao Geral, Operacao, Almoxarifado, Cadastros e Cadastro Base
 - Tela de Estoque Atual com filtros/lista paginada implementada
 - Tela de Rastreio de SERIAL implementada com consulta em `trafo_instances`
-- Modulos ainda em placeholder: `Cargo` e parte de `Cadastro Base`
+- Modulos ainda em placeholder: parte de `Cadastro Base`
 - Backend minimo de login web mapeado no Supabase

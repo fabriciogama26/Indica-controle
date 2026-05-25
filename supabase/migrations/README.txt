@@ -91,6 +91,7 @@ Ordem de aplicacao
 171. 171_update_service_activity_voice_point_rpc.sql
 175. 175_add_team_supervisor_link.sql
 182. 182_create_operational_billing_dashboard_page.sql
+195. 195_create_job_titles_page.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -401,6 +402,9 @@ Resumo por arquivo
 
 193_allow_direct_purchase_stock_entry.sql
 - Adiciona `stock_transfers.direct_purchase`, permite `stock_transfers.project_id` nulo e ajusta `save_stock_transfer_record` para aceitar `Entrada` de compra direta sem projeto, mantendo escopo por tenant e estorno transacional.
+
+195_create_job_titles_page.sql
+- Adiciona cancelamento/ativacao em `job_titles`, checks obrigatorios de codigo/nome e indices de apoio para a tela Cargo manter `job_titles`, `job_title_types` e `job_levels`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

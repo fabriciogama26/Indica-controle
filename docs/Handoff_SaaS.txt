@@ -23,7 +23,7 @@ Filtros, auto-complete e listagem
   - `Pessoas`
   - `Materiais`
   - `Estoque Atual`
-- Pendencias de CRUD real permanecem para `Cargo` e telas de `Cadastro Base`.
+- Pendencias de CRUD real permanecem para telas de `Cadastro Base`.
 
 Boas praticas
 -------------

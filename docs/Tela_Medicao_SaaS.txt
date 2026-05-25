@@ -660,3 +660,20 @@ Atualizacao 2026-05-25 (Modal de detalhes mais amplo)
   - Depois: somente o modal de detalhes usa largura maxima de `1440px`, respeitando `calc(100vw - 36px)` para nao ultrapassar a tela.
   - Depois: os demais modais da Medicao mantem a largura padrao.
   - Impacto multi-tenant: sem alteracao de dados, queries, schema ou RLS.
+
+Atualizacao 2026-05-25 (Duplicidade por programacao reprogramada)
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/194_measurement_programming_unique_by_context.sql`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Indice `idx_project_measurement_orders_programming_context_unique`
+  - Funcao SQL `save_project_measurement_order`
+- Comportamento antes/depois:
+  - Antes: a tabela bloqueava qualquer nova ordem com o mesmo `programming_id`, mesmo quando a Programacao havia sido reprogramada para outra `Data execucao`.
+  - Antes: uma ordem historica de `29/04/2026` podia bloquear cadastro em `15/05/2026` porque ambas apontavam para a mesma Programacao.
+  - Depois: a unicidade passa a considerar `tenant_id + programming_id + project_id + team_id + execution_date`.
+  - Depois: a RPC bloqueia duplicidade apenas quando ja existe ordem para a mesma Programacao no mesmo Projeto + Equipe + Data execucao.
+  - Depois: listas continuam filtradas pela `execution_date` gravada na ordem; uma ordem historica permanece pesquisavel na data em que foi medida.
+  - Impacto multi-tenant: migration preserva `tenant_id` no indice unico e na regra da RPC; nao altera RLS.

@@ -2,85 +2,155 @@ Tela: Cargo SaaS
 
 Visao geral
 -----------
-- Tela placeholder para o modulo de cargos no dashboard.
-- Disponibiliza o atalho de navegacao na secao `Cadastros`.
-- Ja integrada a matriz de permissao por pagina.
+- Tela para cadastro e manutencao de cargos por tenant.
+- Permite cadastrar, editar, consultar, cancelar/ativar e auditar alteracoes.
+- Mantem `job_titles`, tipos vinculados em `job_title_types` e niveis ativos do tenant em `job_levels`.
+- A tela de `Pessoas` consome estes catalogos para liberar cadastro de pessoas.
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/cargo/page.tsx`
-- Componente de base visual: `src/components/ui/ModulePlaceholder.tsx`
-- Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
-- Guard de rota por permissao: `src/lib/auth/authorization.ts`
-- Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-- Dominio de dados: `public.job_titles` (cargo), `public.job_title_types` (tipos por cargo), `public.job_levels` (niveis por tenant) e `public.people` (vinculos de tipo e nivel da pessoa).
+- View: `src/modules/dashboard/cargo/JobTitlesPageView.tsx`
+- Estilo: reutiliza `src/modules/dashboard/pessoas/PeoplePageView.module.css`
+- API principal: `src/app/api/job-titles/route.ts`
+- Banco (base people/job_titles): `supabase/migrations/014_create_people_job_titles.sql`
+- Banco (tipos por cargo): `supabase/migrations/047_create_job_title_types_and_people_type_link.sql`
+- Banco (niveis): `supabase/migrations/048_create_job_levels_and_people_level_link.sql`
+- Banco (historico generico): `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- Banco (status/cancelamento de cargos): `supabase/migrations/195_create_job_titles_page.sql`
 
 Cadastro
 --------
-- Nao se aplica nesta etapa.
+- Campos obrigatorios:
+  - `Codigo`
+  - `Nome`
+  - `Tipos do cargo`
+- Campos opcionais:
+  - `Niveis ativos do tenant`
+- Regras:
+  - `Codigo` e normalizado para maiusculo sem acento e sem espacos.
+  - `Tipos do cargo` aceita uma entrada por linha, virgula ou ponto e virgula.
+  - Ao salvar, tipos informados ficam ativos e tipos removidos ficam inativos.
+  - `Niveis ativos do tenant` atualiza o catalogo global de niveis do tenant.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear sobrescrita silenciosa.
+- Fluxos:
+  - `POST /api/job-titles` para cadastro.
+  - `PUT /api/job-titles` para edicao.
+  - `PATCH /api/job-titles` para cancelamento/ativacao com motivo obrigatorio.
 
 Filtros, auto-complete e listagem
 ---------------------------------
-- Nao se aplica nesta etapa.
+- Filtros:
+  - `Codigo`
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`)
+  - Colunas: Codigo, Nome, Tipos ativos, Niveis ativos, Registrado em, Acoes
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`
+  - Botao `Exportar Excel (CSV)` no cabecalho
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `cargo`
+  - `entity_table`: `job_titles`
+  - Modal com paginacao fixa de `5` registros por pagina
 
 Boas praticas
 -------------
-- Manter `cargo` como `pageKey` explicito em `app_pages`.
-- Reutilizar esse dominio no CRUD de `Pessoas`.
-- Garantir isolamento por tenant em consultas e manutencao.
+- Sempre validar `tenant_id` em todas as operacoes.
+- Nao expor cargos/tipos/niveis de outro tenant.
+- Registrar alteracoes em `app_entity_history` para `UPDATE`, `CANCEL`, `ACTIVATE`.
+- Manter motivo obrigatorio em cancelamento/ativacao.
+- Recarregar a lista e limpar o formulario stale quando houver conflito de concorrencia.
+- Manter `Cargo` como fonte dos catalogos consumidos por `Pessoas`.
 
 Cancelamento e saldo
 --------------------
-- Nao se aplica nesta etapa.
+- Cancelamento/ativacao implementado em `job_titles`.
+- Campos de status:
+  - `ativo`
+  - `cancellation_reason`
+  - `canceled_at`
+  - `canceled_by`
+- Regra de consistencia:
+  - Ativo: sem dados de cancelamento.
+  - Inativo: com data e motivo.
+- Saldo:
+  - Nao se aplica ao modulo de cargos.
 
 Atalhos
 -------
-- Rota ativa: `/cargo`.
-- Exibida na secao `Cadastros` da sidebar.
+- Rota principal: `/cargo`
+- API:
+  - `GET/POST/PUT/PATCH /api/job-titles`
 
-Atualizacao 2026-03
+Atualizacao 2026-05
 -------------------
-- Migration `047_create_job_title_types_and_people_type_link.sql` criada para permitir tipos vinculados ao cargo.
-- `job_title_types` criada com isolamento por tenant, RLS e auditoria.
-- `people.job_title_type_id` adicionado com FK composta para garantir que o tipo pertence ao mesmo `job_title_id` e `tenant_id` da pessoa.
-- Migration `048_create_job_levels_and_people_level_link.sql` criada para catalogar niveis em `text` livre por tenant (sem lista fixa).
-- `people.job_level` adicionado com FK composta (`tenant_id`, `job_level`) para consumir a tabela de niveis.
-- Antes: `people` possuia apenas `job_title_id`, sem relacao explicita com tipo por cargo.
-- Depois: a pessoa pode armazenar tipo e nivel com integridade referencial e isolamento por tenant.
-- Arquivo `src/app/(dashboard)/cargo/page.tsx` criado.
-- `AppShell` atualizado para expor `Cargo` em `Cadastros`.
-- `authorization.ts` atualizado para mapear `/cargo` para `pageKey = cargo`.
-- `PermissionsPageView` atualizado para incluir a liberacao da tela `Cargo`.
-- Migration `040_reorganize_menu_sections_and_page_permissions.sql` criada para inserir `cargo` em `app_pages` e backfill de permissoes.
-- Antes: o modulo de cargos nao tinha rota dedicada no SaaS web.
-- Depois: rota placeholder criada e protegida por permissao de pagina.
+- Tela `Cargo` saiu de placeholder para implementacao completa.
+- Criada a view `JobTitlesPageView` no padrao visual de `Pessoas`.
+- Criada a API `/api/job-titles` com listagem, cadastro, edicao, status, historico e exportacao CSV.
+- Criada migration `195_create_job_titles_page.sql` para status/cancelamento em `job_titles`, checks de codigo/nome e indices de apoio.
+- Antes: a rota `/cargo` exibia apenas `ModulePlaceholder`.
+- Depois: `/cargo` permite manter cargos, tipos por cargo e niveis usados pelo cadastro de `Pessoas`.
+- Depois: a edicao e a troca de status passam a recusar dados stale em vez de aplicar `last-write-wins`.
+- Depois: erros de tela sao registrados com `useErrorLogger('cargo')`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/app/(dashboard)/cargo/page.tsx`
-  - Responsavel por: montar o placeholder da rota `Cargo`.
-- Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: renderizar o item de menu lateral de `Cargo`.
+  - Responsavel por: montar a view operacional da rota `Cargo`.
+- Caminho: `src/modules/dashboard/cargo/JobTitlesPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status, incluindo envio de `expectedUpdatedAt` e refresh quando houver conflito.
+- Caminho: `src/app/api/job-titles/route.ts`
+  - Responsavel por: validar tenant, listar cargos/tipos/niveis, salvar cadastro, sincronizar tipos/niveis, registrar historico e bloquear concorrencia.
 
 Constantes e configuracoes
-- Caminho: `src/lib/auth/authorization.ts`
-  - Responsavel por: mapear rota para `pageKey` e aplicar fallback de permissao.
-- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: incluir `cargo` no catalogo de permissoes por usuario.
-- Caminho: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
-  - Responsavel por: garantir `cargo` em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
-- Caminho: `supabase/migrations/047_create_job_title_types_and_people_type_link.sql`
-  - Responsavel por: criar `job_title_types`, vincular tipo ao cargo e adicionar `people.job_title_type_id` com consistencia de tenant/cargo.
-- Caminho: `supabase/migrations/048_create_job_levels_and_people_level_link.sql`
-  - Responsavel por: criar `job_levels` e adicionar `people.job_level` com consumo via FK composta por tenant.
+- Caminho: `src/modules/dashboard/cargo/JobTitlesPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+- Caminho: `supabase/migrations/195_create_job_titles_page.sql`
+  - Responsavel por: campos de cancelamento em `job_titles`, checks obrigatorios e indices de apoio para tipos/niveis.
 
 Funcoes utilitarias relacionadas
-- Caminho: `src/hooks/useAuth.ts`
-  - Responsavel por: disponibilizar sessao usada na protecao de rota no shell.
+- Caminho: `src/modules/dashboard/cargo/JobTitlesPageView.tsx`
+  - Responsavel por: `normalizeText`, `normalizeCode`, `splitLines`, `buildQuery`, `buildJobTitlesCsv`, `formatDateTime`, `scrollDashboardContentToTop`.
+- Caminho: `src/app/api/job-titles/route.ts`
+  - Responsavel por: `fetchJobTitleById`, `fetchActiveTypes`, `fetchActiveLevels`, `syncJobTitleTypes`, `syncJobLevels`, `insertHistory`.
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: validar sessao e resolver tenant nas rotas `/api/job-titles`.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `cargo`.
 
 Servicos e integracoes externas
-- Nao se aplica nesta etapa (sem chamada de API nesta tela).
+- Supabase Postgres com RLS.
+- Next.js Route Handler (`/api/job-titles`).
 
 Ajuda contextual
-- Estado atual: tela em placeholder com permissao por pagina ativa.
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/cargo/page.tsx`
+  - `src/modules/dashboard/cargo/JobTitlesPageView.tsx`
+  - `src/app/api/job-titles/route.ts`
+  - `supabase/migrations/195_create_job_titles_page.sql`
+  - `docs/Tela_Cargo_SaaS.txt`
+  - `TASKS.md`
+  - `supabase/migrations/README.txt`
+  - `README.md`
+- Funcoes/hooks/constantes tocadas:
+  - `JobTitlesPageView`
+  - `loadJobTitles`
+  - `loadJobTitleHistory`
+  - `handleSubmit`
+  - `confirmStatusChange`
+  - `handleExportJobTitles`
+  - `GET`, `POST`, `PUT`, `PATCH` em `/api/job-titles`
+  - `syncJobTitleTypes`
+  - `syncJobLevels`
+  - `insertHistory`
+- Comportamento antes/depois:
+  - Antes: tela informativa sem persistencia.
+  - Depois: tela operacional completa no padrao SaaS de cadastros.
+  - Depois: `Pessoas` pode ser abastecida diretamente pelos catalogos mantidos em `Cargo`.

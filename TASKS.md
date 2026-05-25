@@ -385,7 +385,7 @@
 - [x] Preservar e corrigir o encarregado historico da Medicao: criar `team_foreman_history`, resolver snapshot por `Data execucao`, abrir vigencia anterior quando a primeira troca estiver no historico e backfillar ordens ja contaminadas.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
 - [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
-- [ ] Implementar CRUD de `Cargo` integrado a `people/job_titles`.
+- [x] Implementar CRUD de `Cargo` integrado a `people/job_titles`, incluindo tipos por cargo, niveis do tenant, historico, status, exportacao CSV e controle de concorrencia.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
 - [x] Revisao de cadastros (2026-03-20): bloquear submit de `Pessoas` com feedback explicito quando `job_titles` estiver vazio e orientar abertura do cadastro base de `Cargo`.
 - [x] Revisao de cadastros (2026-03-20): bloquear submit de `Equipes` com feedback explicito quando `team_types`, `project_service_centers` ou lista de encarregados estiver vazia.
@@ -708,3 +708,5 @@
 - [x] Corrigir a Lista de Ordens de Medicao para buscar registros em lotes no backend e nao depender do limite padrao do Supabase/PostgREST, mantendo filtros por tenant, periodo, projeto, equipe e status.
 
 - [x] Ampliar o modal de Detalhes da Ordem de Medicao para exibir mais colunas da tabela em telas largas, mantendo os demais modais no tamanho padrao.
+
+- [x] Ajustar a duplicidade da Medicao para permitir nova ordem quando a mesma Programacao foi reprogramada para outra data, mantendo bloqueio por Programacao + Projeto + Equipe + Data.

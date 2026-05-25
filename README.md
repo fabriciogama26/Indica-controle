@@ -128,7 +128,7 @@ vercel --prod
   - `(dashboard)/meta/page.tsx`: rota da tela Meta para cadastrar valor diario por tipo de equipe, calcular meta diaria por quantidade manual de equipes medida, editar dias uteis dos ciclos 21 a 20 existentes nas medicoes Com producao, salvar dias padrao segunda a sexta, recalcular `Média Dias trabalhados` do ciclo no backend ao salvar e listar cadastros salvos com atualizacao, exportacao CSV, detalhes, historico e edicao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros e listagem, incluindo `Tipo` por select (`NOVO`/`SUCATA`), flag `Material TRAFO` (`is_transformer`) e `Preco` opcional.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros (incluindo `Status: Ativo/Inativo`), listagem paginada e acoes de detalhe/historico/status.
-  - `(dashboard)/cargo/page.tsx`: placeholder de Cargo.
+  - `(dashboard)/cargo/page.tsx`: rota da tela de Cargo com cadastro, filtros, listagem, detalhes, historico, troca de status e manutencao dos tipos por cargo/niveis consumidos por Pessoas.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
@@ -158,6 +158,7 @@ vercel --prod
   - `api/locacao/route.ts`: inicializa, carrega e atualiza a Locacao por projeto, delegando a persistencia validada para RPC no banco e enviando `expectedUpdatedAt` no salvar da aba principal.
   - `api/locacao/meta/route.ts`: carrega municipios, catalogo de projetos ativos por SOB e a lista resumida de locacoes com status, responsavel e data da tela de locacao.
   - `api/locacao/materials/route.ts`: adiciona e edita materiais previstos da locacao via RPC com bloqueio de quantidade invalida e controle de concorrencia por `updated_at`.
+  - `api/job-titles/route.ts`: lista, cadastra, edita, cancela/ativa e consulta historico de cargos por tenant, sincronizando tipos por cargo e niveis ativos do tenant.
   - `api/locacao/materials/catalog/route.ts`: pesquisa materiais ativos por codigo/descricao para inclusao na locacao.
   - `api/locacao/activities/route.ts`: adiciona e edita atividades previstas da locacao via RPC com bloqueio de quantidade invalida e controle de concorrencia por `updated_at`.
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
@@ -315,7 +316,7 @@ vercel --prod
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada e exportacao CSV.
   - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de SERIAL com consulta em `trafo_instances`, atalho de movimentacao e fluxo `RET`.
-  - `Tela_Cargo_SaaS.txt`: placeholder do modulo de cargo.
+  - `Tela_Cargo_SaaS.txt`: tela de cargos com cadastro, filtros, historico, status e manutencao de tipos/niveis.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Padrao_Cadastros_SaaS.txt`: referencia obrigatoria de padrao visual/comportamental para telas de cadastro.
   - `Tela_Permissoes_SaaS.txt`: base da futura tela de permissao por pagina.
@@ -568,6 +569,9 @@ npm run build
 - `Responsavel Contratada` sem opcoes no cadastro de projetos:
   - Causa: cargos/pessoas de supervisor nao configurados no tenant.
   - Solucao: garantir `job_titles.code = SUPERVISOR` ativo e pessoas ativas vinculadas em `people.job_title_id`.
+- `Falha ao salvar cargo.` ou erro em `cancellation_reason` na tela `/cargo`:
+  - Causa: migration da tela de Cargo ainda nao aplicada no banco remoto.
+  - Solucao: aplicar `195_create_job_titles_page.sql` e repetir a operacao.
 - `Nao foi encontrado contrato ativo com campo name para preencher Parceira automaticamente.`:
   - Causa: tabela `contract` sem registro ativo para o tenant autenticado.
   - Solucao: cadastrar/ativar um contrato por tenant com `name` preenchido.
