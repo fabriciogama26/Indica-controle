@@ -93,6 +93,8 @@ Ordem de aplicacao
 182. 182_create_operational_billing_dashboard_page.sql
 195. 195_create_job_titles_page.sql
 197. 197_enforce_people_unique_matriculation.sql
+198. 198_add_people_cpf_optional.sql
+199. 199_people_cpf_unique_phone_and_conditional_type.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -412,6 +414,12 @@ Resumo por arquivo
 
 197_enforce_people_unique_matriculation.sql
 - Garante `people.matriculation` unica por tenant, valida duplicidades legadas antes do indice unico e atualiza a RPC `save_person_record` para retornar conflito especifico de matricula.
+
+198_add_people_cpf_optional.sql
+- Adiciona `people.cpf` opcional com validacao de 11 digitos, indice por tenant e republica `save_person_record` para salvar CPF normalizado.
+
+199_people_cpf_unique_phone_and_conditional_type.sql
+- Garante `people.cpf` unico por tenant, adiciona trava composta `CPF + Matricula`, cria `people.phone` opcional e republica `save_person_record` com telefone.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

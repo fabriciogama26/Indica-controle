@@ -23,6 +23,8 @@ Arquitetura
 - Banco (bloqueio de duplicidade people): `supabase/migrations/056_prevent_people_duplicate_identity.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
 - Banco (matricula unica por tenant): `supabase/migrations/197_enforce_people_unique_matriculation.sql`
+- Banco (CPF opcional): `supabase/migrations/198_add_people_cpf_optional.sql`
+- Banco (CPF unico, telefone e tipo condicional): `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`
 
 Cadastro
 --------
@@ -32,8 +34,16 @@ Cadastro
   - `Cargo`
   - `Tipo`
 - Campos opcionais:
+  - `CPF`
+  - `Telefone`
+  - `Tipo` para cargos que nao exigem tipo operacional
   - `Nivel`
 - Regras:
+  - `CPF` e opcional; quando preenchido, deve ser valido e e salvo somente com 11 digitos.
+  - `CPF` deve ser unico por tenant.
+  - A combinacao `CPF + Matricula` tambem e protegida por tenant.
+  - `Telefone` e opcional, sem validacao de formato.
+  - `Tipo` e obrigatorio apenas para os cargos `Encarregado de Turma`, `Ajudante de Eletricista` e `Eletricista de Construção`.
   - `Tipo` so lista opcoes vinculadas ao `Cargo` selecionado.
   - `Nivel` precisa existir em `job_levels` ativo no tenant.
   - `Tipo` precisa existir em `job_title_types` ativo no tenant e no mesmo cargo.
@@ -50,7 +60,7 @@ Cadastro
   - Botao `Cadastro em massa` no bloco de cadastro, visivel fora do modo de edicao.
   - Modelo CSV separado por ponto e virgula.
   - Colunas obrigatorias: `nome`, `matricula`, `cargo`, `tipo`.
-  - Coluna opcional: `nivel`.
+  - Colunas opcionais: `cpf`, `telefone`, `tipo`, `nivel`.
   - `Cargo` pode ser resolvido por codigo, nome ou id carregado em metadados.
   - `Tipo` precisa pertencer ao cargo informado.
   - Gera CSV de erros com `linha`, `coluna`, `valor` e `erro` quando houver falhas.
@@ -67,7 +77,7 @@ Filtros, auto-complete e listagem
   - `Status`
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`)
-  - Colunas: Nome, Matricula, Cargo, Tipo, Nivel, Registrado em, Acoes
+  - Colunas: Nome, Matricula, CPF, Telefone, Cargo, Tipo, Nivel, Registrado em, Acoes
   - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`
   - Botao `Exportar Excel (CSV)` no cabecalho
   - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
@@ -131,6 +141,10 @@ Atualizacao 2026-05
 - O cadastro/edicao bloqueia qualquer pessoa com a mesma matricula, mesmo quando nome, cargo, tipo ou nivel forem diferentes.
 - A migration `197_enforce_people_unique_matriculation.sql` valida duplicidades legadas antes de criar o indice unico.
 - Criado cadastro em massa de Pessoas no mesmo padrao da tela Materiais, com modelo CSV, pre-validacao no frontend, envio em lote para `/api/people` e relatorio CSV de erros.
+- Criado campo opcional `CPF` em Pessoas, com validacao quando preenchido, exibicao na lista/detalhe/exportacao e suporte no cadastro em massa.
+- CPF passou a ser unico por tenant, com protecao adicional para `CPF + Matricula`.
+- Criado campo opcional `Telefone` em Pessoas, com exibicao na lista/detalhe/exportacao e suporte no cadastro em massa.
+- `Tipo` passou a ser obrigatorio somente para cargos `Encarregado de Turma`, `Ajudante de Eletricista` e `Eletricista de Construção`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -153,6 +167,10 @@ Constantes e configuracoes
   - Responsavel por: criar `save_person_record` e `set_person_record_status` para escrita transacional da tela de pessoas.
 - Caminho: `supabase/migrations/197_enforce_people_unique_matriculation.sql`
   - Responsavel por: bloquear matricula duplicada por tenant no banco, atualizar o retorno da RPC `save_person_record` e criar indice unico normalizado.
+- Caminho: `supabase/migrations/198_add_people_cpf_optional.sql`
+  - Responsavel por: adicionar `people.cpf` opcional, validar 11 digitos e republicar `save_person_record` para salvar CPF normalizado.
+- Caminho: `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`
+  - Responsavel por: garantir CPF unico por tenant, proteger `CPF + Matricula`, adicionar `people.phone` e republicar `save_person_record` com telefone.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -176,9 +194,13 @@ Ajuda contextual
   - `src/lib/server/concurrency.ts`
   - `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
   - `supabase/migrations/197_enforce_people_unique_matriculation.sql`
+  - `supabase/migrations/198_add_people_cpf_optional.sql`
+  - `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`
 - Funcoes/hooks/constantes tocadas:
   - `loadMeta`, `loadPeople`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`, `handleExportPeople`
   - `downloadMassTemplate`, `handleMassImportFile`, `submitMassImport`, `createMassImportErrorReport`
+  - `normalizeCpf`, `formatCpf`, `isValidCpf`
+  - `normalizePhone`, `isJobTitleTypeRequired`, `findDuplicatePersonByCpf`
   - `hasJobTitles`, `hasTypeOptionsForSelectedJob`, `canSubmitPersonForm` (bloqueio de submit sem pre-requisitos de cargo/tipo)
   - `buildQuery`, `savePersonViaRpc`, `setPersonStatusViaRpc`, `isMatriculationNumericTypeMismatchError`, `listPeople`
   - `findDuplicatePersonByMatriculation`, `mapPersonDbError`
@@ -196,6 +218,8 @@ Ajuda contextual
   - Depois (2026-03-29): o filtro de `Matricula` da lista continua usando busca parcial em bancos atualizados (`text`) e recua para busca exata em ambientes legados (`numeric`) sem quebrar a listagem.
   - Depois (2026-05): a matricula passa a ser unica por tenant no cadastro, edicao, RPC e trigger de banco.
   - Depois (2026-05): a tela passa a cadastrar pessoas em massa por CSV, com pre-validacao de cabecalho/linhas, bloqueio de matricula duplicada no arquivo e retorno parcial de erros do backend.
+  - Depois (2026-05): CPF opcional passa a existir no cadastro/edicao, detalhe, lista, exportacao e cadastro em massa.
+  - Depois (2026-05): CPF preenchido passa a ser unico por tenant, telefone opcional passa a existir e Tipo fica obrigatorio apenas para cargos operacionais especificos.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir os campos obrigatorios do cadastro e metadados de auditoria da lista (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Arquivos alterados/criados (2026-03-24):
   - `src/modules/dashboard/pessoas/PeoplePageView.tsx`

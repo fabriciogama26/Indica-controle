@@ -12,6 +12,8 @@ type PeopleRow = {
   id: string;
   nome: string;
   matriculation: string | null;
+  cpf: string | null;
+  phone: string | null;
   job_title_id: string;
   job_title_type_id: string | null;
   job_level: string | null;
@@ -69,8 +71,10 @@ type HistoryChange = {
 type CreatePersonPayload = {
   name: string;
   matriculation: string;
+  cpf?: string | null;
+  phone?: string | null;
   jobTitleId: string;
-  jobTitleTypeId: string;
+  jobTitleTypeId?: string | null;
   jobLevel?: string | null;
 };
 
@@ -146,10 +150,49 @@ function normalizeNullableMatriculation(value: unknown) {
   return normalized || null;
 }
 
+function normalizeCpf(value: unknown) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function normalizeNullableCpf(value: unknown) {
+  const normalized = normalizeCpf(value);
+  return normalized || null;
+}
+
+function normalizePhone(value: unknown) {
+  return normalizeText(value);
+}
+
+function normalizeNullablePhone(value: unknown) {
+  const normalized = normalizePhone(value);
+  return normalized || null;
+}
+
+function isValidCpf(value: string) {
+  if (!/^\d{11}$/.test(value) || /^(\d)\1{10}$/.test(value)) {
+    return false;
+  }
+
+  const digits = value.split("").map(Number);
+  const firstCheck = digits.slice(0, 9).reduce((sum, digit, index) => sum + digit * (10 - index), 0);
+  const firstRest = (firstCheck * 10) % 11;
+  const firstDigit = firstRest === 10 ? 0 : firstRest;
+  if (firstDigit !== digits[9]) {
+    return false;
+  }
+
+  const secondCheck = digits.slice(0, 10).reduce((sum, digit, index) => sum + digit * (11 - index), 0);
+  const secondRest = (secondCheck * 10) % 11;
+  const secondDigit = secondRest === 10 ? 0 : secondRest;
+  return secondDigit === digits[10];
+}
+
 function parsePersonInput(payload: Partial<CreatePersonPayload>) {
   return {
     name: normalizeText(payload.name),
     matriculation: normalizeNullableMatriculation(payload.matriculation),
+    cpf: normalizeNullableCpf(payload.cpf),
+    phone: normalizeNullablePhone(payload.phone),
     jobTitleId: normalizeText(payload.jobTitleId),
     jobTitleTypeId: normalizeNullableText(payload.jobTitleTypeId),
     jobLevel: normalizeNullableText(payload.jobLevel),
@@ -157,11 +200,35 @@ function parsePersonInput(payload: Partial<CreatePersonPayload>) {
 }
 
 function validateRequiredPersonFields(input: ReturnType<typeof parsePersonInput>) {
-  if (!input.name || !input.matriculation || !input.jobTitleId || !input.jobTitleTypeId) {
+  if (!input.name || !input.matriculation || !input.jobTitleId) {
     return "Preencha os campos obrigatorios da pessoa.";
   }
 
+  if (input.cpf && !isValidCpf(input.cpf)) {
+    return "CPF invalido. Informe 11 digitos ou deixe em branco.";
+  }
+
   return null;
+}
+
+function normalizeRuleText(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+function isJobTitleTypeRequired(jobTitle: { code?: string | null; name?: string | null } | null) {
+  const code = normalizeRuleText(jobTitle?.code);
+  const name = normalizeRuleText(jobTitle?.name);
+  const requiredNames = new Set([
+    "ENCARREGADO DE TURMA",
+    "AJUDANTE DE ELETRICISTA",
+    "ELETRICISTA DE CONSTRUCAO",
+  ]);
+
+  return requiredNames.has(name) || requiredNames.has(code);
 }
 
 function normalizeDbErrorText(value: unknown) {
@@ -225,6 +292,36 @@ function mapPersonDbError(error: unknown, fallbackMessage: string) {
       status: 409,
       message: "Ja existe pessoa com esta matricula no tenant atual.",
       reason: "DUPLICATE_PERSON_MATRICULATION",
+    } as const;
+  }
+
+  if (
+    combined.includes("people_unique_tenant_cpf_matriculation_key")
+    || combined.includes("idx_people_unique_tenant_cpf_matriculation")
+  ) {
+    return {
+      status: 409,
+      message: "Ja existe pessoa com este CPF e esta matricula no tenant atual.",
+      reason: "DUPLICATE_PERSON_CPF_MATRICULATION",
+    } as const;
+  }
+
+  if (
+    combined.includes("people_unique_tenant_cpf_key")
+    || combined.includes("idx_people_unique_tenant_cpf")
+  ) {
+    return {
+      status: 409,
+      message: "Ja existe pessoa com este CPF no tenant atual.",
+      reason: "DUPLICATE_PERSON_CPF",
+    } as const;
+  }
+
+  if (combined.includes("chk_people_cpf_format") || combined.includes("invalid_person_cpf")) {
+    return {
+      status: 400,
+      message: "CPF invalido. Informe 11 digitos ou deixe em branco.",
+      reason: "INVALID_PERSON_CPF",
     } as const;
   }
 
@@ -379,6 +476,7 @@ async function fetchJobTitleById(
 
   return {
     id: data.id,
+    code: normalizeText(data.code),
     name: normalizeText(data.name),
   };
 }
@@ -444,7 +542,7 @@ async function fetchPersonById(
   const { data, error } = await supabase
     .from("people")
     .select(
-      "id, nome, matriculation, job_title_id, job_title_type_id, job_level, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, nome, matriculation, cpf, phone, job_title_id, job_title_type_id, job_level, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", personId)
@@ -481,6 +579,30 @@ async function findDuplicatePersonByMatriculation(
   return data[0];
 }
 
+async function findDuplicatePersonByCpf(
+  supabase: SupabaseClient,
+  tenantId: string,
+  cpf: string,
+  excludeId?: string,
+) {
+  let query = supabase
+    .from("people")
+    .select("id, nome")
+    .eq("tenant_id", tenantId)
+    .eq("cpf", cpf);
+
+  if (excludeId) {
+    query = query.neq("id", excludeId);
+  }
+
+  const { data, error } = await query.limit(1).returns<DuplicatePersonRow[]>();
+  if (error || !data || data.length === 0) {
+    return null;
+  }
+
+  return data[0];
+}
+
 async function savePersonViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -488,6 +610,8 @@ async function savePersonViaRpc(params: {
   personId: string | null;
   name: string;
   matriculation: string | null;
+  cpf: string | null;
+  phone: string | null;
   jobTitleId: string;
   jobTitleTypeId: string | null;
   jobLevel: string | null;
@@ -517,6 +641,8 @@ async function savePersonViaRpc(params: {
       tenant_id: params.tenantId,
       nome: params.name,
       matriculation,
+      cpf: params.cpf,
+      phone: params.phone,
       job_title_id: params.jobTitleId,
       job_title_type_id: params.jobTitleTypeId,
       job_level: params.jobLevel,
@@ -530,6 +656,8 @@ async function savePersonViaRpc(params: {
     const updatePayload = {
       nome: params.name,
       matriculation,
+      cpf: params.cpf,
+      phone: params.phone,
       job_title_id: params.jobTitleId,
       job_title_type_id: params.jobTitleTypeId,
       job_level: params.jobLevel,
@@ -592,6 +720,8 @@ async function savePersonViaRpc(params: {
     p_person_id: params.personId,
     p_name: params.name,
     p_matriculation: params.matriculation,
+    p_cpf: params.cpf,
+    p_phone: params.phone,
     p_job_title_id: params.jobTitleId,
     p_job_title_type_id: params.jobTitleTypeId,
     p_job_level: params.jobLevel,
@@ -679,14 +809,26 @@ async function importPersonBatch(params: {
       });
       continue;
     }
+    const typeRequired = isJobTitleTypeRequired(jobTitle);
 
-    const jobTitleType = await fetchJobTitleTypeById(
-      params.supabase,
-      params.tenantId,
-      input.jobTitleId,
-      input.jobTitleTypeId,
-    );
-    if (!jobTitleType) {
+    const jobTitleType = input.jobTitleTypeId
+      ? await fetchJobTitleTypeById(
+        params.supabase,
+        params.tenantId,
+        input.jobTitleId,
+        input.jobTitleTypeId,
+      )
+      : null;
+    if (typeRequired && !jobTitleType) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Tipo invalido para o cargo selecionado.",
+        code: "INVALID_JOB_TITLE_TYPE",
+      });
+      continue;
+    }
+    if (input.jobTitleTypeId && !jobTitleType) {
       results.push({
         rowNumber,
         success: false,
@@ -724,6 +866,19 @@ async function importPersonBatch(params: {
       continue;
     }
 
+    if (input.cpf) {
+      const duplicatedCpf = await findDuplicatePersonByCpf(params.supabase, params.tenantId, input.cpf);
+      if (duplicatedCpf) {
+        results.push({
+          rowNumber,
+          success: false,
+          message: "Ja existe pessoa com este CPF no tenant atual.",
+          code: "DUPLICATE_PERSON_CPF",
+        });
+        continue;
+      }
+    }
+
     const saveResult = await savePersonViaRpc({
       supabase: params.supabase,
       tenantId: params.tenantId,
@@ -731,6 +886,8 @@ async function importPersonBatch(params: {
       personId: null,
       name: input.name,
       matriculation,
+      cpf: input.cpf,
+      phone: input.phone,
       jobTitleId: input.jobTitleId,
       jobTitleTypeId: input.jobTitleTypeId,
       jobLevel: input.jobLevel,
@@ -807,7 +964,7 @@ async function listPeople(params: {
   let query = supabase
     .from("people")
     .select(
-      "id, nome, matriculation, job_title_id, job_title_type_id, job_level, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, nome, matriculation, cpf, phone, job_title_id, job_title_type_id, job_level, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
       { count: "exact" },
     )
     .eq("tenant_id", filters.tenantId);
@@ -1039,6 +1196,8 @@ export async function GET(request: NextRequest) {
         id: row.id,
         name: row.nome,
         matriculation: row.matriculation,
+        cpf: row.cpf,
+        phone: row.phone,
         jobTitleId: row.job_title_id,
         jobTitleName: jobTitleMap.get(row.job_title_id) ?? "Nao identificado",
         jobTitleTypeId: row.job_title_type_id,
@@ -1122,14 +1281,20 @@ export async function POST(request: NextRequest) {
     if (!jobTitle) {
       return NextResponse.json({ message: "Cargo invalido para o tenant atual." }, { status: 422 });
     }
+    const typeRequired = isJobTitleTypeRequired(jobTitle);
 
-    const jobTitleType = await fetchJobTitleTypeById(
-      supabase,
-      appUser.tenant_id,
-      input.jobTitleId,
-      input.jobTitleTypeId,
-    );
-    if (!jobTitleType) {
+    const jobTitleType = input.jobTitleTypeId
+      ? await fetchJobTitleTypeById(
+        supabase,
+        appUser.tenant_id,
+        input.jobTitleId,
+        input.jobTitleTypeId,
+      )
+      : null;
+    if (typeRequired && !jobTitleType) {
+      return NextResponse.json({ message: "Tipo invalido para o cargo selecionado." }, { status: 422 });
+    }
+    if (input.jobTitleTypeId && !jobTitleType) {
       return NextResponse.json({ message: "Tipo invalido para o cargo selecionado." }, { status: 422 });
     }
 
@@ -1152,6 +1317,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (input.cpf) {
+      const duplicatedCpf = await findDuplicatePersonByCpf(supabase, appUser.tenant_id, input.cpf);
+      if (duplicatedCpf) {
+        return NextResponse.json(
+          { message: "Ja existe pessoa com este CPF no tenant atual.", code: "DUPLICATE_PERSON_CPF" },
+          { status: 409 },
+        );
+      }
+    }
+
     const saveResult = await savePersonViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
@@ -1159,6 +1334,8 @@ export async function POST(request: NextRequest) {
       personId: null,
       name: input.name,
       matriculation,
+      cpf: input.cpf,
+      phone: input.phone,
       jobTitleId: input.jobTitleId,
       jobTitleTypeId: input.jobTitleTypeId,
       jobLevel: input.jobLevel,
@@ -1231,6 +1408,7 @@ export async function PUT(request: NextRequest) {
     if (!nextJobTitle) {
       return NextResponse.json({ message: "Cargo invalido para o tenant atual." }, { status: 422 });
     }
+    const typeRequired = isJobTitleTypeRequired(nextJobTitle);
 
     const currentJobTitleType = await fetchJobTitleTypeById(
       supabase,
@@ -1238,14 +1416,19 @@ export async function PUT(request: NextRequest) {
       currentPerson.job_title_id,
       currentPerson.job_title_type_id,
     );
-    const nextJobTitleType = await fetchJobTitleTypeById(
-      supabase,
-      appUser.tenant_id,
-      input.jobTitleId,
-      input.jobTitleTypeId,
-    );
+    const nextJobTitleType = input.jobTitleTypeId
+      ? await fetchJobTitleTypeById(
+        supabase,
+        appUser.tenant_id,
+        input.jobTitleId,
+        input.jobTitleTypeId,
+      )
+      : null;
 
-    if (!nextJobTitleType) {
+    if (typeRequired && !nextJobTitleType) {
+      return NextResponse.json({ message: "Tipo invalido para o cargo selecionado." }, { status: 422 });
+    }
+    if (input.jobTitleTypeId && !nextJobTitleType) {
       return NextResponse.json({ message: "Tipo invalido para o cargo selecionado." }, { status: 422 });
     }
 
@@ -1269,9 +1452,21 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    if (input.cpf) {
+      const duplicatedCpf = await findDuplicatePersonByCpf(supabase, appUser.tenant_id, input.cpf, personId);
+      if (duplicatedCpf) {
+        return NextResponse.json(
+          { message: "Ja existe pessoa com este CPF no tenant atual.", code: "DUPLICATE_PERSON_CPF" },
+          { status: 409 },
+        );
+      }
+    }
+
     const changes: Record<string, HistoryChange> = {};
     addChange(changes, "name", currentPerson.nome, input.name);
     addChange(changes, "matriculation", currentPerson.matriculation, input.matriculation);
+    addChange(changes, "cpf", currentPerson.cpf, input.cpf);
+    addChange(changes, "phone", currentPerson.phone, input.phone);
     addChange(changes, "jobTitleName", currentJobTitle?.name ?? null, nextJobTitle.name);
     addChange(changes, "jobTitleTypeName", currentJobTitleType?.name ?? null, nextJobTitleType?.name ?? null);
     addChange(changes, "jobLevel", currentPerson.job_level, input.jobLevel);
@@ -1290,6 +1485,8 @@ export async function PUT(request: NextRequest) {
       personId,
       name: input.name,
       matriculation,
+      cpf: input.cpf,
+      phone: input.phone,
       jobTitleId: input.jobTitleId,
       jobTitleTypeId: input.jobTitleTypeId,
       jobLevel: input.jobLevel,

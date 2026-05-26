@@ -10,6 +10,8 @@ type PersonItem = {
   id: string;
   name: string;
   matriculation: string | null;
+  cpf: string | null;
+  phone: string | null;
   jobTitleId: string;
   jobTitleName: string;
   jobTitleTypeId: string | null;
@@ -55,6 +57,8 @@ type PersonFormState = {
   updatedAt: string | null;
   name: string;
   matriculation: string;
+  cpf: string;
+  phone: string;
   jobTitleId: string;
   jobTitleTypeId: string;
   jobLevel: string;
@@ -131,6 +135,8 @@ const EXPORT_PAGE_SIZE = 100;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome",
   matriculation: "Matricula",
+  cpf: "CPF",
+  phone: "Telefone",
   jobTitleName: "Cargo",
   jobTitleTypeName: "Tipo",
   jobLevel: "Nivel",
@@ -145,6 +151,8 @@ const INITIAL_FORM: PersonFormState = {
   updatedAt: null,
   name: "",
   matriculation: "",
+  cpf: "",
+  phone: "",
   jobTitleId: "",
   jobTitleTypeId: "",
   jobLevel: "",
@@ -165,6 +173,69 @@ function normalizeText(value: string) {
 
 function normalizeMatriculation(value: string) {
   return normalizeText(value).toUpperCase();
+}
+
+function normalizeCpf(value: string) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function normalizePhone(value: string) {
+  return normalizeText(value);
+}
+
+function formatCpf(value: string | null | undefined) {
+  const digits = normalizeCpf(value ?? "");
+  if (!digits) {
+    return "-";
+  }
+
+  if (digits.length !== 11) {
+    return digits;
+  }
+
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function formatOptionalText(value: string | null | undefined, fallback = "-") {
+  const normalized = normalizeText(value ?? "");
+  return normalized || fallback;
+}
+
+function isValidCpf(value: string) {
+  const digits = normalizeCpf(value);
+  if (!/^\d{11}$/.test(digits) || /^(\d)\1{10}$/.test(digits)) {
+    return false;
+  }
+
+  const numbers = digits.split("").map(Number);
+  const firstSum = numbers.slice(0, 9).reduce((sum, digit, index) => sum + digit * (10 - index), 0);
+  const firstRest = (firstSum * 10) % 11;
+  const firstDigit = firstRest === 10 ? 0 : firstRest;
+  if (firstDigit !== numbers[9]) {
+    return false;
+  }
+
+  const secondSum = numbers.slice(0, 10).reduce((sum, digit, index) => sum + digit * (11 - index), 0);
+  const secondRest = (secondSum * 10) % 11;
+  const secondDigit = secondRest === 10 ? 0 : secondRest;
+  return secondDigit === numbers[10];
+}
+
+function normalizeRuleText(value: string | null | undefined) {
+  return normalizeText(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+function isJobTitleTypeRequired(jobTitle: JobTitleOption | null | undefined) {
+  const required = new Set([
+    "ENCARREGADO DE TURMA",
+    "AJUDANTE DE ELETRICISTA",
+    "ELETRICISTA DE CONSTRUCAO",
+  ]);
+  return required.has(normalizeRuleText(jobTitle?.name)) || required.has(normalizeRuleText(jobTitle?.code));
 }
 
 function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SIZE) {
@@ -258,6 +329,8 @@ function buildPeopleCsv(personItems: PersonItem[]) {
   const header = [
     "Nome",
     "Matricula",
+    "CPF",
+    "Telefone",
     "Cargo",
     "Tipo",
     "Nivel",
@@ -270,6 +343,8 @@ function buildPeopleCsv(personItems: PersonItem[]) {
   const rows = personItems.map((person) => [
     person.name,
     person.matriculation ?? "-",
+    formatCpf(person.cpf),
+    formatOptionalText(person.phone),
     person.jobTitleName,
     person.jobTitleTypeName ?? "-",
     person.jobLevel ?? "-",
@@ -425,12 +500,17 @@ export function PeoplePageView() {
     () => getJobTitleTypesForJob(form.jobTitleId),
     [form.jobTitleId, getJobTitleTypesForJob],
   );
+  const selectedFormJobTitle = useMemo(
+    () => jobTitles.find((jobTitle) => jobTitle.id === form.jobTitleId) ?? null,
+    [form.jobTitleId, jobTitles],
+  );
+  const isFormTypeRequired = isJobTitleTypeRequired(selectedFormJobTitle);
 
   const filterTypeOptions = useMemo(
     () => getJobTitleTypesForJob(filterDraft.jobTitleId),
     [filterDraft.jobTitleId, getJobTitleTypesForJob],
   );
-  const hasTypeOptionsForSelectedJob = !form.jobTitleId || formTypeOptions.length > 0;
+  const hasTypeOptionsForSelectedJob = !isFormTypeRequired || formTypeOptions.length > 0;
   const canSubmitPersonForm = hasJobTitles && hasTypeOptionsForSelectedJob && !isSaving;
 
   const loadMeta = useCallback(async () => {
@@ -605,6 +685,8 @@ export function PeoplePageView() {
       updatedAt: person.updatedAt,
       name: person.name,
       matriculation: person.matriculation ?? "",
+      cpf: person.cpf ?? "",
+      phone: person.phone ?? "",
       jobTitleId: person.jobTitleId,
       jobTitleTypeId: person.jobTitleTypeId ?? "",
       jobLevel: person.jobLevel ?? "",
@@ -659,7 +741,7 @@ export function PeoplePageView() {
       return;
     }
 
-    if (!hasTypeOptionsForSelectedJob) {
+    if (isFormTypeRequired && !hasTypeOptionsForSelectedJob) {
       setFeedback({
         type: "error",
         message: "Nao ha tipos ativos para o cargo selecionado. Cadastre ao menos um tipo para este cargo.",
@@ -671,10 +753,22 @@ export function PeoplePageView() {
     setFeedback(null);
 
     try {
+      const cpf = normalizeCpf(form.cpf);
+      if (cpf && !isValidCpf(cpf)) {
+        setFeedback({
+          type: "error",
+          message: "CPF invalido. Informe 11 digitos ou deixe em branco.",
+        });
+        return;
+      }
+      const phone = normalizePhone(form.phone);
+
       const payload = {
         id: form.id,
         name: normalizeText(form.name),
         matriculation: normalizeMatriculation(form.matriculation) || null,
+        cpf: cpf || null,
+        phone: phone || null,
         jobTitleId: normalizeText(form.jobTitleId),
         jobTitleTypeId: normalizeText(form.jobTitleTypeId) || null,
         jobLevel: normalizeText(form.jobLevel) || null,
@@ -877,7 +971,7 @@ export function PeoplePageView() {
   }
 
   function downloadMassTemplate() {
-    const model = "\uFEFFnome;matricula;cargo;tipo;nivel\nGABRIEL GONCALVES VELASCO;6126;Encarregado de Turma;LINHA MORTA;2\n";
+    const model = "\uFEFFnome;matricula;cpf;telefone;cargo;tipo;nivel\nGABRIEL GONCALVES VELASCO;6126;52998224725;(11) 99999-9999;Encarregado de Turma;LINHA MORTA;2\n";
     downloadCsvFile(model, "modelo_pessoas_cadastro_em_massa.csv");
   }
 
@@ -978,7 +1072,7 @@ export function PeoplePageView() {
       }
 
       const headers = parseCsvLine(lines[0] ?? "").map(normalizeCsvHeader);
-      const requiredHeaders = ["nome", "matricula", "cargo", "tipo"];
+      const requiredHeaders = ["nome", "matricula", "cargo"];
       for (const header of requiredHeaders) {
         if (!headers.includes(header)) {
           importIssues.push({
@@ -994,10 +1088,13 @@ export function PeoplePageView() {
         rowNumber: number;
         name: string;
         matriculation: string;
+        cpf: string | null;
+        phone: string | null;
         jobTitleId: string;
-        jobTitleTypeId: string;
+        jobTitleTypeId: string | null;
         jobLevel: string | null;
       }> = [];
+      const seenCpfs = new Set<string>();
       const seenMatriculations = new Set<string>();
 
       if (!importIssues.some((issue) => issue.rowNumber === 1 && issue.column !== "arquivo")) {
@@ -1011,10 +1108,14 @@ export function PeoplePageView() {
 
           const name = normalizeText(resolveCsvValue(row, ["nome", "name"]));
           const matriculation = normalizeMatriculation(resolveCsvValue(row, ["matricula", "matriculation"]));
+          const cpfRaw = resolveCsvValue(row, ["cpf"]);
+          const cpf = normalizeCpf(cpfRaw);
+          const phone = normalizePhone(resolveCsvValue(row, ["telefone", "phone", "celular"]));
           const jobTitleRaw = resolveCsvValue(row, ["cargo", "cargo_codigo", "job_title", "job_title_code"]);
           const jobTitle = resolveJobTitleFromCsv(jobTitleRaw);
+          const isTypeRequiredForRow = isJobTitleTypeRequired(jobTitle);
           const jobTitleTypeRaw = resolveCsvValue(row, ["tipo", "tipo_cargo", "job_title_type"]);
-          const jobTitleType = jobTitle ? resolveJobTitleTypeFromCsv(jobTitle.id, jobTitleTypeRaw) : null;
+          const jobTitleType = jobTitle && jobTitleTypeRaw ? resolveJobTitleTypeFromCsv(jobTitle.id, jobTitleTypeRaw) : null;
           const jobLevelRaw = resolveCsvValue(row, ["nivel", "level", "job_level"]);
           const jobLevel = resolveJobLevelFromCsv(jobLevelRaw);
           const rowIssuesBefore = importIssues.length;
@@ -1029,11 +1130,19 @@ export function PeoplePageView() {
             importIssues.push({ rowNumber, column: "matricula", value: matriculation, error: "Matricula duplicada no arquivo." });
           }
 
+          if (cpf && !isValidCpf(cpf)) {
+            importIssues.push({ rowNumber, column: "cpf", value: cpfRaw, error: "CPF invalido. Informe 11 digitos ou deixe em branco." });
+          } else if (cpf && seenCpfs.has(cpf)) {
+            importIssues.push({ rowNumber, column: "cpf", value: cpfRaw, error: "CPF duplicado no arquivo." });
+          }
+
           if (!jobTitle) {
             importIssues.push({ rowNumber, column: "cargo", value: jobTitleRaw, error: "Cargo nao encontrado ou inativo." });
           }
 
-          if (!jobTitleType) {
+          if (isTypeRequiredForRow && !jobTitleType) {
+            importIssues.push({ rowNumber, column: "tipo", value: jobTitleTypeRaw, error: "Tipo nao encontrado para o cargo informado." });
+          } else if (jobTitleTypeRaw && !jobTitleType) {
             importIssues.push({ rowNumber, column: "tipo", value: jobTitleTypeRaw, error: "Tipo nao encontrado para o cargo informado." });
           }
 
@@ -1041,18 +1150,26 @@ export function PeoplePageView() {
             importIssues.push({ rowNumber, column: "nivel", value: jobLevelRaw, error: "Nivel nao encontrado ou inativo." });
           }
 
-          if (importIssues.length === rowIssuesBefore && jobTitle && jobTitleType) {
+          if (importIssues.length === rowIssuesBefore && jobTitle) {
             validRows.push({
               rowNumber,
               name,
               matriculation,
+              cpf: cpf || null,
+              phone: phone || null,
               jobTitleId: jobTitle.id,
-              jobTitleTypeId: jobTitleType.id,
+              jobTitleTypeId: jobTitleType?.id ?? null,
               jobLevel: jobLevel || null,
             });
             seenMatriculations.add(matriculation);
+            if (cpf) {
+              seenCpfs.add(cpf);
+            }
           } else if (matriculation) {
             seenMatriculations.add(matriculation);
+            if (cpf) {
+              seenCpfs.add(cpf);
+            }
           }
         }
       }
@@ -1100,7 +1217,11 @@ export function PeoplePageView() {
 
         importIssues.push({
           rowNumber: result.rowNumber,
-          column: result.code === "DUPLICATE_PERSON_MATRICULATION" ? "matricula" : "salvamento",
+          column: result.code === "DUPLICATE_PERSON_MATRICULATION"
+            ? "matricula"
+            : result.code === "DUPLICATE_PERSON_CPF" || result.code === "DUPLICATE_PERSON_CPF_MATRICULATION"
+              ? "cpf"
+              : "salvamento",
           value: "",
           error: result.message || "Falha ao salvar pessoa.",
         });
@@ -1213,6 +1334,28 @@ export function PeoplePageView() {
           </label>
 
           <label className={styles.field}>
+            <span>CPF</span>
+            <input
+              type="text"
+              value={form.cpf}
+              onChange={(event) => setForm((current) => ({ ...current, cpf: event.target.value }))}
+              placeholder="Ex.: 000.000.000-00"
+              inputMode="numeric"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Telefone</span>
+            <input
+              type="text"
+              value={form.phone}
+              onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+              placeholder="Ex.: (11) 99999-9999"
+              inputMode="tel"
+            />
+          </label>
+
+          <label className={styles.field}>
             <span>
               Cargo <span className="requiredMark">*</span>
             </span>
@@ -1237,16 +1380,16 @@ export function PeoplePageView() {
 
           <label className={styles.field}>
             <span>
-              Tipo <span className="requiredMark">*</span>
+              Tipo {isFormTypeRequired ? <span className="requiredMark">*</span> : null}
             </span>
             <select
               value={form.jobTitleTypeId}
               onChange={(event) => setForm((current) => ({ ...current, jobTitleTypeId: event.target.value }))}
               disabled={isLoadingMeta || !form.jobTitleId}
-              required
+              required={isFormTypeRequired}
             >
-              <option value="" disabled>
-                {form.jobTitleId ? "Selecione" : "Selecione o cargo primeiro"}
+              <option value="" disabled={isFormTypeRequired}>
+                {form.jobTitleId ? (isFormTypeRequired ? "Selecione" : "Opcional") : "Selecione o cargo primeiro"}
               </option>
               {formTypeOptions.map((jobTitleType) => (
                 <option key={jobTitleType.id} value={jobTitleType.id}>
@@ -1406,6 +1549,8 @@ export function PeoplePageView() {
               <tr>
                 <th>Nome</th>
                 <th>Matricula</th>
+                <th>CPF</th>
+                <th>Telefone</th>
                 <th>Cargo</th>
                 <th>Tipo</th>
                 <th>Nivel</th>
@@ -1424,6 +1569,8 @@ export function PeoplePageView() {
                       </div>
                     </td>
                     <td>{person.matriculation ?? "-"}</td>
+                    <td>{formatCpf(person.cpf)}</td>
+                    <td>{formatOptionalText(person.phone)}</td>
                     <td>{person.jobTitleName}</td>
                     <td>{person.jobTitleTypeName ?? "-"}</td>
                     <td>{person.jobLevel ?? "-"}</td>
@@ -1519,7 +1666,7 @@ export function PeoplePageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className={styles.emptyRow}>
+                  <td colSpan={9} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando pessoas..." : "Nenhuma pessoa encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1586,7 +1733,7 @@ export function PeoplePageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas obrigatorias: nome, matricula, cargo e tipo. Nivel e opcional.</p>
+                    <p>Colunas obrigatorias: nome, matricula e cargo. CPF, telefone, tipo e nivel sao opcionais, exceto Tipo para cargos operacionais especificos.</p>
                   </div>
                 </div>
               </section>
@@ -1659,6 +1806,12 @@ export function PeoplePageView() {
                 </div>
                 <div>
                   <strong>Matricula:</strong> {detailPerson.matriculation ?? "-"}
+                </div>
+                <div>
+                  <strong>CPF:</strong> {formatCpf(detailPerson.cpf)}
+                </div>
+                <div>
+                  <strong>Telefone:</strong> {formatOptionalText(detailPerson.phone)}
                 </div>
                 <div>
                   <strong>Cargo:</strong> {detailPerson.jobTitleName}
