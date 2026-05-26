@@ -732,3 +732,15 @@
 - [x] Adicionar regras na Composicao de Equipe para listar campos obrigatorios pendentes no salvamento, bloquear matricula duplicada e impedir mais de um encarregado na mesma composicao.
 
 - [x] Mover gravacao da Composicao de Equipe para RPC transacional save_team_composition_record, repetindo no banco as regras de campos obrigatorios, matricula duplicada e limite de um encarregado.
+
+- [x] Corrigir salvamento da Composicao de Equipe para aceitar Patio manual como fallback quando a equipe nao possui Centro de Servico e evitar conflito falso quando expectedUpdatedAt vier nulo.
+
+- [x] Melhorar diagnostico de erro da RPC de Composicao de Equipe e solicitar reload do schema cache na migration 201.
+
+- [x] Ajustar Funcao da Composicao de Equipe para exibir e gravar somente o Cargo, removendo uso de tipo/nivel no snapshot.
+
+- [x] Ajustar Telefone da Composicao de Equipe para repetir o telefone do encarregado em todos os integrantes, na tela, CSV e snapshot da RPC.
+
+- [x] Blindar RPC de Composicao de Equipe com casts para text em matricula, CPF, telefone, projeto e placa para evitar erro numeric com string vazia.
+
+- [x] Ajustar lista principal da Composicao de Equipe para exibir uma linha por composicao, mantendo integrantes em detalhes/edicao e no CSV detalhado.

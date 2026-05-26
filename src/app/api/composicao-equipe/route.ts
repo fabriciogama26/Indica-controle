@@ -64,17 +64,10 @@ type PersonRow = {
   cpf: string | null;
   phone: string | null;
   job_title_id: string;
-  job_title_type_id: string | null;
-  job_level: string | null;
   ativo: boolean;
 };
 
 type JobTitleRow = {
-  id: string;
-  name: string;
-};
-
-type JobTitleTypeRow = {
   id: string;
   name: string;
 };
@@ -338,12 +331,25 @@ async function fetchTeamById(supabase: SupabaseClient, tenantId: string, teamId:
     serviceCenterName = normalizeText(serviceCenterResult.data?.name);
   }
 
+  let foremanPhone: string | null = null;
+  if (data.foreman_person_id) {
+    const foremanResult = await supabase
+      .from("people")
+      .select("phone")
+      .eq("tenant_id", tenantId)
+      .eq("id", data.foreman_person_id)
+      .eq("ativo", true)
+      .maybeSingle<{ phone: string | null }>();
+    foremanPhone = foremanResult.data?.phone ?? null;
+  }
+
   return {
     id: data.id,
     name: normalizeText(data.name),
     vehiclePlate: normalizeText(data.vehicle_plate),
     serviceCenterName,
     foremanId: data.foreman_person_id,
+    foremanPhone,
   };
 }
 
@@ -362,7 +368,7 @@ async function fetchPeopleSnapshots(supabase: SupabaseClient, tenantId: string, 
 
   const { data: peopleRows, error: peopleError } = await supabase
     .from("people")
-    .select("id, nome, matriculation, cpf, phone, job_title_id, job_title_type_id, job_level, ativo")
+    .select("id, nome, matriculation, cpf, phone, job_title_id, ativo")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .in("id", uniquePersonIds)
@@ -373,25 +379,16 @@ async function fetchPeopleSnapshots(supabase: SupabaseClient, tenantId: string, 
   }
 
   const jobTitleIds = Array.from(new Set((peopleRows ?? []).map((item) => item.job_title_id).filter(Boolean)));
-  const jobTitleTypeIds = Array.from(new Set((peopleRows ?? []).map((item) => item.job_title_type_id).filter((item): item is string => Boolean(item))));
 
-  const [jobTitlesResult, jobTitleTypesResult] = await Promise.all([
-    jobTitleIds.length
-      ? supabase.from("job_titles").select("id, name").eq("tenant_id", tenantId).in("id", jobTitleIds).returns<JobTitleRow[]>()
-      : Promise.resolve({ data: [] as JobTitleRow[], error: null }),
-    jobTitleTypeIds.length
-      ? supabase.from("job_title_types").select("id, name").eq("tenant_id", tenantId).in("id", jobTitleTypeIds).returns<JobTitleTypeRow[]>()
-      : Promise.resolve({ data: [] as JobTitleTypeRow[], error: null }),
-  ]);
+  const jobTitlesResult = jobTitleIds.length
+    ? await supabase.from("job_titles").select("id, name").eq("tenant_id", tenantId).in("id", jobTitleIds).returns<JobTitleRow[]>()
+    : { data: [] as JobTitleRow[], error: null };
 
   const jobTitleMap = new Map((jobTitlesResult.data ?? []).map((item) => [item.id, normalizeText(item.name)]));
-  const jobTitleTypeMap = new Map((jobTitleTypesResult.data ?? []).map((item) => [item.id, normalizeText(item.name)]));
 
   return new Map(
     (peopleRows ?? []).map((person) => {
       const jobTitle = jobTitleMap.get(person.job_title_id) ?? "Nao identificado";
-      const jobTitleType = person.job_title_type_id ? jobTitleTypeMap.get(person.job_title_type_id) ?? "" : "";
-      const parts = [jobTitle, jobTitleType, normalizeText(person.job_level)].filter(Boolean);
       return [
         person.id,
         {
@@ -400,7 +397,7 @@ async function fetchPeopleSnapshots(supabase: SupabaseClient, tenantId: string, 
           matriculation: person.matriculation,
           cpf: person.cpf,
           phone: person.phone,
-          jobTitleName: parts.join(" - "),
+          jobTitleName: jobTitle,
         },
       ];
     }),
@@ -692,7 +689,8 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   if (!team) {
     return NextResponse.json({ message: "Equipe invalida ou inativa para o tenant atual." }, { status: 422 });
   }
-  if (!normalizeText(team.serviceCenterName)) {
+  const yard = normalizeNullableText(team.serviceCenterName) ?? normalizeNullableText(body.yard);
+  if (!yard) {
     return NextResponse.json(
       { message: "Campos obrigatorios pendentes: Patio/Centro de Servico da equipe." },
       { status: 400 },
@@ -705,7 +703,6 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "Uma ou mais pessoas estao inativas ou nao pertencem ao tenant atual." }, { status: 422 });
   }
 
-  const yard = normalizeNullableText(team.serviceCenterName);
   const memberRows = rawMembers
     .map((member, index) => {
       const personId = normalizeUuid(member.personId) as string;
@@ -719,7 +716,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
         person_name_snapshot: person.name,
         matriculation_snapshot: person.matriculation,
         cpf_snapshot: person.cpf,
-        phone_snapshot: person.phone,
+        phone_snapshot: team.foremanPhone,
         job_title_snapshot: person.jobTitleName,
         is_present: member.isPresent !== false,
         sort_order: index + 1,
@@ -785,15 +782,32 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
       personId: member.person_id,
       isPresent: member.is_present,
     })),
+    p_yard: yard,
     p_expected_updated_at: method === "PUT" ? expectedUpdatedAt : null,
   });
 
   if (rpcError) {
     const rawMessage = normalizeText(rpcError.message);
-    const suffix = rawMessage.toLowerCase().includes("save_team_composition_record")
-      ? " Aplique a migration 200_create_team_composition_page.sql."
-      : "";
-    return NextResponse.json({ message: `Falha ao salvar composicao de equipe.${suffix}` }, { status: 500 });
+    const rawDetails = normalizeText(rpcError.details);
+    const rawHint = normalizeText(rpcError.hint);
+    const normalizedError = `${rawMessage} ${rawDetails} ${rawHint}`.toLowerCase();
+    const isMissingOrStaleRpc = normalizedError.includes("save_team_composition_record")
+      || normalizedError.includes("schema cache")
+      || normalizedError.includes("p_yard")
+      || rpcError.code === "PGRST202";
+    const detail = [rawMessage, rawDetails, rawHint].filter(Boolean).join(" ");
+    const message = isMissingOrStaleRpc
+      ? "Falha ao salvar composicao de equipe. Aplique a migration 201_fix_team_composition_save.sql e recarregue o cache do Supabase/PostgREST."
+      : `Falha ao salvar composicao de equipe.${detail ? ` Detalhe: ${detail}` : ""}`;
+
+    return NextResponse.json(
+      {
+        message,
+        reason: isMissingOrStaleRpc ? "RPC_SCHEMA_OUTDATED" : "RPC_SAVE_ERROR",
+        code: rpcError.code ?? null,
+      },
+      { status: 500 },
+    );
   }
 
   const saveResult = (rpcData ?? {}) as SaveTeamCompositionRpcResult;
