@@ -303,7 +303,6 @@ function buildVisibleCsv(compositions: CompositionItem[]) {
 }
 
 function buildDetailedCsv(compositions: CompositionItem[]) {
-  const maxMembers = Math.max(1, ...compositions.map((composition) => composition.members.length));
   const header = [
     "Data",
     "Projeto",
@@ -315,13 +314,15 @@ function buildDetailedCsv(compositions: CompositionItem[]) {
     "Placa",
     "Hora inicial",
     "Observacoes",
+    "Matricula",
+    "Colaborador",
+    "Funcao",
+    "CPF",
+    "Telefone",
+    "Presente",
   ];
-  for (let index = 1; index <= maxMembers; index += 1) {
-    header.push(`Matricula ${index}`, `Colaborador ${index}`, `Funcao ${index}`, `CPF ${index}`, `Telefone ${index}`, `Presente ${index}`);
-  }
-
-  const rows = compositions.map((composition) => {
-    const base = [
+  const rows = compositions.flatMap((composition) =>
+    composition.members.map((member) => [
       formatDate(composition.compositionDate),
       composition.projectCode,
       composition.projectServiceCenter,
@@ -332,20 +333,14 @@ function buildDetailedCsv(compositions: CompositionItem[]) {
       composition.vehiclePlate,
       composition.startTime,
       composition.notes,
-    ];
-    for (let index = 0; index < maxMembers; index += 1) {
-      const member = composition.members[index];
-      base.push(
-        member?.matriculation ?? "",
-        member?.name ?? "",
-        member?.jobTitleName ?? "",
-        member ? formatCpf(member.cpf) : "",
-        member ? getCompositionMemberPhone(composition, member) ?? "" : "",
-        member ? (member.isPresent ? "Sim" : "Nao") : "",
-      );
-    }
-    return base;
-  });
+      member.matriculation ?? "",
+      member.name,
+      member.jobTitleName ?? "",
+      formatCpf(member.cpf),
+      getCompositionMemberPhone(composition, member) ?? "",
+      member.isPresent ? "Sim" : "Nao",
+    ]),
+  );
 
   return `\uFEFF${[header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";")).join("\n")}`;
 }
