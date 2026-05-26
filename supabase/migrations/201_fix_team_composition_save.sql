@@ -3,6 +3,9 @@
 -- 1) nao bloqueia UPDATE quando expected_updated_at vier null;
 -- 2) permite fallback de Patio/Centro de Servico via p_yard;
 -- 3) persiste o yard resolvido no insert/update.
+-- 4) grava Funcao somente com o Cargo para evitar conversao invalida de job_level numerico.
+-- 5) grava Telefone de todos os integrantes com o telefone do encarregado.
+-- 6) converte matricula/CPF/telefone para text antes de normalizar, evitando coalesce numeric com string vazia.
 
 begin;
 
@@ -18,6 +21,36 @@ drop function if exists public.save_team_composition_record(
   text,
   jsonb,
   timestamptz
+);
+
+drop function if exists public.save_team_composition_record(
+  uuid,
+  uuid,
+  uuid,
+  date,
+  uuid,
+  uuid,
+  text,
+  time,
+  text,
+  jsonb,
+  text,
+  timestamptz
+);
+
+drop function if exists public.save_team_composition_record(
+  uuid,
+  uuid,
+  uuid,
+  date,
+  uuid,
+  uuid,
+  text,
+  time,
+  text,
+  jsonb,
+  timestamptz,
+  text
 );
 
 create or replace function public.save_team_composition_record(
@@ -45,6 +78,7 @@ declare
   v_project record;
   v_team record;
   v_foreman_name text;
+  v_foreman_phone text;
   v_composition_id uuid;
   v_updated_at timestamptz;
   v_member_count integer := 0;
@@ -191,10 +225,8 @@ begin
     select
       im.person_id,
       p.nome,
-      p.matriculation,
-      jt.name as job_title_name,
-      jtt.name as job_title_type_name,
-      p.job_level
+      p.matriculation::text as matriculation,
+      jt.name as job_title_name
     from input_members im
     join public.people p
       on p.tenant_id = p_tenant_id
@@ -203,21 +235,18 @@ begin
     left join public.job_titles jt
       on jt.tenant_id = p.tenant_id
      and jt.id = p.job_title_id
-    left join public.job_title_types jtt
-      on jtt.tenant_id = p.tenant_id
-     and jtt.id = p.job_title_type_id
   ),
   duplicates as (
-    select upper(btrim(coalesce(matriculation, ''))) as matriculation
+    select upper(btrim(coalesce(matriculation::text, ''))) as matriculation
     from people_data
-    where nullif(btrim(coalesce(matriculation, '')), '') is not null
-    group by upper(btrim(coalesce(matriculation, '')))
+    where nullif(btrim(coalesce(matriculation::text, '')), '') is not null
+    group by upper(btrim(coalesce(matriculation::text, '')))
     having count(*) > 1
   ),
   foremen as (
     select count(*) as total
     from people_data
-    where upper(coalesce(job_title_name, '') || ' ' || coalesce(job_title_type_name, '') || ' ' || coalesce(job_level, '')) like '%ENCARREGADO%'
+    where upper(coalesce(job_title_name, '')) like '%ENCARREGADO%'
   )
   select
     (select count(*) from people_data),
@@ -234,7 +263,7 @@ begin
       into v_duplicate_people
     from public.people
     where tenant_id = p_tenant_id
-      and upper(btrim(coalesce(matriculation, ''))) = v_duplicate_matriculation;
+      and upper(btrim(coalesce(matriculation::text, ''))) = v_duplicate_matriculation;
 
     return jsonb_build_object(
       'success', false,
@@ -248,8 +277,8 @@ begin
     return jsonb_build_object('success', false, 'status', 400, 'reason', 'MULTIPLE_FOREMEN', 'message', 'A composicao nao pode conter mais de um encarregado.');
   end if;
 
-  select p.nome
-    into v_foreman_name
+  select p.nome, p.phone::text
+    into v_foreman_name, v_foreman_phone
   from public.people p
   where p.tenant_id = p_tenant_id
     and p.id = v_team.foreman_person_id
@@ -279,10 +308,10 @@ begin
       p_composition_date,
       p_project_id,
       p_team_id,
-      btrim(v_project.sob),
-      nullif(btrim(coalesce(v_project.service_center_text, '')), ''),
-      btrim(v_team.name),
-      nullif(btrim(coalesce(v_team.vehicle_plate, '')), ''),
+      btrim(v_project.sob::text),
+      nullif(btrim(coalesce(v_project.service_center_text::text, '')), ''),
+      btrim(v_team.name::text),
+      nullif(btrim(coalesce(v_team.vehicle_plate::text, '')), ''),
       nullif(btrim(coalesce(v_foreman_name, '')), ''),
       btrim(p_sector),
       v_resolved_yard,
@@ -299,10 +328,10 @@ begin
       composition_date = p_composition_date,
       project_id = p_project_id,
       team_id = p_team_id,
-      project_code_snapshot = btrim(v_project.sob),
-      project_service_center_snapshot = nullif(btrim(coalesce(v_project.service_center_text, '')), ''),
-      team_name_snapshot = btrim(v_team.name),
-      vehicle_plate_snapshot = nullif(btrim(coalesce(v_team.vehicle_plate, '')), ''),
+      project_code_snapshot = btrim(v_project.sob::text),
+      project_service_center_snapshot = nullif(btrim(coalesce(v_project.service_center_text::text, '')), ''),
+      team_name_snapshot = btrim(v_team.name::text),
+      vehicle_plate_snapshot = nullif(btrim(coalesce(v_team.vehicle_plate::text, '')), ''),
       foreman_name_snapshot = nullif(btrim(coalesce(v_foreman_name, '')), ''),
       sector = btrim(p_sector),
       yard = v_resolved_yard,
@@ -345,20 +374,10 @@ begin
     v_composition_id,
     p.id,
     btrim(p.nome),
-    nullif(btrim(coalesce(p.matriculation, '')), ''),
-    nullif(btrim(coalesce(p.cpf, '')), ''),
-    nullif(btrim(coalesce(p.phone, '')), ''),
-    nullif(
-      btrim(
-        concat_ws(
-          ' - ',
-          nullif(btrim(coalesce(jt.name, '')), ''),
-          nullif(btrim(coalesce(jtt.name, '')), ''),
-          nullif(btrim(coalesce(p.job_level, '')), '')
-        )
-      ),
-      ''
-    ),
+    nullif(btrim(coalesce(p.matriculation::text, '')), ''),
+    nullif(btrim(coalesce(p.cpf::text, '')), ''),
+    nullif(btrim(coalesce(v_foreman_phone, '')), ''),
+    nullif(btrim(coalesce(jt.name, '')), ''),
     im.is_present,
     im.sort_order,
     p_actor_user_id,
@@ -371,9 +390,6 @@ begin
   left join public.job_titles jt
     on jt.tenant_id = p.tenant_id
    and jt.id = p.job_title_id
-  left join public.job_title_types jtt
-    on jtt.tenant_id = p.tenant_id
-   and jtt.id = p.job_title_type_id
   order by im.sort_order;
 
   return jsonb_build_object(
@@ -391,5 +407,7 @@ exception
     return jsonb_build_object('success', false, 'status', 409, 'reason', 'DUPLICATE_CONTEXT', 'message', 'Ja existe composicao ativa para este Projeto, Equipe e Data.');
 end;
 $$;
+
+notify pgrst, 'reload schema';
 
 commit;

@@ -23,16 +23,9 @@ type PersonRow = {
   cpf: string | null;
   phone: string | null;
   job_title_id: string;
-  job_title_type_id: string | null;
-  job_level: string | null;
 };
 
 type JobTitleRow = {
-  id: string;
-  name: string;
-};
-
-type JobTitleTypeRow = {
   id: string;
   name: string;
 };
@@ -67,7 +60,6 @@ export async function GET(request: NextRequest) {
       teamsResult,
       peopleResult,
       jobTitlesResult,
-      jobTitleTypesResult,
       serviceCentersResult,
     ] = await Promise.all([
       supabase
@@ -87,7 +79,7 @@ export async function GET(request: NextRequest) {
         .returns<TeamRow[]>(),
       supabase
         .from("people")
-        .select("id, nome, matriculation, cpf, phone, job_title_id, job_title_type_id, job_level")
+        .select("id, nome, matriculation, cpf, phone, job_title_id")
         .eq("tenant_id", appUser.tenant_id)
         .eq("ativo", true)
         .order("nome", { ascending: true })
@@ -99,12 +91,6 @@ export async function GET(request: NextRequest) {
         .eq("tenant_id", appUser.tenant_id)
         .eq("ativo", true)
         .returns<JobTitleRow[]>(),
-      supabase
-        .from("job_title_types")
-        .select("id, name")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("ativo", true)
-        .returns<JobTitleTypeRow[]>(),
       supabase
         .from("project_service_centers")
         .select("id, name")
@@ -118,19 +104,16 @@ export async function GET(request: NextRequest) {
     }
 
     const jobTitleMap = new Map((jobTitlesResult.data ?? []).map((item) => [item.id, normalizeText(item.name)]));
-    const jobTitleTypeMap = new Map((jobTitleTypesResult.data ?? []).map((item) => [item.id, normalizeText(item.name)]));
     const serviceCenterMap = new Map((serviceCentersResult.data ?? []).map((item) => [item.id, normalizeText(item.name)]));
     const people = (peopleResult.data ?? []).map((person) => {
       const jobTitle = jobTitleMap.get(person.job_title_id) ?? "Nao identificado";
-      const jobTitleType = person.job_title_type_id ? jobTitleTypeMap.get(person.job_title_type_id) ?? "" : "";
-      const jobParts = [jobTitle, jobTitleType, normalizeText(person.job_level)].filter(Boolean);
       return {
         id: person.id,
         name: formatPersonName(person.nome),
         matriculation: person.matriculation,
         cpf: person.cpf,
         phone: person.phone,
-        jobTitleName: jobParts.join(" - "),
+        jobTitleName: jobTitle,
       };
     });
 
@@ -155,6 +138,7 @@ export async function GET(request: NextRequest) {
             serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "" : "",
             foremanId: team.foreman_person_id,
             foremanName: foreman?.name ?? "Nao identificado",
+            foremanPhone: foreman?.phone ?? null,
           };
         })
         .filter((team) => team.id && team.name),

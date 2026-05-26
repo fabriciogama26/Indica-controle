@@ -20,6 +20,7 @@ type TeamOption = {
   serviceCenterName: string;
   foremanId: string;
   foremanName: string;
+  foremanPhone: string | null;
 };
 
 type PersonOption = {
@@ -261,44 +262,42 @@ function downloadCsvFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function flattenCompositions(compositions: CompositionItem[]) {
-  return compositions.flatMap((composition) =>
-    composition.members.map((member) => ({
-      composition,
-      member,
-      key: `${composition.id}-${member.personId}`,
-    })),
-  );
+function getCompositionForemanPhone(composition: CompositionItem) {
+  return composition.members.find((member) => isForemanRole(member.jobTitleName))?.phone ?? null;
+}
+
+function getCompositionMemberPhone(composition: CompositionItem, member: CompositionMember) {
+  return getCompositionForemanPhone(composition) ?? member.phone;
+}
+
+function getFormForemanPhone(team: TeamOption | null, members: CompositionMember[]) {
+  return team?.foremanPhone ?? members.find((member) => isForemanRole(member.jobTitleName))?.phone ?? null;
 }
 
 function buildVisibleCsv(compositions: CompositionItem[]) {
   const header = [
     "Data",
     "Projeto",
+    "Equipe",
     "Setor",
-    "Matricula",
-    "Colaborador",
-    "Funcao",
-    "CPF",
-    "Telefone",
+    "Integrantes",
+    "Encarregado",
     "Patio",
     "Placa",
     "Hora inicial",
-    "Presente",
+    "Observacoes",
   ];
-  const rows = flattenCompositions(compositions).map(({ composition, member }) => [
+  const rows = compositions.map((composition) => [
     formatDate(composition.compositionDate),
     composition.projectCode,
+    composition.teamName,
     composition.sector,
-    member.matriculation ?? "",
-    member.name,
-    member.jobTitleName ?? "",
-    formatCpf(member.cpf),
-    member.phone ?? "",
+    composition.members.length,
+    composition.foremanName,
     composition.yard,
     composition.vehiclePlate,
     composition.startTime,
-    member.isPresent ? "Sim" : "Nao",
+    composition.notes,
   ]);
   return `\uFEFF${[header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";")).join("\n")}`;
 }
@@ -341,7 +340,7 @@ function buildDetailedCsv(compositions: CompositionItem[]) {
         member?.name ?? "",
         member?.jobTitleName ?? "",
         member ? formatCpf(member.cpf) : "",
-        member?.phone ?? "",
+        member ? getCompositionMemberPhone(composition, member) ?? "" : "",
         member ? (member.isPresent ? "Sim" : "Nao") : "",
       );
     }
@@ -398,7 +397,7 @@ export function TeamCompositionPageView() {
   const activeFilterProject = projectByCode.get(normalizeLookupKey(activeFilters.projectCode)) ?? null;
   const selectedTeam = teams.find((team) => team.id === form.teamId) ?? null;
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
-  const visibleRows = useMemo(() => flattenCompositions(compositions), [compositions]);
+  const formForemanPhone = getFormForemanPhone(selectedTeam, form.members);
 
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -497,11 +496,21 @@ export function TeamCompositionPageView() {
     const nextTeam = teams.find((team) => team.id === teamId) ?? null;
     setForm((current) => {
       if (!nextTeam?.foremanId || current.members.some((member) => member.personId === nextTeam.foremanId)) {
-        return { ...current, teamId, yard: nextTeam?.serviceCenterName ?? "" };
+        return {
+          ...current,
+          teamId,
+          yard: nextTeam?.serviceCenterName ?? "",
+          members: current.members.map((member) => ({ ...member, phone: nextTeam?.foremanPhone ?? null })),
+        };
       }
       const foreman = peopleById.get(nextTeam.foremanId);
       if (!foreman) {
-        return { ...current, teamId, yard: nextTeam.serviceCenterName };
+        return {
+          ...current,
+          teamId,
+          yard: nextTeam.serviceCenterName,
+          members: current.members.map((member) => ({ ...member, phone: nextTeam.foremanPhone ?? null })),
+        };
       }
       if (countForemen(current.members) > 0 && !current.members.some((member) => member.personId === foreman.id)) {
         setFeedback({
@@ -520,11 +529,11 @@ export function TeamCompositionPageView() {
             name: foreman.name,
             matriculation: foreman.matriculation,
             cpf: foreman.cpf,
-            phone: foreman.phone,
+            phone: nextTeam.foremanPhone,
             jobTitleName: foreman.jobTitleName,
             isPresent: true,
           },
-          ...current.members,
+          ...current.members.map((member) => ({ ...member, phone: nextTeam.foremanPhone ?? null })),
         ],
       };
     });
@@ -570,7 +579,7 @@ export function TeamCompositionPageView() {
           name: person.name,
           matriculation: person.matriculation,
           cpf: person.cpf,
-          phone: person.phone,
+          phone: selectedTeam?.foremanPhone ?? person.phone,
           jobTitleName: person.jobTitleName,
           isPresent: true,
         },
@@ -860,7 +869,7 @@ export function TeamCompositionPageView() {
                       <td>{member.name}</td>
                       <td>{member.jobTitleName ?? "-"}</td>
                       <td>{formatCpf(member.cpf)}</td>
-                      <td>{formatOptional(member.phone)}</td>
+                      <td>{formatOptional(formForemanPhone ?? member.phone)}</td>
                       <td>
                         <label className={styles.presenceToggle}>
                           <input type="checkbox" checked={member.isPresent} onChange={(event) => toggleMemberPresence(member.personId, event.target.checked)} />
@@ -914,23 +923,20 @@ export function TeamCompositionPageView() {
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
-              <tr><th>Data</th><th>Projeto</th><th>Setor</th><th>Matricula</th><th>Colaborador</th><th>Funcao</th><th>CPF</th><th>Telefone</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Presente</th><th>Acoes</th></tr>
+              <tr><th>Data</th><th>Projeto</th><th>Equipe</th><th>Setor</th><th>Integrantes</th><th>Encarregado</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Acoes</th></tr>
             </thead>
             <tbody>
-              {visibleRows.length ? visibleRows.map(({ composition, member, key }) => (
-                <tr key={key}>
+              {compositions.length ? compositions.map((composition) => (
+                <tr key={composition.id}>
                   <td>{formatDate(composition.compositionDate)}</td>
                   <td>{composition.projectCode}</td>
+                  <td>{composition.teamName}</td>
                   <td>{composition.sector}</td>
-                  <td>{member.matriculation ?? "-"}</td>
-                  <td>{member.name}</td>
-                  <td>{member.jobTitleName ?? "-"}</td>
-                  <td>{formatCpf(member.cpf)}</td>
-                  <td>{formatOptional(member.phone)}</td>
+                  <td>{composition.members.length} pessoa(s)</td>
+                  <td>{formatOptional(composition.foremanName)}</td>
                   <td>{formatOptional(composition.yard)}</td>
                   <td>{formatOptional(composition.vehiclePlate)}</td>
                   <td>{composition.startTime}</td>
-                  <td>{member.isPresent ? "Sim" : "Nao"}</td>
                   <td className={styles.actionsCell}>
                     <div className={styles.tableActions}>
                       <button type="button" className={`${styles.actionButton} ${styles.actionView}`} onClick={() => setDetailComposition(composition)} title="Detalhes" aria-label="Detalhes">
@@ -945,7 +951,7 @@ export function TeamCompositionPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={13} className={styles.emptyRow}>{isLoadingList ? "Carregando composicoes..." : "Nenhuma composicao encontrada."}</td></tr>}
+              )) : <tr><td colSpan={10} className={styles.emptyRow}>{isLoadingList ? "Carregando composicoes..." : "Nenhuma composicao encontrada."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -983,7 +989,7 @@ export function TeamCompositionPageView() {
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
                   <thead><tr><th>Matricula</th><th>Colaborador</th><th>Funcao</th><th>CPF</th><th>Telefone</th><th>Presente</th></tr></thead>
-                  <tbody>{detailComposition.members.map((member) => <tr key={member.personId}><td>{member.matriculation ?? "-"}</td><td>{member.name}</td><td>{member.jobTitleName ?? "-"}</td><td>{formatCpf(member.cpf)}</td><td>{formatOptional(member.phone)}</td><td>{member.isPresent ? "Sim" : "Nao"}</td></tr>)}</tbody>
+                  <tbody>{detailComposition.members.map((member) => <tr key={member.personId}><td>{member.matriculation ?? "-"}</td><td>{member.name}</td><td>{member.jobTitleName ?? "-"}</td><td>{formatCpf(member.cpf)}</td><td>{formatOptional(getCompositionMemberPhone(detailComposition, member))}</td><td>{member.isPresent ? "Sim" : "Nao"}</td></tr>)}</tbody>
                 </table>
               </div>
             </div>

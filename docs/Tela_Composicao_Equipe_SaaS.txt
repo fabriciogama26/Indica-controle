@@ -4,9 +4,9 @@ Visao geral
 -----------
 - Tela para registrar a composicao diaria de uma equipe por `Projeto + Equipe + Data`.
 - O cadastro parte da equipe selecionada e permite adicionar pessoas do cadastro `Pessoas`.
-- A lista exibe uma linha por colaborador, no formato operacional da planilha de composicao.
+- A lista exibe uma linha por composicao, mantendo os integrantes dentro dos detalhes/edicao.
 - A tela possui dois CSVs:
-  - `Exportar lista (CSV)`: exporta as mesmas colunas exibidas na listagem.
+  - `Exportar lista (CSV)`: exporta uma linha por composicao, com as mesmas colunas exibidas na listagem.
   - `Detalhes (CSV)`: exporta uma linha por composicao, com os integrantes distribuidos em colunas numeradas.
 
 Arquitetura
@@ -42,10 +42,13 @@ Cadastro
 - Ao selecionar uma equipe:
   - A tela exibe placa e encarregado.
   - A tela preenche `Patio` automaticamente com o Centro de Servico vinculado a equipe.
-  - O campo `Patio` fica somente leitura no cadastro.
+  - O campo `Patio` fica somente leitura quando a equipe possui Centro de Servico.
+  - Se a equipe nao possui Centro de Servico, o campo `Patio` pode ser preenchido manualmente e e usado como fallback no salvamento.
   - Se o encarregado existir no cadastro de Pessoas ativo, ele e incluido automaticamente como integrante.
 - Inclusao de pessoas:
   - Busca por `Matricula - Nome`.
+  - A coluna `Funcao` usa somente o Cargo do colaborador.
+  - A coluna `Telefone` repete o telefone do encarregado para todos os integrantes.
   - Bloqueia pessoa duplicada na mesma composicao.
   - Bloqueia matricula duplicada na mesma composicao, mesmo se vier de registros diferentes.
   - Bloqueia composicao com mais de um integrante cuja funcao/cargo contenha `ENCARREGADO`.
@@ -55,7 +58,7 @@ Cadastro
   - Campos verificados: Data, Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
   - A API e a RPC `save_team_composition_record` repetem as mesmas regras de campos obrigatorios, duplicidade de matricula e limite de um encarregado.
 - Persistencia:
-  - Salva snapshots de projeto, equipe, Centro de Servico da equipe em `Patio`, placa, encarregado, pessoa, matricula, CPF, telefone e funcao.
+  - Salva snapshots de projeto, equipe, Centro de Servico da equipe em `Patio`, placa, encarregado, pessoa, matricula, CPF, telefone do encarregado e funcao.
   - Mantem o registro historico da composicao mesmo que Pessoas ou Equipes mudem depois.
 
 Filtros, auto-complete e listagem
@@ -68,16 +71,13 @@ Filtros, auto-complete e listagem
 - Listagem:
   - Data
   - Projeto
+  - Equipe
   - Setor
-  - Matricula
-  - Colaborador
-  - Funcao
-  - CPF
-  - Telefone
+  - Integrantes
+  - Encarregado
   - Patio (Centro de Servico da equipe)
   - Placa
   - Hora inicial
-  - Presente
   - Acoes
 - Acoes:
   - Detalhes
@@ -107,6 +107,7 @@ Atualizacao 2026-05
 -------------------
 - Arquivos criados/alterados:
   - `supabase/migrations/200_create_team_composition_page.sql`
+  - `supabase/migrations/201_fix_team_composition_save.sql`
   - `src/app/api/composicao-equipe/route.ts`
   - `src/app/api/composicao-equipe/meta/route.ts`
   - `src/app/(dashboard)/composicao-equipe/page.tsx`
@@ -118,9 +119,9 @@ Atualizacao 2026-05
   - `docs/Tela_Composicao_Equipe_SaaS.txt`
   - `TASKS.md`
 - Ajuste de Patio/Centro de Servico:
-  - O campo `Patio` deixou de ser digitavel.
-  - O valor de `Patio` passa a ser o Centro de Servico cadastrado na equipe selecionada.
-  - A API ignora valor manual de `yard` e persiste o snapshot a partir da equipe do tenant.
+  - O valor de `Patio` passa a priorizar o Centro de Servico cadastrado na equipe selecionada.
+  - Quando a equipe nao possui Centro de Servico, a API envia `p_yard` para a RPC como fallback.
+  - A RPC persiste o snapshot de `Patio` a partir da equipe do tenant ou do fallback `p_yard`.
 - Ajuste de regras da composicao:
   - Salvamento passa a listar campos obrigatorios pendentes em vez de retornar mensagem generica.
   - Frontend e API bloqueiam matricula duplicada.
@@ -129,6 +130,16 @@ Atualizacao 2026-05
   - A gravacao deixou de fazer `insert/update/delete/insert` fragmentado na API.
   - A API passa a chamar `save_team_composition_record`.
   - A RPC valida campos, matricula duplicada, limite de encarregado, projeto/equipe/pessoas do tenant e grava composicao + integrantes na mesma transacao.
+  - A RPC so bloqueia concorrencia quando `p_expected_updated_at` e enviado e difere do `updated_at` atual.
+  - Em erro de RPC, a API informa se a causa provavel e migration/cache de schema desatualizado.
+  - A migration `201_fix_team_composition_save.sql` solicita `notify pgrst, 'reload schema'` apos recriar a RPC.
+  - A RPC grava `Funcao` somente com `job_titles.name`, sem concatenar tipo ou nivel do cargo.
+  - A RPC grava `Telefone` de todos os integrantes com o telefone do encarregado da equipe.
+  - A RPC converte matricula, CPF, telefone, projeto e placa para texto antes de normalizar snapshots.
+- Ajuste de listagem:
+  - A lista principal passa a exibir uma linha por composicao.
+  - Os integrantes ficam disponiveis em Detalhes, Edicao e no CSV detalhado.
+  - O CSV `Exportar lista (CSV)` passa a seguir a lista principal, sem uma linha por integrante.
 - Funcoes/hooks/constantes tocadas:
   - `TeamCompositionPageView`
   - `buildQuery`
@@ -176,6 +187,6 @@ Mapa de Codigo (funcoes, hooks e constantes)
   - `mapComposition`
 - Servicos e integracoes externas:
   - Supabase Admin via `resolveAuthenticatedAppUser`
-  - Tabelas `project`, `project_with_labels`, `teams`, `people`, `job_titles`, `job_title_types`
+  - Tabelas `project`, `project_with_labels`, `teams`, `people`, `job_titles`
 - Ajuda contextual:
   - Nao ha componente de ajuda contextual especifico nesta entrega.
