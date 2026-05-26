@@ -221,6 +221,21 @@ function formatDate(value: string) {
   return parsed.toLocaleDateString("pt-BR");
 }
 
+function formatOperationalDate(value: string) {
+  if (!value) return "";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  return `${String(parsed.getDate()).padStart(2, "0")}/${months[parsed.getMonth()]}`;
+}
+
+function formatOperationalTime(value: string) {
+  const normalized = normalizeText(value);
+  if (!normalized) return "";
+  if (/^\d{2}:\d{2}$/.test(normalized)) return `${normalized}:00`;
+  return normalized;
+}
+
 function formatDateTime(value: string) {
   if (!value) return "-";
   const parsed = new Date(value);
@@ -237,6 +252,10 @@ function formatCpf(value: string | null | undefined) {
   if (!digits) return "-";
   if (digits.length !== 11) return digits;
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function formatCsvPhone(value: string | null | undefined) {
+  return onlyDigits(value) || normalizeText(value);
 }
 
 function formatOptional(value: string | null | undefined) {
@@ -305,39 +324,31 @@ function buildVisibleCsv(compositions: CompositionItem[]) {
 function buildDetailedCsv(compositions: CompositionItem[]) {
   const header = [
     "Data",
-    "Projeto",
-    "Centro de Servico",
-    "Equipe",
-    "Encarregado",
+    "PROJETO",
     "Setor",
-    "Patio",
+    "Matrícula",
+    "Colaborador",
+    "Função",
+    "CPF",
+    "TELEFONE",
+    "Pátio",
     "Placa",
     "Hora inicial",
-    "Observacoes",
-    "Matricula",
-    "Colaborador",
-    "Funcao",
-    "CPF",
-    "Telefone",
     "Presente",
   ];
   const rows = compositions.flatMap((composition) =>
     composition.members.map((member) => [
-      formatDate(composition.compositionDate),
+      formatOperationalDate(composition.compositionDate),
       composition.projectCode,
-      composition.projectServiceCenter,
-      composition.teamName,
-      composition.foremanName,
       composition.sector,
-      composition.yard,
-      composition.vehiclePlate,
-      composition.startTime,
-      composition.notes,
       member.matriculation ?? "",
       member.name,
       member.jobTitleName ?? "",
       formatCpf(member.cpf),
-      getCompositionMemberPhone(composition, member) ?? "",
+      formatCsvPhone(getCompositionMemberPhone(composition, member)),
+      composition.yard,
+      composition.vehiclePlate,
+      formatOperationalTime(composition.startTime),
       member.isPresent ? "Sim" : "Nao",
     ]),
   );

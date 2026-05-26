@@ -7,7 +7,7 @@ Visao geral
 - A lista exibe uma linha por composicao, mantendo os integrantes dentro dos detalhes/edicao.
 - A tela possui dois CSVs:
   - `Exportar lista (CSV)`: exporta uma linha por composicao, com as mesmas colunas exibidas na listagem.
-  - `Detalhes (CSV)`: exporta uma linha por integrante, repetindo os dados da composicao em cada linha.
+  - `Detalhes (CSV)`: exporta uma linha por integrante no padrao operacional: Data, PROJETO, Setor, Matricula, Colaborador, Funcao, CPF, TELEFONE, Patio, Placa, Hora inicial e Presente.
 
 Arquitetura
 -----------
@@ -140,7 +140,7 @@ Atualizacao 2026-05
   - A lista principal passa a exibir uma linha por composicao.
   - Os integrantes ficam disponiveis em Detalhes, Edicao e no CSV detalhado.
   - O CSV `Exportar lista (CSV)` passa a seguir a lista principal, sem uma linha por integrante.
-  - O CSV `Detalhes (CSV)` exporta uma linha por integrante.
+  - O CSV `Detalhes (CSV)` exporta uma linha por integrante no padrao operacional da planilha.
 - Funcoes/hooks/constantes tocadas:
   - `TeamCompositionPageView`
   - `buildQuery`
