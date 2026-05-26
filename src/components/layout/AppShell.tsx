@@ -30,6 +30,7 @@ const menuSections = [
       { href: "/locacao", label: "Locacao", icon: "briefcase" },
       { href: "/programacao-simples", label: "Programacao", icon: "calendar" },
       { href: "/programacao-visualizacao", label: "Visualizacao Programacao", icon: "calendar" },
+      { href: "/composicao-equipe", label: "Composicao de Equipe", icon: "users" },
       { href: "/medicao", label: "Medicao", icon: "calendar" },
       { href: "/medicao-asbuilt", label: "Medicao Asbuilt", icon: "calendar" },
       { href: "/faturamento", label: "Faturamento", icon: "calendar" },
@@ -113,6 +114,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/programacao-visualizacao": {
     title: "Visualizacao Programacao",
     subtitle: "Lista filtrada e calendario semanal da programacao.",
+  },
+  "/composicao-equipe": {
+    title: "Composicao de Equipe",
+    subtitle: "Cadastro diario de integrantes por equipe, projeto e presenca.",
   },
   "/programacao": {
     title: "Programacao (Legado)",

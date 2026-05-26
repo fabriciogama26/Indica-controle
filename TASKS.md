@@ -724,3 +724,11 @@
 - [x] Analisar impacto de alterar `materials.codigo` em materiais ja cadastrados, confirmando que o saldo de almoxarifado permanece vinculado por `material_id` e que as telas passam a exibir o codigo atual do cadastro.
 
 - [x] Melhorar leitura do Grafico operacional no Dash operacional e faturamento, adicionando ajuda contextual por barra, diferencas reais entre Medido, AS Built e Faturado, e percentuais de conversao.
+
+- [x] Criar tela Composicao de Equipe com cadastro por Projeto + Equipe + Data, inclusao de pessoas, presenca por integrante, lista no formato operacional, detalhes em modal, historico e duas exportacoes CSV (lista e detalhes), preservando escopo por tenant_id.
+
+- [x] Ajustar Patio da Composicao de Equipe para preencher automaticamente pelo Centro de Servico vinculado a equipe, mantendo o campo somente leitura e salvando snapshot a partir do backend.
+
+- [x] Adicionar regras na Composicao de Equipe para listar campos obrigatorios pendentes no salvamento, bloquear matricula duplicada e impedir mais de um encarregado na mesma composicao.
+
+- [x] Mover gravacao da Composicao de Equipe para RPC transacional save_team_composition_record, repetindo no banco as regras de campos obrigatorios, matricula duplicada e limite de um encarregado.
