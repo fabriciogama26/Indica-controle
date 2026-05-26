@@ -1,0 +1,181 @@
+Tela: Composicao de Equipe SaaS
+
+Visao geral
+-----------
+- Tela para registrar a composicao diaria de uma equipe por `Projeto + Equipe + Data`.
+- O cadastro parte da equipe selecionada e permite adicionar pessoas do cadastro `Pessoas`.
+- A lista exibe uma linha por colaborador, no formato operacional da planilha de composicao.
+- A tela possui dois CSVs:
+  - `Exportar lista (CSV)`: exporta as mesmas colunas exibidas na listagem.
+  - `Detalhes (CSV)`: exporta uma linha por composicao, com os integrantes distribuidos em colunas numeradas.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/composicao-equipe/page.tsx`
+- View principal: `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+- Estilo dedicado: `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+- API da tela:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/app/api/composicao-equipe/meta/route.ts`
+- RPC transacional:
+  - `save_team_composition_record`
+- Menu e titulo:
+  - `src/components/layout/AppShell.tsx`
+- Autorizacao de rota:
+  - `src/lib/auth/authorization.ts`
+- Catalogo de permissoes:
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Banco:
+  - `supabase/migrations/200_create_team_composition_page.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - Data
+  - Projeto
+  - Equipe
+  - Setor
+  - Hora inicial
+  - Ao menos uma pessoa
+- Campos opcionais:
+  - Observacoes
+- Ao selecionar uma equipe:
+  - A tela exibe placa e encarregado.
+  - A tela preenche `Patio` automaticamente com o Centro de Servico vinculado a equipe.
+  - O campo `Patio` fica somente leitura no cadastro.
+  - Se o encarregado existir no cadastro de Pessoas ativo, ele e incluido automaticamente como integrante.
+- Inclusao de pessoas:
+  - Busca por `Matricula - Nome`.
+  - Bloqueia pessoa duplicada na mesma composicao.
+  - Bloqueia matricula duplicada na mesma composicao, mesmo se vier de registros diferentes.
+  - Bloqueia composicao com mais de um integrante cuja funcao/cargo contenha `ENCARREGADO`.
+  - Permite marcar `Presente = Sim/Nao` por integrante.
+- Validacao de salvamento:
+  - A tela mostra todos os campos obrigatorios pendentes em uma unica mensagem.
+  - Campos verificados: Data, Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
+  - A API e a RPC `save_team_composition_record` repetem as mesmas regras de campos obrigatorios, duplicidade de matricula e limite de um encarregado.
+- Persistencia:
+  - Salva snapshots de projeto, equipe, Centro de Servico da equipe em `Patio`, placa, encarregado, pessoa, matricula, CPF, telefone e funcao.
+  - Mantem o registro historico da composicao mesmo que Pessoas ou Equipes mudem depois.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Data inicial
+  - Data final
+  - Projeto (input + datalist por SOB)
+  - Equipe
+- Listagem:
+  - Data
+  - Projeto
+  - Setor
+  - Matricula
+  - Colaborador
+  - Funcao
+  - CPF
+  - Telefone
+  - Patio (Centro de Servico da equipe)
+  - Placa
+  - Hora inicial
+  - Presente
+  - Acoes
+- Acoes:
+  - Detalhes
+  - Editar
+  - Historico
+
+Boas praticas
+-------------
+- Toda leitura/escrita usa `tenant_id` do usuario autenticado.
+- `team_compositions` e `team_composition_members` possuem RLS por `user_can_access_tenant`.
+- O frontend valida projeto por SOB exato antes de filtrar ou salvar.
+- A API revalida projeto ativo, equipe ativa e pessoas ativas do tenant antes de salvar.
+- Alteracoes relevantes registram entrada em `app_entity_history` com `module_key = composicao-equipe`.
+
+Atalhos
+-------
+- Rota ativa: `/composicao-equipe`
+- Endpoints:
+  - `GET /api/composicao-equipe/meta`
+  - `GET /api/composicao-equipe`
+  - `GET /api/composicao-equipe?detailId=<id>`
+  - `GET /api/composicao-equipe?historyCompositionId=<id>`
+  - `POST /api/composicao-equipe`
+  - `PUT /api/composicao-equipe`
+
+Atualizacao 2026-05
+-------------------
+- Arquivos criados/alterados:
+  - `supabase/migrations/200_create_team_composition_page.sql`
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/app/api/composicao-equipe/meta/route.ts`
+  - `src/app/(dashboard)/composicao-equipe/page.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `TASKS.md`
+- Ajuste de Patio/Centro de Servico:
+  - O campo `Patio` deixou de ser digitavel.
+  - O valor de `Patio` passa a ser o Centro de Servico cadastrado na equipe selecionada.
+  - A API ignora valor manual de `yard` e persiste o snapshot a partir da equipe do tenant.
+- Ajuste de regras da composicao:
+  - Salvamento passa a listar campos obrigatorios pendentes em vez de retornar mensagem generica.
+  - Frontend e API bloqueiam matricula duplicada.
+  - Frontend e API bloqueiam mais de um encarregado na mesma composicao.
+- Ajuste de persistencia transacional:
+  - A gravacao deixou de fazer `insert/update/delete/insert` fragmentado na API.
+  - A API passa a chamar `save_team_composition_record`.
+  - A RPC valida campos, matricula duplicada, limite de encarregado, projeto/equipe/pessoas do tenant e grava composicao + integrantes na mesma transacao.
+- Funcoes/hooks/constantes tocadas:
+  - `TeamCompositionPageView`
+  - `buildQuery`
+  - `buildVisibleCsv`
+  - `buildDetailedCsv`
+  - `loadMeta`
+  - `loadCompositions`
+  - `saveComposition`
+  - RPC `save_team_composition_record`
+  - `findDuplicateMemberMatriculation`
+  - `countForemen`
+  - `isForemanRole`
+  - `fetchTeamById`
+  - `fetchPeopleSnapshots`
+  - `permissionCatalog`
+  - `ROUTE_PAGE_KEYS`
+  - `resolveDefaultPageAccess`
+  - `menuSections`
+  - `titleMap`
+- Comportamento antes/depois:
+  - Antes: nao havia tela dedicada para registrar composicao de equipe por pessoas.
+  - Depois: existe tela operacional com cadastro, edicao, lista, detalhes, historico e duas extracoes CSV.
+  - Antes: a matriz de permissoes nao possuia `composicao-equipe`.
+  - Depois: a migration cadastra a pagina em `app_pages`, faz backfill em `role_page_permissions` e em `app_user_page_permissions`.
+  - Impacto multi-tenant: tabelas novas incluem `tenant_id`, RLS ON e FKs compostas para projeto/equipe/pessoa no mesmo tenant.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+- Funcoes principais:
+  - Caminho: `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - Responsavel por: renderizar cadastro, filtros, lista, modais, historico e exportacoes.
+  - Caminho: `src/app/api/composicao-equipe/route.ts`
+  - Responsavel por: listar, detalhar, salvar, editar e carregar historico de composicoes.
+  - Caminho: `src/app/api/composicao-equipe/meta/route.ts`
+  - Responsavel por: carregar projetos, equipes e pessoas ativas do tenant.
+- Constantes e configuracoes:
+  - `PAGE_SIZE`
+  - `EXPORT_PAGE_SIZE`
+  - `HISTORY_PAGE_SIZE`
+- Funcoes utilitarias relacionadas:
+  - `formatCpf`
+  - `buildVisibleCsv`
+  - `buildDetailedCsv`
+  - `fetchPeopleSnapshots`
+  - `mapComposition`
+- Servicos e integracoes externas:
+  - Supabase Admin via `resolveAuthenticatedAppUser`
+  - Tabelas `project`, `project_with_labels`, `teams`, `people`, `job_titles`, `job_title_types`
+- Ajuda contextual:
+  - Nao ha componente de ajuda contextual especifico nesta entrega.

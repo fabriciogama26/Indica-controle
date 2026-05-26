@@ -420,6 +420,9 @@ Resumo por arquivo
 
 199_people_cpf_unique_phone_and_conditional_type.sql
 - Garante `people.cpf` unico por tenant, adiciona trava composta `CPF + Matricula`, cria `people.phone` opcional e republica `save_person_record` com telefone.
+
+200_create_team_composition_page.sql
+- Cria `team_compositions` e `team_composition_members` com RLS por tenant, snapshots de projeto/equipe/pessoa, indices de contexto, RPC `save_team_composition_record`, pagina `composicao-equipe` e backfill de permissoes.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
