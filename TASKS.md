@@ -133,6 +133,8 @@
 - [x] Proteger cadastro/edicao de `Pessoas` contra duplicidade pela combinacao `Nome + Matricula + Cargo + Tipo + Nivel` com validacao na API e trigger no banco.
 - [x] Ajustar duplicidade de `Pessoas` para bloquear `Matricula` unica por tenant na API e no banco, independente de nome, cargo, tipo ou nivel.
 - [x] Adicionar `Cadastro em massa` na tela de `Pessoas` no padrao da tela de `Materiais`, com modelo CSV, validacao parcial, retorno por linha e CSV de erros.
+- [x] Adicionar campo opcional `CPF` em `Pessoas`, com migration versionada, validacao quando preenchido, tela, exportacao e cadastro em massa.
+- [x] Ajustar `Pessoas` para CPF unico por tenant, trava `CPF + Matricula`, campo opcional `Telefone` e obrigatoriedade condicional de `Tipo` por cargo.
 - [x] Endurecer `Pessoas` com controle de concorrencia por `expectedUpdatedAt` na edicao e no cancelamento/ativacao, com refresh da lista ao detectar conflito.
 - [x] Migrar as escritas de `Pessoas` para RPC transacional (`save_person_record` e `set_person_record_status`) para consolidar update + historico + concorrencia no banco.
 - [x] Implementar CRUD de `Materiais` integrado a `materials`.
