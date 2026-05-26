@@ -7,8 +7,17 @@ export const HISTORY_PAGE_SIZE = 5;
 
 export const INITIAL_FILTERS: TrafoPositionFilters = {
   stockCenterId: "",
+  serialTrackingType: "TODOS",
+  materialType: "",
   materialCode: "",
+  description: "",
   serialNumber: "",
   lotCode: "",
+  projectCode: "",
+  teamName: "",
+  foremanName: "",
   currentStatus: "TODOS",
+  lastOperationKind: "TODOS",
+  entryDateFrom: "",
+  entryDateTo: "",
 };

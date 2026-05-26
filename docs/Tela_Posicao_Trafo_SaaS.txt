@@ -39,10 +39,18 @@ Filtros, auto-complete e listagem
 - Filtros:
   - `Centro fisico`
   - `Situacao` (`Todos`, `Em estoque proprio`, `Com equipe`, `RET / sucateado`, `Fora do estoque proprio`)
+  - `Rastreio` (`Todos`, `TRAFO`, `Religador`, `Chave`)
+  - `Ultima operacao` (`Todas`, `Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo`, `RET`)
+  - `Tipo material`
   - `Material (codigo)`
-  - `Rastreio`
+  - `Descricao`
   - `Serial`
   - `LP`
+  - `Projeto ultimo`
+  - `Equipe atual`
+  - `Encarregado atual`
+  - `Mov. de`
+  - `Mov. ate`
 - Listagem:
   - `Centro fisico`
   - `Situacao`
@@ -70,6 +78,9 @@ Filtros, auto-complete e listagem
   - O cabecalho exibe `Registros filtrados`, `Em estoque proprio`, `Com equipe`, `RET` e `Fora do estoque proprio`.
   - Os cards por situacao usam o resumo filtrado completo retornado pelo backend antes da paginacao da lista.
   - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos e exporta todos os registros filtrados percorrendo as paginas da API.
+  - Os filtros por `Material`, `Descricao`, `Rastreio`, `Tipo material`, `Serial`, `LP` e periodo de movimentacao sao aplicados na consulta base de `trafo_instances`/`materials`.
+  - Os filtros por `Centro fisico`, `Situacao`, `Ultima operacao`, `Projeto ultimo`, `Equipe atual` e `Encarregado atual` sao aplicados apos a API resolver centro fisico de referencia, equipe e projeto.
+  - O periodo `Mov. de`/`Mov. ate` usa `last_entry_date` e bloqueia no frontend a data inicial maior que a data final.
 - Acoes:
   - `Detalhes`
   - `Historico`
@@ -169,14 +180,15 @@ Atualizacao 2026-04
   - O historico da unidade passa a incluir eventos `RET` vindos de `serial_retirements`.
   - Os cards de situacao passaram a usar `summary` do `GET /api/trafo-positions`, calculado antes da paginacao, em vez de contar somente a pagina visivel.
   - A exportacao CSV passou a usar lote de `100` registros, alinhado ao limite maximo do `GET /api/trafo-positions`, e o loop passou a respeitar o `pageSize` efetivo retornado pela API para nao interromper antes de exportar todos os registros filtrados.
+  - A area de filtros passou a incluir condicoes adicionais por rastreio, ultima operacao, tipo material, descricao, projeto ultimo, equipe atual, encarregado atual e periodo da ultima movimentacao.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
-  - Responsavel por: carregar metadados, aplicar filtros, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade, aplicar RET com confirmacao e redirecionar para movimentacao pre-preenchida quando elegivel.
+  - Responsavel por: carregar metadados, validar periodo, aplicar filtros ampliados, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade, aplicar RET com confirmacao e redirecionar para movimentacao pre-preenchida quando elegivel.
 - Caminho: `src/app/api/trafo-positions/route.ts`
-  - Responsavel por: listar a posicao unitaria de materiais rastreados por serial por tenant a partir de `trafo_instances`, calcular resumo filtrado por situacao antes da paginacao, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal, expor o historico por unidade e aplicar RET via RPC.
+  - Responsavel por: listar a posicao unitaria de materiais rastreados por serial por tenant a partir de `trafo_instances`, aplicar filtros diretos e derivados, calcular resumo filtrado por situacao antes da paginacao, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal, expor o historico por unidade e aplicar RET via RPC.
 - Caminho: `src/app/api/trafo-positions/meta/route.ts`
   - Responsavel por: listar centros ativos `OWN` fisicos para os filtros da tela, excluindo centros vinculados a equipes.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
@@ -224,14 +236,20 @@ Ajuda contextual
 - Funcoes/hooks/constantes tocadas:
   - `TrafoPositionPageView`
   - `TrafoPositionSummary`
+  - `TrafoPositionOperationFilter`
   - `buildTrafoPositionQuery`
   - `handleExportCsv`
+  - `handleApplyFilters`
   - `openTransferPrefill`
   - `openRetModal`
   - `handleApplyRet`
   - `openHistoryModal`
   - `loadHistory`
   - `GET /api/trafo-positions`
+  - `normalizeSerialTrackingFilter`
+  - `normalizeOperationFilter`
+  - `normalizeIsoDate`
+  - `matchesText`
   - `POST /api/trafo-positions`
   - `GET /api/trafo-positions/meta`
   - `loadTrafoHistory`
@@ -247,3 +265,4 @@ Ajuda contextual
   - Depois: `RET` reduz o saldo disponivel, mantem o centro fisico no rastreio, registra auditoria e permite movimentacao fisica posterior sem recolocar o serial em disponibilidade.
   - Atualizacao (2026-05): antes os cards de situacao contavam apenas a pagina atual; depois usam resumo filtrado completo antes da paginacao.
   - Atualizacao (2026-05): antes a exportacao podia parar na primeira chamada quando a API limitava `pageSize` para `100`; depois a exportacao usa o lote efetivo da API e continua ate atingir o total filtrado.
+  - Atualizacao (2026-05): antes a area de filtros ficava limitada a centro, situacao, material, serial e LP; depois permite combinar rastreio, ultima operacao, tipo material, descricao, projeto, equipe, encarregado e periodo da ultima movimentacao.

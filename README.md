@@ -130,7 +130,7 @@ vercel --prod
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros (incluindo `Status: Ativo/Inativo`), listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: rota da tela de Cargo com cadastro, filtros, listagem, detalhes, historico, troca de status e manutencao dos tipos por cargo/niveis consumidos por Pessoas.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
-  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
+  - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
 - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
@@ -184,7 +184,7 @@ vercel --prod
   - `api/team-stock-operations/reversal/route.ts`: executa estorno transacional das operacoes de equipe com permissao administrativa.
 - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, exclui centros de equipe da tela de Estoque Atual, recompõe materiais historicos com saldo `0` nos centros fisicos quando necessario e mantem historico enriquecido com `Equipe`/`Encarregado`, incluindo filtro por operacao/origem para localizar `Retorno de campo` via `CAMPO / INSTALADO`.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` fisicos/principais usados no filtro da tela de Estoque Atual.
-  - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada material rastreavel por serial a partir de `trafo_instances`, mantem o centro fisico de referencia na leitura principal, expõe historico por unidade com `Requisicao`, `Devolucao`, `Retorno de campo` e `RET`, e libera movimentacao fisica de unidade RET sem voltar a disponibilizar saldo.
+  - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada material rastreavel por serial a partir de `trafo_instances`, aplica filtros diretos e derivados, mantem o centro fisico de referencia na leitura principal, expõe historico por unidade com `Requisicao`, `Devolucao`, `Retorno de campo` e `RET`, e libera movimentacao fisica de unidade RET sem voltar a disponibilizar saldo.
   - `api/trafo-positions/meta/route.ts`: carrega os centros `OWN` fisicos ativos usados nos filtros da tela de posicao unitaria de TRAFO, excluindo centros vinculados a equipes.
   - `api/activities/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de atividades por tenant com precheck de codigo duplicado, paginacao e filtro por status (`ATIVO`/`INATIVO`).
   - `api/auth/session-access/route.ts`: devolve role, tenant ativo, tenants permitidos e telas liberadas do usuario autenticado para montar o shell.
@@ -252,7 +252,7 @@ vercel --prod
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de posicao unitaria.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
-  - `TrafoPositionPageView.tsx`: tela de Rastreio de SERIAL com filtros, lista paginada, detalhes, historico da unidade, status `Com equipe`, status `RET / sucateado`, acao `Movimentar esta unidade` para movimentacao fisica e acao `RET` para retirar o serial do saldo disponivel.
+  - `TrafoPositionPageView.tsx`: tela de Rastreio de SERIAL com filtros ampliados, lista paginada, detalhes, historico da unidade, status `Com equipe`, status `RET / sucateado`, acao `Movimentar esta unidade` para movimentacao fisica e acao `RET` para retirar o serial do saldo disponivel.
   - `TrafoPositionPageView.module.css`: estilos da tela de Rastreio de SERIAL.
 - `src/modules/dashboard/atividades/`
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `tipo`, `categoria`, `grupo`, `alcance`, `valor`, `pontos` e `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.

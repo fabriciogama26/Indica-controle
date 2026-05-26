@@ -31,11 +31,20 @@ export function buildTrafoPositionQuery(filters: TrafoPositionFilters, page: num
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   params.set("currentStatus", filters.currentStatus);
+  params.set("serialTrackingType", filters.serialTrackingType);
+  params.set("lastOperationKind", filters.lastOperationKind);
 
   if (filters.stockCenterId) params.set("stockCenterId", filters.stockCenterId);
+  if (filters.materialType) params.set("materialType", filters.materialType);
   if (filters.materialCode) params.set("materialCode", filters.materialCode);
+  if (filters.description) params.set("description", filters.description);
   if (filters.serialNumber) params.set("serialNumber", filters.serialNumber);
   if (filters.lotCode) params.set("lotCode", filters.lotCode);
+  if (filters.projectCode) params.set("projectCode", filters.projectCode);
+  if (filters.teamName) params.set("teamName", filters.teamName);
+  if (filters.foremanName) params.set("foremanName", filters.foremanName);
+  if (filters.entryDateFrom) params.set("entryDateFrom", filters.entryDateFrom);
+  if (filters.entryDateTo) params.set("entryDateTo", filters.entryDateTo);
 
   return params.toString();
 }

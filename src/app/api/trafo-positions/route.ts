@@ -166,6 +166,42 @@ function normalizeCurrentStatus(value: string | null) {
   return "TODOS" as const;
 }
 
+function normalizeSerialTrackingFilter(value: string | null) {
+  const normalized = normalizeSerialTrackingType(value);
+  return normalized === "NONE" ? "TODOS" : normalized;
+}
+
+function normalizeOperationFilter(value: string | null) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (
+    normalized === "ENTRY"
+    || normalized === "EXIT"
+    || normalized === "TRANSFER"
+    || normalized === "REQUISITION"
+    || normalized === "RETURN"
+    || normalized === "FIELD_RETURN"
+    || normalized === "RET"
+  ) {
+    return normalized as TrafoHistoryApiEntry["operationKind"];
+  }
+
+  return "TODOS" as const;
+}
+
+function normalizeIsoDate(value: string | null) {
+  const normalized = normalizeText(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return "";
+  }
+
+  const parsed = new Date(`${normalized}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? "" : normalized;
+}
+
+function matchesText(value: string | null, filter: string) {
+  return !filter || String(value ?? "").trim().toLowerCase().includes(filter.toLowerCase());
+}
+
 function unwrapRelation<T>(value: T | T[] | null) {
   if (Array.isArray(value)) {
     return value[0] ?? null;
@@ -544,9 +580,18 @@ export async function GET(request: NextRequest) {
     const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
     const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
     const materialCode = normalizeCode(request.nextUrl.searchParams.get("materialCode"));
+    const materialType = normalizeCode(request.nextUrl.searchParams.get("materialType"));
+    const description = normalizeText(request.nextUrl.searchParams.get("description"));
     const serialNumber = normalizeText(request.nextUrl.searchParams.get("serialNumber"));
     const lotCode = normalizeText(request.nextUrl.searchParams.get("lotCode"));
+    const projectCode = normalizeCode(request.nextUrl.searchParams.get("projectCode"));
+    const teamName = normalizeText(request.nextUrl.searchParams.get("teamName"));
+    const foremanName = normalizeText(request.nextUrl.searchParams.get("foremanName"));
     const currentStatus = normalizeCurrentStatus(request.nextUrl.searchParams.get("currentStatus"));
+    const serialTrackingType = normalizeSerialTrackingFilter(request.nextUrl.searchParams.get("serialTrackingType"));
+    const lastOperationKind = normalizeOperationFilter(request.nextUrl.searchParams.get("lastOperationKind"));
+    const entryDateFrom = normalizeIsoDate(request.nextUrl.searchParams.get("entryDateFrom"));
+    const entryDateTo = normalizeIsoDate(request.nextUrl.searchParams.get("entryDateTo"));
 
     let query = supabase
       .from("trafo_instances")
@@ -580,12 +625,32 @@ export async function GET(request: NextRequest) {
       query = query.ilike("materials.codigo", `%${materialCode}%`);
     }
 
+    if (materialType) {
+      query = query.ilike("materials.tipo", `%${materialType}%`);
+    }
+
+    if (description) {
+      query = query.ilike("materials.descricao", `%${description}%`);
+    }
+
+    if (serialTrackingType !== "TODOS") {
+      query = query.eq("materials.serial_tracking_type", serialTrackingType);
+    }
+
     if (serialNumber) {
       query = query.ilike("serial_number", `%${serialNumber}%`);
     }
 
     if (lotCode) {
       query = query.ilike("lot_code", `%${lotCode}%`);
+    }
+
+    if (entryDateFrom) {
+      query = query.gte("last_entry_date", entryDateFrom);
+    }
+
+    if (entryDateTo) {
+      query = query.lte("last_entry_date", entryDateTo);
     }
 
     const { data, error } = await query.returns<TrafoInstanceRow[]>();
@@ -785,6 +850,22 @@ export async function GET(request: NextRequest) {
       }
 
       if (currentStatus !== "TODOS" && item.currentStatus !== currentStatus) {
+        return false;
+      }
+
+      if (lastOperationKind !== "TODOS" && item.lastOperationKind !== lastOperationKind) {
+        return false;
+      }
+
+      if (projectCode && !normalizeCode(item.lastProjectCode).includes(projectCode)) {
+        return false;
+      }
+
+      if (!matchesText(item.currentTeamName, teamName)) {
+        return false;
+      }
+
+      if (!matchesText(item.currentForemanName, foremanName)) {
         return false;
       }
 

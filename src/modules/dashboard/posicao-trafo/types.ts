@@ -5,12 +5,31 @@ export type StockCenterOption = {
   name: string;
 };
 
+export type TrafoPositionOperationFilter =
+  | "TODOS"
+  | "ENTRY"
+  | "EXIT"
+  | "TRANSFER"
+  | "REQUISITION"
+  | "RETURN"
+  | "FIELD_RETURN"
+  | "RET";
+
 export type TrafoPositionFilters = {
   stockCenterId: string;
+  serialTrackingType: "TODOS" | Exclude<SerialTrackingType, "NONE">;
+  materialType: string;
   materialCode: string;
+  description: string;
   serialNumber: string;
   lotCode: string;
+  projectCode: string;
+  teamName: string;
+  foremanName: string;
   currentStatus: "TODOS" | "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE" | "RET";
+  lastOperationKind: TrafoPositionOperationFilter;
+  entryDateFrom: string;
+  entryDateTo: string;
 };
 
 export type TrafoPositionListItem = {
