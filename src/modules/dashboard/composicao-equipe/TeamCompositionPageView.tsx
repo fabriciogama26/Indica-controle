@@ -816,7 +816,12 @@ export function TeamCompositionPageView() {
           </label>
           <label className={styles.field}>
             <span>Patio</span>
-            <input value={selectedTeam?.serviceCenterName || form.yard} disabled />
+            <input
+              value={selectedTeam?.serviceCenterName || form.yard}
+              onChange={(event) => setForm((current) => ({ ...current, yard: event.target.value }))}
+              disabled={Boolean(selectedTeam?.serviceCenterName)}
+              placeholder={selectedTeam ? "Informe o patio/centro de servico" : "Selecione a equipe"}
+            />
           </label>
           <label className={styles.field}>
             <span>Placa</span>
