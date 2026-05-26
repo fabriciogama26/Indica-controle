@@ -252,13 +252,28 @@ export function TrafoPositionPageView() {
   function handleApplyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
+
+    if (filterDraft.entryDateFrom && filterDraft.entryDateTo && filterDraft.entryDateFrom > filterDraft.entryDateTo) {
+      setFeedback({ type: "error", message: "A data inicial da ultima movimentacao nao pode ser maior que a data final." });
+      return;
+    }
+
     setPage(1);
     setFilters({
       stockCenterId: filterDraft.stockCenterId,
+      serialTrackingType: filterDraft.serialTrackingType,
+      materialType: normalizeText(filterDraft.materialType).toUpperCase(),
       materialCode: normalizeText(filterDraft.materialCode).toUpperCase(),
+      description: normalizeText(filterDraft.description),
       serialNumber: normalizeText(filterDraft.serialNumber),
       lotCode: normalizeText(filterDraft.lotCode),
+      projectCode: normalizeText(filterDraft.projectCode).toUpperCase(),
+      teamName: normalizeText(filterDraft.teamName),
+      foremanName: normalizeText(filterDraft.foremanName),
       currentStatus: filterDraft.currentStatus,
+      lastOperationKind: filterDraft.lastOperationKind,
+      entryDateFrom: filterDraft.entryDateFrom,
+      entryDateTo: filterDraft.entryDateTo,
     });
   }
 
@@ -549,12 +564,62 @@ export function TrafoPositionPageView() {
           </label>
 
           <label className={styles.field}>
+            <span>Rastreio</span>
+            <select
+              value={filterDraft.serialTrackingType}
+              onChange={(event) => updateFilterDraft("serialTrackingType", event.target.value as TrafoPositionFilters["serialTrackingType"])}
+            >
+              <option value="TODOS">Todos</option>
+              <option value="TRAFO">TRAFO</option>
+              <option value="RELIGADOR">Religador</option>
+              <option value="CHAVE">Chave</option>
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Ultima operacao</span>
+            <select
+              value={filterDraft.lastOperationKind}
+              onChange={(event) => updateFilterDraft("lastOperationKind", event.target.value as TrafoPositionFilters["lastOperationKind"])}
+            >
+              <option value="TODOS">Todas</option>
+              <option value="ENTRY">Entrada</option>
+              <option value="EXIT">Saida</option>
+              <option value="TRANSFER">Transferencia</option>
+              <option value="REQUISITION">Requisicao</option>
+              <option value="RETURN">Devolucao</option>
+              <option value="FIELD_RETURN">Retorno de campo</option>
+              <option value="RET">RET</option>
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Tipo material</span>
+            <input
+              type="text"
+              value={filterDraft.materialType}
+              onChange={(event) => updateFilterDraft("materialType", event.target.value)}
+              placeholder="Ex.: NOVO"
+            />
+          </label>
+
+          <label className={styles.field}>
             <span>Material (codigo)</span>
             <input
               type="text"
               value={filterDraft.materialCode}
               onChange={(event) => updateFilterDraft("materialCode", event.target.value)}
               placeholder="Ex.: 111306"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Descricao</span>
+            <input
+              type="text"
+              value={filterDraft.description}
+              onChange={(event) => updateFilterDraft("description", event.target.value)}
+              placeholder="Ex.: religador"
             />
           </label>
 
@@ -575,6 +640,54 @@ export function TrafoPositionPageView() {
               value={filterDraft.lotCode}
               onChange={(event) => updateFilterDraft("lotCode", event.target.value)}
               placeholder="Ex.: 232323"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Projeto ultimo</span>
+            <input
+              type="text"
+              value={filterDraft.projectCode}
+              onChange={(event) => updateFilterDraft("projectCode", event.target.value)}
+              placeholder="Ex.: SOB123"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Equipe atual</span>
+            <input
+              type="text"
+              value={filterDraft.teamName}
+              onChange={(event) => updateFilterDraft("teamName", event.target.value)}
+              placeholder="Ex.: EQ-01"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Encarregado atual</span>
+            <input
+              type="text"
+              value={filterDraft.foremanName}
+              onChange={(event) => updateFilterDraft("foremanName", event.target.value)}
+              placeholder="Ex.: Joao"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Mov. de</span>
+            <input
+              type="date"
+              value={filterDraft.entryDateFrom}
+              onChange={(event) => updateFilterDraft("entryDateFrom", event.target.value)}
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Mov. ate</span>
+            <input
+              type="date"
+              value={filterDraft.entryDateTo}
+              onChange={(event) => updateFilterDraft("entryDateTo", event.target.value)}
             />
           </label>
 
