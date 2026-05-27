@@ -140,7 +140,7 @@ Filtros, auto-complete e listagem
   - Programacao (`Programada` ou `Nao programada`)
   - Status execucao salvo na Medicao + alerta de atualizacao da Programacao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
   - `Status execucao` aceita todos os codigos ativos do catalogo de `Estado Trabalho` da Programacao, como `CONCLUIDO`, `PARCIAL`, `PENDENCIA` e outros estados cadastrados no tenant.
-  - `Status execucao` exibe primeiro o snapshot gravado na ordem de Medicao (`programming_completion_status_snapshot`); quando a ordem antiga nao tem snapshot, usa a Programacao como fallback.
+  - `Status execucao` exibe primeiro o snapshot gravado na ordem de Medicao (`programming_completion_status_snapshot`); quando a ordem antiga nao tem snapshot, usa o ultimo estado conhecido da Programacao do projeto como fallback, alinhado ao Dashboard Medicao.
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados e sem computar ordens com `Status = CANCELADA`
@@ -535,7 +535,7 @@ Atualizacao 2026-05-27 (Status execucao pela Medicao)
   - `resolveEconomicWorkCompletionStatus`
 - Comportamento antes/depois:
   - Antes: a lista de Medicao priorizava o ultimo `Estado Trabalho` resolvido pela Programacao para exibir `Status execucao`.
-  - Depois: a lista prioriza o snapshot salvo na propria ordem de Medicao (`programming_completion_status_snapshot`) e usa a Programacao apenas como fallback para ordens antigas sem snapshot.
+  - Depois: a lista prioriza o snapshot salvo na propria ordem de Medicao (`programming_completion_status_snapshot`) e usa o ultimo estado conhecido da Programacao do projeto como fallback para ordens antigas sem snapshot, igual ao Dashboard Medicao.
   - Antes: `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` podia ser normalizado como `PARCIAL` na Lista de Ordens de Medicao.
   - Depois: `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` e preservado como status proprio na API, nos filtros e na exibicao.
   - Antes: o filtro da Lista podia enviar a variacao `PARCIAL_PLANEJADO_BENFICIO_ATINGIDO` do catalogo e nao encontrar registros normalizados como `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`.
