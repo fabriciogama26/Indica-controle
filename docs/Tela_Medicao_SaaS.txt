@@ -538,6 +538,8 @@ Atualizacao 2026-05-27 (Status execucao pela Medicao)
   - Depois: a lista prioriza o snapshot salvo na propria ordem de Medicao (`programming_completion_status_snapshot`) e usa a Programacao apenas como fallback para ordens antigas sem snapshot.
   - Antes: `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` podia ser normalizado como `PARCIAL` na Lista de Ordens de Medicao.
   - Depois: `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` e preservado como status proprio na API, nos filtros e na exibicao.
+  - Antes: o filtro da Lista podia enviar a variacao `PARCIAL_PLANEJADO_BENFICIO_ATINGIDO` do catalogo e nao encontrar registros normalizados como `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`.
+  - Depois: o backend e as opcoes do filtro normalizam a variacao com erro de grafia para o mesmo status economico antes da comparacao.
   - Antes: a RPC de salvamento descartava snapshots diferentes de `CONCLUIDO` e `PARCIAL`.
   - Depois: a constraint e a RPC permitem preservar qualquer `Estado Trabalho` normalizado no snapshot da Medicao.
   - O alerta `Atualizado apos medicao` continua indicando divergencia entre o snapshot da Medicao e o estado atual resolvido na Programacao.

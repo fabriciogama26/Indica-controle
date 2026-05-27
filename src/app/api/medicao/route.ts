@@ -1257,7 +1257,10 @@ export async function GET(request: NextRequest) {
   const measurementKindFilter = normalizeText(request.nextUrl.searchParams.get("measurementKind")).toUpperCase();
   const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
   const programmingMatchFilter = normalizeText(request.nextUrl.searchParams.get("programmingMatch")).toUpperCase();
-  const workCompletionStatusFilter = normalizeText(request.nextUrl.searchParams.get("workCompletionStatus")).toUpperCase();
+  const workCompletionStatusFilterRaw = normalizeText(request.nextUrl.searchParams.get("workCompletionStatus")).toUpperCase();
+  const workCompletionStatusFilter = workCompletionStatusFilterRaw === "NAO_INFORMADO"
+    ? workCompletionStatusFilterRaw
+    : resolveMeasurementWorkCompletionStatus(workCompletionStatusFilterRaw) ?? workCompletionStatusFilterRaw;
   const completionAlertFilter = normalizeText(request.nextUrl.searchParams.get("completionAlert")).toUpperCase();
   const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
   const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
