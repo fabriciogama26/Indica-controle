@@ -934,7 +934,7 @@ export function MeasurementPageView() {
     const map = new Map<string, { code: string; label: string }>();
 
     for (const item of workCompletionCatalog) {
-      const code = normalizeWorkCompletionCodeToken(item.code);
+      const code = resolveEconomicWorkCompletionStatus(item.code) ?? normalizeWorkCompletionCodeToken(item.code);
       if (!code || map.has(code)) {
         continue;
       }
