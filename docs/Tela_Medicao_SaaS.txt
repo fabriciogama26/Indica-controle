@@ -39,6 +39,7 @@ Arquitetura
   - `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
   - `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
   - `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
+  - `supabase/migrations/202_enforce_measurement_unique_project_team_date.sql`
 
 Cadastro
 --------
@@ -70,6 +71,7 @@ Cadastro
   - A Programacao deixa de ser obrigatoria para cadastro da medicao.
   - Quando existir match por `Projeto + Equipe + Data de execucao`, a ordem vincula automaticamente a melhor programacao candidata.
   - O resultado do match de Programacao e exibido somente apos salvar a medicao (na lista e em detalhes).
+  - Nao e permitido cadastrar mais de uma ordem para o mesmo `Projeto + Equipe + Data de execucao` dentro do mesmo tenant, mesmo quando o vinculo de `Programacao` for diferente ou nulo.
   - A inclusao de atividades e independente da lista de atividades da Programacao.
   - A mesma atividade nao pode se repetir dentro da mesma ordem (`tenant + Projeto + Equipe + Data de execucao` no contexto operacional da medicao).
   - A regra de nao repetir atividade vale no frontend, na API e na RPC `save_project_measurement_order`, cobrindo tambem o cadastro em massa.
@@ -692,3 +694,22 @@ Atualizacao 2026-05-25 (Valor total sem canceladas)
   - Depois: o resumo `Valor total` continua considerando o resultado filtrado completo em todas as paginas, mas ignora ordens canceladas.
   - Depois: o valor individual da linha cancelada permanece visivel na tabela e exportacoes para conferencia operacional.
   - Impacto multi-tenant: sem alteracao de dados, queries, schema ou RLS; o ajuste ocorre sobre as ordens ja retornadas para o tenant autenticado.
+
+Atualizacao 2026-05-27 (Bloqueio por Projeto + Equipe + Data)
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/202_enforce_measurement_unique_project_team_date.sql`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Funcao SQL `save_project_measurement_order`
+  - Funcao SQL `enforce_project_measurement_order_context_unique`
+  - Trigger `trg_project_measurement_orders_context_unique`
+  - Indice `idx_project_measurement_orders_context_lookup`
+- Comportamento antes/depois:
+  - Antes: o cadastro manual bloqueava duplicidade principalmente pelo `programming_id`; ordens sem programacao ou com vinculo diferente podiam repetir `Projeto + Equipe + Data execucao`.
+  - Depois: o cadastro manual passa a bloquear duplicidade por `tenant_id + project_id + team_id + execution_date`, independente de `programming_id`.
+  - Depois: a edicao da propria ordem continua permitida porque a verificacao exclui o `id` atual.
+  - Depois: reprogramacao para outra data continua permitida, pois a data faz parte da chave operacional.
+  - Depois: o cadastro em massa permanece alinhado com a mesma regra ja existente de anti-sobreposicao por contexto.
+  - Impacto multi-tenant: regra inclui `tenant_id` em todas as verificacoes e no lock transacional, sem alteracao de RLS.

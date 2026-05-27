@@ -357,6 +357,7 @@
 - [x] Levar a protecao de atividade duplicada da Medicao para a RPC `save_project_measurement_order`, garantindo a mesma regra no fluxo normal e no cadastro em massa mesmo com bypass da API.
 - [x] Proteger sobreposicao no cadastro em massa da Medicao: quando ja existir ordem para `Projeto + Equipe + Data de execucao`, ignorar a linha, seguir com as demais e exibir no resumo `x linhas ja cadastradas`.
 - [x] Migrar cadastro em massa da Medicao para RPC transacional parcial (`save_project_measurement_order_batch_partial`), salvando linhas validas e retornando por lote as invalidas/duplicadas.
+- [x] Endurecer o cadastro manual da Medicao para bloquear ordem repetida por `Projeto + Equipe + Data de execucao`, independente de `programming_id`, preservando edicao da propria ordem, cadastro em massa, reprogramacao para outra data e escopo por `tenant_id`.
 - [x] Adicionar botao `Exportar Excel (CSV)` na lista de Ordens de Medicao para exportar o resultado filtrado no padrao das outras telas.
 - [x] Adicionar botao `Detalhamento (CSV)` na lista de Ordens de Medicao para exportar em nivel de item (linha a linha) com `Codigo atividade`.
 - [x] Adicionar botao `Atualizar lista` na lista de Ordens de Medicao (ao lado de `Detalhamento (CSV)`), com recarga manual de lista/consolidacoes para refletir `Status execucao` e demais dados atualizados.
