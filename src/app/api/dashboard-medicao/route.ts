@@ -476,9 +476,10 @@ export async function GET(request: NextRequest) {
   const orderCompletionMap = new Map<string, string>();
   for (const order of completionOrders) {
     const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
+    const timelineCompletion = resolveProjectCompletionAtOrBefore(projectCompletionTimeline, order.project_id, order.execution_date);
     orderCompletionMap.set(
       order.id,
-      resolveProjectCompletionAtOrBefore(projectCompletionTimeline, order.project_id, order.execution_date) ?? snapshot,
+      snapshot !== "NAO_INFORMADO" ? snapshot : timelineCompletion ?? "NAO_INFORMADO",
     );
   }
 

@@ -724,30 +724,29 @@ async function loadProgrammingMatchMap(params: {
     );
     const currentCompletion = resolveMeasurementWorkCompletionStatus(completionMatch?.work_completion_status);
     const snapshotCompletion = resolveMeasurementWorkCompletionStatus(order.programming_completion_status_snapshot);
-    const effectiveCompletion = projectWorkCompletionStatus?.completionStatus
+    const programmingCompletion = projectWorkCompletionStatus?.completionStatus
+      ?? currentCompletion
+      ?? (projectDateWorkCompletionStatus ? projectDateWorkCompletionStatus.completionStatus : null);
+    const programmingCompletionUpdatedAt = projectWorkCompletionStatus?.updatedAt
+      ?? (currentCompletion
+        ? (completionMatch?.updated_at ?? null)
+        : (projectDateWorkCompletionStatus?.updatedAt ?? null));
+    const effectiveCompletion = snapshotCompletion
       ?? currentCompletion
       ?? (projectDateWorkCompletionStatus ? projectDateWorkCompletionStatus.completionStatus : null)
-      ?? snapshotCompletion;
-    const effectiveCompletionUpdatedAt = projectWorkCompletionStatus?.updatedAt
-      ?? (currentCompletion
-      ? (completionMatch?.updated_at ?? null)
-      : (projectDateWorkCompletionStatus?.updatedAt ?? null));
+      ?? projectWorkCompletionStatus?.completionStatus
+      ?? null;
     const changedBySnapshot = Boolean(
       snapshotCompletion
-      && (
-        projectWorkCompletionStatus
-          ? snapshotCompletion !== projectWorkCompletionStatus.completionStatus
-          : currentCompletion
-          ? snapshotCompletion !== currentCompletion
-          : projectDateWorkCompletionStatus && snapshotCompletion !== projectDateWorkCompletionStatus.completionStatus
-      ),
+      && programmingCompletion
+      && snapshotCompletion !== programmingCompletion,
     );
 
     const changedAfterMeasurementWithoutSnapshot = Boolean(
       !snapshotCompletion
       && effectiveCompletion
-      && effectiveCompletionUpdatedAt
-      && new Date(effectiveCompletionUpdatedAt).getTime() > new Date(order.created_at).getTime(),
+      && programmingCompletionUpdatedAt
+      && new Date(programmingCompletionUpdatedAt).getTime() > new Date(order.created_at).getTime(),
     );
 
     result.set(order.id, {
