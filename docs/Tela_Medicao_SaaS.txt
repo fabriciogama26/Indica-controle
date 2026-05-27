@@ -137,9 +137,9 @@ Filtros, auto-complete e listagem
   - Equipe
   - Encarregado
   - Programacao (`Programada` ou `Nao programada`)
-  - Status execucao da programacao + alerta de atualizacao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
+  - Status execucao salvo na Medicao + alerta de atualizacao da Programacao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
   - `Status execucao` aceita todos os codigos ativos do catalogo de `Estado Trabalho` da Programacao, como `CONCLUIDO`, `PARCIAL`, `PENDENCIA` e outros estados cadastrados no tenant.
-  - `Status execucao` exibe o ultimo `Estado Trabalho` nao vazio registrado para o mesmo `Projeto`, independente da data da Medicao; a Programacao mais recente por `Data execucao` prevalece e, em empate, usa o `updated_at` mais recente.
+  - `Status execucao` exibe primeiro o snapshot gravado na ordem de Medicao (`programming_completion_status_snapshot`); quando a ordem antiga nao tem snapshot, usa a Programacao como fallback.
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados e sem computar ordens com `Status = CANCELADA`
@@ -521,6 +521,19 @@ Atualizacao 2026-05-20 (Status execucao pelo ultimo estado global do projeto)
   - Exemplo: uma ordem de Medicao de `24/03/2026` passa a exibir `CONCLUIDO` quando a ultima Programacao do mesmo projeto esta `CONCLUIDO` em `13/05/2026`.
   - A coluna `Programacao` continua indicando match direto por `Projeto + Equipe + Data`; a mudanca afeta apenas `Status execucao`.
   - Impacto multi-tenant: sem alteracao de schema/RLS; a leitura permanece filtrada por `tenant_id` e `project_id`.
+
+Atualizacao 2026-05-27 (Status execucao pela Medicao)
+-----------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/medicao/route.ts`
+- Funcoes/hooks/constantes tocadas:
+  - `loadProgrammingMatchMap`
+- Comportamento antes/depois:
+  - Antes: a lista de Medicao priorizava o ultimo `Estado Trabalho` resolvido pela Programacao para exibir `Status execucao`.
+  - Depois: a lista prioriza o snapshot salvo na propria ordem de Medicao (`programming_completion_status_snapshot`) e usa a Programacao apenas como fallback para ordens antigas sem snapshot.
+  - O alerta `Atualizado apos medicao` continua indicando divergencia entre o snapshot da Medicao e o estado atual resolvido na Programacao.
+- Impacto multi-tenant:
+  - Sem alteracao de escopo; a API continua filtrando todas as leituras por `tenant_id`.
 
 Atualizacao 2026-04-24
 ----------------------

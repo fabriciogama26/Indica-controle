@@ -753,3 +753,5 @@
 - [x] Ajustar CSV Detalhes da Composicao de Equipe para seguir o padrao operacional da planilha com colunas Data, PROJETO, Setor, Matricula, Colaborador, Funcao, CPF, TELEFONE, Patio, Placa, Hora inicial e Presente.
 
 - [x] Exibir o encarregado junto ao nome da equipe nos selects de cadastro e filtro da Composicao de Equipe.
+
+- [x] Ajustar Dashboard Medicao e Lista de Ordens de Medicao para priorizar o Estado Trabalho salvo na propria Medicao, usando a Programacao apenas como fallback para ordens antigas sem snapshot.
