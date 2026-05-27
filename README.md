@@ -132,7 +132,7 @@ vercel --prod
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
-- `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado por movimentacao.
+- `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, respeitando o tipo cadastrado do material e preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
   - `(dashboard)/centro-servico/page.tsx`: placeholder de Centro de Servico.
@@ -240,7 +240,7 @@ vercel --prod
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
   - `constants.ts`: configuracoes de pagina, labels de historico e template CSV da tela `Operacoes de Equipe`.
   - `utils.ts`: formatadores, parser CSV e geracao de relatorio de erros do cadastro em massa.
-- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno, historico e exibicao do encarregado snapshot por operacao.
+- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, tipo automatico conforme cadastro do material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno, historico e exibicao do encarregado snapshot por operacao.
   - `TeamStockOperationsPageView.module.css`: estilo local da tela, reaproveitando o mesmo visual operacional da movimentacao de estoque.
 - `src/modules/dashboard/estoque/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual.

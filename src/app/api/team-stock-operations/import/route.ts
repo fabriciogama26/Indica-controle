@@ -43,6 +43,7 @@ type ImportPayload = {
 type MaterialLookupRow = {
   id: string;
   codigo: string;
+  tipo: string | null;
   is_transformer: boolean;
   serial_tracking_type?: string | null;
   is_active: boolean;
@@ -244,7 +245,7 @@ export async function POST(request: NextRequest) {
       materialIds.length
         ? supabase
             .from("materials")
-            .select("id, codigo, is_transformer, serial_tracking_type, is_active")
+            .select("id, codigo, tipo, is_transformer, serial_tracking_type, is_active")
             .eq("tenant_id", appUser.tenant_id)
             .in("id", materialIds)
             .returns<MaterialLookupRow[]>()
@@ -321,6 +322,7 @@ export async function POST(request: NextRequest) {
       row.id,
       {
         materialCode: row.codigo,
+        entryType: normalizeEntryType(row.tipo),
         isTransformer: isSerialTrackedMaterial(normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE"))),
         serialTrackingType: normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE")),
         isActive: Boolean(row.is_active),
@@ -341,7 +343,6 @@ export async function POST(request: NextRequest) {
       const teamId = normalizeText(entry.teamId);
       const projectId = normalizeText(entry.projectId);
       const entryDate = normalizeDateInput(entry.entryDate);
-      const entryType = normalizeEntryType(entry.entryType);
       const notes = normalizeText(entry.notes) || null;
       const items = normalizeImportItems(entry);
 
@@ -360,9 +361,6 @@ export async function POST(request: NextRequest) {
       if (!entryDate) {
         issues.push(makeIssue(rowNumber, "data_operacao", entry.entryDate, "Data da operacao e obrigatoria."));
       }
-      if (!entryType && operationKind !== "FIELD_RETURN") {
-        issues.push(makeIssue(rowNumber, "tipo", entry.entryType, "Tipo do material deve ser NOVO ou SUCATA."));
-      }
       if (items.length !== 1) {
         issues.push(makeIssue(rowNumber, "material_codigo", entry.materialId, "Cada linha deve conter exatamente um material valido."));
         continue;
@@ -377,6 +375,9 @@ export async function POST(request: NextRequest) {
 
       if (!material?.isActive) {
         issues.push(makeIssue(rowNumber, "material_codigo", item.materialId, "Material nao encontrado ou inativo."));
+      }
+      if (material?.isActive && !material.entryType) {
+        issues.push(makeIssue(rowNumber, "material_codigo", material.materialCode, "Tipo do material deve ser NOVO ou SUCATA no cadastro de materiais."));
       }
       if (!project || !project.is_active) {
         issues.push(makeIssue(rowNumber, "projeto", projectId, "Projeto nao encontrado ou inativo."));
@@ -433,7 +434,7 @@ export async function POST(request: NextRequest) {
       }
 
       const validatedOperationKind = operationKind as "REQUISITION" | "RETURN" | "FIELD_RETURN";
-      const effectiveEntryType = validatedOperationKind === "FIELD_RETURN" ? "SUCATA" : (entryType as "NOVO" | "SUCATA");
+      const effectiveEntryType = material.entryType as "NOVO" | "SUCATA";
       const sourceStockCenterId = validatedOperationKind === "REQUISITION"
         ? stockCenterId
         : validatedOperationKind === "RETURN"

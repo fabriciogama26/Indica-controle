@@ -31,6 +31,13 @@ type MaterialRow = {
   serial_tracking_type?: string | null;
 };
 
+type MaterialEntryTypeRow = {
+  id: string;
+  codigo: string;
+  tipo: string | null;
+  is_active: boolean | null;
+};
+
 type TransferHeaderRow = {
   id: string;
   movement_type: "TRANSFER";
@@ -1010,7 +1017,6 @@ export async function POST(request: NextRequest) {
     const teamId = normalizeText(payload.teamId);
     const projectId = normalizeText(payload.projectId);
     const entryDate = normalizeDateInput(payload.entryDate);
-    const entryType = normalizeEntryType(payload.entryType);
     const notes = normalizeText(payload.notes) || null;
     const items = buildTransferItems(payload);
     const today = toIsoDate(new Date());
@@ -1021,15 +1027,6 @@ export async function POST(request: NextRequest) {
           message:
             "Campos obrigatorios: operationKind, stockCenterId, teamId, projectId e entryDate.",
         },
-        { status: 400 },
-      );
-    }
-
-    const effectiveEntryType = operationKind === "FIELD_RETURN" ? "SUCATA" : entryType;
-
-    if (!effectiveEntryType) {
-      return NextResponse.json(
-        { message: "Tipo do material deve ser NOVO ou SUCATA." },
         { status: 400 },
       );
     }
@@ -1046,6 +1043,57 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+    const materialIds = Array.from(new Set(items.map((item) => item.materialId).filter(Boolean)));
+    const materialsResult = await supabase
+      .from("materials")
+      .select("id, codigo, tipo, is_active")
+      .eq("tenant_id", appUser.tenant_id)
+      .in("id", materialIds)
+      .returns<MaterialEntryTypeRow[]>();
+
+    if (materialsResult.error) {
+      return NextResponse.json({ message: "Falha ao validar tipo dos materiais." }, { status: 500 });
+    }
+
+    const materialTypeMap = new Map(
+      (materialsResult.data ?? []).map((material) => [
+        material.id,
+        {
+          code: material.codigo,
+          entryType: normalizeEntryType(material.tipo),
+          isActive: Boolean(material.is_active),
+        },
+      ]),
+    );
+    const invalidMaterial = items.find((item) => {
+      const material = materialTypeMap.get(item.materialId);
+      return !material?.isActive || !material.entryType;
+    });
+
+    if (invalidMaterial) {
+      const material = materialTypeMap.get(invalidMaterial.materialId);
+      return NextResponse.json(
+        {
+          message: material?.code
+            ? `Tipo do material ${material.code} deve ser NOVO ou SUCATA no cadastro de materiais.`
+            : "Material nao encontrado ou inativo para validar o tipo da operacao.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const entryTypes = Array.from(
+      new Set(items.map((item) => materialTypeMap.get(item.materialId)?.entryType).filter(Boolean)),
+    ) as Array<"NOVO" | "SUCATA">;
+
+    if (entryTypes.length !== 1) {
+      return NextResponse.json(
+        { message: "Todos os itens da mesma operacao devem ter o mesmo tipo (NOVO ou SUCATA)." },
+        { status: 400 },
+      );
+    }
+
+    const effectiveEntryType = entryTypes[0];
     const saveResult = await saveTeamStockOperationViaRpc(supabase, {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,

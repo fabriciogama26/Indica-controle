@@ -298,7 +298,7 @@ export function TeamStockOperationsPageView() {
     setForm((current) => ({
       ...current,
       description: selectedMaterial.description,
-      entryType: current.operationKind === "FIELD_RETURN" ? "SUCATA" : nextEntryType,
+      entryType: nextEntryType,
       quantity: isSerialTrackedMaterial(selectedMaterial.serialTrackingType) ? "1" : current.quantity,
     }));
   }, [selectedMaterial]);
@@ -609,9 +609,7 @@ export function TeamStockOperationsPageView() {
       materialCode: value,
       materialId: matchedMaterial?.id ?? "",
       description: matchedMaterial?.description ?? "",
-      entryType: current.operationKind === "FIELD_RETURN"
-        ? (matchedMaterial ? "SUCATA" : "")
-        : normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
+      entryType: normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
       quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? "1" : current.quantity,
       serialNumber: "",
       lotCode: "",
@@ -629,9 +627,7 @@ export function TeamStockOperationsPageView() {
       operationKind: value,
       serialNumber: "",
       lotCode: "",
-      entryType: value === "FIELD_RETURN"
-        ? (current.materialId ? "SUCATA" : "")
-        : normalizeMaterialEntryType(selectedMaterial?.materialType ?? ""),
+      entryType: normalizeMaterialEntryType(selectedMaterial?.materialType ?? ""),
     }));
   }
 
@@ -738,9 +734,7 @@ export function TeamStockOperationsPageView() {
       }
     }
 
-    const normalizedEntryType = form.operationKind === "FIELD_RETURN"
-      ? "SUCATA"
-      : normalizeMaterialEntryType(form.entryType);
+    const normalizedEntryType = normalizeMaterialEntryType(form.entryType);
     if (!normalizedEntryType) {
       showError("Tipo do material deve ser NOVO ou SUCATA no cadastro de materiais.");
       return;
@@ -994,9 +988,7 @@ export function TeamStockOperationsPageView() {
       return;
     }
 
-    const operationEntryType = form.operationKind === "FIELD_RETURN"
-      ? "SUCATA"
-      : (form.items[0]?.entryType ?? "");
+    const operationEntryType = form.items[0]?.entryType ?? "";
     if (!operationEntryType) {
       showError("Nao foi possivel determinar o tipo dos itens da operacao.");
       return;
@@ -1434,9 +1426,7 @@ export function TeamStockOperationsPageView() {
         const project = projectMap.get(normalizeHeaderName(projectRaw)) ?? null;
         const material = materialMap.get(normalizeHeaderName(materialRaw)) ?? null;
         const quantity = parsePositiveNumber(quantityRaw);
-        const entryType = operationKind === "FIELD_RETURN"
-          ? "SUCATA"
-          : normalizeMaterialEntryType(material?.materialType ?? "");
+        const entryType = normalizeMaterialEntryType(material?.materialType ?? "");
 
         if (!operationKind) {
           issues.push({ rowNumber, column: "operacao", value: operationKindRaw, error: "Operacao deve ser REQUISICAO, DEVOLUCAO ou RETORNO_DE_CAMPO." });

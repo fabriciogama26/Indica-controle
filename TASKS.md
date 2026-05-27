@@ -146,7 +146,8 @@
 - [x] Implementar a rota `/saida` como tela operacional propria de `Operacoes de Equipe`, com `Requisicao`/`Devolucao`, cadastro manual, cadastro em massa, historico e estorno.
 - [x] Vincular `Equipes` a um `Centro de estoque proprio` e reutilizar esse vinculo no fluxo operacional de requisicao/devolucao.
 - [x] Integrar `Operacoes de Equipe` ao `Estoque Atual`, refletindo requisicoes/devolucoes no historico consolidado do saldo.
-- [x] Adicionar `Retorno de campo` em `Operacoes de Equipe`, com centro tecnico `CAMPO / INSTALADO`, `entry_type = SUCATA`, historico filtravel no `Estoque Atual` e leitura correspondente no `Rastreio de TRAFO`.
+- [x] Adicionar `Retorno de campo` em `Operacoes de Equipe`, com centro tecnico `CAMPO / INSTALADO`, `entry_type` conforme o tipo cadastrado do material, historico filtravel no `Estoque Atual` e leitura correspondente no `Rastreio de TRAFO`.
+- [x] Corrigir regra de `Retorno de campo` em `Operacoes de Equipe` para respeitar o tipo cadastrado do material (`NOVO`/`SUCATA`) no manual, importacao e RPC, sem considerar todo codigo como sucata.
 - [x] Automatizar a criacao/backfill do `Centro de estoque proprio` no cadastro de `Equipes`, removendo a selecao manual no frontend.
 - [x] Persistir snapshot de `Equipe` e `Encarregado` nas `Operacoes de Equipe` e refletir esse dado tambem no historico do `Estoque Atual`.
 - [x] Restringir `Operacoes de Equipe` para usar apenas equipes ativas e impedir que `Centro de estoque` aceite centros vinculados a equipes.
