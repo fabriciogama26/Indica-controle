@@ -736,9 +736,7 @@ async function loadProgrammingMatchMap(params: {
         ? (completionMatch?.updated_at ?? null)
         : (projectDateWorkCompletionStatus?.updatedAt ?? null));
     const effectiveCompletion = snapshotCompletion
-      ?? currentCompletion
-      ?? (projectDateWorkCompletionStatus ? projectDateWorkCompletionStatus.completionStatus : null)
-      ?? projectWorkCompletionStatus?.completionStatus
+      ?? programmingCompletion
       ?? null;
     const changedBySnapshot = Boolean(
       snapshotCompletion
