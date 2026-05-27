@@ -214,6 +214,12 @@ function personOptionLabel(person: PersonOption | CompositionMember) {
   return `${matriculation}${person.name}`;
 }
 
+function teamOptionLabel(team: TeamOption) {
+  const teamName = normalizeText(team.name);
+  const foremanName = normalizeText(team.foremanName);
+  return foremanName && foremanName !== "Nao identificado" ? `${teamName} / ${foremanName}` : teamName;
+}
+
 function formatDate(value: string) {
   if (!value) return "-";
   const parsed = new Date(`${value}T00:00:00`);
@@ -818,7 +824,7 @@ export function TeamCompositionPageView() {
             <span>Equipe <span className="requiredMark">*</span></span>
             <select value={form.teamId} onChange={(event) => applyTeam(event.target.value)} disabled={isLoadingMeta} required>
               <option value="" disabled>Selecione</option>
-              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              {teams.map((team) => <option key={team.id} value={team.id}>{teamOptionLabel(team)}</option>)}
             </select>
           </label>
           <label className={styles.field}>
@@ -905,7 +911,7 @@ export function TeamCompositionPageView() {
           <label className={styles.field}><span>Data inicial</span><input type="date" value={filterDraft.startDate} onChange={(event) => updateFilterField("startDate", event.target.value)} /></label>
           <label className={styles.field}><span>Data final</span><input type="date" value={filterDraft.endDate} onChange={(event) => updateFilterField("endDate", event.target.value)} /></label>
           <label className={styles.field}><span>Projeto</span><input list="composicao-project-list" value={filterDraft.projectCode} onChange={(event) => updateFilterField("projectCode", event.target.value)} placeholder="Todos" /></label>
-          <label className={styles.field}><span>Equipe</span><select value={filterDraft.teamId} onChange={(event) => updateFilterField("teamId", event.target.value)}><option value="">Todas</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+          <label className={styles.field}><span>Equipe</span><select value={filterDraft.teamId} onChange={(event) => updateFilterField("teamId", event.target.value)}><option value="">Todas</option>{teams.map((team) => <option key={team.id} value={team.id}>{teamOptionLabel(team)}</option>)}</select></label>
         </div>
         <div className={styles.actions}>
           <button type="button" className={styles.secondaryButton} onClick={applyFilters} disabled={isLoadingList}>Aplicar</button>

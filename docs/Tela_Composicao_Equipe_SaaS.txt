@@ -40,6 +40,7 @@ Cadastro
 - Campos opcionais:
   - Observacoes
 - Ao selecionar uma equipe:
+  - A lista de selecao exibe a equipe no formato `Equipe / Encarregado`, quando o encarregado esta identificado.
   - A tela exibe placa e encarregado.
   - A tela preenche `Patio` automaticamente com o Centro de Servico vinculado a equipe.
   - O campo `Patio` fica somente leitura quando a equipe possui Centro de Servico.
@@ -67,7 +68,7 @@ Filtros, auto-complete e listagem
   - Data inicial
   - Data final
   - Projeto (input + datalist por SOB)
-  - Equipe
+  - Equipe (opcoes no formato `Equipe / Encarregado`, quando o encarregado esta identificado)
 - Listagem:
   - Data
   - Projeto
@@ -141,6 +142,9 @@ Atualizacao 2026-05
   - Os integrantes ficam disponiveis em Detalhes, Edicao e no CSV detalhado.
   - O CSV `Exportar lista (CSV)` passa a seguir a lista principal, sem uma linha por integrante.
   - O CSV `Detalhes (CSV)` exporta uma linha por integrante no padrao operacional da planilha.
+- Ajuste de selecao de equipe:
+  - O select de `Equipe` do cadastro e do filtro passa a exibir `Equipe / Encarregado` quando o encarregado esta identificado no meta da tela.
+  - O valor interno continua sendo o `team.id`, sem alterar salvamento, filtros ou snapshots.
 - Funcoes/hooks/constantes tocadas:
   - `TeamCompositionPageView`
   - `buildQuery`
@@ -153,6 +157,7 @@ Atualizacao 2026-05
   - `findDuplicateMemberMatriculation`
   - `countForemen`
   - `isForemanRole`
+  - `teamOptionLabel`
   - `fetchTeamById`
   - `fetchPeopleSnapshots`
   - `permissionCatalog`
@@ -165,6 +170,8 @@ Atualizacao 2026-05
   - Depois: existe tela operacional com cadastro, edicao, lista, detalhes, historico e duas extracoes CSV.
   - Antes: a matriz de permissoes nao possuia `composicao-equipe`.
   - Depois: a migration cadastra a pagina em `app_pages`, faz backfill em `role_page_permissions` e em `app_user_page_permissions`.
+  - Antes: o select de equipe mostrava apenas o nome/codigo da equipe.
+  - Depois: o select de equipe mostra o nome/codigo da equipe junto do encarregado quando disponivel.
   - Impacto multi-tenant: tabelas novas incluem `tenant_id`, RLS ON e FKs compostas para projeto/equipe/pessoa no mesmo tenant.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -182,6 +189,7 @@ Mapa de Codigo (funcoes, hooks e constantes)
   - `HISTORY_PAGE_SIZE`
 - Funcoes utilitarias relacionadas:
   - `formatCpf`
+  - `teamOptionLabel`
   - `buildVisibleCsv`
   - `buildDetailedCsv`
   - `fetchPeopleSnapshots`
