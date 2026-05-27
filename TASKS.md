@@ -750,3 +750,5 @@
 - [x] Ajustar CSV Detalhes da Composicao de Equipe para exportar uma linha por integrante, repetindo os dados da composicao.
 
 - [x] Ajustar CSV Detalhes da Composicao de Equipe para seguir o padrao operacional da planilha com colunas Data, PROJETO, Setor, Matricula, Colaborador, Funcao, CPF, TELEFONE, Patio, Placa, Hora inicial e Presente.
+
+- [x] Exibir o encarregado junto ao nome da equipe nos selects de cadastro e filtro da Composicao de Equipe.
