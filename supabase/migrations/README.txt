@@ -426,6 +426,9 @@ Resumo por arquivo
 
 203_respect_field_return_material_entry_type.sql
 - Republica `save_team_stock_operation_record` para o `Retorno de campo` respeitar o `entry_type` derivado do cadastro do material, sem forcar tudo como `SUCATA`, mantendo origem tecnica `CAMPO / INSTALADO` e escopo por tenant.
+
+204_preserve_measurement_work_completion_snapshot.sql
+- Permite que Ordens de Medicao preservem no snapshot qualquer `Estado Trabalho` normalizado da Programacao, atualizando a constraint e a RPC de salvamento para nao limitar o valor a `CONCLUIDO`/`PARCIAL`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

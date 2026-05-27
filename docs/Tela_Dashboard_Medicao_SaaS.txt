@@ -107,7 +107,7 @@ Boas praticas
 - Usar somente medicoes `COM_PRODUCAO`, ativas e nao canceladas para indicadores de valor.
 - Excluir obras de teste das consolidacoes.
 - Usar a Meta cadastrada como fonte oficial para comparacao de ciclo.
-- Consolidar `Status execucao` pelo snapshot gravado na ordem de Medicao (`programming_completion_status_snapshot`); usar a Programacao por `Projeto + Data` apenas como fallback para medicoes antigas sem snapshot.
+- Consolidar `Status execucao` pelo snapshot gravado na ordem de Medicao (`programming_completion_status_snapshot`); usar o ultimo estado conhecido da Programacao do projeto apenas como fallback para medicoes antigas sem snapshot.
 
 Cancelamento e saldo
 --------------------
@@ -182,6 +182,7 @@ Atualizacao 2026-05
 - Atualizacao 2026-05 (Parcial planejado beneficio atingido e modal por status):
   - Arquivos alterados:
     - `src/app/api/dashboard-medicao/route.ts`
+    - `supabase/migrations/204_preserve_measurement_work_completion_snapshot.sql`
     - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
     - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
     - `docs/Tela_Dashboard_Medicao_SaaS.txt`
@@ -260,7 +261,8 @@ Atualizacao 2026-05
   - Antes:
     - O Dashboard Medicao priorizava o ultimo `Estado Trabalho` resolvido pela Programacao por `Projeto + Data` para classificar `Concluidos`, `Parciais`, `Parcial planejado beneficio atingido` e `Pendencias`.
   - Depois:
-    - O Dashboard Medicao prioriza o snapshot salvo na propria ordem de Medicao (`programming_completion_status_snapshot`) e usa a Programacao apenas como fallback quando a ordem antiga nao possui snapshot.
+    - O Dashboard Medicao prioriza o snapshot salvo na propria ordem de Medicao (`programming_completion_status_snapshot`) e usa o ultimo estado conhecido da Programacao do projeto apenas como fallback quando a ordem antiga nao possui snapshot, alinhando o recorte com a Lista de Ordens de Medicao.
+    - Novas medicoes passam a preservar snapshots com outros estados normalizados, como `PENDENCIA` e `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`, quando estes vierem da Programacao.
   - Impacto multi-tenant:
     - Sem alteracao de escopo; a leitura continua filtrada por `tenant_id` e exclui obras de teste.
 
@@ -270,7 +272,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local do grafico Concluidos x Parciais por periodo com botao `Filtrar periodo`, checkboxes de metas dos encarregados, filtro local de semana dos blocos `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, card de Ticket medio, contagem de projetos nas tabelas, modal de projetos por status/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, priorizando o snapshot de `Estado Trabalho` salvo na Medicao e usando Programacao como fallback, calcular projetos distintos e ticket medio, montar projetos por status/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar valores por encarregado/supervisor no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
+  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, priorizando o snapshot de `Estado Trabalho` salvo na Medicao e usando o ultimo estado conhecido da Programacao do projeto como fallback, calcular projetos distintos e ticket medio, montar projetos por status/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar valores por encarregado/supervisor no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
 - Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
   - Responsavel por: cadastrar `dashboard-medicao` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
