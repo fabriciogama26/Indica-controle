@@ -446,6 +446,10 @@ function resolveMeasurementWorkCompletionStatus(value: unknown): ProgrammingWork
     return "CONCLUIDO";
   }
 
+  if (token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO" || token === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO") {
+    return "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO";
+  }
+
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) {
     return "PARCIAL";
   }

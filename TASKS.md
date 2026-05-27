@@ -755,3 +755,5 @@
 - [x] Exibir o encarregado junto ao nome da equipe nos selects de cadastro e filtro da Composicao de Equipe.
 
 - [x] Ajustar Dashboard Medicao e Lista de Ordens de Medicao para priorizar o Estado Trabalho salvo na propria Medicao, usando a Programacao apenas como fallback para ordens antigas sem snapshot.
+
+- [x] Corrigir normalizacao do Estado Trabalho na Medicao para preservar Parcial planejado beneficio atingido e permitir snapshots de estados normalizados alem de CONCLUIDO/PARCIAL.

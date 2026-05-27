@@ -10,7 +10,7 @@ type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
 type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
 type WorkCompletionStatus = string | null;
-type EconomicWorkCompletionStatus = "CONCLUIDO" | "PARCIAL";
+type EconomicWorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO";
 
 type ProjectItem = {
   id: string;
@@ -488,6 +488,10 @@ function resolveEconomicWorkCompletionStatus(value: unknown): EconomicWorkComple
     || token.startsWith("CONCLUIDO")
   ) {
     return "CONCLUIDO";
+  }
+
+  if (token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO" || token === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO") {
+    return "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO";
   }
 
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) {
@@ -969,6 +973,10 @@ export function MeasurementPageView() {
 
     if (!map.has("PARCIAL")) {
       map.set("PARCIAL", "Parcial");
+    }
+
+    if (!map.has("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")) {
+      map.set("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO", "Parcial planejado beneficio atingido");
     }
 
     return map;

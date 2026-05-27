@@ -366,6 +366,13 @@ function resolveProjectCompletionAtOrBefore(
   return null;
 }
 
+function resolveLatestProjectCompletion(
+  timeline: Map<string, ProgrammingCompletionTimelineItem[]>,
+  projectId: string,
+) {
+  return timeline.get(projectId)?.[0]?.status ?? null;
+}
+
 export async function GET(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar dashboard de medicao.",
@@ -476,7 +483,8 @@ export async function GET(request: NextRequest) {
   const orderCompletionMap = new Map<string, string>();
   for (const order of completionOrders) {
     const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
-    const timelineCompletion = resolveProjectCompletionAtOrBefore(projectCompletionTimeline, order.project_id, order.execution_date);
+    const timelineCompletion = resolveLatestProjectCompletion(projectCompletionTimeline, order.project_id)
+      ?? resolveProjectCompletionAtOrBefore(projectCompletionTimeline, order.project_id, order.execution_date);
     orderCompletionMap.set(
       order.id,
       snapshot !== "NAO_INFORMADO" ? snapshot : timelineCompletion ?? "NAO_INFORMADO",
