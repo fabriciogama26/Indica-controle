@@ -50,7 +50,7 @@ Cadastro
 - O `Centro de estoque` da tela e sempre um centro `OWN` principal, diferente do centro proprio da equipe e tambem diferente de qualquer outro centro vinculado a equipe.
 - O centro da equipe nao e selecionado manualmente na tela; ele e resolvido automaticamente a partir da equipe escolhida.
 - O `Retorno de campo` usa o centro tecnico `CAMPO / INSTALADO` como origem tecnica, sem consumir saldo da equipe.
-- No `Retorno de campo`, o `Tipo` e forçado para `SUCATA` e o motivo operacional fixo e `Retirada de campo`.
+- No `Retorno de campo`, o `Tipo` segue o cadastro do material (`materials.tipo`) e nao e forcado para `SUCATA`.
 - Cada operacao salva snapshot de `Equipe` e `Encarregado` no momento do registro, evitando que o historico mude quando o encarregado atual da equipe for alterado depois.
   - `Projeto` e obrigatorio mesmo sendo campo informativo do fluxo.
   - `Tipo` e preenchido automaticamente a partir de `materials.tipo`.
@@ -98,7 +98,7 @@ Filtros, auto-complete e listagem
   - O import e atomico: se qualquer linha falhar na pre-validacao ou no save transacional, nenhuma linha e salva.
   - Erros do lote sobem em modal e tambem geram `CSV` detalhado.
   - Em caso de erro, a tela gera `CSV` com `linha;coluna;valor;erro`.
-  - O CSV aceita `RETORNO_DE_CAMPO`/`FIELD_RETURN` e, nesse caso, grava `entry_type = SUCATA`.
+  - O CSV aceita `RETORNO_DE_CAMPO`/`FIELD_RETURN` e grava `entry_type` conforme o tipo cadastrado do material (`NOVO` ou `SUCATA`).
   - A data do CSV aceita `YYYY-MM-DD`, `YYYY-M-D`, `DD/MM/YYYY` ou `DD/MM/AAAA` (com ou sem sufixo de hora), e o frontend normaliza para `YYYY-MM-DD` antes do envio.
 - Filtros da lista:
   - `Data inicial`
@@ -233,6 +233,8 @@ Atualizacao 2026-05
 - Antes: em ambientes com a migration de compra direta aplicada, a requisicao de equipe podia retornar erro generico antes de concluir a validacao transacional de saldo.
 - Depois: requisicoes, inclusive para equipe CESTO, seguem pelo fluxo normal de `TRANSFER` entre centro principal e centro proprio da equipe, mantendo o escopo por `tenant_id` e retornando a mensagem real da regra de saldo quando houver bloqueio.
 - Ajuste de feedback de saldo: `Salvar operacao` passa a listar todos os materiais bloqueados por saldo zerado ou insuficiente na pre-validacao e o helper `saveTeamStockOperationViaRpc` passa a detalhar `INSUFFICIENT_STOCK` usando os `details` retornados pela RPC base.
+- Ajuste de regra: `Retorno de campo` deixa de forcar `entry_type = SUCATA` e passa a respeitar `materials.tipo` no cadastro manual, importacao e RPC `save_team_stock_operation_record`.
+- Migration `203_respect_field_return_material_entry_type.sql` republica `save_team_stock_operation_record` preservando `p_entry_type` tambem para `FIELD_RETURN`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -253,6 +255,8 @@ Funcoes principais
   - Responsavel por: encapsular chamadas para `save_team_stock_operation_record`, detalhar `INSUFFICIENT_STOCK` por material e chamar `reverse_team_stock_operation_record_v2`/`reverse_team_stock_operation_item_record_v1`.
 - Caminho: `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
   - Responsavel por: criar `stock_transfer_item_reversals`, RPC `reverse_stock_transfer_item_record_v1`, RPC `reverse_team_stock_operation_item_record_v1` e preservar estornos integrais legados.
+- Caminho: `supabase/migrations/203_respect_field_return_material_entry_type.sql`
+  - Responsavel por: republicar `save_team_stock_operation_record` para o `Retorno de campo` respeitar o tipo cadastrado do material.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/saida/constants.ts`

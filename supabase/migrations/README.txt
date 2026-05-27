@@ -423,6 +423,9 @@ Resumo por arquivo
 
 200_create_team_composition_page.sql
 - Cria `team_compositions` e `team_composition_members` com RLS por tenant, snapshots de projeto/equipe/pessoa, indices de contexto, RPC `save_team_composition_record`, pagina `composicao-equipe` e backfill de permissoes.
+
+203_respect_field_return_material_entry_type.sql
+- Republica `save_team_stock_operation_record` para o `Retorno de campo` respeitar o `entry_type` derivado do cadastro do material, sem forcar tudo como `SUCATA`, mantendo origem tecnica `CAMPO / INSTALADO` e escopo por tenant.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
