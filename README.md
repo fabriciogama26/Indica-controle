@@ -131,7 +131,7 @@ vercel --prod
   - `(dashboard)/cargo/page.tsx`: rota da tela de Cargo com cadastro, filtros, listagem, detalhes, historico, troca de status e manutencao dos tipos por cargo/niveis consumidos por Pessoas.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
-  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
+  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
 - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, respeitando o tipo cadastrado do material e preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
@@ -234,7 +234,7 @@ vercel --prod
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
 - `src/modules/dashboard/entrada/`
-  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), sub-card `Materiais da Movimentacao` com lista local de itens antes do save final, `Tipo` automatico por `materials.tipo`, `Serial/LP` condicionais para TRAFO, alertas operacionais em modal com mensagem por material, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno), lista paginada e modais de detalhes/historico/estorno.
+  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), finalidade (`Movimentacao normal` ou `Correcao de saldo` com motivo obrigatorio), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), sub-card `Materiais da Movimentacao` com lista local de itens antes do save final, `Tipo` automatico por `materials.tipo`, `Serial/LP` condicionais para TRAFO, alertas operacionais em modal com mensagem por material, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno e finalidade), lista paginada e modais de detalhes/historico/estorno.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
 - `src/modules/dashboard/saida/`
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
@@ -307,14 +307,14 @@ vercel --prod
   - `Tela_Login_SaaS.txt`: login do SaaS.
   - `Tela_Projetos_SaaS.txt`: tela de projetos com cadastro, filtros e listagem.
   - `Tela_Materiais_SaaS.txt`: tela de materiais com cadastro, filtros, historico e cancelamento/ativacao.
-  - `Tela_Entrada_SaaS.txt`: tela de Movimentacao de Estoque com transferencia entre centros, importacao CSV, estorno transacional e exportacao da lista com status de estorno.
+  - `Tela_Entrada_SaaS.txt`: tela de Movimentacao de Estoque com transferencia entre centros, finalidade de correcao de saldo, importacao CSV, estorno transacional e exportacao da lista com status de estorno.
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
   - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, supervisor, historico e troca de status.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
   - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
-  - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada e exportacao CSV.
+  - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada, historico com correcao de saldo e exportacao CSV.
   - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de SERIAL com consulta em `trafo_instances`, atalho de movimentacao e fluxo `RET`.
   - `Tela_Cargo_SaaS.txt`: tela de cargos com cadastro, filtros, historico, status e manutencao de tipos/niveis.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.

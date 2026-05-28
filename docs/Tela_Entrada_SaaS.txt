@@ -29,6 +29,7 @@ Arquitetura
 Cadastro
 --------
 - Campos obrigatorios:
+  - `operation_purpose` (`NORMAL` ou `BALANCE_CORRECTION`)
   - `movement_type` (`ENTRY`, `EXIT`, `TRANSFER`)
   - `from_stock_center_id`
   - `to_stock_center_id`
@@ -43,7 +44,11 @@ Cadastro
   - `serial_number` (no bloco `Material da Operacao`)
   - `lot_code` (no bloco `Material da Operacao`)
   - `notes`
+  - `balance_correction_reason` (obrigatorio quando `operation_purpose = BALANCE_CORRECTION`)
 - Regras de validacao:
+  - `operation_purpose = NORMAL` representa movimentacao operacional comum.
+  - `operation_purpose = BALANCE_CORRECTION` representa ajuste de diferenca de saldo usando a mesma matematica de `Entrada`, `Saida` ou `Transferencia`.
+  - `BALANCE_CORRECTION` exige motivo de correcao preenchido.
   - `movement_type` define combinacao valida de origem/destino:
     - `ENTRY`: `THIRD_PARTY -> OWN`
     - `EXIT`: `OWN -> THIRD_PARTY`
@@ -83,6 +88,8 @@ Filtros, auto-complete e listagem
   - remover linha quando necessario
   - salvar a movimentacao completa ao final
 - Campo `Operacao` define o modo da movimentacao (`Entrada`, `Saida`, `Transferencia`).
+- Campo `Finalidade` define se o lancamento e `Movimentacao normal` ou `Correcao de saldo`.
+- Quando `Finalidade = Correcao de saldo`, a tela exige `Motivo da correcao` e grava a marcacao na transferencia.
 - No cadastro manual, o rotulo da data acompanha a operacao selecionada:
   - `ENTRY` -> `Data da entrada`
   - `EXIT` -> `Data da saida`
@@ -118,6 +125,10 @@ Filtros, auto-complete e listagem
   - `Estornadas`
   - `Nao estornadas`
   - `Somente estornos`
+- Filtro adicional de finalidade:
+  - `Todas`
+  - `Movimentacao normal`
+  - `Correcao de saldo`
 - Ordem das colunas da lista:
   - Centro DE
   - Centro PARA
@@ -142,6 +153,7 @@ Filtros, auto-complete e listagem
   - `Entrada`
   - `Saida`
   - `Transferencia`
+  - `Correcao`
   - `Estorno`
   - `Estornada`
 - O modal `Historico` traduz `projectId`, `fromStockCenterId` e `toStockCenterId` para valores legiveis do negocio.
@@ -151,6 +163,8 @@ Filtros, auto-complete e listagem
 Boas praticas
 -------------
 - Escrever movimentacao somente via RPC transacional (`save_stock_transfer_record`).
+- Usar `operation_purpose = BALANCE_CORRECTION` para diferencas contabeis/de conferencia que ajustam o saldo sem apagar a movimentacao original.
+- Nao usar `Correcao de saldo` para corrigir saldo de equipe; esse caso continua pertencendo ao fluxo de `Operacoes de Equipe` por estorno ou regra propria futura.
 - Validar saldo insuficiente somente quando o centro de origem for `OWN` (`controls_balance = true`).
 - Nao validar saldo insuficiente quando o centro de origem for `THIRD_PARTY` (`controls_balance = false`).
 - Para `EXIT` e `TRANSFER`, validar cada item da lista local antes do save:
@@ -283,12 +297,14 @@ Atualizacao 2026-05
 - Ajuste de cadastro: `Entrada` ganhou checkbox `Compra direta`; quando marcado, a movimentacao pode ser salva sem `Projeto`, gravando `stock_transfers.direct_purchase = true` e `project_id = null`. `Saida` e `Transferencia` mantem `Projeto` obrigatorio.
 - Migration `193_allow_direct_purchase_stock_entry.sql` adiciona `stock_transfers.direct_purchase`, torna `stock_transfers.project_id` nullable e ajusta a RPC `save_stock_transfer_record` para aceitar compra direta sem projeto, preservando estorno de entradas de compra direta.
 - Ajuste de feedback de saldo: o submit manual de `Saida`/`Transferencia` passa a listar todos os materiais bloqueados por saldo zerado ou insuficiente, com `Material`, `Saldo atual`, `Solicitado` e `Falta`; o helper `saveStockTransferViaRpc` tambem converte `details` da RPC `INSUFFICIENT_STOCK` em mensagem detalhada quando a falha ocorre no banco.
+- Ajuste de finalidade: a tela passa a permitir `Movimentacao normal` ou `Correcao de saldo`. A correcao usa a mesma operacao (`Entrada`, `Saida` ou `Transferencia`), mas grava `stock_transfers.operation_purpose = BALANCE_CORRECTION` e exige `balance_correction_reason`.
+- Migration `206_add_stock_transfer_operation_purpose.sql` adiciona `operation_purpose`, `balance_correction_reason`, indice por finalidade e overload da RPC `save_stock_transfer_record` com marcacao/auditoria de correcao de saldo.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
-  - Responsavel por: cadastro manual, validacoes de regra por operacao, consolidacao de erros de saldo por material, importacao CSV em modal, filtros, lista, modais de detalhes/historico, modo de movimentacao por serial e trava visual/funcional do submit manual.
+  - Responsavel por: cadastro manual, finalidade da operacao (`NORMAL`/`BALANCE_CORRECTION`), validacoes de regra por operacao, consolidacao de erros de saldo por material, importacao CSV em modal, filtros, lista, modais de detalhes/historico, modo de movimentacao por serial e trava visual/funcional do submit manual.
 - Caminho: `src/app/api/stock-transfers/route.ts`
   - Responsavel por: criar movimentacao, listar somente movimentacoes fisicas, bloquear centro vinculado a equipe e listar historico de alteracoes por transferencia.
 - Caminho: `src/app/api/stock-transfers/import/route.ts`
@@ -317,10 +333,12 @@ Funcoes principais
   - Responsavel por: criar `trafo_instances`, fazer backfill da posicao unitaria e migrar a validacao de TRAFO para a nova fonte de verdade.
 - Caminho: `supabase/migrations/193_allow_direct_purchase_stock_entry.sql`
   - Responsavel por: permitir `project_id` nulo em `stock_transfers` quando a movimentacao for `Entrada` com `direct_purchase = true`, registrar a flag e manter a RPC transacional compativel com estorno.
+- Caminho: `supabase/migrations/206_add_stock_transfer_operation_purpose.sql`
+  - Responsavel por: marcar movimentacao normal ou correcao de saldo em `stock_transfers`, exigir motivo em correcao e registrar historico funcional `_context = STOCK_TRANSFER_BALANCE_CORRECTION`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
-  - Responsavel por: `HISTORY_PAGE_SIZE`, `INITIAL_FORM`, `directPurchase` no estado do formulario e mapeamento de labels do historico.
+  - Responsavel por: `HISTORY_PAGE_SIZE`, `INITIAL_FORM`, `operationPurpose`, `balanceCorrectionReason`, `directPurchase` no estado do formulario e mapeamento de labels do historico.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
   - Responsavel por: estilos da tela e estado visual de loading do botao principal.
 - Caminho: `src/lib/server/stockTransfers.ts`
@@ -365,6 +383,7 @@ Ajuda contextual
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
 - Funcoes/hooks/constantes tocadas:
   - `StockTransfersPageView`, `movementDateLabel`, `rowStatusLabel`, `isTransformerQuantityValid`, `loadMeta`, `loadHistory`, `handleSubmit`, `handleImportCsv`, `handleExportHistory`, `handleConfirmReversal`, `handleMovementTypeChange`, `handleDirectPurchaseChange`, `handleSerialNumberChange`, `handleLotCodeChange`, `handleAddFormItem`, `ensureSourceStockAvailability`, `openImportModal`, `closeImportModal`, `openReversalModal`, `closeReversalModal`, `clearTransformerMovementMode`, `openTransferPrefill`, `applyFilters`, `clearFilters`, `openHistoryModal`, `closeHistoryModal`
+  - `operationPurposeLabel`
   - `formatQuantityValue`, `formatSourceAvailabilitySummary`
   - `GET`/`POST`/`PUT` de `/api/stock-transfers` (`PUT` retorna bloqueio de edicao)
   - `GET` de `/api/stock-transfers/meta`
@@ -409,3 +428,5 @@ Ajuda contextual
 - Depois: somente `Entrada` pode ser marcada como `Compra direta` e salva sem `Projeto`; `Saida` e `Transferencia` seguem bloqueadas sem projeto.
 - Antes: quando o save final retornava `INSUFFICIENT_STOCK`, a API podia exibir apenas mensagem generica de saldo insuficiente.
 - Depois: a tela e o helper server mostram quais materiais estao com saldo zerado/insuficiente e as quantidades envolvidas.
+- Antes: correcao de saldo ficava indistinguivel de uma entrada/saida normal, salvo texto livre em observacao.
+- Depois: correcao de saldo fica marcada por finalidade propria, exige motivo e aparece nos detalhes/lista/historico.

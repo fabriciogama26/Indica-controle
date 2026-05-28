@@ -51,12 +51,14 @@ export type CurrentStockHistoryEntry = {
   id: string;
   transferId: string;
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  operationPurpose?: "NORMAL" | "BALANCE_CORRECTION";
   operationKind?: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
   teamName?: string | null;
   foremanName?: string | null;
   signedQuantity: number;
   quantity: number;
   entryDate: string;
+  balanceCorrectionReason?: string | null;
   changedAt: string;
   projectCode: string;
   fromStockCenterName: string;

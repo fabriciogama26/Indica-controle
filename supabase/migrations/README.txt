@@ -96,6 +96,7 @@ Ordem de aplicacao
 198. 198_add_people_cpf_optional.sql
 199. 199_people_cpf_unique_phone_and_conditional_type.sql
 205. 205_swap_active_team_foremen.sql
+206. 206_add_stock_transfer_operation_purpose.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -433,6 +434,9 @@ Resumo por arquivo
 
 205_swap_active_team_foremen.sql
 - Cria a RPC `swap_active_team_foremen` para permutar encarregados entre duas equipes ativas do mesmo tenant, validando concorrencia das duas equipes, motivo obrigatorio, unicidade operacional e registrando historico em `app_entity_history`.
+
+206_add_stock_transfer_operation_purpose.sql
+- Adiciona `stock_transfers.operation_purpose` e `stock_transfers.balance_correction_reason` para distinguir movimentacao normal de correcao de saldo, com motivo obrigatorio em correcao, indice por tenant/finalidade e suporte na RPC `save_stock_transfer_record`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

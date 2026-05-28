@@ -766,3 +766,5 @@
 - [x] Ajustar o botao principal da Programacao Simples para permanecer clicavel mesmo com campos obrigatorios pendentes, exibindo alerta e destaque visual dos campos faltantes no clique.
 
 - [x] Corrigir `km` e `Qtd Postes` da `Extracao ENEL NOVO` para usar o primeiro valor preenchido do grupo consolidado em `REDE (quantidade)` e `POSTE (quantidade)`, preservando casas decimais de REDE sem arredondar para 2 casas.
+
+- [x] Definir e implementar fluxo de Correcao de saldo dentro da Movimentacao de Estoque, registrando entrada/saida/transferencia de ajuste com marca propria, referencia da correcao, motivo obrigatorio e reflexo explicito no Estoque Atual.
