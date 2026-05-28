@@ -119,6 +119,7 @@ export type ScheduleItem = {
   estruturaQty: number;
   trafoQty: number;
   redeQty: number;
+  redeQtyText?: string;
   etapaNumber: number | null;
   etapaUnica: boolean;
   etapaFinal: boolean;

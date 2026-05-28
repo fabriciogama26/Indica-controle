@@ -595,7 +595,7 @@ export function parseNonNegativeDecimal(value: string) {
     return null;
   }
 
-  return Number(parsed.toFixed(2));
+  return parsed;
 }
 
 export function parseOptionalPositiveInteger(value: string) {

@@ -1295,3 +1295,26 @@ Atualizacao adicional 2026-05-28 (validacao no clique do cadastro)
   - Antes: o botao `Cadastrar programacao`/`Salvar edicao` ficava desabilitado quando Projeto, Equipes, Tipo de SGD ou Nº EQ obrigatorios nao estavam preenchidos.
   - Depois: o botao permanece clicavel, exceto durante salvamento; ao clicar, a tela exibe alerta com a lista de campos obrigatorios faltantes e destaca visualmente os campos pendentes.
   - Multi-tenant: nao houve alteracao em API, banco, RLS, tenant scope ou RPCs; a mudanca e somente de validacao/UX no frontend.
+
+Atualizacao adicional 2026-05-28 (km e Qtd Postes na Extracao ENEL NOVO)
+-------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `parseNonNegativeDecimal`: deixa de limitar `REDE (quantidade)` a 2 casas decimais.
+  - `normalizeNonNegativeDecimal`: deixa de limitar `redeQty` a 2 casas decimais no backend.
+  - `ScheduleItem.redeQtyText`: novo campo opcional para transportar o valor textual de `rede_qty` retornado pela API.
+  - `buildEnelNovoWorkbookData`: passa a buscar o primeiro valor preenchido do grupo consolidado para `km` e `Qtd Postes`.
+  - `resolveFirstFilledNumber`: novo helper local para resolver valor representativo sem somar equipes do mesmo `SOB + Data Execucao`.
+  - `formatDecimalForEnelNovo`: formata `km` como texto decimal preservando os digitos recebidos.
+- Comportamento antes/depois:
+  - Antes: `REDE (quantidade)` era arredondado para 2 casas no frontend/backend antes de persistir e exportar.
+  - Depois: `REDE (quantidade)` preserva as casas decimais informadas e a coluna `km` da `Extracao ENEL NOVO` usa esse valor.
+  - Antes: em grupos consolidados, `km` e `Qtd Postes` usavam somente a programacao-base; se ela estivesse zerada e outra equipe do mesmo grupo tivesse valor, a planilha podia sair com `0`.
+  - Depois: `km` e `Qtd Postes` usam o primeiro valor preenchido do grupo `SOB + Data Execucao`, sem somar equipes e sem duplicar valores de programacoes em lote.
+  - Multi-tenant: nao houve alteracao de schema, migration, RLS ou tenant scope; a API continua consultando `project_programming` por `tenant_id`.

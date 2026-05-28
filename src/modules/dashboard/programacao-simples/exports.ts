@@ -324,6 +324,32 @@ function buildEnelNovoGroupKey(schedule: ScheduleItem, project?: ProjectItem) {
   return `${projectKey}__${executionDateKey}`;
 }
 
+function resolveFirstFilledNumber<T extends number | string>(
+  schedules: ScheduleItem[],
+  selector: (schedule: ScheduleItem) => T | null | undefined,
+  fallback: T | null | undefined,
+) {
+  const filledValue = schedules
+    .map((schedule) => selector(schedule))
+    .find((value) => Number(value ?? 0) > 0);
+
+  return filledValue ?? fallback ?? "";
+}
+
+function formatDecimalForEnelNovo(value: number | string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const numericValue = Number(normalized.replace(",", "."));
+  if (!Number.isFinite(numericValue)) {
+    return normalized;
+  }
+
+  return normalized.replace(".", ",");
+}
+
 export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: ExportContext) {
   const exportSchedules = schedules.filter((schedule) => {
     const project = projectMap.get(schedule.projectId);
@@ -442,6 +468,16 @@ export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: Ex
     const numEqValue = `${(schedule.electricalField ?? "").trim()}${(schedule.electricalEqCode ?? "").trim()}`;
     const serviceDescriptionValue = firstServiceDescription
       || (project?.serviceName ?? "").trim();
+    const redeQtyValue = resolveFirstFilledNumber(
+      group.schedules,
+      (item) => item.redeQtyText ?? item.redeQty,
+      schedule.redeQtyText ?? schedule.redeQty,
+    );
+    const posteQtyValue = resolveFirstFilledNumber(
+      group.schedules,
+      (item) => item.posteQty,
+      schedule.posteQty,
+    );
 
     return [
       extractTextAfterDash(project?.base ?? ""),
@@ -485,14 +521,14 @@ export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: Ex
       "",
       "",
       "",
-      schedule.redeQty ?? "",
+      formatDecimalForEnelNovo(redeQtyValue),
       "",
       "",
       "",
       "",
       "",
       "",
-      schedule.posteQty ?? "",
+      posteQtyValue,
       "",
     ];
   });

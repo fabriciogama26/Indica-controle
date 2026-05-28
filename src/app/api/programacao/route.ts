@@ -821,7 +821,7 @@ function normalizeNonNegativeDecimal(value: unknown) {
     return null;
   }
 
-  return Number(parsed.toFixed(2));
+  return parsed;
 }
 
 function hasDecimalFraction(value: number) {
@@ -1954,6 +1954,7 @@ async function fetchProgrammingResponseItem(
     estruturaQty: Number(row.estrutura_qty ?? 0),
     trafoQty: Number(row.trafo_qty ?? 0),
     redeQty: Number(row.rede_qty ?? 0),
+    redeQtyText: normalizeText(row.rede_qty ?? "0"),
     etapaNumber: row.etapa_number === null ? null : Number(row.etapa_number),
     etapaUnica: Boolean(row.etapa_unica ?? false),
     etapaFinal: Boolean(row.etapa_final ?? false),
@@ -3185,6 +3186,7 @@ export async function GET(request: NextRequest) {
           estruturaQty: Number(item.estrutura_qty ?? 0),
           trafoQty: Number(item.trafo_qty ?? 0),
           redeQty: Number(item.rede_qty ?? 0),
+          redeQtyText: normalizeText(item.rede_qty ?? "0"),
           etapaNumber: item.etapa_number === null ? null : Number(item.etapa_number),
           etapaUnica: Boolean(item.etapa_unica ?? false),
           etapaFinal: Boolean(item.etapa_final ?? false),
