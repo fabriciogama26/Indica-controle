@@ -1279,3 +1279,19 @@ Atualizacao adicional 2026-05-19 (PARCIAL automatico na primeira programacao)
   - Depois: o primeiro cadastro de programacao do projeto recebe `Estado Trabalho = PARCIAL` automaticamente, desde que `PARCIAL` esteja ativo em `programming_work_completion_catalog` para o tenant.
   - Programacoes posteriores do mesmo projeto continuam sem preenchimento automatico de `Estado Trabalho`.
   - Multi-tenant: a verificacao de existencia e a validacao do catalogo filtram por `tenant_id`; nao houve alteracao de schema, migration ou RLS.
+
+Atualizacao adicional 2026-05-28 (validacao no clique do cadastro)
+--------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingFormPanel`: remove o bloqueio por campos obrigatorios do botao principal e usa `noValidate` no formulario para encaminhar o submit para a validacao propria da tela.
+  - `handleSubmit`: consolida campos obrigatorios pendentes em uma unica mensagem e marca todos os campos faltantes em `invalidFields`.
+  - `VALIDATION_FIELD_LABELS`: reutilizado para montar a mensagem objetiva dos campos obrigatorios faltantes.
+- Comportamento antes/depois:
+  - Antes: o botao `Cadastrar programacao`/`Salvar edicao` ficava desabilitado quando Projeto, Equipes, Tipo de SGD ou Nº EQ obrigatorios nao estavam preenchidos.
+  - Depois: o botao permanece clicavel, exceto durante salvamento; ao clicar, a tela exibe alerta com a lista de campos obrigatorios faltantes e destaca visualmente os campos pendentes.
+  - Multi-tenant: nao houve alteracao em API, banco, RLS, tenant scope ou RPCs; a mudanca e somente de validacao/UX no frontend.

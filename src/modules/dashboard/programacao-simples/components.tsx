@@ -160,7 +160,7 @@ export function ProgrammingFormPanel({
     <article ref={formCardRef} className={`${styles.card} ${isEditing ? styles.editingCard : ""}`}>
       <h3 className={styles.cardTitle}>{isEditing ? "Edicao de Programacao" : "Cadastro de Programacao"}</h3>
 
-      <form className={styles.formGrid} onSubmit={onSubmit}>
+      <form className={styles.formGrid} onSubmit={onSubmit} noValidate>
         <label className={`${styles.field} ${isFieldInvalid("projectId") ? styles.fieldInvalid : ""}`}>
           <span>
             Projeto (SOB) <span className="requiredMark">*</span>
@@ -181,14 +181,14 @@ export function ProgrammingFormPanel({
           </datalist>
         </label>
 
-        <label className={styles.field}>
+        <label className={`${styles.field} ${isFieldInvalid("date") ? styles.fieldInvalid : ""}`}>
           <span>
             Data execucao <span className="requiredMark">*</span>
           </span>
           <input type="date" value={form.date} onChange={(event) => onFormFieldChange("date", event.target.value)} required />
         </label>
 
-        <label className={styles.field}>
+        <label className={`${styles.field} ${isFieldInvalid("period") ? styles.fieldInvalid : ""}`}>
           <span>
             Periodo <span className="requiredMark">*</span>
           </span>
@@ -653,15 +653,7 @@ export function ProgrammingFormPanel({
           <button
             type="submit"
             className={styles.primaryButton}
-            disabled={
-              isSaving
-              || !form.projectId
-              || !form.teamIds.length
-              || (isEditing && form.teamIds.length !== 1)
-              || !form.sgdTypeId
-              || !form.electricalField.trim()
-              || !form.electricalEqCatalogId
-            }
+            disabled={isSaving}
           >
             {isSaving ? "Salvando..." : isEditing ? "Salvar edicao" : "Cadastrar programacao"}
           </button>
