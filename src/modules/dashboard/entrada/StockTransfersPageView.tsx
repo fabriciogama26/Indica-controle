@@ -66,6 +66,7 @@ type TransferListItem = {
   updatedAt: string;
   updatedByName: string;
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  operationPurpose: "NORMAL" | "BALANCE_CORRECTION";
   materialId: string;
   materialCode: string;
   description: string;
@@ -83,6 +84,7 @@ type TransferListItem = {
   projectId: string | null;
   projectCode: string;
   directPurchase: boolean;
+  balanceCorrectionReason: string | null;
   notes: string | null;
   isReversed: boolean;
   reversalTransferId: string | null;
@@ -164,6 +166,7 @@ type TransferFormItem = {
 
 type FormState = {
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  operationPurpose: "NORMAL" | "BALANCE_CORRECTION";
   fromStockCenterId: string;
   toStockCenterId: string;
   projectCode: string;
@@ -177,6 +180,7 @@ type FormState = {
   lotCode: string;
   entryDate: string;
   entryType: "SUCATA" | "NOVO" | "";
+  balanceCorrectionReason: string;
   notes: string;
   items: TransferFormItem[];
 };
@@ -185,6 +189,7 @@ type FilterState = {
   startDate: string;
   endDate: string;
   movementType: "TODOS" | "ENTRY" | "EXIT" | "TRANSFER";
+  operationPurpose: "TODOS" | "NORMAL" | "BALANCE_CORRECTION";
   projectCode: string;
   materialCode: string;
   entryType: "TODOS" | "NOVO" | "SUCATA";
@@ -195,6 +200,8 @@ const HISTORY_PAGE_SIZE = 15;
 const HISTORY_EXPORT_PAGE_SIZE = 100;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   movementType: "Operacao",
+  operationPurpose: "Finalidade",
+  balanceCorrectionReason: "Motivo da correcao",
   fromStockCenterId: "Centro DE",
   fromStockCenter: "Centro DE",
   toStockCenterId: "Centro PARA",
@@ -231,6 +238,7 @@ const IMPORT_TEMPLATE_HEADERS = [
 ] as const;
 const INITIAL_FORM: FormState = {
   movementType: "TRANSFER",
+  operationPurpose: "NORMAL",
   fromStockCenterId: "",
   toStockCenterId: "",
   projectCode: "",
@@ -244,6 +252,7 @@ const INITIAL_FORM: FormState = {
   lotCode: "",
   entryDate: toIsoDate(new Date()),
   entryType: "",
+  balanceCorrectionReason: "",
   notes: "",
   items: [],
 };
@@ -251,6 +260,7 @@ const INITIAL_FILTERS: FilterState = {
   startDate: "",
   endDate: "",
   movementType: "TODOS",
+  operationPurpose: "TODOS",
   projectCode: "",
   materialCode: "",
   entryType: "TODOS",
@@ -394,6 +404,10 @@ function movementDateLabel(value: string | null | undefined) {
 
 function movementSignalLabel(value: string | null | undefined) {
   return movementTypeLabel(value);
+}
+
+function operationPurposeLabel(value: string | null | undefined) {
+  return value === "BALANCE_CORRECTION" ? "Correcao de saldo" : "Movimentacao normal";
 }
 
 function rowStatusLabel(item: Pick<TransferListItem, "isReversal" | "isReversed">) {
@@ -624,6 +638,7 @@ export function StockTransfersPageView() {
     if (activeFilters.startDate) params.set("startDate", activeFilters.startDate);
     if (activeFilters.endDate) params.set("endDate", activeFilters.endDate);
     if (activeFilters.movementType !== "TODOS") params.set("movementType", activeFilters.movementType);
+    if (activeFilters.operationPurpose !== "TODOS") params.set("operationPurpose", activeFilters.operationPurpose);
     if (activeFilters.projectCode) params.set("projectCode", activeFilters.projectCode);
     if (activeFilters.materialCode) params.set("materialCode", activeFilters.materialCode);
     if (activeFilters.entryType !== "TODOS") params.set("entryType", activeFilters.entryType);
@@ -756,6 +771,8 @@ export function StockTransfersPageView() {
         "centro_para",
         "projeto",
         "compra_direta",
+        "finalidade",
+        "motivo_correcao",
         "material_codigo",
         "descricao",
         "quantidade",
@@ -776,6 +793,8 @@ export function StockTransfersPageView() {
         item.toStockCenterName,
         item.projectCode,
         item.directPurchase ? "Sim" : "Nao",
+        operationPurposeLabel(item.operationPurpose),
+        item.balanceCorrectionReason ?? "",
         item.materialCode,
         item.description,
         String(item.quantity),
@@ -839,6 +858,7 @@ export function StockTransfersPageView() {
     setForm((current) => ({
       ...current,
       movementType: "TRANSFER",
+      operationPurpose: "NORMAL",
       fromStockCenterId: matchedFromCenter?.id ?? "",
       toStockCenterId: "",
       projectCode: "",
@@ -851,6 +871,7 @@ export function StockTransfersPageView() {
       serialNumber: transferPrefill.serialNumber,
       lotCode: transferPrefill.lotCode,
       entryType: normalizeMaterialEntryType(matchedMaterial.materialType ?? ""),
+      balanceCorrectionReason: "",
     }));
     setTransformerMovementMode({
       materialCode: matchedMaterial.materialCode,
@@ -1111,6 +1132,10 @@ export function StockTransfersPageView() {
 
     if (form.directPurchase && form.movementType !== "ENTRY") {
       return "Compra direta e permitida somente para operacao Entrada.";
+    }
+
+    if (form.operationPurpose === "BALANCE_CORRECTION" && !normalizeText(form.balanceCorrectionReason)) {
+      return "Motivo da correcao de saldo e obrigatorio.";
     }
 
     if (form.fromStockCenterId === form.toStockCenterId) {
@@ -1476,6 +1501,11 @@ export function StockTransfersPageView() {
       return;
     }
 
+    if (form.operationPurpose === "BALANCE_CORRECTION" && !normalizeText(form.balanceCorrectionReason)) {
+      showError("Motivo da correcao de saldo e obrigatorio.");
+      return;
+    }
+
     if (form.fromStockCenterId === form.toStockCenterId) {
       showError("Centro de estoque DE e PARA precisam ser diferentes.");
       return;
@@ -1563,12 +1593,14 @@ export function StockTransfersPageView() {
         },
         body: JSON.stringify({
           movementType: form.movementType,
+          operationPurpose: form.operationPurpose,
           fromStockCenterId: form.fromStockCenterId,
           toStockCenterId: form.toStockCenterId,
           projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
           directPurchase: isDirectPurchaseProjectOptional,
           entryDate: form.entryDate,
           entryType: operationEntryType,
+          balanceCorrectionReason: form.operationPurpose === "BALANCE_CORRECTION" ? normalizeText(form.balanceCorrectionReason) : null,
           notes: normalizeText(form.notes) || null,
           items: form.items.map((item) => ({
             materialId: item.materialId,
@@ -1586,6 +1618,7 @@ export function StockTransfersPageView() {
           responseStatus: response.status,
           responseMessage: data.message ?? null,
           movementType: form.movementType,
+          operationPurpose: form.operationPurpose,
           fromStockCenterId: form.fromStockCenterId,
           toStockCenterId: form.toStockCenterId,
           projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
@@ -1607,6 +1640,7 @@ export function StockTransfersPageView() {
       showError("Falha ao salvar movimentacao de estoque.");
       await logError("Falha ao salvar movimentacao de estoque.", error, {
         movementType: form.movementType,
+        operationPurpose: form.operationPurpose,
         fromStockCenterId: form.fromStockCenterId,
         toStockCenterId: form.toStockCenterId,
         projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
@@ -1719,6 +1753,7 @@ export function StockTransfersPageView() {
       startDate: normalizeText(filterDraft.startDate),
       endDate: normalizeText(filterDraft.endDate),
       movementType: filterDraft.movementType,
+      operationPurpose: filterDraft.operationPurpose,
       projectCode: normalizeCode(filterDraft.projectCode),
       materialCode: normalizeCode(filterDraft.materialCode),
       entryType: filterDraft.entryType,
@@ -2196,6 +2231,20 @@ export function StockTransfersPageView() {
 
           <label className={styles.field}>
             <span>
+              Finalidade <span className={styles.requiredMark}>*</span>
+            </span>
+            <select
+              value={form.operationPurpose}
+              onChange={(event) => updateFormField("operationPurpose", event.target.value as FormState["operationPurpose"])}
+              disabled={isSubmitting || isLoadingMeta}
+            >
+              <option value="NORMAL">Movimentacao normal</option>
+              <option value="BALANCE_CORRECTION">Correcao de saldo</option>
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
               DE <span className={styles.requiredMark}>*</span>
             </span>
             <select
@@ -2473,6 +2522,21 @@ export function StockTransfersPageView() {
             />
           </label>
 
+          {form.operationPurpose === "BALANCE_CORRECTION" ? (
+            <label className={`${styles.field} ${styles.fullWidth}`}>
+              <span>
+                Motivo da correcao <span className={styles.requiredMark}>*</span>
+              </span>
+              <textarea
+                rows={3}
+                value={form.balanceCorrectionReason}
+                onChange={(event) => updateFormField("balanceCorrectionReason", event.target.value)}
+                disabled={isSubmitting}
+                placeholder="Descreva a diferenca corrigida e a referencia da conferencia"
+              />
+            </label>
+          ) : null}
+
           <div className={`${styles.actions} ${styles.fullWidth}`}>
             <button
               type="submit"
@@ -2539,6 +2603,17 @@ export function StockTransfersPageView() {
               <option value="ENTRY">Entrada</option>
               <option value="EXIT">Saida</option>
               <option value="TRANSFER">Transferencia</option>
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span>Finalidade</span>
+            <select
+              value={filterDraft.operationPurpose}
+              onChange={(event) => setFilterDraft((current) => ({ ...current, operationPurpose: event.target.value as FilterState["operationPurpose"] }))}
+            >
+              <option value="TODOS">Todas</option>
+              <option value="NORMAL">Movimentacao normal</option>
+              <option value="BALANCE_CORRECTION">Correcao de saldo</option>
             </select>
           </label>
           <label className={styles.field}>
@@ -2668,6 +2743,11 @@ export function StockTransfersPageView() {
                       {rowStatusLabel(item) ? (
                         <span className={`${styles.signalChip} ${item.isReversal ? styles.signalChipReversal : styles.signalChipReversed}`}>
                           {rowStatusLabel(item)}
+                        </span>
+                      ) : null}
+                      {item.operationPurpose === "BALANCE_CORRECTION" ? (
+                        <span className={`${styles.signalChip} ${styles.signalChipReversal}`}>
+                          Correcao
                         </span>
                       ) : null}
                     </div>
@@ -2836,6 +2916,8 @@ export function StockTransfersPageView() {
                 <div><strong>Usuario:</strong> {detailItem.updatedByName}</div>
                 <div><strong>Projeto:</strong> {detailItem.projectCode}</div>
                 <div><strong>Compra direta:</strong> {detailItem.directPurchase ? "Sim" : "Nao"}</div>
+                <div><strong>Finalidade:</strong> {operationPurposeLabel(detailItem.operationPurpose)}</div>
+                <div><strong>Motivo da correcao:</strong> {detailItem.balanceCorrectionReason ?? "-"}</div>
                 <div><strong>Estornada:</strong> {detailItem.isReversed ? "Sim" : "Nao"}</div>
                 <div><strong>Tipo:</strong> {detailItem.entryType ?? "-"}</div>
                 <div><strong>Operacao:</strong> {movementTypeLabel(detailItem.movementType)}</div>

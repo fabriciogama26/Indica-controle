@@ -44,10 +44,12 @@ type HistoricalTransferItemRow = {
 type StockTransferHeaderRow = {
   id: string;
   movement_type: "ENTRY" | "EXIT" | "TRANSFER";
+  operation_purpose?: "NORMAL" | "BALANCE_CORRECTION" | null;
   from_stock_center_id: string;
   to_stock_center_id: string;
   project_id: string;
   entry_date: string;
+  balance_correction_reason?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -148,6 +150,14 @@ function parseNonNegativeDecimal(value: string | null) {
   return parsed;
 }
 
+function normalizeOperationPurpose(value: unknown) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "NORMAL" || normalized === "BALANCE_CORRECTION") {
+    return normalized as "NORMAL" | "BALANCE_CORRECTION";
+  }
+  return "NORMAL" as const;
+}
+
 function unwrapRelation<T>(value: T | T[] | null) {
   if (Array.isArray(value)) {
     return value[0] ?? null;
@@ -216,7 +226,7 @@ async function loadStockHistory(request: NextRequest) {
   const { data: transferHeaders, error: transfersError } = await supabase
     .from("stock_transfers")
     .select(
-      "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, notes, created_at, updated_at, created_by, updated_by",
+      "id, movement_type, operation_purpose, from_stock_center_id, to_stock_center_id, project_id, entry_date, balance_correction_reason, notes, created_at, updated_at, created_by, updated_by",
     )
     .eq("tenant_id", appUser.tenant_id)
     .or(`from_stock_center_id.eq.${stockCenterId},to_stock_center_id.eq.${stockCenterId}`)
@@ -409,9 +419,11 @@ async function loadStockHistory(request: NextRequest) {
         id: item.id,
         transferId: transfer.id,
         movementType: transfer.movement_type,
+        operationPurpose: normalizeOperationPurpose(transfer.operation_purpose),
         signedQuantity,
         quantity: Number(item.quantity ?? 0),
         entryDate: transfer.entry_date,
+        balanceCorrectionReason: transfer.balance_correction_reason ?? null,
         changedAt: transfer.updated_at ?? transfer.created_at,
         operationKind,
         teamName: team?.teamName ?? null,

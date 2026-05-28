@@ -11,12 +11,14 @@ export type SaveStockTransferPayload = {
   tenantId: string;
   actorUserId: string;
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  operationPurpose?: "NORMAL" | "BALANCE_CORRECTION";
   fromStockCenterId: string;
   toStockCenterId: string;
   projectId: string | null;
   directPurchase?: boolean;
   entryDate: string;
   entryType: "SUCATA" | "NOVO";
+  balanceCorrectionReason?: string | null;
   notes?: string | null;
   items: StockTransferItemInput[];
 };
@@ -155,6 +157,8 @@ export async function saveStockTransferViaRpc(
     p_notes: payload.notes ?? null,
     p_items: payload.items,
     p_direct_purchase: payload.directPurchase ?? false,
+    p_operation_purpose: payload.operationPurpose ?? "NORMAL",
+    p_balance_correction_reason: payload.balanceCorrectionReason ?? null,
   });
 
   if (error) {
@@ -177,6 +181,10 @@ export async function saveStockTransferViaRpc(
       ? formatInsufficientStockMessage(result.details) || "Saldo insuficiente no centro de estoque de origem."
       : mappedSerialTrackedReasonMessage
         ? mappedSerialTrackedReasonMessage
+      : normalizedReason === "BALANCE_CORRECTION_REASON_REQUIRED"
+        ? "Motivo da correcao de saldo e obrigatorio."
+        : normalizedReason === "INVALID_OPERATION_PURPOSE"
+          ? "Finalidade da operacao invalida."
       : normalizedReason === "TRANSFORMER_UNIT_NOT_IN_FROM_CENTER"
         ? "O TRAFO informado nao esta disponivel no centro de origem com o Serial e LP informados."
         : normalizedReason === "TRANSFORMER_UNIT_ALREADY_IN_OWN_STOCK"

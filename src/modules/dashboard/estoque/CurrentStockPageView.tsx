@@ -42,6 +42,9 @@ function movementTypeLabel(value: string | null | undefined) {
 }
 
 function currentStockHistoryTitle(entry: CurrentStockHistoryEntry) {
+  if (entry.operationPurpose === "BALANCE_CORRECTION") {
+    return "Correcao de saldo";
+  }
   if (entry.isReversal) {
     return "Estorno";
   }
@@ -49,9 +52,16 @@ function currentStockHistoryTitle(entry: CurrentStockHistoryEntry) {
 }
 
 function currentStockStatusLabel(entry: CurrentStockHistoryEntry) {
+  if (entry.operationPurpose === "BALANCE_CORRECTION" && !entry.isReversal && !entry.isReversed) {
+    return "Correcao de saldo ativa";
+  }
   if (entry.isReversal) return "Movimentacao de estorno";
   if (entry.isReversed) return "Movimentacao original estornada";
   return "Movimentacao ativa";
+}
+
+function operationPurposeLabel(value: string | null | undefined) {
+  return value === "BALANCE_CORRECTION" ? "Correcao de saldo" : "Movimentacao normal";
 }
 
 const PREFERRED_SUMMARY_UNITS = ["M", "UN", "KG"] as const;
@@ -815,6 +825,10 @@ export function CurrentStockPageView() {
                       </span>
                     </div>
                     <div><strong>Operacao:</strong> {movementTypeLabel(entry.operationKind ?? entry.movementType)}</div>
+                    <div><strong>Finalidade:</strong> {operationPurposeLabel(entry.operationPurpose)}</div>
+                    {entry.operationPurpose === "BALANCE_CORRECTION" ? (
+                      <div><strong>Motivo da correcao:</strong> {entry.balanceCorrectionReason || "-"}</div>
+                    ) : null}
                     {entry.teamName ? <div><strong>Equipe:</strong> {entry.teamName}</div> : null}
                     {entry.foremanName ? <div><strong>Encarregado:</strong> {entry.foremanName}</div> : null}
                     <div><strong>Projeto:</strong> {entry.projectCode}</div>

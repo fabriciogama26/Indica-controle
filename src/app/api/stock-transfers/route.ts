@@ -30,12 +30,14 @@ type MaterialRow = {
 type StockTransferHeaderRow = {
   id: string;
   movement_type: "ENTRY" | "EXIT" | "TRANSFER";
+  operation_purpose?: "NORMAL" | "BALANCE_CORRECTION" | null;
   from_stock_center_id: string;
   to_stock_center_id: string;
   project_id: string | null;
   direct_purchase?: boolean | null;
   entry_date: string;
   entry_type: "SUCATA" | "NOVO";
+  balance_correction_reason?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -95,12 +97,14 @@ type AppUserRow = {
 type TransferPayload = {
   transferId?: unknown;
   movementType?: unknown;
+  operationPurpose?: unknown;
   fromStockCenterId?: unknown;
   toStockCenterId?: unknown;
   projectId?: unknown;
   directPurchase?: unknown;
   entryDate?: unknown;
   entryType?: unknown;
+  balanceCorrectionReason?: unknown;
   notes?: unknown;
   materialId?: unknown;
   quantity?: unknown;
@@ -120,6 +124,7 @@ type TransferListItem = {
   updatedAt: string;
   updatedByName: string;
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
+  operationPurpose: "NORMAL" | "BALANCE_CORRECTION";
   materialId: string;
   materialCode: string;
   description: string;
@@ -137,6 +142,7 @@ type TransferListItem = {
   projectId: string | null;
   projectCode: string;
   directPurchase: boolean;
+  balanceCorrectionReason: string | null;
   notes: string | null;
   isReversed: boolean;
   reversalTransferId: string | null;
@@ -170,6 +176,14 @@ function normalizeReversalStatus(value: string | null) {
     return normalized as "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
   }
   return "TODOS" as const;
+}
+
+function normalizeOperationPurpose(value: unknown) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "NORMAL" || normalized === "BALANCE_CORRECTION") {
+    return normalized as "NORMAL" | "BALANCE_CORRECTION";
+  }
+  return "NORMAL" as const;
 }
 
 function toIsoDate(value: Date) {
@@ -364,6 +378,7 @@ async function loadTransferList(request: NextRequest) {
   const startDate = normalizeDateInput(request.nextUrl.searchParams.get("startDate"));
   const endDate = normalizeDateInput(request.nextUrl.searchParams.get("endDate"));
   const movementType = normalizeMovementType(request.nextUrl.searchParams.get("movementType"));
+  const operationPurposeFilter = normalizeText(request.nextUrl.searchParams.get("operationPurpose")).toUpperCase();
   const entryType = normalizeEntryType(request.nextUrl.searchParams.get("entryType"));
   const projectCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("projectCode"));
   const materialCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("materialCode"));
@@ -372,7 +387,7 @@ async function loadTransferList(request: NextRequest) {
   let transfersQuery = supabase
     .from("stock_transfers")
     .select(
-      "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, direct_purchase, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by",
+      "id, movement_type, operation_purpose, from_stock_center_id, to_stock_center_id, project_id, direct_purchase, entry_date, entry_type, balance_correction_reason, notes, created_at, updated_at, created_by, updated_by",
     )
     .eq("tenant_id", appUser.tenant_id)
     .order("updated_at", { ascending: false })
@@ -386,6 +401,9 @@ async function loadTransferList(request: NextRequest) {
   }
   if (movementType) {
     transfersQuery = transfersQuery.eq("movement_type", movementType);
+  }
+  if (operationPurposeFilter === "NORMAL" || operationPurposeFilter === "BALANCE_CORRECTION") {
+    transfersQuery = transfersQuery.eq("operation_purpose", operationPurposeFilter);
   }
   if (entryType) {
     transfersQuery = transfersQuery.eq("entry_type", entryType);
@@ -625,6 +643,7 @@ async function loadTransferList(request: NextRequest) {
         updatedAt: transfer.updated_at ?? transfer.created_at,
         updatedByName: userMap.get(transfer.updated_by ?? transfer.created_by ?? "") ?? "Nao informado",
         movementType: transfer.movement_type,
+        operationPurpose: normalizeOperationPurpose(transfer.operation_purpose),
         materialId: item.material_id,
         materialCode: material?.codigo ?? "-",
         description: material?.descricao ?? "-",
@@ -642,6 +661,7 @@ async function loadTransferList(request: NextRequest) {
         projectId: transfer.project_id,
         projectCode,
         directPurchase,
+        balanceCorrectionReason: transfer.balance_correction_reason ?? null,
         notes: transfer.notes,
         isReversed: Boolean(reversalFromOriginal || itemReversalFromOriginal),
         reversalTransferId: reversalFromOriginal?.reversalTransferId ?? itemReversalFromOriginal?.reversalTransferId ?? null,
@@ -744,13 +764,21 @@ async function loadTransferEditHistory(request: NextRequest) {
   if (startDate) reversalByReversalQuery = reversalByReversalQuery.gte("created_at", `${startDate}T00:00:00`);
   if (endDate) reversalByReversalQuery = reversalByReversalQuery.lte("created_at", `${endDate}T23:59:59.999`);
 
-  const [stockHistoryResult, reversalByOriginalResult, reversalByReversalResult] = await Promise.all([
+  let balanceCorrectionQuery = baseHistoryQuery().contains("changes", {
+    _context: "STOCK_TRANSFER_BALANCE_CORRECTION",
+    stockTransferId: transferId,
+  });
+  if (startDate) balanceCorrectionQuery = balanceCorrectionQuery.gte("created_at", `${startDate}T00:00:00`);
+  if (endDate) balanceCorrectionQuery = balanceCorrectionQuery.lte("created_at", `${endDate}T23:59:59.999`);
+
+  const [stockHistoryResult, reversalByOriginalResult, reversalByReversalResult, balanceCorrectionResult] = await Promise.all([
     stockHistoryQuery.returns<MaterialHistoryRow[]>(),
     reversalByOriginalQuery.returns<MaterialHistoryRow[]>(),
     reversalByReversalQuery.returns<MaterialHistoryRow[]>(),
+    balanceCorrectionQuery.returns<MaterialHistoryRow[]>(),
   ]);
 
-  if (stockHistoryResult.error || reversalByOriginalResult.error || reversalByReversalResult.error) {
+  if (stockHistoryResult.error || reversalByOriginalResult.error || reversalByReversalResult.error || balanceCorrectionResult.error) {
     return NextResponse.json({ message: "Falha ao carregar historico da movimentacao de estoque." }, { status: 500 });
   }
 
@@ -759,6 +787,7 @@ async function loadTransferEditHistory(request: NextRequest) {
     ...(stockHistoryResult.data ?? []),
     ...(reversalByOriginalResult.data ?? []),
     ...(reversalByReversalResult.data ?? []),
+    ...(balanceCorrectionResult.data ?? []),
   ].forEach((row) => {
     historyById.set(row.id, row);
   });
@@ -885,12 +914,14 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json().catch(() => ({}))) as TransferPayload;
 
     const movementType = normalizeMovementType(payload.movementType);
+    const operationPurpose = normalizeOperationPurpose(payload.operationPurpose);
     const fromStockCenterId = normalizeText(payload.fromStockCenterId);
     const toStockCenterId = normalizeText(payload.toStockCenterId);
     const directPurchase = payload.directPurchase === true;
     const projectId = directPurchase && movementType === "ENTRY" ? null : normalizeText(payload.projectId);
     const entryDate = normalizeDateInput(payload.entryDate);
     const entryType = normalizeEntryType(payload.entryType);
+    const balanceCorrectionReason = normalizeText(payload.balanceCorrectionReason) || null;
     const notes = normalizeText(payload.notes) || null;
     const items = buildTransferItems(payload);
     const today = toIsoDate(new Date());
@@ -898,6 +929,13 @@ export async function POST(request: NextRequest) {
     if (directPurchase && movementType !== "ENTRY") {
       return NextResponse.json(
         { message: "Compra direta e permitida somente para operacao Entrada." },
+        { status: 400 },
+      );
+    }
+
+    if (operationPurpose === "BALANCE_CORRECTION" && !balanceCorrectionReason) {
+      return NextResponse.json(
+        { message: "Motivo da correcao de saldo e obrigatorio." },
         { status: 400 },
       );
     }
@@ -963,12 +1001,14 @@ export async function POST(request: NextRequest) {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
       movementType,
+      operationPurpose,
       fromStockCenterId,
       toStockCenterId,
       projectId,
       directPurchase,
       entryDate,
       entryType,
+      balanceCorrectionReason,
       notes,
       items,
     });
