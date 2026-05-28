@@ -762,3 +762,5 @@
 - [x] Normalizar filtro de Estado Trabalho da Lista de Ordens de Medicao para encontrar Parcial planejado beneficio atingido mesmo quando o catalogo usa a grafia BENFICIO.
 
 - [x] Alinhar fallback de Estado Trabalho entre Lista de Ordens de Medicao e Dashboard Medicao para ordens antigas sem snapshot.
+
+- [x] Ajustar o botao principal da Programacao Simples para permanecer clicavel mesmo com campos obrigatorios pendentes, exibindo alerta e destaque visual dos campos faltantes no clique.

@@ -36,6 +36,7 @@ import {
   DOCUMENT_KEYS,
   HISTORY_PAGE_SIZE,
   PAGE_SIZE,
+  VALIDATION_FIELD_LABELS,
 } from "./constants";
 import {
   buildDeadlineCsvContent,
@@ -1445,6 +1446,27 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     }
 
     const electricalEqNumber = form.electricalField.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+    const missingRequiredFields = [
+      !form.projectId ? "projectId" : null,
+      !form.teamIds.length ? "teamIds" : null,
+      !form.date ? "date" : null,
+      !form.period ? "period" : null,
+      !form.startTime ? "startTime" : null,
+      !form.endTime ? "endTime" : null,
+      !form.sgdTypeId ? "sgdTypeId" : null,
+      !electricalEqNumber ? "electricalField" : null,
+      !form.electricalEqCatalogId ? "electricalEqCatalogId" : null,
+      !isEditing && !form.etapaUnica && !form.etapaFinal && !form.etapaNumber.trim() ? "etapaNumber" : null,
+    ].filter((field): field is string => Boolean(field));
+
+    if (missingRequiredFields.length) {
+      const labels = missingRequiredFields.map((field) => VALIDATION_FIELD_LABELS[field] ?? field);
+      const message = labels.length === 1
+        ? `Preencha o campo obrigatorio: ${labels[0]}.`
+        : `Preencha os campos obrigatorios: ${labels.join(", ")}.`;
+      flagInvalidFields(missingRequiredFields, message);
+      return;
+    }
 
     if (!form.projectId) {
       flagInvalidFields(["projectId"], "Selecione um Projeto (SOB) valido da lista.");
