@@ -95,6 +95,7 @@ Ordem de aplicacao
 197. 197_enforce_people_unique_matriculation.sql
 198. 198_add_people_cpf_optional.sql
 199. 199_people_cpf_unique_phone_and_conditional_type.sql
+205. 205_swap_active_team_foremen.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -429,6 +430,9 @@ Resumo por arquivo
 
 204_preserve_measurement_work_completion_snapshot.sql
 - Permite que Ordens de Medicao preservem no snapshot qualquer `Estado Trabalho` normalizado da Programacao, atualizando a constraint e a RPC de salvamento para nao limitar o valor a `CONCLUIDO`/`PARCIAL`.
+
+205_swap_active_team_foremen.sql
+- Cria a RPC `swap_active_team_foremen` para permutar encarregados entre duas equipes ativas do mesmo tenant, validando concorrencia das duas equipes, motivo obrigatorio, unicidade operacional e registrando historico em `app_entity_history`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

@@ -104,9 +104,11 @@ type UpdateTeamPayload = CreateTeamPayload & {
 type UpdateTeamStatusPayload = {
   id: string;
   reason: string;
-  action?: "cancel" | "activate";
+  action?: "cancel" | "activate" | "swapForeman";
   foremanId?: string;
+  targetTeamId?: string;
   expectedUpdatedAt?: string | null;
+  targetExpectedUpdatedAt?: string | null;
 };
 
 type TeamSaveRpcResult = {
@@ -116,6 +118,17 @@ type TeamSaveRpcResult = {
   message?: string;
   team_id?: string;
   updated_at?: string;
+};
+
+type TeamForemanSwapRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  source_team_id?: string;
+  target_team_id?: string;
+  source_updated_at?: string;
+  target_updated_at?: string;
 };
 
 type DbErrorShape = {
@@ -941,6 +954,71 @@ async function setTeamStatusViaRpc(params: {
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
+async function swapTeamForemenViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  sourceTeamId: string;
+  targetTeamId: string;
+  reason: string;
+  sourceExpectedUpdatedAt: string | null;
+  targetExpectedUpdatedAt: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("swap_active_team_foremen", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_source_team_id: params.sourceTeamId,
+    p_target_team_id: params.targetTeamId,
+    p_reason: params.reason,
+    p_source_expected_updated_at: params.sourceExpectedUpdatedAt,
+    p_target_expected_updated_at: params.targetExpectedUpdatedAt,
+  });
+
+  if (error) {
+    if (isMissingFunctionError(error, "swap_active_team_foremen")) {
+      return {
+        ok: false,
+        status: 500,
+        message: "RPC swap_active_team_foremen indisponivel no banco. Aplique a migration 205_swap_active_team_foremen.sql.",
+        reason: "RPC_MISSING",
+      } as const;
+    }
+
+    const mappedError = mapTeamDbError(error, "Falha ao permutar encarregados.");
+    return {
+      ok: false,
+      status: mappedError.status,
+      message: mappedError.message,
+      reason: mappedError.reason,
+    } as const;
+  }
+
+  const result = (data ?? {}) as TeamForemanSwapRpcResult;
+  if (result.success !== true) {
+    if (isMissingFunctionError({ message: result.message }, "swap_active_team_foremen")) {
+      return {
+        ok: false,
+        status: 500,
+        message: "RPC swap_active_team_foremen indisponivel no banco. Aplique a migration 205_swap_active_team_foremen.sql.",
+        reason: "RPC_MISSING",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: Number(result.status ?? 500),
+      message: result.message ?? "Falha ao permutar encarregados.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    sourceUpdatedAt: result.source_updated_at ?? null,
+    targetUpdatedAt: result.target_updated_at ?? null,
+  } as const;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -1485,13 +1563,77 @@ export async function PATCH(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as Partial<UpdateTeamStatusPayload>;
     const teamId = normalizeText(body.id);
+    const targetTeamId = normalizeText(body.targetTeamId);
     const reason = normalizeText(body.reason);
     const nextForemanId = normalizeText(body.foremanId);
-    const action = normalizeText(body.action).toLowerCase() === "activate" ? "ACTIVATE" : "CANCEL";
+    const requestedAction = normalizeText(body.action).toLowerCase();
+    const action = requestedAction === "activate" ? "ACTIVATE" : "CANCEL";
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
+    const targetExpectedUpdatedAt = normalizeExpectedUpdatedAt(body.targetExpectedUpdatedAt);
 
     if (!teamId) {
       return NextResponse.json({ message: "Equipe invalida para atualizar status." }, { status: 400 });
+    }
+
+    if (requestedAction === "swapforeman") {
+      if (!targetTeamId || targetTeamId === teamId) {
+        return NextResponse.json({ message: "Selecione outra equipe ativa para permutar o encarregado." }, { status: 400 });
+      }
+
+      if (!expectedUpdatedAt || !targetExpectedUpdatedAt) {
+        return NextResponse.json({ message: "Atualize a lista antes de permutar encarregados." }, { status: 400 });
+      }
+
+      if (!reason) {
+        return NextResponse.json({ message: "Informe o motivo da permuta de encarregado." }, { status: 400 });
+      }
+
+      const sourceTeam = await fetchTeamById(supabase, appUser.tenant_id, teamId);
+      const targetTeam = await fetchTeamById(supabase, appUser.tenant_id, targetTeamId);
+
+      if (!sourceTeam || !targetTeam) {
+        return NextResponse.json({ message: "Equipe de origem ou destino nao encontrada." }, { status: 404 });
+      }
+
+      if (!sourceTeam.ativo || !targetTeam.ativo) {
+        return buildConcurrencyConflictResponse("A permuta exige duas equipes ativas.", "RECORD_INACTIVE");
+      }
+
+      if (hasUpdatedAtConflict(expectedUpdatedAt, sourceTeam.updated_at)) {
+        return buildConcurrencyConflictResponse(
+          `A equipe ${sourceTeam.name} foi alterada por outro usuario. Recarregue os dados antes de permutar.`,
+        );
+      }
+
+      if (hasUpdatedAtConflict(targetExpectedUpdatedAt, targetTeam.updated_at)) {
+        return buildConcurrencyConflictResponse(
+          `A equipe ${targetTeam.name} foi alterada por outro usuario. Recarregue os dados antes de permutar.`,
+        );
+      }
+
+      if (sourceTeam.foreman_person_id === targetTeam.foreman_person_id) {
+        return NextResponse.json({ message: "As equipes selecionadas ja possuem o mesmo encarregado." }, { status: 409 });
+      }
+
+      const swapResult = await swapTeamForemenViaRpc({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        sourceTeamId: teamId,
+        targetTeamId,
+        reason,
+        sourceExpectedUpdatedAt: expectedUpdatedAt,
+        targetExpectedUpdatedAt,
+      });
+
+      if (!swapResult.ok) {
+        return NextResponse.json({ message: swapResult.message, code: swapResult.reason ?? undefined }, { status: swapResult.status });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Encarregados permutados entre as equipes ${sourceTeam.name} e ${targetTeam.name}.`,
+      });
     }
 
     if (!expectedUpdatedAt) {

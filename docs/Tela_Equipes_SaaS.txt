@@ -33,6 +33,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
 - Base SQL: `supabase/migrations/175_add_team_supervisor_link.sql`
 - Base SQL: `supabase/migrations/188_create_team_type_history_for_measurement_goals.sql`
+- Base SQL: `supabase/migrations/205_swap_active_team_foremen.sql`
 
 Cadastro
 --------
@@ -58,10 +59,13 @@ Cadastro
   - No fluxo atual, esse centro proprio e criado automaticamente junto com a equipe e mantido exclusivo por equipe.
   - A edicao e a troca de status exigem `expectedUpdatedAt` para bloquear escrita concorrente.
   - A troca de encarregado alimenta `team_foreman_history`, mantendo vigencia historica usada pela Medicao para resolver o encarregado pela `Data execucao`.
+  - A permuta de encarregado entre duas equipes ativas exige duas equipes do mesmo tenant, motivo obrigatorio e `expectedUpdatedAt` das duas equipes.
+  - A permuta troca os encarregados em uma RPC transacional para nao abrir janela com duplicidade operacional.
   - A troca de tipo alimenta `team_type_history`, mantendo vigencia historica usada pelo Dashboard Medicao para calcular meta por tipo efetivo da equipe dentro do ciclo.
 - Fluxos de acao:
   - `Cadastrar`
   - `Editar`
+  - `Permutar encarregado`
   - `Cancelar/Ativar` com motivo obrigatorio
   - Quando a ativacao encontrar conflito de encarregado (`DUPLICATE_TEAM_FOREMAN`), o modal passa a abrir a opcao de selecionar um novo encarregado e concluir a ativacao no mesmo fluxo.
 
@@ -82,6 +86,7 @@ Filtros, auto-complete e listagem
 - Acoes por linha:
   - `Detalhes`
   - `Editar`
+  - `Permutar encarregado`
   - `Historico`
   - `Cancelar/Ativar`
 - Historico:
@@ -161,14 +166,22 @@ Atualizacao 2026-05
   - A trigger `trg_sync_team_type_history` sincroniza novas inclusoes e alteracoes de `teams.team_type_id`.
   - O Dashboard Medicao passa a usar esse historico para calcular meta por `equipe + tipo + periodo`, evitando aplicar meta cheia do tipo atual quando a equipe mudou de tipo no ciclo.
   - Impacto multi-tenant: `team_type_history` possui RLS por `tenant_id`, FK composta com `team_types` e leitura filtrada por tenant no dashboard.
+- Atualizacao 2026-05 (permuta de encarregado):
+  - A tela `Equipes` passa a exibir a acao `Permutar encarregado` para equipes ativas.
+  - O modal lista equipes ativas do tenant e exige motivo da permuta.
+  - A API `PATCH /api/teams` aceita `action = swapForeman`, `targetTeamId`, `expectedUpdatedAt` e `targetExpectedUpdatedAt`.
+  - A migration `205_swap_active_team_foremen.sql` cria a RPC `swap_active_team_foremen` para trocar os encarregados das duas equipes no mesmo comando.
+  - A RPC grava dois eventos em `app_entity_history`, um para cada equipe, com `changes.foremanName` e metadata `FOREMAN_SWAP`.
+  - A trigger `trg_sync_team_foreman_history` atualiza `team_foreman_history` para manter a vigencia historica consumida pela Medicao.
+  - Impacto multi-tenant: a RPC recebe `p_tenant_id`, bloqueia pares fora do tenant resolvido pela API e mantem RLS/tenant scope nas consultas da rota.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/equipes/TeamsPageView.tsx`
-  - Responsavel por: formulario, filtros, listagem, detalhes, historico e cancelamento/ativacao, incluindo a base da equipe, envio de `expectedUpdatedAt` e refresh quando houver conflito.
+  - Responsavel por: formulario, filtros, listagem, detalhes, historico, permuta de encarregado e cancelamento/ativacao, incluindo a base da equipe, envio de `expectedUpdatedAt` e refresh quando houver conflito.
 - Caminho: `src/app/api/teams/route.ts`
-  - Responsavel por: validar payload, paginar listagem/historico e delegar cadastro, edicao e status para as RPCs `save_team_record` e `set_team_record_status`, incluindo supervisor opcional por tenant.
+  - Responsavel por: validar payload, paginar listagem/historico e delegar cadastro, edicao, status e permuta para as RPCs `save_team_record`, `set_team_record_status` e `swap_active_team_foremen`, incluindo supervisor opcional por tenant.
 - Caminho: `src/app/api/teams/meta/route.ts`
   - Responsavel por: retornar encarregados, supervisores, bases, tipos e centros de estoque proprios validos para selecao na tela.
 
@@ -203,6 +216,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar `teams.supervisor_person_id`, FK por tenant para `people`, indice por supervisor e nova assinatura de `save_team_record` com validacao de cargo `SUPERVISOR`.
 - Caminho: `supabase/migrations/188_create_team_type_history_for_measurement_goals.sql`
   - Responsavel por: criar `team_type_history`, fazer backfill por `app_entity_history.changes.teamTypeName`, sincronizar alteracoes de `teams.team_type_id` e disponibilizar vigencia historica para metas da Medicao.
+- Caminho: `supabase/migrations/205_swap_active_team_foremen.sql`
+  - Responsavel por: criar `swap_active_team_foremen` para permutar encarregados entre duas equipes ativas do mesmo tenant, com concorrencia, motivo obrigatorio, historico e preservacao de vigencia.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -233,6 +248,27 @@ Atualizacao 2026-05 (Supervisor por equipe)
   - `GET` de `/api/teams/meta`
   - `fetchSupervisorJobTitleIds`, `fetchSupervisorById`, `fetchSupervisors`
   - `save_team_record` com parametro `p_supervisor_person_id`
+
+Atualizacao 2026-05 (Permuta de encarregado entre equipes ativas)
+-----------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/equipes/TeamsPageView.tsx`
+  - `src/modules/dashboard/equipes/TeamsPageView.module.css`
+  - `src/app/api/teams/route.ts`
+  - `supabase/migrations/205_swap_active_team_foremen.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Equipes_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: a tela permitia trocar o encarregado por edicao, mas o bloqueio de encarregado ativo impedia permuta direta entre duas equipes ativas.
+  - Depois: o botao `Permutar encarregado` troca os encarregados de duas equipes ativas no mesmo comando transacional.
+  - Depois: a permuta exige motivo, valida concorrencia das duas equipes e registra historico nas duas equipes.
+  - Depois: `team_foreman_history` continua sincronizado pela trigger existente em `teams.foreman_person_id`.
+- Funcoes/hooks/constantes tocadas:
+  - `TeamsPageView`, `openForemanSwapModal`, `closeForemanSwapModal`, `loadSwapTeamOptions`, `confirmForemanSwap`
+  - `PATCH /api/teams` com `action = swapForeman`
+  - `swapTeamForemenViaRpc`
+  - `swap_active_team_foremen`
 
 Ajuda contextual
 - Arquivos alterados/criados:

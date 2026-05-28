@@ -296,6 +296,12 @@ export function TeamsPageView() {
   const [statusForemanId, setStatusForemanId] = useState("");
   const [statusConflictMessage, setStatusConflictMessage] = useState("");
   const [statusRequiresForemanChange, setStatusRequiresForemanChange] = useState(false);
+  const [swapTeam, setSwapTeam] = useState<TeamItem | null>(null);
+  const [swapTargetTeamId, setSwapTargetTeamId] = useState("");
+  const [swapReason, setSwapReason] = useState("");
+  const [swapTeamOptions, setSwapTeamOptions] = useState<TeamItem[]>([]);
+  const [isLoadingSwapTeams, setIsLoadingSwapTeams] = useState(false);
+  const [isSwappingForeman, setIsSwappingForeman] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -307,6 +313,12 @@ export function TeamsPageView() {
   const isActivateWithForemanChange = statusAction === "activate" && statusRequiresForemanChange;
   const canSubmitStatusChange =
     Boolean(statusReason.trim()) && !isChangingStatus && (!isActivateWithForemanChange || Boolean(statusForemanId));
+  const selectedSwapTargetTeam = useMemo(
+    () => swapTeamOptions.find((team) => team.id === swapTargetTeamId) ?? null,
+    [swapTargetTeamId, swapTeamOptions],
+  );
+  const canSubmitForemanSwap =
+    Boolean(swapTeam?.id) && Boolean(selectedSwapTargetTeam?.id) && Boolean(swapReason.trim()) && !isSwappingForeman;
   const missingTeamMetaReasons = useMemo(() => {
     if (isLoadingMeta) {
       return [] as string[];
@@ -536,6 +548,77 @@ export function TeamsPageView() {
     setIsChangingStatus(false);
   }
 
+  async function loadSwapTeamOptions(sourceTeamId: string) {
+    if (!session?.accessToken) {
+      return;
+    }
+
+    setIsLoadingSwapTeams(true);
+    try {
+      const allTeams: TeamItem[] = [];
+      let targetPage = 1;
+
+      while (true) {
+        const query = buildQuery(INITIAL_FILTERS, targetPage, EXPORT_PAGE_SIZE);
+        const response = await fetch(`/api/teams?${query}`, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        });
+
+        const data = (await response.json().catch(() => ({}))) as TeamsListResponse;
+        if (!response.ok) {
+          setFeedback({
+            type: "error",
+            message: data.message ?? "Falha ao carregar equipes para permuta.",
+          });
+          setSwapTeamOptions([]);
+          return;
+        }
+
+        const pageTeams = data.teams ?? [];
+        allTeams.push(...pageTeams);
+
+        const totalItems = data.pagination?.total ?? allTeams.length;
+        if (allTeams.length >= totalItems || pageTeams.length === 0) {
+          break;
+        }
+
+        targetPage += 1;
+      }
+
+      setSwapTeamOptions(allTeams.filter((team) => team.isActive && team.id !== sourceTeamId));
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: "Falha ao carregar equipes para permuta.",
+      });
+      setSwapTeamOptions([]);
+      await logError("Falha ao carregar equipes para permuta.", error, { sourceTeamId });
+    } finally {
+      setIsLoadingSwapTeams(false);
+    }
+  }
+
+  function openForemanSwapModal(team: TeamItem) {
+    setSwapTeam(team);
+    setSwapTargetTeamId("");
+    setSwapReason("");
+    setSwapTeamOptions([]);
+    setFeedback(null);
+    void loadSwapTeamOptions(team.id);
+  }
+
+  function closeForemanSwapModal() {
+    setSwapTeam(null);
+    setSwapTargetTeamId("");
+    setSwapReason("");
+    setSwapTeamOptions([]);
+    setIsLoadingSwapTeams(false);
+    setIsSwappingForeman(false);
+  }
+
   async function openHistoryModal(team: TeamItem) {
     setHistoryTeam(team);
     setHistoryEntries([]);
@@ -693,6 +776,79 @@ export function TeamsPageView() {
       await logError("Falha ao atualizar status da equipe.", error, { teamId: statusTeam.id, statusAction });
     } finally {
       setIsChangingStatus(false);
+    }
+  }
+
+  async function confirmForemanSwap() {
+    if (!session?.accessToken || !swapTeam || !selectedSwapTargetTeam || !swapReason.trim()) {
+      return;
+    }
+
+    setIsSwappingForeman(true);
+
+    try {
+      const response = await fetch("/api/teams", {
+        method: "PATCH",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          id: swapTeam.id,
+          targetTeamId: selectedSwapTargetTeam.id,
+          reason: swapReason.trim(),
+          action: "swapForeman",
+          expectedUpdatedAt: swapTeam.updatedAt,
+          targetExpectedUpdatedAt: selectedSwapTargetTeam.updatedAt,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
+
+      if (!response.ok || !data.success) {
+        if (
+          data.code === "CONCURRENT_MODIFICATION"
+          || data.code === "RECORD_INACTIVE"
+          || data.code === "DUPLICATE_TEAM_FOREMAN"
+          || data.code === "DUPLICATE_TEAM_COMBINATION"
+        ) {
+          if (form.id === swapTeam.id || form.id === selectedSwapTargetTeam.id) {
+            resetForm();
+          }
+          closeForemanSwapModal();
+          await loadTeams(page, activeFilters);
+        }
+
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao permutar encarregados.",
+        });
+        return;
+      }
+
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Encarregados permutados com sucesso.",
+      });
+
+      if (form.id === swapTeam.id || form.id === selectedSwapTargetTeam.id) {
+        resetForm();
+      }
+
+      closeForemanSwapModal();
+      await loadTeams(page, activeFilters);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: "Falha ao permutar encarregados.",
+      });
+      await logError("Falha ao permutar encarregados.", error, {
+        sourceTeamId: swapTeam.id,
+        targetTeamId: selectedSwapTargetTeam.id,
+      });
+    } finally {
+      setIsSwappingForeman(false);
     }
   }
 
@@ -1097,6 +1253,25 @@ export function TeamsPageView() {
 
                         <button
                           type="button"
+                          className={`${styles.actionButton} ${styles.actionSwap}`}
+                          onClick={() => openForemanSwapModal(team)}
+                          title="Permutar encarregado"
+                          aria-label="Permutar encarregado da equipe"
+                          disabled={!team.isActive}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path
+                              d="M7 7h10m0 0-3-3m3 3-3 3M17 17H7m0 0 3 3m-3-3 3-3"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
                           className={`${styles.actionButton} ${styles.actionHistory}`}
                           onClick={() => void openHistoryModal(team)}
                           title="Historico"
@@ -1145,7 +1320,7 @@ export function TeamsPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className={styles.emptyRow}>
+                  <td colSpan={9} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando equipes..." : "Nenhuma equipe encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1331,6 +1506,91 @@ export function TeamsPageView() {
                   </div>
                 </div>
               ) : null}
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {swapTeam ? (
+        <div className={styles.modalOverlay} onClick={closeForemanSwapModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className={styles.modalHeader}>
+              <div className={styles.modalTitleBlock}>
+                <h4>Permutar encarregado</h4>
+                <p className={styles.modalSubtitle}>Equipe {swapTeam.name}</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeForemanSwapModal}>
+                Fechar
+              </button>
+            </header>
+
+            <div className={styles.modalBody}>
+              <div className={styles.detailGrid}>
+                <div>
+                  <strong>Equipe origem:</strong> {swapTeam.name}
+                </div>
+                <div>
+                  <strong>Encarregado atual:</strong> {swapTeam.foremanName}
+                </div>
+                {selectedSwapTargetTeam ? (
+                  <>
+                    <div>
+                      <strong>Equipe destino:</strong> {selectedSwapTargetTeam.name}
+                    </div>
+                    <div>
+                      <strong>Encarregado destino:</strong> {selectedSwapTargetTeam.foremanName}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              <label className={styles.field}>
+                <span>
+                  Equipe para permuta <span className="requiredMark">*</span>
+                </span>
+                <select
+                  value={swapTargetTeamId}
+                  onChange={(event) => setSwapTargetTeamId(event.target.value)}
+                  disabled={isLoadingSwapTeams || isSwappingForeman}
+                  required
+                >
+                  <option value="" disabled>
+                    {isLoadingSwapTeams ? "Carregando..." : "Selecione a equipe ativa"}
+                  </option>
+                  {swapTeamOptions.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name} - {team.foremanName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Motivo da permuta <span className="requiredMark">*</span>
+                </span>
+                <textarea
+                  value={swapReason}
+                  onChange={(event) => setSwapReason(event.target.value)}
+                  placeholder="Descreva o motivo da permuta"
+                  rows={4}
+                  required
+                />
+              </label>
+
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void confirmForemanSwap()}
+                  disabled={!canSubmitForemanSwap}
+                >
+                  {isSwappingForeman ? "Permutando..." : "Confirmar permuta"}
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={closeForemanSwapModal} disabled={isSwappingForeman}>
+                  Fechar
+                </button>
+              </div>
             </div>
           </article>
         </div>
