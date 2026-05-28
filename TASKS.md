@@ -764,3 +764,5 @@
 - [x] Alinhar fallback de Estado Trabalho entre Lista de Ordens de Medicao e Dashboard Medicao para ordens antigas sem snapshot.
 
 - [x] Ajustar o botao principal da Programacao Simples para permanecer clicavel mesmo com campos obrigatorios pendentes, exibindo alerta e destaque visual dos campos faltantes no clique.
+
+- [x] Corrigir `km` e `Qtd Postes` da `Extracao ENEL NOVO` para usar o primeiro valor preenchido do grupo consolidado em `REDE (quantidade)` e `POSTE (quantidade)`, preservando casas decimais de REDE sem arredondar para 2 casas.
