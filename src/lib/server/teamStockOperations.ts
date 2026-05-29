@@ -129,6 +129,35 @@ function mapSerialTrackedDatabaseError(message: unknown) {
   return "";
 }
 
+function mapTeamOperationRpcErrorMessage(message: unknown) {
+  const serialTrackedMessage = mapSerialTrackedDatabaseError(message);
+  if (serialTrackedMessage) {
+    return serialTrackedMessage;
+  }
+
+  const normalized = String(message ?? "").trim().toLowerCase();
+  if (
+    normalized.includes("save_stock_transfer_record")
+    && (
+      normalized.includes("could not choose")
+      || normalized.includes("not unique")
+      || normalized.includes("ambiguous")
+      || normalized.includes("p_operation_purpose")
+    )
+  ) {
+    return "Falha tecnica na regra de estoque da Operacao de Equipe. Aplique a migration 208 para atualizar a assinatura da RPC e tente novamente.";
+  }
+
+  if (
+    normalized.includes("save_team_stock_operation_record")
+    && (normalized.includes("schema cache") || normalized.includes("could not find"))
+  ) {
+    return "Falha tecnica na RPC de Operacoes de Equipe. Recarregue o schema cache do Supabase e tente novamente.";
+  }
+
+  return "";
+}
+
 export async function saveTeamStockOperationViaRpc(
   supabase: SupabaseClient,
   payload: SaveTeamStockOperationPayload,
@@ -147,7 +176,7 @@ export async function saveTeamStockOperationViaRpc(
   });
 
   if (error) {
-    const mappedDatabaseError = mapSerialTrackedDatabaseError(error.message);
+    const mappedDatabaseError = mapTeamOperationRpcErrorMessage(error.message);
     return {
       ok: false,
       status: 500,

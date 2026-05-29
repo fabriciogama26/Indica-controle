@@ -440,6 +440,9 @@ Resumo por arquivo
 
 207_create_reversals_page_permissions.sql
 - Cadastra a pagina `estornos` em `app_pages`, cria permissoes por role e faz backfill em `app_user_page_permissions` para liberar a consulta read-only de estornos na matriz multi-tenant.
+
+208_fix_team_stock_operation_purpose_rpc_call.sql
+- Republica `save_team_stock_operation_record` para chamar explicitamente a assinatura atual de `save_stock_transfer_record` com `p_direct_purchase => false`, `p_operation_purpose => 'NORMAL'` e `p_balance_correction_reason => null`, evitando erro tecnico/generico em requisicoes de equipe apos a migration 206.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
