@@ -9,6 +9,7 @@ Visao geral
 - Exibe uma segunda tabela de categorias cobradas no Faturamento, somando quantidade e valor por categoria da atividade.
 - Exibe grafico operacional com `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`.
 - Exibe tabela abaixo do grafico com valor, quantidade de projetos e quantidade de medicoes para cada indicador.
+- Exibe, abaixo de `Resumo por categoria`, uma tabela de projetos com valores consolidados de `Medicao`, `Asbuilt` e `Faturamento`.
 - A tela nao possui filtro de data nem filtro de equipe.
 
 Arquitetura
@@ -83,6 +84,7 @@ Filtros, auto-complete e listagem
 - O usuario precisa clicar em `Filtrar` para atualizar a tabela e os resumos.
 - O grafico operacional possui filtro proprio de Centro de servico e Projeto, com botao `Filtrar grafico`.
 - O filtro do grafico nao atualiza as tabelas.
+- O card `Filtros` do comparativo por projeto fica abaixo do `Grafico operacional`.
 - `Medido (AS BUILT)` soma o valor da Medicao apenas dos projetos que possuem registro em Medicao Asbuilt dentro do filtro proprio do grafico.
 - `As Built` soma o valor da Medicao Asbuilt.
 - `Faturado` soma o valor do Faturamento.
@@ -95,6 +97,29 @@ Filtros, auto-complete e listagem
 - Os cards de leitura tambem exibem percentual de conversao entre as etapas comparaveis.
 - Barra com valor zerado usa destaque neutro para indicar ausencia de valor sem parecer falha de renderizacao.
 - A tabela do grafico exibe `Projetos` como quantidade de projetos distintos e `Medicoes` como quantidade de ordens consideradas em cada indicador.
+- A tabela `Projetos por valor` fica abaixo de `Resumo por categoria` e exibe:
+  - Projeto
+  - Centro de servico
+  - Valor de Medicao
+  - Valor de Asbuilt
+  - Valor de Faturamento
+  - Diferenca Asbuilt x Medicao
+  - Diferenca Faturamento x Asbuilt
+- A tabela `Projetos por valor` possui filtro local por checkbox:
+  - `Asbuilt menor que Medicao`
+  - `Faturamento menor que Asbuilt`
+- A tabela `Projetos por valor` possui filtros locais por:
+  - Centro de servico
+  - Projeto
+  - Estado de trabalho
+- Os checkboxes de divergencia de `Projetos por valor` nao consideram comparacoes com valor zerado:
+  - `Asbuilt menor que Medicao` exige Asbuilt maior que zero, Medicao maior que zero e Asbuilt menor que Medicao.
+  - `Faturamento menor que Asbuilt` exige Faturamento maior que zero, Asbuilt maior que zero e Faturamento menor que Asbuilt.
+- A tabela `Projetos por valor` considera todos os projetos ativos do tenant, exceto projetos de teste e retirados da carteira.
+- O filtro `Estado de trabalho` usa o ultimo estado conhecido em `project_programming.work_completion_status` para cada projeto, com label do catalogo `programming_work_completion_catalog`.
+- A tabela `Projetos por valor` exibe no maximo 20 projetos por pagina.
+- A tela carrega `Projetos por valor` ao abrir e permite atualizar a consulta pelo botao `Atualizar`.
+- A tabela `Projetos por valor` possui exportacao CSV propria, respeitando os filtros locais aplicados na secao.
 
 Boas praticas
 -------------
@@ -123,6 +148,10 @@ Atalhos
   - `activityStatus`
   - `onlyDivergences`
   - `onlyMissing`
+  - `includeProjectValues`
+  - `includeChart`
+  - `chartProjectId`
+  - `chartServiceCenterId`
 
 Atualizacao 2026-05
 -------------------
@@ -156,14 +185,20 @@ Atualizacao 2026-05
   - As colunas monetarias das exportacoes CSV passam a sair formatadas como moeda.
   - Os nomes dos arquivos CSV passam a incluir o numero do Projeto (SOB).
   - O grafico operacional passa a exibir icone de ajuda por barra, rotulo `Medido com AS Built`, cards de diferenca real entre as etapas e percentuais de conversao.
+  - O card `Filtros` do comparativo por projeto passa a ficar abaixo de `Grafico operacional`.
+  - A tela passa a exibir `Projetos por valor` abaixo de `Resumo por categoria`, com valores consolidados de Medicao, Asbuilt e Faturamento por projeto.
+  - A tabela `Projetos por valor` passa a ter filtros locais para listar projetos com Asbuilt menor que Medicao e projetos com Faturamento menor que Asbuilt.
+  - A tabela `Projetos por valor` passa a ter filtro local por Centro de servico, filtro local por Projeto e exportacao CSV propria.
+  - Os filtros `Asbuilt menor que Medicao` e `Faturamento menor que Asbuilt` passam a ignorar comparacoes com valores zerados.
+  - A tabela `Projetos por valor` passa a ter filtro por Estado de trabalho e paginacao de 20 registros.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal e no bloco de categorias.
+  - Responsavel por: renderizar grafico operacional antes dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, filtrar projetos por Centro de servico, Projeto, Estado de trabalho e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -177,11 +212,11 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `sumItemsByOrderIds`, `addItem`, `finalizeRows`.
+  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `loadWorkCompletionCatalog`, `loadLatestWorkCompletionByProject`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `buildProjectValueRows`, `sumItemsByOrderIds`, `sumItemValuesByProject`, `addItem`, `finalizeRows`.
   - Comportamento ajustado: `buildChartItems` passa a devolver, alem do valor financeiro, quantidade de projetos distintos e quantidade de ordens consideradas por indicador do grafico.
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `loadMetadata`, `loadDashboard`, `loadChart`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`.
+  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadMetadata`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `filteredProjectValueRows`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
@@ -214,3 +249,7 @@ Ajuda contextual
   - Ajuste posterior: categorias deixam de depender apenas de Faturamento e passam a seguir o mesmo resultado exibido em `Codigos por origem`, com colunas dinamicas por categoria, linhas por origem, sem coluna `Total qtd.` e com exportacao CSV propria.
   - Ajuste posterior: o `Grafico operacional` passa a exibir tabela complementar com valor, quantidade de projetos e quantidade de medicoes por indicador.
   - Ajuste posterior: o `Grafico operacional` passa a exibir ajuda contextual por barra, `Medido com AS Built` como rotulo de leitura, cards de diferenca real entre etapas e percentuais de conversao.
+  - Ajuste posterior: o card `Filtros` passa a ficar abaixo do `Grafico operacional`.
+  - Ajuste posterior: a tela passa a exibir tabela `Projetos por valor` abaixo de `Resumo por categoria`, com filtros locais para Asbuilt menor que Medicao e Faturamento menor que Asbuilt.
+  - Ajuste posterior: `Projetos por valor` passa a permitir filtro por Centro de servico, filtro por Projeto e exportacao CSV do resultado filtrado.
+  - Ajuste posterior: `Projetos por valor` passa a ignorar valores zerados nos filtros de menor que, filtrar por Estado de trabalho e exibir 20 registros por pagina.

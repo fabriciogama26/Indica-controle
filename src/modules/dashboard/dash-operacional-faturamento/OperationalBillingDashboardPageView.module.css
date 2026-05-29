@@ -63,6 +63,14 @@
   margin-bottom: 16px;
 }
 
+.projectValueFilterGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(160px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -390,7 +398,8 @@
 }
 
 .table,
-.categoryTable {
+.categoryTable,
+.projectValueTable {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
@@ -404,8 +413,13 @@
   min-width: 980px;
 }
 
+.projectValueTable {
+  min-width: 1080px;
+}
+
 .table th,
-.categoryTable th {
+.categoryTable th,
+.projectValueTable th {
   border-bottom: 1px solid #d9e1ef;
   background: #eef2f8;
   color: #002b7f;
@@ -416,7 +430,8 @@
 }
 
 .table td,
-.categoryTable td {
+.categoryTable td,
+.projectValueTable td {
   border-bottom: 1px solid #e2e8f3;
   color: #001f5b;
   padding: 10px;
@@ -424,8 +439,39 @@
 }
 
 .table tbody tr:nth-child(even),
-.categoryTable tbody tr:nth-child(even) {
+.categoryTable tbody tr:nth-child(even),
+.projectValueTable tbody tr:nth-child(even) {
   background: #f8fbff;
+}
+
+.projectValueTable td:nth-child(n + 4) {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.projectValueTable td.negativeValue {
+  color: #991b1b;
+}
+
+.projectValueTable td.neutralValue {
+  color: #14532d;
+}
+
+.paginationBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: #42557d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.paginationActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .categoryCell {
@@ -509,6 +555,10 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .projectValueFilterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .barChart {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -517,13 +567,19 @@
 @media (max-width: 760px) {
   .cardHeader,
   .actions,
-  .tableActions {
+  .tableActions,
+  .paginationBar {
     flex-direction: column;
     align-items: stretch;
   }
 
+  .paginationActions {
+    justify-content: space-between;
+  }
+
   .filterGrid,
   .chartFilterGrid,
+  .projectValueFilterGrid,
   .summaryGrid,
   .valueCardGrid,
   .chartInsightGrid {

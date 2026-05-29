@@ -645,6 +645,10 @@
 - [x] Incluir `projeto` e `centro_servico` nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Formatar como moeda (`R$`) as colunas de valor nas exportacoes CSV de `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
 - [x] Incluir o numero do Projeto (SOB) no nome dos arquivos CSV exportados em `Codigos por origem` e `Resumo por categoria` do `Dash operacional e faturamento`.
+- [x] Mover o card `Filtros` do comparativo do `Dash operacional e faturamento` para ficar abaixo do `Grafico operacional`.
+- [x] Adicionar abaixo de `Resumo por categoria` a tabela `Projetos por valor`, com valores consolidados de `Medicao`, `Asbuilt` e `Faturamento`, e filtros por `Asbuilt menor que Medicao` e `Faturamento menor que Asbuilt`.
+- [x] Adicionar filtros por Centro de servico e Projeto e botao de exportacao CSV na tabela `Projetos por valor` do `Dash operacional e faturamento`.
+- [x] Ajustar `Projetos por valor` para ignorar valores zerados nos filtros de menor que, adicionar filtro por Estado de trabalho e paginar a lista em 20 projetos por pagina.
 
 - [x] Proteger Salvar operacao em Operacoes de Equipe e Movimentacao de Estoque contra duplo clique, travando submit antes das validacoes assincronas e exibindo estado visual de salvamento.
 

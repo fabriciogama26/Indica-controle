@@ -28,6 +28,19 @@ type TypeServiceRow = {
   name: string | null;
 };
 
+type WorkCompletionCatalogRow = {
+  code: string;
+  label_pt: string | null;
+  sort_order: number | null;
+};
+
+type ProgrammingWorkCompletionRow = {
+  project_id: string;
+  work_completion_status: string | null;
+  execution_date: string | null;
+  updated_at: string | null;
+};
+
 type OrderIdRow = {
   id: string;
 };
@@ -117,6 +130,20 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type ProjectValueRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenterId: string | null;
+  serviceCenter: string;
+  workCompletionStatus: string;
+  workCompletionStatusLabel: string;
+  measurementValue: number;
+  asbuiltValue: number;
+  billingValue: number;
+  asbuiltMeasurementDiff: number;
+  billingAsbuiltDiff: number;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -139,6 +166,14 @@ function normalizeActivityStatusFilter(value: unknown): ActivityStatusFilter {
 
 function normalizeCode(value: unknown) {
   return normalizeText(value).toUpperCase();
+}
+
+function normalizeStatusCatalogCode(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, "_");
 }
 
 function numberValue(value: unknown) {
@@ -432,6 +467,73 @@ async function loadActivityCategoryMap(params: {
   return { activityToCategory, categoryNameById };
 }
 
+async function loadWorkCompletionCatalog(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
+  const { data, error } = await supabase
+    .from("programming_work_completion_catalog")
+    .select("code, label_pt, sort_order")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("label_pt", { ascending: true })
+    .returns<WorkCompletionCatalogRow[]>();
+
+  if (error) {
+    throw new Error("Falha ao carregar estados de trabalho.");
+  }
+
+  return (data ?? []).map((item) => {
+    const code = normalizeStatusCatalogCode(item.code);
+    return {
+      id: code,
+      label: normalizeText(item.label_pt) || code,
+    };
+  }).filter((item) => item.id);
+}
+
+async function loadLatestWorkCompletionByProject(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projectIds: string[];
+  statusLabels: Map<string, string>;
+}) {
+  const latestByProject = new Map<string, ProgrammingWorkCompletionRow>();
+
+  for (const projectIdChunk of chunk(Array.from(new Set(params.projectIds.filter(Boolean))), 500)) {
+    const { data, error } = await params.supabase
+      .from("project_programming")
+      .select("project_id, work_completion_status, execution_date, updated_at")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", projectIdChunk)
+      .not("work_completion_status", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(50000)
+      .returns<ProgrammingWorkCompletionRow[]>();
+
+    if (error) {
+      throw new Error("Falha ao carregar estado de trabalho dos projetos.");
+    }
+
+    for (const row of data ?? []) {
+      const projectId = normalizeText(row.project_id);
+      if (!projectId || latestByProject.has(projectId)) continue;
+      latestByProject.set(projectId, row);
+    }
+  }
+
+  return new Map(
+    Array.from(latestByProject.entries()).map(([projectId, row]) => {
+      const status = normalizeStatusCatalogCode(row.work_completion_status);
+      return [
+        projectId,
+        {
+          status: status || "NAO_INFORMADO",
+          label: status ? params.statusLabels.get(status) ?? status : "Nao informado",
+        },
+      ];
+    }),
+  );
+}
+
 function buildBillingCategoryRows(params: {
   rows: DashboardRow[];
   billingItems: CommercialItemRow[];
@@ -577,6 +679,132 @@ async function sumItemsByOrderIds(params: {
   }
 
   return total;
+}
+
+async function sumItemValuesByProject(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  table: "project_measurement_order_items" | "project_asbuilt_measurement_order_items" | "project_billing_order_items";
+  orderColumn: "measurement_order_id" | "asbuilt_measurement_order_id" | "billing_order_id";
+  orders: OrderProjectRow[];
+}) {
+  const totals = new Map<string, number>();
+  const orderProjectById = new Map(params.orders.map((order) => [order.id, order.project_id]));
+  const orderIds = Array.from(orderProjectById.keys());
+
+  for (const orderIdChunk of chunk(orderIds, 500)) {
+    const { data, error } = await params.supabase
+      .from(params.table)
+      .select(`${params.orderColumn}, total_value`)
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .in(params.orderColumn, orderIdChunk)
+      .returns<Array<Record<string, number | string | null>>>();
+
+    if (error) {
+      throw new Error("Falha ao somar valores por projeto.");
+    }
+
+    for (const item of data ?? []) {
+      const orderId = normalizeText(item[params.orderColumn]);
+      const projectId = orderProjectById.get(orderId);
+      if (!projectId) continue;
+
+      totals.set(projectId, (totals.get(projectId) ?? 0) + numberValue(item.total_value));
+    }
+  }
+
+  return totals;
+}
+
+async function buildProjectValueRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projects: Array<{ id: string; label: string; serviceCenterId: string | null; serviceCenter: string }>;
+}) {
+  const projectIds = params.projects.map((project) => project.id);
+  if (!projectIds.length) return [] satisfies ProjectValueRow[];
+
+  const workCompletionStatuses = await loadWorkCompletionCatalog(params.supabase, params.tenantId);
+  const workCompletionStatusLabels = new Map(workCompletionStatuses.map((status) => [status.id, status.label]));
+
+  const [measurementOrders, asbuiltOrders, billingOrders] = await Promise.all([
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_orders",
+      projectIds,
+    }),
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_asbuilt_measurement_orders",
+      projectIds,
+    }),
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_billing_orders",
+      projectIds,
+    }),
+  ]);
+
+  const [measurementTotals, asbuiltTotals, billingTotals] = await Promise.all([
+    sumItemValuesByProject({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_order_items",
+      orderColumn: "measurement_order_id",
+      orders: measurementOrders,
+    }),
+    sumItemValuesByProject({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_asbuilt_measurement_order_items",
+      orderColumn: "asbuilt_measurement_order_id",
+      orders: asbuiltOrders,
+    }),
+    sumItemValuesByProject({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_billing_order_items",
+      orderColumn: "billing_order_id",
+      orders: billingOrders,
+    }),
+  ]);
+
+  const workCompletionByProject = await loadLatestWorkCompletionByProject({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds,
+    statusLabels: workCompletionStatusLabels,
+  });
+
+  return params.projects
+    .map((project) => {
+      const measurementValue = measurementTotals.get(project.id) ?? 0;
+      const asbuiltValue = asbuiltTotals.get(project.id) ?? 0;
+      const billingValue = billingTotals.get(project.id) ?? 0;
+      const workCompletion = workCompletionByProject.get(project.id) ?? {
+        status: "NAO_INFORMADO",
+        label: "Nao informado",
+      };
+
+      return {
+        projectId: project.id,
+        projectCode: project.label,
+        serviceCenterId: project.serviceCenterId,
+        serviceCenter: project.serviceCenter,
+        workCompletionStatus: workCompletion.status,
+        workCompletionStatusLabel: workCompletion.label,
+        measurementValue,
+        asbuiltValue,
+        billingValue,
+        asbuiltMeasurementDiff: asbuiltValue - measurementValue,
+        billingAsbuiltDiff: billingValue - asbuiltValue,
+      };
+    })
+    .sort((left, right) => left.projectCode.localeCompare(right.projectCode, "pt-BR"));
 }
 
 async function buildChartItems(params: {
@@ -790,6 +1018,7 @@ export async function GET(request: NextRequest) {
   const onlyDivergences = normalizeBoolean(request.nextUrl.searchParams.get("onlyDivergences"));
   const onlyMissing = normalizeBoolean(request.nextUrl.searchParams.get("onlyMissing"));
   const includeChart = normalizeBoolean(request.nextUrl.searchParams.get("includeChart"));
+  const includeProjectValues = normalizeBoolean(request.nextUrl.searchParams.get("includeProjectValues"));
   const chartProjectId = normalizeUuid(request.nextUrl.searchParams.get("chartProjectId"));
   const chartServiceCenterId = normalizeUuid(request.nextUrl.searchParams.get("chartServiceCenterId"));
 
@@ -804,22 +1033,34 @@ export async function GET(request: NextRequest) {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     if (!projectId) {
-      const chartItems = includeChart
-        ? await buildChartItems({
-            supabase: resolution.supabase,
-            tenantId,
-            projects,
-            serviceCenterId: chartServiceCenterId,
-            projectId: chartProjectId,
-          })
-        : [];
+      const [chartItems, projectValueRows] = await Promise.all([
+        includeChart
+          ? buildChartItems({
+              supabase: resolution.supabase,
+              tenantId,
+              projects,
+              serviceCenterId: chartServiceCenterId,
+              projectId: chartProjectId,
+            })
+          : Promise.resolve([]),
+        includeProjectValues
+          ? buildProjectValueRows({
+              supabase: resolution.supabase,
+              tenantId,
+              projects,
+            })
+          : Promise.resolve([]),
+      ]);
 
       return NextResponse.json({
         filters: { projects, serviceCenters },
         selectedProject: null,
         rows: [],
         billingCategories: [],
+        categoryColumns: [],
+        categorySummaryRows: [],
         chartItems,
+        projectValueRows,
         summary: null,
       });
     }
