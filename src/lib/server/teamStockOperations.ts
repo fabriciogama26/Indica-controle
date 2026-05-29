@@ -145,7 +145,7 @@ function mapTeamOperationRpcErrorMessage(message: unknown) {
       || normalized.includes("p_operation_purpose")
     )
   ) {
-    return "Falha tecnica na regra de estoque da Operacao de Equipe. Aplique a migration 208 para atualizar a assinatura da RPC e tente novamente.";
+    return "Falha tecnica na regra de estoque da Operacao de Equipe. Aplique as migrations 208 e 209 para atualizar as assinaturas das RPCs de estoque e tente novamente.";
   }
 
   if (
