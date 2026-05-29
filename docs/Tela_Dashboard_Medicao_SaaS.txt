@@ -107,7 +107,7 @@ Boas praticas
 - Usar somente medicoes `COM_PRODUCAO`, ativas e nao canceladas para indicadores de valor.
 - Excluir obras de teste das consolidacoes.
 - Usar a Meta cadastrada como fonte oficial para comparacao de ciclo.
-- Consolidar `Status execucao` pelo snapshot gravado na ordem de Medicao (`programming_completion_status_snapshot`); usar o ultimo estado conhecido da Programacao do projeto apenas como fallback para medicoes antigas sem snapshot.
+- Consolidar `Status execucao` dos graficos `Concluidos X parciais` pelo ultimo `Estado Trabalho` conhecido do projeto ate o fim do recorte analisado; se o projeto nao tiver estado na Programacao, usar o snapshot gravado na ordem de Medicao como fallback.
 
 Cancelamento e saldo
 --------------------
@@ -266,13 +266,33 @@ Atualizacao 2026-05
   - Impacto multi-tenant:
     - Sem alteracao de escopo; a leitura continua filtrada por `tenant_id` e exclui obras de teste.
 
+- Atualizacao 2026-05-29 (Status execucao por projeto no recorte):
+  - Arquivos alterados:
+    - `src/app/api/dashboard-medicao/route.ts`
+    - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+    - `TASKS.md`
+  - Funcoes/constantes tocadas:
+    - `resolveProjectCompletionAtWindowEnd`
+    - `resolveWindowEndDate`
+    - `buildOrderCompletionMapForWindow`
+    - `addCompletionTotals`
+  - Antes:
+    - O Dashboard Medicao priorizava o snapshot salvo na propria ordem de Medicao para classificar os graficos `Concluidos X parciais`.
+    - Uma medicao antiga do projeto podia permanecer como `PARCIAL` no grafico mesmo quando o projeto ja estava `CONCLUIDO` no fim do periodo analisado.
+  - Depois:
+    - Os graficos `Concluidos X parciais no ciclo` e `Concluidos X parciais por periodo` usam o ultimo `Estado Trabalho` do projeto ate o fim do respectivo recorte.
+    - Se o projeto estiver `CONCLUIDO` ate o fim do ciclo/periodo, todas as medicoes desse projeto dentro do recorte entram como `Concluidos`, somando o valor total medido da obra naquele recorte.
+    - O snapshot da Medicao permanece apenas como fallback quando nao existe `Estado Trabalho` na Programacao para o projeto.
+  - Impacto multi-tenant:
+    - Sem alteracao de schema/RLS; a consulta continua filtrada por `tenant_id` e pelos projetos visiveis no recorte do dashboard.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local do grafico Concluidos x Parciais por periodo com botao `Filtrar periodo`, checkboxes de metas dos encarregados, filtro local de semana dos blocos `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, card de Ticket medio, contagem de projetos nas tabelas, modal de projetos por status/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, priorizando o snapshot de `Estado Trabalho` salvo na Medicao e usando o ultimo estado conhecido da Programacao do projeto como fallback, calcular projetos distintos e ticket medio, montar projetos por status/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar valores por encarregado/supervisor no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
+  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos e ticket medio, montar projetos por status/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar valores por encarregado/supervisor no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
 - Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
   - Responsavel por: cadastrar `dashboard-medicao` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -286,7 +306,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectMetaMap`, `fetchProjectCompletionMap`, `resolveTeamTypeForDate`, `listBusinessDayIsoDates`, `calculateTeamMetaForWindow`, `calculateWorkedTeamMeta`, `addProjectProduction`, `buildProjectProductionRows`, montagem de `supervisorsProduction`, contagem de projetos distintos e ticket medio.
+  - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectMetaMap`, `fetchProjectCompletionTimeline`, `resolveProjectCompletionAtWindowEnd`, `resolveWindowEndDate`, `buildOrderCompletionMapForWindow`, `resolveTeamTypeForDate`, `listBusinessDayIsoDates`, `calculateTeamMetaForWindow`, `calculateWorkedTeamMeta`, `addProjectProduction`, `buildProjectProductionRows`, montagem de `supervisorsProduction`, contagem de projetos distintos e ticket medio.
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: `formatCurrency`, `formatPercent`, `maxValue`, `csvEscape`, `filenameToken`, `getCurrentYearPeriod`, `resolveCycleMetaValue`, `resolveCycleDays`, `resolveCycleForecastValue`, `resolveForemanMetaValue`, `resolveForemanDays`, `loadDashboard`, `applyDashboardFilters`, `applyPeriodFilter`, `openForemanProjectDetails`, `openSupervisorProjectDetails`, `exportProjectDetailsCsv`, `toggleForemanMetaMode`, `renderPanelHeader`, `renderCompletionTable`, `renderCompletionChart`, `renderCycleChart`, `renderForemanRanking`, `renderForemanBulletChart`, `renderForemanGapChart`, `renderSupervisorRanking`, `renderSupervisorBulletChart`, `renderSupervisorGapChart`, `renderSupervisorProductionChart`, `renderForemanVisualizations`, cards de Ticket medio/Projetos no ciclo.
 
