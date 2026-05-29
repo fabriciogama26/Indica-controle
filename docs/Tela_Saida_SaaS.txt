@@ -238,6 +238,7 @@ Atualizacao 2026-05
 - Atualizacao 2026-05: `save_team_stock_operation_record` passa a chamar a assinatura completa atual de `save_stock_transfer_record`, informando tambem `p_operation_purpose => 'NORMAL'` e `p_balance_correction_reason => null`.
 - Antes: apos a migration `206`, requisicoes de equipe podiam cair em erro tecnico de assinatura/overload da RPC base e a API exibia apenas mensagem generica de falha ao salvar.
 - Depois: a migration `208_fix_team_stock_operation_purpose_rpc_call.sql` desambigua a chamada para a RPC de estoque, preserva `operation_purpose = NORMAL` nas operacoes de equipe e o helper server mapeia conflito de assinatura para mensagem operacional clara.
+- Ajuste complementar: a migration `209_fix_stock_transfer_operation_purpose_overload.sql` remove a ambiguidade interna da propria wrapper de `save_stock_transfer_record` criada na migration `206`, isolando a assinatura direta com compra direta em `save_stock_transfer_record_direct_purchase_v209`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -262,6 +263,8 @@ Funcoes principais
   - Responsavel por: republicar `save_team_stock_operation_record` para o `Retorno de campo` respeitar o tipo cadastrado do material.
 - Caminho: `supabase/migrations/208_fix_team_stock_operation_purpose_rpc_call.sql`
   - Responsavel por: republicar `save_team_stock_operation_record` para chamar `save_stock_transfer_record` com `p_operation_purpose => 'NORMAL'`, evitando conflito de assinatura apos a migration `206`.
+- Caminho: `supabase/migrations/209_fix_stock_transfer_operation_purpose_overload.sql`
+  - Responsavel por: republicar as wrappers de `save_stock_transfer_record` sem chamada interna ambigua entre a assinatura de 11 parametros e a assinatura de 13 parametros.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/saida/constants.ts`
@@ -319,6 +322,7 @@ Ajuda contextual
   - `supabase/migrations/143_create_team_stock_operation_batch_full.sql`
   - `supabase/migrations/196_fix_team_stock_operation_direct_purchase_rpc_call.sql`
   - `supabase/migrations/208_fix_team_stock_operation_purpose_rpc_call.sql`
+  - `supabase/migrations/209_fix_stock_transfer_operation_purpose_overload.sql`
   - `docs/Tela_Saida_SaaS.txt`
   - `supabase/migrations/README.txt`
   - `TASKS.md`
@@ -358,5 +362,5 @@ Ajuda contextual
 - Depois: a RPC de equipe informa `p_direct_purchase => false` e preserva a regra de saldo da movimentacao de equipe.
 - Antes: falhas de saldo no save final podiam chegar como erro generico, sem apontar os materiais afetados.
 - Depois: a UI e o helper server mostram materiais zerados/insuficientes com saldo atual, solicitado e falta.
-- Antes: apos a inclusao de `operation_purpose`, a requisicao de equipe podia falhar por chamada ambigua da RPC base `save_stock_transfer_record` e retornar apenas erro generico.
-- Depois: a migration `208` chama a assinatura completa da RPC de estoque como operacao `NORMAL`, e o helper server mostra mensagem tecnica acionavel se o banco ainda estiver sem a migration/schema atualizado.
+- Antes: apos a inclusao de `operation_purpose`, a requisicao de equipe podia falhar por chamada ambigua da RPC base `save_stock_transfer_record` ou por chamada interna ambigua da wrapper de estoque.
+- Depois: as migrations `208` e `209` chamam a assinatura completa da RPC de estoque como operacao `NORMAL`, removem a ambiguidade interna do overload e o helper server mostra mensagem tecnica acionavel se o banco ainda estiver sem as migrations/schema atualizado.

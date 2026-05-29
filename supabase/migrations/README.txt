@@ -443,6 +443,9 @@ Resumo por arquivo
 
 208_fix_team_stock_operation_purpose_rpc_call.sql
 - Republica `save_team_stock_operation_record` para chamar explicitamente a assinatura atual de `save_stock_transfer_record` com `p_direct_purchase => false`, `p_operation_purpose => 'NORMAL'` e `p_balance_correction_reason => null`, evitando erro tecnico/generico em requisicoes de equipe apos a migration 206.
+
+209_fix_stock_transfer_operation_purpose_overload.sql
+- Renomeia a assinatura direta de `save_stock_transfer_record(..., p_direct_purchase)` para um helper interno sem overload e republica as wrappers publicas de 11 e 13 parametros, removendo a ambiguidade interna criada pelos defaults de `operation_purpose`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

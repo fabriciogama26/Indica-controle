@@ -778,3 +778,5 @@
 - [x] Corrigir Operacoes de Equipe para chamar a assinatura completa atual de save_stock_transfer_record com p_operation_purpose NORMAL, evitando erro generico em Requisicao apos a migration 206, e mapear conflito tecnico de RPC para mensagem operacional clara.
 
 - [x] Ajustar a Lista de Ordens de Medicao para consolidar qualquer Estado Trabalho por projeto no periodo filtrado: o ultimo status ate a Data fim vale para todas as ordens do projeto no recorte e no detalhe da ordem, mantendo snapshot da Medicao apenas como fallback sem Programacao.
+
+- [x] Complementar correcao de Operacoes de Equipe com migration 209 para remover ambiguidade interna da wrapper save_stock_transfer_record apos operation_purpose, mantendo Requisicao como operacao NORMAL.
