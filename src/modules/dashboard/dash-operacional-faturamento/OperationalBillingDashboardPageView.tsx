@@ -73,6 +73,20 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type ProjectValueRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenterId: string | null;
+  serviceCenter: string;
+  workCompletionStatus: string;
+  workCompletionStatusLabel: string;
+  measurementValue: number;
+  asbuiltValue: number;
+  billingValue: number;
+  asbuiltMeasurementDiff: number;
+  billingAsbuiltDiff: number;
+};
+
 type Summary = {
   totalRows: number;
   divergentRows: number;
@@ -95,6 +109,7 @@ type DashboardResponse = {
   categoryColumns?: CategoryColumn[];
   categorySummaryRows?: CategorySummaryRow[];
   chartItems?: ChartItem[];
+  projectValueRows?: ProjectValueRow[];
   summary?: Summary | null;
 };
 
@@ -168,6 +183,8 @@ const chartHelpByKey: Record<string, string> = {
   billing: "Soma dos valores registrados no Faturamento dos projetos filtrados.",
 };
 
+const PROJECT_VALUE_PAGE_SIZE = 20;
+
 export function OperationalBillingDashboardPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("dash-operacional-faturamento");
@@ -177,6 +194,7 @@ export function OperationalBillingDashboardPageView() {
   const [categoryColumns, setCategoryColumns] = useState<CategoryColumn[]>([]);
   const [categorySummaryRows, setCategorySummaryRows] = useState<CategorySummaryRow[]>([]);
   const [chartItems, setChartItems] = useState<ChartItem[]>([]);
+  const [projectValueRows, setProjectValueRows] = useState<ProjectValueRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -184,12 +202,19 @@ export function OperationalBillingDashboardPageView() {
   const [chartProjectId, setChartProjectId] = useState("");
   const [chartProjectSearch, setChartProjectSearch] = useState("");
   const [chartServiceCenterId, setChartServiceCenterId] = useState("");
+  const [projectValueProjectSearch, setProjectValueProjectSearch] = useState("");
+  const [projectValueServiceCenterId, setProjectValueServiceCenterId] = useState("");
+  const [projectValueWorkCompletionStatus, setProjectValueWorkCompletionStatus] = useState("");
+  const [projectValuePage, setProjectValuePage] = useState(1);
   const [activityCode, setActivityCode] = useState("");
   const [activityStatus, setActivityStatus] = useState("TODAS");
   const [onlyDivergences, setOnlyDivergences] = useState(false);
   const [onlyMissing, setOnlyMissing] = useState(false);
+  const [onlyAsbuiltBelowMeasurement, setOnlyAsbuiltBelowMeasurement] = useState(false);
+  const [onlyBillingBelowAsbuilt, setOnlyBillingBelowAsbuilt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isChartLoading, setIsChartLoading] = useState(false);
+  const [isProjectValuesLoading, setIsProjectValuesLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const visibleProjects = useMemo(
@@ -206,6 +231,21 @@ export function OperationalBillingDashboardPageView() {
     () => projects.filter((project) => !chartServiceCenterId || project.serviceCenterId === chartServiceCenterId),
     [chartServiceCenterId, projects],
   );
+
+  const projectValueProjectOptions = useMemo(
+    () => projects.filter((project) => !projectValueServiceCenterId || project.serviceCenterId === projectValueServiceCenterId),
+    [projectValueServiceCenterId, projects],
+  );
+
+  const projectValueWorkCompletionOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const row of projectValueRows) {
+      options.set(row.workCompletionStatus || "NAO_INFORMADO", row.workCompletionStatusLabel || "Nao informado");
+    }
+    return Array.from(options.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+  }, [projectValueRows]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -249,6 +289,30 @@ export function OperationalBillingDashboardPageView() {
     ];
   }, [chartItems]);
 
+  const filteredProjectValueRows = useMemo(
+    () => {
+      const projectSearchValue = projectValueProjectSearch.trim().toLowerCase();
+
+      return projectValueRows
+        .filter((row) => !projectValueServiceCenterId || row.serviceCenterId === projectValueServiceCenterId)
+        .filter((row) => !projectValueWorkCompletionStatus || row.workCompletionStatus === projectValueWorkCompletionStatus)
+        .filter((row) => !projectSearchValue || row.projectCode.toLowerCase().includes(projectSearchValue))
+        .filter((row) => !onlyAsbuiltBelowMeasurement || (row.asbuiltValue > 0 && row.measurementValue > 0 && row.asbuiltValue < row.measurementValue))
+        .filter((row) => !onlyBillingBelowAsbuilt || (row.billingValue > 0 && row.asbuiltValue > 0 && row.billingValue < row.asbuiltValue));
+    },
+    [onlyAsbuiltBelowMeasurement, onlyBillingBelowAsbuilt, projectValueProjectSearch, projectValueRows, projectValueServiceCenterId, projectValueWorkCompletionStatus],
+  );
+
+  const projectValueTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredProjectValueRows.length / PROJECT_VALUE_PAGE_SIZE)),
+    [filteredProjectValueRows.length],
+  );
+
+  const paginatedProjectValueRows = useMemo(
+    () => filteredProjectValueRows.slice((projectValuePage - 1) * PROJECT_VALUE_PAGE_SIZE, projectValuePage * PROJECT_VALUE_PAGE_SIZE),
+    [filteredProjectValueRows, projectValuePage],
+  );
+
   const loadMetadata = useCallback(async () => {
     if (!session?.accessToken) return;
 
@@ -277,6 +341,35 @@ export function OperationalBillingDashboardPageView() {
       await logError("Falha ao carregar filtros do Dash operacional e faturamento", error);
     } finally {
       setIsLoading(false);
+    }
+  }, [logError, session?.accessToken]);
+
+  const loadProjectValues = useCallback(async () => {
+    if (!session?.accessToken) return;
+
+    const params = new URLSearchParams();
+    params.set("includeProjectValues", "true");
+
+    setIsProjectValuesLoading(true);
+    try {
+      const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as DashboardResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Falha ao carregar valores por projeto.");
+      }
+
+      setProjects(payload.filters?.projects ?? []);
+      setServiceCenters(payload.filters?.serviceCenters ?? []);
+      setProjectValueRows(payload.projectValueRows ?? []);
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar valores por projeto." });
+      await logError("Falha ao carregar valores por projeto", error);
+    } finally {
+      setIsProjectValuesLoading(false);
     }
   }, [logError, session?.accessToken]);
 
@@ -378,6 +471,24 @@ export function OperationalBillingDashboardPageView() {
   useEffect(() => {
     void loadMetadata();
   }, [loadMetadata]);
+
+  useEffect(() => {
+    void loadProjectValues();
+  }, [loadProjectValues]);
+
+  useEffect(() => {
+    setProjectValuePage(1);
+  }, [
+    onlyAsbuiltBelowMeasurement,
+    onlyBillingBelowAsbuilt,
+    projectValueProjectSearch,
+    projectValueServiceCenterId,
+    projectValueWorkCompletionStatus,
+  ]);
+
+  useEffect(() => {
+    setProjectValuePage((currentPage) => Math.min(currentPage, projectValueTotalPages));
+  }, [projectValueTotalPages]);
 
   function handleServiceCenterChange(value: string) {
     setServiceCenterId(value);
@@ -501,6 +612,36 @@ export function OperationalBillingDashboardPageView() {
     ]);
   }
 
+  function exportProjectValues() {
+    if (!filteredProjectValueRows.length) {
+      setFeedback({ type: "error", message: "Nenhum projeto para exportar." });
+      return;
+    }
+
+    downloadCsv("dash_operacional_faturamento_projetos_por_valor.csv", [
+      [
+        "projeto",
+        "centro_servico",
+        "estado_trabalho",
+        "medicao_valor",
+        "asbuilt_valor",
+        "faturamento_valor",
+        "dif_valor_asbuilt_medicao",
+        "dif_valor_faturamento_asbuilt",
+      ],
+      ...filteredProjectValueRows.map((row) => [
+        row.projectCode,
+        row.serviceCenter,
+        row.workCompletionStatusLabel,
+        formatCurrency(row.measurementValue),
+        formatCurrency(row.asbuiltValue),
+        formatCurrency(row.billingValue),
+        formatSignedCurrency(row.asbuiltMeasurementDiff),
+        formatSignedCurrency(row.billingAsbuiltDiff),
+      ]),
+    ]);
+  }
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -508,111 +649,6 @@ export function OperationalBillingDashboardPageView() {
           {feedback.message}
         </div>
       ) : null}
-
-      <article className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div>
-            <h2 className={styles.cardTitle}>Filtros</h2>
-            <p className={styles.cardSubtitle}>Comparativo por projeto entre Medicao, Medicao Asbuilt e Faturamento.</p>
-          </div>
-          <div className={styles.actions}>
-            <button type="button" className={styles.primaryButton} onClick={() => void loadDashboard()} disabled={isLoading}>
-              {isLoading ? "Filtrando..." : "Filtrar"}
-            </button>
-          </div>
-        </div>
-
-        <div className={styles.filterGrid}>
-          <label className={styles.field}>
-            <span>Centro de servico *</span>
-            <select value={serviceCenterId} onChange={(event) => handleServiceCenterChange(event.target.value)} disabled={isLoading}>
-              <option value="">Selecione</option>
-              {serviceCenters.map((serviceCenter) => (
-                <option key={serviceCenter.id} value={serviceCenter.id}>
-                  {serviceCenter.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Projeto *</span>
-            <input
-              list="operational-billing-projects"
-              value={projectSearch}
-              onChange={(event) => handleProjectSearchChange(event.target.value)}
-              placeholder="Digite o SOB do projeto"
-              disabled={isLoading}
-            />
-            <datalist id="operational-billing-projects">
-              {projectInputOptions.map((project) => (
-                <option key={project.id} value={project.label}>
-                  {project.serviceCenter}
-                </option>
-              ))}
-            </datalist>
-          </label>
-
-          <label className={styles.field}>
-            <span>Codigo de atividade</span>
-            <input
-              type="text"
-              value={activityCode}
-              onChange={(event) => setActivityCode(event.target.value)}
-              placeholder="Ex.: A001"
-              disabled={isLoading}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Atividade ativa/inativa</span>
-            <select value={activityStatus} onChange={(event) => setActivityStatus(event.target.value)} disabled={isLoading}>
-              <option value="TODAS">Todas</option>
-              <option value="ATIVA">Ativas</option>
-              <option value="INATIVA">Inativas</option>
-            </select>
-          </label>
-
-          <label className={styles.checkboxField}>
-            <input
-              type="checkbox"
-              checked={onlyDivergences}
-              onChange={(event) => setOnlyDivergences(event.target.checked)}
-              disabled={isLoading}
-            />
-            <span>Mostrar somente divergencias</span>
-          </label>
-
-          <label className={styles.checkboxField}>
-            <input
-              type="checkbox"
-              checked={onlyMissing}
-              onChange={(event) => setOnlyMissing(event.target.checked)}
-              disabled={isLoading}
-            />
-            <span>Mostrar somente codigos ausentes em alguma base</span>
-          </label>
-        </div>
-      </article>
-
-      <div className={styles.summaryGrid}>
-        <div className={styles.metric}>
-          <span>Codigos</span>
-          <strong>{summary?.totalRows ?? 0}</strong>
-        </div>
-        <div className={styles.metric}>
-          <span>Divergentes</span>
-          <strong>{summary?.divergentRows ?? 0}</strong>
-        </div>
-        <div className={styles.metric}>
-          <span>Ausentes</span>
-          <strong>{summary?.missingRows ?? 0}</strong>
-        </div>
-        <div className={styles.metric}>
-          <span>Conferidos</span>
-          <strong>{summary?.conferredRows ?? 0}</strong>
-        </div>
-      </div>
 
       <article className={styles.card}>
         <div className={styles.cardHeader}>
@@ -727,6 +763,111 @@ export function OperationalBillingDashboardPageView() {
           </div>
         ) : null}
       </article>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Filtros</h2>
+            <p className={styles.cardSubtitle}>Comparativo por projeto entre Medicao, Medicao Asbuilt e Faturamento.</p>
+          </div>
+          <div className={styles.actions}>
+            <button type="button" className={styles.primaryButton} onClick={() => void loadDashboard()} disabled={isLoading}>
+              {isLoading ? "Filtrando..." : "Filtrar"}
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.filterGrid}>
+          <label className={styles.field}>
+            <span>Centro de servico *</span>
+            <select value={serviceCenterId} onChange={(event) => handleServiceCenterChange(event.target.value)} disabled={isLoading}>
+              <option value="">Selecione</option>
+              {serviceCenters.map((serviceCenter) => (
+                <option key={serviceCenter.id} value={serviceCenter.id}>
+                  {serviceCenter.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Projeto *</span>
+            <input
+              list="operational-billing-projects"
+              value={projectSearch}
+              onChange={(event) => handleProjectSearchChange(event.target.value)}
+              placeholder="Digite o SOB do projeto"
+              disabled={isLoading}
+            />
+            <datalist id="operational-billing-projects">
+              {projectInputOptions.map((project) => (
+                <option key={project.id} value={project.label}>
+                  {project.serviceCenter}
+                </option>
+              ))}
+            </datalist>
+          </label>
+
+          <label className={styles.field}>
+            <span>Codigo de atividade</span>
+            <input
+              type="text"
+              value={activityCode}
+              onChange={(event) => setActivityCode(event.target.value)}
+              placeholder="Ex.: A001"
+              disabled={isLoading}
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Atividade ativa/inativa</span>
+            <select value={activityStatus} onChange={(event) => setActivityStatus(event.target.value)} disabled={isLoading}>
+              <option value="TODAS">Todas</option>
+              <option value="ATIVA">Ativas</option>
+              <option value="INATIVA">Inativas</option>
+            </select>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={onlyDivergences}
+              onChange={(event) => setOnlyDivergences(event.target.checked)}
+              disabled={isLoading}
+            />
+            <span>Mostrar somente divergencias</span>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={onlyMissing}
+              onChange={(event) => setOnlyMissing(event.target.checked)}
+              disabled={isLoading}
+            />
+            <span>Mostrar somente codigos ausentes em alguma base</span>
+          </label>
+        </div>
+      </article>
+
+      <div className={styles.summaryGrid}>
+        <div className={styles.metric}>
+          <span>Codigos</span>
+          <strong>{summary?.totalRows ?? 0}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Divergentes</span>
+          <strong>{summary?.divergentRows ?? 0}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Ausentes</span>
+          <strong>{summary?.missingRows ?? 0}</strong>
+        </div>
+        <div className={styles.metric}>
+          <span>Conferidos</span>
+          <strong>{summary?.conferredRows ?? 0}</strong>
+        </div>
+      </div>
 
       <article className={styles.card}>
         <div className={styles.cardHeader}>
@@ -874,6 +1015,168 @@ export function OperationalBillingDashboardPageView() {
               )}
             </tbody>
           </table>
+        </div>
+      </article>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Projetos por valor</h2>
+            <p className={styles.cardSubtitle}>Valores consolidados por projeto em Medicao, Asbuilt e Faturamento.</p>
+          </div>
+          <div className={styles.actions}>
+            <button type="button" className={styles.secondaryButton} onClick={exportProjectValues} disabled={isProjectValuesLoading}>
+              Exportar CSV
+            </button>
+            <button type="button" className={styles.secondaryButton} onClick={() => void loadProjectValues()} disabled={isProjectValuesLoading}>
+              {isProjectValuesLoading ? "Atualizando..." : "Atualizar"}
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.projectValueFilterGrid}>
+          <label className={styles.field}>
+            <span>Centro de servico</span>
+            <select
+              value={projectValueServiceCenterId}
+              onChange={(event) => {
+                setProjectValueServiceCenterId(event.target.value);
+                setProjectValueProjectSearch("");
+              }}
+              disabled={isProjectValuesLoading}
+            >
+              <option value="">Todos</option>
+              {serviceCenters.map((serviceCenter) => (
+                <option key={serviceCenter.id} value={serviceCenter.id}>
+                  {serviceCenter.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Projeto</span>
+            <input
+              list="operational-billing-project-value-projects"
+              value={projectValueProjectSearch}
+              onChange={(event) => setProjectValueProjectSearch(event.target.value)}
+              placeholder="Todos ou digite o SOB"
+              disabled={isProjectValuesLoading}
+            />
+            <datalist id="operational-billing-project-value-projects">
+              {projectValueProjectOptions.map((project) => (
+                <option key={project.id} value={project.label}>
+                  {project.serviceCenter}
+                </option>
+              ))}
+            </datalist>
+          </label>
+
+          <label className={styles.field}>
+            <span>Estado de trabalho</span>
+            <select
+              value={projectValueWorkCompletionStatus}
+              onChange={(event) => setProjectValueWorkCompletionStatus(event.target.value)}
+              disabled={isProjectValuesLoading}
+            >
+              <option value="">Todos</option>
+              {projectValueWorkCompletionOptions.map((status) => (
+                <option key={status.id} value={status.id}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={onlyAsbuiltBelowMeasurement}
+              onChange={(event) => setOnlyAsbuiltBelowMeasurement(event.target.checked)}
+              disabled={isProjectValuesLoading}
+            />
+            <span>Asbuilt menor que Medicao</span>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={onlyBillingBelowAsbuilt}
+              onChange={(event) => setOnlyBillingBelowAsbuilt(event.target.checked)}
+              disabled={isProjectValuesLoading}
+            />
+            <span>Faturamento menor que Asbuilt</span>
+          </label>
+        </div>
+
+        <div className={styles.tableWrapper}>
+          <table className={styles.projectValueTable}>
+            <thead>
+              <tr>
+                <th>Projeto</th>
+                <th>Centro de servico</th>
+                <th>Estado de trabalho</th>
+                <th>Medicao</th>
+                <th>Asbuilt</th>
+                <th>Faturamento</th>
+                <th>Dif. Asbuilt x Medicao</th>
+                <th>Dif. Faturamento x Asbuilt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedProjectValueRows.length ? (
+                paginatedProjectValueRows.map((row) => (
+                  <tr key={row.projectId}>
+                    <td><strong>{row.projectCode}</strong></td>
+                    <td>{row.serviceCenter}</td>
+                    <td>{row.workCompletionStatusLabel}</td>
+                    <td>{formatCurrency(row.measurementValue)}</td>
+                    <td>{formatCurrency(row.asbuiltValue)}</td>
+                    <td>{formatCurrency(row.billingValue)}</td>
+                    <td className={row.asbuiltMeasurementDiff < 0 ? styles.negativeValue : styles.neutralValue}>
+                      {formatSignedCurrency(row.asbuiltMeasurementDiff)}
+                    </td>
+                    <td className={row.billingAsbuiltDiff < 0 ? styles.negativeValue : styles.neutralValue}>
+                      {formatSignedCurrency(row.billingAsbuiltDiff)}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className={styles.emptyRow}>
+                    {isProjectValuesLoading ? "Carregando projetos..." : "Nenhum projeto encontrado para os filtros selecionados."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className={styles.paginationBar}>
+          <span>
+            {filteredProjectValueRows.length
+              ? `${(projectValuePage - 1) * PROJECT_VALUE_PAGE_SIZE + 1}-${Math.min(projectValuePage * PROJECT_VALUE_PAGE_SIZE, filteredProjectValueRows.length)} de ${filteredProjectValueRows.length}`
+              : "0 de 0"}
+          </span>
+          <div className={styles.paginationActions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setProjectValuePage((currentPage) => Math.max(1, currentPage - 1))}
+              disabled={isProjectValuesLoading || projectValuePage <= 1}
+            >
+              Anterior
+            </button>
+            <strong>{projectValuePage} / {projectValueTotalPages}</strong>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setProjectValuePage((currentPage) => Math.min(projectValueTotalPages, currentPage + 1))}
+              disabled={isProjectValuesLoading || projectValuePage >= projectValueTotalPages}
+            >
+              Proxima
+            </button>
+          </div>
         </div>
       </article>
     </section>
