@@ -22,6 +22,7 @@ Arquivos principais para nova task
 - docs/Tela_Dash_Operacional_Faturamento_SaaS.txt
 - docs/Tela_Dash_Estoque_SaaS.txt
 - docs/Tela_Consumo_Projeto_SaaS.txt
+- docs/Tela_Estornos_SaaS.txt
 - docs/Tela_Estoque_SaaS.txt
 - docs/Tela_Saida_SaaS.txt
 - docs/Tela_Posicao_Trafo_SaaS.txt
@@ -55,6 +56,7 @@ Estado atual resumido
 - Tela Dash operacional e faturamento criada para comparar codigos entre Medicao, Medicao Asbuilt e Faturamento por projeto
 - Tela Dashboard Estoque criada com 6 graficos iniciais de saldo, giro, ABC, evolucao e dispersao Requisicao/Devolucao
 - Tela Consumo por Projeto criada em Almoxarifado para comparar materiais previstos, requisitados, devolvidos, qtd liquida e desvio por projeto
+- Tela Estornos criada em Almoxarifado para consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe
 - Navegacao lateral reorganizada em Visao Geral, Operacao, Almoxarifado, Cadastros e Cadastro Base
 - Tela de Estoque Atual com filtros/lista paginada implementada
 - Tela de Rastreio de SERIAL implementada com consulta em `trafo_instances`

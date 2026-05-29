@@ -768,3 +768,5 @@
 - [x] Corrigir `km` e `Qtd Postes` da `Extracao ENEL NOVO` para usar o primeiro valor preenchido do grupo consolidado em `REDE (quantidade)` e `POSTE (quantidade)`, preservando casas decimais de REDE sem arredondar para 2 casas.
 
 - [x] Definir e implementar fluxo de Correcao de saldo dentro da Movimentacao de Estoque, registrando entrada/saida/transferencia de ajuste com marca propria, referencia da correcao, motivo obrigatorio e reflexo explicito no Estoque Atual.
+
+- [x] Criar tela Estornos em Almoxarifado como consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe, sem acao de estornar, com filtros, resumo, detalhes, exportacao CSV, API agregadora e permissao multi-tenant.
