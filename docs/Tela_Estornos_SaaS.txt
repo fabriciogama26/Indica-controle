@@ -1,0 +1,201 @@
+Tela: Estornos SaaS
+
+Visao geral
+-----------
+- Tela read-only para consulta centralizada de estornos ja registrados em `Movimentacao de Estoque` e `Operacoes de Equipe`.
+- Nao executa estorno, nao altera saldo e nao chama RPC de reversao.
+- Apresenta vinculo entre movimentacao original, item original, movimentacao de estorno e item de estorno quando existir.
+- Funciona como auditoria operacional do almoxarifado por tenant.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/estornos/page.tsx`
+- View: `src/modules/dashboard/estornos/ReversalsPageView.tsx`
+- Estilo: `src/modules/dashboard/estornos/ReversalsPageView.module.css`
+- API: `src/app/api/estornos/route.ts`
+- Navegacao/permissao: `src/components/layout/AppShell.tsx`
+- Catalogo de permissao frontend: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Guard de rota no shell: `src/lib/auth/authorization.ts`
+- Banco (pagina/permissao): `supabase/migrations/207_create_reversals_page_permissions.sql`
+- Tabelas lidas:
+  - `stock_transfer_item_reversals`
+  - `stock_transfer_reversals`
+  - `stock_transfers`
+  - `stock_transfer_items`
+  - `stock_transfer_team_operations`
+  - `stock_transfer_reversal_reason_catalog`
+  - `materials`
+  - `stock_centers`
+  - `project`
+  - `app_users`
+
+Cadastro
+--------
+- Nao ha cadastro nesta tela.
+- A tela nao possui botao `Estornar`, modal de confirmacao ou chamada `POST`.
+- Estornos continuam sendo executados somente nas telas operacionais:
+  - `/entrada`
+  - `/saida`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Operacao original de`
+  - `Operacao original ate`
+  - `Estorno registrado de`
+  - `Estorno registrado ate`
+  - `Origem` (`Todas`, `Movimentacao de Estoque`, `Operacoes de Equipe`)
+  - `Tipo do estorno` (`Todos`, `Por item`, `Integral legado`)
+  - `Operacao` (`Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo`)
+  - `Projeto`
+  - `Equipe`
+  - `Material`
+  - `Serial`
+  - `LP`
+  - `Motivo`
+  - `Usuario`
+- Cards de resumo:
+  - `Total de estornos`
+  - `Movimentacao de Estoque`
+  - `Operacoes de Equipe`
+  - `Por item`
+  - `Integral legado`
+- Lista:
+  - `Origem`
+  - `Tipo`
+  - `Operacao`
+  - `Projeto`
+  - `Equipe`
+  - `Material`
+  - `Descricao`
+  - `Quantidade`
+  - `Serial`
+  - `LP`
+  - `Data original`
+  - `Registrado em`
+  - `Motivo`
+  - `Usuario`
+  - `Acoes`
+- Acoes:
+  - `Detalhes`
+  - `Exportar Excel (CSV)`
+- Modal `Detalhes`:
+  - Exibe dados da operacao original.
+  - Exibe dados do estorno.
+  - Exibe IDs de transferencia e item original/estorno para rastreio tecnico.
+
+Boas praticas
+-------------
+- Manter a tela somente leitura.
+- Nao duplicar regra de estorno nesta tela.
+- Nao inserir ou atualizar `stock_transfers`, `stock_transfer_items`, `stock_center_balances`, `stock_transfer_reversals` ou `stock_transfer_item_reversals`.
+- Filtrar todas as consultas por `tenant_id`.
+- Usar `useErrorLogger("estornos")` para erros de carregamento e exportacao.
+- Usar `stock_transfer_item_reversals` como fonte principal dos estornos recentes por item.
+- Usar `stock_transfer_reversals` apenas para estornos integrais legados ou registros antigos.
+
+Cancelamento e saldo
+--------------------
+- Nao ha cancelamento funcional nesta tela.
+- Nao ha movimentacao de saldo nesta tela.
+- O saldo ja foi ajustado pelas RPCs transacionais chamadas nas telas de origem.
+- A tela apenas consulta os registros de auditoria ja persistidos.
+
+Atalhos
+-------
+- Rota ativa: `/estornos`
+- Exibida na secao `Almoxarifado` da sidebar.
+- Tela relacionada: `/entrada`
+- Tela relacionada: `/saida`
+- Endpoint: `GET /api/estornos`
+
+Atualizacao 2026-05
+-------------------
+- Criada a tela `Estornos` como consulta centralizada e read-only.
+- Criada a API `GET /api/estornos` para agregar estornos por item e estornos integrais legados.
+- A tela entrou no menu `Almoxarifado`, no catalogo de permissoes e no guard de rotas.
+- Criada migration `207_create_reversals_page_permissions.sql` para cadastrar `page_key = estornos` em `app_pages` e fazer backfill de permissoes.
+- Antes: a verificacao de estornos dependia de consultar separadamente `/entrada` e `/saida`.
+- Depois: os estornos ja realizados podem ser consultados em uma tela unica, sem permitir nova reversao.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/estornos/page.tsx`
+  - Responsavel por: expor a rota autenticada `/estornos`.
+- Caminho: `src/modules/dashboard/estornos/ReversalsPageView.tsx`
+  - Responsavel por: filtros, cards de resumo, lista paginada, exportacao CSV e modal de detalhes dos estornos.
+- Caminho: `src/app/api/estornos/route.ts`
+  - Responsavel por: validar sessao/permissao, carregar estornos por item e integrais, resolver dados auxiliares e retornar a lista filtrada por tenant.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: incluir `Estornos` no menu `Almoxarifado` e no titulo/subtitulo da rota.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: incluir `estornos` no catalogo visual de permissoes por usuario.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: reconhecer `/estornos`, incluir a tela no acesso padrao e no fallback de `viewer`.
+- Caminho: `supabase/migrations/207_create_reversals_page_permissions.sql`
+  - Responsavel por: cadastrar a pagina no banco e criar/backfill de permissoes por role/usuario.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/estornos/ReversalsPageView.tsx`
+  - Responsavel por: `INITIAL_FILTERS`, `PAGE_SIZE`, labels de filtros e formato CSV.
+- Caminho: `src/modules/dashboard/estornos/ReversalsPageView.module.css`
+  - Responsavel por: layout, cards, filtros, tabela, modal e estados visuais por origem.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: fornecer token da sessao para a API.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `estornos`.
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver usuario autenticado e tenant ativo na API.
+- Caminho: `src/lib/server/stockTransfers.ts`
+  - Responsavel por: reutilizar `normalizeDateInput` e `normalizeText` na API.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handler `GET /api/estornos`.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/estornos/page.tsx`
+  - `src/modules/dashboard/estornos/ReversalsPageView.tsx`
+  - `src/modules/dashboard/estornos/ReversalsPageView.module.css`
+  - `src/app/api/estornos/route.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `supabase/migrations/207_create_reversals_page_permissions.sql`
+  - `docs/Tela_Estornos_SaaS.txt`
+  - `docs/Tela_Permissoes_SaaS.txt`
+  - `docs/00_Indice_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ReversalsPageView`
+  - `loadReversals`
+  - `handleFilter`
+  - `handleClearFilters`
+  - `handlePageChange`
+  - `exportRows`
+  - `GET /api/estornos`
+  - `resolveReversalsContext`
+  - `ensureReversalsPageAccess`
+  - `loadItemReversals`
+  - `loadFullReversals`
+  - `buildItemReversalRow`
+  - `buildFullReversalRows`
+  - `applyFilters`
+  - `buildSummary`
+  - `permissionCatalog`
+  - `resolveDefaultPageAccess`
+  - `ROUTE_PAGE_KEYS`
+- Comportamento antes/depois:
+  - Antes: estornos eram conferidos dentro das listas de `/entrada` e `/saida`.
+  - Depois: estornos ja executados aparecem centralizados em `/estornos`.
+  - Antes: nao havia lista unica para comparar estornos de estoque fisico e operacoes de equipe.
+  - Depois: a tela agrega as duas origens e identifica `Movimentacao de Estoque` ou `Operacoes de Equipe`.
+  - Antes: a nova tela nao existia na matriz de permissoes.
+  - Depois: `estornos` passa a existir em `app_pages`, `role_page_permissions`, `app_user_page_permissions`, `permissionCatalog` e `authorization.ts`.
+  - Antes: a proposta inicial poderia incluir acao de estornar.
+  - Depois: a tela ficou somente leitura, sem `POST`, sem RPC de reversao e sem alteracao de saldo.

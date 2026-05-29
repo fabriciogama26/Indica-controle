@@ -437,6 +437,9 @@ Resumo por arquivo
 
 206_add_stock_transfer_operation_purpose.sql
 - Adiciona `stock_transfers.operation_purpose` e `stock_transfers.balance_correction_reason` para distinguir movimentacao normal de correcao de saldo, com motivo obrigatorio em correcao, indice por tenant/finalidade e suporte na RPC `save_stock_transfer_record`.
+
+207_create_reversals_page_permissions.sql
+- Cadastra a pagina `estornos` em `app_pages`, cria permissoes por role e faz backfill em `app_user_page_permissions` para liberar a consulta read-only de estornos na matriz multi-tenant.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

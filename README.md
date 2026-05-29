@@ -132,7 +132,8 @@ vercel --prod
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
-- `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, respeitando o tipo cadastrado do material e preservando snapshot do encarregado por movimentacao.
+  - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, respeitando o tipo cadastrado do material e preservando snapshot do encarregado por movimentacao.
+  - `(dashboard)/estornos/page.tsx`: rota da tela `Estornos` para consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
   - `(dashboard)/centro-servico/page.tsx`: placeholder de Centro de Servico.
@@ -178,6 +179,7 @@ vercel --prod
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em lote (CSV) para a tela de estoque.
   - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
+  - `api/estornos/route.ts`: consulta estornos ja registrados por item e integrais legados, agregando Movimentacao de Estoque e Operacoes de Equipe sem executar nova reversao.
 - `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
 - `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
   - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV), com pre-validacao sequencial de saldo/TRAFO, rollback total do lote e retorno de erros por linha/coluna.
@@ -242,6 +244,9 @@ vercel --prod
   - `utils.ts`: formatadores, parser CSV e geracao de relatorio de erros do cadastro em massa.
 - `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, tipo automatico conforme cadastro do material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno, historico e exibicao do encarregado snapshot por operacao.
   - `TeamStockOperationsPageView.module.css`: estilo local da tela, reaproveitando o mesmo visual operacional da movimentacao de estoque.
+- `src/modules/dashboard/estornos/`
+  - `ReversalsPageView.tsx`: tela read-only de Estornos com filtros, cards de resumo, lista paginada, detalhes e exportacao CSV dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
+  - `ReversalsPageView.module.css`: estilos da tela Estornos.
 - `src/modules/dashboard/estoque/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
@@ -308,6 +313,7 @@ vercel --prod
   - `Tela_Projetos_SaaS.txt`: tela de projetos com cadastro, filtros e listagem.
   - `Tela_Materiais_SaaS.txt`: tela de materiais com cadastro, filtros, historico e cancelamento/ativacao.
   - `Tela_Entrada_SaaS.txt`: tela de Movimentacao de Estoque com transferencia entre centros, finalidade de correcao de saldo, importacao CSV, estorno transacional e exportacao da lista com status de estorno.
+  - `Tela_Estornos_SaaS.txt`: tela read-only para consulta centralizada de estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
   - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, supervisor, historico e troca de status.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
