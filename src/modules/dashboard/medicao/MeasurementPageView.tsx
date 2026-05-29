@@ -2176,7 +2176,9 @@ export function MeasurementPageView() {
 
   async function loadOrderDetail(orderId: string) {
     if (!accessToken) return null;
-    const response = await fetch(`/api/medicao?orderId=${orderId}`, {
+    const params = new URLSearchParams({ orderId });
+    if (activeFilters.endDate) params.set("endDate", activeFilters.endDate);
+    const response = await fetch(`/api/medicao?${params.toString()}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     });

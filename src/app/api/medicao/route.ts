@@ -534,11 +534,23 @@ function buildProjectWorkCompletionTimeline(
   return result;
 }
 
-function resolveLatestProjectWorkCompletion(
+function resolveProjectWorkCompletionAtWindowEnd(
   timeline: Map<string, Array<{ executionDate: string; completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>>,
   projectId: string,
+  windowEndDate: string,
 ) {
-  return (timeline.get(projectId) ?? [])[0] ?? null;
+  const normalizedWindowEndDate = normalizeIsoDate(windowEndDate);
+  if (!normalizedWindowEndDate) {
+    return null;
+  }
+
+  for (const item of timeline.get(projectId) ?? []) {
+    if (item.executionDate <= normalizedWindowEndDate) {
+      return item;
+    }
+  }
+
+  return null;
 }
 
 function resolveProgrammingHistoryProjectDateKey(
@@ -585,6 +597,7 @@ function selectBestProgrammingMatch(candidates: ProgrammingMatchRow[]) {
 async function loadProgrammingMatchMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
+  windowEndDate: string;
   orders: Array<Pick<MeasurementOrderRow, "id" | "project_id" | "team_id" | "execution_date" | "created_at" | "programming_completion_status_snapshot">>;
 }) {
   if (!params.orders.length) {
@@ -642,6 +655,7 @@ async function loadProgrammingMatchMap(params: {
       .select("project_id, execution_date, work_completion_status, updated_at")
       .eq("tenant_id", params.tenantId)
       .in("project_id", projectIds)
+      .lte("execution_date", params.windowEndDate)
       .not("work_completion_status", "is", null)
       .range(from, to)
       .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
@@ -722,9 +736,10 @@ async function loadProgrammingMatchMap(params: {
     const projectDateWorkCompletionStatus = projectDateWorkCompletionHistoryMap.get(projectDateKey)
       ?? projectDateWorkCompletionStatusMap.get(projectDateKey)
       ?? null;
-    const projectWorkCompletionStatus = resolveLatestProjectWorkCompletion(
+    const projectWorkCompletionStatus = resolveProjectWorkCompletionAtWindowEnd(
       projectWorkCompletionTimeline,
       order.project_id,
+      params.windowEndDate,
     );
     const currentCompletion = resolveMeasurementWorkCompletionStatus(completionMatch?.work_completion_status);
     const snapshotCompletion = resolveMeasurementWorkCompletionStatus(order.programming_completion_status_snapshot);
@@ -735,8 +750,8 @@ async function loadProgrammingMatchMap(params: {
       ?? (currentCompletion
         ? (completionMatch?.updated_at ?? null)
         : (projectDateWorkCompletionStatus?.updatedAt ?? null));
-    const effectiveCompletion = snapshotCompletion
-      ?? programmingCompletion
+    const effectiveCompletion = programmingCompletion
+      ?? snapshotCompletion
       ?? null;
     const changedBySnapshot = Boolean(
       snapshotCompletion
@@ -1073,6 +1088,7 @@ async function fetchMeasurementOrderDetail(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   orderId: string;
+  windowEndDate?: string | null;
 }) {
   const { data: order, error: orderError } = await params.supabase
     .from("project_measurement_orders")
@@ -1122,6 +1138,7 @@ async function fetchMeasurementOrderDetail(params: {
   const programmingMatchMap = await loadProgrammingMatchMap({
     supabase: params.supabase,
     tenantId: params.tenantId,
+    windowEndDate: params.windowEndDate ?? order.execution_date,
     orders: [order],
   });
   const projectServiceCenterMap = await fetchProjectServiceCenterMap({
@@ -1234,10 +1251,12 @@ export async function GET(request: NextRequest) {
 
   const orderId = normalizeUuid(request.nextUrl.searchParams.get("orderId"));
   if (orderId) {
+    const detailWindowEndDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
     const detail = await fetchMeasurementOrderDetail({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
       orderId,
+      windowEndDate: detailWindowEndDate,
     });
 
     if (!detail) {
@@ -1313,6 +1332,7 @@ export async function GET(request: NextRequest) {
   const programmingMatchMap = await loadProgrammingMatchMap({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
+    windowEndDate: endDate,
     orders,
   });
   const projectIsTestMap = await fetchProjectIsTestMap({

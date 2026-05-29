@@ -776,3 +776,5 @@
 - [x] Ajustar o grafico `Concluidos X parciais` do Dashboard Medicao para consolidar qualquer status suportado por projeto no recorte: o ultimo Estado Trabalho ate o fim do ciclo/periodo vale para todas as medicoes do projeto dentro do recorte, mantendo snapshot da Medicao apenas como fallback sem Programacao.
 
 - [x] Corrigir Operacoes de Equipe para chamar a assinatura completa atual de save_stock_transfer_record com p_operation_purpose NORMAL, evitando erro generico em Requisicao apos a migration 206, e mapear conflito tecnico de RPC para mensagem operacional clara.
+
+- [x] Ajustar a Lista de Ordens de Medicao para consolidar qualquer Estado Trabalho por projeto no periodo filtrado: o ultimo status ate a Data fim vale para todas as ordens do projeto no recorte e no detalhe da ordem, mantendo snapshot da Medicao apenas como fallback sem Programacao.
