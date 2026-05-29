@@ -55,6 +55,8 @@ Cadastro
 - Regras:
   - Projeto e obrigatorio.
   - Projeto deve estar ativo no cadastro manual e no cadastro em massa.
+  - Projeto ja lancado em Medicao Asbuilt nao pode receber novo cadastro enquanto houver registro diferente de `CANCELADA`.
+  - Edicao do proprio registro continua permitida somente quando o status for `ABERTA`, sem liberar troca para outro projeto ja lancado.
   - Ao menos uma atividade com quantidade e taxa e obrigatoria.
   - Quantidade e taxa devem ser maiores que zero.
   - O valor do item e calculado por `voice_point x quantity x rate x unit_value`.
@@ -75,7 +77,9 @@ Filtros, auto-complete e listagem
   - Tipo
   - Motivo sem producao
 - Auto-complete:
-  - Projeto usa `project.sob` e lista somente projetos ativos.
+  - Projeto usa `project.sob` e lista projetos ativos com indicacao quando ja existe Medicao Asbuilt lancada.
+  - O cadastro manual bloqueia no frontend projeto ja lancado.
+  - O cadastro em massa retorna erro por linha quando o projeto ja possui Medicao Asbuilt lancada.
   - Atividade usa `service_activities.code/description`.
 - Listagem:
   - Numero
@@ -156,6 +160,7 @@ Atualizacao 2026-05
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
   - `supabase/migrations/177_create_measurement_asbuilt_page.sql`
   - `supabase/migrations/184_enforce_active_project_for_asbuilt_measurement.sql`
+  - `supabase/migrations/211_block_duplicate_asbuilt_measurement_project.sql`
   - `docs/Tela_Medicao_Asbuilt_SaaS.txt`
   - `docs/00_Indice_SaaS.txt`
   - `supabase/migrations/README.txt`
@@ -174,6 +179,8 @@ Atualizacao 2026-05
   - Detalhe e edicao passam a tratar ambientes ainda sem `activity_active_snapshot`, evitando que itens importados em massa aparecam como lista vazia quando o banco estiver defasado.
   - Migration `178_patch_billing_asbuilt_mass_import_items.sql` recompila as RPCs de save/lote parcial para preservar atividades do cadastro em massa em ambientes que ja tinham aplicado `177`.
   - Cadastro manual e cadastro em massa passam a aceitar somente projetos ativos; a migration `184_enforce_active_project_for_asbuilt_measurement.sql` adiciona trava no banco para novas ordens Asbuilt.
+  - Cadastro manual, cadastro em massa, API e RPC passam a bloquear projeto ja lancado em Medicao Asbuilt, retornando `PROJECT_ASBUILT_MEASUREMENT_ALREADY_EXISTS`.
+  - Corrigido o titulo do shell para `/medicao-asbuilt`, que podia herdar `Medicao` por comparacao de prefixo com `/medicao`.
 - Lacunas explicitas:
   - O dashboard comparativo entre Faturamento e Medicao Asbuilt fica para etapa futura.
 
@@ -181,11 +188,11 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
-  - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico e status.
+  - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico, status e bloqueio frontend para projeto ja lancado.
 - Caminho: `src/app/api/medicao-asbuilt/route.ts`
-  - Responsavel por: validacao de payload, validacao de projeto ativo no cadastro manual/lote, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
+  - Responsavel por: validacao de payload, validacao de projeto ativo/ja lancado no cadastro manual/lote, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
 - Caminho: `src/app/api/medicao-asbuilt/meta/route.ts`
-  - Responsavel por: carregar projetos ativos e motivos de sem producao por tenant.
+  - Responsavel por: carregar projetos ativos, indicar projetos ja lancados em Medicao Asbuilt e carregar motivos de sem producao por tenant.
 - Caminho: `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
   - Responsavel por: pesquisar atividades em `service_activities`.
 
@@ -200,6 +207,8 @@ Constantes e configuracoes
   - Responsavel por: patch incremental para coluna `activity_active_snapshot` e RPCs de save/lote parcial em bases ja migradas.
 - Caminho: `supabase/migrations/184_enforce_active_project_for_asbuilt_measurement.sql`
   - Responsavel por: trigger de banco que impede insert/update de `project_id` em Medicao Asbuilt quando o projeto nao esta ativo.
+- Caminho: `supabase/migrations/211_block_duplicate_asbuilt_measurement_project.sql`
+  - Responsavel por: trigger e patch de RPC para impedir Medicao Asbuilt duplicada por projeto ja lancado no mesmo tenant.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`
@@ -226,5 +235,7 @@ Ajuda contextual
   - `buildAsbuiltMeasurementAggregateMap`
   - `save_project_asbuilt_measurement_order`
   - `loadActiveProjectIdSet`
+  - `loadLaunchedAsbuiltProjectIdSet`
   - `set_project_asbuilt_measurement_order_status`
   - `save_project_asbuilt_measurement_order_batch_partial`
+  - `enforce_active_project_for_asbuilt_measurement_order`

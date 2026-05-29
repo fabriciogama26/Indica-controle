@@ -9,6 +9,10 @@ type ProjectRow = {
   is_active: boolean;
 };
 
+type LaunchedAsbuiltProjectRow = {
+  project_id: string;
+};
+
 type NoProductionReasonRow = {
   id: string;
   code: string;
@@ -56,7 +60,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Acesso negado para carregar metadados do medicao-asbuilt." }, { status: 403 });
   }
 
-  const [projectResult, noProductionReasonResult] = await Promise.all([
+  const [projectResult, noProductionReasonResult, launchedAsbuiltProjectResult] = await Promise.all([
     resolution.supabase
       .from("project")
       .select("id, sob, is_active")
@@ -72,6 +76,12 @@ export async function GET(request: NextRequest) {
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true })
       .returns<NoProductionReasonRow[]>(),
+    resolution.supabase
+      .from("project_asbuilt_measurement_orders")
+      .select("project_id")
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .neq("status", "CANCELADA")
+      .returns<LaunchedAsbuiltProjectRow[]>(),
   ]);
 
   if (projectResult.error) {
@@ -82,6 +92,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar motivos de sem producao do medicao-asbuilt." }, { status: 500 });
   }
 
+  if (launchedAsbuiltProjectResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar projetos ja lancados no medicao-asbuilt." }, { status: 500 });
+  }
+
+  const launchedAsbuiltProjectIds = new Set(
+    (launchedAsbuiltProjectResult.data ?? []).map((item) => item.project_id),
+  );
+
   return NextResponse.json({
     projects: (projectResult.data ?? []).map((item) => {
       const code = String(item.sob ?? "").trim();
@@ -89,6 +107,7 @@ export async function GET(request: NextRequest) {
         id: item.id,
         code,
         label: code || item.id,
+        hasAsbuiltMeasurement: launchedAsbuiltProjectIds.has(item.id),
       };
     }),
     noProductionReasons: (noProductionReasonResult.data ?? []).map((item) => ({

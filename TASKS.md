@@ -783,4 +783,6 @@
 
 - [x] Corrigir alertas do Supabase Advisor para funcoes publicas: fixar `search_path` em funcoes legadas apontadas, revogar `EXECUTE` de `PUBLIC`/`anon`/`authenticated` para RPCs `SECURITY DEFINER` e manter execucao via `service_role` na migration 210.
 
+- [x] Bloquear `Medicao Asbuilt` para projetos ja lancados no frontend, API e RPC, mantendo escopo por tenant e corrigindo o titulo da tela `/medicao-asbuilt` para nao herdar `Medicao`.
+
 - [ ] Habilitar manualmente no Supabase Auth a protecao contra senhas vazadas (`Leaked password protection`) no painel/configuracao do projeto quando o plano permitir, pois nao ha `supabase/config.toml` ou setting versionado no repositorio atual.
