@@ -381,7 +381,9 @@ export function AppShell({ children }: PropsWithChildren) {
       return titleMap["/home"];
     }
 
-    const match = Object.entries(titleMap).find(([route]) => pathname.startsWith(route));
+    const match = Object.entries(titleMap)
+      .sort((leftEntry, rightEntry) => rightEntry[0].length - leftEntry[0].length)
+      .find(([route]) => pathname === route || pathname.startsWith(`${route}/`));
     return match ? match[1] : titleMap["/home"];
   }, [pathname]);
 

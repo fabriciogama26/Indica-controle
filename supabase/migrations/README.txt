@@ -98,6 +98,7 @@ Ordem de aplicacao
 205. 205_swap_active_team_foremen.sql
 206. 206_add_stock_transfer_operation_purpose.sql
 210. 210_harden_function_search_path_and_rpc_execute.sql
+211. 211_block_duplicate_asbuilt_measurement_project.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -450,6 +451,9 @@ Resumo por arquivo
 
 210_harden_function_search_path_and_rpc_execute.sql
 - Fixa `search_path = public, pg_temp` nas funcoes antigas apontadas pelo Supabase Advisor e remove `EXECUTE` de `PUBLIC`, `anon` e `authenticated` para funcoes `SECURITY DEFINER`, mantendo execucao por `service_role`.
+
+211_block_duplicate_asbuilt_measurement_project.sql
+- Bloqueia Medicao Asbuilt para projeto ja lancado no mesmo tenant, reforcando a RPC `save_project_asbuilt_measurement_order` e o trigger de `project_asbuilt_measurement_orders` com trava por projeto.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

@@ -68,6 +68,10 @@ type ActiveProjectRow = {
   id: string;
 };
 
+type LaunchedAsbuiltProjectRow = {
+  project_id: string;
+};
+
 type SaveAsbuiltMeasurementPayload = {
   action?: string;
   id?: string;
@@ -122,6 +126,14 @@ type SaveAsbuiltMeasurementBatchRpcResult = {
     message?: string;
     asbuiltMeasurementOrderId?: string;
   }>;
+};
+
+type BatchPreValidationResult = {
+  rowNumbers: number[];
+  success: false;
+  reason: string;
+  message: string;
+  asbuiltMeasurementOrderId: null;
 };
 
 type SetAsbuiltMeasurementStatusRpcResult = {
@@ -275,6 +287,41 @@ async function loadActiveProjectIdSet(params: {
   }
 
   return activeProjectIds;
+}
+
+async function loadLaunchedAsbuiltProjectIdSet(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projectIds: Array<string | null>;
+  currentOrderId?: string | null;
+}) {
+  const launchedProjectIds = new Set<string>();
+  const projectIds = Array.from(new Set(params.projectIds.filter((item): item is string => Boolean(item))));
+
+  for (const projectIdChunk of chunk(projectIds, 500)) {
+    let query = params.supabase
+      .from("project_asbuilt_measurement_orders")
+      .select("project_id")
+      .eq("tenant_id", params.tenantId)
+      .neq("status", "CANCELADA")
+      .in("project_id", projectIdChunk);
+
+    if (params.currentOrderId) {
+      query = query.neq("id", params.currentOrderId);
+    }
+
+    const { data, error } = await query.returns<LaunchedAsbuiltProjectRow[]>();
+
+    if (error) {
+      throw new Error("Falha ao validar projetos ja lancados no medicao-asbuilt.");
+    }
+
+    for (const project of data ?? []) {
+      launchedProjectIds.add(project.project_id);
+    }
+  }
+
+  return launchedProjectIds;
 }
 
 function asbuiltMeasurementModuleMigrationHint(message: string | undefined) {
@@ -658,6 +705,20 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
     }, { status: 400 });
   }
 
+  const launchedProjectIds = await loadLaunchedAsbuiltProjectIdSet({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectIds: [projectId],
+    currentOrderId: method === "PUT" ? orderId : null,
+  });
+
+  if (launchedProjectIds.has(projectId)) {
+    return NextResponse.json({
+      message: "Projeto ja possui Medicao Asbuilt lancada.",
+      reason: "PROJECT_ASBUILT_MEASUREMENT_ALREADY_EXISTS",
+    }, { status: 409 });
+  }
+
   if (asbuiltMeasurementKind === "SEM_PRODUCAO" && !noProductionReasonId) {
     return NextResponse.json({ message: "Selecione o motivo de sem producao." }, { status: 400 });
   }
@@ -764,12 +825,53 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     }));
   const rowsWithActiveProjects = rows.filter((row) => !row.projectId || activeProjectIds.has(row.projectId));
 
-  if (!rowsWithActiveProjects.length) {
+  const seenBatchProjectIds = new Set<string>();
+  const duplicateProjectResults: BatchPreValidationResult[] = [];
+  const rowsWithUniqueProjects: typeof rows = [];
+  for (const row of rowsWithActiveProjects) {
+    if (row.projectId && seenBatchProjectIds.has(row.projectId)) {
+      duplicateProjectResults.push({
+        rowNumbers: row.rowNumbers,
+        success: false,
+        reason: "PROJECT_ASBUILT_MEASUREMENT_DUPLICATE_IN_BATCH",
+        message: "Projeto repetido no mesmo lote de Medicao Asbuilt.",
+        asbuiltMeasurementOrderId: null,
+      });
+      continue;
+    }
+    if (row.projectId) {
+      seenBatchProjectIds.add(row.projectId);
+    }
+    rowsWithUniqueProjects.push(row);
+  }
+
+  const launchedProjectIds = await loadLaunchedAsbuiltProjectIdSet({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectIds: rowsWithUniqueProjects.map((row) => row.projectId),
+  });
+  const launchedProjectResults = rowsWithUniqueProjects
+    .filter((row) => row.projectId && launchedProjectIds.has(row.projectId))
+    .map((row) => ({
+      rowNumbers: row.rowNumbers,
+      success: false,
+      reason: "PROJECT_ASBUILT_MEASUREMENT_ALREADY_EXISTS",
+      message: "Projeto ja possui Medicao Asbuilt lancada.",
+      asbuiltMeasurementOrderId: null,
+    }));
+  const rowsReadyToSave = rowsWithUniqueProjects.filter((row) => !row.projectId || !launchedProjectIds.has(row.projectId));
+  const preValidationResults = [
+    ...inactiveProjectResults,
+    ...duplicateProjectResults,
+    ...launchedProjectResults,
+  ];
+
+  if (!rowsReadyToSave.length) {
     return NextResponse.json({
       success: true,
       savedCount: 0,
-      errorCount: inactiveProjectResults.length,
-      results: inactiveProjectResults,
+      errorCount: preValidationResults.length,
+      results: preValidationResults,
       message: "Importacao parcial de medicao-asbuilt concluida.",
     });
   }
@@ -777,7 +879,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
   const { data, error } = await resolution.supabase.rpc("save_project_asbuilt_measurement_order_batch_partial", {
     p_tenant_id: resolution.appUser.tenant_id,
     p_actor_user_id: resolution.appUser.id,
-    p_rows: rowsWithActiveProjects,
+    p_rows: rowsReadyToSave,
   });
 
   if (error) {
@@ -793,9 +895,9 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
   return NextResponse.json({
     success: true,
     savedCount: Number(result.savedCount ?? 0),
-    errorCount: Number(result.errorCount ?? 0) + inactiveProjectResults.length,
+    errorCount: Number(result.errorCount ?? 0) + preValidationResults.length,
     results: [
-      ...inactiveProjectResults,
+      ...preValidationResults,
       ...(Array.isArray(result.results) ? result.results : []).map((item) => ({
         rowNumbers: normalizePositiveIntegerArray(item.rowNumbers),
         success: item.success === true,

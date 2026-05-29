@@ -11,6 +11,7 @@ export type ProjectOption = {
   id: string;
   code: string;
   label: string;
+  hasAsbuiltMeasurement: boolean;
 };
 
 export type ActivityOption = {
