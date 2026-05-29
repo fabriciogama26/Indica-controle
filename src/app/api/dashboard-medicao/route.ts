@@ -347,18 +347,18 @@ async function fetchProjectCompletionTimeline(params: {
   return result;
 }
 
-function resolveProjectCompletionAtOrBefore(
+function resolveProjectCompletionAtWindowEnd(
   timeline: Map<string, ProgrammingCompletionTimelineItem[]>,
   projectId: string,
-  executionDate: string,
+  windowEndDate: string,
 ) {
-  const orderExecutionDate = normalizeIsoDate(executionDate);
-  if (!orderExecutionDate) {
+  const normalizedWindowEndDate = normalizeIsoDate(windowEndDate);
+  if (!normalizedWindowEndDate) {
     return null;
   }
 
   for (const item of timeline.get(projectId) ?? []) {
-    if (item.executionDate <= orderExecutionDate) {
+    if (item.executionDate <= normalizedWindowEndDate) {
       return item.status;
     }
   }
@@ -366,11 +366,23 @@ function resolveProjectCompletionAtOrBefore(
   return null;
 }
 
-function resolveLatestProjectCompletion(
-  timeline: Map<string, ProgrammingCompletionTimelineItem[]>,
-  projectId: string,
-) {
-  return timeline.get(projectId)?.[0]?.status ?? null;
+function resolveWindowEndDate(orders: MeasurementOrderRow[], fallbackEndDate: string) {
+  const orderDates = orders.map((order) => normalizeIsoDate(order.execution_date)).filter((date): date is string => Boolean(date)).sort();
+  return orderDates[orderDates.length - 1] ?? fallbackEndDate;
+}
+
+function buildOrderCompletionMapForWindow(params: {
+  timeline: Map<string, ProgrammingCompletionTimelineItem[]>;
+  orders: MeasurementOrderRow[];
+  windowEndDate: string;
+}) {
+  const result = new Map<string, string>();
+  for (const order of params.orders) {
+    const projectCompletion = resolveProjectCompletionAtWindowEnd(params.timeline, order.project_id, params.windowEndDate);
+    const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
+    result.set(order.id, projectCompletion ?? (snapshot !== "NAO_INFORMADO" ? snapshot : "NAO_INFORMADO"));
+  }
+  return result;
 }
 
 export async function GET(request: NextRequest) {
@@ -471,25 +483,27 @@ export async function GET(request: NextRequest) {
       })
     : cycleOrders;
 
+  const cycleWindowEndDate = selectedCycle.cycleEnd;
+  const periodWindowEndDate = endDateFilter ?? resolveWindowEndDate(periodOrders, selectedCycle.cycleEnd);
   const completionOrders = [...cycleOrders, ...periodOrders];
-  const completionOrderDates = completionOrders.map((order) => order.execution_date).sort();
+  const completionTimelineEndDate = [cycleWindowEndDate, periodWindowEndDate].sort()[1] ?? selectedCycle.cycleEnd;
   const projectCompletionTimeline = await fetchProjectCompletionTimeline({
     supabase: resolution.supabase,
     tenantId,
     projectIds: completionOrders.map((order) => order.project_id),
-    endDate: completionOrderDates[completionOrderDates.length - 1] ?? selectedCycle.cycleEnd,
+    endDate: completionTimelineEndDate,
   });
 
-  const orderCompletionMap = new Map<string, string>();
-  for (const order of completionOrders) {
-    const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
-    const timelineCompletion = resolveLatestProjectCompletion(projectCompletionTimeline, order.project_id)
-      ?? resolveProjectCompletionAtOrBefore(projectCompletionTimeline, order.project_id, order.execution_date);
-    orderCompletionMap.set(
-      order.id,
-      snapshot !== "NAO_INFORMADO" ? snapshot : timelineCompletion ?? "NAO_INFORMADO",
-    );
-  }
+  const cycleOrderCompletionMap = buildOrderCompletionMapForWindow({
+    timeline: projectCompletionTimeline,
+    orders: cycleOrders,
+    windowEndDate: cycleWindowEndDate,
+  });
+  const periodOrderCompletionMap = buildOrderCompletionMapForWindow({
+    timeline: projectCompletionTimeline,
+    orders: periodOrders,
+    windowEndDate: periodWindowEndDate,
+  });
 
   const allVisibleTeamIds = Array.from(new Set([...cycleOrders, ...periodOrders].map((order) => order.team_id).filter(Boolean)));
   const teamsResult = allVisibleTeamIds.length
@@ -606,7 +620,7 @@ export async function GET(request: NextRequest) {
         || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
         || completionFilter === "PENDENCIA"
       )
-      && orderCompletionMap.get(order.id) !== completionFilter
+      && cycleOrderCompletionMap.get(order.id) !== completionFilter
     ) return false;
     return true;
   });
@@ -624,7 +638,7 @@ export async function GET(request: NextRequest) {
         || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
         || completionFilter === "PENDENCIA"
       )
-      && orderCompletionMap.get(order.id) !== completionFilter
+      && periodOrderCompletionMap.get(order.id) !== completionFilter
     ) return false;
     return true;
   });
@@ -688,9 +702,13 @@ export async function GET(request: NextRequest) {
     ]);
   }
 
-  function addCompletionTotals(target: Map<string, CompletionAggregate>, order: MeasurementOrderRow) {
+  function addCompletionTotals(
+    target: Map<string, CompletionAggregate>,
+    order: MeasurementOrderRow,
+    completionMap: Map<string, string>,
+  ) {
     const totalValue = valueByOrder.get(order.id) ?? 0;
-    const completion = orderCompletionMap.get(order.id) ?? "NAO_INFORMADO";
+    const completion = completionMap.get(order.id) ?? "NAO_INFORMADO";
     const completionTotal = target.get(completion) ?? {
       value: 0,
       orders: 0,
@@ -975,13 +993,13 @@ export async function GET(request: NextRequest) {
   const supervisorProductionMap = createSupervisorMap();
 
   for (const order of filteredOrders) {
-    addCompletionTotals(cycleCompletionTotals, order);
+    addCompletionTotals(cycleCompletionTotals, order, cycleOrderCompletionMap);
     addForemanOrder(foremanMap, order);
     addSupervisorOrder(supervisorProductionMap, order);
   }
 
   for (const order of periodFilteredOrders) {
-    addCompletionTotals(periodCompletionTotals, order);
+    addCompletionTotals(periodCompletionTotals, order, periodOrderCompletionMap);
   }
 
   const foremenByWeek: Record<string, ReturnType<typeof buildForemanRows>> = {};

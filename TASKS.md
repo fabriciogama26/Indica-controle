@@ -770,3 +770,7 @@
 - [x] Definir e implementar fluxo de Correcao de saldo dentro da Movimentacao de Estoque, registrando entrada/saida/transferencia de ajuste com marca propria, referencia da correcao, motivo obrigatorio e reflexo explicito no Estoque Atual.
 
 - [x] Criar tela Estornos em Almoxarifado como consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe, sem acao de estornar, com filtros, resumo, detalhes, exportacao CSV, API agregadora e permissao multi-tenant.
+
+- [x] Analisar a regra do grafico `Concluidos X parciais por periodo` no Dashboard Medicao, identificando que a regra anterior priorizava o snapshot salvo na propria ordem de Medicao e precisava consolidar o status por projeto no recorte.
+
+- [x] Ajustar o grafico `Concluidos X parciais` do Dashboard Medicao para consolidar o status por projeto no recorte: se o projeto estiver `CONCLUIDO` ate o fim do ciclo/periodo, todas as medicoes do projeto dentro do recorte entram como Concluidas, mantendo snapshot da Medicao apenas como fallback sem Programacao.
