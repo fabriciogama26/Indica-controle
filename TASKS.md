@@ -780,3 +780,7 @@
 - [x] Ajustar a Lista de Ordens de Medicao para consolidar qualquer Estado Trabalho por projeto no periodo filtrado: o ultimo status ate a Data fim vale para todas as ordens do projeto no recorte e no detalhe da ordem, mantendo snapshot da Medicao apenas como fallback sem Programacao.
 
 - [x] Complementar correcao de Operacoes de Equipe com migration 209 para remover ambiguidade interna da wrapper save_stock_transfer_record apos operation_purpose, mantendo Requisicao como operacao NORMAL.
+
+- [x] Corrigir alertas do Supabase Advisor para funcoes publicas: fixar `search_path` em funcoes legadas apontadas, revogar `EXECUTE` de `PUBLIC`/`anon`/`authenticated` para RPCs `SECURITY DEFINER` e manter execucao via `service_role` na migration 210.
+
+- [ ] Habilitar manualmente no Supabase Auth a protecao contra senhas vazadas (`Leaked password protection`) no painel/configuracao do projeto quando o plano permitir, pois nao ha `supabase/config.toml` ou setting versionado no repositorio atual.

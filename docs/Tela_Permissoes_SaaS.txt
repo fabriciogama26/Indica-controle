@@ -23,6 +23,7 @@ Arquitetura
 - Matriz futura por usuario: `supabase/migrations/024_create_user_page_permissions.sql`
 - Base SQL: `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Base SQL: `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
+- Hardening de RPCs: `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
 
 Cadastro
 --------
@@ -76,6 +77,7 @@ Boas praticas
 - O operador da tela precisa ser administrativo; o usuario alvo pode ser qualquer `app_user` do mesmo tenant.
 - Exigir `app_users.updated_at` como token de concorrencia para role, status e matriz de paginas do usuario.
 - Preferir RPC transacional para o save, concentrando role, status, matriz e historico no banco.
+- Manter RPCs `SECURITY DEFINER` sem execucao direta por `PUBLIC`, `anon` ou `authenticated`; o app deve chamar essas funcoes pelo backend com `service_role` e validacao explicita de tenant/usuario.
 - Checklist obrigatorio para toda nova tela:
   - Criar migration versionada com insert em `app_pages` e backfill em `role_page_permissions` e `app_user_page_permissions`.
   - Incluir a tela no `permissionCatalog` do frontend.
@@ -146,6 +148,14 @@ Atualizacao 2026-03
 - `authorization.ts` passou a reconhecer a rota `/posicao-trafo` e o fallback padrao da role `viewer` tambem passou a considerar essa consulta unitaria.
 - `authorization.ts` passou a reconhecer a rota `/estornos` e o fallback padrao da role `viewer` tambem passou a considerar essa consulta read-only.
 
+Atualizacao 2026-05
+-------------------
+- Migration `210_harden_function_search_path_and_rpc_execute.sql` criada para corrigir alertas do Supabase Advisor sobre `search_path` mutavel em funcoes antigas.
+- A migration remove `EXECUTE` de `PUBLIC`, `anon` e `authenticated` em funcoes `SECURITY DEFINER` do schema `public`.
+- A execucao das RPCs transacionais permanece liberada para `service_role`, alinhada ao uso atual das rotas Next e Edge Functions.
+- O hardening nao altera policies RLS, tabelas, indices ou regras de tenant; reduz apenas a superficie de chamada direta via `/rest/v1/rpc`.
+- A protecao contra senhas vazadas do Supabase Auth depende de configuracao do painel/infra do projeto e ficou registrada como pendencia manual.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -187,6 +197,8 @@ Constantes e configuracoes
   - Responsavel por: criar `save_user_permissions` para consolidar `app_users`, `app_user_page_permissions` e `app_user_permission_history`.
 - Caminho: `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
   - Responsavel por: criar `append_user_invite_history` para registrar o historico de `INVITE_SENT` sem `insert` direto na route.
+- Caminho: `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
+  - Responsavel por: fixar `search_path` de funcoes legadas apontadas pelo advisor e restringir `EXECUTE` de funcoes `SECURITY DEFINER` para `service_role`.
 - Caminho: `supabase/migrations/138_add_trafo_position_page_permissions.sql`
   - Responsavel por: cadastrar `posicao-trafo` em `app_pages` e fazer backfill de permissao por role/usuario.
 - Caminho: `supabase/migrations/191_create_project_consumption_page.sql`
@@ -209,6 +221,7 @@ Ajuda contextual
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
   - `supabase/migrations/191_create_project_consumption_page.sql`
   - `supabase/migrations/207_create_reversals_page_permissions.sql`
+  - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
   - `src/app/api/app-users/[userId]/permissions/route.ts`
   - `src/app/api/app-users/[userId]/invite/route.ts`
   - `src/lib/server/concurrency.ts`
@@ -222,6 +235,7 @@ Ajuda contextual
   - `save_user_permissions`
   - `append_user_invite_history`
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
+  - `search_path`, `EXECUTE`, `SECURITY DEFINER`
 - Antes: a rota existia, mas ainda estava no formato de base visual inicial.
 - Depois: a rota `/permissoes` representa o fluxo real esperado para selecionar usuario e liberar ou bloquear cada tela.
 - Estado atual: a tela ja consome e grava `app_user_page_permissions`, e o shell ja passa a esconder as telas desabilitadas quando o usuario faz login ou reabre a sessao.
@@ -238,3 +252,5 @@ Ajuda contextual
 - Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.
 - Antes: o `next build` nao conseguia inferir com seguranca que o operador admin tinha `role_id` obrigatorio.
 - Depois: `src/lib/server/appUsersAdmin.ts` aplica uma guarda explicita para manter o contrato tipado das rotas administrativas e liberar o build do Vercel.
+- Antes: funcoes `SECURITY DEFINER` antigas ainda herdavam permissao de execucao de `PUBLIC`/`anon`/`authenticated` e algumas funcoes legadas nao tinham `search_path` fixo.
+- Depois: as funcoes antigas apontadas pelo advisor passam a ter `search_path` fixo, e funcoes `SECURITY DEFINER` do schema `public` deixam de ser chamaveis diretamente por roles expostas, permanecendo disponiveis ao backend por `service_role`.

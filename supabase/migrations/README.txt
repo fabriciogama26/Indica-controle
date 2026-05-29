@@ -97,6 +97,7 @@ Ordem de aplicacao
 199. 199_people_cpf_unique_phone_and_conditional_type.sql
 205. 205_swap_active_team_foremen.sql
 206. 206_add_stock_transfer_operation_purpose.sql
+210. 210_harden_function_search_path_and_rpc_execute.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -446,9 +447,13 @@ Resumo por arquivo
 
 209_fix_stock_transfer_operation_purpose_overload.sql
 - Renomeia a assinatura direta de `save_stock_transfer_record(..., p_direct_purchase)` para um helper interno sem overload e republica as wrappers publicas de 11 e 13 parametros, removendo a ambiguidade interna criada pelos defaults de `operation_purpose`.
+
+210_harden_function_search_path_and_rpc_execute.sql
+- Fixa `search_path = public, pg_temp` nas funcoes antigas apontadas pelo Supabase Advisor e remove `EXECUTE` de `PUBLIC`, `anon` e `authenticated` para funcoes `SECURITY DEFINER`, mantendo execucao por `service_role`.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
+- habilitar manualmente no Supabase Auth a protecao contra senhas vazadas, quando o plano do projeto permitir.
 
 Observacao
 - As migrations acima suportam o app atual.
