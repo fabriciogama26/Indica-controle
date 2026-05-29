@@ -281,7 +281,8 @@ Atualizacao 2026-05
     - Uma medicao antiga do projeto podia permanecer como `PARCIAL` no grafico mesmo quando o projeto ja estava `CONCLUIDO` no fim do periodo analisado.
   - Depois:
     - Os graficos `Concluidos X parciais no ciclo` e `Concluidos X parciais por periodo` usam o ultimo `Estado Trabalho` do projeto ate o fim do respectivo recorte.
-    - Se o projeto estiver `CONCLUIDO` ate o fim do ciclo/periodo, todas as medicoes desse projeto dentro do recorte entram como `Concluidos`, somando o valor total medido da obra naquele recorte.
+    - O estado encontrado vale para todas as medicoes desse projeto dentro do recorte, somando o valor total medido da obra no respectivo grupo de status.
+    - Exemplo: se o projeto estiver `CONCLUIDO` ate o fim do ciclo/periodo, todas as medicoes desse projeto dentro do recorte entram como `Concluidos`; se estiver `PENDENCIA`, entram como `Pendencias`.
     - O snapshot da Medicao permanece apenas como fallback quando nao existe `Estado Trabalho` na Programacao para o projeto.
   - Impacto multi-tenant:
     - Sem alteracao de schema/RLS; a consulta continua filtrada por `tenant_id` e pelos projetos visiveis no recorte do dashboard.

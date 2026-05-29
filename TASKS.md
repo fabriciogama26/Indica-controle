@@ -773,4 +773,6 @@
 
 - [x] Analisar a regra do grafico `Concluidos X parciais por periodo` no Dashboard Medicao, identificando que a regra anterior priorizava o snapshot salvo na propria ordem de Medicao e precisava consolidar o status por projeto no recorte.
 
-- [x] Ajustar o grafico `Concluidos X parciais` do Dashboard Medicao para consolidar o status por projeto no recorte: se o projeto estiver `CONCLUIDO` ate o fim do ciclo/periodo, todas as medicoes do projeto dentro do recorte entram como Concluidas, mantendo snapshot da Medicao apenas como fallback sem Programacao.
+- [x] Ajustar o grafico `Concluidos X parciais` do Dashboard Medicao para consolidar qualquer status suportado por projeto no recorte: o ultimo Estado Trabalho ate o fim do ciclo/periodo vale para todas as medicoes do projeto dentro do recorte, mantendo snapshot da Medicao apenas como fallback sem Programacao.
+
+- [x] Corrigir Operacoes de Equipe para chamar a assinatura completa atual de save_stock_transfer_record com p_operation_purpose NORMAL, evitando erro generico em Requisicao apos a migration 206, e mapear conflito tecnico de RPC para mensagem operacional clara.

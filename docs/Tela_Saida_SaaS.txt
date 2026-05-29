@@ -235,6 +235,9 @@ Atualizacao 2026-05
 - Ajuste de feedback de saldo: `Salvar operacao` passa a listar todos os materiais bloqueados por saldo zerado ou insuficiente na pre-validacao e o helper `saveTeamStockOperationViaRpc` passa a detalhar `INSUFFICIENT_STOCK` usando os `details` retornados pela RPC base.
 - Ajuste de regra: `Retorno de campo` deixa de forcar `entry_type = SUCATA` e passa a respeitar `materials.tipo` no cadastro manual, importacao e RPC `save_team_stock_operation_record`.
 - Migration `203_respect_field_return_material_entry_type.sql` republica `save_team_stock_operation_record` preservando `p_entry_type` tambem para `FIELD_RETURN`.
+- Atualizacao 2026-05: `save_team_stock_operation_record` passa a chamar a assinatura completa atual de `save_stock_transfer_record`, informando tambem `p_operation_purpose => 'NORMAL'` e `p_balance_correction_reason => null`.
+- Antes: apos a migration `206`, requisicoes de equipe podiam cair em erro tecnico de assinatura/overload da RPC base e a API exibia apenas mensagem generica de falha ao salvar.
+- Depois: a migration `208_fix_team_stock_operation_purpose_rpc_call.sql` desambigua a chamada para a RPC de estoque, preserva `operation_purpose = NORMAL` nas operacoes de equipe e o helper server mapeia conflito de assinatura para mensagem operacional clara.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -252,11 +255,13 @@ Funcoes principais
 - Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
   - Responsavel por: validar payload de estorno e chamar a RPC transacional de reversao por item ou por transferencia legada.
 - Caminho: `src/lib/server/teamStockOperations.ts`
-  - Responsavel por: encapsular chamadas para `save_team_stock_operation_record`, detalhar `INSUFFICIENT_STOCK` por material e chamar `reverse_team_stock_operation_record_v2`/`reverse_team_stock_operation_item_record_v1`.
+  - Responsavel por: encapsular chamadas para `save_team_stock_operation_record`, detalhar `INSUFFICIENT_STOCK` por material, mapear falha tecnica de assinatura da RPC de estoque e chamar `reverse_team_stock_operation_record_v2`/`reverse_team_stock_operation_item_record_v1`.
 - Caminho: `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
   - Responsavel por: criar `stock_transfer_item_reversals`, RPC `reverse_stock_transfer_item_record_v1`, RPC `reverse_team_stock_operation_item_record_v1` e preservar estornos integrais legados.
 - Caminho: `supabase/migrations/203_respect_field_return_material_entry_type.sql`
   - Responsavel por: republicar `save_team_stock_operation_record` para o `Retorno de campo` respeitar o tipo cadastrado do material.
+- Caminho: `supabase/migrations/208_fix_team_stock_operation_purpose_rpc_call.sql`
+  - Responsavel por: republicar `save_team_stock_operation_record` para chamar `save_stock_transfer_record` com `p_operation_purpose => 'NORMAL'`, evitando conflito de assinatura apos a migration `206`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/saida/constants.ts`
@@ -313,6 +318,7 @@ Ajuda contextual
   - `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
   - `supabase/migrations/143_create_team_stock_operation_batch_full.sql`
   - `supabase/migrations/196_fix_team_stock_operation_direct_purchase_rpc_call.sql`
+  - `supabase/migrations/208_fix_team_stock_operation_purpose_rpc_call.sql`
   - `docs/Tela_Saida_SaaS.txt`
   - `supabase/migrations/README.txt`
   - `TASKS.md`
@@ -326,6 +332,7 @@ Ajuda contextual
   - `POST` de `/api/team-stock-operations/import`
   - `POST` de `/api/team-stock-operations/reversal`
   - `saveTeamStockOperationViaRpc`, `saveTeamStockOperationBatchViaRpc`, `reverseTeamStockOperationViaRpc`
+  - `mapTeamOperationRpcErrorMessage`
   - `formatInsufficientStockMessage`
   - `save_team_stock_operation_record`
 - Comportamento antes/depois:
@@ -351,3 +358,5 @@ Ajuda contextual
 - Depois: a RPC de equipe informa `p_direct_purchase => false` e preserva a regra de saldo da movimentacao de equipe.
 - Antes: falhas de saldo no save final podiam chegar como erro generico, sem apontar os materiais afetados.
 - Depois: a UI e o helper server mostram materiais zerados/insuficientes com saldo atual, solicitado e falta.
+- Antes: apos a inclusao de `operation_purpose`, a requisicao de equipe podia falhar por chamada ambigua da RPC base `save_stock_transfer_record` e retornar apenas erro generico.
+- Depois: a migration `208` chama a assinatura completa da RPC de estoque como operacao `NORMAL`, e o helper server mostra mensagem tecnica acionavel se o banco ainda estiver sem a migration/schema atualizado.
