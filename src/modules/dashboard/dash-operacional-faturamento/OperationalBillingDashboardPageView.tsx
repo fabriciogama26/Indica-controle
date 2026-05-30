@@ -650,7 +650,7 @@ export function OperationalBillingDashboardPageView() {
         </div>
       ) : null}
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${styles.chartCard}`}>
         <div className={styles.cardHeader}>
           <div>
             <h2 className={styles.cardTitle}>Grafico operacional</h2>
@@ -764,7 +764,7 @@ export function OperationalBillingDashboardPageView() {
         ) : null}
       </article>
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${styles.filtersCard}`}>
         <div className={styles.cardHeader}>
           <div>
             <h2 className={styles.cardTitle}>Filtros</h2>
@@ -850,7 +850,7 @@ export function OperationalBillingDashboardPageView() {
         </div>
       </article>
 
-      <div className={styles.summaryGrid}>
+      <div className={`${styles.summaryGrid} ${styles.summaryBlock}`}>
         <div className={styles.metric}>
           <span>Codigos</span>
           <strong>{summary?.totalRows ?? 0}</strong>
@@ -869,7 +869,7 @@ export function OperationalBillingDashboardPageView() {
         </div>
       </div>
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${styles.codesCard}`}>
         <div className={styles.cardHeader}>
           <div>
             <h2 className={styles.cardTitle}>Codigos por origem</h2>
@@ -959,7 +959,7 @@ export function OperationalBillingDashboardPageView() {
         </div>
       </article>
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${styles.categoryCard}`}>
         <div className={styles.cardHeader}>
           <div>
             <h2 className={styles.cardTitle}>Resumo por categoria</h2>
@@ -1018,7 +1018,7 @@ export function OperationalBillingDashboardPageView() {
         </div>
       </article>
 
-      <article className={styles.card}>
+      <article className={`${styles.card} ${styles.projectValuesCard}`}>
         <div className={styles.cardHeader}>
           <div>
             <h2 className={styles.cardTitle}>Projetos por valor</h2>
