@@ -454,6 +454,9 @@ Resumo por arquivo
 
 211_block_duplicate_asbuilt_measurement_project.sql
 - Bloqueia Medicao Asbuilt para projeto ja lancado no mesmo tenant, reforcando a RPC `save_project_asbuilt_measurement_order` e o trigger de `project_asbuilt_measurement_orders` com trava por projeto.
+
+212_measurement_minimum_billing_guarantee.sql
+- Adiciona calculo backend da garantia de faturamento minimo na Medicao sem producao, salvando `minimum_billing_amount` e snapshots/vinculos de tipo de equipe, meta de pontos e valor do ponto por grupo sem criar itens artificiais.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

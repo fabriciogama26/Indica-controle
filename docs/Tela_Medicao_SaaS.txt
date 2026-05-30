@@ -758,3 +758,33 @@ Atualizacao 2026-05-27 (Bloqueio por Projeto + Equipe + Data)
   - Depois: reprogramacao para outra data continua permitida, pois a data faz parte da chave operacional.
   - Depois: o cadastro em massa permanece alinhado com a mesma regra ja existente de anti-sobreposicao por contexto.
   - Impacto multi-tenant: regra inclui `tenant_id` em todas as verificacoes e no lock transacional, sem alteracao de RLS.
+
+Atualizacao 2026-05-30 (Garantia de faturamento minimo)
+--------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/212_measurement_minimum_billing_guarantee.sql`
+  - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Funcao SQL `normalize_minimum_billing_token`
+  - Funcao SQL `apply_measurement_minimum_billing_guarantee`
+  - Trigger `trg_project_measurement_orders_minimum_billing`
+  - Constante `MEASUREMENT_ORDER_SELECT`
+  - Funcao `fetchMeasurementOrderDetail`
+  - `GET /api/medicao`
+  - Renderizacao do modal `Detalhes da Ordem`
+  - Exportacoes CSV da lista, detalhamento e pontuacao
+- Comportamento antes/depois:
+  - Antes: a Medicao `SEM_PRODUCAO` mantinha bloqueio de itens, mas tambem ficava sem valor automatico para o motivo `GARANTIA_FATURAMENTO_MINIMO`.
+  - Antes: a regra futura de garantia dependia de definicao posterior para usar pontos e valor de ponto sem calculo no frontend.
+  - Depois: o banco cria/ativa o motivo `GARANTIA_FATURAMENTO_MINIMO` por tenant.
+  - Depois: ordens `SEM_PRODUCAO` com esse motivo continuam sem itens, mas o trigger calcula `minimum_billing_amount` no cabecalho da ordem.
+  - Depois: o calculo usa o tipo vigente da equipe na `execution_date`, buscando primeiro `team_type_history` e depois `teams.team_type_id`.
+  - Depois: para `LV`/`LINHA VIVA`, o valor e `measurement_score_targets.target_points` do tipo da equipe vezes o `unit_value` ativo de `service_activities` no grupo `LLEE/LINHA VIVA`.
+  - Depois: para `MK`/`LM`/`LINHA MORTA`/`CESTO`/`CETO`, o valor e `measurement_score_targets.target_points` do tipo da equipe vezes o `unit_value` ativo de `service_activities` no grupo `SOT AEREA`.
+  - Depois: a ordem salva snapshots e vinculos para `team_type_id`, `measurement_score_targets.id`, `service_activities.id`, pontos, grupo de valor e valor unitario usados no calculo.
+  - Depois: `totalAmount` da API soma itens ativos mais `minimum_billing_amount`; para garantia sem producao, o valor total aparece mesmo com `itemCount = 0`.
+  - Depois: o detalhamento da ordem exibe os dados da garantia minima quando houver valor calculado.
+  - Impacto multi-tenant: todas as leituras da regra usam `tenant_id`; as FKs preservam vinculo com `team_types`, `measurement_score_targets` e `service_activities` do tenant.
