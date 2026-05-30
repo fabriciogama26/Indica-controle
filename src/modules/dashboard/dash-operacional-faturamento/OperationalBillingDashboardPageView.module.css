@@ -13,6 +13,30 @@
   box-shadow: 0 10px 24px rgba(16, 37, 78, 0.06);
 }
 
+.chartCard {
+  order: 1;
+}
+
+.projectValuesCard {
+  order: 2;
+}
+
+.filtersCard {
+  order: 3;
+}
+
+.summaryBlock {
+  order: 4;
+}
+
+.codesCard {
+  order: 5;
+}
+
+.categoryCard {
+  order: 6;
+}
+
 .cardHeader {
   display: flex;
   align-items: flex-start;
