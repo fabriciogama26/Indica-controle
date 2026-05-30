@@ -91,6 +91,16 @@ type RateSuggestionResponse = {
   message?: string;
 };
 
+type MinimumBillingPreviewResponse = {
+  applies?: boolean;
+  amount?: number;
+  teamTypeName?: string;
+  targetPoints?: number;
+  unitValueGroup?: string;
+  unitValue?: number;
+  message?: string;
+};
+
 type MeasurementRow = {
   rowId: string;
   activityId: string;
@@ -941,6 +951,8 @@ export function MeasurementPageView() {
   const [massImportResult, setMassImportResult] = useState<MassImportResultSummary | null>(null);
   const [isLoadingRateSuggestion, setIsLoadingRateSuggestion] = useState(false);
   const [rateSuggestionSource, setRateSuggestionSource] = useState<RateSuggestionSource | null>(null);
+  const [minimumBillingPreview, setMinimumBillingPreview] = useState<MinimumBillingPreviewResponse | null>(null);
+  const [isLoadingMinimumBillingPreview, setIsLoadingMinimumBillingPreview] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const hasManualRateUserOverrideRef = useRef(false);
   const refreshRequestedRef = useRef(false);
@@ -1031,7 +1043,7 @@ export function MeasurementPageView() {
 
   const totalAmount = useMemo(() => {
     if (form.measurementKind === "SEM_PRODUCAO") {
-      return 0;
+      return Number(minimumBillingPreview?.amount ?? 0);
     }
     const manualRate = parsePositiveNumber(form.manualRate) ?? 1;
     return form.items.reduce((sum, item) => {
@@ -1040,7 +1052,7 @@ export function MeasurementPageView() {
       const unitValue = parseNonNegativeNumber(item.unitValue) ?? 0;
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
-  }, [form.items, form.manualRate, form.measurementKind]);
+  }, [form.items, form.manualRate, form.measurementKind, minimumBillingPreview?.amount]);
   const shouldShowRateSuggestionHint = !form.id && form.measurementKind === "COM_PRODUCAO" && Boolean(form.projectId);
   const isGeneratingExport = Boolean(exportProgress);
   const rateSuggestionHint = shouldShowRateSuggestionHint
@@ -1214,6 +1226,56 @@ export function MeasurementPageView() {
       ignore = true;
     };
   }, [accessToken, refreshTick]);
+
+  useEffect(() => {
+    if (
+      !accessToken
+      || form.measurementKind !== "SEM_PRODUCAO"
+      || !form.teamId
+      || !form.executionDate
+      || !form.noProductionReasonId
+    ) {
+      setMinimumBillingPreview(null);
+      setIsLoadingMinimumBillingPreview(false);
+      return;
+    }
+
+    let ignore = false;
+    async function loadMinimumBillingPreview() {
+      setIsLoadingMinimumBillingPreview(true);
+      try {
+        const params = new URLSearchParams({
+          teamId: form.teamId,
+          executionDate: form.executionDate,
+          noProductionReasonId: form.noProductionReasonId,
+        });
+        const response = await fetch(`/api/medicao/minimum-billing?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => null)) as MinimumBillingPreviewResponse | null;
+        if (!response.ok) {
+          throw new Error(data?.message ?? "Falha ao calcular garantia minima da medicao.");
+        }
+        if (ignore) return;
+        setMinimumBillingPreview(data?.applies ? data : null);
+      } catch (error) {
+        if (!ignore) {
+          setMinimumBillingPreview(null);
+          setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao calcular garantia minima da medicao." });
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingMinimumBillingPreview(false);
+        }
+      }
+    }
+
+    void loadMinimumBillingPreview();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, form.executionDate, form.measurementKind, form.noProductionReasonId, form.teamId]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -3014,7 +3076,18 @@ export function MeasurementPageView() {
               </tbody>
             </table>
           </div>
-          <div className={styles.summaryBar}><div><span>Itens</span><strong>{form.items.length}</strong></div><div><span>Valor total</span><strong>{formatCurrency(totalAmount)}</strong></div></div>
+          <div className={styles.summaryBar}>
+            <div><span>Itens</span><strong>{form.items.length}</strong></div>
+            <div>
+              <span>Valor total</span>
+              <strong>{isLoadingMinimumBillingPreview ? "Calculando..." : formatCurrency(totalAmount)}</strong>
+              {minimumBillingPreview?.applies ? (
+                <small className={styles.fieldHint}>
+                  {minimumBillingPreview.teamTypeName || "Tipo"}: {Number(minimumBillingPreview.targetPoints ?? 0).toLocaleString("pt-BR")} pts x {formatCurrency(Number(minimumBillingPreview.unitValue ?? 0))}
+                </small>
+              ) : null}
+            </div>
+          </div>
           <div className={styles.actions}>
             <button type="submit" form="measurement-order-form" className={styles.primaryButton} disabled={isSubmitting}>
               {isSubmitting ? "Salvando..." : form.id ? "Salvar alteracoes" : "Salvar ordem"}
