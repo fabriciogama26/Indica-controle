@@ -16,6 +16,25 @@ type NoProductionReasonRow = {
   sort_order: number | null;
 };
 
+function normalizeReasonKey(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+function dedupeNoProductionReasons(items: NoProductionReasonRow[]) {
+  const byName = new Map<string, NoProductionReasonRow>();
+  for (const item of items) {
+    const key = normalizeReasonKey(item.name);
+    if (!key || byName.has(key)) continue;
+    byName.set(key, item);
+  }
+  return Array.from(byName.values());
+}
+
 async function ensureBillingPageAccess(resolution: AuthenticatedAppUserContext) {
   if (resolution.role.isAdmin) return true;
 
@@ -89,7 +108,7 @@ export async function GET(request: NextRequest) {
         label: code || item.id,
       };
     }),
-    noProductionReasons: (noProductionReasonResult.data ?? []).map((item) => ({
+    noProductionReasons: dedupeNoProductionReasons(noProductionReasonResult.data ?? []).map((item) => ({
       id: item.id,
       code: String(item.code ?? "").trim(),
       name: String(item.name ?? "").trim(),

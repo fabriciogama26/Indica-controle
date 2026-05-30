@@ -458,6 +458,10 @@ Resumo por arquivo
 212_measurement_minimum_billing_guarantee.sql
 - Adiciona calculo backend da garantia de faturamento minimo na Medicao sem producao, salvando `minimum_billing_amount` e snapshots/vinculos de tipo de equipe, meta de pontos e valor do ponto por grupo sem criar itens artificiais.
 - Cria `calculate_measurement_minimum_billing_guarantee` para preview/API e trigger, reconhece o motivo por codigo ou nome normalizado e faz backfill das ordens existentes de garantia.
+- Evita duplicidade do motivo de garantia por nome normalizado, reatribui ordens para um unico motivo por tenant e desativa duplicatas legadas.
+
+213_dedupe_minimum_billing_no_production_reason.sql
+- Executa limpeza incremental para ambientes onde a garantia minima ja foi duplicada antes da deduplicacao da migration 212, reatribuindo Medicao, Faturamento e Medicao Asbuilt para um unico motivo ativo.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
