@@ -35,6 +35,15 @@ type MeasurementOrderRow = {
   updated_by: string | null;
   programming_completion_status_snapshot: string | null;
   programming_completion_status_snapshot_at: string | null;
+  minimum_billing_amount: number | string;
+  minimum_billing_team_type_id: string | null;
+  minimum_billing_team_type_name_snapshot: string | null;
+  minimum_billing_score_target_id: string | null;
+  minimum_billing_target_points: number | string | null;
+  minimum_billing_unit_value_source_activity_id: string | null;
+  minimum_billing_unit_value_group_snapshot: string | null;
+  minimum_billing_unit_value: number | string | null;
+  minimum_billing_calculated_at: string | null;
 };
 
 type MeasurementOrderItemRow = {
@@ -253,7 +262,7 @@ type SetMeasurementStatusRpcResult = {
 };
 
 const SUPABASE_LIST_PAGE_SIZE = 1000;
-const MEASUREMENT_ORDER_SELECT = "id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at";
+const MEASUREMENT_ORDER_SELECT = "id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at, minimum_billing_amount, minimum_billing_team_type_id, minimum_billing_team_type_name_snapshot, minimum_billing_score_target_id, minimum_billing_target_points, minimum_billing_unit_value_source_activity_id, minimum_billing_unit_value_group_snapshot, minimum_billing_unit_value, minimum_billing_calculated_at";
 
 type SupabasePageResult<T> = {
   data: T[] | null;
@@ -786,8 +795,9 @@ function measurementModuleMigrationHint(message: string | undefined) {
     || normalized.includes("save_project_measurement_order")
     || normalized.includes("set_project_measurement_order_status")
     || normalized.includes("save_project_measurement_order_batch_partial")
+    || normalized.includes("minimum_billing_")
   ) {
-    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql, 123_support_measurement_without_production.sql, 124_add_measurement_reopen_status_action.sql, 125_require_closed_before_measurement_cancel.sql, 126_allow_measurement_cancel_when_open.sql e 127_add_mva_hour_composed_quantity_to_measurement_items.sql foram aplicadas.";
+    return " Verifique se as migrations 112_create_measurement_order_module.sql, 115_allow_historical_programming_in_measurement_save.sql, 116_measurement_programming_match_and_completion_alert.sql, 117_allow_measurement_context_edit_and_history_details.sql, 119_create_measurement_batch_import_partial_rpc.sql, 120_unify_measurement_with_service_activities.sql, 122_protect_duplicate_measurement_items_in_rpc.sql, 123_support_measurement_without_production.sql, 124_add_measurement_reopen_status_action.sql, 125_require_closed_before_measurement_cancel.sql, 126_allow_measurement_cancel_when_open.sql, 127_add_mva_hour_composed_quantity_to_measurement_items.sql e 212_measurement_minimum_billing_guarantee.sql foram aplicadas.";
   }
   return "";
 }
@@ -1134,6 +1144,7 @@ async function fetchMeasurementOrderDetail(params: {
     totalValue: Number(item.total_value ?? 0),
     observation: normalizeText(item.observation),
   }));
+  const minimumBillingAmount = Number(order.minimum_billing_amount ?? 0);
 
   const programmingMatchMap = await loadProgrammingMatchMap({
     supabase: params.supabase,
@@ -1184,7 +1195,16 @@ async function fetchMeasurementOrderDetail(params: {
     programmingCompletionStatus: programmingMatch.completionStatus,
     programmingCompletionStatusChangedAfterMeasurement: programmingMatch.completionStatusChangedAfterMeasurement,
     itemCount: normalizedItems.length,
-    totalAmount: normalizedItems.reduce((sum, item) => sum + item.totalValue, 0),
+    totalAmount: normalizedItems.reduce((sum, item) => sum + item.totalValue, 0) + minimumBillingAmount,
+    minimumBillingAmount,
+    minimumBillingTeamTypeId: order.minimum_billing_team_type_id,
+    minimumBillingTeamTypeName: normalizeText(order.minimum_billing_team_type_name_snapshot),
+    minimumBillingScoreTargetId: order.minimum_billing_score_target_id,
+    minimumBillingTargetPoints: Number(order.minimum_billing_target_points ?? 0),
+    minimumBillingUnitValueSourceActivityId: order.minimum_billing_unit_value_source_activity_id,
+    minimumBillingUnitValueGroup: normalizeText(order.minimum_billing_unit_value_group_snapshot),
+    minimumBillingUnitValue: Number(order.minimum_billing_unit_value ?? 0),
+    minimumBillingCalculatedAt: order.minimum_billing_calculated_at,
     items: normalizedItems,
   };
 }
@@ -1383,6 +1403,15 @@ export async function GET(request: NextRequest) {
         matchedProgrammingId: programmingMatch.programmingId,
         programmingCompletionStatus: programmingMatch.completionStatus,
         programmingCompletionStatusChangedAfterMeasurement: programmingMatch.completionStatusChangedAfterMeasurement,
+        minimumBillingAmount: Number(item.minimum_billing_amount ?? 0),
+        minimumBillingTeamTypeId: item.minimum_billing_team_type_id,
+        minimumBillingTeamTypeName: normalizeText(item.minimum_billing_team_type_name_snapshot),
+        minimumBillingScoreTargetId: item.minimum_billing_score_target_id,
+        minimumBillingTargetPoints: Number(item.minimum_billing_target_points ?? 0),
+        minimumBillingUnitValueSourceActivityId: item.minimum_billing_unit_value_source_activity_id,
+        minimumBillingUnitValueGroup: normalizeText(item.minimum_billing_unit_value_group_snapshot),
+        minimumBillingUnitValue: Number(item.minimum_billing_unit_value ?? 0),
+        minimumBillingCalculatedAt: item.minimum_billing_calculated_at,
       };
     });
 
@@ -1494,9 +1523,9 @@ export async function GET(request: NextRequest) {
       : 0;
     return {
       ...item,
-      totalAmount: Number(aggregate.totalAmount ?? 0),
+      totalAmount: Number(aggregate.totalAmount ?? 0) + Number(item.minimumBillingAmount ?? 0),
       itemCount: Number(aggregate.itemCount ?? 0),
-      scorePoints: Number(aggregate.scorePoints ?? 0),
+      scorePoints: Number(aggregate.scorePoints ?? 0) + Number(item.minimumBillingTargetPoints ?? 0),
       teamTypeId: teamType.teamTypeId,
       teamTypeName: teamType.typeLabel,
       pointTarget: teamType.teamTypeId ? pointTargetMap.get(teamType.teamTypeId) ?? 0 : 0,

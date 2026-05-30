@@ -133,6 +133,15 @@ type OrderItem = {
   teamTypeName: string;
   pointTarget: number;
   financialTarget: number;
+  minimumBillingAmount: number;
+  minimumBillingTeamTypeId: string | null;
+  minimumBillingTeamTypeName: string;
+  minimumBillingScoreTargetId: string | null;
+  minimumBillingTargetPoints: number;
+  minimumBillingUnitValueSourceActivityId: string | null;
+  minimumBillingUnitValueGroup: string;
+  minimumBillingUnitValue: number;
+  minimumBillingCalculatedAt: string | null;
   programmingMatchStatus: ProgrammingMatchStatus;
   matchedProgrammingId: string | null;
   programmingCompletionStatus: WorkCompletionStatus;
@@ -185,6 +194,16 @@ type OrderDetail = {
   matchedProgrammingId: string | null;
   programmingCompletionStatus: WorkCompletionStatus;
   programmingCompletionStatusChangedAfterMeasurement: boolean;
+  totalAmount: number;
+  minimumBillingAmount: number;
+  minimumBillingTeamTypeId: string | null;
+  minimumBillingTeamTypeName: string;
+  minimumBillingScoreTargetId: string | null;
+  minimumBillingTargetPoints: number;
+  minimumBillingUnitValueSourceActivityId: string | null;
+  minimumBillingUnitValueGroup: string;
+  minimumBillingUnitValue: number;
+  minimumBillingCalculatedAt: string | null;
   items: OrderDetailItem[];
   updatedAt: string;
 };
@@ -2685,15 +2704,15 @@ export function MeasurementPageView() {
           programmingActivityId: null,
           projectActivityForecastId: null,
           code: "",
-          description: "",
-          unit: "",
-          quantity: 0,
+          description: detail.minimumBillingAmount > 0 ? "Garantia de faturamento minimo" : "",
+          unit: detail.minimumBillingAmount > 0 ? detail.minimumBillingUnitValueGroup : "",
+          quantity: detail.minimumBillingAmount > 0 ? 1 : 0,
           mvaQuantity: null,
           workedHours: null,
-          voicePoint: 0,
+          voicePoint: detail.minimumBillingTargetPoints,
           manualRate: detail.manualRate,
-          unitValue: 0,
-          totalValue: 0,
+          unitValue: detail.minimumBillingUnitValue,
+          totalValue: detail.minimumBillingAmount,
           observation: "",
         }];
 
@@ -3328,6 +3347,15 @@ export function MeasurementPageView() {
                 <div><strong>Status execucao:</strong> {workCompletionStatusLabel(detailOrder.programmingCompletionStatus, workCompletionLabelMap)}</div>
                 <div><strong>Status da ordem:</strong> {detailOrder.status}</div>
                 <div><strong>Taxa manual:</strong> {detailOrder.manualRate.toLocaleString("pt-BR")}</div>
+                <div><strong>Valor total:</strong> {formatCurrency(detailOrder.totalAmount)}</div>
+                {detailOrder.minimumBillingAmount > 0 ? (
+                  <>
+                    <div><strong>Garantia minima:</strong> {formatCurrency(detailOrder.minimumBillingAmount)}</div>
+                    <div><strong>Tipo garantia:</strong> {detailOrder.minimumBillingTeamTypeName || "-"}</div>
+                    <div><strong>Pontos garantia:</strong> {detailOrder.minimumBillingTargetPoints.toLocaleString("pt-BR")}</div>
+                    <div><strong>Valor ponto:</strong> {formatCurrency(detailOrder.minimumBillingUnitValue)} ({detailOrder.minimumBillingUnitValueGroup || "-"})</div>
+                  </>
+                ) : null}
                 <div className={styles.detailWide}><strong>Observacoes:</strong> {detailOrder.notes || "-"}</div>
               </div>
 
