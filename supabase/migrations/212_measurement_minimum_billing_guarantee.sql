@@ -128,14 +128,20 @@ as $$
   );
 $$;
 
-create or replace function public.apply_measurement_minimum_billing_guarantee()
-returns trigger
+create or replace function public.calculate_measurement_minimum_billing_guarantee(
+  p_tenant_id uuid,
+  p_team_id uuid,
+  p_execution_date date,
+  p_no_production_reason_id uuid
+)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_reason_token text;
+  v_reason_code_token text;
+  v_reason_name_token text;
   v_team_type_id uuid;
   v_team_type_name text;
   v_team_type_token text;
@@ -146,6 +152,142 @@ declare
   v_unit_value numeric(14, 2);
   v_source_activity_id uuid;
   v_distinct_unit_values integer;
+begin
+  if p_tenant_id is null or p_team_id is null or p_execution_date is null or p_no_production_reason_id is null then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_MINIMUM_BILLING_CONTEXT', 'message', 'Contexto invalido para calcular garantia de faturamento minimo.');
+  end if;
+
+  select
+    public.normalize_minimum_billing_token(r.code),
+    public.normalize_minimum_billing_token(r.name)
+  into v_reason_code_token, v_reason_name_token
+  from public.measurement_no_production_reasons r
+  where r.tenant_id = p_tenant_id
+    and r.id = p_no_production_reason_id
+    and r.is_active = true;
+
+  if not found then
+    return jsonb_build_object('success', false, 'status', 404, 'reason', 'NO_PRODUCTION_REASON_NOT_FOUND', 'message', 'Motivo de sem producao invalido.');
+  end if;
+
+  if not (
+    v_reason_code_token in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+    or v_reason_name_token in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+    or (
+      v_reason_name_token like '%GARANTIA%'
+      and v_reason_name_token like '%FATURAMENTO%'
+      and v_reason_name_token like '%MINIMO%'
+    )
+  ) then
+    return jsonb_build_object('success', false, 'status', 200, 'reason', 'NOT_MINIMUM_BILLING_REASON', 'message', 'Motivo sem producao nao exige garantia de faturamento minimo.');
+  end if;
+
+  select h.team_type_id, h.team_type_name_snapshot
+  into v_team_type_id, v_team_type_name
+  from public.team_type_history h
+  where h.tenant_id = p_tenant_id
+    and h.team_id = p_team_id
+    and h.valid_from <= p_execution_date
+    and (h.valid_to is null or h.valid_to >= p_execution_date)
+  order by h.valid_from desc, h.updated_at desc
+  limit 1;
+
+  if v_team_type_id is null then
+    select t.team_type_id, tt.name
+    into v_team_type_id, v_team_type_name
+    from public.teams t
+    left join public.team_types tt
+      on tt.tenant_id = t.tenant_id
+     and tt.id = t.team_type_id
+    where t.tenant_id = p_tenant_id
+      and t.id = p_team_id;
+  end if;
+
+  if v_team_type_id is null then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'TEAM_TYPE_NOT_FOUND', 'message', 'Garantia de faturamento minimo sem tipo de equipe vinculado.');
+  end if;
+
+  if nullif(btrim(coalesce(v_team_type_name, '')), '') is null then
+    select tt.name
+    into v_team_type_name
+    from public.team_types tt
+    where tt.tenant_id = p_tenant_id
+      and tt.id = v_team_type_id;
+  end if;
+
+  v_team_type_token := public.normalize_minimum_billing_token(v_team_type_name);
+
+  if v_team_type_token in ('LV', 'LINHAVIVA') then
+    v_group_label := 'LLEE/LINHA VIVA';
+    v_group_tokens := array['LLEE', 'LINHAVIVA'];
+  elsif v_team_type_token in ('MK', 'LM', 'LINHAMORTA', 'CESTO', 'CETO') then
+    v_group_label := 'SOT AEREA';
+    v_group_tokens := array['SOTAEREA'];
+  else
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'UNSUPPORTED_TEAM_TYPE', 'message', format('Tipo de equipe sem regra de garantia de faturamento minimo: %s', coalesce(v_team_type_name, v_team_type_id::text)));
+  end if;
+
+  select mst.id, mst.target_points
+  into v_score_target_id, v_target_points
+  from public.measurement_score_targets mst
+  where mst.tenant_id = p_tenant_id
+    and mst.team_type_id = v_team_type_id
+    and mst.ativo = true
+  limit 1;
+
+  if v_score_target_id is null or coalesce(v_target_points, 0) <= 0 then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'SCORE_TARGET_NOT_FOUND', 'message', format('Meta de pontos nao encontrada para garantia de faturamento minimo: %s', coalesce(v_team_type_name, v_team_type_id::text)));
+  end if;
+
+  select count(distinct sa.unit_value)
+  into v_distinct_unit_values
+  from public.service_activities sa
+  where sa.tenant_id = p_tenant_id
+    and sa.ativo = true
+    and sa.unit_value > 0
+    and public.normalize_minimum_billing_token(sa.group_name) = any(v_group_tokens);
+
+  if coalesce(v_distinct_unit_values, 0) = 0 then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'UNIT_VALUE_NOT_FOUND', 'message', format('Valor do ponto nao encontrado para garantia de faturamento minimo: %s', v_group_label));
+  end if;
+
+  if v_distinct_unit_values > 1 then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'AMBIGUOUS_UNIT_VALUE', 'message', format('Valor do ponto ambiguo para garantia de faturamento minimo: %s', v_group_label));
+  end if;
+
+  select sa.id, sa.unit_value
+  into v_source_activity_id, v_unit_value
+  from public.service_activities sa
+  where sa.tenant_id = p_tenant_id
+    and sa.ativo = true
+    and sa.unit_value > 0
+    and public.normalize_minimum_billing_token(sa.group_name) = any(v_group_tokens)
+  order by sa.updated_at desc, sa.id
+  limit 1;
+
+  return jsonb_build_object(
+    'success', true,
+    'status', 200,
+    'amount', round(v_target_points * v_unit_value, 2),
+    'teamTypeId', v_team_type_id,
+    'teamTypeName', nullif(btrim(coalesce(v_team_type_name, '')), ''),
+    'scoreTargetId', v_score_target_id,
+    'targetPoints', v_target_points,
+    'unitValueSourceActivityId', v_source_activity_id,
+    'unitValueGroup', v_group_label,
+    'unitValue', v_unit_value
+  );
+end;
+$$;
+
+create or replace function public.apply_measurement_minimum_billing_guarantee()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_calculation jsonb;
 begin
   new.minimum_billing_amount := 0;
   new.minimum_billing_team_type_id := null;
@@ -161,115 +303,30 @@ begin
     return new;
   end if;
 
-  select case
-    when public.normalize_minimum_billing_token(r.code) = 'GARANTIAFATURAMENTOMINIMO'
-      or public.normalize_minimum_billing_token(r.name) = 'GARANTIAFATURAMENTOMINIMO'
-      then 'GARANTIAFATURAMENTOMINIMO'
-    else public.normalize_minimum_billing_token(r.code)
-  end
-  into v_reason_token
-  from public.measurement_no_production_reasons r
-  where r.tenant_id = new.tenant_id
-    and r.id = new.no_production_reason_id
-    and r.is_active = true;
+  v_calculation := public.calculate_measurement_minimum_billing_guarantee(
+    new.tenant_id,
+    new.team_id,
+    new.execution_date,
+    new.no_production_reason_id
+  );
 
-  if v_reason_token <> 'GARANTIAFATURAMENTOMINIMO' then
+  if coalesce(v_calculation ->> 'reason', '') = 'NOT_MINIMUM_BILLING_REASON' then
     return new;
   end if;
 
-  select h.team_type_id, h.team_type_name_snapshot
-  into v_team_type_id, v_team_type_name
-  from public.team_type_history h
-  where h.tenant_id = new.tenant_id
-    and h.team_id = new.team_id
-    and h.valid_from <= new.execution_date
-    and (h.valid_to is null or h.valid_to >= new.execution_date)
-  order by h.valid_from desc, h.updated_at desc
-  limit 1;
-
-  if v_team_type_id is null then
-    select t.team_type_id, tt.name
-    into v_team_type_id, v_team_type_name
-    from public.teams t
-    left join public.team_types tt
-      on tt.tenant_id = t.tenant_id
-     and tt.id = t.team_type_id
-    where t.tenant_id = new.tenant_id
-      and t.id = new.team_id;
+  if lower(coalesce(v_calculation ->> 'success', 'false')) <> 'true' then
+    raise exception '%', coalesce(v_calculation ->> 'message', 'Falha ao calcular garantia de faturamento minimo.');
   end if;
 
-  if v_team_type_id is null then
-    raise exception 'Garantia de faturamento minimo sem tipo de equipe vinculado.';
-  end if;
-
-  if nullif(btrim(coalesce(v_team_type_name, '')), '') is null then
-    select tt.name
-    into v_team_type_name
-    from public.team_types tt
-    where tt.tenant_id = new.tenant_id
-      and tt.id = v_team_type_id;
-  end if;
-
-  v_team_type_token := public.normalize_minimum_billing_token(v_team_type_name);
-
-  if v_team_type_token in ('LV', 'LINHAVIVA') then
-    v_group_label := 'LLEE/LINHA VIVA';
-    v_group_tokens := array['LLEE', 'LINHAVIVA'];
-  elsif v_team_type_token in ('MK', 'LM', 'LINHAMORTA', 'CESTO', 'CETO') then
-    v_group_label := 'SOT AEREA';
-    v_group_tokens := array['SOTAEREA'];
-  else
-    raise exception 'Tipo de equipe sem regra de garantia de faturamento minimo: %', coalesce(v_team_type_name, v_team_type_id::text);
-  end if;
-
-  select mst.id, mst.target_points
-  into v_score_target_id, v_target_points
-  from public.measurement_score_targets mst
-  where mst.tenant_id = new.tenant_id
-    and mst.team_type_id = v_team_type_id
-    and mst.ativo = true
-  limit 1;
-
-  if v_score_target_id is null or coalesce(v_target_points, 0) <= 0 then
-    raise exception 'Meta de pontos nao encontrada para garantia de faturamento minimo: %', coalesce(v_team_type_name, v_team_type_id::text);
-  end if;
-
-  select count(distinct sa.unit_value)
-  into v_distinct_unit_values
-  from public.service_activities sa
-  where sa.tenant_id = new.tenant_id
-    and sa.ativo = true
-    and sa.unit_value > 0
-    and public.normalize_minimum_billing_token(sa.group_name) = any(v_group_tokens);
-
-  if coalesce(v_distinct_unit_values, 0) = 0 then
-    raise exception 'Valor do ponto nao encontrado para garantia de faturamento minimo: %', v_group_label;
-  end if;
-
-  if v_distinct_unit_values > 1 then
-    raise exception 'Valor do ponto ambiguo para garantia de faturamento minimo: %', v_group_label;
-  end if;
-
-  select sa.id, sa.unit_value
-  into v_source_activity_id, v_unit_value
-  from public.service_activities sa
-  where sa.tenant_id = new.tenant_id
-    and sa.ativo = true
-    and sa.unit_value > 0
-    and public.normalize_minimum_billing_token(sa.group_name) = any(v_group_tokens)
-  order by sa.updated_at desc, sa.id
-  limit 1;
-
-  new.minimum_billing_amount := round(v_target_points * v_unit_value, 2);
-  new.minimum_billing_team_type_id := v_team_type_id;
-  new.minimum_billing_team_type_name_snapshot := nullif(btrim(coalesce(v_team_type_name, '')), '');
-  new.minimum_billing_score_target_id := v_score_target_id;
-  new.minimum_billing_target_points := v_target_points;
-  new.minimum_billing_unit_value_source_activity_id := v_source_activity_id;
-  new.minimum_billing_unit_value_group_snapshot := v_group_label;
-  new.minimum_billing_unit_value := v_unit_value;
+  new.minimum_billing_amount := (v_calculation ->> 'amount')::numeric;
+  new.minimum_billing_team_type_id := (v_calculation ->> 'teamTypeId')::uuid;
+  new.minimum_billing_team_type_name_snapshot := nullif(btrim(coalesce(v_calculation ->> 'teamTypeName', '')), '');
+  new.minimum_billing_score_target_id := (v_calculation ->> 'scoreTargetId')::uuid;
+  new.minimum_billing_target_points := (v_calculation ->> 'targetPoints')::numeric;
+  new.minimum_billing_unit_value_source_activity_id := (v_calculation ->> 'unitValueSourceActivityId')::uuid;
+  new.minimum_billing_unit_value_group_snapshot := nullif(btrim(coalesce(v_calculation ->> 'unitValueGroup', '')), '');
+  new.minimum_billing_unit_value := (v_calculation ->> 'unitValue')::numeric;
   new.minimum_billing_calculated_at := now();
-
   return new;
 end;
 $$;
@@ -280,9 +337,30 @@ before insert or update of measurement_kind, no_production_reason_id, team_id, e
 on public.project_measurement_orders
 for each row execute function public.apply_measurement_minimum_billing_guarantee();
 
+update public.project_measurement_orders mo
+set no_production_reason_id = mo.no_production_reason_id
+from public.measurement_no_production_reasons r
+where r.tenant_id = mo.tenant_id
+  and r.id = mo.no_production_reason_id
+  and mo.measurement_kind = 'SEM_PRODUCAO'
+  and (
+    public.normalize_minimum_billing_token(r.code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+    or public.normalize_minimum_billing_token(r.name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+    or (
+      public.normalize_minimum_billing_token(r.name) like '%GARANTIA%'
+      and public.normalize_minimum_billing_token(r.name) like '%FATURAMENTO%'
+      and public.normalize_minimum_billing_token(r.name) like '%MINIMO%'
+    )
+  )
+  and coalesce(mo.minimum_billing_amount, 0) = 0;
+
 revoke all on function public.normalize_minimum_billing_token(text) from public;
 grant execute on function public.normalize_minimum_billing_token(text) to authenticated;
 grant execute on function public.normalize_minimum_billing_token(text) to service_role;
+
+revoke all on function public.calculate_measurement_minimum_billing_guarantee(uuid, uuid, date, uuid) from public;
+grant execute on function public.calculate_measurement_minimum_billing_guarantee(uuid, uuid, date, uuid) to authenticated;
+grant execute on function public.calculate_measurement_minimum_billing_guarantee(uuid, uuid, date, uuid) to service_role;
 
 revoke all on function public.apply_measurement_minimum_billing_guarantee() from public;
 grant execute on function public.apply_measurement_minimum_billing_guarantee() to authenticated;

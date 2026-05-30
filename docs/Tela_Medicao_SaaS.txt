@@ -764,16 +764,19 @@ Atualizacao 2026-05-30 (Garantia de faturamento minimo)
 - Arquivos alterados/criados:
   - `supabase/migrations/212_measurement_minimum_billing_guarantee.sql`
   - `src/app/api/medicao/route.ts`
+  - `src/app/api/medicao/minimum-billing/route.ts`
   - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
   - `docs/Tela_Medicao_SaaS.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
   - Funcao SQL `normalize_minimum_billing_token`
+  - Funcao SQL `calculate_measurement_minimum_billing_guarantee`
   - Funcao SQL `apply_measurement_minimum_billing_guarantee`
   - Trigger `trg_project_measurement_orders_minimum_billing`
   - Constante `MEASUREMENT_ORDER_SELECT`
   - Funcao `fetchMeasurementOrderDetail`
   - `GET /api/medicao`
+  - `GET /api/medicao/minimum-billing`
   - Renderizacao do modal `Detalhes da Ordem`
   - Exportacoes CSV da lista, detalhamento e pontuacao
 - Comportamento antes/depois:
@@ -781,6 +784,8 @@ Atualizacao 2026-05-30 (Garantia de faturamento minimo)
   - Antes: a regra futura de garantia dependia de definicao posterior para usar pontos e valor de ponto sem calculo no frontend.
   - Depois: o banco cria/ativa o motivo `GARANTIA_FATURAMENTO_MINIMO` por tenant.
   - Depois: ordens `SEM_PRODUCAO` com esse motivo continuam sem itens, mas o trigger calcula `minimum_billing_amount` no cabecalho da ordem.
+  - Depois: ordens existentes com esse motivo recebem backfill pela propria trigger da migration.
+  - Depois: o formulario consulta `GET /api/medicao/minimum-billing` para exibir uma previa calculada no backend; o frontend nao calcula a regra.
   - Depois: o calculo usa o tipo vigente da equipe na `execution_date`, buscando primeiro `team_type_history` e depois `teams.team_type_id`.
   - Depois: para `LV`/`LINHA VIVA`, o valor e `measurement_score_targets.target_points` do tipo da equipe vezes o `unit_value` ativo de `service_activities` no grupo `LLEE/LINHA VIVA`.
   - Depois: para `MK`/`LM`/`LINHA MORTA`/`CESTO`/`CETO`, o valor e `measurement_score_targets.target_points` do tipo da equipe vezes o `unit_value` ativo de `service_activities` no grupo `SOT AEREA`.

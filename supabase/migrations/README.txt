@@ -457,6 +457,7 @@ Resumo por arquivo
 
 212_measurement_minimum_billing_guarantee.sql
 - Adiciona calculo backend da garantia de faturamento minimo na Medicao sem producao, salvando `minimum_billing_amount` e snapshots/vinculos de tipo de equipe, meta de pontos e valor do ponto por grupo sem criar itens artificiais.
+- Cria `calculate_measurement_minimum_billing_guarantee` para preview/API e trigger, reconhece o motivo por codigo ou nome normalizado e faz backfill das ordens existentes de garantia.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
