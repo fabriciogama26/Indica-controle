@@ -18,6 +18,25 @@ type WorkCompletionCatalogRow = {
   sort_order: number | null;
 };
 
+function normalizeReasonKey(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+function dedupeNoProductionReasons(items: NoProductionReasonRow[]) {
+  const byName = new Map<string, NoProductionReasonRow>();
+  for (const item of items) {
+    const key = normalizeReasonKey(item.name);
+    if (!key || byName.has(key)) continue;
+    byName.set(key, item);
+  }
+  return Array.from(byName.values());
+}
+
 export async function GET(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar metadados da medicao.",
@@ -51,7 +70,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar motivos de sem producao da medicao." }, { status: 500 });
   }
 
-  const noProductionReasons = noProductionReasonResult.data ?? [];
+  const noProductionReasons = dedupeNoProductionReasons(noProductionReasonResult.data ?? []);
   const workCompletionCatalog = workCompletionCatalogResult.error
     ? []
     : (workCompletionCatalogResult.data ?? []);

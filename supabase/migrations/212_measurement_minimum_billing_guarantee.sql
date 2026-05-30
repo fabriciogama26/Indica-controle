@@ -97,20 +97,6 @@ create index if not exists idx_project_measurement_orders_minimum_billing
   on public.project_measurement_orders (tenant_id, minimum_billing_amount)
   where minimum_billing_amount > 0;
 
-insert into public.measurement_no_production_reasons (tenant_id, code, name, sort_order)
-select
-  t.id,
-  'GARANTIA_FATURAMENTO_MINIMO',
-  'Garantia de faturamento minimo',
-  50
-from public.tenants t
-on conflict (tenant_id, code) do update
-set
-  name = excluded.name,
-  is_active = true,
-  sort_order = excluded.sort_order,
-  updated_at = now();
-
 create or replace function public.normalize_minimum_billing_token(p_value text)
 returns text
 language sql
@@ -127,6 +113,34 @@ as $$
     'g'
   );
 $$;
+
+insert into public.measurement_no_production_reasons (tenant_id, code, name, sort_order)
+select
+  t.id,
+  'GARANTIA_FATURAMENTO_MINIMO',
+  'Garantia de faturamento minimo',
+  50
+from public.tenants t
+where not exists (
+  select 1
+  from public.measurement_no_production_reasons existing
+  where existing.tenant_id = t.id
+    and (
+      public.normalize_minimum_billing_token(existing.code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+      or public.normalize_minimum_billing_token(existing.name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+      or (
+        public.normalize_minimum_billing_token(existing.name) like '%GARANTIA%'
+        and public.normalize_minimum_billing_token(existing.name) like '%FATURAMENTO%'
+        and public.normalize_minimum_billing_token(existing.name) like '%MINIMO%'
+      )
+    )
+)
+on conflict (tenant_id, code) do update
+set
+  name = excluded.name,
+  is_active = true,
+  sort_order = excluded.sort_order,
+  updated_at = now();
 
 create or replace function public.calculate_measurement_minimum_billing_guarantee(
   p_tenant_id uuid,
@@ -357,6 +371,127 @@ where r.tenant_id = mo.tenant_id
 revoke all on function public.normalize_minimum_billing_token(text) from public;
 grant execute on function public.normalize_minimum_billing_token(text) to authenticated;
 grant execute on function public.normalize_minimum_billing_token(text) to service_role;
+
+do $$
+declare
+  v_tenant record;
+  v_keeper_id uuid;
+begin
+  for v_tenant in
+    select distinct tenant_id
+    from public.measurement_no_production_reasons
+    where public.normalize_minimum_billing_token(code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+       or public.normalize_minimum_billing_token(name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+       or (
+        public.normalize_minimum_billing_token(name) like '%GARANTIA%'
+        and public.normalize_minimum_billing_token(name) like '%FATURAMENTO%'
+        and public.normalize_minimum_billing_token(name) like '%MINIMO%'
+       )
+  loop
+    select id
+    into v_keeper_id
+    from public.measurement_no_production_reasons
+    where tenant_id = v_tenant.tenant_id
+      and (
+        public.normalize_minimum_billing_token(code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+        or public.normalize_minimum_billing_token(name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+        or (
+          public.normalize_minimum_billing_token(name) like '%GARANTIA%'
+          and public.normalize_minimum_billing_token(name) like '%FATURAMENTO%'
+          and public.normalize_minimum_billing_token(name) like '%MINIMO%'
+        )
+      )
+    order by
+      case when code = 'GARANTIA_FATURAMENTO_MINIMO' then 0 else 1 end,
+      sort_order nulls last,
+      created_at,
+      id
+    limit 1;
+
+    update public.project_measurement_orders
+    set no_production_reason_id = v_keeper_id
+    where tenant_id = v_tenant.tenant_id
+      and no_production_reason_id in (
+        select id
+        from public.measurement_no_production_reasons
+        where tenant_id = v_tenant.tenant_id
+          and id <> v_keeper_id
+          and (
+            public.normalize_minimum_billing_token(code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+            or public.normalize_minimum_billing_token(name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+            or (
+              public.normalize_minimum_billing_token(name) like '%GARANTIA%'
+              and public.normalize_minimum_billing_token(name) like '%FATURAMENTO%'
+              and public.normalize_minimum_billing_token(name) like '%MINIMO%'
+            )
+          )
+      );
+
+    update public.project_billing_orders
+    set no_production_reason_id = v_keeper_id
+    where tenant_id = v_tenant.tenant_id
+      and no_production_reason_id in (
+        select id
+        from public.measurement_no_production_reasons
+        where tenant_id = v_tenant.tenant_id
+          and id <> v_keeper_id
+          and (
+            public.normalize_minimum_billing_token(code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+            or public.normalize_minimum_billing_token(name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+            or (
+              public.normalize_minimum_billing_token(name) like '%GARANTIA%'
+              and public.normalize_minimum_billing_token(name) like '%FATURAMENTO%'
+              and public.normalize_minimum_billing_token(name) like '%MINIMO%'
+            )
+          )
+      );
+
+    update public.project_asbuilt_measurement_orders
+    set no_production_reason_id = v_keeper_id
+    where tenant_id = v_tenant.tenant_id
+      and no_production_reason_id in (
+        select id
+        from public.measurement_no_production_reasons
+        where tenant_id = v_tenant.tenant_id
+          and id <> v_keeper_id
+          and (
+            public.normalize_minimum_billing_token(code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+            or public.normalize_minimum_billing_token(name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+            or (
+              public.normalize_minimum_billing_token(name) like '%GARANTIA%'
+              and public.normalize_minimum_billing_token(name) like '%FATURAMENTO%'
+              and public.normalize_minimum_billing_token(name) like '%MINIMO%'
+            )
+          )
+      );
+
+    update public.measurement_no_production_reasons
+    set
+      code = case
+        when id = v_keeper_id then code
+        when code like '%_DUP_%' then code
+        else code || '_DUP_' || substr(replace(id::text, '-', ''), 1, 8)
+      end,
+      name = case
+        when id = v_keeper_id then 'Garantia de faturamento minimo'
+        else 'Motivo duplicado inativo ' || substr(replace(id::text, '-', ''), 1, 8)
+      end,
+      is_active = id = v_keeper_id,
+      sort_order = case when id = v_keeper_id then 50 else sort_order end,
+      updated_at = now()
+    where tenant_id = v_tenant.tenant_id
+      and (
+        public.normalize_minimum_billing_token(code) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+        or public.normalize_minimum_billing_token(name) in ('GARANTIAFATURAMENTOMINIMO', 'GARANTIADEFATURAMENTOMINIMO')
+        or (
+          public.normalize_minimum_billing_token(name) like '%GARANTIA%'
+          and public.normalize_minimum_billing_token(name) like '%FATURAMENTO%'
+          and public.normalize_minimum_billing_token(name) like '%MINIMO%'
+        )
+      );
+  end loop;
+end;
+$$;
 
 revoke all on function public.calculate_measurement_minimum_billing_guarantee(uuid, uuid, date, uuid) from public;
 grant execute on function public.calculate_measurement_minimum_billing_guarantee(uuid, uuid, date, uuid) to authenticated;

@@ -763,8 +763,12 @@ Atualizacao 2026-05-30 (Garantia de faturamento minimo)
 --------------------------------------------------------
 - Arquivos alterados/criados:
   - `supabase/migrations/212_measurement_minimum_billing_guarantee.sql`
+  - `supabase/migrations/213_dedupe_minimum_billing_no_production_reason.sql`
   - `src/app/api/medicao/route.ts`
   - `src/app/api/medicao/minimum-billing/route.ts`
+  - `src/app/api/medicao/meta/route.ts`
+  - `src/app/api/faturamento/meta/route.ts`
+  - `src/app/api/medicao-asbuilt/meta/route.ts`
   - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
   - `docs/Tela_Medicao_SaaS.txt`
   - `TASKS.md`
@@ -773,16 +777,22 @@ Atualizacao 2026-05-30 (Garantia de faturamento minimo)
   - Funcao SQL `calculate_measurement_minimum_billing_guarantee`
   - Funcao SQL `apply_measurement_minimum_billing_guarantee`
   - Trigger `trg_project_measurement_orders_minimum_billing`
+  - Migration SQL `213_dedupe_minimum_billing_no_production_reason`
   - Constante `MEASUREMENT_ORDER_SELECT`
   - Funcao `fetchMeasurementOrderDetail`
   - `GET /api/medicao`
   - `GET /api/medicao/minimum-billing`
+  - `GET /api/medicao/meta`
+  - `GET /api/faturamento/meta`
+  - `GET /api/medicao-asbuilt/meta`
   - Renderizacao do modal `Detalhes da Ordem`
   - Exportacoes CSV da lista, detalhamento e pontuacao
 - Comportamento antes/depois:
   - Antes: a Medicao `SEM_PRODUCAO` mantinha bloqueio de itens, mas tambem ficava sem valor automatico para o motivo `GARANTIA_FATURAMENTO_MINIMO`.
   - Antes: a regra futura de garantia dependia de definicao posterior para usar pontos e valor de ponto sem calculo no frontend.
   - Depois: o banco cria/ativa o motivo `GARANTIA_FATURAMENTO_MINIMO` por tenant.
+  - Depois: se ja existir motivo equivalente com outro codigo, a migration evita novo cadastro duplicado, reatribui ordens para um unico motivo e desativa duplicatas.
+  - Depois: as rotas de metadados deduplicam motivos ativos por nome normalizado para evitar duplicidade visual em Medicao, Faturamento e Medicao Asbuilt.
   - Depois: ordens `SEM_PRODUCAO` com esse motivo continuam sem itens, mas o trigger calcula `minimum_billing_amount` no cabecalho da ordem.
   - Depois: ordens existentes com esse motivo recebem backfill pela propria trigger da migration.
   - Depois: o formulario consulta `GET /api/medicao/minimum-billing` para exibir uma previa calculada no backend; o frontend nao calcula a regra.
