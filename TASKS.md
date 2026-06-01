@@ -802,4 +802,6 @@
 
 - [x] Normalizar codigos tecnicos legados de `Estado Trabalho` por tenant e proteger o snapshot da Medicao contra acentos, espacos e caracteres especiais, evitando falha ao salvar ordem com violacao de `project_measurement_orders_programming_completion_status_snapshot_check`.
 
+- [x] Reparar cadastro multi-tenant da pagina `Estornos` em ambientes sem `page_key = estornos`, preenchendo somente permissoes ausentes sem sobrescrever configuracoes existentes.
+
 - [ ] Habilitar manualmente no Supabase Auth a protecao contra senhas vazadas (`Leaked password protection`) no painel/configuracao do projeto quando o plano permitir, pois nao ha `supabase/config.toml` ou setting versionado no repositorio atual.

@@ -17,6 +17,7 @@ Arquitetura
 - Catalogo de permissao frontend: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Guard de rota no shell: `src/lib/auth/authorization.ts`
 - Banco (pagina/permissao): `supabase/migrations/207_create_reversals_page_permissions.sql`
+- Reparo de pagina/permissao: `supabase/migrations/215_repair_reversals_page_permissions.sql`
 - Tabelas lidas:
   - `stock_transfer_item_reversals`
   - `stock_transfer_reversals`
@@ -118,6 +119,13 @@ Atualizacao 2026-05
 - Antes: a verificacao de estornos dependia de consultar separadamente `/entrada` e `/saida`.
 - Depois: os estornos ja realizados podem ser consultados em uma tela unica, sem permitir nova reversao.
 
+Atualizacao 2026-06
+-------------------
+- Criada migration `215_repair_reversals_page_permissions.sql` para corrigir ambientes onde o frontend de `Estornos` foi publicado sem `page_key = estornos` em `app_pages`.
+- O reparo reativa o catalogo da pagina e preenche somente permissoes ausentes em `role_page_permissions` e `app_user_page_permissions`.
+- Antes: o salvamento da tela `/permissoes` era bloqueado com `As telas estornos nao estao cadastradas em app_pages.`.
+- Depois: a matriz volta a reconhecer `estornos` sem sobrescrever liberacoes ou bloqueios ja persistidos.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -135,6 +143,8 @@ Funcoes principais
   - Responsavel por: reconhecer `/estornos`, incluir a tela no acesso padrao e no fallback de `viewer`.
 - Caminho: `supabase/migrations/207_create_reversals_page_permissions.sql`
   - Responsavel por: cadastrar a pagina no banco e criar/backfill de permissoes por role/usuario.
+- Caminho: `supabase/migrations/215_repair_reversals_page_permissions.sql`
+  - Responsavel por: reparar ambientes com catalogo ausente de `estornos`, preservando permissoes existentes.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/estornos/ReversalsPageView.tsx`
@@ -166,6 +176,7 @@ Ajuda contextual
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
   - `src/lib/auth/authorization.ts`
   - `supabase/migrations/207_create_reversals_page_permissions.sql`
+  - `supabase/migrations/215_repair_reversals_page_permissions.sql`
   - `docs/Tela_Estornos_SaaS.txt`
   - `docs/Tela_Permissoes_SaaS.txt`
   - `docs/00_Indice_SaaS.txt`
