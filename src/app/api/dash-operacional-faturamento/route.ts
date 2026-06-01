@@ -130,6 +130,13 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type OperationalMeasurementCategoryCard = {
+  key: string;
+  label: string;
+  categoryName: string;
+  quantity: number;
+};
+
 type ProjectValueRow = {
   projectId: string;
   projectCode: string;
@@ -168,6 +175,14 @@ function normalizeCode(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
 
+function normalizeCategoryName(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
 function normalizeStatusCatalogCode(value: unknown) {
   return normalizeText(value)
     .normalize("NFD")
@@ -196,6 +211,21 @@ function chunk<T>(items: T[], size: number) {
   }
   return chunks;
 }
+
+const OPERATIONAL_MEASUREMENT_CATEGORIES = [
+  { key: "installed-poles", label: "Postes instalados", categoryName: "POSTE (INSTALADO)" },
+  { key: "installed-network", label: "Rede instalada", categoryName: "CONDUTOR (REDE INSTALADO)" },
+  { key: "installed-equipment", label: "Equipamentos instalados", categoryName: "EQUIPAMENTO (INSTALADO)" },
+  { key: "installed-crossarms", label: "Cruzetas instaladas", categoryName: "CRUZETA (INSTALADO)" },
+  { key: "installed-structures", label: "Estruturas instaladas", categoryName: "ESTRUTURA (INSTALADO)" },
+  { key: "removed-poles", label: "Postes retirados", categoryName: "POSTE (RETIRADO)" },
+  { key: "removed-network", label: "Rede retirada", categoryName: "CONDUTOR (REDE RETIRADO)" },
+  { key: "removed-equipment", label: "Equipamentos retirados", categoryName: "EQUIPAMENTO (RETIRADO)" },
+  { key: "removed-crossarms", label: "Cruzetas retiradas", categoryName: "CRUZETA (RETIRADO)" },
+  { key: "removed-structures", label: "Estruturas retiradas", categoryName: "ESTRUTURA (RETIRADO)" },
+] as const;
+
+const QUERY_PAGE_SIZE = 1000;
 
 function createRow(code: string): AggregatedRow {
   return {
@@ -271,19 +301,28 @@ async function resolveDashContext(request: NextRequest) {
 }
 
 async function loadProjects(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
-  const { data, error } = await supabase
-    .from("project_with_labels")
-    .select("id, sob, service_center, service_center_text, is_active, is_test, is_withdrawn")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .order("sob", { ascending: true })
-    .returns<ProjectRow[]>();
+  const rows: ProjectRow[] = [];
 
-  if (error) {
-    throw new Error("Falha ao carregar projetos do dashboard.");
+  for (let from = 0; ; from += QUERY_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("project_with_labels")
+      .select("id, sob, service_center, service_center_text, is_active, is_test, is_withdrawn")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .order("sob", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + QUERY_PAGE_SIZE - 1)
+      .returns<ProjectRow[]>();
+
+    if (error) {
+      throw new Error("Falha ao carregar projetos do dashboard.");
+    }
+
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < QUERY_PAGE_SIZE) break;
   }
 
-  return (data ?? [])
+  return rows
     .filter((project) => !project.is_test && !project.is_withdrawn)
     .map((project) => ({
       id: project.id,
@@ -330,25 +369,29 @@ async function loadOrderProjectRows(params: {
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
 
   for (const projectIdChunk of chunk(projectIds, 500)) {
-    let query = params.supabase
-      .from(params.table)
-      .select("id, project_id")
-      .eq("tenant_id", params.tenantId)
-      .eq("is_active", true)
-      .neq("status", "CANCELADA")
-      .in("project_id", projectIdChunk)
-      .limit(50000);
+    for (let from = 0; ; from += QUERY_PAGE_SIZE) {
+      let query = params.supabase
+        .from(params.table)
+        .select("id, project_id")
+        .eq("tenant_id", params.tenantId)
+        .eq("is_active", true)
+        .neq("status", "CANCELADA")
+        .in("project_id", projectIdChunk)
+        .order("id", { ascending: true })
+        .range(from, from + QUERY_PAGE_SIZE - 1);
 
-    if (params.table === "project_measurement_orders") {
-      query = query.eq("measurement_kind", "COM_PRODUCAO");
+      if (params.table === "project_measurement_orders") {
+        query = query.eq("measurement_kind", "COM_PRODUCAO");
+      }
+
+      const { data, error } = await query.returns<OrderProjectRow[]>();
+      if (error) {
+        throw new Error("Falha ao carregar ordens do grafico.");
+      }
+
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < QUERY_PAGE_SIZE) break;
     }
-
-    const { data, error } = await query.returns<OrderProjectRow[]>();
-    if (error) {
-      throw new Error("Falha ao carregar ordens do grafico.");
-    }
-
-    rows.push(...(data ?? []));
   }
 
   return rows;
@@ -361,16 +404,21 @@ async function loadMeasurementItems(params: {
 }) {
   const rows: MeasurementItemRow[] = [];
   for (const ids of chunk(params.orderIds, 500)) {
-    const { data, error } = await params.supabase
-      .from("project_measurement_order_items")
-      .select("service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value")
-      .eq("tenant_id", params.tenantId)
-      .eq("is_active", true)
-      .in("measurement_order_id", ids)
-      .returns<MeasurementItemRow[]>();
+    for (let from = 0; ; from += QUERY_PAGE_SIZE) {
+      const { data, error } = await params.supabase
+        .from("project_measurement_order_items")
+        .select("service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value")
+        .eq("tenant_id", params.tenantId)
+        .eq("is_active", true)
+        .in("measurement_order_id", ids)
+        .order("id", { ascending: true })
+        .range(from, from + QUERY_PAGE_SIZE - 1)
+        .returns<MeasurementItemRow[]>();
 
-    if (error) throw new Error("Falha ao carregar itens da Medicao.");
-    rows.push(...(data ?? []));
+      if (error) throw new Error("Falha ao carregar itens da Medicao.");
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < QUERY_PAGE_SIZE) break;
+    }
   }
   return rows;
 }
@@ -465,6 +513,43 @@ async function loadActivityCategoryMap(params: {
   }
 
   return { activityToCategory, categoryNameById };
+}
+
+async function buildOperationalMeasurementCategoryCards(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projects: Array<{ id: string }>;
+}) {
+  const measurementOrders = await loadOrderProjectRows({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    table: "project_measurement_orders",
+    projectIds: params.projects.map((project) => project.id),
+  });
+  const measurementItems = await loadMeasurementItems({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    orderIds: measurementOrders.map((order) => order.id),
+  });
+  const activityCategoryMap = await loadActivityCategoryMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    activityIds: measurementItems.map((item) => item.service_activity_id),
+  });
+  const quantityByCategory = new Map<string, number>();
+
+  for (const item of measurementItems) {
+    const categoryId = activityCategoryMap.activityToCategory.get(item.service_activity_id);
+    const categoryName = normalizeCategoryName(activityCategoryMap.categoryNameById.get(categoryId ?? ""));
+    if (!categoryName) continue;
+
+    quantityByCategory.set(categoryName, (quantityByCategory.get(categoryName) ?? 0) + numberValue(item.quantity));
+  }
+
+  return OPERATIONAL_MEASUREMENT_CATEGORIES.map((category) => ({
+    ...category,
+    quantity: quantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+  })) satisfies OperationalMeasurementCategoryCard[];
 }
 
 async function loadWorkCompletionCatalog(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
@@ -1019,6 +1104,7 @@ export async function GET(request: NextRequest) {
   const onlyMissing = normalizeBoolean(request.nextUrl.searchParams.get("onlyMissing"));
   const includeChart = normalizeBoolean(request.nextUrl.searchParams.get("includeChart"));
   const includeProjectValues = normalizeBoolean(request.nextUrl.searchParams.get("includeProjectValues"));
+  const includeOperationalCategoryCards = normalizeBoolean(request.nextUrl.searchParams.get("includeOperationalCategoryCards"));
   const chartProjectId = normalizeUuid(request.nextUrl.searchParams.get("chartProjectId"));
   const chartServiceCenterId = normalizeUuid(request.nextUrl.searchParams.get("chartServiceCenterId"));
 
@@ -1033,7 +1119,7 @@ export async function GET(request: NextRequest) {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     if (!projectId) {
-      const [chartItems, projectValueRows] = await Promise.all([
+      const [chartItems, projectValueRows, operationalCategoryCards] = await Promise.all([
         includeChart
           ? buildChartItems({
               supabase: resolution.supabase,
@@ -1050,6 +1136,13 @@ export async function GET(request: NextRequest) {
               projects,
             })
           : Promise.resolve([]),
+        includeOperationalCategoryCards
+          ? buildOperationalMeasurementCategoryCards({
+              supabase: resolution.supabase,
+              tenantId,
+              projects,
+            })
+          : Promise.resolve([]),
       ]);
 
       return NextResponse.json({
@@ -1061,6 +1154,7 @@ export async function GET(request: NextRequest) {
         categorySummaryRows: [],
         chartItems,
         projectValueRows,
+        operationalCategoryCards,
         summary: null,
       });
     }

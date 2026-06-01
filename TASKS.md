@@ -646,7 +646,7 @@
 - [x] Ajustar cascata de Estado Trabalho da Programacao para sincronizar somente outras equipes do mesmo Projeto + Data execucao, sem afetar outros dias.
 - [x] Ajustar o filtro `Projeto` do `Dash operacional e faturamento` para funcionar no mesmo padrao do filtro de `Projeto` da `Programacao Simples`: `input + datalist`, digitacao por SOB, validacao por codigo exato, preenchimento automatico do centro de servico quando o projeto for reconhecido e bloqueio de filtro com texto digitado sem projeto valido.
 - [x] Evoluir a tabela `Resumo por categoria` no `Dash operacional e faturamento` para exibir colunas dinamicas por categoria (`VOZ`, `POSTE`, `ESTRUTURA`, `CONDUTOR(REDE)`, `PODA` e demais usadas no resultado), com linhas por origem (`Medicao`, `Medicao Asbuilt`, `Faturamento`) e soma de quantidade/valor.
-- [ ] Definir e implementar classificacao operacional dos codigos faturados entre `Instalacao`, `Retirada`, `Misto/Ambiguo` e `Outros` antes de separar a tabela de categorias por instalacao/retirada; o catalogo atual possui categoria (`service_activities.type_service`) e grupo (`service_activities.group_name`), mas nao possui campo estruturado de natureza da atividade.
+- [ ] Versionar no repositorio a carga refinada atual de `types_service_activities`, pois as migrations legadas ainda registram categorias agrupadas enquanto o banco operacional separa categorias como `POSTE (INSTALADO)`, `POSTE (RETIRADO)`, `CONDUTOR (REDE INSTALADO)` e `CONDUTOR (REDE RETIRADO)`.
 - [x] Corrigir `Categorias cobradas no faturamento` do `Dash operacional e faturamento` para usar o mesmo agregado final de `Codigos por origem`, exibindo categorias sempre que houver quantidade/valor de Faturamento nas linhas filtradas.
 - [x] Ajustar categorias do `Dash operacional e faturamento` para serem montadas a partir de todos os codigos exibidos em `Codigos por origem`, evitando tabela vazia quando ha Medicao/Asbuilt e ainda nao ha itens de Faturamento.
 - [x] Remover coluna `Total qtd.` do `Resumo por categoria` do `Dash operacional e faturamento` e adicionar botao proprio de `Exportar CSV` para o resumo.
@@ -744,6 +744,7 @@
 - [x] Analisar impacto de alterar `materials.codigo` em materiais ja cadastrados, confirmando que o saldo de almoxarifado permanece vinculado por `material_id` e que as telas passam a exibir o codigo atual do cadastro.
 
 - [x] Melhorar leitura do Grafico operacional no Dash operacional e faturamento, adicionando ajuda contextual por barra, diferencas reais entre Medido, AS Built e Faturado, e percentuais de conversao.
+- [x] Adicionar entre `Grafico operacional` e `Projetos por valor` dez cards globais da `Medicao COM_PRODUCAO`, somando todos os projetos ativos validos do tenant pelas categorias atuais de postes, rede, equipamentos, cruzetas e estruturas instalados/retirados, com leitura paginada para nao truncar totais pelo limite padrao do PostgREST.
 
 - [x] Criar tela Composicao de Equipe com cadastro por Projeto + Equipe + Data, inclusao de pessoas, presenca por integrante, lista no formato operacional, detalhes em modal, historico e duas exportacoes CSV (lista e detalhes), preservando escopo por tenant_id.
 

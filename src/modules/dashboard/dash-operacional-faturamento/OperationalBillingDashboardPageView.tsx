@@ -73,6 +73,13 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type OperationalMeasurementCategoryCard = {
+  key: string;
+  label: string;
+  categoryName: string;
+  quantity: number;
+};
+
 type ProjectValueRow = {
   projectId: string;
   projectCode: string;
@@ -109,6 +116,7 @@ type DashboardResponse = {
   categoryColumns?: CategoryColumn[];
   categorySummaryRows?: CategorySummaryRow[];
   chartItems?: ChartItem[];
+  operationalCategoryCards?: OperationalMeasurementCategoryCard[];
   projectValueRows?: ProjectValueRow[];
   summary?: Summary | null;
 };
@@ -194,6 +202,7 @@ export function OperationalBillingDashboardPageView() {
   const [categoryColumns, setCategoryColumns] = useState<CategoryColumn[]>([]);
   const [categorySummaryRows, setCategorySummaryRows] = useState<CategorySummaryRow[]>([]);
   const [chartItems, setChartItems] = useState<ChartItem[]>([]);
+  const [operationalCategoryCards, setOperationalCategoryCards] = useState<OperationalMeasurementCategoryCard[]>([]);
   const [projectValueRows, setProjectValueRows] = useState<ProjectValueRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
@@ -349,6 +358,7 @@ export function OperationalBillingDashboardPageView() {
 
     const params = new URLSearchParams();
     params.set("includeProjectValues", "true");
+    params.set("includeOperationalCategoryCards", "true");
 
     setIsProjectValuesLoading(true);
     try {
@@ -365,6 +375,7 @@ export function OperationalBillingDashboardPageView() {
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
       setProjectValueRows(payload.projectValueRows ?? []);
+      setOperationalCategoryCards(payload.operationalCategoryCards ?? []);
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar valores por projeto." });
       await logError("Falha ao carregar valores por projeto", error);
@@ -762,6 +773,33 @@ export function OperationalBillingDashboardPageView() {
             </table>
           </div>
         ) : null}
+      </article>
+
+      <article className={`${styles.card} ${styles.operationalIndicatorsCard}`}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Indicadores operacionais medidos</h2>
+            <p className={styles.cardSubtitle}>
+              Quantidades da Medicao COM_PRODUCAO consolidadas em todos os projetos ativos validos do tenant.
+            </p>
+          </div>
+        </div>
+
+        {operationalCategoryCards.length ? (
+          <div className={styles.operationalIndicatorGrid}>
+            {operationalCategoryCards.map((card) => (
+              <div key={card.key} className={styles.operationalIndicator}>
+                <span>{card.label}</span>
+                <strong>{formatNumber(card.quantity)}</strong>
+                <small>{card.categoryName}</small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.operationalIndicatorEmpty}>
+            {isProjectValuesLoading ? "Carregando indicadores..." : "Nenhum indicador operacional encontrado."}
+          </p>
+        )}
       </article>
 
       <article className={`${styles.card} ${styles.filtersCard}`}>

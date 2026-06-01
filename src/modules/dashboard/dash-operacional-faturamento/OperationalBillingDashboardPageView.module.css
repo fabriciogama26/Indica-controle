@@ -17,24 +17,28 @@
   order: 1;
 }
 
-.projectValuesCard {
+.operationalIndicatorsCard {
   order: 2;
 }
 
-.filtersCard {
+.projectValuesCard {
   order: 3;
 }
 
-.summaryBlock {
+.filtersCard {
   order: 4;
 }
 
-.codesCard {
+.summaryBlock {
   order: 5;
 }
 
-.categoryCard {
+.codesCard {
   order: 6;
+}
+
+.categoryCard {
+  order: 7;
 }
 
 .cardHeader {
@@ -204,6 +208,48 @@
   color: #002b7f;
   font-size: 18px;
   font-weight: 900;
+}
+
+.operationalIndicatorGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.operationalIndicator {
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px 14px;
+}
+
+.operationalIndicator span {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.operationalIndicator strong {
+  color: #002b7f;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.operationalIndicator small,
+.operationalIndicatorEmpty {
+  color: #60708f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.operationalIndicatorEmpty {
+  margin: 0;
 }
 
 .barChart {
@@ -583,6 +629,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .operationalIndicatorGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .barChart {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -606,7 +656,8 @@
   .projectValueFilterGrid,
   .summaryGrid,
   .valueCardGrid,
-  .chartInsightGrid {
+  .chartInsightGrid,
+  .operationalIndicatorGrid {
     grid-template-columns: 1fr;
   }
 

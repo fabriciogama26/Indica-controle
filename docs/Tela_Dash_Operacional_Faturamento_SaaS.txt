@@ -9,6 +9,7 @@ Visao geral
 - Exibe uma segunda tabela de categorias cobradas no Faturamento, somando quantidade e valor por categoria da atividade.
 - Exibe grafico operacional com `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`.
 - Exibe tabela abaixo do grafico com valor, quantidade de projetos e quantidade de medicoes para cada indicador.
+- Exibe cards globais de quantidades medidas para postes, rede, equipamentos, cruzetas e estruturas, separados entre instalados e retirados.
 - Exibe, abaixo de `Resumo por categoria`, uma tabela de projetos com valores consolidados de `Medicao`, `Asbuilt` e `Faturamento`.
 - A tela nao possui filtro de data nem filtro de equipe.
 
@@ -69,7 +70,7 @@ Filtros, auto-complete e listagem
 - O bloco `Codigos por origem` exibe cards internos com os totais financeiros de `Medicao`, `Asbuilt` e `Faturamento`.
 - A tabela `Resumo por categoria` exibe:
   - Origem (`Medicao`, `Medicao Asbuilt`, `Faturamento`)
-  - Colunas dinamicas por categoria do cadastro de atividades (`VOZ`, `POSTE`, `ESTRUTURA`, `CONDUTOR(REDE)`, `PODA` e demais categorias usadas pelos codigos do resultado)
+  - Colunas dinamicas por categoria atual do cadastro de atividades (`POSTE (INSTALADO)`, `CONDUTOR (REDE RETIRADO)`, `EQUIPAMENTO (INSTALADO)` e demais categorias usadas pelos codigos do resultado)
   - Total de valor
 - Cada celula de categoria mostra quantidade e valor para a origem correspondente.
 - A tabela de categorias usa `service_activities.type_service` e `types_service_activities.name` para agrupar os codigos exibidos no resultado filtrado.
@@ -97,7 +98,23 @@ Filtros, auto-complete e listagem
 - Os cards de leitura tambem exibem percentual de conversao entre as etapas comparaveis.
 - Barra com valor zerado usa destaque neutro para indicar ausencia de valor sem parecer falha de renderizacao.
 - A tabela do grafico exibe `Projetos` como quantidade de projetos distintos e `Medicoes` como quantidade de ordens consideradas em cada indicador.
-- A tabela `Projetos por valor` fica abaixo do `Grafico operacional` e antes dos filtros do comparativo por projeto.
+- O bloco `Indicadores operacionais medidos` fica abaixo do `Grafico operacional` e antes de `Projetos por valor`.
+- Os cards operacionais somam quantidades de `Medicao COM_PRODUCAO` de todos os projetos ativos validos do tenant, sem depender dos filtros do grafico.
+- Os cards operacionais ignoram ordens inativas ou canceladas e projetos marcados como `Obra de teste` ou `RETIRADO DA CARTEIRA`.
+- Os cards operacionais usam a categoria atual de `service_activities.type_service` e `types_service_activities.name`.
+- A leitura global dos cards busca projetos, ordens e itens de Medicao em paginas para nao depender do limite padrao do PostgREST.
+- O bloco exibe dez cards:
+  - `Postes instalados`: `POSTE (INSTALADO)`
+  - `Rede instalada`: `CONDUTOR (REDE INSTALADO)`
+  - `Equipamentos instalados`: `EQUIPAMENTO (INSTALADO)`
+  - `Cruzetas instaladas`: `CRUZETA (INSTALADO)`
+  - `Estruturas instaladas`: `ESTRUTURA (INSTALADO)`
+  - `Postes retirados`: `POSTE (RETIRADO)`
+  - `Rede retirada`: `CONDUTOR (REDE RETIRADO)`
+  - `Equipamentos retirados`: `EQUIPAMENTO (RETIRADO)`
+  - `Cruzetas retiradas`: `CRUZETA (RETIRADO)`
+  - `Estruturas retiradas`: `ESTRUTURA (RETIRADO)`
+- A tabela `Projetos por valor` fica abaixo dos indicadores operacionais e antes dos filtros do comparativo por projeto.
 - A tabela `Projetos por valor` exibe:
   - Projeto
   - Centro de servico
@@ -150,6 +167,7 @@ Atalhos
   - `onlyDivergences`
   - `onlyMissing`
   - `includeProjectValues`
+  - `includeOperationalCategoryCards`
   - `includeChart`
   - `chartProjectId`
   - `chartServiceCenterId`
@@ -194,13 +212,28 @@ Atualizacao 2026-05
   - A tabela `Projetos por valor` passa a ter filtro por Estado de trabalho e paginacao de 20 registros.
   - A tabela `Projetos por valor` passa a ficar abaixo do `Grafico operacional`, antes dos filtros do comparativo por projeto.
 
+Atualizacao 2026-06
+-------------------
+- Arquivos alterados:
+  - `src/app/api/dash-operacional-faturamento/route.ts`
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.module.css`
+  - `docs/Tela_Dash_Operacional_Faturamento_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - A tela nao exibia resumo global de quantidades medidas por categoria operacional.
+- Depois:
+  - A tela passa a exibir dez cards globais de quantidades medidas entre `Grafico operacional` e `Projetos por valor`, separados por categoria instalada/retirada para postes, rede, equipamentos, cruzetas e estruturas.
+  - A consulta global pagina projetos, ordens e itens de Medicao para nao truncar totais pelo limite padrao do PostgREST.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar grafico operacional antes da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, filtrar projetos por Centro de servico, Projeto, Estado de trabalho e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
+  - Responsavel por: renderizar grafico operacional antes dos cards globais medidos, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar os dez cards de categorias medidas, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, filtrar projetos por Centro de servico, Projeto, Estado de trabalho e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar os dez cards globais de quantidade da Medicao por categoria atual, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -214,9 +247,10 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `loadWorkCompletionCatalog`, `loadLatestWorkCompletionByProject`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `buildProjectValueRows`, `sumItemsByOrderIds`, `sumItemValuesByProject`, `addItem`, `finalizeRows`.
+  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildOperationalMeasurementCategoryCards`, `loadWorkCompletionCatalog`, `loadLatestWorkCompletionByProject`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `buildProjectValueRows`, `sumItemsByOrderIds`, `sumItemValuesByProject`, `addItem`, `finalizeRows`.
   - Comportamento ajustado: `buildChartItems` passa a devolver, alem do valor financeiro, quantidade de projetos distintos e quantidade de ordens consideradas por indicador do grafico.
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
+  - Comportamento ajustado: `loadProjects`, `loadOrderProjectRows` e `loadMeasurementItems` passam a paginar as leituras usadas no agregado global para nao truncar os cards pelo limite padrao do PostgREST.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
   - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadMetadata`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `filteredProjectValueRows`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
 
@@ -256,3 +290,4 @@ Ajuda contextual
   - Ajuste posterior: `Projetos por valor` passa a permitir filtro por Centro de servico, filtro por Projeto e exportacao CSV do resultado filtrado.
   - Ajuste posterior: `Projetos por valor` passa a ignorar valores zerados nos filtros de menor que, filtrar por Estado de trabalho e exibir 20 registros por pagina.
   - Ajuste posterior: `Projetos por valor` passa a ficar imediatamente abaixo do `Grafico operacional`.
+  - Ajuste posterior: dez cards globais de quantidades da Medicao passam a ficar entre `Grafico operacional` e `Projetos por valor`, usando as categorias atuais de Atividades para separar instalado e retirado.
