@@ -462,6 +462,10 @@ Resumo por arquivo
 
 213_dedupe_minimum_billing_no_production_reason.sql
 - Executa limpeza incremental para ambientes onde a garantia minima ja foi duplicada antes da deduplicacao da migration 212, reatribuindo Medicao, Faturamento e Medicao Asbuilt para um unico motivo ativo.
+
+214_normalize_programming_work_completion_codes.sql
+- Normaliza codigos tecnicos legados do catalogo de `Estado Trabalho`, preserva labels de exibicao, atualiza referencias por cascata e bloqueia novos codigos com acento, espaco ou caractere fora de `A-Z`, `0-9` e `_`.
+- Normaliza snapshots legados das Ordens de Medicao e reforca a RPC `save_project_measurement_order` para copiar o `Estado Trabalho` da Programacao em formato tecnico compativel com a constraint.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

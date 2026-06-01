@@ -436,26 +436,36 @@
 - [ ] Pendencia de dependencia registrada em 2026-03-11: `react-dom` `19.2.3 -> 19.2.4`.
 - [ ] Pendencia de dependencia registrada em 2026-03-11: `@types/node` `20.19.37 -> 25.4.0`.
 - [ ] Pendencia de dependencia registrada em 2026-03-11: `eslint` `9.39.4 -> 10.0.3`.
-- [x] Criar catalogo de Nº EQ (RE, CO, CF, CC ou TR) na Programacao, com coluna em project_programming, persistencia em fluxo full RPC e historico operacional por alteracao.
-- [x] Adicionar botao Extracao ENEL NOVO na Programacao Simples, mantendo Extracao ENEL, com novo layout de colunas e mapeamentos operacionais (Placa, Responsáveis Ampla, AREA LIVRE, Número SGD normalizado, Nº EQ composto, Periodo por horario e STATUS combinado com Estado Trabalho).
-- [x] Ajustar Extracao ENEL NOVO com formato operacional final: BASE apos  - , Data Execucao dd-mmm-yy, Dia da semana abreviado, INFO STATUS ordinal (xª ETAPA), Tempo previsto HH:MM:SS, Estrutura por equipes (|), Parceira antes de  - , Responsavel Execucao por encarregado, SOLICITACAO/AREA LIVRE por Tipo de SGD, TIPO DE SGD textual e fallback de Descricao do servico (Programacao > Projeto).
-- [x] Corrigir falha de cadastro em lote apos suporte a Nº EQ removendo overload recursivo de RPC full e criando wrappers estaveis (save_project_programming_full_with_electrical_and_eq e save_project_programming_batch_full_with_electrical_and_eq) na migration 152.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `@supabase/supabase-js` `2.98.0 -> 2.106.2`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `@tanstack/react-query` `5.90.21 -> 5.100.14`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `@types/node` `20.19.37 -> 20.19.41` (latest `25.9.1`).
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `@types/react` `19.2.14 -> 19.2.15`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `eslint` `9.39.4 -> 10.4.1`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `eslint-config-next` `16.1.6 -> 16.2.6`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `next` `16.1.6 -> 16.2.6`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `react` `19.2.3 -> 19.2.6`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `react-dom` `19.2.3 -> 19.2.6`.
+- [ ] Pendencia de dependencia registrada em 2026-06-01: `typescript` `5.9.3 -> 6.0.3`.
+- [x] Criar catalogo de NÂº EQ (RE, CO, CF, CC ou TR) na Programacao, com coluna em project_programming, persistencia em fluxo full RPC e historico operacional por alteracao.
+- [x] Adicionar botao Extracao ENEL NOVO na Programacao Simples, mantendo Extracao ENEL, com novo layout de colunas e mapeamentos operacionais (Placa, ResponsÃ¡veis Ampla, AREA LIVRE, NÃºmero SGD normalizado, NÂº EQ composto, Periodo por horario e STATUS combinado com Estado Trabalho).
+- [x] Ajustar Extracao ENEL NOVO com formato operacional final: BASE apos  - , Data Execucao dd-mmm-yy, Dia da semana abreviado, INFO STATUS ordinal (xÂª ETAPA), Tempo previsto HH:MM:SS, Estrutura por equipes (|), Parceira antes de  - , Responsavel Execucao por encarregado, SOLICITACAO/AREA LIVRE por Tipo de SGD, TIPO DE SGD textual e fallback de Descricao do servico (Programacao > Projeto).
+- [x] Corrigir falha de cadastro em lote apos suporte a NÂº EQ removendo overload recursivo de RPC full e criando wrappers estaveis (save_project_programming_full_with_electrical_and_eq e save_project_programming_batch_full_with_electrical_and_eq) na migration 152.
 - [x] Separar No EQ em dois campos obrigatorios na Programacao (No EQ - Numero + No EQ - Tipo), com validacao de digitos no numero e bloqueio de save quando qualquer um estiver ausente.
 - [x] Corrigir lock da funcao set_project_programming_electrical_eq_catalog (FOR UPDATE OF pp) para eliminar erro em outer join no cadastro em lote (migration 153).
 - [x] Implementar checkbox ETAPA UNICA na Programacao, persistir flag etapa_unica (single/lote) e usar ETAPA ÃšNICA no INFO STATUS da Extracao ENEL quando marcado.
 - [x] Refinar UI do checkbox ETAPA UNICA na Programacao (tamanho compacto, sem quebra de linha e alinhamento visual com o formulario).
 - [x] Criar catalogo por tenant para `Estado do Projeto` (`programming_work_completion_catalog`) e migrar Programacao Simples (API + tela) para consumir opcoes dinamicas em vez de valores fixos.
-- [x] Ajustar `Extracao ENEL NOVO` para manter em branco (temporario) as colunas `Tipo de cabo` e `Responsável cancelamento / Parcial / Adiamento`.
+- [x] Ajustar `Extracao ENEL NOVO` para manter em branco (temporario) as colunas `Tipo de cabo` e `ResponsÃ¡vel cancelamento / Parcial / Adiamento`.
 - [x] Exibir `Estado Trabalho` na coluna da `Lista de Programacoes` da Programacao Simples.
 - [x] Exibir `Numero SGD` no modal `Detalhes da Programacao`.
-- [x] Permitir `Nº EQ - Numero` alfanumerico (letras + numeros) no frontend e backend, e corrigir mapeamento da `Extracao ENEL NOVO` para manter `Tipo de cabo` em branco.
-- [x] Ajustar nome do arquivo da `Extracao ENEL NOVO` para `PROGRAMAÇÃO_ANGRA_INDICA.XLSB`.
-- [x] Excluir da `Extracao ENEL NOVO` registros com `Tipo de Serviço = EMERGENCIAL`.
-- [x] Converter `Extracao ENEL NOVO` para workbook binario real `XLSB`, com nome fixo `PROGRAMAÇÃO_ANGRA_INDICA.xlsb`.
-- [x] Ajustar `Extracao ENEL NOVO` para manter em branco (temporario) as colunas `Tipo de avanço` e `Tipo de serviço` (entre `Tipo de rede` e `Tipo de cabo`).
-- [x] Padronizar a coluna Data Execução da Extracao ENEL NOVO para o formato dd/mm/yyyy (ex.: 10/11/2026).
-- [x] Ajustar Extracao ENEL NOVO para consolidar uma unica linha por Projeto + Data e montar Responsável Execução com encarregados separados por  / .
-- [x] Separar ETAPA em dois checkboxes (ETAPA ÚNICA e ETAPA FINAL) com exclusao mutua, persistencia no banco (etapa_final) e reflexo no INFO STATUS da extracao ENEL.
+- [x] Permitir `NÂº EQ - Numero` alfanumerico (letras + numeros) no frontend e backend, e corrigir mapeamento da `Extracao ENEL NOVO` para manter `Tipo de cabo` em branco.
+- [x] Ajustar nome do arquivo da `Extracao ENEL NOVO` para `PROGRAMAÃ‡ÃƒO_ANGRA_INDICA.XLSB`.
+- [x] Excluir da `Extracao ENEL NOVO` registros com `Tipo de ServiÃ§o = EMERGENCIAL`.
+- [x] Converter `Extracao ENEL NOVO` para workbook binario real `XLSB`, com nome fixo `PROGRAMAÃ‡ÃƒO_ANGRA_INDICA.xlsb`.
+- [x] Ajustar `Extracao ENEL NOVO` para manter em branco (temporario) as colunas `Tipo de avanÃ§o` e `Tipo de serviÃ§o` (entre `Tipo de rede` e `Tipo de cabo`).
+- [x] Padronizar a coluna Data ExecuÃ§Ã£o da Extracao ENEL NOVO para o formato dd/mm/yyyy (ex.: 10/11/2026).
+- [x] Ajustar Extracao ENEL NOVO para consolidar uma unica linha por Projeto + Data e montar ResponsÃ¡vel ExecuÃ§Ã£o com encarregados separados por  / .
+- [x] Separar ETAPA em dois checkboxes (ETAPA ÃšNICA e ETAPA FINAL) com exclusao mutua, persistencia no banco (etapa_final) e reflexo no INFO STATUS da extracao ENEL.
 - [x] Corrigir filtro de Estado Trabalho na Programacao Simples com comparacao normalizada (sem diferenca por acento/espaco/caixa), evitando falso zero na listagem.
 - [x] Adicionar compatibilidade de Estado Trabalho por UUID (work_completion_status_id) com backfill e trigger de sincronismo codigo/UUID, mantendo fallback legado para CONCLUIDO em /api/projects sem perda de historico.
 - [x] Corrigir fallback de leitura em /api/programacao para ambientes sem coluna etapa_final, preservando work_completion_status e evitando filtro Estado Trabalho zerado por downgrade indevido de select.
@@ -789,5 +799,7 @@
 - [x] Corrigir alertas do Supabase Advisor para funcoes publicas: fixar `search_path` em funcoes legadas apontadas, revogar `EXECUTE` de `PUBLIC`/`anon`/`authenticated` para RPCs `SECURITY DEFINER` e manter execucao via `service_role` na migration 210.
 
 - [x] Bloquear `Medicao Asbuilt` para projetos ja lancados no frontend, API e RPC, mantendo escopo por tenant e corrigindo o titulo da tela `/medicao-asbuilt` para nao herdar `Medicao`.
+
+- [x] Normalizar codigos tecnicos legados de `Estado Trabalho` por tenant e proteger o snapshot da Medicao contra acentos, espacos e caracteres especiais, evitando falha ao salvar ordem com violacao de `project_measurement_orders_programming_completion_status_snapshot_check`.
 
 - [ ] Habilitar manualmente no Supabase Auth a protecao contra senhas vazadas (`Leaked password protection`) no painel/configuracao do projeto quando o plano permitir, pois nao ha `supabase/config.toml` ou setting versionado no repositorio atual.

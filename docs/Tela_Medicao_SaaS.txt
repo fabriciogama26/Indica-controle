@@ -803,3 +803,24 @@ Atualizacao 2026-05-30 (Garantia de faturamento minimo)
   - Depois: `totalAmount` da API soma itens ativos mais `minimum_billing_amount`; para garantia sem producao, o valor total aparece mesmo com `itemCount = 0`.
   - Depois: o detalhamento da ordem exibe os dados da garantia minima quando houver valor calculado.
   - Impacto multi-tenant: todas as leituras da regra usam `tenant_id`; as FKs preservam vinculo com `team_types`, `measurement_score_targets` e `service_activities` do tenant.
+
+Atualizacao 2026-06-01 (Snapshot de Estado Trabalho normalizado)
+-----------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/214_normalize_programming_work_completion_codes.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Funcao SQL `normalize_programming_work_completion_code`
+  - Funcao SQL `save_project_measurement_order`
+  - Constraint `project_measurement_orders_programming_completion_status_snapshot_check`
+  - Constraint `programming_work_completion_catalog_code_normalized_check`
+- Comportamento antes/depois:
+  - Antes: a Programacao aceitava codigos de `Estado Trabalho` com acento ou espaco, como `PENDENCIA` com acento, mas a Medicao rejeitava esses valores ao copiar o snapshot para `project_measurement_orders`.
+  - Antes: salvar uma ordem podia falhar com violacao da constraint `project_measurement_orders_programming_completion_status_snapshot_check`.
+  - Depois: codigos tecnicos legados sao normalizados para `A-Z`, `0-9` e `_`, preservando o label de exibicao do catalogo.
+  - Depois: a RPC de salvamento normaliza defensivamente o snapshot antes de gravar a ordem.
+  - Depois: a migration bloqueia a aplicacao quando outro ambiente possuir colisao entre codigos do mesmo tenant apos normalizacao, evitando mesclar estados distintos automaticamente.
+  - Impacto multi-tenant: o backfill atualiza o catalogo por registro e preserva `tenant_id`; a FK existente propaga a troca de codigo para `project_programming` dentro do mesmo tenant; RLS permanece habilitada e sem alteracao.
