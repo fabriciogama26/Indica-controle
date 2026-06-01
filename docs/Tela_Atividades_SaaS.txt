@@ -67,6 +67,7 @@ Filtros, auto-complete e listagem
   - `Tipo`
   - `Categoria`
   - `Status` (`Todos`, `Ativo`, `Inativo`)
+- As opcoes de `Categoria` sao carregadas em ordem alfabetica pelo nome.
 - Listagem em tabela com colunas:
   - `Codigo`
   - `Descricao`
@@ -251,6 +252,19 @@ Atualizacao 2026-05
   - Depois: `Alcance` passa a ser exibido como campo de texto longo para aceitar descricao similar a observacao.
   - Depois: alteracoes de `Grupo` e `Alcance` continuam entrando no historico via `p_changes.group` e `p_changes.scope`.
 
+Atualizacao 2026-06
+-------------------
+- Arquivos alterados/criados:
+  - `src/app/api/activities/meta/route.ts`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `GET /api/activities/meta`
+- Comportamento antes/depois:
+  - Antes: as categorias eram retornadas pela prioridade operacional de `types_service_activities.sort_order`.
+  - Depois: as categorias ativas do tenant sao retornadas em ordem alfabetica por `types_service_activities.name`, refletindo no cadastro e no filtro de Categoria.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -259,7 +273,7 @@ Funcoes principais
 - Caminho: `src/app/api/activities/route.ts`
   - Responsavel por: validar payload, validar `team_type_id`, `category_id`, `group` e `voicePoint`, listar com paginacao/historico, retornar `Grupo`, `Alcance` e `voicePoint` da atividade, aplicar filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 - Caminho: `src/app/api/activities/meta/route.ts`
-  - Responsavel por: retornar opcoes de `Tipo` (`team_types`) e `Categoria` (`types_service_activities`) ativas do tenant.
+  - Responsavel por: retornar opcoes de `Tipo` (`team_types`) e `Categoria` (`types_service_activities`) ativas do tenant, ordenando categorias alfabeticamente por nome.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
