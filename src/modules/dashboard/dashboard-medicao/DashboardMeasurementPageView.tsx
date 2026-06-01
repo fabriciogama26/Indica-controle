@@ -173,6 +173,7 @@ const completionChartColors: Record<string, string> = {
   Parciais: "#f07f2f",
   "Parcial planejado beneficio atingido": "#17a884",
   Pendencias: "#e25555",
+  "Garantia de faturamento minimo": "#7b61ff",
 };
 
 const chartStatusColors = {
@@ -977,7 +978,7 @@ export function DashboardMeasurementPageView() {
   const expandedTitle = expandedChart === "completionCycle"
     ? "Concluidos X parciais no ciclo"
     : expandedChart === "completionPeriod"
-      ? "Concluidos X parciais por periodo"
+      ? "Visao geral por periodo"
     : expandedChart === "cycle"
       ? "Ciclo da medicao"
     : expandedChart === "foremanRanking"
@@ -1105,8 +1106,8 @@ export function DashboardMeasurementPageView() {
       <article className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <h2 className={styles.cardTitle}>Concluidos X parciais por periodo</h2>
-            <p className={styles.cardSubtitle}>Valores realizados agrupados pelo status economico conforme o De/Para.</p>
+            <h2 className={styles.cardTitle}>Visao geral por periodo</h2>
+            <p className={styles.cardSubtitle}>Valores faturados por categoria conforme o De/Para.</p>
           </div>
           <div className={styles.chartActions}>
             <div className={styles.periodFields}>
@@ -1122,7 +1123,7 @@ export function DashboardMeasurementPageView() {
             <button type="button" className={styles.secondaryButton} onClick={applyPeriodFilter} disabled={isLoading}>
               Filtrar periodo
             </button>
-            {renderExpandButton("completionPeriod", "Concluidos X parciais por periodo")}
+            {renderExpandButton("completionPeriod", "Visao geral por periodo")}
           </div>
         </div>
         {renderCompletionTable(

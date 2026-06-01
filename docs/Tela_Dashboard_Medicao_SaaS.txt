@@ -2,10 +2,11 @@ Tela: Dashboard Medicao SaaS
 
 Visao geral
 -----------
-- Tela de indicadores da Medicao baseada nas ordens `COM_PRODUCAO`.
+- Tela de indicadores da Medicao baseada nas ordens `COM_PRODUCAO`, com visao financeira por periodo que tambem inclui garantia de faturamento minimo.
 - Consolida valor realizado por ciclo operacional 21 a 20.
 - Compara valor realizado contra a meta cadastrada na tela Meta.
-- Exibe valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias em dois recortes: ciclo completo e periodo `De/Para`.
+- Exibe valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias no ciclo completo.
+- Exibe `Visao geral por periodo` com Concluidos, Parciais, Parcial planejado beneficio atingido, Pendencias e Garantia de faturamento minimo no recorte `De/Para`.
 - Exibe visao por encarregado no mesmo estilo de comparacao Valor x Meta.
 - Exibe `Supervisor no ciclo`, somando o valor produzido pelas equipes vinculadas ao supervisor no cadastro de Equipes e comparando contra meta por equipes com producao ou por todas as equipes vinculadas.
 - Obras marcadas como teste em Projetos nao entram nos indicadores.
@@ -47,7 +48,7 @@ Filtros, auto-complete e listagem
   - Status execucao (`Todos`, `Concluidos`, `Parciais`, `Parcial planejado beneficio atingido`, `Pendencias`)
 - Graficos:
   - Valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias no ciclo, com tabela acima, coluna de projetos e exibicao lado a lado com o grafico por periodo em desktop
-  - Valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias por periodo `De/Para`, com tabela acima, coluna de projetos, exibicao lado a lado em desktop e botao proprio `Filtrar periodo`
+  - `Visao geral por periodo` com valor de Concluidos, Parciais, Parcial planejado beneficio atingido, Pendencias e Garantia de faturamento minimo por periodo `De/Para`, com tabela acima, coluna de projetos, exibicao lado a lado em desktop e botao proprio `Filtrar periodo`
   - Ciclo da medicao com card de Ticket medio, card de Projetos no ciclo, tabela com coluna de projetos e grafico Valor x Projecao de fechamento x Meta
   - Encarregados no ciclo com tabela unica acima e tres visoes:
     - Ranking % de atingimento em barras horizontais ordenadas, com linha de referencia em 100% centralizada no topo
@@ -57,7 +58,9 @@ Filtros, auto-complete e listagem
 - Cada grafico possui botao circular de ampliacao, abrindo modal com o grafico em area maior.
 - No bloco de encarregados, cada visao possui seu proprio botao de ampliacao.
 - Cada visao de encarregados exibe o ciclo medido no cabecalho do grafico.
-- O periodo `De/Para` fica dentro do grafico Valor de Concluidos versus Parciais por periodo e restringe somente esse grafico por `Data execucao`, sem limitar o resultado ao ciclo selecionado.
+- O periodo `De/Para` fica dentro do grafico `Visao geral por periodo` e restringe somente esse grafico por `Data execucao`, sem limitar o resultado ao ciclo selecionado.
+- A categoria `Garantia de faturamento minimo` soma `project_measurement_orders.minimum_billing_amount` das ordens `SEM_PRODUCAO`, ativas, nao canceladas e com valor positivo.
+- A garantia minima aparece somente quando o filtro `Status execucao` esta em `Todos`, pois nao representa um Estado Trabalho da Programacao.
 - O periodo `De/Para` abre preenchido com o ano calendario corrente, de `01/01` a `31/12`, acompanhando automaticamente a virada do ano.
 - O periodo nao atualiza automaticamente ao digitar; o usuario precisa clicar em `Filtrar periodo`.
 - Os filtros gerais nao atualizam automaticamente ao selecionar/digitar; o usuario precisa clicar em `Filtrar`.
@@ -87,7 +90,7 @@ Filtros, auto-complete e listagem
 - A tabela do ciclo exibe `Ritmo atual` e `Dif. prevista` contra a meta selecionada.
 - O card `Ticket medio` do ciclo calcula `Valor realizado / Projetos no ciclo`, usando projetos distintos do recorte filtrado.
 - As tabelas de Concluidos/Parciais/Parcial planejado beneficio atingido/Pendencias, Ciclo da medicao, Encarregados no ciclo e Supervisor no ciclo exibem a quantidade de projetos distintos do respectivo recorte/linha.
-- Nas tabelas de status (`Concluidos X parciais no ciclo` e `Concluidos X parciais por periodo`), clicar na linha abre modal com os projetos daquele status no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
+- Nas tabelas de categoria (`Concluidos X parciais no ciclo` e `Visao geral por periodo`), clicar na linha abre modal com os projetos daquela categoria no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
 - Nas tabelas `Encarregados no ciclo` e `Supervisor no ciclo`, clicar na linha abre modal com os projetos do responsavel no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
 - O modal de projetos possui exportacao `Exportar Excel (CSV)` com o mesmo conteudo da tabela.
 - O bloco de encarregados permite marcar multiplas metas por checkbox; a primeira meta marcada vira referencia principal do ranking e do gap financeiro.
@@ -104,7 +107,8 @@ Filtros, auto-complete e listagem
 Boas praticas
 -------------
 - Manter todos os filtros e leituras vinculados ao tenant autenticado.
-- Usar somente medicoes `COM_PRODUCAO`, ativas e nao canceladas para indicadores de valor.
+- Usar somente medicoes `COM_PRODUCAO`, ativas e nao canceladas para indicadores operacionais de valor, metas, encarregados e supervisores.
+- Usar ordens `SEM_PRODUCAO`, ativas, nao canceladas e com `minimum_billing_amount > 0` somente na categoria financeira de garantia minima da `Visao geral por periodo`.
 - Excluir obras de teste das consolidacoes.
 - Usar a Meta cadastrada como fonte oficial para comparacao de ciclo.
 - Consolidar `Status execucao` dos graficos `Concluidos X parciais` pelo ultimo `Estado Trabalho` conhecido do projeto ate o fim do recorte analisado; se o projeto nao tiver estado na Programacao, usar o snapshot gravado na ordem de Medicao como fallback.
@@ -287,13 +291,38 @@ Atualizacao 2026-05
   - Impacto multi-tenant:
     - Sem alteracao de schema/RLS; a consulta continua filtrada por `tenant_id` e pelos projetos visiveis no recorte do dashboard.
 
+- Atualizacao 2026-06 (Garantia minima na visao geral por periodo):
+  - Arquivos alterados:
+    - `src/app/api/dashboard-medicao/route.ts`
+    - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+    - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+    - `README.md`
+    - `TASKS.md`
+  - Funcoes/constantes tocadas:
+    - `MeasurementOrderRow`
+    - `createCompletionAggregate`
+    - `addMinimumBillingGuaranteeTotal`
+    - `buildCompletionChart`
+    - `completionChartColors`
+    - `expandedTitle`
+  - Antes:
+    - O grafico por periodo exibia somente categorias operacionais calculadas com ordens `COM_PRODUCAO`.
+    - Ordens `SEM_PRODUCAO` com garantia minima calculada no cabecalho nao apareciam no dashboard.
+  - Depois:
+    - O grafico por periodo passa a se chamar `Visao geral por periodo`.
+    - A nova categoria `Garantia de faturamento minimo` soma `minimum_billing_amount` das ordens `SEM_PRODUCAO`, ativas, nao canceladas e com valor positivo no recorte `De/Para`.
+    - A categoria respeita filtros de projeto, equipe, encarregado e supervisor, exclui obras de teste e fica oculta quando um `Status execucao` operacional e selecionado.
+    - Indicadores do ciclo, metas, projecao, encarregados e supervisores continuam calculados somente com ordens `COM_PRODUCAO`.
+  - Impacto multi-tenant:
+    - Sem alteracao de schema/RLS; a nova leitura filtra `project_measurement_orders` pelo `tenant_id` autenticado.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
-  - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local do grafico Concluidos x Parciais por periodo com botao `Filtrar periodo`, checkboxes de metas dos encarregados, filtro local de semana dos blocos `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, card de Ticket medio, contagem de projetos nas tabelas, modal de projetos por status/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
+  - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local da `Visao geral por periodo` com botao `Filtrar periodo`, categoria financeira Garantia de faturamento minimo, checkboxes de metas dos encarregados, filtro local de semana dos blocos `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, card de Ticket medio, contagem de projetos nas tabelas, modal de projetos por categoria/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos e ticket medio, montar projetos por status/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar valores por encarregado/supervisor no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
+  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, incluir Garantia de faturamento minimo somente na `Visao geral por periodo`, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos e ticket medio, montar projetos por categoria/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar valores por encarregado/supervisor no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
 - Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
   - Responsavel por: cadastrar `dashboard-medicao` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
