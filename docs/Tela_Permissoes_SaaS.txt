@@ -24,6 +24,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Base SQL: `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
 - Hardening de RPCs: `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
+- Reparo Estornos: `supabase/migrations/215_repair_reversals_page_permissions.sql`
 
 Cadastro
 --------
@@ -156,6 +157,13 @@ Atualizacao 2026-05
 - O hardening nao altera policies RLS, tabelas, indices ou regras de tenant; reduz apenas a superficie de chamada direta via `/rest/v1/rpc`.
 - A protecao contra senhas vazadas do Supabase Auth depende de configuracao do painel/infra do projeto e ficou registrada como pendencia manual.
 
+Atualizacao 2026-06
+-------------------
+- Criada migration `215_repair_reversals_page_permissions.sql` para reparar ambientes sem `page_key = estornos` em `app_pages`.
+- O reparo cadastra/reativa a pagina e preenche somente permissoes ausentes por role e usuario.
+- Antes: o backend recusava salvar a matriz com `As telas estornos nao estao cadastradas em app_pages.`.
+- Depois: o salvamento volta a aceitar a matriz completa sem sobrescrever configuracoes existentes.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -205,6 +213,8 @@ Constantes e configuracoes
   - Responsavel por: cadastrar `consumo-projeto` em `app_pages` e fazer backfill de permissao por role/usuario.
 - Caminho: `supabase/migrations/207_create_reversals_page_permissions.sql`
   - Responsavel por: cadastrar `estornos` em `app_pages` e fazer backfill de permissao por role/usuario.
+- Caminho: `supabase/migrations/215_repair_reversals_page_permissions.sql`
+  - Responsavel por: reparar o cadastro e o backfill ausentes de `estornos` sem sobrescrever permissoes existentes.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
@@ -222,6 +232,7 @@ Ajuda contextual
   - `supabase/migrations/191_create_project_consumption_page.sql`
   - `supabase/migrations/207_create_reversals_page_permissions.sql`
   - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
+  - `supabase/migrations/215_repair_reversals_page_permissions.sql`
   - `src/app/api/app-users/[userId]/permissions/route.ts`
   - `src/app/api/app-users/[userId]/invite/route.ts`
   - `src/lib/server/concurrency.ts`
@@ -247,6 +258,7 @@ Ajuda contextual
 - Estado atual: a tela passou a incluir a pagina `Rastreio de SERIAL` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - Estado atual: a tela passou a incluir a pagina `Consumo por Projeto` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - Estado atual: a tela passou a incluir a pagina `Estornos` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
+- Estado atual: a migration `215` repara ambientes onde o cadastro de `estornos` nao acompanhou a publicacao do frontend.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.
 - Antes: parte das tabelas de cadastro/permissao ainda usava policy `FOR ALL`, que tambem permitia caminho de `DELETE`.
 - Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.

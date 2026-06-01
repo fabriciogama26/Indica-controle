@@ -348,6 +348,7 @@ vercel --prod
 - `supabase/migrations/197_enforce_people_unique_matriculation.sql`: garante matricula unica por tenant em `Pessoas`, com indice unico normalizado, trigger e retorno especifico da RPC.
 - `supabase/migrations/198_add_people_cpf_optional.sql`: adiciona `CPF` opcional em `Pessoas`, com validacao de 11 digitos e persistencia pela RPC `save_person_record`.
 - `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`: torna `CPF` unico por tenant, adiciona trava `CPF + Matricula`, adiciona `Telefone` opcional e republica `save_person_record`.
+- `supabase/migrations/215_repair_reversals_page_permissions.sql`: repara o catalogo e o backfill multi-tenant da pagina `estornos` sem sobrescrever permissoes existentes.
 
 ---
 
@@ -647,6 +648,9 @@ npm run build
 - `As credenciais do usuario ... foram alteradas por outro administrador.`:
   - Causa: dois administradores editaram `role`, `status` ou a matriz de paginas do mesmo usuario ao mesmo tempo.
   - Solucao: aguardar a tela recarregar os dados atuais do usuario e repetir a alteracao desejada.
+- `As telas estornos nao estao cadastradas em app_pages.`:
+  - Causa: frontend com a tela `Estornos` publicado em um ambiente onde o catalogo de permissoes ficou sem `page_key = estornos`.
+  - Solucao: aplicar `215_repair_reversals_page_permissions.sql` e repetir o salvamento da credencial.
 - `Falha ao enviar convite do usuario.`:
   - Causa: usuario sem email, sem `matricula`, sem `login_name` ou ja vinculado ao Auth do Supabase.
   - Solucao: revisar o pre-cadastro em `app_users` antes de usar o botao `Enviar convite` na tela `/permissoes`.

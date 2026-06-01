@@ -466,6 +466,9 @@ Resumo por arquivo
 214_normalize_programming_work_completion_codes.sql
 - Normaliza codigos tecnicos legados do catalogo de `Estado Trabalho`, preserva labels de exibicao, atualiza referencias por cascata e bloqueia novos codigos com acento, espaco ou caractere fora de `A-Z`, `0-9` e `_`.
 - Normaliza snapshots legados das Ordens de Medicao e reforca a RPC `save_project_measurement_order` para copiar o `Estado Trabalho` da Programacao em formato tecnico compativel com a constraint.
+
+215_repair_reversals_page_permissions.sql
+- Repara ambientes onde a tela `Estornos` foi publicada sem `page_key = estornos` em `app_pages`, preenchendo somente permissoes ausentes por role e usuario sem sobrescrever configuracoes existentes.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
