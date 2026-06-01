@@ -212,7 +212,7 @@
 
 .operationalIndicatorGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -263,7 +263,6 @@
   font-weight: 900;
 }
 
-.operationalIndicator small,
 .operationalIndicatorEmpty {
   color: #60708f;
   font-size: 11px;
@@ -651,12 +650,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .operationalIndicatorGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .barChart {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .operationalIndicatorGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

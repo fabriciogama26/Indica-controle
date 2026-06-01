@@ -207,7 +207,7 @@ vercel --prod
   - `DashboardMeasurementPageView.module.css`: estilos do Dashboard Medicao.
 - `src/modules/dashboard/dash-operacional-faturamento/`
   - `OperationalBillingDashboardPageView.tsx`: dashboard comparativo por projeto entre Medicao, Medicao Asbuilt e Faturamento, com filtros obrigatorios por Centro de servico e Projeto, filtro por codigo, status ativa/inativa, divergencias, ausencias, resumo, grafico operacional com filtro proprio, doze cards globais por categoria instalada/retirada comparando quantidades de Medidos, ASBUILT e Faturado, tabela de valor/projetos/medicoes do grafico, tabela consolidada por codigo e tabela de categorias cobradas.
-  - `OperationalBillingDashboardPageView.module.css`: estilos do Dash operacional e faturamento, incluindo filtros, barras do grafico operacional, cards globais medidos e tabela complementar do grafico.
+  - `OperationalBillingDashboardPageView.module.css`: estilos do Dash operacional e faturamento, incluindo filtros, barras do grafico operacional, cards globais medidos organizados em duas linhas de seis cards no desktop e tabela complementar do grafico.
 - `src/modules/dashboard/projetos/`
   - `ProjectsPageView.tsx`: tela de projetos com cadastro, filtros, listagem, materiais previstos e atividades previstas em abas.
   - `ProjectsPageView.module.css`: estilos da tela de projetos.

@@ -107,6 +107,8 @@ Filtros, auto-complete e listagem
   - `Medidos`: quantidade da `Medicao COM_PRODUCAO`
   - `ASBUILT`: quantidade da `Medicao Asbuilt`
   - `Faturado`: quantidade do `Faturamento`
+- No desktop, os doze cards ficam organizados em duas linhas de seis cards.
+- O titulo amigavel identifica o indicador; a categoria tecnica nao e repetida no rodape visual do card.
 - O bloco exibe doze cards:
   - `Postes instalados`: `POSTE (INSTALADO)`
   - `Rede instalada`: `CONDUTOR (REDE INSTALADO)`
@@ -232,6 +234,7 @@ Atualizacao 2026-06
 - Depois:
   - A tela passa a exibir doze cards globais entre `Grafico operacional` e `Projetos por valor`, separados por categoria instalada/retirada para postes, rede, equipamentos, transformadores, cruzetas e estruturas.
   - Cada card compara quantidades de `Medidos`, `ASBUILT` e `Faturado`.
+  - No desktop, os cards ficam organizados em duas linhas de seis itens e deixam de repetir a categoria tecnica no rodape visual.
   - A consulta global pagina projetos, ordens e itens das tres origens para nao truncar totais pelo limite padrao do PostgREST.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -298,3 +301,4 @@ Ajuda contextual
   - Ajuste posterior: `Projetos por valor` passa a ignorar valores zerados nos filtros de menor que, filtrar por Estado de trabalho e exibir 20 registros por pagina.
   - Ajuste posterior: `Projetos por valor` passa a ficar imediatamente abaixo do `Grafico operacional`.
   - Ajuste posterior: doze cards globais passam a ficar entre `Grafico operacional` e `Projetos por valor`, usando as categorias atuais de Atividades para separar instalado e retirado e comparando quantidades de `Medidos`, `ASBUILT` e `Faturado`.
+  - Ajuste posterior: os cards globais passam a usar grade desktop em duas linhas de seis itens e deixam de repetir a categoria tecnica no rodape visual.
