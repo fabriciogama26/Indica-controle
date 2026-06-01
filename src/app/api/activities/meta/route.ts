@@ -41,7 +41,6 @@ export async function GET(request: NextRequest) {
         .select("id, name")
         .eq("tenant_id", appUser.tenant_id)
         .eq("ativo", true)
-        .order("sort_order", { ascending: true })
         .order("name", { ascending: true })
         .returns<TypeServiceActivityRow[]>(),
     ]);
