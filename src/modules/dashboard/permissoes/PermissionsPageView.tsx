@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./PermissionsPageView.module.css";
 
 type PermissionCard = {
@@ -44,6 +45,10 @@ const roleOptions: RoleOption[] = [
   { value: "viewer", label: "Viewer" },
   { value: "user", label: "User" },
 ];
+
+function resolveRoleLabel(role: string) {
+  return roleOptions.find((item) => item.value === role)?.label ?? role;
+}
 
 // Checklist obrigatorio para nova tela:
 // 1) Criar migration com app_pages + role_page_permissions + app_user_page_permissions (backfill por tenant).
@@ -172,18 +177,71 @@ function applyPermissionSnapshot(role: string, snapshots: PermissionSnapshot[]) 
 
 export function PermissionsPageView() {
   const { session } = useAuth();
+  const logError = useErrorLogger("permissoes");
   const [searchValue, setSearchValue] = useState("");
   const [searchResults, setSearchResults] = useState<TenantUser[]>([]);
+  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<TenantUser | null>(null);
   const [selectedRole, setSelectedRole] = useState("");
   const [status, setStatus] = useState<UserStatus>("Ativo");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [permissions, setPermissions] = useState<PermissionCard[]>(() => createPermissionSet("user"));
+  const [isLoadingTenantUsers, setIsLoadingTenantUsers] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [isLoadingSelectedUser, setIsLoadingSelectedUser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      setTenantUsers([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadTenantUsers() {
+      setIsLoadingTenantUsers(true);
+
+      try {
+        const response = await fetch("/api/app-users/search?list=tenant", {
+          headers: {
+            Authorization: `Bearer ${session?.accessToken}`,
+          },
+          signal: controller.signal,
+        });
+
+        const data = (await response.json().catch(() => ({}))) as {
+          users?: TenantUser[];
+          message?: string;
+        };
+
+        if (!response.ok) {
+          const message = data.message ?? "Falha ao listar usuarios do tenant.";
+          setTenantUsers([]);
+          setFeedback({ type: "error", message });
+          void logError(message, undefined, { action: "list_tenant_users" });
+          return;
+        }
+
+        setTenantUsers(data.users ?? []);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          const message = "Falha ao listar usuarios do tenant.";
+          setTenantUsers([]);
+          setFeedback({ type: "error", message });
+          void logError(message, error, { action: "list_tenant_users" });
+        }
+      } finally {
+        setIsLoadingTenantUsers(false);
+      }
+    }
+
+    void loadTenantUsers();
+
+    return () => controller.abort();
+  }, [logError, session?.accessToken]);
 
   useEffect(() => {
     if (!session?.accessToken) {
@@ -215,22 +273,20 @@ export function PermissionsPageView() {
         };
 
         if (!response.ok) {
+          const message = data.message ?? "Falha ao buscar usuarios do tenant.";
           setSearchResults([]);
-          setFeedback({
-            type: "error",
-            message: data.message ?? "Falha ao buscar usuarios do tenant.",
-          });
+          setFeedback({ type: "error", message });
+          void logError(message, undefined, { action: "search_tenant_users" });
           return;
         }
 
         setSearchResults(data.users ?? []);
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
+          const message = "Falha ao buscar usuarios do tenant.";
           setSearchResults([]);
-          setFeedback({
-            type: "error",
-            message: "Falha ao buscar usuarios do tenant.",
-          });
+          setFeedback({ type: "error", message });
+          void logError(message, error, { action: "search_tenant_users" });
         }
       } finally {
         setIsSearching(false);
@@ -241,7 +297,7 @@ export function PermissionsPageView() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [isSearchActive, searchValue, session?.accessToken]);
+  }, [isSearchActive, logError, searchValue, session?.accessToken]);
 
   const groupedPermissions = useMemo(() => {
     return permissions.reduce<Record<string, PermissionCard[]>>((accumulator, permission) => {
@@ -287,10 +343,12 @@ export function PermissionsPageView() {
       };
 
       if (!response.ok || !data.user) {
+        const message = data.message ?? "Falha ao carregar credenciais do usuario.";
         setFeedback({
           type: "error",
-          message: data.message ?? "Falha ao carregar credenciais do usuario.",
+          message,
         });
+        void logError(message, undefined, { action: "load_user_permissions", targetUserId: user.id });
         return;
       }
 
@@ -298,11 +356,13 @@ export function PermissionsPageView() {
       setSelectedRole(data.user.role);
       setStatus(data.user.status);
       setPermissions(applyPermissionSnapshot(data.user.role, data.permissions ?? []));
-    } catch {
+    } catch (error) {
+      const message = "Falha ao carregar credenciais do usuario.";
       setFeedback({
         type: "error",
-        message: "Falha ao carregar credenciais do usuario.",
+        message,
       });
+      void logError(message, error, { action: "load_user_permissions", targetUserId: user.id });
     } finally {
       setIsLoadingSelectedUser(false);
     }
@@ -380,22 +440,26 @@ export function PermissionsPageView() {
           await applyUser(selectedUser);
         }
 
-        setFeedback({
-          type: "error",
-          message: data.message ?? "Falha ao salvar as credenciais do usuario.",
-        });
+        const message = data.message ?? "Falha ao salvar as credenciais do usuario.";
+        setFeedback({ type: "error", message });
+        void logError(message, undefined, { action: "save_user_permissions", targetUserId: selectedUser.id });
         return;
       }
 
+      const roleLabel = resolveRoleLabel(selectedRole);
       setSelectedUser((current) =>
         current
           ? {
               ...current,
               role: selectedRole,
+              roleLabel,
               status,
               updatedAt: data.updatedAt ?? current.updatedAt ?? null,
             }
           : current,
+      );
+      setTenantUsers((current) =>
+        current.map((user) => (user.id === selectedUser.id ? { ...user, role: selectedRole, roleLabel, status } : user)),
       );
 
       setFeedback({
@@ -406,11 +470,13 @@ export function PermissionsPageView() {
             ? "Credencial atualizada com sucesso. Entre novamente para aplicar as mudancas na sua sessao."
             : "Credencial atualizada com sucesso."),
       });
-    } catch {
+    } catch (error) {
+      const message = "Falha ao salvar as credenciais do usuario.";
       setFeedback({
         type: "error",
-        message: "Falha ao salvar as credenciais do usuario.",
+        message,
       });
+      void logError(message, error, { action: "save_user_permissions", targetUserId: selectedUser.id });
     } finally {
       setIsSaving(false);
     }
@@ -448,10 +514,9 @@ export function PermissionsPageView() {
       };
 
       if (!response.ok || !data.success) {
-        setFeedback({
-          type: "error",
-          message: data.message ?? "Falha ao enviar convite do usuario.",
-        });
+        const message = data.message ?? "Falha ao enviar convite do usuario.";
+        setFeedback({ type: "error", message });
+        void logError(message, undefined, { action: "invite_user", targetUserId: selectedUser.id });
         return;
       }
 
@@ -460,11 +525,13 @@ export function PermissionsPageView() {
         type: "success",
         message: data.message ?? "Convite enviado com sucesso.",
       });
-    } catch {
+    } catch (error) {
+      const message = "Falha ao enviar convite do usuario.";
       setFeedback({
         type: "error",
-        message: "Falha ao enviar convite do usuario.",
+        message,
       });
+      void logError(message, error, { action: "invite_user", targetUserId: selectedUser.id });
     } finally {
       setIsInviting(false);
     }
@@ -502,6 +569,40 @@ export function PermissionsPageView() {
           Historico
         </button>
       </header>
+
+      <section className={styles.tenantUsersCard}>
+        <div className={styles.tenantUsersHeader}>
+          <div>
+            <h3 className={styles.tenantUsersTitle}>Usuarios do tenant</h3>
+            <p className={styles.tenantUsersHint}>Selecione um usuario para carregar e editar as credenciais.</p>
+          </div>
+          <span className={styles.tenantUsersCount}>{tenantUsers.length} usuarios</span>
+        </div>
+
+        {isLoadingTenantUsers ? <div className={styles.tenantUsersStatus}>Carregando usuarios do tenant...</div> : null}
+
+        {!isLoadingTenantUsers && tenantUsers.length === 0 ? (
+          <div className={styles.tenantUsersStatus}>Nenhum usuario cadastrado para o tenant atual.</div>
+        ) : null}
+
+        {!isLoadingTenantUsers && tenantUsers.length > 0 ? (
+          <div className={styles.tenantUsersGrid}>
+            {tenantUsers.map((user) => (
+              <button
+                key={user.id}
+                type="button"
+                className={selectedUser?.id === user.id ? styles.tenantUserActive : styles.tenantUser}
+                onClick={() => applyUser(user)}
+                disabled={isLoadingSelectedUser}
+              >
+                <strong>{user.loginName}</strong>
+                <span>{user.matricula ? `Matricula: ${user.matricula}` : "Matricula nao informada"}</span>
+                <span>{user.roleLabel} | {user.status}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       <article className={styles.topCard}>
         <label className={styles.field}>

@@ -7,6 +7,7 @@ Visao geral
 - A tela agora carrega e salva `role`, `ativo/inativo` e a liberacao das telas em `app_user_page_permissions`.
 - As telas salvas para o usuario agora tambem sao consumidas no bootstrap da sessao para esconder ou liberar a navegacao no shell.
 - A tela agora tambem permite enviar convite de primeiro acesso para usuarios pre-cadastrados em `app_users`.
+- A tela agora exibe uma lista inicial dos usuarios do tenant atual antes do formulario de selecao.
 
 Arquitetura
 -----------
@@ -40,6 +41,7 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - A busca chama `src/app/api/app-users/search/route.ts` com o token atual da sessao.
+- A lista inicial chama `src/app/api/app-users/search/route.ts?list=tenant` e carrega os usuarios do tenant em lotes.
 - A rota valida o usuario autenticado, resolve o tenant dele e retorna apenas usuarios do mesmo tenant.
 - A pesquisa considera apenas `login_name` e `matricula`.
 - A listagem nao depende de `app_roles` com join obrigatorio; usuarios do tenant continuam aparecendo mesmo se o `role_id` ainda estiver incompleto.
@@ -59,6 +61,7 @@ Filtros, auto-complete e listagem
   - registra historico com `change_type = 'INVITE_SENT'` via RPC `append_user_invite_history`
 - No login e na reidratacao da sessao, o frontend consulta `src/app/api/auth/session-access/route.ts` para aplicar no shell as telas realmente liberadas para o usuario.
 - Ao selecionar o resultado da busca, a tela aplica `role`, `status` e a matriz visual do usuario escolhido.
+- Ao selecionar um usuario da lista inicial, a tela reutiliza o mesmo carregamento de credenciais usado pelo auto-complete.
 - A listagem atual considera as telas do SaaS web:
   - Visao Geral: Home, Dashboard Medicao e Dash operacional e faturamento
   - Operacao: Projetos, Locacao, Programacao, Medicao
@@ -163,6 +166,9 @@ Atualizacao 2026-06
 - O reparo cadastra/reativa a pagina e preenche somente permissoes ausentes por role e usuario.
 - Antes: o backend recusava salvar a matriz com `As telas estornos nao estao cadastradas em app_pages.`.
 - Depois: o salvamento volta a aceitar a matriz completa sem sobrescrever configuracoes existentes.
+- Adicionada lista inicial `Usuarios do tenant` entre o cabecalho e o formulario de credenciais.
+- A route de busca passou a aceitar `list=tenant`, mantendo validacao administrativa e filtro obrigatorio por `tenant_id`.
+- A tela passou a registrar falhas administrativas com `useErrorLogger("permissoes")`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -170,9 +176,9 @@ Funcoes principais
 - Caminho: `src/app/(dashboard)/permissoes/page.tsx`
   - Responsavel por: expor a rota autenticada `/permissoes`.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: apresentar a UI de credenciais e permissoes, com busca de usuario, role, status, resumo do tenant, matriz local de liberacao por tela e envio de `expectedUpdatedAt` no save.
+  - Responsavel por: apresentar a UI de credenciais e permissoes, com lista inicial do tenant, busca de usuario, role, status, resumo do tenant, matriz local de liberacao por tela e envio de `expectedUpdatedAt` no save.
 - Caminho: `src/app/api/app-users/search/route.ts`
-  - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado e buscar `app_users` do mesmo tenant por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin/master.
+  - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado, listar os usuarios do tenant e buscar `app_users` por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin/master.
 - Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
   - Responsavel por: carregar `role` e matriz do usuario, validar `expectedUpdatedAt`, validar `role/page_key` e delegar o save transacional para `save_user_permissions`.
 - Caminho: `src/app/api/app-users/[userId]/invite/route.ts`
@@ -219,6 +225,8 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
   - Responsavel por: manter a sessao autenticada usada pelo guard da pagina.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `permissoes`.
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS
@@ -226,6 +234,8 @@ Servicos e integracoes externas
 Ajuda contextual
 - Arquivos alterados/criados:
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.module.css`
+  - `src/app/api/app-users/search/route.ts`
   - `src/lib/auth/authorization.ts`
   - `src/components/layout/AppShell.tsx`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
@@ -242,6 +252,8 @@ Ajuda contextual
   - `applyUser`
   - `handleSave`
   - `handleInvite`
+  - `listTenantUsers`, `searchTenantUsers`
+  - `useErrorLogger("permissoes")`
   - `resolveTargetUser`
   - `save_user_permissions`
   - `append_user_invite_history`
@@ -259,6 +271,7 @@ Ajuda contextual
 - Estado atual: a tela passou a incluir a pagina `Consumo por Projeto` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - Estado atual: a tela passou a incluir a pagina `Estornos` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - Estado atual: a migration `215` repara ambientes onde o cadastro de `estornos` nao acompanhou a publicacao do frontend.
+- Estado atual: a tela exibe os usuarios do tenant antes do formulario e permite selecionar qualquer linha para carregar as credenciais.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.
 - Antes: parte das tabelas de cadastro/permissao ainda usava policy `FOR ALL`, que tambem permitia caminho de `DELETE`.
 - Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.
