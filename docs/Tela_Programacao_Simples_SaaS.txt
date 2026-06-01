@@ -1179,6 +1179,24 @@ Atualizacao adicional 2026-05-13 (Estado Trabalho somente no registro selecionad
   - Depois: a alteracao de `Estado Trabalho` sincroniza somente programacoes ativas de outras equipes no mesmo `Projeto + Data de execucao`, preservando `tenant_id`, catalogo por tenant, concorrencia por `expectedUpdatedAt` e historico dos registros alterados.
   - Nao existe cascata baseada na posicao visual da tabela nem em outros dias do mesmo projeto.
 
+Atualizacao 2026-06-01 (Codigo tecnico de Estado Trabalho normalizado)
+----------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/214_normalize_programming_work_completion_codes.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Funcao SQL `normalize_programming_work_completion_code`
+  - Constraint `programming_work_completion_catalog_code_normalized_check`
+- Comportamento antes/depois:
+  - Antes: o catalogo aceitava codigo tecnico com acento, espaco ou caractere especial, mesmo existindo `label_pt` separado para exibicao.
+  - Depois: codigos legados sao convertidos para formato tecnico com letras `A-Z`, numeros e `_`, mantendo `label_pt` para exibicao na tela.
+  - Depois: novos codigos fora desse formato sao rejeitados pela constraint do catalogo.
+  - Depois: a migration interrompe com mensagem explicita se houver colisao por tenant apos normalizacao.
+  - Impacto multi-tenant: a validacao e a deteccao de colisao consideram `tenant_id`; referencias textuais em `project_programming` continuam protegidas pela FK existente com `ON UPDATE CASCADE`; RLS permanece habilitada e sem alteracao.
+
 Atualizacao adicional 2026-05-18 (REDE decimal e km da Extracao ENEL NOVO)
 ---------------------------------------------------------------------------
 - Arquivos alterados/criados:
