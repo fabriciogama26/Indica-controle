@@ -74,6 +74,7 @@ Atualizacao 2026-03
 - Base de permissao por pagina criada com `app_pages` e `role_page_permissions`.
 - Perfis normalizados em `app_roles`, com `app_users.role_id` e `role_page_permissions.role_id`.
 - Busca administrativa de usuarios do tenant usa `SUPABASE_SERVICE_ROLE_KEY` no backend, com validacao explicita do operador admin/master e filtro por tenant.
+- A busca administrativa aceita `list=tenant` para carregar a lista inicial de usuarios da tela `/permissoes` em lotes, preservando o filtro obrigatorio por tenant.
 - A tela `/permissoes` passou a salvar `app_users.role_id`, `app_users.ativo` e `app_user_page_permissions`.
 - A tela `/permissoes` passou a gravar historico em `app_user_permission_history`.
 - O fluxo oficial de provisionamento web passou a ser `pre-cadastro em app_users + invite no Auth`.
@@ -99,7 +100,7 @@ Funcoes principais
 - Caminho: `supabase/edge_functions/log_error/index.ts`
   - Responsavel por: registrar erros do frontend/app.
 - Caminho: `src/app/api/app-users/search/route.ts`
-  - Responsavel por: listar usuarios reais do tenant atual para a tela `/permissoes`.
+  - Responsavel por: listar usuarios reais do tenant atual em lotes e buscar por `login_name` ou `matricula` para a tela `/permissoes`.
 - Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
   - Responsavel por: carregar e salvar `role`, `ativo/inativo`, permissoes por tela e historico de alteracoes do usuario selecionado.
 - Caminho: `src/app/api/app-users/[userId]/invite/route.ts`
@@ -221,6 +222,7 @@ Ajuda contextual
 - `app_roles` virou a fonte de verdade dos perfis (`admin`, `master`, `user`).
 - A funcao `user_is_admin_in_tenant(uuid)` agora resolve o papel administrativo via `app_roles.is_admin`.
 - A busca da tela `/permissoes` valida o operador atual como admin/master e consulta `app_users` do mesmo tenant com `service_role` no backend, sem expor esse acesso ao frontend.
+- A lista inicial da tela `/permissoes` usa `list=tenant`, pagina internamente a leitura de `app_users` e continua limitada ao tenant resolvido para o operador.
 - O operador da tela `/permissoes` precisa ser admin/master, mas a busca retorna qualquer `app_user` do mesmo tenant para configuracao de acesso.
 - O salvamento da tela `/permissoes` nao usa `delete`; ele faz `upsert` em `app_user_page_permissions` usando apenas `can_access`.
 - O shell e a protecao de rotas nao devem confiar so em `role`; quando `hasCustomPermissions = true`, a navegacao passa a ser definida pelas linhas salvas em `app_user_page_permissions`.

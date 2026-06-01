@@ -804,4 +804,6 @@
 
 - [x] Reparar cadastro multi-tenant da pagina `Estornos` em ambientes sem `page_key = estornos`, preenchendo somente permissoes ausentes sem sobrescrever configuracoes existentes.
 
+- [x] Exibir lista inicial de usuarios do tenant na tela `Permissoes`, permitindo selecionar um usuario antes do formulario sem remover a busca por login ou matricula.
+
 - [ ] Habilitar manualmente no Supabase Auth a protecao contra senhas vazadas (`Leaked password protection`) no painel/configuracao do projeto quando o plano permitir, pois nao ha `supabase/config.toml` ou setting versionado no repositorio atual.

@@ -5,11 +5,92 @@
 
 .header,
 .topCard,
+.tenantUsersCard,
 .sectionBlock {
   border-radius: 26px;
   border: 1px solid rgba(20, 41, 97, 0.1);
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 18px 38px rgba(15, 32, 74, 0.08);
+}
+
+.tenantUsersCard {
+  display: grid;
+  gap: 16px;
+  padding: 22px 24px;
+}
+
+.tenantUsersHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tenantUsersTitle {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.12rem;
+}
+
+.tenantUsersHint {
+  margin: 5px 0 0;
+  color: #5b6a85;
+  line-height: 1.5;
+}
+
+.tenantUsersCount {
+  color: #5b6a85;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.tenantUsersGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tenantUser,
+.tenantUserActive {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  background: rgba(244, 247, 255, 0.92);
+  color: #4f6284;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tenantUserActive {
+  border-color: transparent;
+  background: linear-gradient(180deg, rgba(23, 52, 122, 0.96) 0%, rgba(39, 80, 163, 0.96) 100%);
+  color: #f7fbff;
+}
+
+.tenantUser:disabled,
+.tenantUserActive:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.tenantUser strong,
+.tenantUserActive strong {
+  font-size: 0.94rem;
+}
+
+.tenantUser span,
+.tenantUserActive span {
+  font-size: 0.82rem;
+}
+
+.tenantUsersStatus {
+  color: #5b6a85;
+  font-size: 0.9rem;
 }
 
 .header {
@@ -328,20 +409,23 @@
 }
 
 @media (max-width: 1380px) {
-  .cardGrid {
+  .cardGrid,
+  .tenantUsersGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 1080px) {
   .topCard,
+  .tenantUsersHeader,
   .sectionHeader,
   .contextCard {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .cardGrid {
+  .cardGrid,
+  .tenantUsersGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -357,7 +441,8 @@
   }
 
   .topCard,
-  .cardGrid {
+  .cardGrid,
+  .tenantUsersGrid {
     grid-template-columns: 1fr;
   }
 }

@@ -147,7 +147,7 @@ vercel --prod
   - `(dashboard)/pessoas/page.tsx`: rota da tela de Pessoas com cadastro manual/em massa, filtros, listagem, historico, exportacao e troca de status.
 - `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, supervisor opcional, filtros, historico, troca de status e criacao automatica do centro de estoque proprio.
   - `(dashboard)/permissoes/page.tsx`: tela administrativa base para permissoes por pagina.
-  - `api/app-users/search/route.ts`: busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
+  - `api/app-users/search/route.ts`: lista e busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
   - `api/app-users/[userId]/invite/route.ts`: envia convite de primeiro acesso para usuario pre-cadastrado em `app_users` e registra auditoria do invite via RPC.
   - `api/projects/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de projetos por tenant, com filtros por programacao (`Estado Trabalho` e `Tipo SGD`), marcadores `is_test` e `is_withdrawn` e bloqueio de inativacao quando houver agenda operacional pendente.
@@ -263,7 +263,7 @@ vercel --prod
   - `ActivitiesPageView.tsx`: tela de atividades com cadastro de `codigo`, `descricao`, `tipo`, `categoria`, `grupo`, `alcance`, `valor`, `pontos` e `unidade`, listagem paginada e acoes `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - `ActivitiesPageView.module.css`: estilos da tela de atividades.
 - `src/modules/dashboard/permissoes/`
-  - `PermissionsPageView.tsx`: front administrativo para pesquisar usuario por `login_name` ou `matricula`, ajustar role, status e permissoes por tela.
+  - `PermissionsPageView.tsx`: front administrativo para listar usuarios do tenant, pesquisar por `login_name` ou `matricula`, ajustar role, status e permissoes por tela.
   - `PermissionsPageView.module.css`: estilo da tela de permissoes.
 - `src/components/layout/`
   - `AppShell.tsx`: sidebar, topbar e protecao client-side.
@@ -412,7 +412,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 51. As migrations `032_create_contrato_table.sql` e `033_rename_contrato_to_contract.sql` criam a tabela de contrato por tenant e padronizam o nome final como `contract`, com coluna `name`, `valor` derivado do `tenant_id`, RLS e auditoria.
 52. A migration `025_app_users_admin_tenant_select.sql` libera leitura de `app_users` do mesmo tenant apenas para perfis administrativos autenticados.
 53. O shell agora reserva `/permissoes` para perfis administrativos e expoe esse acesso por uma engrenagem no topo, ao lado de `Sair`.
-54. A tela `/permissoes` busca usuarios do tenant por `login_name` ou `matricula`.
+54. A tela `/permissoes` lista os usuarios do tenant e tambem permite buscar por `login_name` ou `matricula`.
 55. Ao selecionar um usuario, o frontend carrega `role`, `status` e as telas liberadas em `app_user_page_permissions`.
 56. Ao salvar, o backend valida o payload, chama a RPC `save_user_permissions` e deixa a transacao no banco atualizar `app_users.role_id`, `app_users.ativo`, `app_user_page_permissions` e `app_user_permission_history`.
 57. Quando o pre-cadastro ja estiver completo em `app_users`, a tela `/permissoes` tambem permite enviar o invite do Supabase Auth para o email do usuario.

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SupabaseClient } from "@supabase/supabase-js";
+
 import { resolveAdminOperator } from "@/lib/server/appUsersAdmin";
 
 function normalizeSearchTerm(value: string) {
@@ -14,10 +16,50 @@ type SearchUserRow = {
   role_id: string | null;
 };
 
+async function listTenantUsers(supabase: SupabaseClient, tenantId: string) {
+  const users: SearchUserRow[] = [];
+  const batchSize = 500;
+
+  for (let offset = 0; ; offset += batchSize) {
+    const { data, error } = await supabase
+      .from("app_users")
+      .select("id, tenant_id, matricula, login_name, ativo, role_id")
+      .eq("tenant_id", tenantId)
+      .order("login_name", { ascending: true })
+      .range(offset, offset + batchSize - 1)
+      .returns<SearchUserRow[]>();
+
+    if (error) {
+      return { users: [], error };
+    }
+
+    users.push(...(data ?? []));
+
+    if ((data ?? []).length < batchSize) {
+      return { users, error: null };
+    }
+  }
+}
+
+async function searchTenantUsers(supabase: SupabaseClient, tenantId: string, query: string) {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("id, tenant_id, matricula, login_name, ativo, role_id")
+    .eq("tenant_id", tenantId)
+    .or(`login_name.ilike.*${query}*,matricula.ilike.*${query}*`)
+    .order("login_name", { ascending: true })
+    .limit(8)
+    .returns<SearchUserRow[]>();
+
+  return { users: data ?? [], error };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const query = normalizeSearchTerm(request.nextUrl.searchParams.get("q") ?? "");
-    if (query.length < 2) {
+    const shouldListTenantUsers = request.nextUrl.searchParams.get("list") === "tenant";
+
+    if (!shouldListTenantUsers && query.length < 2) {
       return NextResponse.json({ users: [] });
     }
 
@@ -28,14 +70,9 @@ export async function GET(request: NextRequest) {
 
     const { supabase, operator } = resolution;
 
-    const { data: users, error: usersError } = await supabase
-      .from("app_users")
-      .select("id, tenant_id, matricula, login_name, ativo, role_id")
-      .eq("tenant_id", operator.tenantId)
-      .or(`login_name.ilike.*${query}*,matricula.ilike.*${query}*`)
-      .order("login_name", { ascending: true })
-      .limit(8)
-      .returns<SearchUserRow[]>();
+    const { users, error: usersError } = shouldListTenantUsers
+      ? await listTenantUsers(supabase, operator.tenantId)
+      : await searchTenantUsers(supabase, operator.tenantId, query);
 
     if (usersError) {
       return NextResponse.json({ message: "Falha ao buscar usuarios do tenant." }, { status: 500 });
