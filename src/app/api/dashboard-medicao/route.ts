@@ -9,6 +9,7 @@ type MeasurementOrderRow = {
   team_id: string;
   execution_date: string;
   measurement_kind: string;
+  minimum_billing_amount: number | string;
   status: string;
   project_code_snapshot: string | null;
   team_name_snapshot: string | null;
@@ -408,7 +409,7 @@ export async function GET(request: NextRequest) {
 
   const { data: orders, error: ordersError } = await resolution.supabase
     .from("project_measurement_orders")
-    .select("id, project_id, team_id, execution_date, measurement_kind, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+    .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .eq("measurement_kind", "COM_PRODUCAO")
@@ -421,13 +422,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar medicoes para dashboard." }, { status: 500 });
   }
 
+  const { data: minimumBillingGuaranteeOrders, error: minimumBillingGuaranteeOrdersError } = await resolution.supabase
+    .from("project_measurement_orders")
+    .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .eq("measurement_kind", "SEM_PRODUCAO")
+    .gt("minimum_billing_amount", 0)
+    .neq("status", "CANCELADA")
+    .order("execution_date", { ascending: false })
+    .limit(10000)
+    .returns<MeasurementOrderRow[]>();
+
+  if (minimumBillingGuaranteeOrdersError) {
+    return NextResponse.json({ message: "Falha ao carregar garantias de faturamento minimo para dashboard." }, { status: 500 });
+  }
+
   const projectMetaMap = await fetchProjectMetaMap({
     supabase: resolution.supabase,
     tenantId,
-    projectIds: (orders ?? []).map((item) => item.project_id),
+    projectIds: [...(orders ?? []), ...(minimumBillingGuaranteeOrders ?? [])].map((item) => item.project_id),
   });
 
   const validOrders = (orders ?? [])
+    .filter((order) => normalizeIsoDate(order.execution_date))
+    .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
+  const validMinimumBillingGuaranteeOrders = (minimumBillingGuaranteeOrders ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
 
@@ -482,6 +502,16 @@ export async function GET(request: NextRequest) {
         return true;
       })
     : cycleOrders;
+  const periodMinimumBillingGuaranteeOrders = hasPeriodFilter
+    ? validMinimumBillingGuaranteeOrders.filter((order) => {
+        if (startDateFilter && order.execution_date < startDateFilter) return false;
+        if (endDateFilter && order.execution_date > endDateFilter) return false;
+        return true;
+      })
+    : validMinimumBillingGuaranteeOrders.filter((order) => (
+        order.execution_date >= selectedCycle.cycleStart
+        && order.execution_date <= selectedCycle.cycleEnd
+      ));
 
   const cycleWindowEndDate = selectedCycle.cycleEnd;
   const periodWindowEndDate = endDateFilter ?? resolveWindowEndDate(periodOrders, selectedCycle.cycleEnd);
@@ -505,7 +535,7 @@ export async function GET(request: NextRequest) {
     windowEndDate: periodWindowEndDate,
   });
 
-  const allVisibleTeamIds = Array.from(new Set([...cycleOrders, ...periodOrders].map((order) => order.team_id).filter(Boolean)));
+  const allVisibleTeamIds = Array.from(new Set([...cycleOrders, ...periodOrders, ...periodMinimumBillingGuaranteeOrders].map((order) => order.team_id).filter(Boolean)));
   const teamsResult = allVisibleTeamIds.length
     ? await resolution.supabase
         .from("teams")
@@ -642,6 +672,20 @@ export async function GET(request: NextRequest) {
     ) return false;
     return true;
   });
+  const periodFilteredMinimumBillingGuaranteeOrders = periodMinimumBillingGuaranteeOrders.filter((order) => {
+    if (projectIdFilter && order.project_id !== projectIdFilter) return false;
+    if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
+    if (teamIdFilter && order.team_id !== teamIdFilter) return false;
+    if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
+    if (
+      completionFilter === "CONCLUIDO"
+      || completionFilter === "PARCIAL"
+      || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
+      || completionFilter === "PENDENCIA"
+    ) return false;
+    return true;
+  });
 
   const orderIds = Array.from(new Set([...filteredOrders, ...periodFilteredOrders].map((order) => order.id)));
   const { data: items, error: itemsError } = orderIds.length
@@ -702,6 +746,15 @@ export async function GET(request: NextRequest) {
     ]);
   }
 
+  function createCompletionAggregate(): CompletionAggregate {
+    return {
+      value: 0,
+      orders: 0,
+      projectIds: new Set<string>(),
+      projects: new Map<string, ProjectProductionDetail>(),
+    };
+  }
+
   function addCompletionTotals(
     target: Map<string, CompletionAggregate>,
     order: MeasurementOrderRow,
@@ -722,9 +775,18 @@ export async function GET(request: NextRequest) {
     target.set(completion, completionTotal);
   }
 
-  function buildCompletionChart(target: Map<string, CompletionAggregate>) {
-    const totalValue = Array.from(target.values()).reduce((sum, item) => sum + item.value, 0);
-    return [
+  function addMinimumBillingGuaranteeTotal(target: CompletionAggregate, order: MeasurementOrderRow) {
+    const totalValue = Number(order.minimum_billing_amount ?? 0);
+    target.value += totalValue;
+    target.orders += 1;
+    target.projectIds.add(order.project_id);
+    addProjectProduction(target.projects, order, totalValue);
+  }
+
+  function buildCompletionChart(target: Map<string, CompletionAggregate>, minimumBillingGuaranteeTotal?: CompletionAggregate) {
+    const totalValue = Array.from(target.values()).reduce((sum, item) => sum + item.value, 0)
+      + (minimumBillingGuaranteeTotal?.value ?? 0);
+    const chart = [
       {
         label: "Concluidos",
         value: target.get("CONCLUIDO")?.value ?? 0,
@@ -758,10 +820,24 @@ export async function GET(request: NextRequest) {
         percentage: totalValue > 0 ? ((target.get("PENDENCIA")?.value ?? 0) / totalValue) * 100 : 0,
       },
     ];
+
+    if (minimumBillingGuaranteeTotal) {
+      chart.push({
+        label: "Garantia de faturamento minimo",
+        value: minimumBillingGuaranteeTotal.value,
+        orders: minimumBillingGuaranteeTotal.orders,
+        projectCount: minimumBillingGuaranteeTotal.projectIds.size,
+        projects: buildProjectProductionRows(minimumBillingGuaranteeTotal.projects),
+        percentage: totalValue > 0 ? (minimumBillingGuaranteeTotal.value / totalValue) * 100 : 0,
+      });
+    }
+
+    return chart;
   }
 
   const cycleCompletionTotals = createCompletionTotals();
   const periodCompletionTotals = createCompletionTotals();
+  const periodMinimumBillingGuaranteeTotal = createCompletionAggregate();
 
   const potentialSupervisorTeams = (activeTeamsResult.data ?? []).filter((team) => {
     if (!team.supervisor_person_id) return false;
@@ -1001,6 +1077,9 @@ export async function GET(request: NextRequest) {
   for (const order of periodFilteredOrders) {
     addCompletionTotals(periodCompletionTotals, order, periodOrderCompletionMap);
   }
+  for (const order of periodFilteredMinimumBillingGuaranteeOrders) {
+    addMinimumBillingGuaranteeTotal(periodMinimumBillingGuaranteeTotal, order);
+  }
 
   const foremenByWeek: Record<string, ReturnType<typeof buildForemanRows>> = {};
   const supervisorsProductionByWeek: Record<string, ReturnType<typeof buildSupervisorRows>> = {};
@@ -1062,9 +1141,9 @@ export async function GET(request: NextRequest) {
       projectCount,
       averageTicketValue,
     },
-    completionChart: buildCompletionChart(periodCompletionTotals),
+    completionChart: buildCompletionChart(periodCompletionTotals, periodMinimumBillingGuaranteeTotal),
     cycleCompletionChart: buildCompletionChart(cycleCompletionTotals),
-    periodCompletionChart: buildCompletionChart(periodCompletionTotals),
+    periodCompletionChart: buildCompletionChart(periodCompletionTotals, periodMinimumBillingGuaranteeTotal),
     cycleComparison: {
       label: selectedCycle.label,
       value: realizedValue,
