@@ -77,7 +77,9 @@ type OperationalMeasurementCategoryCard = {
   key: string;
   label: string;
   categoryName: string;
-  quantity: number;
+  measurementQuantity: number;
+  asbuiltQuantity: number;
+  billingQuantity: number;
 };
 
 type ProjectValueRow = {
@@ -780,7 +782,7 @@ export function OperationalBillingDashboardPageView() {
           <div>
             <h2 className={styles.cardTitle}>Indicadores operacionais medidos</h2>
             <p className={styles.cardSubtitle}>
-              Quantidades da Medicao COM_PRODUCAO consolidadas em todos os projetos ativos validos do tenant.
+              Quantidades de Medicao, ASBUILT e Faturamento consolidadas em todos os projetos ativos validos do tenant.
             </p>
           </div>
         </div>
@@ -789,8 +791,21 @@ export function OperationalBillingDashboardPageView() {
           <div className={styles.operationalIndicatorGrid}>
             {operationalCategoryCards.map((card) => (
               <div key={card.key} className={styles.operationalIndicator}>
-                <span>{card.label}</span>
-                <strong>{formatNumber(card.quantity)}</strong>
+                <span className={styles.operationalIndicatorTitle}>{card.label}</span>
+                <div className={styles.operationalIndicatorValues}>
+                  <div className={styles.operationalIndicatorMetric}>
+                    <span>Medidos</span>
+                    <strong>{formatNumber(card.measurementQuantity)}</strong>
+                  </div>
+                  <div className={styles.operationalIndicatorMetric}>
+                    <span>ASBUILT</span>
+                    <strong>{formatNumber(card.asbuiltQuantity)}</strong>
+                  </div>
+                  <div className={styles.operationalIndicatorMetric}>
+                    <span>Faturado</span>
+                    <strong>{formatNumber(card.billingQuantity)}</strong>
+                  </div>
+                </div>
                 <small>{card.categoryName}</small>
               </div>
             ))}
