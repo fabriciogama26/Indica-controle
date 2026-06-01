@@ -95,6 +95,7 @@ type CycleTargetItemRow = {
 type ProgrammingCompletionRow = {
   project_id: string;
   execution_date: string;
+  status: string;
   work_completion_status: string | null;
   updated_at: string;
 };
@@ -164,6 +165,10 @@ function normalizeCompletionStatus(value: unknown) {
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) return "PARCIAL";
   if (token === "PENDENCIA" || token === "PENDENCIAS" || token.startsWith("PENDEN")) return "PENDENCIA";
   return "NAO_INFORMADO";
+}
+
+function isCanceledProgrammingStatus(value: unknown) {
+  return normalizeText(value).toUpperCase() === "CANCELADA";
 }
 
 function createUtcDate(year: number, monthIndex: number, day: number) {
@@ -310,10 +315,11 @@ async function fetchProjectCompletionTimeline(params: {
 
   const { data, error } = await params.supabase
     .from("project_programming")
-    .select("project_id, execution_date, work_completion_status, updated_at")
+    .select("project_id, execution_date, status, work_completion_status, updated_at")
     .eq("tenant_id", params.tenantId)
     .in("project_id", projectIds)
     .lte("execution_date", params.endDate)
+    .neq("status", "CANCELADA")
     .not("work_completion_status", "is", null)
     .returns<ProgrammingCompletionRow[]>();
 
@@ -321,6 +327,8 @@ async function fetchProjectCompletionTimeline(params: {
 
   const result = new Map<string, ProgrammingCompletionTimelineItem[]>();
   for (const row of data ?? []) {
+    if (isCanceledProgrammingStatus(row.status)) continue;
+
     const status = normalizeCompletionStatus(row.work_completion_status);
     const executionDate = normalizeIsoDate(row.execution_date);
     if (status === "NAO_INFORMADO" || !executionDate) continue;

@@ -475,6 +475,10 @@ function programmingStatusPriority(status: unknown) {
   return 4;
 }
 
+function isCanceledProgrammingStatus(status: unknown) {
+  return normalizeText(status).toUpperCase() === "CANCELADA";
+}
+
 function buildProgrammingMatchKey(projectId: string, teamId: string, executionDate: string) {
   return `${projectId}|${teamId}|${executionDate}`;
 }
@@ -654,9 +658,23 @@ async function loadProgrammingMatchMap(params: {
     : preferred.data;
 
   const programmingProjectDateMap = new Map<string, string>();
+  const programmingStatusMap = new Map<string, string>();
   for (const row of data ?? []) {
     programmingProjectDateMap.set(row.id, buildProgrammingProjectDateKey(row.project_id, row.execution_date));
+    programmingStatusMap.set(row.id, row.status);
   }
+
+  const canceledProgrammingRows = await fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "id">>((from, to) =>
+    params.supabase
+      .from("project_programming")
+      .select("id")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", projectIds)
+      .eq("status", "CANCELADA")
+      .range(from, to)
+      .returns<Array<Pick<ProgrammingMatchRow, "id">>>(),
+  );
+  const canceledProgrammingIds = new Set((canceledProgrammingRows.data ?? []).map((item) => item.id));
 
   const projectCompletionRows = await fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>((from, to) =>
     params.supabase
@@ -665,6 +683,7 @@ async function loadProgrammingMatchMap(params: {
       .eq("tenant_id", params.tenantId)
       .in("project_id", projectIds)
       .lte("execution_date", params.windowEndDate)
+      .neq("status", "CANCELADA")
       .not("work_completion_status", "is", null)
       .range(from, to)
       .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
@@ -674,6 +693,10 @@ async function loadProgrammingMatchMap(params: {
 
   const projectDateWorkCompletionStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
   for (const row of data ?? []) {
+    if (isCanceledProgrammingStatus(row.status)) {
+      continue;
+    }
+
     const projectDateKey = buildProgrammingProjectDateKey(row.project_id, row.execution_date);
     const completionStatus = resolveMeasurementWorkCompletionStatus(row.work_completion_status);
     if (!completionStatus) {
@@ -703,6 +726,10 @@ async function loadProgrammingMatchMap(params: {
 
   const projectDateWorkCompletionHistoryMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
   for (const row of projectCompletionHistoryRows.data ?? []) {
+    if (canceledProgrammingIds.has(row.programming_id) || isCanceledProgrammingStatus(programmingStatusMap.get(row.programming_id))) {
+      continue;
+    }
+
     const projectDateKey = resolveProgrammingHistoryProjectDateKey(row, programmingProjectDateMap);
     if (!projectDateKey || projectDateWorkCompletionHistoryMap.has(projectDateKey)) {
       continue;
@@ -750,7 +777,9 @@ async function loadProgrammingMatchMap(params: {
       order.project_id,
       params.windowEndDate,
     );
-    const currentCompletion = resolveMeasurementWorkCompletionStatus(completionMatch?.work_completion_status);
+    const currentCompletion = isCanceledProgrammingStatus(completionMatch?.status)
+      ? null
+      : resolveMeasurementWorkCompletionStatus(completionMatch?.work_completion_status);
     const snapshotCompletion = resolveMeasurementWorkCompletionStatus(order.programming_completion_status_snapshot);
     const programmingCompletion = projectWorkCompletionStatus?.completionStatus
       ?? currentCompletion
