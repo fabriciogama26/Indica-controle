@@ -806,7 +806,6 @@ export function OperationalBillingDashboardPageView() {
                     <strong>{formatNumber(card.billingQuantity)}</strong>
                   </div>
                 </div>
-                <small>{card.categoryName}</small>
               </div>
             ))}
           </div>
