@@ -824,3 +824,22 @@ Atualizacao 2026-06-01 (Snapshot de Estado Trabalho normalizado)
   - Depois: a RPC de salvamento normaliza defensivamente o snapshot antes de gravar a ordem.
   - Depois: a migration bloqueia a aplicacao quando outro ambiente possuir colisao entre codigos do mesmo tenant apos normalizacao, evitando mesclar estados distintos automaticamente.
   - Impacto multi-tenant: o backfill atualiza o catalogo por registro e preserva `tenant_id`; a FK existente propaga a troca de codigo para `project_programming` dentro do mesmo tenant; RLS permanece habilitada e sem alteracao.
+
+Atualizacao 2026-06-01 (Estado Trabalho ignora Programacao cancelada)
+---------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `isCanceledProgrammingStatus`
+  - `loadProgrammingMatchMap`
+  - `buildProjectWorkCompletionTimeline`
+  - `resolveProjectWorkCompletionAtWindowEnd`
+- Comportamento antes/depois:
+  - Antes: a Lista de Ordens de Medicao podia usar o `Estado Trabalho` da Programacao mais recente mesmo quando essa Programacao estava `CANCELADA`.
+  - Depois: Programacoes `CANCELADA` nao participam da escolha do ultimo `Estado Trabalho` valido do projeto.
+  - Depois: se a Programacao mais recente estiver cancelada, a API procura o estado valido anterior ate o fim do periodo filtrado; se existir outra Programacao valida posterior, ela prevalece normalmente.
+  - Depois: os fallbacks por `Projeto + Data`, match exato e historico tambem ignoram Programacao cancelada.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; todas as consultas continuam filtradas pelo `tenant_id` autenticado.
