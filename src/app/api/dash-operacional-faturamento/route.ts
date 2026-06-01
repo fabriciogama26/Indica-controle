@@ -134,7 +134,9 @@ type OperationalMeasurementCategoryCard = {
   key: string;
   label: string;
   categoryName: string;
-  quantity: number;
+  measurementQuantity: number;
+  asbuiltQuantity: number;
+  billingQuantity: number;
 };
 
 type ProjectValueRow = {
@@ -216,11 +218,13 @@ const OPERATIONAL_MEASUREMENT_CATEGORIES = [
   { key: "installed-poles", label: "Postes instalados", categoryName: "POSTE (INSTALADO)" },
   { key: "installed-network", label: "Rede instalada", categoryName: "CONDUTOR (REDE INSTALADO)" },
   { key: "installed-equipment", label: "Equipamentos instalados", categoryName: "EQUIPAMENTO (INSTALADO)" },
+  { key: "installed-transformers", label: "Transformadores instalados", categoryName: "TRANSFORMADOR (INSTALADO)" },
   { key: "installed-crossarms", label: "Cruzetas instaladas", categoryName: "CRUZETA (INSTALADO)" },
   { key: "installed-structures", label: "Estruturas instaladas", categoryName: "ESTRUTURA (INSTALADO)" },
   { key: "removed-poles", label: "Postes retirados", categoryName: "POSTE (RETIRADO)" },
   { key: "removed-network", label: "Rede retirada", categoryName: "CONDUTOR (REDE RETIRADO)" },
   { key: "removed-equipment", label: "Equipamentos retirados", categoryName: "EQUIPAMENTO (RETIRADO)" },
+  { key: "removed-transformers", label: "Transformadores retirados", categoryName: "TRANSFORMADOR (RETIRADO)" },
   { key: "removed-crossarms", label: "Cruzetas retiradas", categoryName: "CRUZETA (RETIRADO)" },
   { key: "removed-structures", label: "Estruturas retiradas", categoryName: "ESTRUTURA (RETIRADO)" },
 ] as const;
@@ -432,16 +436,21 @@ async function loadCommercialItems(params: {
 }) {
   const rows: CommercialItemRow[] = [];
   for (const ids of chunk(params.orderIds, 500)) {
-    const { data, error } = await params.supabase
-      .from(params.table)
-      .select("service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value, activity_active_snapshot")
-      .eq("tenant_id", params.tenantId)
-      .eq("is_active", true)
-      .in(params.orderColumn, ids)
-      .returns<CommercialItemRow[]>();
+    for (let from = 0; ; from += QUERY_PAGE_SIZE) {
+      const { data, error } = await params.supabase
+        .from(params.table)
+        .select("service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value, activity_active_snapshot")
+        .eq("tenant_id", params.tenantId)
+        .eq("is_active", true)
+        .in(params.orderColumn, ids)
+        .order("id", { ascending: true })
+        .range(from, from + QUERY_PAGE_SIZE - 1)
+        .returns<CommercialItemRow[]>();
 
-    if (error) throw new Error("Falha ao carregar itens comerciais do dashboard.");
-    rows.push(...(data ?? []));
+      if (error) throw new Error("Falha ao carregar itens comerciais do dashboard.");
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < QUERY_PAGE_SIZE) break;
+    }
   }
   return rows;
 }
@@ -520,35 +529,76 @@ async function buildOperationalMeasurementCategoryCards(params: {
   tenantId: string;
   projects: Array<{ id: string }>;
 }) {
-  const measurementOrders = await loadOrderProjectRows({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    table: "project_measurement_orders",
-    projectIds: params.projects.map((project) => project.id),
-  });
-  const measurementItems = await loadMeasurementItems({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    orderIds: measurementOrders.map((order) => order.id),
-  });
+  const projectIds = params.projects.map((project) => project.id);
+  const [measurementOrders, asbuiltOrders, billingOrders] = await Promise.all([
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_orders",
+      projectIds,
+    }),
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_asbuilt_measurement_orders",
+      projectIds,
+    }),
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_billing_orders",
+      projectIds,
+    }),
+  ]);
+  const [measurementItems, asbuiltItems, billingItems] = await Promise.all([
+    loadMeasurementItems({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      orderIds: measurementOrders.map((order) => order.id),
+    }),
+    loadCommercialItems({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_asbuilt_measurement_order_items",
+      orderColumn: "asbuilt_measurement_order_id",
+      orderIds: asbuiltOrders.map((order) => order.id),
+    }),
+    loadCommercialItems({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_billing_order_items",
+      orderColumn: "billing_order_id",
+      orderIds: billingOrders.map((order) => order.id),
+    }),
+  ]);
+  const allItems = [...measurementItems, ...asbuiltItems, ...billingItems];
   const activityCategoryMap = await loadActivityCategoryMap({
     supabase: params.supabase,
     tenantId: params.tenantId,
-    activityIds: measurementItems.map((item) => item.service_activity_id),
+    activityIds: allItems.map((item) => item.service_activity_id),
   });
-  const quantityByCategory = new Map<string, number>();
+  const buildQuantityByCategory = (items: Array<MeasurementItemRow | CommercialItemRow>) => {
+    const quantityByCategory = new Map<string, number>();
 
-  for (const item of measurementItems) {
-    const categoryId = activityCategoryMap.activityToCategory.get(item.service_activity_id);
-    const categoryName = normalizeCategoryName(activityCategoryMap.categoryNameById.get(categoryId ?? ""));
-    if (!categoryName) continue;
+    for (const item of items) {
+      const categoryId = activityCategoryMap.activityToCategory.get(item.service_activity_id);
+      const categoryName = normalizeCategoryName(activityCategoryMap.categoryNameById.get(categoryId ?? ""));
+      if (!categoryName) continue;
 
-    quantityByCategory.set(categoryName, (quantityByCategory.get(categoryName) ?? 0) + numberValue(item.quantity));
+      quantityByCategory.set(categoryName, (quantityByCategory.get(categoryName) ?? 0) + numberValue(item.quantity));
+    }
+
+    return quantityByCategory;
   }
+  const measurementQuantityByCategory = buildQuantityByCategory(measurementItems);
+  const asbuiltQuantityByCategory = buildQuantityByCategory(asbuiltItems);
+  const billingQuantityByCategory = buildQuantityByCategory(billingItems);
 
   return OPERATIONAL_MEASUREMENT_CATEGORIES.map((category) => ({
     ...category,
-    quantity: quantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+    measurementQuantity: measurementQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+    asbuiltQuantity: asbuiltQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+    billingQuantity: billingQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
   })) satisfies OperationalMeasurementCategoryCard[];
 }
 

@@ -744,7 +744,7 @@
 - [x] Analisar impacto de alterar `materials.codigo` em materiais ja cadastrados, confirmando que o saldo de almoxarifado permanece vinculado por `material_id` e que as telas passam a exibir o codigo atual do cadastro.
 
 - [x] Melhorar leitura do Grafico operacional no Dash operacional e faturamento, adicionando ajuda contextual por barra, diferencas reais entre Medido, AS Built e Faturado, e percentuais de conversao.
-- [x] Adicionar entre `Grafico operacional` e `Projetos por valor` dez cards globais da `Medicao COM_PRODUCAO`, somando todos os projetos ativos validos do tenant pelas categorias atuais de postes, rede, equipamentos, cruzetas e estruturas instalados/retirados, com leitura paginada para nao truncar totais pelo limite padrao do PostgREST.
+- [x] Adicionar entre `Grafico operacional` e `Projetos por valor` doze cards globais por categoria atual de postes, rede, equipamentos, transformadores, cruzetas e estruturas instalados/retirados, comparando quantidades de `Medidos`, `ASBUILT` e `Faturado` em todos os projetos ativos validos do tenant, com leitura paginada para nao truncar totais pelo limite padrao do PostgREST.
 
 - [x] Criar tela Composicao de Equipe com cadastro por Projeto + Equipe + Data, inclusao de pessoas, presenca por integrante, lista no formato operacional, detalhes em modal, historico e duas exportacoes CSV (lista e detalhes), preservando escopo por tenant_id.
 
