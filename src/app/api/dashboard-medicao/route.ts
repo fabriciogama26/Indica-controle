@@ -131,6 +131,7 @@ type TeamProductionAggregate = {
   teamId: string;
   teamName: string;
   foremanNames: Set<string>;
+  measuredForemanNamesByDate: Map<string, Set<string>>;
   totalValue: number;
   metaValue: number;
   standardMetaValue: number;
@@ -1050,6 +1051,7 @@ export async function GET(request: NextRequest) {
   function addTeamProductionOrder(target: Map<string, TeamProductionAggregate>, order: MeasurementOrderRow) {
     const totalValue = valueByOrder.get(order.id) ?? 0;
     const team = teamMap.get(order.team_id);
+    const measuredForemanName = normalizeText(order.foreman_name_snapshot) || "Nao identificado";
     const foremanName = normalizeText(order.foreman_name_snapshot)
       || (team?.foreman_person_id ? personMap.get(team.foreman_person_id) : "")
       || "Nao identificado";
@@ -1057,6 +1059,7 @@ export async function GET(request: NextRequest) {
       teamId: order.team_id,
       teamName: normalizeText(order.team_name_snapshot) || normalizeText(team?.name) || "Equipe sem nome",
       foremanNames: new Set<string>(),
+      measuredForemanNamesByDate: new Map<string, Set<string>>(),
       totalValue: 0,
       metaValue: 0,
       standardMetaValue: 0,
@@ -1066,6 +1069,9 @@ export async function GET(request: NextRequest) {
       workedDates: new Set<string>(),
     };
     current.foremanNames.add(foremanName);
+    const measuredForemanNames = current.measuredForemanNamesByDate.get(order.execution_date) ?? new Set<string>();
+    measuredForemanNames.add(measuredForemanName);
+    current.measuredForemanNamesByDate.set(order.execution_date, measuredForemanNames);
     current.totalValue += totalValue;
     current.projectIds.add(order.project_id);
     addProjectProduction(current.projects, order, totalValue);
@@ -1094,10 +1100,7 @@ export async function GET(request: NextRequest) {
 
   function addForemanOrder(target: Map<string, ForemanAggregate>, order: MeasurementOrderRow) {
     const totalValue = valueByOrder.get(order.id) ?? 0;
-    const team = teamMap.get(order.team_id);
-    const foremanName = normalizeText(order.foreman_name_snapshot)
-      || (team?.foreman_person_id ? personMap.get(team.foreman_person_id) : "")
-      || "Nao identificado";
+    const foremanName = normalizeText(order.foreman_name_snapshot) || "Nao identificado";
     const current = ensureForemanAggregate(target, foremanName);
     current.totalValue += totalValue;
     current.projectIds.add(order.project_id);
@@ -1191,33 +1194,36 @@ export async function GET(request: NextRequest) {
     startDate: string,
     endDate: string,
   ) {
-    const businessDays = listBusinessDayIsoDates(startDate, endDate);
-    const metaDayWeight = businessDays.length ? metaWorkdays / businessDays.length : 0;
-    const standardMetaDayWeight = businessDays.length ? standardMetaWorkdays / businessDays.length : 0;
-
     for (const team of teams.values()) {
-      for (const isoDate of businessDays) {
-        const foremanName = resolveTeamForemanNameForDate(team.teamId, isoDate);
-        if (foremanFilter && foremanName !== foremanFilter) continue;
+      const measuredDaysByForeman = new Map<string, number>();
+      for (const [isoDate, foremanNames] of team.measuredForemanNamesByDate.entries()) {
+        const measuredForemanNames = Array.from(foremanNames);
+        if (!measuredForemanNames.length) continue;
 
-        const current = ensureForemanAggregate(target, foremanName);
+        const measuredDayShare = 1 / measuredForemanNames.length;
         const teamTypeId = resolveTeamTypeForDate(team.teamId, isoDate);
         const dailyMeta = teamTypeId ? dailyMetaByTeamType.get(teamTypeId) ?? 0 : 0;
-        current.metaValue += dailyMeta * metaDayWeight;
-        current.standardMetaValue += dailyMeta * standardMetaDayWeight;
-        current.metaDays += metaDayWeight;
-        current.standardMetaDays += standardMetaDayWeight;
-        current.teamIds.add(team.teamId);
+        for (const foremanName of measuredForemanNames) {
+          const current = ensureForemanAggregate(target, foremanName);
+          measuredDaysByForeman.set(foremanName, (measuredDaysByForeman.get(foremanName) ?? 0) + measuredDayShare);
+          current.workedMetaValue += dailyMeta * measuredDayShare;
+          current.workedDays += measuredDayShare;
+          current.teamIds.add(team.teamId);
+        }
       }
 
-      for (const isoDate of team.workedDates) {
-        const foremanName = resolveTeamForemanNameForDate(team.teamId, isoDate);
-        if (foremanFilter && foremanName !== foremanFilter) continue;
+      const measuredDays = Array.from(measuredDaysByForeman.values()).reduce((sum, days) => sum + days, 0);
+      if (measuredDays <= 0) continue;
 
+      const teamMetaValue = calculateTeamMetaForWindow(team.teamId, startDate, endDate, metaWorkdays);
+      const teamStandardMetaValue = calculateTeamMetaForWindow(team.teamId, startDate, endDate, standardMetaWorkdays);
+      for (const [foremanName, foremanMeasuredDays] of measuredDaysByForeman.entries()) {
         const current = ensureForemanAggregate(target, foremanName);
-        const teamTypeId = resolveTeamTypeForDate(team.teamId, isoDate);
-        current.workedMetaValue += teamTypeId ? dailyMetaByTeamType.get(teamTypeId) ?? 0 : 0;
-        current.workedDays += 1;
+        const foremanShare = foremanMeasuredDays / measuredDays;
+        current.metaValue += teamMetaValue * foremanShare;
+        current.standardMetaValue += teamStandardMetaValue * foremanShare;
+        current.metaDays += metaWorkdays * foremanShare;
+        current.standardMetaDays += standardMetaWorkdays * foremanShare;
         current.teamIds.add(team.teamId);
       }
     }

@@ -100,9 +100,10 @@ Filtros, auto-complete e listagem
 - A tabela `Equipes no ciclo` e a fonte oficial de conferencia da meta operacional: cada linha representa uma equipe por `team_id`.
 - `Equipes no ciclo` exibe equipe, tipos vigentes no recorte, encarregados historicos, valor realizado, projetos, metas selecionadas, dias e percentuais.
 - O bloco `Equipes no ciclo` permite selecionar ciclo completo ou semana e marcar qualquer combinacao entre `Meta ciclo`, `Meta ciclo padrao` e `Meta ciclo trabalhado`.
-- O bloco `Encarregados no ciclo` e uma visao gerencial: consolida o valor das ordens pelo `foreman_name_snapshot` e rateia as metas pelo encarregado vigente em cada dia da equipe usando `team_foreman_history`.
-- Quando o mesmo encarregado passa por equipes diferentes no ciclo, a linha gerencial soma somente os dias em que ele esteve responsavel por cada equipe.
-- Quando uma equipe troca de encarregado, a meta oficial da equipe permanece intacta e a meta gerencial e dividida entre os responsaveis conforme a vigencia diaria.
+- O bloco `Encarregados no ciclo` e uma visao gerencial: consolida o valor das ordens pelo `foreman_name_snapshot` e exibe somente encarregados salvos nas medicoes validas do ciclo ou semana selecionada.
+- Quando o mesmo encarregado passa por equipes diferentes no ciclo, a linha gerencial soma somente os dias distintos medidos desse encarregado em cada equipe.
+- Quando uma equipe possui medicoes de encarregados diferentes, a meta oficial da equipe permanece intacta e as metas gerenciais de ciclo e ciclo padrao sao rateadas proporcionalmente aos dias distintos medidos de cada encarregado.
+- Na `Meta ciclo trabalhado`, cada encarregado recebe somente os dias distintos medidos em seu nome e o valor diario do tipo efetivo da equipe em cada data; se uma mesma equipe/data possuir medicoes com nomes diferentes, o dia e a meta diaria sao divididos para evitar duplicidade.
 - A meta dos encarregados e supervisores usa o tipo efetivo da equipe por data, consultando `team_type_history`.
 - Quando a equipe troca de tipo no meio do ciclo, a meta e segmentada por equipe + tipo + periodo: exemplo `CESTO x dias como CESTO` + `LM x dias como LM`.
 - Na `Meta ciclo` e na `Meta ciclo padrao`, o backend percorre os dias uteis do recorte e aplica o valor diario do tipo vigente em cada dia; se os dias uteis do ciclo foram ajustados manualmente, o peso diario e proporcional ao total salvo do ciclo.
@@ -331,7 +332,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local da `Visao geral por periodo` com botao `Filtrar periodo`, categoria financeira Garantia de faturamento minimo, tabela oficial `Equipes no ciclo`, checkboxes independentes de metas das equipes e encarregados, filtros locais de semana dos blocos `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, card de Ticket medio, contagem de projetos nas tabelas, modal de projetos por categoria/equipe/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, incluir Garantia de faturamento minimo somente na `Visao geral por periodo`, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos e ticket medio, montar projetos por categoria/equipe/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar a meta oficial por equipe em `teamsProduction`, ratear a meta gerencial por encarregado vigente em cada dia via `team_foreman_history`, consolidar supervisores no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
+  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, incluir Garantia de faturamento minimo somente na `Visao geral por periodo`, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos e ticket medio, montar projetos por categoria/equipe/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar a meta oficial por equipe em `teamsProduction`, exibir no bloco gerencial somente encarregados salvos nas medicoes validas e ratear as tres metas conforme os dias medidos por equipe, consolidar supervisores no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
 - Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
   - Responsavel por: cadastrar `dashboard-medicao` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -439,7 +440,7 @@ Atualizacao 2026-06-02 (meta oficial por equipe e rateio diario por encarregado)
 - Comportamento antes/depois:
   - Antes: as linhas dos graficos eram agrupadas pelo texto de `foreman_name_snapshot`; quando o mesmo encarregado aparecia em equipes diferentes no ciclo, a producao e a meta integral dessas equipes eram fundidas em uma unica linha pessoal.
   - Depois: a tela recebe a tabela oficial `Equipes no ciclo`, identificada internamente por `team_id`, com equipe, tipos vigentes, encarregados historicos, valor realizado, projetos e qualquer combinacao das tres metas.
-  - Depois: `Encarregados no ciclo` permanece como analise gerencial e rateia `Meta ciclo`, `Meta ciclo padrao` e `Meta ciclo trabalhado` pelo encarregado vigente em cada dia da equipe via `team_foreman_history`.
+  - Depois: `Encarregados no ciclo` permanece como analise gerencial e rateia `Meta ciclo`, `Meta ciclo padrao` e `Meta ciclo trabalhado` somente entre os encarregados salvos nas medicoes validas, conforme os dias distintos medidos de cada responsavel na equipe.
   - Depois: `Equipes no ciclo` e `Encarregados no ciclo` possuem filtros locais independentes de semana e metas, preservando `Ciclo completo` como padrao.
   - Depois: na meta trabalhada, datas canceladas nao entram e mais de uma ordem valida da mesma equipe no mesmo dia conta somente uma vez.
   - Depois: modal de projetos e CSV passam a aceitar tambem o contexto oficial da equipe.
@@ -448,3 +449,25 @@ Atualizacao 2026-06-02 (meta oficial por equipe e rateio diario por encarregado)
   - Sem alteracao de schema/RLS.
   - A API continua filtrando ordens, equipes, historico de tipo, historico de encarregado e metas pelo `tenant_id` autenticado.
   - O bloco de supervisores permanece baseado no vinculo atual `teams.supervisor_person_id`, pois o repositorio nao possui historico versionado de supervisor por equipe.
+
+Atualizacao 2026-06-02 (encarregados somente pelas medicoes validas)
+--------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `TeamProductionAggregate.measuredForemanNamesByDate`
+  - `addTeamProductionOrder`
+  - `addForemanOrder`
+  - `allocateForemanMetas`
+- Comportamento antes/depois:
+  - Antes: o valor realizado dos encarregados vinha das medicoes, mas o rateio das metas percorria os dias uteis e podia criar linha para encarregado encontrado somente em `team_foreman_history`.
+  - Depois: `Encarregados no ciclo` exibe somente nomes salvos em `project_measurement_orders.foreman_name_snapshot` nas medicoes validas do ciclo ou semana.
+  - Depois: `Meta ciclo` e `Meta ciclo padrao` preservam o total oficial da equipe e sao rateadas proporcionalmente aos dias distintos medidos de cada encarregado na equipe.
+  - Depois: `Meta ciclo trabalhado` soma somente datas distintas medidas por encarregado e divide o dia quando uma mesma equipe/data possuir snapshots divergentes, evitando duplicar a meta oficial.
+  - Sem alteracao: `Supervisor no ciclo` continua usando o vinculo atual `teams.supervisor_person_id`.
+- Impacto multi-tenant:
+  - Sem alteracao de schema/RLS.
+  - As medicoes, equipes, historico de tipo e metas continuam filtrados pelo `tenant_id` autenticado.
