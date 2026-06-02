@@ -143,6 +143,7 @@ type OrderItem = {
   teamTypeName: string;
   pointTarget: number;
   financialTarget: number;
+  hasTeamComposition: boolean;
   minimumBillingAmount: number;
   minimumBillingTeamTypeId: string | null;
   minimumBillingTeamTypeName: string;
@@ -924,6 +925,7 @@ export function MeasurementPageView() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [filteredOrdersTotalAmount, setFilteredOrdersTotalAmount] = useState(0);
+  const [filteredMinimumBillingAmount, setFilteredMinimumBillingAmount] = useState(0);
   const [detailOrder, setDetailOrder] = useState<OrderDetail | null>(null);
   const [historyOrder, setHistoryOrder] = useState<{ id: string; orderNumber: string } | null>(null);
   const [historyEntries, setHistoryEntries] = useState<OrderHistoryEntry[]>([]);
@@ -1317,6 +1319,7 @@ export function MeasurementPageView() {
   useEffect(() => {
     if (!accessToken) {
       setFilteredOrdersTotalAmount(0);
+      setFilteredMinimumBillingAmount(0);
       setIsLoadingFilteredTotal(false);
       return;
     }
@@ -1327,23 +1330,28 @@ export function MeasurementPageView() {
       try {
         const exportOrders = await loadAllOrdersForExport();
         if (ignore) return;
-        const sum = exportOrders.reduce(
+        const summary = exportOrders.reduce(
           (accumulator, order) => {
             if (order.status === "CANCELADA") {
               return accumulator;
             }
 
-            return accumulator + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0);
+            return {
+              totalAmount: accumulator.totalAmount + (Number.isFinite(order.totalAmount) ? order.totalAmount : 0),
+              minimumBillingAmount: accumulator.minimumBillingAmount + (Number.isFinite(order.minimumBillingAmount) ? order.minimumBillingAmount : 0),
+            };
           },
-          0,
+          { totalAmount: 0, minimumBillingAmount: 0 },
         );
-        setFilteredOrdersTotalAmount(sum);
+        setFilteredOrdersTotalAmount(summary.totalAmount);
+        setFilteredMinimumBillingAmount(summary.minimumBillingAmount);
       } catch {
         if (!ignore && refreshRequestedRef.current) {
           refreshHadErrorRef.current = true;
         }
         if (!ignore) {
           setFilteredOrdersTotalAmount(0);
+          setFilteredMinimumBillingAmount(0);
         }
       } finally {
         if (!ignore) {
@@ -2621,6 +2629,7 @@ export function MeasurementPageView() {
         "Centro de Servicos",
         "Data execucao",
         "Equipe",
+        "Composicao equipe",
         "Encarregado",
         "Tipo da medicao",
         "Motivo sem producao",
@@ -2642,6 +2651,7 @@ export function MeasurementPageView() {
           order.projectServiceCenter || "Sem base",
           formatDate(order.executionDate),
           order.teamName,
+          order.hasTeamComposition ? "Sim" : "Nao",
           order.foremanName || "-",
           measurementKindLabel(order.measurementKind),
           order.noProductionReasonName || "-",
@@ -3214,7 +3224,7 @@ export function MeasurementPageView() {
             </button>
           </div>
         </div>
-        <div className={styles.summaryBar}>
+        <div className={`${styles.summaryBar} ${styles.listSummaryBar}`}>
           <div>
             <span>Ordens</span>
             <strong>{total}</strong>
@@ -3223,10 +3233,14 @@ export function MeasurementPageView() {
             <span>Valor total</span>
             <strong>{formatCurrency(filteredOrdersTotalAmount)}</strong>
           </div>
+          <div>
+            <span>Garantia de faturamento minimo</span>
+            <strong>{formatCurrency(filteredMinimumBillingAmount)}</strong>
+          </div>
         </div>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
-            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Encarregado</th><th>Tipo</th><th>Motivo sem producao</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
+            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Composicao equipe</th><th>Encarregado</th><th>Tipo</th><th>Motivo sem producao</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
             <tbody>
               {orders.length ? orders.map((order) => (
                 <tr key={order.id} className={order.status === "CANCELADA" ? styles.inactiveRow : ""}>
@@ -3234,6 +3248,7 @@ export function MeasurementPageView() {
                   <td>{order.projectCode}</td>
                   <td>{formatDate(order.executionDate)}</td>
                   <td>{order.teamName}</td>
+                  <td>{order.hasTeamComposition ? "Sim" : "Nao"}</td>
                   <td>{order.foremanName || "-"}</td>
                   <td>{measurementKindLabel(order.measurementKind)}</td>
                   <td>{order.noProductionReasonName || "-"}</td>
@@ -3365,7 +3380,7 @@ export function MeasurementPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={14} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
+              )) : <tr><td colSpan={15} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
             </tbody>
           </table>
         </div>

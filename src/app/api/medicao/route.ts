@@ -110,6 +110,12 @@ type ProgrammingWorkCompletionHistoryRow = {
   created_at: string;
 };
 
+type TeamCompositionContextRow = {
+  project_id: string;
+  team_id: string;
+  composition_date: string;
+};
+
 type ProjectTestRow = {
   id: string;
   is_test: boolean | null;
@@ -485,6 +491,40 @@ function buildProgrammingMatchKey(projectId: string, teamId: string, executionDa
 
 function buildProgrammingProjectDateKey(projectId: string, executionDate: string) {
   return `${projectId}|${executionDate}`;
+}
+
+async function fetchTeamCompositionContextSet(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  orders: Array<Pick<MeasurementOrderRow, "project_id" | "team_id" | "execution_date">>;
+}) {
+  if (!params.orders.length) {
+    return { data: new Set<string>(), error: null };
+  }
+
+  const projectIds = Array.from(new Set(params.orders.map((item) => item.project_id)));
+  const teamIds = Array.from(new Set(params.orders.map((item) => item.team_id)));
+  const executionDates = params.orders.map((item) => item.execution_date).sort();
+  const result = await fetchPagedSupabaseRows<TeamCompositionContextRow>((from, to) =>
+    params.supabase
+      .from("team_compositions")
+      .select("project_id, team_id, composition_date")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .in("project_id", projectIds)
+      .in("team_id", teamIds)
+      .gte("composition_date", executionDates[0])
+      .lte("composition_date", executionDates[executionDates.length - 1])
+      .range(from, to)
+      .returns<TeamCompositionContextRow[]>(),
+  );
+
+  return {
+    data: new Set(
+      (result.data ?? []).map((item) => buildProgrammingMatchKey(item.project_id, item.team_id, item.composition_date)),
+    ),
+    error: result.error,
+  };
 }
 
 async function fetchPagedSupabaseRows<T>(
@@ -1394,6 +1434,14 @@ export async function GET(request: NextRequest) {
     tenantId: resolution.appUser.tenant_id,
     projectIds: orders.map((item) => item.project_id),
   });
+  const teamCompositionContexts = await fetchTeamCompositionContextSet({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    orders,
+  });
+  if (teamCompositionContexts.error) {
+    return NextResponse.json({ message: "Falha ao carregar composicoes de equipe das ordens de medicao." }, { status: 500 });
+  }
 
   const baseOrders = orders.map((item) => {
       const programmingMatch = programmingMatchMap.get(item.id) ?? {
@@ -1428,6 +1476,7 @@ export async function GET(request: NextRequest) {
         createdByName: resolveAppUserName(userMap.get(item.created_by ?? "")),
         updatedByName: resolveAppUserName(userMap.get(item.updated_by ?? "")),
         projectIsTest: Boolean(projectIsTestMap.get(item.project_id)),
+        hasTeamComposition: teamCompositionContexts.data.has(buildProgrammingMatchKey(item.project_id, item.team_id, item.execution_date)),
         programmingMatchStatus: programmingMatch.status,
         matchedProgrammingId: programmingMatch.programmingId,
         programmingCompletionStatus: programmingMatch.completionStatus,

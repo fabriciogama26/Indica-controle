@@ -136,6 +136,7 @@ Filtros, auto-complete e listagem
   - Projeto
   - Data execucao
   - Equipe
+  - Composicao equipe (`Sim` quando existe composicao ativa para o mesmo `tenant + Projeto + Equipe + Data execucao`; caso contrario, `Nao`)
   - Encarregado
   - Programacao (`Programada` ou `Nao programada`)
   - Status execucao consolidado por projeto no periodo + alerta de divergencia com o snapshot da Medicao (quando houver alerta, o texto e exibido em linha separada para legibilidade)
@@ -144,6 +145,7 @@ Filtros, auto-complete e listagem
   - Quantidade de itens
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados e sem computar ordens com `Status = CANCELADA`
+  - Card `Garantia de faturamento minimo` com somatorio de `minimum_billing_amount` do resultado filtrado completo (todas as paginas), sem computar ordens com `Status = CANCELADA`
   - Tipo da medicao
   - Motivo sem producao
   - Status
@@ -843,3 +845,30 @@ Atualizacao 2026-06-01 (Estado Trabalho ignora Programacao cancelada)
   - Depois: se a Programacao mais recente estiver cancelada, a API procura o estado valido anterior ate o fim do periodo filtrado; se existir outra Programacao valida posterior, ela prevalece normalmente.
   - Depois: os fallbacks por `Projeto + Data`, match exato e historico tambem ignoram Programacao cancelada.
   - Impacto multi-tenant: sem alteracao de schema/RLS; todas as consultas continuam filtradas pelo `tenant_id` autenticado.
+
+Atualizacao 2026-06-02 (Composicao da equipe e resumo de garantia minima)
+-------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+  - `README.md`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Tipo `TeamCompositionContextRow`
+  - Funcao `fetchTeamCompositionContextSet`
+  - `GET /api/medicao`
+  - Tipo frontend `OrderItem`
+  - Estado `filteredMinimumBillingAmount`
+  - Efeito `loadFilteredOrdersTotalAmount`
+  - Exportacao `exportOrdersCsv`
+  - Renderizacao da `Lista de Ordens de Medicao`
+- Comportamento antes/depois:
+  - Antes: a Lista de Ordens de Medicao nao informava se a equipe da ordem possuia cadastro na Composicao de Equipe para a mesma data de execucao.
+  - Depois: a API cruza composicoes ativas por `tenant_id + project_id + team_id + composition_date` e a lista exibe `Composicao equipe = Sim/Nao`.
+  - Depois: o CSV principal da lista inclui a coluna `Composicao equipe`.
+  - Antes: o resumo da lista exibia `Ordens` e `Valor total`, mas nao destacava o valor correspondente a garantia minima.
+  - Depois: o resumo inclui o card `Garantia de faturamento minimo`, somando `minimumBillingAmount` do resultado filtrado completo em todas as paginas.
+  - Depois: `Valor total` e `Garantia de faturamento minimo` ignoram ordens `CANCELADA` no resumo, mantendo os valores individuais das linhas para conferencia.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; a leitura adicional consulta somente `team_compositions` ativas do `tenant_id` autenticado, tabela que permanece com RLS habilitada.
