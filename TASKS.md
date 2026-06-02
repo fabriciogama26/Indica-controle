@@ -818,6 +818,6 @@
 
 - [x] Remover a coluna visual `Tipo` da Lista de Ordens de Medicao e exibir `Composicao equipe` tambem no modal de detalhes, preservando tipo no filtro, cadastro e exportacoes.
 
-- [x] Ajustar os graficos de metas dos encarregados no Dashboard Medicao para calcular cada linha por equipe (`team_id`), mantendo os nomes dos encarregados como rotulo visual e evitando fundir metas de equipes diferentes quando o mesmo encarregado muda de contexto no ciclo.
+- [x] Separar metas do Dashboard Medicao em tabela oficial `Equipes no ciclo` por `team_id` e analise gerencial `Encarregados no ciclo`, rateando as tres metas por encarregado vigente em cada dia via `team_foreman_history`, com selecao independente de semana e metas nos dois blocos.
 
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
