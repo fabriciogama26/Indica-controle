@@ -115,15 +115,16 @@ type CycleWeek = {
 };
 
 type ForemanAggregate = {
-  foremanName: string;
+  teamId: string;
+  teamName: string;
+  foremanNames: Set<string>;
   totalValue: number;
   metaValue: number;
   standardMetaValue: number;
   workedMetaValue: number;
   projectIds: Set<string>;
   projects: Map<string, ProjectProductionDetail>;
-  teamIds: Set<string>;
-  daysByTeam: Map<string, Set<string>>;
+  workedDates: Set<string>;
 };
 
 type SupervisorAggregate = {
@@ -891,14 +892,12 @@ export async function GET(request: NextRequest) {
     }, 0);
   }
 
-  function calculateWorkedTeamMeta(daysByTeam: Map<string, Set<string>>) {
+  function calculateWorkedTeamMeta(teamId: string, dates: Set<string>) {
     let total = 0;
-    for (const [teamId, dates] of daysByTeam) {
-      for (const isoDate of dates) {
-        const teamTypeId = resolveTeamTypeForDate(teamId, isoDate);
-        if (!teamTypeId) continue;
-        total += dailyMetaByTeamType.get(teamTypeId) ?? 0;
-      }
+    for (const isoDate of dates) {
+      const teamTypeId = resolveTeamTypeForDate(teamId, isoDate);
+      if (!teamTypeId) continue;
+      total += dailyMetaByTeamType.get(teamTypeId) ?? 0;
     }
     return total;
   }
@@ -952,25 +951,24 @@ export async function GET(request: NextRequest) {
     const foremanName = normalizeText(order.foreman_name_snapshot)
       || (team?.foreman_person_id ? personMap.get(team.foreman_person_id) : "")
       || "Nao identificado";
-    const current = target.get(foremanName) ?? {
-      foremanName,
+    const current = target.get(order.team_id) ?? {
+      teamId: order.team_id,
+      teamName: normalizeText(order.team_name_snapshot) || normalizeText(team?.name) || "Equipe sem nome",
+      foremanNames: new Set<string>(),
       totalValue: 0,
       metaValue: 0,
       standardMetaValue: 0,
       workedMetaValue: 0,
       projectIds: new Set<string>(),
       projects: new Map<string, ProjectProductionDetail>(),
-      teamIds: new Set<string>(),
-      daysByTeam: new Map<string, Set<string>>(),
+      workedDates: new Set<string>(),
     };
+    current.foremanNames.add(foremanName);
     current.totalValue += totalValue;
     current.projectIds.add(order.project_id);
     addProjectProduction(current.projects, order, totalValue);
-    current.teamIds.add(order.team_id);
-    const dates = current.daysByTeam.get(order.team_id) ?? new Set<string>();
-    dates.add(order.execution_date);
-    current.daysByTeam.set(order.team_id, dates);
-    target.set(foremanName, current);
+    current.workedDates.add(order.execution_date);
+    target.set(order.team_id, current);
   }
 
   function addSupervisorOrder(target: Map<string, SupervisorAggregate>, order: MeasurementOrderRow) {
@@ -1015,29 +1013,25 @@ export async function GET(request: NextRequest) {
     endDate: string,
   ) {
     return Array.from(target.values())
-      .map((foreman) => {
-        let metaValue = 0;
-        let standardMetaValue = 0;
-        const workedMetaValue = calculateWorkedTeamMeta(foreman.daysByTeam);
-        const dayCounts = Array.from(foreman.daysByTeam.values()).map((dates) => dates.size);
-        const rowWorkedDays = dayCounts.length ? Math.round(dayCounts.reduce((sum, value) => sum + value, 0) / dayCounts.length) : 0;
-        for (const teamId of foreman.teamIds) {
-          metaValue += calculateTeamMetaForWindow(teamId, startDate, endDate, metaWorkdays);
-          standardMetaValue += calculateTeamMetaForWindow(teamId, startDate, endDate, standardMetaWorkdays);
-        }
+      .map((team) => {
+        const metaValue = calculateTeamMetaForWindow(team.teamId, startDate, endDate, metaWorkdays);
+        const standardMetaValue = calculateTeamMetaForWindow(team.teamId, startDate, endDate, standardMetaWorkdays);
+        const workedMetaValue = calculateWorkedTeamMeta(team.teamId, team.workedDates);
         return {
-          foremanName: foreman.foremanName,
-          totalValue: foreman.totalValue,
+          teamId: team.teamId,
+          teamName: team.teamName,
+          foremanName: Array.from(team.foremanNames).sort((left, right) => left.localeCompare(right)).join(" / ") || "Nao identificado",
+          totalValue: team.totalValue,
           metaValue,
           standardMetaValue,
           workedMetaValue,
-          projectCount: foreman.projectIds.size,
-          projects: buildProjectProductionRows(foreman.projects),
-          teamCount: foreman.teamIds.size,
+          projectCount: team.projectIds.size,
+          projects: buildProjectProductionRows(team.projects),
+          teamCount: 1,
           metaDays: metaWorkdays,
           standardMetaDays: standardMetaWorkdays,
-          workedDays: rowWorkedDays,
-          percentage: metaValue > 0 ? (foreman.totalValue / metaValue) * 100 : 0,
+          workedDays: team.workedDates.size,
+          percentage: metaValue > 0 ? (team.totalValue / metaValue) * 100 : 0,
         };
       })
       .sort((left, right) => right.totalValue - left.totalValue);

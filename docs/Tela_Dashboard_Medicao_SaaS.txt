@@ -94,6 +94,9 @@ Filtros, auto-complete e listagem
 - Nas tabelas `Encarregados no ciclo` e `Supervisor no ciclo`, clicar na linha abre modal com os projetos do responsavel no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
 - O modal de projetos possui exportacao `Exportar Excel (CSV)` com o mesmo conteudo da tabela.
 - O bloco de encarregados permite marcar multiplas metas por checkbox; a primeira meta marcada vira referencia principal do ranking e do gap financeiro.
+- Cada linha dos graficos e da tabela de encarregados representa uma equipe internamente por `team_id`; o nome do encarregado continua sendo o rotulo visual.
+- Quando o mesmo encarregado passa por equipes diferentes no ciclo, cada equipe preserva sua propria linha, producao e meta, sem somar metas integrais de equipes distintas em uma unica referencia pessoal.
+- Quando uma equipe possui mais de um encarregado nas ordens do recorte, os nomes historicos encontrados sao exibidos no mesmo rotulo visual da equipe.
 - A meta dos encarregados e supervisores usa o tipo efetivo da equipe por data, consultando `team_type_history`.
 - Quando a equipe troca de tipo no meio do ciclo, a meta e segmentada por equipe + tipo + periodo: exemplo `CESTO x dias como CESTO` + `LM x dias como LM`.
 - Na `Meta ciclo` e na `Meta ciclo padrao`, o backend percorre os dias uteis do recorte e aplica o valor diario do tipo vigente em cada dia; se os dias uteis do ciclo foram ajustados manualmente, o peso diario e proporcional ao total salvo do ciclo.
@@ -322,7 +325,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local da `Visao geral por periodo` com botao `Filtrar periodo`, categoria financeira Garantia de faturamento minimo, checkboxes de metas dos encarregados, filtro local de semana dos blocos `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, card de Ticket medio, contagem de projetos nas tabelas, modal de projetos por categoria/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, incluir Garantia de faturamento minimo somente na `Visao geral por periodo`, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos e ticket medio, montar projetos por categoria/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar valores por encarregado/supervisor no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
+  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, incluir Garantia de faturamento minimo somente na `Visao geral por periodo`, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos e ticket medio, montar projetos por categoria/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar as linhas visuais de encarregados por `team_id` com nome do encarregado como rotulo, consolidar supervisores no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
 - Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
   - Responsavel por: cadastrar `dashboard-medicao` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -336,7 +339,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectMetaMap`, `fetchProjectCompletionTimeline`, `resolveProjectCompletionAtWindowEnd`, `resolveWindowEndDate`, `buildOrderCompletionMapForWindow`, `resolveTeamTypeForDate`, `listBusinessDayIsoDates`, `calculateTeamMetaForWindow`, `calculateWorkedTeamMeta`, `addProjectProduction`, `buildProjectProductionRows`, montagem de `supervisorsProduction`, contagem de projetos distintos e ticket medio.
+  - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectMetaMap`, `fetchProjectCompletionTimeline`, `resolveProjectCompletionAtWindowEnd`, `resolveWindowEndDate`, `buildOrderCompletionMapForWindow`, `resolveTeamTypeForDate`, `listBusinessDayIsoDates`, `calculateTeamMetaForWindow`, `calculateWorkedTeamMeta`, `addForemanOrder`, `buildForemanRows`, `addProjectProduction`, `buildProjectProductionRows`, montagem de `supervisorsProduction`, contagem de projetos distintos e ticket medio.
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: `formatCurrency`, `formatPercent`, `maxValue`, `csvEscape`, `filenameToken`, `getCurrentYearPeriod`, `resolveCycleMetaValue`, `resolveCycleDays`, `resolveCycleForecastValue`, `resolveForemanMetaValue`, `resolveForemanDays`, `loadDashboard`, `applyDashboardFilters`, `applyPeriodFilter`, `openForemanProjectDetails`, `openSupervisorProjectDetails`, `exportProjectDetailsCsv`, `toggleForemanMetaMode`, `renderPanelHeader`, `renderCompletionTable`, `renderCompletionChart`, `renderCycleChart`, `renderForemanRanking`, `renderForemanBulletChart`, `renderForemanGapChart`, `renderSupervisorRanking`, `renderSupervisorBulletChart`, `renderSupervisorGapChart`, `renderSupervisorProductionChart`, `renderForemanVisualizations`, cards de Ticket medio/Projetos no ciclo.
 
@@ -396,3 +399,31 @@ Atualizacao 2026-06-01 (Estado Trabalho ignora Programacao cancelada)
   - Depois: `Visao geral por periodo` procura o ultimo estado valido ate o fim do filtro `De/Para`, considerando as medicoes incluidas nesse filtro.
   - Depois: se a ultima Programacao do recorte estiver cancelada, a consolidacao recua para a Programacao valida anterior; uma Programacao valida posterior continua prevalecendo normalmente quando estiver dentro do limite analisado.
   - Impacto multi-tenant: sem alteracao de schema/RLS; a leitura continua limitada pelo `tenant_id` autenticado.
+
+Atualizacao 2026-06-02 (meta visual de encarregado calculada por equipe)
+------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ForemanAggregate`
+  - `calculateWorkedTeamMeta`
+  - `addForemanOrder`
+  - `buildForemanRows`
+  - `ForemanRow`
+  - `openForemanProjectDetails`
+  - `renderForemanRanking`
+  - `renderForemanBulletChart`
+  - `renderForemanGapChart`
+- Comportamento antes/depois:
+  - Antes: as linhas dos graficos eram agrupadas pelo texto de `foreman_name_snapshot`; quando o mesmo encarregado aparecia em equipes diferentes no ciclo, a producao e a meta integral dessas equipes eram fundidas em uma unica linha pessoal.
+  - Depois: cada linha passa a ser identificada internamente por `team_id`; a producao, a meta do ciclo, a meta padrao e a meta trabalhada sao calculadas para a equipe correspondente.
+  - Depois: o nome do encarregado continua sendo exibido como rotulo visual; quando uma mesma equipe possui mais de um encarregado nas ordens do recorte, os nomes encontrados sao exibidos juntos.
+  - Depois: chaves de renderizacao, modal de projetos e nome do CSV usam o contexto da equipe para evitar conflito quando um encarregado aparece em mais de uma equipe.
+  - Depois: a coluna monetaria da tabela de encarregados passa a usar o rotulo correto `Valor realizado`.
+- Impacto multi-tenant:
+  - Sem alteracao de schema/RLS.
+  - A API continua filtrando ordens, equipes, historico de tipo e metas pelo `tenant_id` autenticado.

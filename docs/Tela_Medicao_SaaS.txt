@@ -146,7 +146,6 @@ Filtros, auto-complete e listagem
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados e sem computar ordens com `Status = CANCELADA`
   - Card `Garantia de faturamento minimo` com somatorio de `minimum_billing_amount` do resultado filtrado completo (todas as paginas), sem computar ordens com `Status = CANCELADA`
-  - Tipo da medicao
   - Motivo sem producao
   - Status
   - Cor do status na lista: `ABERTA` em verde, `FECHADA` e `CANCELADA` em vermelho
@@ -169,6 +168,7 @@ Filtros, auto-complete e listagem
   - Abrir (somente quando `FECHADA`, com modal de motivo obrigatorio e registro no historico)
 - Modal de detalhes:
   - Exibe `Tipo da medicao` e `Motivo sem producao` no cabecalho.
+  - Exibe `Composicao equipe = Sim/Nao` conforme a existencia de composicao ativa para o mesmo `tenant + Projeto + Equipe + Data execucao`.
   - Exibe `Taxa manual` no cabecalho e tambem a coluna `Taxa` por item na grade.
   - Usa `manual_rate` e `total_value` persistidos no item para conferencia visual e exportacao detalhada.
 
@@ -858,8 +858,10 @@ Atualizacao 2026-06-02 (Composicao da equipe e resumo de garantia minima)
 - Funcoes/hooks/constantes tocadas:
   - Tipo `TeamCompositionContextRow`
   - Funcao `fetchTeamCompositionContextSet`
+  - Funcao `fetchMeasurementOrderDetail`
   - `GET /api/medicao`
   - Tipo frontend `OrderItem`
+  - Tipo frontend `OrderDetail`
   - Estado `filteredMinimumBillingAmount`
   - Efeito `loadFilteredOrdersTotalAmount`
   - Exportacao `exportOrdersCsv`
@@ -867,6 +869,8 @@ Atualizacao 2026-06-02 (Composicao da equipe e resumo de garantia minima)
 - Comportamento antes/depois:
   - Antes: a Lista de Ordens de Medicao nao informava se a equipe da ordem possuia cadastro na Composicao de Equipe para a mesma data de execucao.
   - Depois: a API cruza composicoes ativas por `tenant_id + project_id + team_id + composition_date` e a lista exibe `Composicao equipe = Sim/Nao`.
+  - Depois: a coluna visual `Tipo` foi removida da grade principal para reduzir a largura da lista; o tipo da medicao continua disponivel no filtro, cadastro, CSV e modal de detalhes.
+  - Depois: o modal de detalhes tambem exibe `Composicao equipe = Sim/Nao` usando o mesmo cruzamento ativo da lista.
   - Depois: o CSV principal da lista inclui a coluna `Composicao equipe`.
   - Antes: o resumo da lista exibia `Ordens` e `Valor total`, mas nao destacava o valor correspondente a garantia minima.
   - Depois: o resumo inclui o card `Garantia de faturamento minimo`, somando `minimumBillingAmount` do resultado filtrado completo em todas as paginas.
