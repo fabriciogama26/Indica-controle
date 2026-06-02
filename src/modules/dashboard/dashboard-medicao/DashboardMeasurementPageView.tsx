@@ -82,6 +82,8 @@ type ProjectProductionDetail = {
 };
 
 type ForemanRow = {
+  teamId: string;
+  teamName: string;
   foremanName: string;
   totalValue: number;
   metaValue: number;
@@ -509,9 +511,9 @@ export function DashboardMeasurementPageView() {
   function openForemanProjectDetails(row: ForemanRow) {
     setProjectDetailModal({
       title: `Projetos de ${row.foremanName}`,
-      subtitle: selectedForemanPeriodLabel,
+      subtitle: `${row.teamName} | ${selectedForemanPeriodLabel}`,
       rows: row.projects,
-      filename: `dashboard_medicao_encarregado_${filenameToken(row.foremanName)}_${todayToken()}.csv`,
+      filename: `dashboard_medicao_encarregado_${filenameToken(row.foremanName)}_${filenameToken(row.teamName)}_${todayToken()}.csv`,
     });
   }
 
@@ -762,8 +764,8 @@ export function DashboardMeasurementPageView() {
             const barWidth = Math.min(100, (item.percentage / foremanRankingMax) * 100);
             const referenceLeft = Math.min(100, (100 / foremanRankingMax) * 100);
             return (
-              <div key={item.foremanName} className={styles.rankingRow}>
-                <strong title={item.foremanName}>{item.foremanName}</strong>
+              <div key={item.teamId} className={styles.rankingRow}>
+                <strong title={`${item.foremanName} | ${item.teamName}`}>{item.foremanName}</strong>
                 <div className={styles.rankingTrack}>
                   <span className={styles.referenceLine} style={{ left: `${referenceLeft}%` }} />
                   <span
@@ -788,8 +790,8 @@ export function DashboardMeasurementPageView() {
         <div className={styles.panelCycleTitle}>{selectedForemanPeriodLabel}</div>
         <div className={styles.bulletList}>
           {selectedForemen.map((item) => (
-            <div key={item.foremanName} className={styles.bulletRow}>
-              <strong title={item.foremanName}>{item.foremanName}</strong>
+            <div key={item.teamId} className={styles.bulletRow}>
+              <strong title={`${item.foremanName} | ${item.teamName}`}>{item.foremanName}</strong>
               <div className={styles.bulletTrack}>
                 <span
                   className={styles.bulletValue}
@@ -826,8 +828,8 @@ export function DashboardMeasurementPageView() {
           {foremanGapRows.map((item) => {
             const gapWidth = Math.min(50, (Math.abs(item.gap) / foremanGapMax) * 50);
             return (
-              <div key={item.foremanName} className={styles.gapRow}>
-                <strong title={item.foremanName}>{item.foremanName}</strong>
+              <div key={item.teamId} className={styles.gapRow}>
+                <strong title={`${item.foremanName} | ${item.teamName}`}>{item.foremanName}</strong>
                 <div className={styles.gapTrack}>
                   <span className={styles.gapCenterLine} />
                   {item.gap >= 0 ? (
@@ -1250,7 +1252,7 @@ export function DashboardMeasurementPageView() {
             <thead>
               <tr>
                 <th>Nomes</th>
-                <th>Total equipes</th>
+                <th>Valor realizado</th>
                 <th>Projetos</th>
                 {foremanMetaModes.map((mode) => (
                   <th key={`${mode}-meta`}>{foremanMetaLabels[mode]}</th>
@@ -1268,7 +1270,7 @@ export function DashboardMeasurementPageView() {
                 selectedForemen.map((item) => {
                   return (
                     <tr
-                      key={item.foremanName}
+                      key={item.teamId}
                       className={styles.clickableRow}
                       role="button"
                       tabIndex={0}
@@ -1280,15 +1282,15 @@ export function DashboardMeasurementPageView() {
                       <td>{formatCurrency(item.totalValue)}</td>
                       <td>{item.projectCount}</td>
                       {foremanMetaModes.map((mode) => (
-                        <td key={`${item.foremanName}-${mode}-meta`}>{formatCurrency(resolveForemanMetaValue(item, mode))}</td>
+                        <td key={`${item.teamId}-${mode}-meta`}>{formatCurrency(resolveForemanMetaValue(item, mode))}</td>
                       ))}
                       {foremanMetaModes.map((mode) => (
-                        <td key={`${item.foremanName}-${mode}-days`}>{resolveForemanDays(item, summary, mode)}</td>
+                        <td key={`${item.teamId}-${mode}-days`}>{resolveForemanDays(item, summary, mode)}</td>
                       ))}
                       {foremanMetaModes.map((mode) => {
                         const metaValue = resolveForemanMetaValue(item, mode);
                         return (
-                          <td key={`${item.foremanName}-${mode}-percent`}>
+                          <td key={`${item.teamId}-${mode}-percent`}>
                             {formatPercent(metaValue > 0 ? (item.totalValue / metaValue) * 100 : 0)}
                           </td>
                         );
