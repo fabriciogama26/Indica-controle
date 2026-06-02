@@ -816,4 +816,6 @@
 
 - [x] Adicionar na Lista de Ordens de Medicao a coluna `Composicao equipe` por Projeto + Equipe + Data de execucao e o card filtrado `Garantia de faturamento minimo`, ignorando ordens canceladas nos resumos.
 
+- [x] Remover a coluna visual `Tipo` da Lista de Ordens de Medicao e exibir `Composicao equipe` tambem no modal de detalhes, preservando tipo no filtro, cadastro e exportacoes.
+
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).

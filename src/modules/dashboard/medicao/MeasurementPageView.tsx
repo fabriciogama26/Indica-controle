@@ -201,6 +201,7 @@ type OrderDetail = {
   status: MeasurementStatus;
   notes: string;
   projectServiceCenter: string;
+  hasTeamComposition: boolean;
   programmingMatchStatus: ProgrammingMatchStatus;
   matchedProgrammingId: string | null;
   programmingCompletionStatus: WorkCompletionStatus;
@@ -3240,7 +3241,7 @@ export function MeasurementPageView() {
         </div>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
-            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Composicao equipe</th><th>Encarregado</th><th>Tipo</th><th>Motivo sem producao</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
+            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Composicao equipe</th><th>Encarregado</th><th>Motivo sem producao</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
             <tbody>
               {orders.length ? orders.map((order) => (
                 <tr key={order.id} className={order.status === "CANCELADA" ? styles.inactiveRow : ""}>
@@ -3250,7 +3251,6 @@ export function MeasurementPageView() {
                   <td>{order.teamName}</td>
                   <td>{order.hasTeamComposition ? "Sim" : "Nao"}</td>
                   <td>{order.foremanName || "-"}</td>
-                  <td>{measurementKindLabel(order.measurementKind)}</td>
                   <td>{order.noProductionReasonName || "-"}</td>
                   <td>{programmingMatchLabel(order.programmingMatchStatus)}</td>
                   <td>
@@ -3380,7 +3380,7 @@ export function MeasurementPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={15} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
+              )) : <tr><td colSpan={14} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -3427,6 +3427,7 @@ export function MeasurementPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Projeto:</strong> {projectMap.get(detailOrder.projectId)?.code ?? "-"}</div>
                 <div><strong>Equipe:</strong> {detailOrder.teamName || teamMap.get(detailOrder.teamId)?.name || "-"}</div>
+                <div><strong>Composicao equipe:</strong> {detailOrder.hasTeamComposition ? "Sim" : "Nao"}</div>
                 <div><strong>Encarregado:</strong> {detailOrder.foremanName || teamMap.get(detailOrder.teamId)?.foremanName || "-"}</div>
                 <div><strong>Data execucao:</strong> {formatDate(detailOrder.executionDate)}</div>
                 <div><strong>Tipo da medicao:</strong> {measurementKindLabel(detailOrder.measurementKind)}</div>

@@ -1226,6 +1226,14 @@ async function fetchMeasurementOrderDetail(params: {
     tenantId: params.tenantId,
     projectIds: [order.project_id],
   });
+  const teamCompositionContexts = await fetchTeamCompositionContextSet({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    orders: [order],
+  });
+  if (teamCompositionContexts.error) {
+    return null;
+  }
   const programmingMatch = programmingMatchMap.get(order.id) ?? {
     status: "NAO_PROGRAMADA" as ProgrammingMatchStatus,
     programmingId: null,
@@ -1259,6 +1267,7 @@ async function fetchMeasurementOrderDetail(params: {
     updatedAt: order.updated_at,
     createdByName: resolveAppUserName(userMap.get(order.created_by ?? "")),
     updatedByName: resolveAppUserName(userMap.get(order.updated_by ?? "")),
+    hasTeamComposition: teamCompositionContexts.data.has(buildProgrammingMatchKey(order.project_id, order.team_id, order.execution_date)),
     programmingMatchStatus: programmingMatch.status,
     matchedProgrammingId: programmingMatch.programmingId,
     programmingCompletionStatus: programmingMatch.completionStatus,
