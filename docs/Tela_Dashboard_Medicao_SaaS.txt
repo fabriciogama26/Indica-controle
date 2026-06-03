@@ -91,6 +91,7 @@ Filtros, auto-complete e listagem
 - Quando a meta selecionada for `Meta ciclo trabalhado`, a tela oculta a `Projecao de fechamento`, pois essa meta usa `Média Dias trabalhados` por equipe e nao deve ser misturada com os dias distintos do ciclo.
 - `Dias trabalhados` e a quantidade de datas distintas em `Data execucao` nas medicoes `Com producao` dentro do ciclo e dos filtros gerais aplicados.
 - A tabela do ciclo exibe `Ritmo atual` e `Dif. prevista` contra a meta selecionada.
+- A coluna `Dif. prevista` exibe valores negativos em vermelho e valores positivos em verde.
 - O card `Ticket medio` do ciclo calcula `Valor realizado / Projetos no ciclo`, usando projetos distintos do recorte filtrado.
 - As tabelas de Concluidos/Parciais/Parcial planejado beneficio atingido/Pendencias, Ciclo da medicao, Equipes no ciclo, Encarregados no ciclo e Supervisor no ciclo exibem a quantidade de projetos distintos do respectivo recorte/linha.
 - Nas tabelas de categoria (`Concluidos X parciais no ciclo` e `Visao geral por periodo`), clicar na linha abre modal com os projetos daquela categoria no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
@@ -471,3 +472,21 @@ Atualizacao 2026-06-02 (encarregados somente pelas medicoes validas)
 - Impacto multi-tenant:
   - Sem alteracao de schema/RLS.
   - As medicoes, equipes, historico de tipo e metas continuam filtrados pelo `tenant_id` autenticado.
+
+Atualizacao 2026-06-03 (cor da Dif. prevista no ciclo)
+------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `resolveCycleForecastDifference`
+  - Renderizacao da tabela `Ciclo da medicao`
+  - Classes CSS `forecastDifferencePositive` e `forecastDifferenceNegative`
+- Comportamento antes/depois:
+  - Antes: a coluna `Dif. prevista` usava a cor padrao da tabela, sem indicar visualmente se o valor era positivo ou negativo.
+  - Depois: a coluna `Dif. prevista` exibe numero negativo em vermelho e numero positivo em verde; valor zero permanece com a cor padrao.
+- Impacto multi-tenant:
+  - Sem alteracao de schema/RLS ou consultas.
+  - A mudanca e apenas visual e usa dados ja filtrados pelo tenant autenticado.
