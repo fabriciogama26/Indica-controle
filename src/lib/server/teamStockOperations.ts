@@ -145,7 +145,7 @@ function mapTeamOperationRpcErrorMessage(message: unknown) {
       || normalized.includes("p_operation_purpose")
     )
   ) {
-    return "Falha tecnica na regra de estoque da Operacao de Equipe. Aplique as migrations 208 e 209 para atualizar as assinaturas das RPCs de estoque e tente novamente.";
+    return "Falha tecnica na regra de estoque da Operacao de Equipe. Aplique as migrations 208, 209 e 216 para atualizar as assinaturas das RPCs de estoque e tente novamente.";
   }
 
   if (
@@ -291,11 +291,12 @@ export async function reverseTeamStockOperationViaRpc(
   const { data, error } = await supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
+    const mappedDatabaseError = mapTeamOperationRpcErrorMessage(error.message);
     return {
       ok: false,
       status: 500,
       reason: "RPC_ERROR",
-      message: "Falha ao estornar operacao de equipe.",
+      message: mappedDatabaseError || "Falha ao estornar operacao de equipe.",
       details: error.message,
     } as const;
   }

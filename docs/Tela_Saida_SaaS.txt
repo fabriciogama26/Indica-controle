@@ -259,6 +259,8 @@ Funcoes principais
   - Responsavel por: encapsular chamadas para `save_team_stock_operation_record`, detalhar `INSUFFICIENT_STOCK` por material, mapear falha tecnica de assinatura da RPC de estoque e chamar `reverse_team_stock_operation_record_v2`/`reverse_team_stock_operation_item_record_v1`.
 - Caminho: `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
   - Responsavel por: criar `stock_transfer_item_reversals`, RPC `reverse_stock_transfer_item_record_v1`, RPC `reverse_team_stock_operation_item_record_v1` e preservar estornos integrais legados.
+- Caminho: `supabase/migrations/216_fix_reversal_operation_purpose_rpc_calls.sql`
+  - Responsavel por: republicar chamadas internas de estorno para a assinatura completa de `save_stock_transfer_record`, mantendo `operation_purpose = NORMAL` e evitando ambiguidade tecnica apos as migrations `206/209`.
 - Caminho: `supabase/migrations/203_respect_field_return_material_entry_type.sql`
   - Responsavel por: republicar `save_team_stock_operation_record` para o `Retorno de campo` respeitar o tipo cadastrado do material.
 - Caminho: `supabase/migrations/208_fix_team_stock_operation_purpose_rpc_call.sql`
@@ -323,6 +325,7 @@ Ajuda contextual
   - `supabase/migrations/196_fix_team_stock_operation_direct_purchase_rpc_call.sql`
   - `supabase/migrations/208_fix_team_stock_operation_purpose_rpc_call.sql`
   - `supabase/migrations/209_fix_stock_transfer_operation_purpose_overload.sql`
+  - `supabase/migrations/216_fix_reversal_operation_purpose_rpc_calls.sql`
   - `docs/Tela_Saida_SaaS.txt`
   - `supabase/migrations/README.txt`
   - `TASKS.md`
@@ -339,6 +342,8 @@ Ajuda contextual
   - `mapTeamOperationRpcErrorMessage`
   - `formatInsufficientStockMessage`
   - `save_team_stock_operation_record`
+  - `reverse_stock_transfer_item_record_v1`
+  - `reverse_stock_transfer_record_v2`
 - Comportamento antes/depois:
 - Antes: `/saida` nao tinha fluxo proprio.
 - Depois: `/saida` passa a registrar requisicoes, devolucoes e retornos de campo reais com saldo, historico, snapshot de `Equipe/Encarregado` e estorno no mesmo padrao operacional do almoxarifado.
@@ -364,3 +369,5 @@ Ajuda contextual
 - Depois: a UI e o helper server mostram materiais zerados/insuficientes com saldo atual, solicitado e falta.
 - Antes: apos a inclusao de `operation_purpose`, a requisicao de equipe podia falhar por chamada ambigua da RPC base `save_stock_transfer_record` ou por chamada interna ambigua da wrapper de estoque.
 - Depois: as migrations `208` e `209` chamam a assinatura completa da RPC de estoque como operacao `NORMAL`, removem a ambiguidade interna do overload e o helper server mostra mensagem tecnica acionavel se o banco ainda estiver sem as migrations/schema atualizado.
+- Antes: o estorno por item de Operacoes de Equipe podia chegar em erro tecnico generico quando a RPC de estorno chamava `save_stock_transfer_record` sem `p_operation_purpose`.
+- Depois: a migration `216` atualiza as RPCs de estorno para informar `p_direct_purchase`, `p_operation_purpose = NORMAL` e `p_balance_correction_reason = null`; o helper de equipe tambem mostra mensagem acionavel quando o banco ainda esta sem a migration/schema atualizado.
