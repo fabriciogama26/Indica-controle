@@ -1233,21 +1233,30 @@ export function DashboardMeasurementPageView() {
               </tr>
             </thead>
             <tbody>
-              {cycleComparison ? (
-                <tr>
-                  <td>{cycleComparison.label}</td>
-                  <td>{formatCurrency(cycleComparison.value)}</td>
-                  <td>{cycleComparison.projectCount}</td>
-                  {cycleMetaMode !== "worked" ? <td>{formatCurrency(resolveCycleForecastValue(cycleComparison, cycleMetaMode))}</td> : null}
-                  <td>{formatCurrency(resolveCycleMetaValue(cycleComparison, cycleMetaMode))}</td>
-                  <td>{resolveCycleDays(cycleComparison, cycleMetaMode)}</td>
-                  {cycleMetaMode !== "worked" ? <td>{cycleComparison.executedWorkdays}</td> : null}
-                  {cycleMetaMode !== "worked" ? <td>{formatCurrency(cycleComparison.averageDailyValue)}/dia</td> : null}
-                  {cycleMetaMode !== "worked" ? <td>{formatCurrency(resolveCycleForecastDifference(cycleComparison, cycleMetaMode))}</td> : null}
-                  <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (cycleComparison.value / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td>
-                  {cycleMetaMode !== "worked" ? <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (resolveCycleForecastValue(cycleComparison, cycleMetaMode) / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td> : null}
-                </tr>
-              ) : (
+              {cycleComparison ? (() => {
+                const forecastDifference = resolveCycleForecastDifference(cycleComparison, cycleMetaMode);
+                const forecastDifferenceClass = forecastDifference < 0
+                  ? styles.forecastDifferenceNegative
+                  : forecastDifference > 0
+                    ? styles.forecastDifferencePositive
+                    : undefined;
+
+                return (
+                  <tr>
+                    <td>{cycleComparison.label}</td>
+                    <td>{formatCurrency(cycleComparison.value)}</td>
+                    <td>{cycleComparison.projectCount}</td>
+                    {cycleMetaMode !== "worked" ? <td>{formatCurrency(resolveCycleForecastValue(cycleComparison, cycleMetaMode))}</td> : null}
+                    <td>{formatCurrency(resolveCycleMetaValue(cycleComparison, cycleMetaMode))}</td>
+                    <td>{resolveCycleDays(cycleComparison, cycleMetaMode)}</td>
+                    {cycleMetaMode !== "worked" ? <td>{cycleComparison.executedWorkdays}</td> : null}
+                    {cycleMetaMode !== "worked" ? <td>{formatCurrency(cycleComparison.averageDailyValue)}/dia</td> : null}
+                    {cycleMetaMode !== "worked" ? <td className={forecastDifferenceClass}>{formatCurrency(forecastDifference)}</td> : null}
+                    <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (cycleComparison.value / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td>
+                    {cycleMetaMode !== "worked" ? <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (resolveCycleForecastValue(cycleComparison, cycleMetaMode) / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td> : null}
+                  </tr>
+                );
+              })() : (
                 <tr>
                   <td colSpan={cycleMetaMode === "worked" ? 6 : 11} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
                 </tr>

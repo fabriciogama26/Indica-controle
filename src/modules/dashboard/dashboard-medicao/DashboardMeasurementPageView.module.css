@@ -596,6 +596,19 @@
   font-weight: 800;
 }
 
+.forecastDifferencePositive,
+.forecastDifferenceNegative {
+  font-weight: 800;
+}
+
+.forecastDifferencePositive {
+  color: #047857 !important;
+}
+
+.forecastDifferenceNegative {
+  color: #b91c1c !important;
+}
+
 .clickableRow {
   cursor: pointer;
 }
