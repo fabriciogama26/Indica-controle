@@ -798,6 +798,8 @@
 
 - [x] Complementar correcao de Operacoes de Equipe com migration 209 para remover ambiguidade interna da wrapper save_stock_transfer_record apos operation_purpose, mantendo Requisicao como operacao NORMAL.
 
+- [x] Corrigir estorno por item de Operacoes de Equipe e Movimentacao de Estoque para chamar a assinatura completa atual de `save_stock_transfer_record` com `p_operation_purpose = NORMAL`, evitando erro tecnico generico apos as migrations 206/209.
+
 - [x] Corrigir alertas do Supabase Advisor para funcoes publicas: fixar `search_path` em funcoes legadas apontadas, revogar `EXECUTE` de `PUBLIC`/`anon`/`authenticated` para RPCs `SECURITY DEFINER` e manter execucao via `service_role` na migration 210.
 
 - [x] Bloquear `Medicao Asbuilt` para projetos ja lancados no frontend, API e RPC, mantendo escopo por tenant e corrigindo o titulo da tela `/medicao-asbuilt` para nao herdar `Medicao`.

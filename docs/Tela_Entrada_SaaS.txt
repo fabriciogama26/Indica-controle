@@ -299,6 +299,7 @@ Atualizacao 2026-05
 - Ajuste de feedback de saldo: o submit manual de `Saida`/`Transferencia` passa a listar todos os materiais bloqueados por saldo zerado ou insuficiente, com `Material`, `Saldo atual`, `Solicitado` e `Falta`; o helper `saveStockTransferViaRpc` tambem converte `details` da RPC `INSUFFICIENT_STOCK` em mensagem detalhada quando a falha ocorre no banco.
 - Ajuste de finalidade: a tela passa a permitir `Movimentacao normal` ou `Correcao de saldo`. A correcao usa a mesma operacao (`Entrada`, `Saida` ou `Transferencia`), mas grava `stock_transfers.operation_purpose = BALANCE_CORRECTION` e exige `balance_correction_reason`.
 - Migration `206_add_stock_transfer_operation_purpose.sql` adiciona `operation_purpose`, `balance_correction_reason`, indice por finalidade e overload da RPC `save_stock_transfer_record` com marcacao/auditoria de correcao de saldo.
+- Migration `216_fix_reversal_operation_purpose_rpc_calls.sql` republica as chamadas internas de estorno para usar a assinatura completa de `save_stock_transfer_record`, mantendo estornos como movimentacao `NORMAL` e evitando ambiguidade apos `operation_purpose`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -335,6 +336,8 @@ Funcoes principais
   - Responsavel por: permitir `project_id` nulo em `stock_transfers` quando a movimentacao for `Entrada` com `direct_purchase = true`, registrar a flag e manter a RPC transacional compativel com estorno.
 - Caminho: `supabase/migrations/206_add_stock_transfer_operation_purpose.sql`
   - Responsavel por: marcar movimentacao normal ou correcao de saldo em `stock_transfers`, exigir motivo em correcao e registrar historico funcional `_context = STOCK_TRANSFER_BALANCE_CORRECTION`.
+- Caminho: `supabase/migrations/216_fix_reversal_operation_purpose_rpc_calls.sql`
+  - Responsavel por: atualizar `reverse_stock_transfer_item_record_v1` e `reverse_stock_transfer_record_v2` para chamar `save_stock_transfer_record` com `p_direct_purchase`, `p_operation_purpose = NORMAL` e `p_balance_correction_reason = null`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
@@ -366,6 +369,7 @@ Ajuda contextual
   - `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
   - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
   - `supabase/migrations/193_allow_direct_purchase_stock_entry.sql`
+  - `supabase/migrations/216_fix_reversal_operation_purpose_rpc_calls.sql`
   - `src/lib/server/stockTransfers.ts`
   - `src/lib/server/materialCatalog.ts`
   - `src/app/api/stock-transfers/meta/route.ts`
@@ -393,6 +397,8 @@ Ajuda contextual
   - `POST` de `/api/stock-transfers/reversal`
   - `saveStockTransferViaRpc`, `reverseStockTransferViaRpc`, `normalizeEntryType`, `normalizeMovementType`, `parsePositiveNumber`
   - `formatStockQuantity`, `formatInsufficientStockMessage`
+  - `reverse_stock_transfer_item_record_v1`
+  - `reverse_stock_transfer_record_v2`
 - Comportamento antes/depois:
   - Antes: movimentacao sem acao de estorno na UI e sem endpoint dedicado para reversao transacional.
   - Depois: botao `Estornar` com modal (motivo + data), endpoint dedicado e RPC de estorno com bloqueio de duplo estorno.
@@ -430,3 +436,5 @@ Ajuda contextual
 - Depois: a tela e o helper server mostram quais materiais estao com saldo zerado/insuficiente e as quantidades envolvidas.
 - Antes: correcao de saldo ficava indistinguivel de uma entrada/saida normal, salvo texto livre em observacao.
 - Depois: correcao de saldo fica marcada por finalidade propria, exige motivo e aparece nos detalhes/lista/historico.
+- Antes: o estorno por item podia chamar `save_stock_transfer_record` sem `p_operation_purpose`, deixando a execucao vulneravel a ambiguidade de assinatura apos as migrations `206/209`.
+- Depois: a migration `216` republica as RPCs de estorno com chamada explicita para `p_direct_purchase`, `p_operation_purpose = NORMAL` e `p_balance_correction_reason = null`, preservando o comportamento transacional e o escopo por tenant.
