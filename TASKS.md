@@ -271,6 +271,7 @@
 - [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
 - [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, com `ETAPA` obrigatoria no cadastro novo e preservada automaticamente na edicao quando nao alterada; `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) fica disponivel na edicao.
 - [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
+- [x] Adicionar na Programacao Simples a acao `Copiar para datas`, com modal de multiplas datas, ETAPA por destino, bloqueio para `ETAPA UNICA`/`ETAPA FINAL` e copia transacional via RPC.
 - [x] Incluir suporte ao tipo de SGD `AREA_LIVRE` no catalogo `programming_sgd_types`, ajustando constraint SQL e seed por tenant.
 - [x] Destravar cadastro de novos `Tipo de SGD` removendo a unicidade por `tenant_id + export_column` em `programming_sgd_types` e definindo `AREA_LIVRE` como default de `export_column`.
 - [x] Remover o bloqueio de valores fixos em `programming_sgd_types.export_column`, aceitando qualquer valor nao vazio para permitir novos Tipos de SGD.

@@ -10,6 +10,7 @@ import styles from "./ProgrammingSimplePageView.module.css";
 import {
   ProgrammingAlertModal,
   ProgrammingCancelModal,
+  ProgrammingCopyToDatesModal,
   ProgrammingDeadlinePanel,
   ProgrammingDeadlineModal,
   ProgrammingDetailsModal,
@@ -21,6 +22,7 @@ import {
 } from "./components";
 import {
   cancelProgramming,
+  copyProgrammingToDates,
   fetchProgrammingHistory,
   postponeProgramming,
   saveProgramming,
@@ -108,6 +110,12 @@ import type {
   ProgrammingSimplePageViewMode,
 } from "./types";
 
+type CopyToDatesDraftRow = {
+  id: string;
+  date: string;
+  etapaNumber: string;
+};
+
 
 function downloadCsvFile(content: string, filename: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
@@ -153,6 +161,15 @@ function formatDeadlineRangeLabel(daysDiff: number) {
   }
 
   return "61 a 90 dias";
+}
+
+function createCopyToDatesDraftRow(etapaNumber = ""): CopyToDatesDraftRow {
+  const randomSuffix = Math.random().toString(36).slice(2);
+  return {
+    id: `copy-date-${Date.now()}-${randomSuffix}`,
+    date: "",
+    etapaNumber,
+  };
 }
 
 export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: ProgrammingSimplePageViewMode }) {
@@ -226,6 +243,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [postponeReasonNotes, setPostponeReasonNotes] = useState("");
   const [postponeDate, setPostponeDate] = useState("");
   const [isPostponing, setIsPostponing] = useState(false);
+  const [copyToDatesTarget, setCopyToDatesTarget] = useState<ScheduleItem | null>(null);
+  const [copyToDatesRows, setCopyToDatesRows] = useState<CopyToDatesDraftRow[]>([]);
+  const [isCopyingToDates, setIsCopyingToDates] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
   const [isSavingWorkCompletionStatusFromModal, setIsSavingWorkCompletionStatusFromModal] = useState(false);
@@ -1164,6 +1184,71 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setPostponeDate("");
   }
 
+  function openCopyToDatesModal(schedule: ScheduleItem) {
+    const displayStatus = getDisplayProgrammingStatus(schedule);
+    if (!isActiveProgrammingStatus(displayStatus)) {
+      openAlertModal("Copia indisponivel", "Somente programacoes ativas podem ser copiadas para outras datas.");
+      return;
+    }
+
+    if (schedule.etapaUnica || schedule.etapaFinal) {
+      openAlertModal(
+        "Copia bloqueada",
+        "Programacoes marcadas como ETAPA UNICA ou ETAPA FINAL nao podem ser copiadas para outras datas.",
+      );
+      return;
+    }
+
+    if (!schedule.etapaNumber || schedule.etapaNumber < 1) {
+      openAlertModal(
+        "ETAPA obrigatoria",
+        "A programacao de origem precisa ter uma ETAPA numerica para permitir copia incrementada.",
+      );
+      return;
+    }
+
+    setCopyToDatesTarget(schedule);
+    setCopyToDatesRows([createCopyToDatesDraftRow(String(schedule.etapaNumber + 1))]);
+    setFeedback(null);
+  }
+
+  function closeCopyToDatesModal() {
+    if (isCopyingToDates) {
+      return;
+    }
+
+    setCopyToDatesTarget(null);
+    setCopyToDatesRows([]);
+  }
+
+  function updateCopyToDatesRow(rowId: string, field: "date" | "etapaNumber", value: string) {
+    setCopyToDatesRows((current) =>
+      current.map((row) =>
+        row.id === rowId
+          ? {
+              ...row,
+              [field]: field === "etapaNumber" ? value.replace(/\D/g, "") : value,
+            }
+          : row,
+      ),
+    );
+  }
+
+  function addCopyToDatesRow() {
+    setCopyToDatesRows((current) => {
+      const currentEtapas = current
+        .map((row) => Number(row.etapaNumber))
+        .filter((value) => Number.isInteger(value) && value > 0);
+      const baseEtapa = copyToDatesTarget?.etapaNumber ?? 0;
+      const nextEtapa = Math.max(baseEtapa, ...currentEtapas) + 1;
+      return [...current, createCopyToDatesDraftRow(String(nextEtapa))];
+    });
+  }
+
+  function removeCopyToDatesRow(rowId: string) {
+    setCopyToDatesRows((current) => current.length > 1 ? current.filter((row) => row.id !== rowId) : current);
+  }
+
   async function openHistory(schedule: ScheduleItem) {
     if (!accessToken) {
       setFeedback({ type: "error", message: "Sessao invalida para consultar historico." });
@@ -1418,6 +1503,135 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       });
     } finally {
       setIsPostponing(false);
+    }
+  }
+
+  async function confirmCopyToDates() {
+    if (!accessToken || !copyToDatesTarget) {
+      openAlertModal("Falha ao validar copia", "Sessao invalida para copiar a programacao.");
+      return;
+    }
+
+    const sourceEtapaNumber = copyToDatesTarget.etapaNumber ?? 0;
+    const normalizedTargets = copyToDatesRows.map((row) => ({
+      date: row.date,
+      etapaNumber: Number(row.etapaNumber),
+    }));
+    const invalidRows = normalizedTargets.filter((row) => !row.date || !Number.isInteger(row.etapaNumber) || row.etapaNumber <= 0);
+    if (invalidRows.length) {
+      openAlertModal(
+        "Revise as datas da copia",
+        "Informe Data destino e ETAPA numerica em todas as linhas.",
+      );
+      return;
+    }
+
+    const repeatedDates = normalizedTargets
+      .map((row) => row.date)
+      .filter((date, index, dates) => dates.indexOf(date) !== index);
+    if (repeatedDates.length) {
+      openAlertModal("Datas duplicadas", "Cada data destino deve aparecer apenas uma vez no modal.");
+      return;
+    }
+
+    if (normalizedTargets.some((row) => row.date === copyToDatesTarget.date)) {
+      openAlertModal(
+        "Data original bloqueada",
+        "A data original da programacao nao pode ser selecionada como destino da copia.",
+      );
+      return;
+    }
+
+    const repeatedEtapas = normalizedTargets
+      .map((row) => row.etapaNumber)
+      .filter((etapa, index, etapas) => etapas.indexOf(etapa) !== index);
+    if (repeatedEtapas.length) {
+      openAlertModal("ETAPAs duplicadas", "Cada data destino deve receber uma ETAPA diferente.");
+      return;
+    }
+
+    if (normalizedTargets.some((row) => row.etapaNumber <= sourceEtapaNumber)) {
+      openAlertModal(
+        "ETAPA invalida",
+        `As ETAPAs de destino devem ser maiores que a etapa atual (${sourceEtapaNumber}).`,
+      );
+      return;
+    }
+
+    setIsCopyingToDates(true);
+    setAlertModal(null);
+    setFeedback(null);
+
+    try {
+      const { ok, data } = await copyProgrammingToDates({
+        accessToken,
+        sourceProgrammingId: copyToDatesTarget.id,
+        expectedUpdatedAt: copyToDatesTarget.updatedAt,
+        targets: normalizedTargets,
+      });
+
+      if (!ok) {
+        const message = data.message ?? "Falha ao copiar programacao para as datas selecionadas.";
+        setFeedback({ type: "error", message });
+        if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
+          setStageConflictModal({
+            enteredEtapaNumber: Number(data.enteredEtapaNumber ?? 0),
+            highestStage: Number(data.highestStage ?? 0),
+            teams: data.teams,
+          });
+        }
+        openAlertModal(
+          "Falha ao validar copia",
+          message,
+          data.detail ? [data.detail] : undefined,
+        );
+        await logError("Falha ao copiar programacao para datas.", undefined, {
+          operation: "copy_programming_to_dates",
+          programmingId: copyToDatesTarget.id,
+          projectId: copyToDatesTarget.projectId,
+          teamId: copyToDatesTarget.teamId,
+          sourceDate: copyToDatesTarget.date,
+          targetDates: normalizedTargets.map((item) => item.date),
+          responseMessage: message,
+          responseReason: data.reason ?? null,
+        });
+        return;
+      }
+
+      setCopyToDatesTarget(null);
+      setCopyToDatesRows([]);
+      setFeedback({
+        type: "success",
+        message: data.message ?? "Programacao copiada com sucesso.",
+      });
+
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) {
+          applyBoardSnapshot(boardData);
+        }
+      } catch (refreshError) {
+        await logError("Programacao copiada, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          operation: "refresh_after_copy_to_dates",
+          programmingId: copyToDatesTarget.id,
+          targetDates: normalizedTargets.map((item) => item.date),
+        });
+        setFeedback({
+          type: "success",
+          message: `${data.message ?? "Programacao copiada com sucesso."} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+        });
+      }
+    } catch (error) {
+      setFeedback({ type: "error", message: "Falha ao copiar programacao para as datas selecionadas." });
+      openAlertModal("Falha ao validar copia", "Falha ao copiar programacao para as datas selecionadas.");
+      await logError("Falha ao copiar programacao para datas.", error, {
+        operation: "copy_programming_to_dates",
+        programmingId: copyToDatesTarget.id,
+        projectId: copyToDatesTarget.projectId,
+        teamId: copyToDatesTarget.teamId,
+      });
+    } finally {
+      setIsCopyingToDates(false);
     }
   }
 
@@ -2390,6 +2604,31 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                               </button>
                               <button
                                 type="button"
+                                className={`${styles.actionButton} ${styles.actionCopy}`}
+                                onClick={() => openCopyToDatesModal(schedule)}
+                                title="Copiar para datas"
+                                aria-label={`Copiar programacao ${project?.code ?? schedule.id} para outras datas`}
+                                disabled={!isActiveProgrammingStatus(displayStatus)}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path
+                                    d="M8 7.5h9.5v11H8z"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <path
+                                    d="M5 15.5V4.5h9.5M11 11h3.5M11 14h2"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
                                 className={`${styles.actionButton} ${styles.actionPostpone}`}
                                 onClick={() => openPostponeModal(schedule)}
                                 title="Adiar"
@@ -2527,6 +2766,18 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         onDateChange={setPostponeDate}
         onReasonCodeChange={setPostponeReasonCode}
         onReasonNotesChange={setPostponeReasonNotes}
+      />
+      <ProgrammingCopyToDatesModal
+        target={copyToDatesTarget}
+        projectCode={copyToDatesTarget ? (projectMap.get(copyToDatesTarget.projectId)?.code ?? copyToDatesTarget.projectId) : ""}
+        rows={copyToDatesRows}
+        minDate=""
+        isSubmitting={isCopyingToDates}
+        onClose={closeCopyToDatesModal}
+        onConfirm={() => void confirmCopyToDates()}
+        onAddRow={addCopyToDatesRow}
+        onRemoveRow={removeCopyToDatesRow}
+        onRowChange={updateCopyToDatesRow}
       />
       <ProgrammingCancelModal
         target={cancelTarget}

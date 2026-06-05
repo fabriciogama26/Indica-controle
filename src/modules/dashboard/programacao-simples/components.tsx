@@ -61,6 +61,12 @@ type DeadlineModalItem = {
   rangeLabel: string;
 };
 
+type CopyToDatesDraftRow = {
+  id: string;
+  date: string;
+  etapaNumber: string;
+};
+
 type DeadlinePanelSummary = {
   dueToday: number;
   dueSoon: number;
@@ -1368,6 +1374,113 @@ export function ProgrammingPostponeModal(props: {
               disabled={isSubmitting}
             >
               {isSubmitting ? "Adiando..." : "Validar adiamento"}
+            </button>
+            <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+export function ProgrammingCopyToDatesModal(props: {
+  target: ScheduleItem | null;
+  projectCode: string;
+  rows: CopyToDatesDraftRow[];
+  minDate: string;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onAddRow: () => void;
+  onRemoveRow: (rowId: string) => void;
+  onRowChange: (rowId: string, field: "date" | "etapaNumber", value: string) => void;
+}) {
+  const {
+    target,
+    projectCode,
+    rows,
+    minDate,
+    isSubmitting,
+    onClose,
+    onConfirm,
+    onAddRow,
+    onRemoveRow,
+    onRowChange,
+  } = props;
+
+  if (!target) {
+    return null;
+  }
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <div className={styles.modalTitleBlock}>
+            <h4>Copiar para datas</h4>
+            <p className={styles.modalSubtitle}>
+              {projectCode} | {formatDate(target.date)} | ETAPA {target.etapaNumber ?? "-"}
+            </p>
+          </div>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>
+            Fechar
+          </button>
+        </header>
+
+        <div className={styles.modalBody}>
+          <p>
+            Informe as datas de destino e a ETAPA de cada copia. As ETAPAs devem ser maiores que a etapa atual e nao
+            podem repetir valores ja existentes para este projeto/equipe.
+          </p>
+
+          <div className={styles.copyDatesList}>
+            {rows.map((row, index) => (
+              <div key={row.id} className={styles.copyDateRow}>
+                <label className={styles.field}>
+                  <span>
+                    Data destino {index + 1} <span className="requiredMark">*</span>
+                  </span>
+                  <input
+                    type="date"
+                    value={row.date}
+                    min={minDate}
+                    onChange={(event) => onRowChange(row.id, "date", event.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span>
+                    ETAPA <span className="requiredMark">*</span>
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={row.etapaNumber}
+                    onChange={(event) => onRowChange(row.id, "etapaNumber", event.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={styles.ghostButton}
+                  onClick={() => onRemoveRow(row.id)}
+                  disabled={isSubmitting || rows.length <= 1}
+                >
+                  Remover
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className={styles.actions}>
+            <button type="button" className={styles.ghostButton} onClick={onAddRow} disabled={isSubmitting}>
+              Adicionar data
+            </button>
+            <button type="button" className={styles.secondaryButton} onClick={onConfirm} disabled={isSubmitting}>
+              {isSubmitting ? "Copiando..." : "Validar copia"}
             </button>
             <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
               Voltar
