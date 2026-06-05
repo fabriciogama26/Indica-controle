@@ -139,6 +139,18 @@ type OperationalMeasurementCategoryCard = {
   billingQuantity: number;
 };
 
+type OperationalAverageTickets = {
+  measurementByProject: number;
+  measurementByService: number;
+  asbuiltByProject: number;
+  asbuiltByService: number;
+};
+
+type OperationalMeasurementIndicators = {
+  categoryCards: OperationalMeasurementCategoryCard[];
+  averageTickets: OperationalAverageTickets;
+};
+
 type ProjectValueRow = {
   projectId: string;
   projectCode: string;
@@ -589,17 +601,32 @@ async function buildOperationalMeasurementCategoryCards(params: {
     }
 
     return quantityByCategory;
-  }
+  };
+  const sumValue = (items: Array<MeasurementItemRow | CommercialItemRow>) =>
+    items.reduce((sum, item) => sum + numberValue(item.total_value), 0);
+
   const measurementQuantityByCategory = buildQuantityByCategory(measurementItems);
   const asbuiltQuantityByCategory = buildQuantityByCategory(asbuiltItems);
   const billingQuantityByCategory = buildQuantityByCategory(billingItems);
+  const measurementValue = sumValue(measurementItems);
+  const asbuiltValue = sumValue(asbuiltItems);
+  const measurementProjectCount = new Set(measurementOrders.map((order) => order.project_id)).size;
+  const asbuiltProjectCount = new Set(asbuiltOrders.map((order) => order.project_id)).size;
 
-  return OPERATIONAL_MEASUREMENT_CATEGORIES.map((category) => ({
-    ...category,
-    measurementQuantity: measurementQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
-    asbuiltQuantity: asbuiltQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
-    billingQuantity: billingQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
-  })) satisfies OperationalMeasurementCategoryCard[];
+  return {
+    categoryCards: OPERATIONAL_MEASUREMENT_CATEGORIES.map((category) => ({
+      ...category,
+      measurementQuantity: measurementQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+      asbuiltQuantity: asbuiltQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+      billingQuantity: billingQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+    })),
+    averageTickets: {
+      measurementByProject: measurementProjectCount > 0 ? measurementValue / measurementProjectCount : 0,
+      measurementByService: measurementOrders.length > 0 ? measurementValue / measurementOrders.length : 0,
+      asbuiltByProject: asbuiltProjectCount > 0 ? asbuiltValue / asbuiltProjectCount : 0,
+      asbuiltByService: asbuiltOrders.length > 0 ? asbuiltValue / asbuiltOrders.length : 0,
+    },
+  } satisfies OperationalMeasurementIndicators;
 }
 
 async function loadWorkCompletionCatalog(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
@@ -1169,7 +1196,7 @@ export async function GET(request: NextRequest) {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     if (!projectId) {
-      const [chartItems, projectValueRows, operationalCategoryCards] = await Promise.all([
+      const [chartItems, projectValueRows, operationalIndicators] = await Promise.all([
         includeChart
           ? buildChartItems({
               supabase: resolution.supabase,
@@ -1192,7 +1219,7 @@ export async function GET(request: NextRequest) {
               tenantId,
               projects,
             })
-          : Promise.resolve([]),
+          : Promise.resolve(null),
       ]);
 
       return NextResponse.json({
@@ -1204,7 +1231,8 @@ export async function GET(request: NextRequest) {
         categorySummaryRows: [],
         chartItems,
         projectValueRows,
-        operationalCategoryCards,
+        operationalCategoryCards: operationalIndicators?.categoryCards ?? [],
+        operationalAverageTickets: operationalIndicators?.averageTickets ?? null,
         summary: null,
       });
     }
