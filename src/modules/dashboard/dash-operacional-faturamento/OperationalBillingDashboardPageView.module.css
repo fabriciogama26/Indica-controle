@@ -210,6 +210,45 @@
   font-weight: 900;
 }
 
+.operationalTicketGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.operationalTicketCard {
+  min-height: 86px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.operationalTicketCard span {
+  color: #60708f;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.operationalTicketCard strong {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.operationalTicketCard b {
+  color: #002b7f;
+  font-size: 19px;
+  font-weight: 900;
+}
+
 .operationalIndicatorGrid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -656,7 +695,8 @@
 }
 
 @media (max-width: 980px) {
-  .operationalIndicatorGrid {
+  .operationalIndicatorGrid,
+  .operationalTicketGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -680,6 +720,7 @@
   .summaryGrid,
   .valueCardGrid,
   .chartInsightGrid,
+  .operationalTicketGrid,
   .operationalIndicatorGrid {
     grid-template-columns: 1fr;
   }

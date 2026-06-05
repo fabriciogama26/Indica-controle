@@ -82,6 +82,13 @@ type OperationalMeasurementCategoryCard = {
   billingQuantity: number;
 };
 
+type OperationalAverageTickets = {
+  measurementByProject: number;
+  measurementByService: number;
+  asbuiltByProject: number;
+  asbuiltByService: number;
+};
+
 type ProjectValueRow = {
   projectId: string;
   projectCode: string;
@@ -119,6 +126,7 @@ type DashboardResponse = {
   categorySummaryRows?: CategorySummaryRow[];
   chartItems?: ChartItem[];
   operationalCategoryCards?: OperationalMeasurementCategoryCard[];
+  operationalAverageTickets?: OperationalAverageTickets | null;
   projectValueRows?: ProjectValueRow[];
   summary?: Summary | null;
 };
@@ -205,6 +213,7 @@ export function OperationalBillingDashboardPageView() {
   const [categorySummaryRows, setCategorySummaryRows] = useState<CategorySummaryRow[]>([]);
   const [chartItems, setChartItems] = useState<ChartItem[]>([]);
   const [operationalCategoryCards, setOperationalCategoryCards] = useState<OperationalMeasurementCategoryCard[]>([]);
+  const [operationalAverageTickets, setOperationalAverageTickets] = useState<OperationalAverageTickets | null>(null);
   const [projectValueRows, setProjectValueRows] = useState<ProjectValueRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
@@ -378,6 +387,7 @@ export function OperationalBillingDashboardPageView() {
       setServiceCenters(payload.filters?.serviceCenters ?? []);
       setProjectValueRows(payload.projectValueRows ?? []);
       setOperationalCategoryCards(payload.operationalCategoryCards ?? []);
+      setOperationalAverageTickets(payload.operationalAverageTickets ?? null);
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar valores por projeto." });
       await logError("Falha ao carregar valores por projeto", error);
@@ -788,27 +798,52 @@ export function OperationalBillingDashboardPageView() {
         </div>
 
         {operationalCategoryCards.length ? (
-          <div className={styles.operationalIndicatorGrid}>
-            {operationalCategoryCards.map((card) => (
-              <div key={card.key} className={styles.operationalIndicator}>
-                <span className={styles.operationalIndicatorTitle}>{card.label}</span>
-                <div className={styles.operationalIndicatorValues}>
-                  <div className={styles.operationalIndicatorMetric}>
-                    <span>Medidos</span>
-                    <strong>{formatNumber(card.measurementQuantity)}</strong>
-                  </div>
-                  <div className={styles.operationalIndicatorMetric}>
-                    <span>ASBUILT</span>
-                    <strong>{formatNumber(card.asbuiltQuantity)}</strong>
-                  </div>
-                  <div className={styles.operationalIndicatorMetric}>
-                    <span>Faturado</span>
-                    <strong>{formatNumber(card.billingQuantity)}</strong>
+          <>
+            <div className={styles.operationalTicketGrid}>
+              <div className={styles.operationalTicketCard}>
+                <span>Medicao</span>
+                <strong>Ticket medio / Projetos</strong>
+                <b>{formatCurrency(operationalAverageTickets?.measurementByProject ?? 0)}</b>
+              </div>
+              <div className={styles.operationalTicketCard}>
+                <span>Medicao</span>
+                <strong>Ticket medio / Servicos</strong>
+                <b>{formatCurrency(operationalAverageTickets?.measurementByService ?? 0)}</b>
+              </div>
+              <div className={styles.operationalTicketCard}>
+                <span>Asbuilt</span>
+                <strong>Ticket medio / Projetos</strong>
+                <b>{formatCurrency(operationalAverageTickets?.asbuiltByProject ?? 0)}</b>
+              </div>
+              <div className={styles.operationalTicketCard}>
+                <span>Asbuilt</span>
+                <strong>Ticket medio / Servicos</strong>
+                <b>{formatCurrency(operationalAverageTickets?.asbuiltByService ?? 0)}</b>
+              </div>
+            </div>
+
+            <div className={styles.operationalIndicatorGrid}>
+              {operationalCategoryCards.map((card) => (
+                <div key={card.key} className={styles.operationalIndicator}>
+                  <span className={styles.operationalIndicatorTitle}>{card.label}</span>
+                  <div className={styles.operationalIndicatorValues}>
+                    <div className={styles.operationalIndicatorMetric}>
+                      <span>Medidos</span>
+                      <strong>{formatNumber(card.measurementQuantity)}</strong>
+                    </div>
+                    <div className={styles.operationalIndicatorMetric}>
+                      <span>ASBUILT</span>
+                      <strong>{formatNumber(card.asbuiltQuantity)}</strong>
+                    </div>
+                    <div className={styles.operationalIndicatorMetric}>
+                      <span>Faturado</span>
+                      <strong>{formatNumber(card.billingQuantity)}</strong>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         ) : (
           <p className={styles.operationalIndicatorEmpty}>
             {isProjectValuesLoading ? "Carregando indicadores..." : "Nenhum indicador operacional encontrado."}
