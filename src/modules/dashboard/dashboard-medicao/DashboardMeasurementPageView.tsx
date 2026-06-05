@@ -43,6 +43,7 @@ type Summary = {
   noStatusValue: number;
   projectCount: number;
   averageTicketValue: number;
+  averageServiceTicketValue: number;
 };
 
 type CompletionChartItem = {
@@ -63,14 +64,30 @@ type CycleComparison = {
   workdays: number;
   defaultWorkdays: number;
   workedDays: number;
+  orderCount: number;
   projectCount: number;
   averageTicketValue: number;
+  averageServiceTicketValue: number;
   executedWorkdays: number;
   averageDailyValue: number;
   forecastValue: number;
   forecastPercentage: number;
   forecastDifference: number;
   percentage: number;
+};
+
+type PeriodSummary = {
+  realizedValue: number;
+  orderCount: number;
+  projectCount: number;
+  averageTicketValue: number;
+  averageServiceTicketValue: number;
+};
+
+type CompletionTableTotals = {
+  value: number;
+  orders: number;
+  projectCount: number;
 };
 
 type ProjectProductionDetail = {
@@ -147,6 +164,7 @@ type DashboardResponse = {
   completionChart?: CompletionChartItem[];
   cycleCompletionChart?: CompletionChartItem[];
   periodCompletionChart?: CompletionChartItem[];
+  periodSummary?: PeriodSummary | null;
   cycleComparison?: CycleComparison | null;
   cycleWeeks?: CycleWeekOption[];
   teamsProduction?: TeamProductionRow[];
@@ -327,6 +345,7 @@ export function DashboardMeasurementPageView() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [cycleCompletionChart, setCycleCompletionChart] = useState<CompletionChartItem[]>([]);
   const [periodCompletionChart, setPeriodCompletionChart] = useState<CompletionChartItem[]>([]);
+  const [periodSummary, setPeriodSummary] = useState<PeriodSummary | null>(null);
   const [cycleComparison, setCycleComparison] = useState<CycleComparison | null>(null);
   const [cycleWeeks, setCycleWeeks] = useState<CycleWeekOption[]>([]);
   const [teamsProduction, setTeamsProduction] = useState<TeamProductionRow[]>([]);
@@ -379,6 +398,7 @@ export function DashboardMeasurementPageView() {
       setSummary(data.summary ?? null);
       setCycleCompletionChart(data.cycleCompletionChart ?? []);
       setPeriodCompletionChart(data.periodCompletionChart ?? data.completionChart ?? []);
+      setPeriodSummary(data.periodSummary ?? null);
       setCycleComparison(data.cycleComparison ?? null);
       setCycleWeeks(data.cycleWeeks ?? []);
       setTeamsProduction(data.teamsProduction ?? []);
@@ -693,7 +713,12 @@ export function DashboardMeasurementPageView() {
     );
   }
 
-  function renderCompletionTable(items: CompletionChartItem[], subtitle: string, filenamePrefix: string) {
+  function renderCompletionTable(
+    items: CompletionChartItem[],
+    subtitle: string,
+    filenamePrefix: string,
+    totals?: CompletionTableTotals | null,
+  ) {
     return (
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
@@ -725,6 +750,17 @@ export function DashboardMeasurementPageView() {
               </tr>
             ))}
           </tbody>
+          {totals ? (
+            <tfoot>
+              <tr>
+                <td>Total</td>
+                <td>{formatCurrency(totals.value)}</td>
+                <td>{totals.orders}</td>
+                <td>{totals.projectCount}</td>
+                <td>{formatPercent(totals.value > 0 ? 100 : 0)}</td>
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
       </div>
     );
@@ -1149,7 +1185,11 @@ export function DashboardMeasurementPageView() {
           </div>
           {renderExpandButton("completionCycle", "Concluidos X parciais no ciclo")}
         </div>
-        {renderCompletionTable(cycleCompletionChart, selectedCycleLabel, "dashboard_medicao_status_ciclo")}
+        {renderCompletionTable(cycleCompletionChart, selectedCycleLabel, "dashboard_medicao_status_ciclo", cycleComparison ? {
+          value: cycleComparison.value,
+          orders: cycleComparison.orderCount,
+          projectCount: cycleComparison.projectCount,
+        } : null)}
         {renderCompletionChart(cycleCompletionChart)}
       </article>
 
@@ -1176,10 +1216,33 @@ export function DashboardMeasurementPageView() {
             {renderExpandButton("completionPeriod", "Visao geral por periodo")}
           </div>
         </div>
+        <div className={`${styles.cycleMetricGrid} ${styles.periodMetricGrid}`}>
+          <div className={styles.metric}>
+            <span>Ticket medio / Projetos</span>
+            <strong>{formatCurrency(periodSummary?.averageTicketValue ?? 0)}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Ticket medio / Servicos</span>
+            <strong>{formatCurrency(periodSummary?.averageServiceTicketValue ?? 0)}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Projetos no ciclo</span>
+            <strong>{periodSummary?.projectCount ?? 0}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Ordens de Servicos no ciclo</span>
+            <strong>{periodSummary?.orderCount ?? 0}</strong>
+          </div>
+        </div>
         {renderCompletionTable(
           periodCompletionChart,
           `Periodo ${formatDatePtBr(startDate) || "inicio"} a ${formatDatePtBr(endDate) || "fim"}`,
           "dashboard_medicao_status_periodo",
+          periodSummary ? {
+            value: periodSummary.realizedValue,
+            orders: periodSummary.orderCount,
+            projectCount: periodSummary.projectCount,
+          } : null,
         )}
         {renderCompletionChart(periodCompletionChart)}
       </article>
@@ -1206,12 +1269,20 @@ export function DashboardMeasurementPageView() {
 
         <div className={styles.cycleMetricGrid}>
           <div className={styles.metric}>
-            <span>Ticket medio</span>
+            <span>Ticket medio / Projetos</span>
             <strong>{formatCurrency(cycleComparison?.averageTicketValue ?? 0)}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Ticket medio / Servicos</span>
+            <strong>{formatCurrency(cycleComparison?.averageServiceTicketValue ?? 0)}</strong>
           </div>
           <div className={styles.metric}>
             <span>Projetos no ciclo</span>
             <strong>{cycleComparison?.projectCount ?? 0}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Ordens de Servicos no ciclo</span>
+            <strong>{cycleComparison?.orderCount ?? 0}</strong>
           </div>
         </div>
 
@@ -1579,7 +1650,11 @@ export function DashboardMeasurementPageView() {
             <div className={styles.modalBody}>
               {expandedChart === "completionCycle" ? (
                 <>
-                  {renderCompletionTable(cycleCompletionChart, selectedCycleLabel, "dashboard_medicao_status_ciclo")}
+                  {renderCompletionTable(cycleCompletionChart, selectedCycleLabel, "dashboard_medicao_status_ciclo", cycleComparison ? {
+                    value: cycleComparison.value,
+                    orders: cycleComparison.orderCount,
+                    projectCount: cycleComparison.projectCount,
+                  } : null)}
                   {renderCompletionChart(cycleCompletionChart, true)}
                 </>
               ) : null}
@@ -1589,6 +1664,11 @@ export function DashboardMeasurementPageView() {
                     periodCompletionChart,
                     `Periodo ${formatDatePtBr(startDate) || "inicio"} a ${formatDatePtBr(endDate) || "fim"}`,
                     "dashboard_medicao_status_periodo",
+                    periodSummary ? {
+                      value: periodSummary.realizedValue,
+                      orders: periodSummary.orderCount,
+                      projectCount: periodSummary.projectCount,
+                    } : null,
                   )}
                   {renderCompletionChart(periodCompletionChart, true)}
                 </>

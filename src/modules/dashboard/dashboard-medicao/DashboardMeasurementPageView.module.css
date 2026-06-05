@@ -124,9 +124,21 @@
 
 .cycleMetricGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(160px, 240px));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.periodMetricGrid {
+  grid-template-columns: repeat(4, minmax(128px, 1fr));
+}
+
+.periodMetricGrid .metric {
+  padding: 12px;
+}
+
+.periodMetricGrid .metric strong {
+  font-size: 18px;
 }
 
 .metric {
@@ -754,6 +766,10 @@
     grid-template-columns: 1fr;
   }
 
+  .periodMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .foremanVisualTop,
   .supervisorVisualTop {
     grid-template-columns: 1fr;
@@ -771,7 +787,8 @@
   .filterGrid,
   .periodFields,
   .summaryGrid,
-  .cycleMetricGrid {
+  .cycleMetricGrid,
+  .periodMetricGrid {
     grid-template-columns: 1fr;
   }
 

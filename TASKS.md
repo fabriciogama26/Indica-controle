@@ -824,4 +824,12 @@
 
 - [x] Colorir `Dif. prevista` no `Ciclo da medicao` do Dashboard Medicao: negativo em vermelho, positivo em verde e zero na cor padrao.
 
+- [x] Separar `Ticket medio` do Dashboard Medicao em `Ticket medio / Projetos` e `Ticket medio / Servicos`, adicionando os dois cards tambem na `Visao geral por periodo` com base no recorte `De/Para`.
+
+- [x] Adicionar no `Ciclo da medicao` o card `Ordens de Servicos no ciclo`, exibindo a quantidade de ordens `COM_PRODUCAO` do ciclo e filtros gerais aplicados.
+
+- [x] Reposicionar os cards da `Visao geral por periodo` acima da tabela, incluir `Projetos no ciclo` e `Ordens de Servicos no ciclo` no periodo e adicionar linha de total nas tabelas de status.
+
+- [x] Organizar os quatro cards da `Visao geral por periodo` em uma linha no desktop, com quebra responsiva para telas menores.
+
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
