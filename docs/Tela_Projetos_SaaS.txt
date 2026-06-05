@@ -70,6 +70,7 @@ Cadastro
   - `RETIRADO DA CARTEIRA` (checkbox para excluir dos cards de carteira sem tratar como obra de teste)
 - `Centro de Servico` e preenchido automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
 - `Parceira` nao aparece no frontend; o backend preenche automaticamente com `contract.name` do tenant ativo.
+- `Valor estimado` aceita digitacao monetaria em formato brasileiro (`22.035,33`) e formatos compactos equivalentes (`22.03533`, `22035,33`), normalizando para numero decimal antes de salvar em `project.estimated_value numeric(14,2)`.
 - Campos carregados de tabelas de dominio:
   - `Prioridade`
   - `Centro de Servico`
@@ -590,3 +591,23 @@ Atualizacao adicional 2026-05-20
   - Depois: o botao externo `Baixar modelo (.xlsx)` foi removido das abas; o download do modelo fica apenas dentro do modal `Cadastro em massa`.
   - Depois: codigos ja existentes no projeto deixam de bloquear a importacao inteira; a linha e ignorada, entra no CSV de erros/avisos e os codigos novos sao cadastrados.
   - Depois: a selecao de `Projeto (SOB)` nas abas de previstos passa a usar `meta.sobCatalog` e buscar o ID via `/api/projects` quando o projeto nao esta na pagina atual da lista principal, evitando lista vazia para SOB valido fora da pagina.
+
+Atualizacao adicional 2026-06
+-----------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/route.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `parseEstimatedValue`
+  - `formatEstimatedValueInput`
+  - `normalizeEstimatedValueInput`
+  - `handleSubmit`
+  - `normalizeEstimatedValue`
+- Comportamento antes/depois:
+  - Antes: o campo `Valor estimado` usava `input type=number` com `step=0.01`, bloqueando valores digitados com separador brasileiro ou com ponto de milhar, como `22.03533` para representar `R$ 22.035,33`.
+  - Depois: o campo da tela usa entrada textual com `inputMode=decimal`, formata no blur para `pt-BR` e envia valor decimal com 2 casas para a API.
+  - Antes: a API substituia apenas virgula por ponto, fazendo `22.035,33` virar valor invalido.
+  - Depois: a API aceita `22.035,33`, `22.03533`, `22035,33` e `22035.33`, normalizando para `22035.33` antes de persistir.
+  - Depois: o banco permanece sem alteracao de schema, mantendo `project.estimated_value` como `numeric(14,2)` por tenant.
