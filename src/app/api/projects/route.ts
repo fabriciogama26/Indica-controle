@@ -200,16 +200,57 @@ function normalizePriority(value: unknown) {
 }
 
 function normalizeEstimatedValue(value: unknown) {
-  const raw = String(value ?? "")
-    .trim()
-    .replace(",", ".");
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  }
 
-  const numeric = Number(raw);
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.includes("-")) {
+    return null;
+  }
+
+  const cleaned = raw
+    .replace(/\s/g, "")
+    .replace(/[R$]/gi, "");
+
+  if (!/^\d+(?:[.,]\d+)*$/.test(cleaned)) {
+    return null;
+  }
+
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  let normalized = cleaned;
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      normalized = cleaned.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = cleaned.replace(/,/g, "");
+    }
+  } else if (lastComma >= 0) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (lastDot >= 0) {
+    const dotCount = (cleaned.match(/\./g) ?? []).length;
+    const [whole, fraction = ""] = cleaned.split(".");
+
+    if (dotCount === 1 && fraction.length > 3) {
+      normalized = `${whole}${fraction.slice(0, -2)}.${fraction.slice(-2)}`;
+    } else if (dotCount === 1 && fraction.length === 3) {
+      normalized = `${whole}${fraction}`;
+    } else if (dotCount > 1) {
+      normalized = cleaned.replace(/\./g, "");
+    }
+  }
+
+  const numeric = Number(normalized);
   if (!Number.isFinite(numeric) || numeric < 0) {
     return null;
   }
 
-  return numeric;
+  return Math.round((numeric + Number.EPSILON) * 100) / 100;
 }
 
 function normalizeBoolean(value: unknown) {

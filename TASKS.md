@@ -704,6 +704,8 @@
 
 - [x] Ajustar cadastro em massa de Materiais previstos e Atividades previstas em Projetos para aceitar XLSX com `projeto`, `codigo` e `quantidade`, permitindo varios projetos no mesmo arquivo e gerando CSV de erros por linha/coluna.
 
+- [ ] Publicar/recriar no banco remoto as RPCs `precheck_project_activity_forecast_import` e `append_project_activity_forecast`, pois o cadastro em massa de `Atividades previstas` na tela Projetos depende delas e o Supabase remoto respondeu `PGRST202` para ambas em 2026-06-05.
+
 - [x] Padronizar o acionamento de importacao de Materiais previstos e Atividades previstas em Projetos como botao/modal Cadastro em massa, mantendo modelo XLSX e CSV de erros.
 
 - [x] Remover botao externo Baixar modelo (.xlsx) das abas Materiais previstos e Atividades previstas, mantendo o download apenas no modal Cadastro em massa.
@@ -836,3 +838,5 @@
 - [x] Adicionar no bloco `Indicadores operacionais medidos` do Dash operacional e faturamento os cards de `Ticket medio / Projetos` e `Ticket medio / Servicos` para `Medicao` e `Asbuilt`, usando a base global de projetos ativos validos do tenant.
 
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
+
+- [x] Corrigir o campo `Valor estimado` em `Projetos` para aceitar valor monetario em formato brasileiro, evitando bloqueio do `input type=number` com `step=0.01` e normalizando entradas como `22.035,33` para `22035.33` antes de salvar.

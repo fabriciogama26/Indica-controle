@@ -340,6 +340,76 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function parseEstimatedValue(value: unknown) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  }
+
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.includes("-")) {
+    return null;
+  }
+
+  const cleaned = raw
+    .replace(/\s/g, "")
+    .replace(/[R$]/gi, "");
+
+  if (!/^\d+(?:[.,]\d+)*$/.test(cleaned)) {
+    return null;
+  }
+
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  let normalized = cleaned;
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      normalized = cleaned.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = cleaned.replace(/,/g, "");
+    }
+  } else if (lastComma >= 0) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (lastDot >= 0) {
+    const dotCount = (cleaned.match(/\./g) ?? []).length;
+    const [whole, fraction = ""] = cleaned.split(".");
+
+    if (dotCount === 1 && fraction.length > 3) {
+      normalized = `${whole}${fraction.slice(0, -2)}.${fraction.slice(-2)}`;
+    } else if (dotCount === 1 && fraction.length === 3) {
+      normalized = `${whole}${fraction}`;
+    } else if (dotCount > 1) {
+      normalized = cleaned.replace(/\./g, "");
+    }
+  }
+
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return null;
+  }
+
+  return Math.round((numeric + Number.EPSILON) * 100) / 100;
+}
+
+function formatEstimatedValueInput(value: number) {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function normalizeEstimatedValueInput(value: string) {
+  const numeric = parseEstimatedValue(value);
+  return numeric === null ? value : formatEstimatedValueInput(numeric);
+}
+
 function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
 
@@ -626,7 +696,7 @@ function toFormState(project: ProjectItem): FormState {
     serviceType: project.serviceType,
     executionDeadline: project.executionDeadline,
     priority: project.priority,
-    estimatedValue: String(project.estimatedValue ?? ""),
+    estimatedValue: formatEstimatedValueInput(project.estimatedValue),
     voltageLevel: project.voltageLevel ?? "",
     projectSize: project.projectSize ?? "",
     contractorResponsible: project.contractorResponsible,
@@ -2031,6 +2101,15 @@ export function ProjectsPageView() {
       return;
     }
 
+    const estimatedValue = parseEstimatedValue(form.estimatedValue);
+    if (estimatedValue === null) {
+      setFeedback({
+        type: "error",
+        message: "Valor estimado invalido. Informe um valor monetario maior ou igual a zero.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setFeedback(null);
 
@@ -2048,6 +2127,7 @@ export function ProjectsPageView() {
           ...form,
           sob: normalizeSob(form.sob),
           priority: normalizePriority(form.priority),
+          estimatedValue: estimatedValue.toFixed(2),
         }),
       });
 
@@ -2477,11 +2557,11 @@ export function ProjectsPageView() {
                   Valor estimado <span className="requiredMark">*</span>
                 </span>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="text"
+                  inputMode="decimal"
                   value={form.estimatedValue}
                   onChange={(event) => updateFormField("estimatedValue", event.target.value)}
+                  onBlur={(event) => updateFormField("estimatedValue", normalizeEstimatedValueInput(event.target.value))}
                   placeholder="0,00"
                   required
                 />
