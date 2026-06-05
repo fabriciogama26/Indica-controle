@@ -516,6 +516,7 @@ export async function GET(request: NextRequest) {
       completionChart: [],
       cycleCompletionChart: [],
       periodCompletionChart: [],
+      periodSummary: null,
       cycleComparison: null,
       teamsProduction: [],
       teamsProductionByWeek: {},
@@ -1329,6 +1330,16 @@ export async function GET(request: NextRequest) {
   const realizedValue = filteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
   const projectCount = new Set(filteredOrders.map((order) => order.project_id)).size;
   const averageTicketValue = projectCount > 0 ? realizedValue / projectCount : 0;
+  const averageServiceTicketValue = filteredOrders.length > 0 ? realizedValue / filteredOrders.length : 0;
+  const periodRealizedValue = periodFilteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0)
+    + periodFilteredMinimumBillingGuaranteeOrders.reduce((sum, order) => sum + Number(order.minimum_billing_amount ?? 0), 0);
+  const periodOrderCount = periodFilteredOrders.length + periodFilteredMinimumBillingGuaranteeOrders.length;
+  const periodProjectCount = new Set([
+    ...periodFilteredOrders.map((order) => order.project_id),
+    ...periodFilteredMinimumBillingGuaranteeOrders.map((order) => order.project_id),
+  ]).size;
+  const periodAverageTicketValue = periodProjectCount > 0 ? periodRealizedValue / periodProjectCount : 0;
+  const periodAverageServiceTicketValue = periodOrderCount > 0 ? periodRealizedValue / periodOrderCount : 0;
   const supervisorsProductionRows = buildSupervisorRows(supervisorProductionMap, workdays, realizedValue, selectedCycle.cycleStart, selectedCycle.cycleEnd);
   const percentage = cycleMetaValue > 0 ? (realizedValue / cycleMetaValue) * 100 : 0;
   const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
@@ -1369,10 +1380,18 @@ export async function GET(request: NextRequest) {
       noStatusValue: cycleCompletionTotals.get("NAO_INFORMADO")?.value ?? 0,
       projectCount,
       averageTicketValue,
+      averageServiceTicketValue,
     },
     completionChart: buildCompletionChart(periodCompletionTotals, periodMinimumBillingGuaranteeTotal),
     cycleCompletionChart: buildCompletionChart(cycleCompletionTotals),
     periodCompletionChart: buildCompletionChart(periodCompletionTotals, periodMinimumBillingGuaranteeTotal),
+    periodSummary: {
+      realizedValue: periodRealizedValue,
+      orderCount: periodOrderCount,
+      projectCount: periodProjectCount,
+      averageTicketValue: periodAverageTicketValue,
+      averageServiceTicketValue: periodAverageServiceTicketValue,
+    },
     cycleComparison: {
       label: selectedCycle.label,
       value: realizedValue,
@@ -1382,8 +1401,10 @@ export async function GET(request: NextRequest) {
       workdays,
       defaultWorkdays,
       workedDays,
+      orderCount: filteredOrders.length,
       projectCount,
       averageTicketValue,
+      averageServiceTicketValue,
       executedWorkdays,
       averageDailyValue,
       forecastValue,
