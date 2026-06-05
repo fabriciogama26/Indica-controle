@@ -241,6 +241,16 @@ type CopyProgrammingPayload = {
   endDate?: string;
 };
 
+type CopyProgrammingToDatesPayload = {
+  action?: "COPY_TO_DATES";
+  sourceProgrammingId?: string;
+  expectedUpdatedAt?: string;
+  targets?: Array<{
+    date?: string;
+    etapaNumber?: number | string;
+  }>;
+};
+
 type BatchCreateProgrammingPayload = {
   action?: "BATCH_CREATE";
   projectId?: string;
@@ -324,6 +334,19 @@ type CopyProgrammingResponse = {
   success?: boolean;
   copiedCount?: number;
   message?: string;
+};
+
+type CopyProgrammingToDatesResponse = {
+  success?: boolean;
+  copiedCount?: number;
+  copyBatchId?: string | null;
+  message?: string;
+  reason?: string | null;
+  detail?: string | null;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: ProgrammingStageValidationTeamSummary[];
 };
 
 type BatchCreateProgrammingResponse = {
@@ -2901,6 +2924,111 @@ async function copyProgramming(request: NextRequest) {
   } satisfies CopyProgrammingResponse);
 }
 
+async function copyProgrammingToDates(request: NextRequest) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para copiar programacao.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const payload = (await request.json().catch(() => null)) as CopyProgrammingToDatesPayload | null;
+  const sourceProgrammingId = normalizeText(payload?.sourceProgrammingId);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+  const targetsInput = Array.isArray(payload?.targets) ? payload.targets : [];
+  const targets = targetsInput.map((item) => ({
+    date: normalizeIsoDate(item?.date),
+    etapaNumber: normalizePositiveInteger(item?.etapaNumber),
+  }));
+
+  if (!sourceProgrammingId) {
+    return NextResponse.json({ message: "Informe a programacao de origem para copiar." }, { status: 400 });
+  }
+
+  if (!expectedUpdatedAt) {
+    return NextResponse.json({ message: "Atualize a grade antes de copiar a programacao." }, { status: 409 });
+  }
+
+  if (!targets.length || targets.some((item) => !item.date || item.etapaNumber === null)) {
+    return NextResponse.json(
+      { message: "Informe Data destino e ETAPA valida para cada copia." },
+      { status: 400 },
+    );
+  }
+
+  const targetDates = targets.map((item) => item.date).filter((item): item is string => Boolean(item));
+  const targetEtapas = targets.map((item) => item.etapaNumber).filter((item): item is number => item !== null);
+  if (new Set(targetDates).size !== targetDates.length) {
+    return NextResponse.json({ message: "Cada data destino deve aparecer apenas uma vez." }, { status: 400 });
+  }
+
+  if (new Set(targetEtapas).size !== targetEtapas.length) {
+    return NextResponse.json({ message: "Cada data destino deve receber uma ETAPA diferente." }, { status: 400 });
+  }
+
+  const { data, error } = await resolution.supabase.rpc("copy_project_programming_to_dates", {
+    p_tenant_id: resolution.appUser.tenant_id,
+    p_actor_user_id: resolution.appUser.id,
+    p_source_programming_id: sourceProgrammingId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_targets: targets.map((item) => ({
+      date: item.date,
+      etapaNumber: item.etapaNumber,
+    })),
+  });
+
+  if (error) {
+    const status = isMissingRpcFunctionError(error.message, "copy_project_programming_to_dates") ? 409 : 500;
+    return NextResponse.json(
+      {
+        message: status === 409
+          ? "Seu ambiente ainda nao suporta copia da Programacao para varias datas. Aplique a migration 217 e tente novamente."
+          : "Falha ao copiar programacao para as datas selecionadas.",
+      },
+      { status },
+    );
+  }
+
+  const result = (data ?? {}) as {
+    success?: boolean;
+    status?: number;
+    reason?: string | null;
+    detail?: string | null;
+    message?: string;
+    copied_count?: number;
+    copy_batch_id?: string | null;
+    enteredEtapaNumber?: number;
+    hasConflict?: boolean;
+    highestStage?: number;
+    teams?: ProgrammingStageValidationTeamSummary[];
+  };
+
+  if (result.success !== true) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: result.reason ?? null,
+        detail: result.detail ?? null,
+        message: result.message ?? "Falha ao copiar programacao para as datas selecionadas.",
+        enteredEtapaNumber: result.enteredEtapaNumber,
+        hasConflict: result.hasConflict,
+        highestStage: result.highestStage,
+        teams: result.teams,
+      } satisfies CopyProgrammingToDatesResponse,
+      { status: Number(result.status ?? 400) },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    copiedCount: Number(result.copied_count ?? 0),
+    copyBatchId: result.copy_batch_id ?? null,
+    message: result.message ?? "Programacao copiada com sucesso.",
+  } satisfies CopyProgrammingToDatesResponse);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -4186,6 +4314,16 @@ export async function POST(request: NextRequest) {
     });
 
     return copyProgramming(clonedRequest);
+  }
+
+  if (normalizedAction === "COPY_TO_DATES") {
+    const clonedRequest = new NextRequest(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(body),
+    });
+
+    return copyProgrammingToDates(clonedRequest);
   }
 
   if (normalizedAction === "BATCH_CREATE") {

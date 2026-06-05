@@ -1,6 +1,8 @@
 import type {
   ActivityCatalogResponse,
   BatchCreateResponse,
+  CopyProgrammingToDatesResponse,
+  CopyProgrammingToDatesTarget,
   ProgrammingHistoryResponse,
   ProgrammingResponse,
   SaveProgrammingResponse,
@@ -212,6 +214,33 @@ export async function postponeProgramming(params: {
   return {
     ok: response.ok,
     data: await readJson<SaveProgrammingResponse>(response),
+  };
+}
+
+export async function copyProgrammingToDates(params: {
+  accessToken: string;
+  sourceProgrammingId: string;
+  expectedUpdatedAt: string;
+  targets: CopyProgrammingToDatesTarget[];
+}) {
+  const response = await fetch("/api/programacao", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(params.accessToken),
+    },
+    body: JSON.stringify({
+      action: "COPY_TO_DATES",
+      sourceProgrammingId: params.sourceProgrammingId,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+      targets: params.targets,
+    }),
+  });
+
+  return {
+    status: response.status,
+    ok: response.ok,
+    data: await readJson<CopyProgrammingToDatesResponse>(response),
   };
 }
 

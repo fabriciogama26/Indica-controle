@@ -472,6 +472,9 @@ Resumo por arquivo
 
 216_fix_reversal_operation_purpose_rpc_calls.sql
 - Republica as chamadas internas das RPCs de estorno para chamar `save_stock_transfer_record` com `p_direct_purchase`, `p_operation_purpose = 'NORMAL'` e `p_balance_correction_reason = null`, evitando ambiguidade tecnica no estorno por item apos as migrations 206/209.
+
+217_copy_programming_to_multiple_dates.sql
+- Cria `copy_project_programming_to_dates` para copiar uma Programacao ativa para multiplas datas com ETAPA por destino, ajustando o rastreio de lotes para `single_to_dates` e mantendo validacao por tenant, concorrencia, conflito de horario e ETAPA.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

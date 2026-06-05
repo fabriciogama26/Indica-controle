@@ -884,6 +884,11 @@
   background: #fff1c7;
 }
 
+.actionCopy {
+  color: #136f63;
+  background: #dff4ef;
+}
+
 .actionCancel {
   color: #c62828;
   background: #dce8f5;
@@ -950,6 +955,22 @@
 .modalBody {
   display: grid;
   gap: 14px;
+}
+
+.copyDatesList {
+  display: grid;
+  gap: 12px;
+}
+
+.copyDateRow {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(110px, 0.6fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 10px;
+  background: #f8fbff;
 }
 
 .deadlineModalActions {
@@ -1193,6 +1214,10 @@
   }
 
   .detailsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .copyDateRow {
     grid-template-columns: 1fr;
   }
 

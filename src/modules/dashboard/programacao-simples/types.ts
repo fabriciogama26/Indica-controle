@@ -213,6 +213,24 @@ export type SaveProgrammingResponse = {
   teams?: StageValidationTeamSummary[];
 };
 
+export type CopyProgrammingToDatesTarget = {
+  date: string;
+  etapaNumber: number;
+};
+
+export type CopyProgrammingToDatesResponse = {
+  success?: boolean;
+  copiedCount?: number;
+  copyBatchId?: string | null;
+  message?: string;
+  reason?: string | null;
+  detail?: string | null;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: StageValidationTeamSummary[];
+};
+
 export type HistoryChange = {
   from: string | null;
   to: string | null;
