@@ -233,6 +233,8 @@ export function OperationalBillingDashboardPageView() {
   const [activityStatus, setActivityStatus] = useState("TODAS");
   const [onlyDivergences, setOnlyDivergences] = useState(false);
   const [onlyMissing, setOnlyMissing] = useState(false);
+  const [hideZeroMeasurementValues, setHideZeroMeasurementValues] = useState(false);
+  const [hideZeroAsbuiltValues, setHideZeroAsbuiltValues] = useState(false);
   const [onlyAsbuiltBelowMeasurement, setOnlyAsbuiltBelowMeasurement] = useState(false);
   const [onlyBillingBelowAsbuilt, setOnlyBillingBelowAsbuilt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -333,10 +335,12 @@ export function OperationalBillingDashboardPageView() {
         .filter((row) => !projectValueWorkCompletionStatus || row.workCompletionStatus === projectValueWorkCompletionStatus)
         .filter((row) => !projectValueServiceTypeId || row.serviceTypeId === projectValueServiceTypeId)
         .filter((row) => !projectSearchValue || row.projectCode.toLowerCase().includes(projectSearchValue))
+        .filter((row) => !hideZeroMeasurementValues || row.measurementValue !== 0)
+        .filter((row) => !hideZeroAsbuiltValues || row.asbuiltValue !== 0)
         .filter((row) => !onlyAsbuiltBelowMeasurement || (row.asbuiltValue > 0 && row.measurementValue > 0 && row.asbuiltValue < row.measurementValue))
         .filter((row) => !onlyBillingBelowAsbuilt || (row.billingValue > 0 && row.asbuiltValue > 0 && row.billingValue < row.asbuiltValue));
     },
-    [onlyAsbuiltBelowMeasurement, onlyBillingBelowAsbuilt, projectValueProjectSearch, projectValueRows, projectValueServiceCenterId, projectValueServiceTypeId, projectValueWorkCompletionStatus],
+    [hideZeroAsbuiltValues, hideZeroMeasurementValues, onlyAsbuiltBelowMeasurement, onlyBillingBelowAsbuilt, projectValueProjectSearch, projectValueRows, projectValueServiceCenterId, projectValueServiceTypeId, projectValueWorkCompletionStatus],
   );
 
   const projectValueTotals = useMemo(
@@ -538,6 +542,8 @@ export function OperationalBillingDashboardPageView() {
   useEffect(() => {
     setProjectValuePage(1);
   }, [
+    hideZeroAsbuiltValues,
+    hideZeroMeasurementValues,
     onlyAsbuiltBelowMeasurement,
     onlyBillingBelowAsbuilt,
     projectValueProjectSearch,
@@ -1239,6 +1245,26 @@ export function OperationalBillingDashboardPageView() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={hideZeroMeasurementValues}
+              onChange={(event) => setHideZeroMeasurementValues(event.target.checked)}
+              disabled={isProjectValuesLoading}
+            />
+            <span>Ocultar Medicao zerada</span>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={hideZeroAsbuiltValues}
+              onChange={(event) => setHideZeroAsbuiltValues(event.target.checked)}
+              disabled={isProjectValuesLoading}
+            />
+            <span>Ocultar Asbuilt zerado</span>
           </label>
 
           <label className={styles.checkboxField}>
