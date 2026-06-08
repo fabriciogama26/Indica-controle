@@ -158,11 +158,18 @@ type ProjectValueRow = {
   serviceCenter: string;
   workCompletionStatus: string;
   workCompletionStatusLabel: string;
+  serviceTypeIds: string[];
+  serviceTypeNames: string[];
   measurementValue: number;
   asbuiltValue: number;
   billingValue: number;
   asbuiltMeasurementDiff: number;
   billingAsbuiltDiff: number;
+};
+
+type ProjectItemSummary = {
+  totalsByProject: Map<string, number>;
+  activityIdsByProject: Map<string, Set<string>>;
 };
 
 function normalizeText(value: unknown) {
@@ -602,16 +609,30 @@ async function buildOperationalMeasurementCategoryCards(params: {
 
     return quantityByCategory;
   };
-  const sumValue = (items: Array<MeasurementItemRow | CommercialItemRow>) =>
-    items.reduce((sum, item) => sum + numberValue(item.total_value), 0);
-
   const measurementQuantityByCategory = buildQuantityByCategory(measurementItems);
   const asbuiltQuantityByCategory = buildQuantityByCategory(asbuiltItems);
   const billingQuantityByCategory = buildQuantityByCategory(billingItems);
-  const measurementValue = sumValue(measurementItems);
-  const asbuiltValue = sumValue(asbuiltItems);
-  const measurementProjectCount = new Set(measurementOrders.map((order) => order.project_id)).size;
-  const asbuiltProjectCount = new Set(asbuiltOrders.map((order) => order.project_id)).size;
+  const measurementProjectIds = new Set(measurementOrders.map((order) => order.project_id));
+  const asbuiltProjectIds = new Set(asbuiltOrders.map((order) => order.project_id));
+  const comparableProjectIds = new Set(Array.from(measurementProjectIds).filter((projectId) => asbuiltProjectIds.has(projectId)));
+  const comparableMeasurementOrders = measurementOrders.filter((order) => comparableProjectIds.has(order.project_id));
+  const comparableAsbuiltOrders = asbuiltOrders.filter((order) => comparableProjectIds.has(order.project_id));
+  const [measurementValueForTickets, asbuiltValueForTickets] = await Promise.all([
+    sumItemsByOrderIds({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_order_items",
+      orderColumn: "measurement_order_id",
+      orderIds: comparableMeasurementOrders.map((order) => order.id),
+    }),
+    sumItemsByOrderIds({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_asbuilt_measurement_order_items",
+      orderColumn: "asbuilt_measurement_order_id",
+      orderIds: comparableAsbuiltOrders.map((order) => order.id),
+    }),
+  ]);
 
   return {
     categoryCards: OPERATIONAL_MEASUREMENT_CATEGORIES.map((category) => ({
@@ -621,10 +642,10 @@ async function buildOperationalMeasurementCategoryCards(params: {
       billingQuantity: billingQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
     })),
     averageTickets: {
-      measurementByProject: measurementProjectCount > 0 ? measurementValue / measurementProjectCount : 0,
-      measurementByService: measurementOrders.length > 0 ? measurementValue / measurementOrders.length : 0,
-      asbuiltByProject: asbuiltProjectCount > 0 ? asbuiltValue / asbuiltProjectCount : 0,
-      asbuiltByService: asbuiltOrders.length > 0 ? asbuiltValue / asbuiltOrders.length : 0,
+      measurementByProject: comparableProjectIds.size > 0 ? measurementValueForTickets / comparableProjectIds.size : 0,
+      measurementByService: comparableMeasurementOrders.length > 0 ? measurementValueForTickets / comparableMeasurementOrders.length : 0,
+      asbuiltByProject: comparableProjectIds.size > 0 ? asbuiltValueForTickets / comparableProjectIds.size : 0,
+      asbuiltByService: comparableAsbuiltOrders.length > 0 ? asbuiltValueForTickets / comparableAsbuiltOrders.length : 0,
     },
   } satisfies OperationalMeasurementIndicators;
 }
@@ -843,21 +864,22 @@ async function sumItemsByOrderIds(params: {
   return total;
 }
 
-async function sumItemValuesByProject(params: {
+async function summarizeItemsByProject(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   table: "project_measurement_order_items" | "project_asbuilt_measurement_order_items" | "project_billing_order_items";
   orderColumn: "measurement_order_id" | "asbuilt_measurement_order_id" | "billing_order_id";
   orders: OrderProjectRow[];
 }) {
-  const totals = new Map<string, number>();
+  const totalsByProject = new Map<string, number>();
+  const activityIdsByProject = new Map<string, Set<string>>();
   const orderProjectById = new Map(params.orders.map((order) => [order.id, order.project_id]));
   const orderIds = Array.from(orderProjectById.keys());
 
   for (const orderIdChunk of chunk(orderIds, 500)) {
     const { data, error } = await params.supabase
       .from(params.table)
-      .select(`${params.orderColumn}, total_value`)
+      .select(`${params.orderColumn}, service_activity_id, total_value`)
       .eq("tenant_id", params.tenantId)
       .eq("is_active", true)
       .in(params.orderColumn, orderIdChunk)
@@ -872,11 +894,18 @@ async function sumItemValuesByProject(params: {
       const projectId = orderProjectById.get(orderId);
       if (!projectId) continue;
 
-      totals.set(projectId, (totals.get(projectId) ?? 0) + numberValue(item.total_value));
+      totalsByProject.set(projectId, (totalsByProject.get(projectId) ?? 0) + numberValue(item.total_value));
+
+      const activityId = normalizeText(item.service_activity_id);
+      if (activityId) {
+        const activityIds = activityIdsByProject.get(projectId) ?? new Set<string>();
+        activityIds.add(activityId);
+        activityIdsByProject.set(projectId, activityIds);
+      }
     }
   }
 
-  return totals;
+  return { totalsByProject, activityIdsByProject } satisfies ProjectItemSummary;
 }
 
 async function buildProjectValueRows(params: {
@@ -911,22 +940,22 @@ async function buildProjectValueRows(params: {
     }),
   ]);
 
-  const [measurementTotals, asbuiltTotals, billingTotals] = await Promise.all([
-    sumItemValuesByProject({
+  const [measurementSummary, asbuiltSummary, billingSummary] = await Promise.all([
+    summarizeItemsByProject({
       supabase: params.supabase,
       tenantId: params.tenantId,
       table: "project_measurement_order_items",
       orderColumn: "measurement_order_id",
       orders: measurementOrders,
     }),
-    sumItemValuesByProject({
+    summarizeItemsByProject({
       supabase: params.supabase,
       tenantId: params.tenantId,
       table: "project_asbuilt_measurement_order_items",
       orderColumn: "asbuilt_measurement_order_id",
       orders: asbuiltOrders,
     }),
-    sumItemValuesByProject({
+    summarizeItemsByProject({
       supabase: params.supabase,
       tenantId: params.tenantId,
       table: "project_billing_order_items",
@@ -941,16 +970,56 @@ async function buildProjectValueRows(params: {
     projectIds,
     statusLabels: workCompletionStatusLabels,
   });
+  const allActivityIds = Array.from(
+    new Set(
+      [
+        ...Array.from(measurementSummary.activityIdsByProject.values()).flatMap((ids) => Array.from(ids)),
+        ...Array.from(asbuiltSummary.activityIdsByProject.values()).flatMap((ids) => Array.from(ids)),
+        ...Array.from(billingSummary.activityIdsByProject.values()).flatMap((ids) => Array.from(ids)),
+      ].filter(Boolean),
+    ),
+  );
+  const activityCategoryMap = await loadActivityCategoryMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    activityIds: allActivityIds,
+  });
+  const resolveProjectServiceTypes = (projectId: string) => {
+    const activityIds = new Set<string>([
+      ...Array.from(measurementSummary.activityIdsByProject.get(projectId) ?? []),
+      ...Array.from(asbuiltSummary.activityIdsByProject.get(projectId) ?? []),
+      ...Array.from(billingSummary.activityIdsByProject.get(projectId) ?? []),
+    ]);
+    const serviceTypes = new Map<string, string>();
+
+    for (const activityId of activityIds) {
+      const categoryId = activityCategoryMap.activityToCategory.get(activityId) ?? "__NO_CATEGORY__";
+      const categoryName = categoryId === "__NO_CATEGORY__"
+        ? "Nao identificada"
+        : activityCategoryMap.categoryNameById.get(categoryId) ?? "Nao identificada";
+      serviceTypes.set(categoryId, categoryName);
+    }
+
+    const sortedServiceTypes = Array.from(serviceTypes.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+
+    return {
+      ids: sortedServiceTypes.map((item) => item.id),
+      names: sortedServiceTypes.map((item) => item.name),
+    };
+  };
 
   return params.projects
     .map((project) => {
-      const measurementValue = measurementTotals.get(project.id) ?? 0;
-      const asbuiltValue = asbuiltTotals.get(project.id) ?? 0;
-      const billingValue = billingTotals.get(project.id) ?? 0;
+      const measurementValue = measurementSummary.totalsByProject.get(project.id) ?? 0;
+      const asbuiltValue = asbuiltSummary.totalsByProject.get(project.id) ?? 0;
+      const billingValue = billingSummary.totalsByProject.get(project.id) ?? 0;
       const workCompletion = workCompletionByProject.get(project.id) ?? {
         status: "NAO_INFORMADO",
         label: "Nao informado",
       };
+      const serviceTypes = resolveProjectServiceTypes(project.id);
 
       return {
         projectId: project.id,
@@ -959,6 +1028,8 @@ async function buildProjectValueRows(params: {
         serviceCenter: project.serviceCenter,
         workCompletionStatus: workCompletion.status,
         workCompletionStatusLabel: workCompletion.label,
+        serviceTypeIds: serviceTypes.ids,
+        serviceTypeNames: serviceTypes.names,
         measurementValue,
         asbuiltValue,
         billingValue,
