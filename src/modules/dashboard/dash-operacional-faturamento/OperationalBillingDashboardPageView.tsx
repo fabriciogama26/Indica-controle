@@ -235,6 +235,8 @@ export function OperationalBillingDashboardPageView() {
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [hideZeroMeasurementValues, setHideZeroMeasurementValues] = useState(false);
   const [hideZeroAsbuiltValues, setHideZeroAsbuiltValues] = useState(false);
+  const [onlyZeroMeasurementValues, setOnlyZeroMeasurementValues] = useState(false);
+  const [onlyZeroAsbuiltValues, setOnlyZeroAsbuiltValues] = useState(false);
   const [onlyAsbuiltBelowMeasurement, setOnlyAsbuiltBelowMeasurement] = useState(false);
   const [onlyBillingBelowAsbuilt, setOnlyBillingBelowAsbuilt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -337,10 +339,12 @@ export function OperationalBillingDashboardPageView() {
         .filter((row) => !projectSearchValue || row.projectCode.toLowerCase().includes(projectSearchValue))
         .filter((row) => !hideZeroMeasurementValues || row.measurementValue !== 0)
         .filter((row) => !hideZeroAsbuiltValues || row.asbuiltValue !== 0)
+        .filter((row) => !onlyZeroMeasurementValues || row.measurementValue === 0)
+        .filter((row) => !onlyZeroAsbuiltValues || row.asbuiltValue === 0)
         .filter((row) => !onlyAsbuiltBelowMeasurement || (row.asbuiltValue > 0 && row.measurementValue > 0 && row.asbuiltValue < row.measurementValue))
         .filter((row) => !onlyBillingBelowAsbuilt || (row.billingValue > 0 && row.asbuiltValue > 0 && row.billingValue < row.asbuiltValue));
     },
-    [hideZeroAsbuiltValues, hideZeroMeasurementValues, onlyAsbuiltBelowMeasurement, onlyBillingBelowAsbuilt, projectValueProjectSearch, projectValueRows, projectValueServiceCenterId, projectValueServiceTypeId, projectValueWorkCompletionStatus],
+    [hideZeroAsbuiltValues, hideZeroMeasurementValues, onlyAsbuiltBelowMeasurement, onlyBillingBelowAsbuilt, onlyZeroAsbuiltValues, onlyZeroMeasurementValues, projectValueProjectSearch, projectValueRows, projectValueServiceCenterId, projectValueServiceTypeId, projectValueWorkCompletionStatus],
   );
 
   const projectValueTotals = useMemo(
@@ -546,6 +550,8 @@ export function OperationalBillingDashboardPageView() {
     hideZeroMeasurementValues,
     onlyAsbuiltBelowMeasurement,
     onlyBillingBelowAsbuilt,
+    onlyZeroAsbuiltValues,
+    onlyZeroMeasurementValues,
     projectValueProjectSearch,
     projectValueServiceCenterId,
     projectValueServiceTypeId,
@@ -1251,7 +1257,10 @@ export function OperationalBillingDashboardPageView() {
             <input
               type="checkbox"
               checked={hideZeroMeasurementValues}
-              onChange={(event) => setHideZeroMeasurementValues(event.target.checked)}
+              onChange={(event) => {
+                setHideZeroMeasurementValues(event.target.checked);
+                if (event.target.checked) setOnlyZeroMeasurementValues(false);
+              }}
               disabled={isProjectValuesLoading}
             />
             <span>Ocultar Medicao zerada</span>
@@ -1261,10 +1270,39 @@ export function OperationalBillingDashboardPageView() {
             <input
               type="checkbox"
               checked={hideZeroAsbuiltValues}
-              onChange={(event) => setHideZeroAsbuiltValues(event.target.checked)}
+              onChange={(event) => {
+                setHideZeroAsbuiltValues(event.target.checked);
+                if (event.target.checked) setOnlyZeroAsbuiltValues(false);
+              }}
               disabled={isProjectValuesLoading}
             />
             <span>Ocultar Asbuilt zerado</span>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={onlyZeroMeasurementValues}
+              onChange={(event) => {
+                setOnlyZeroMeasurementValues(event.target.checked);
+                if (event.target.checked) setHideZeroMeasurementValues(false);
+              }}
+              disabled={isProjectValuesLoading}
+            />
+            <span>Somente Medicao zerada</span>
+          </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={onlyZeroAsbuiltValues}
+              onChange={(event) => {
+                setOnlyZeroAsbuiltValues(event.target.checked);
+                if (event.target.checked) setHideZeroAsbuiltValues(false);
+              }}
+              disabled={isProjectValuesLoading}
+            />
+            <span>Somente Asbuilt zerado</span>
           </label>
 
           <label className={styles.checkboxField}>
