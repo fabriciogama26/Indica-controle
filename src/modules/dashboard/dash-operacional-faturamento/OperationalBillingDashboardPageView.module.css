@@ -93,7 +93,7 @@
 
 .projectValueFilterGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(160px, 1fr));
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -544,7 +544,7 @@
 }
 
 .projectValueTable {
-  min-width: 1080px;
+  min-width: 1220px;
 }
 
 .table th,
@@ -568,13 +568,22 @@
   vertical-align: top;
 }
 
+.projectValueTable tfoot td {
+  border-top: 2px solid #c8d4ea;
+  border-bottom: 0;
+  background: #eef2f8;
+  color: #002b7f;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .table tbody tr:nth-child(even),
 .categoryTable tbody tr:nth-child(even),
 .projectValueTable tbody tr:nth-child(even) {
   background: #f8fbff;
 }
 
-.projectValueTable td:nth-child(n + 4) {
+.projectValueTable td:nth-child(n + 5) {
   font-weight: 800;
   white-space: nowrap;
 }

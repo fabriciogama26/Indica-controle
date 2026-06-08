@@ -96,6 +96,8 @@ type ProjectValueRow = {
   serviceCenter: string;
   workCompletionStatus: string;
   workCompletionStatusLabel: string;
+  serviceTypeIds: string[];
+  serviceTypeNames: string[];
   measurementValue: number;
   asbuiltValue: number;
   billingValue: number;
@@ -225,6 +227,7 @@ export function OperationalBillingDashboardPageView() {
   const [projectValueProjectSearch, setProjectValueProjectSearch] = useState("");
   const [projectValueServiceCenterId, setProjectValueServiceCenterId] = useState("");
   const [projectValueWorkCompletionStatus, setProjectValueWorkCompletionStatus] = useState("");
+  const [projectValueServiceTypeId, setProjectValueServiceTypeId] = useState("");
   const [projectValuePage, setProjectValuePage] = useState(1);
   const [activityCode, setActivityCode] = useState("");
   const [activityStatus, setActivityStatus] = useState("TODAS");
@@ -261,6 +264,18 @@ export function OperationalBillingDashboardPageView() {
     const options = new Map<string, string>();
     for (const row of projectValueRows) {
       options.set(row.workCompletionStatus || "NAO_INFORMADO", row.workCompletionStatusLabel || "Nao informado");
+    }
+    return Array.from(options.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+  }, [projectValueRows]);
+
+  const projectValueServiceTypeOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const row of projectValueRows) {
+      (row.serviceTypeIds ?? []).forEach((id, index) => {
+        options.set(id, row.serviceTypeNames?.[index] || "Nao identificada");
+      });
     }
     return Array.from(options.entries())
       .map(([id, label]) => ({ id, label }))
@@ -316,11 +331,32 @@ export function OperationalBillingDashboardPageView() {
       return projectValueRows
         .filter((row) => !projectValueServiceCenterId || row.serviceCenterId === projectValueServiceCenterId)
         .filter((row) => !projectValueWorkCompletionStatus || row.workCompletionStatus === projectValueWorkCompletionStatus)
+        .filter((row) => !projectValueServiceTypeId || (row.serviceTypeIds ?? []).includes(projectValueServiceTypeId))
         .filter((row) => !projectSearchValue || row.projectCode.toLowerCase().includes(projectSearchValue))
         .filter((row) => !onlyAsbuiltBelowMeasurement || (row.asbuiltValue > 0 && row.measurementValue > 0 && row.asbuiltValue < row.measurementValue))
         .filter((row) => !onlyBillingBelowAsbuilt || (row.billingValue > 0 && row.asbuiltValue > 0 && row.billingValue < row.asbuiltValue));
     },
-    [onlyAsbuiltBelowMeasurement, onlyBillingBelowAsbuilt, projectValueProjectSearch, projectValueRows, projectValueServiceCenterId, projectValueWorkCompletionStatus],
+    [onlyAsbuiltBelowMeasurement, onlyBillingBelowAsbuilt, projectValueProjectSearch, projectValueRows, projectValueServiceCenterId, projectValueServiceTypeId, projectValueWorkCompletionStatus],
+  );
+
+  const projectValueTotals = useMemo(
+    () => filteredProjectValueRows.reduce(
+      (accumulator, row) => ({
+        measurementValue: accumulator.measurementValue + row.measurementValue,
+        asbuiltValue: accumulator.asbuiltValue + row.asbuiltValue,
+        billingValue: accumulator.billingValue + row.billingValue,
+        asbuiltMeasurementDiff: accumulator.asbuiltMeasurementDiff + row.asbuiltMeasurementDiff,
+        billingAsbuiltDiff: accumulator.billingAsbuiltDiff + row.billingAsbuiltDiff,
+      }),
+      {
+        measurementValue: 0,
+        asbuiltValue: 0,
+        billingValue: 0,
+        asbuiltMeasurementDiff: 0,
+        billingAsbuiltDiff: 0,
+      },
+    ),
+    [filteredProjectValueRows],
   );
 
   const projectValueTotalPages = useMemo(
@@ -506,6 +542,7 @@ export function OperationalBillingDashboardPageView() {
     onlyBillingBelowAsbuilt,
     projectValueProjectSearch,
     projectValueServiceCenterId,
+    projectValueServiceTypeId,
     projectValueWorkCompletionStatus,
   ]);
 
@@ -646,6 +683,7 @@ export function OperationalBillingDashboardPageView() {
         "projeto",
         "centro_servico",
         "estado_trabalho",
+        "tipo_servico",
         "medicao_valor",
         "asbuilt_valor",
         "faturamento_valor",
@@ -656,12 +694,24 @@ export function OperationalBillingDashboardPageView() {
         row.projectCode,
         row.serviceCenter,
         row.workCompletionStatusLabel,
+        row.serviceTypeNames?.join(", ") || "Nao informado",
         formatCurrency(row.measurementValue),
         formatCurrency(row.asbuiltValue),
         formatCurrency(row.billingValue),
         formatSignedCurrency(row.asbuiltMeasurementDiff),
         formatSignedCurrency(row.billingAsbuiltDiff),
       ]),
+      [
+        "TOTAL",
+        "",
+        "",
+        "",
+        formatCurrency(projectValueTotals.measurementValue),
+        formatCurrency(projectValueTotals.asbuiltValue),
+        formatCurrency(projectValueTotals.billingValue),
+        formatSignedCurrency(projectValueTotals.asbuiltMeasurementDiff),
+        formatSignedCurrency(projectValueTotals.billingAsbuiltDiff),
+      ],
     ]);
   }
 
@@ -1175,6 +1225,22 @@ export function OperationalBillingDashboardPageView() {
             </select>
           </label>
 
+          <label className={styles.field}>
+            <span>Tipo de servico</span>
+            <select
+              value={projectValueServiceTypeId}
+              onChange={(event) => setProjectValueServiceTypeId(event.target.value)}
+              disabled={isProjectValuesLoading}
+            >
+              <option value="">Todos</option>
+              {projectValueServiceTypeOptions.map((serviceType) => (
+                <option key={serviceType.id} value={serviceType.id}>
+                  {serviceType.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
@@ -1203,6 +1269,7 @@ export function OperationalBillingDashboardPageView() {
                 <th>Projeto</th>
                 <th>Centro de servico</th>
                 <th>Estado de trabalho</th>
+                <th>Tipo de servico</th>
                 <th>Medicao</th>
                 <th>Asbuilt</th>
                 <th>Faturamento</th>
@@ -1217,6 +1284,7 @@ export function OperationalBillingDashboardPageView() {
                     <td><strong>{row.projectCode}</strong></td>
                     <td>{row.serviceCenter}</td>
                     <td>{row.workCompletionStatusLabel}</td>
+                    <td>{row.serviceTypeNames?.join(", ") || "Nao informado"}</td>
                     <td>{formatCurrency(row.measurementValue)}</td>
                     <td>{formatCurrency(row.asbuiltValue)}</td>
                     <td>{formatCurrency(row.billingValue)}</td>
@@ -1230,12 +1298,28 @@ export function OperationalBillingDashboardPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className={styles.emptyRow}>
+                  <td colSpan={9} className={styles.emptyRow}>
                     {isProjectValuesLoading ? "Carregando projetos..." : "Nenhum projeto encontrado para os filtros selecionados."}
                   </td>
                 </tr>
               )}
             </tbody>
+            {filteredProjectValueRows.length ? (
+              <tfoot>
+                <tr>
+                  <td colSpan={4}><strong>Total filtrado</strong></td>
+                  <td>{formatCurrency(projectValueTotals.measurementValue)}</td>
+                  <td>{formatCurrency(projectValueTotals.asbuiltValue)}</td>
+                  <td>{formatCurrency(projectValueTotals.billingValue)}</td>
+                  <td className={projectValueTotals.asbuiltMeasurementDiff < 0 ? styles.negativeValue : styles.neutralValue}>
+                    {formatSignedCurrency(projectValueTotals.asbuiltMeasurementDiff)}
+                  </td>
+                  <td className={projectValueTotals.billingAsbuiltDiff < 0 ? styles.negativeValue : styles.neutralValue}>
+                    {formatSignedCurrency(projectValueTotals.billingAsbuiltDiff)}
+                  </td>
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
 

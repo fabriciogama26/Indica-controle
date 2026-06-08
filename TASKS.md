@@ -836,6 +836,7 @@
 - [x] Organizar os quatro cards da `Visao geral por periodo` em uma linha no desktop, com quebra responsiva para telas menores.
 
 - [x] Adicionar no bloco `Indicadores operacionais medidos` do Dash operacional e faturamento os cards de `Ticket medio / Projetos` e `Ticket medio / Servicos` para `Medicao` e `Asbuilt`, usando a base global de projetos ativos validos do tenant.
+- [x] Ajustar o Dash operacional e faturamento para calcular os tickets medios de `Medicao` e `Asbuilt` com valores de ordens dos projetos presentes nas duas bases, alem de adicionar filtro/coluna `Tipo de servico`, linha `Total filtrado` e total no CSV da tabela `Projetos por valor`.
 
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
 
