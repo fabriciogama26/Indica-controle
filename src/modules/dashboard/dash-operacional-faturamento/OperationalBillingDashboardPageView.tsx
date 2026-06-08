@@ -96,8 +96,8 @@ type ProjectValueRow = {
   serviceCenter: string;
   workCompletionStatus: string;
   workCompletionStatusLabel: string;
-  serviceTypeIds: string[];
-  serviceTypeNames: string[];
+  serviceTypeId: string | null;
+  serviceTypeName: string;
   measurementValue: number;
   asbuiltValue: number;
   billingValue: number;
@@ -273,9 +273,9 @@ export function OperationalBillingDashboardPageView() {
   const projectValueServiceTypeOptions = useMemo(() => {
     const options = new Map<string, string>();
     for (const row of projectValueRows) {
-      (row.serviceTypeIds ?? []).forEach((id, index) => {
-        options.set(id, row.serviceTypeNames?.[index] || "Nao identificada");
-      });
+      if (row.serviceTypeId) {
+        options.set(row.serviceTypeId, row.serviceTypeName || "Nao identificado");
+      }
     }
     return Array.from(options.entries())
       .map(([id, label]) => ({ id, label }))
@@ -331,7 +331,7 @@ export function OperationalBillingDashboardPageView() {
       return projectValueRows
         .filter((row) => !projectValueServiceCenterId || row.serviceCenterId === projectValueServiceCenterId)
         .filter((row) => !projectValueWorkCompletionStatus || row.workCompletionStatus === projectValueWorkCompletionStatus)
-        .filter((row) => !projectValueServiceTypeId || (row.serviceTypeIds ?? []).includes(projectValueServiceTypeId))
+        .filter((row) => !projectValueServiceTypeId || row.serviceTypeId === projectValueServiceTypeId)
         .filter((row) => !projectSearchValue || row.projectCode.toLowerCase().includes(projectSearchValue))
         .filter((row) => !onlyAsbuiltBelowMeasurement || (row.asbuiltValue > 0 && row.measurementValue > 0 && row.asbuiltValue < row.measurementValue))
         .filter((row) => !onlyBillingBelowAsbuilt || (row.billingValue > 0 && row.asbuiltValue > 0 && row.billingValue < row.asbuiltValue));
@@ -694,7 +694,7 @@ export function OperationalBillingDashboardPageView() {
         row.projectCode,
         row.serviceCenter,
         row.workCompletionStatusLabel,
-        row.serviceTypeNames?.join(", ") || "Nao informado",
+        row.serviceTypeName || "Nao informado",
         formatCurrency(row.measurementValue),
         formatCurrency(row.asbuiltValue),
         formatCurrency(row.billingValue),
@@ -1284,7 +1284,7 @@ export function OperationalBillingDashboardPageView() {
                     <td><strong>{row.projectCode}</strong></td>
                     <td>{row.serviceCenter}</td>
                     <td>{row.workCompletionStatusLabel}</td>
-                    <td>{row.serviceTypeNames?.join(", ") || "Nao informado"}</td>
+                    <td>{row.serviceTypeName || "Nao informado"}</td>
                     <td>{formatCurrency(row.measurementValue)}</td>
                     <td>{formatCurrency(row.asbuiltValue)}</td>
                     <td>{formatCurrency(row.billingValue)}</td>
