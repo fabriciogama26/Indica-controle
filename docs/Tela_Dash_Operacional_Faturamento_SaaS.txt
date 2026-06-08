@@ -141,6 +141,8 @@ Filtros, auto-complete e listagem
   - Diferenca Faturamento x Asbuilt
   - Total filtrado no rodape da tabela
 - A tabela `Projetos por valor` possui filtro local por checkbox:
+  - `Ocultar Medicao zerada`
+  - `Ocultar Asbuilt zerado`
   - `Asbuilt menor que Medicao`
   - `Faturamento menor que Asbuilt`
 - A tabela `Projetos por valor` possui filtros locais por:
@@ -252,12 +254,13 @@ Atualizacao 2026-06
   - `Asbuilt - Ticket medio / Servicos` passa a usar como denominador a quantidade de ordens `COM_PRODUCAO` da Medicao dos projetos comparaveis, nao a quantidade de ordens Asbuilt.
   - A tabela `Projetos por valor` passa a exibir coluna `Tipo de servico`, filtro local por `Tipo de servico` e linha de `Total filtrado`.
   - A exportacao CSV de `Projetos por valor` passa a incluir `tipo_servico` e linha `TOTAL`.
+  - A tabela `Projetos por valor` passa a ter checkboxes locais para ocultar linhas com valor zerado em `Medicao` ou em `Asbuilt`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar grafico operacional antes dos cards globais por categoria, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar os doze cards comparativos de `Medidos`, `ASBUILT` e `Faturado`, exibir tickets medios de `Medicao` e `Asbuilt` por projetos/servicos, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, filtrar projetos por Centro de servico, Projeto, Estado de trabalho, Tipo de servico e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, calcular total filtrado, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
+  - Responsavel por: renderizar grafico operacional antes dos cards globais por categoria, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar os doze cards comparativos de `Medidos`, `ASBUILT` e `Faturado`, exibir tickets medios de `Medicao` e `Asbuilt` por projetos/servicos, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, filtrar projetos por Centro de servico, Projeto, Estado de trabalho, Tipo de servico, valores zerados em Medicao/Asbuilt e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, calcular total filtrado, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
   - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar os doze cards globais comparando quantidades das tres origens por categoria atual, calcular tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e ordens/servicos de projetos presentes nas duas bases, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido e Tipo de Servico do cadastro do Projeto, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
@@ -278,7 +281,7 @@ Funcoes utilitarias relacionadas
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
   - Comportamento ajustado: `loadProjects`, `loadOrderProjectRows`, `loadMeasurementItems` e `loadCommercialItems` passam a paginar as leituras usadas no agregado global para nao truncar os cards pelo limite padrao do PostgREST.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadMetadata`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `projectValueServiceTypeOptions`, `filteredProjectValueRows`, `projectValueTotals`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
+  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadMetadata`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `projectValueServiceTypeOptions`, `hideZeroMeasurementValues`, `hideZeroAsbuiltValues`, `filteredProjectValueRows`, `projectValueTotals`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
@@ -322,3 +325,4 @@ Ajuda contextual
   - Ajuste posterior: tickets medios passam a considerar valores de ordens dos projetos presentes em Medicao e Medicao Asbuilt, mantendo base comparavel entre as duas origens.
   - Ajuste posterior: `Asbuilt - Ticket medio / Servicos` passa a dividir o valor Asbuilt pela quantidade de ordens `COM_PRODUCAO` da Medicao dos projetos comparaveis.
   - Ajuste posterior: `Projetos por valor` passa a ter filtro/coluna de `Tipo de servico`, linha `Total filtrado` e exportacao CSV com `tipo_servico` e total.
+  - Ajuste posterior: `Projetos por valor` passa a ter checkboxes `Ocultar Medicao zerada` e `Ocultar Asbuilt zerado`, removendo do resultado filtrado as linhas com valor `0` na respectiva origem.
