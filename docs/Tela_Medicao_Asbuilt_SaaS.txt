@@ -58,8 +58,10 @@ Cadastro
   - `Servicos considerados ate` e obrigatorio em novos cadastros e representa a data limite inclusiva dos servicos cobertos pelo Asbuilt.
   - Registros antigos permanecem com a data nula ate serem editados, sem backfill automatico.
   - Projeto deve estar ativo no cadastro manual e no cadastro em massa.
-  - Projeto ja lancado em Medicao Asbuilt nao pode receber novo cadastro enquanto houver registro diferente de `CANCELADA`.
-  - Edicao do proprio registro continua permitida somente quando o status for `ABERTA`, sem liberar troca para outro projeto ja lancado.
+  - O mesmo projeto pode possuir varios registros de Medicao Asbuilt em datas de corte diferentes.
+  - A combinacao `Projeto + Servicos considerados ate` nao pode se repetir enquanto o registro anterior estiver diferente de `CANCELADA`.
+  - Cada registro representa um snapshot acumulado completo do projeto ate a data de corte.
+  - Edicao do proprio registro continua permitida somente quando o status for `ABERTA`.
   - Ao menos uma atividade com quantidade e taxa e obrigatoria.
   - Quantidade e taxa devem ser maiores que zero.
   - O valor do item e calculado por `voice_point x quantity x rate x unit_value`.
@@ -80,9 +82,9 @@ Filtros, auto-complete e listagem
   - Tipo
   - Motivo sem producao
 - Auto-complete:
-  - Projeto usa `project.sob` e lista projetos ativos com indicacao quando ja existe Medicao Asbuilt lancada.
-  - O cadastro manual bloqueia no frontend projeto ja lancado.
-  - O cadastro em massa retorna erro por linha quando o projeto ja possui Medicao Asbuilt lancada.
+  - Projeto usa `project.sob` e lista projetos ativos.
+  - O cadastro manual permite repetir o projeto em outra data de corte.
+  - O cadastro em massa retorna erro por linha quando `Projeto + Servicos considerados ate` ja existe ou se repete no lote.
   - Atividade usa `service_activities.code/description`.
 - Listagem:
   - Numero
@@ -184,7 +186,7 @@ Atualizacao 2026-05
   - Detalhe e edicao passam a tratar ambientes ainda sem `activity_active_snapshot`, evitando que itens importados em massa aparecam como lista vazia quando o banco estiver defasado.
   - Migration `178_patch_billing_asbuilt_mass_import_items.sql` recompila as RPCs de save/lote parcial para preservar atividades do cadastro em massa em ambientes que ja tinham aplicado `177`.
   - Cadastro manual e cadastro em massa passam a aceitar somente projetos ativos; a migration `184_enforce_active_project_for_asbuilt_measurement.sql` adiciona trava no banco para novas ordens Asbuilt.
-  - Cadastro manual, cadastro em massa, API e RPC passam a bloquear projeto ja lancado em Medicao Asbuilt, retornando `PROJECT_ASBUILT_MEASUREMENT_ALREADY_EXISTS`.
+  - Cadastro manual, cadastro em massa, API e RPC passam a bloquear somente a duplicidade de `Projeto + Servicos considerados ate`, retornando `PROJECT_ASBUILT_MEASUREMENT_COVERAGE_ALREADY_EXISTS`.
   - Corrigido o titulo do shell para `/medicao-asbuilt`, que podia herdar `Medicao` por comparacao de prefixo com `/medicao`.
 - Lacunas explicitas:
   - O dashboard comparativo entre Faturamento e Medicao Asbuilt fica para etapa futura.
@@ -193,6 +195,8 @@ Atualizacao 2026-06
 -------------------
 - Arquivos alterados:
   - `supabase/migrations/218_add_asbuilt_service_coverage_end_date.sql`
+  - `supabase/migrations/219_fix_asbuilt_coverage_rpc_overload.sql`
+  - `supabase/migrations/220_version_asbuilt_by_project_coverage_date.sql`
   - `src/app/api/medicao-asbuilt/route.ts`
   - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
   - `src/modules/dashboard/medicao-asbuilt/types.ts`
@@ -211,16 +215,18 @@ Atualizacao 2026-06
   - O cadastro em massa exige `servicos_considerados_ate`.
   - Registros antigos permanecem nulos e exigem preenchimento ao serem editados.
   - Alteracoes da data geram historico transacional.
+  - O mesmo projeto passa a aceitar snapshots acumulados em datas de corte diferentes.
+  - Duplicidade ativa passa a ser validada por `tenant_id + project_id + service_coverage_end_date`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
-  - Responsavel por: fluxo de cadastro, campo `Servicos considerados ate`, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico, status e bloqueio frontend para projeto ja lancado.
+  - Responsavel por: fluxo de cadastro versionado por `Projeto + Servicos considerados ate`, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico e status.
 - Caminho: `src/app/api/medicao-asbuilt/route.ts`
-  - Responsavel por: validacao de payload e de `serviceCoverageEndDate`, validacao de projeto ativo/ja lancado no cadastro manual/lote, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
+  - Responsavel por: validacao de payload, data de corte e duplicidade por projeto/data no cadastro manual/lote, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
 - Caminho: `src/app/api/medicao-asbuilt/meta/route.ts`
-  - Responsavel por: carregar projetos ativos, indicar projetos ja lancados em Medicao Asbuilt e carregar motivos de sem producao por tenant.
+  - Responsavel por: carregar projetos ativos e motivos de sem producao por tenant.
 - Caminho: `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
   - Responsavel por: pesquisar atividades em `service_activities`.
 
@@ -236,9 +242,13 @@ Constantes e configuracoes
 - Caminho: `supabase/migrations/184_enforce_active_project_for_asbuilt_measurement.sql`
   - Responsavel por: trigger de banco que impede insert/update de `project_id` em Medicao Asbuilt quando o projeto nao esta ativo.
 - Caminho: `supabase/migrations/211_block_duplicate_asbuilt_measurement_project.sql`
-  - Responsavel por: trigger e patch de RPC para impedir Medicao Asbuilt duplicada por projeto ja lancado no mesmo tenant.
+  - Responsavel por: regra historica de bloqueio por projeto no mesmo tenant, posteriormente substituida pela migration `220_version_asbuilt_by_project_coverage_date.sql`.
 - Caminho: `supabase/migrations/218_add_asbuilt_service_coverage_end_date.sql`
   - Responsavel por: adicionar `service_coverage_end_date`, indice por tenant/data/projeto, obrigatoriedade para novos registros, nova assinatura transacional da RPC, suporte ao lote e historico da data de cobertura.
+- Caminho: `supabase/migrations/219_fix_asbuilt_coverage_rpc_overload.sql`
+  - Responsavel por: remover a ambiguidade PostgreSQL `42725` entre as assinaturas antiga e nova da RPC, mantendo a implementacao anterior como helper interno.
+- Caminho: `supabase/migrations/220_version_asbuilt_by_project_coverage_date.sql`
+  - Responsavel por: permitir snapshots do mesmo projeto em cortes diferentes, criar unicidade parcial por projeto/data e atualizar trigger/RPC para bloquear somente a repeticao do mesmo corte.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`
@@ -265,7 +275,7 @@ Ajuda contextual
   - `buildAsbuiltMeasurementAggregateMap`
   - `save_project_asbuilt_measurement_order`
   - `loadActiveProjectIdSet`
-  - `loadLaunchedAsbuiltProjectIdSet`
+  - `loadExistingAsbuiltProjectCoverageKeySet`
   - `set_project_asbuilt_measurement_order_status`
   - `save_project_asbuilt_measurement_order_batch_partial`
   - `enforce_active_project_for_asbuilt_measurement_order`

@@ -71,6 +71,7 @@ type ActiveProjectRow = {
 
 type LaunchedAsbuiltProjectRow = {
   project_id: string;
+  service_coverage_end_date: string | null;
 };
 
 type SaveAsbuiltMeasurementPayload = {
@@ -308,19 +309,23 @@ async function loadActiveProjectIdSet(params: {
   return activeProjectIds;
 }
 
-async function loadLaunchedAsbuiltProjectIdSet(params: {
+function buildProjectCoverageKey(projectId: string, serviceCoverageEndDate: string) {
+  return `${projectId}|${serviceCoverageEndDate}`;
+}
+
+async function loadExistingAsbuiltProjectCoverageKeySet(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   projectIds: Array<string | null>;
   currentOrderId?: string | null;
 }) {
-  const launchedProjectIds = new Set<string>();
+  const existingKeys = new Set<string>();
   const projectIds = Array.from(new Set(params.projectIds.filter((item): item is string => Boolean(item))));
 
   for (const projectIdChunk of chunk(projectIds, 500)) {
     let query = params.supabase
       .from("project_asbuilt_measurement_orders")
-      .select("project_id")
+      .select("project_id, service_coverage_end_date")
       .eq("tenant_id", params.tenantId)
       .neq("status", "CANCELADA")
       .in("project_id", projectIdChunk);
@@ -336,15 +341,24 @@ async function loadLaunchedAsbuiltProjectIdSet(params: {
     }
 
     for (const project of data ?? []) {
-      launchedProjectIds.add(project.project_id);
+      if (project.service_coverage_end_date) {
+        existingKeys.add(buildProjectCoverageKey(project.project_id, project.service_coverage_end_date));
+      }
     }
   }
 
-  return launchedProjectIds;
+  return existingKeys;
 }
 
-function asbuiltMeasurementModuleMigrationHint(message: string | undefined) {
+function asbuiltMeasurementModuleMigrationHint(message: string | undefined, code?: string) {
   const normalized = String(message ?? "").toLowerCase();
+  if (
+    code === "42725"
+    || normalized.includes("p_service_coverage_end_date")
+    || normalized.includes("service_coverage_end_date")
+  ) {
+    return " Verifique se as migrations 218_add_asbuilt_service_coverage_end_date.sql e 219_fix_asbuilt_coverage_rpc_overload.sql foram aplicadas.";
+  }
   if (
     normalized.includes("project_asbuilt_measurement_orders")
     || normalized.includes("project_asbuilt_measurement_order_items")
@@ -609,7 +623,7 @@ export async function GET(request: NextRequest) {
 
   const { data: orders, error } = await query.returns<AsbuiltMeasurementOrderRow[]>();
   if (error) {
-    const hint = asbuiltMeasurementModuleMigrationHint(error.message);
+    const hint = asbuiltMeasurementModuleMigrationHint(error.message, error.code);
     return NextResponse.json({ message: `Falha ao listar medicoes asbuilt.${hint}`.trim() }, { status: 500 });
   }
 
@@ -731,17 +745,17 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
     }, { status: 400 });
   }
 
-  const launchedProjectIds = await loadLaunchedAsbuiltProjectIdSet({
+  const existingProjectCoverageKeys = await loadExistingAsbuiltProjectCoverageKeySet({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
     projectIds: [projectId],
     currentOrderId: method === "PUT" ? orderId : null,
   });
 
-  if (launchedProjectIds.has(projectId)) {
+  if (existingProjectCoverageKeys.has(buildProjectCoverageKey(projectId, serviceCoverageEndDate))) {
     return NextResponse.json({
-      message: "Projeto ja possui Medicao Asbuilt lancada.",
-      reason: "PROJECT_ASBUILT_MEASUREMENT_ALREADY_EXISTS",
+      message: "Projeto ja possui Medicao Asbuilt nesta data de corte.",
+      reason: "PROJECT_ASBUILT_MEASUREMENT_COVERAGE_ALREADY_EXISTS",
     }, { status: 409 });
   }
 
@@ -779,7 +793,13 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
   });
 
   if (error) {
-    const hint = asbuiltMeasurementModuleMigrationHint(error.message);
+    if (error.code === "23505") {
+      return NextResponse.json({
+        message: "Projeto ja possui Medicao Asbuilt nesta data de corte.",
+        reason: "PROJECT_ASBUILT_MEASUREMENT_COVERAGE_ALREADY_EXISTS",
+      }, { status: 409 });
+    }
+    const hint = asbuiltMeasurementModuleMigrationHint(error.message, error.code);
     return NextResponse.json({ message: `Falha ao salvar medicao-asbuilt.${hint}`.trim() }, { status: 500 });
   }
 
@@ -853,45 +873,53 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     }));
   const rowsWithActiveProjects = rows.filter((row) => !row.projectId || activeProjectIds.has(row.projectId));
 
-  const seenBatchProjectIds = new Set<string>();
+  const seenBatchProjectCoverageKeys = new Set<string>();
   const duplicateProjectResults: BatchPreValidationResult[] = [];
   const rowsWithUniqueProjects: typeof rows = [];
   for (const row of rowsWithActiveProjects) {
-    if (row.projectId && seenBatchProjectIds.has(row.projectId)) {
+    const projectCoverageKey = row.projectId && row.serviceCoverageEndDate
+      ? buildProjectCoverageKey(row.projectId, row.serviceCoverageEndDate)
+      : null;
+    if (projectCoverageKey && seenBatchProjectCoverageKeys.has(projectCoverageKey)) {
       duplicateProjectResults.push({
         rowNumbers: row.rowNumbers,
         success: false,
-        reason: "PROJECT_ASBUILT_MEASUREMENT_DUPLICATE_IN_BATCH",
-        message: "Projeto repetido no mesmo lote de Medicao Asbuilt.",
+        reason: "PROJECT_ASBUILT_MEASUREMENT_COVERAGE_DUPLICATE_IN_BATCH",
+        message: "Projeto e data de corte repetidos no mesmo lote de Medicao Asbuilt.",
         asbuiltMeasurementOrderId: null,
       });
       continue;
     }
-    if (row.projectId) {
-      seenBatchProjectIds.add(row.projectId);
+    if (projectCoverageKey) {
+      seenBatchProjectCoverageKeys.add(projectCoverageKey);
     }
     rowsWithUniqueProjects.push(row);
   }
 
-  const launchedProjectIds = await loadLaunchedAsbuiltProjectIdSet({
+  const existingProjectCoverageKeys = await loadExistingAsbuiltProjectCoverageKeySet({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
     projectIds: rowsWithUniqueProjects.map((row) => row.projectId),
   });
-  const launchedProjectResults = rowsWithUniqueProjects
-    .filter((row) => row.projectId && launchedProjectIds.has(row.projectId))
+  const existingProjectCoverageResults = rowsWithUniqueProjects
+    .filter((row) => row.projectId && row.serviceCoverageEndDate
+      && existingProjectCoverageKeys.has(buildProjectCoverageKey(row.projectId, row.serviceCoverageEndDate)))
     .map((row) => ({
       rowNumbers: row.rowNumbers,
       success: false,
-      reason: "PROJECT_ASBUILT_MEASUREMENT_ALREADY_EXISTS",
-      message: "Projeto ja possui Medicao Asbuilt lancada.",
+      reason: "PROJECT_ASBUILT_MEASUREMENT_COVERAGE_ALREADY_EXISTS",
+      message: "Projeto ja possui Medicao Asbuilt nesta data de corte.",
       asbuiltMeasurementOrderId: null,
     }));
-  const rowsReadyToSave = rowsWithUniqueProjects.filter((row) => !row.projectId || !launchedProjectIds.has(row.projectId));
+  const rowsReadyToSave = rowsWithUniqueProjects.filter((row) => (
+    !row.projectId
+    || !row.serviceCoverageEndDate
+    || !existingProjectCoverageKeys.has(buildProjectCoverageKey(row.projectId, row.serviceCoverageEndDate))
+  ));
   const preValidationResults = [
     ...inactiveProjectResults,
     ...duplicateProjectResults,
-    ...launchedProjectResults,
+    ...existingProjectCoverageResults,
   ];
 
   if (!rowsReadyToSave.length) {
@@ -911,7 +939,13 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
   });
 
   if (error) {
-    const hint = asbuiltMeasurementModuleMigrationHint(error.message);
+    if (error.code === "23505") {
+      return NextResponse.json({
+        message: "Um ou mais projetos ja possuem Medicao Asbuilt na data de corte informada.",
+        reason: "PROJECT_ASBUILT_MEASUREMENT_COVERAGE_ALREADY_EXISTS",
+      }, { status: 409 });
+    }
+    const hint = asbuiltMeasurementModuleMigrationHint(error.message, error.code);
     return NextResponse.json({ message: `Falha ao importar medicao-asbuilt em lote.${hint}`.trim() }, { status: 500 });
   }
 
@@ -985,7 +1019,7 @@ export async function PATCH(request: NextRequest) {
   });
 
   if (error) {
-    const hint = asbuiltMeasurementModuleMigrationHint(error.message);
+    const hint = asbuiltMeasurementModuleMigrationHint(error.message, error.code);
     return NextResponse.json({ message: `Falha ao alterar status do medicao-asbuilt.${hint}`.trim() }, { status: 500 });
   }
 

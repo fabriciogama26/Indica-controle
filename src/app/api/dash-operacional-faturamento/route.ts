@@ -52,6 +52,11 @@ type OrderProjectRow = {
   project_id: string;
 };
 
+type AsbuiltOrderProjectRow = OrderProjectRow & {
+  service_coverage_end_date: string | null;
+  updated_at: string | null;
+};
+
 type MeasurementItemRow = {
   service_activity_id: string;
   activity_code: string;
@@ -360,6 +365,15 @@ async function loadOrderIds(params: {
   table: "project_measurement_orders" | "project_asbuilt_measurement_orders" | "project_billing_orders";
   projectId: string;
 }) {
+  if (params.table === "project_asbuilt_measurement_orders") {
+    const orders = await loadLatestClosedAsbuiltOrderRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds: [params.projectId],
+    });
+    return orders.map((item) => item.id);
+  }
+
   let query = params.supabase
     .from(params.table)
     .select("id")
@@ -387,6 +401,14 @@ async function loadOrderProjectRows(params: {
   table: "project_measurement_orders" | "project_asbuilt_measurement_orders" | "project_billing_orders";
   projectIds: string[];
 }) {
+  if (params.table === "project_asbuilt_measurement_orders") {
+    return loadLatestClosedAsbuiltOrderRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds: params.projectIds,
+    });
+  }
+
   const rows: OrderProjectRow[] = [];
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
 
@@ -417,6 +439,59 @@ async function loadOrderProjectRows(params: {
   }
 
   return rows;
+}
+
+async function loadLatestClosedAsbuiltOrderRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projectIds: string[];
+}) {
+  const rows: AsbuiltOrderProjectRow[] = [];
+  const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
+
+  for (const projectIdChunk of chunk(projectIds, 500)) {
+    for (let from = 0; ; from += QUERY_PAGE_SIZE) {
+      const { data, error } = await params.supabase
+        .from("project_asbuilt_measurement_orders")
+        .select("id, project_id, service_coverage_end_date, updated_at")
+        .eq("tenant_id", params.tenantId)
+        .eq("is_active", true)
+        .eq("status", "FECHADA")
+        .in("project_id", projectIdChunk)
+        .order("project_id", { ascending: true })
+        .order("service_coverage_end_date", { ascending: false, nullsFirst: false })
+        .order("updated_at", { ascending: false })
+        .range(from, from + QUERY_PAGE_SIZE - 1)
+        .returns<AsbuiltOrderProjectRow[]>();
+
+      if (error) {
+        throw new Error("Falha ao carregar o ultimo Asbuilt fechado por projeto.");
+      }
+
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < QUERY_PAGE_SIZE) break;
+    }
+  }
+
+  const latestByProject = new Map<string, AsbuiltOrderProjectRow>();
+  for (const row of rows) {
+    const current = latestByProject.get(row.project_id);
+    if (!current) {
+      latestByProject.set(row.project_id, row);
+      continue;
+    }
+
+    const rowCoverage = row.service_coverage_end_date ?? "";
+    const currentCoverage = current.service_coverage_end_date ?? "";
+    if (
+      rowCoverage > currentCoverage
+      || (rowCoverage === currentCoverage && (row.updated_at ?? "") > (current.updated_at ?? ""))
+    ) {
+      latestByProject.set(row.project_id, row);
+    }
+  }
+
+  return Array.from(latestByProject.values());
 }
 
 async function loadMeasurementItems(params: {
