@@ -839,6 +839,8 @@
 - [x] Ajustar o Dash operacional e faturamento para calcular os tickets medios de `Medicao` e `Asbuilt` com valores de ordens dos projetos presentes nas duas bases, alem de adicionar filtro/coluna `Tipo de servico` vindo do cadastro de Projetos, linha `Total filtrado` e total no CSV da tabela `Projetos por valor`.
 - [x] Corrigir `Asbuilt - Ticket medio / Servicos` no Dash operacional e faturamento para dividir o valor Asbuilt pela quantidade de ordens `COM_PRODUCAO` da Medicao nos projetos comparaveis, evitando que fique igual ao ticket por projeto quando ha uma ordem Asbuilt por projeto.
 - [x] Adicionar na tabela `Projetos por valor` do Dash operacional e faturamento os checkboxes `Ocultar Medicao zerada` e `Ocultar Asbuilt zerado`, filtrando linhas com valor `0` na respectiva origem e reiniciando a paginacao local.
+- [x] Adicionar na tabela `Projetos por valor` os filtros `Somente Medicao zerada` e `Somente Asbuilt zerado`, com exclusao mutua em relacao ao filtro `Ocultar` da mesma origem.
+- [x] Adicionar `Servicos considerados ate` na Medicao Asbuilt, com migration, obrigatoriedade em novos registros, suporte a edicao/lista/detalhes/exportacoes/importacao CSV e historico, preservando registros legados sem backfill automatico.
 
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
 

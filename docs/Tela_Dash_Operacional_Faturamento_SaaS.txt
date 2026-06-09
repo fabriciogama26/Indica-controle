@@ -143,6 +143,8 @@ Filtros, auto-complete e listagem
 - A tabela `Projetos por valor` possui filtro local por checkbox:
   - `Ocultar Medicao zerada`
   - `Ocultar Asbuilt zerado`
+  - `Somente Medicao zerada`
+  - `Somente Asbuilt zerado`
   - `Asbuilt menor que Medicao`
   - `Faturamento menor que Asbuilt`
 - A tabela `Projetos por valor` possui filtros locais por:
@@ -255,6 +257,7 @@ Atualizacao 2026-06
   - A tabela `Projetos por valor` passa a exibir coluna `Tipo de servico`, filtro local por `Tipo de servico` e linha de `Total filtrado`.
   - A exportacao CSV de `Projetos por valor` passa a incluir `tipo_servico` e linha `TOTAL`.
   - A tabela `Projetos por valor` passa a ter checkboxes locais para ocultar linhas com valor zerado em `Medicao` ou em `Asbuilt`.
+  - A tabela passa a permitir listar somente linhas com valor zerado em `Medicao` ou em `Asbuilt`; os filtros `Somente` e `Ocultar` da mesma origem sao mutuamente exclusivos.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -281,7 +284,7 @@ Funcoes utilitarias relacionadas
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
   - Comportamento ajustado: `loadProjects`, `loadOrderProjectRows`, `loadMeasurementItems` e `loadCommercialItems` passam a paginar as leituras usadas no agregado global para nao truncar os cards pelo limite padrao do PostgREST.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadMetadata`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `projectValueServiceTypeOptions`, `hideZeroMeasurementValues`, `hideZeroAsbuiltValues`, `filteredProjectValueRows`, `projectValueTotals`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
+  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadMetadata`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `projectValueServiceTypeOptions`, `hideZeroMeasurementValues`, `hideZeroAsbuiltValues`, `onlyZeroMeasurementValues`, `onlyZeroAsbuiltValues`, `filteredProjectValueRows`, `projectValueTotals`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
@@ -326,3 +329,4 @@ Ajuda contextual
   - Ajuste posterior: `Asbuilt - Ticket medio / Servicos` passa a dividir o valor Asbuilt pela quantidade de ordens `COM_PRODUCAO` da Medicao dos projetos comparaveis.
   - Ajuste posterior: `Projetos por valor` passa a ter filtro/coluna de `Tipo de servico`, linha `Total filtrado` e exportacao CSV com `tipo_servico` e total.
   - Ajuste posterior: `Projetos por valor` passa a ter checkboxes `Ocultar Medicao zerada` e `Ocultar Asbuilt zerado`, removendo do resultado filtrado as linhas com valor `0` na respectiva origem.
+  - Ajuste posterior: `Projetos por valor` passa a ter checkboxes `Somente Medicao zerada` e `Somente Asbuilt zerado`, incompativeis com o filtro `Ocultar` da mesma origem.
