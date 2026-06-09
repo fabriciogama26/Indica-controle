@@ -30,6 +30,7 @@ import {
   asbuiltMeasurementStatusLabel,
   downloadCsv,
   formatCurrency,
+  formatDate,
   formatDateTime,
   formatDecimal,
   normalizeAsbuiltMeasurementKind,
@@ -38,6 +39,7 @@ import {
   normalizeSearchText,
   normalizeText,
   parseCsvContent,
+  parseDateInput,
   parsePositiveDecimal,
   readCsvField,
   toIsoDate,
@@ -68,6 +70,7 @@ type StatusModalState = {
 type MassImportGroup = {
   rowNumbers: number[];
   projectId: string;
+  serviceCoverageEndDate: string;
   asbuiltMeasurementKind: AsbuiltMeasurementKind;
   noProductionReasonId: string;
   notes: string;
@@ -396,6 +399,10 @@ export function AsbuiltMeasurementPageView() {
       setError("Projeto ja possui Medicao Asbuilt lancada.");
       return;
     }
+    if (!parseDateInput(form.serviceCoverageEndDate)) {
+      setError("Informe uma data valida em Servicos considerados ate.");
+      return;
+    }
     if (form.asbuiltMeasurementKind === "SEM_PRODUCAO" && !form.noProductionReasonId) {
       setError("Selecione o motivo de sem producao.");
       return;
@@ -425,6 +432,7 @@ export function AsbuiltMeasurementPageView() {
         body: JSON.stringify({
           id: form.id,
           projectId: form.projectId,
+          serviceCoverageEndDate: form.serviceCoverageEndDate,
           asbuiltMeasurementKind: form.asbuiltMeasurementKind,
           noProductionReasonId: form.asbuiltMeasurementKind === "SEM_PRODUCAO" ? form.noProductionReasonId : null,
           notes: form.notes,
@@ -475,6 +483,7 @@ export function AsbuiltMeasurementPageView() {
         expectedUpdatedAt: detail.updatedAt,
         projectId: detail.projectId,
         projectSearch: project?.code ?? detail.projectCode,
+        serviceCoverageEndDate: detail.serviceCoverageEndDate ?? "",
         asbuiltMeasurementKind: detail.asbuiltMeasurementKind,
         noProductionReasonId: detail.noProductionReasonId ?? "",
         notes: detail.notes,
@@ -578,10 +587,11 @@ export function AsbuiltMeasurementPageView() {
       if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar medicoes asbuilt.");
 
       downloadCsv("medicao_asbuilt.csv", [
-        ["numero", "projeto", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
+        ["numero", "projeto", "servicos_considerados_ate", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
         ...(payload.orders ?? []).map((order) => [
           order.asbuiltMeasurementNumber,
           order.projectCode,
+          formatDate(order.serviceCoverageEndDate),
           asbuiltMeasurementKindLabel(order.asbuiltMeasurementKind),
           order.noProductionReasonName,
           asbuiltMeasurementStatusLabel(order.status),
@@ -651,6 +661,7 @@ export function AsbuiltMeasurementPageView() {
           rows.push([
             detail.asbuiltMeasurementNumber,
             detail.projectCode,
+            formatDate(detail.serviceCoverageEndDate),
             asbuiltMeasurementKindLabel(detail.asbuiltMeasurementKind),
             detail.noProductionReasonName || "-",
             asbuiltMeasurementStatusLabel(detail.status),
@@ -671,7 +682,7 @@ export function AsbuiltMeasurementPageView() {
       }
 
       downloadCsv(`medicao_asbuilt_detalhamento_${toIsoDate(new Date())}.csv`, [
-        ["numero", "projeto", "tipo", "motivo_sem_producao", "status", "codigo_atividade", "descricao_atividade", "unidade", "status_atividade", "pontos", "quantidade", "taxa", "valor_unitario", "valor_item", "observacao_item", "observacao_medicao_asbuilt", "atualizado_em"],
+        ["numero", "projeto", "servicos_considerados_ate", "tipo", "motivo_sem_producao", "status", "codigo_atividade", "descricao_atividade", "unidade", "status_atividade", "pontos", "quantidade", "taxa", "valor_unitario", "valor_item", "observacao_item", "observacao_medicao_asbuilt", "atualizado_em"],
         ...rows,
       ]);
 
@@ -689,8 +700,8 @@ export function AsbuiltMeasurementPageView() {
   function downloadMassTemplate() {
     downloadCsv("modelo_medicao_asbuilt.csv", [
       [...IMPORT_TEMPLATE_HEADERS],
-      ["OBRA-001", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Atividade faturada"],
-      ["OBRA-002", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima"],
+      ["OBRA-001", "2026-05-10", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Atividade faturada"],
+      ["OBRA-002", "10/05/2026", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima"],
     ]);
   }
 
@@ -737,6 +748,7 @@ export function AsbuiltMeasurementPageView() {
         const rowNumber = index + 1;
         const row = rows[index];
         const projectInput = readCsvField(row, headerMap, "projeto");
+        const serviceCoverageEndDateInput = readCsvField(row, headerMap, "servicos_considerados_ate");
         const kindInput = readCsvField(row, headerMap, "tipo_medicao_asbuilt");
         const reasonInput = readCsvField(row, headerMap, "motivo_sem_producao");
         const activityInput = readCsvField(row, headerMap, "codigo_atividade");
@@ -744,6 +756,7 @@ export function AsbuiltMeasurementPageView() {
         const rateInput = readCsvField(row, headerMap, "taxa");
         const observation = readCsvField(row, headerMap, "observacao");
         const project = findProjectOption(projectInput);
+        const serviceCoverageEndDate = parseDateInput(serviceCoverageEndDateInput);
         const asbuiltMeasurementKind = normalizeAsbuiltMeasurementKind(kindInput);
         const reason = asbuiltMeasurementKind === "SEM_PRODUCAO" ? findReasonOption(reasonInput) : null;
         const quantity = parsePositiveDecimal(quantityInput);
@@ -751,12 +764,13 @@ export function AsbuiltMeasurementPageView() {
 
         if (!project) issues.push({ linha: rowNumber, coluna: "projeto", valor: projectInput, erro: "Projeto nao encontrado." });
         if (project?.hasAsbuiltMeasurement) issues.push({ linha: rowNumber, coluna: "projeto", valor: projectInput, erro: "Projeto ja possui Medicao Asbuilt lancada." });
+        if (!serviceCoverageEndDate) issues.push({ linha: rowNumber, coluna: "servicos_considerados_ate", valor: serviceCoverageEndDateInput, erro: "Data invalida. Use YYYY-MM-DD ou DD/MM/YYYY." });
         if (asbuiltMeasurementKind === "SEM_PRODUCAO" && !reason) issues.push({ linha: rowNumber, coluna: "motivo_sem_producao", valor: reasonInput, erro: "Motivo sem producao nao encontrado." });
         if (!activityInput) issues.push({ linha: rowNumber, coluna: "codigo_atividade", valor: activityInput, erro: "Atividade obrigatoria." });
         if (quantity === null) issues.push({ linha: rowNumber, coluna: "quantidade", valor: quantityInput, erro: "Quantidade invalida." });
         if (rate === null) issues.push({ linha: rowNumber, coluna: "taxa", valor: rateInput, erro: "Taxa invalida." });
 
-        if (!project || project.hasAsbuiltMeasurement || (asbuiltMeasurementKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
+        if (!project || project.hasAsbuiltMeasurement || !serviceCoverageEndDate || (asbuiltMeasurementKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
           continue;
         }
 
@@ -766,10 +780,11 @@ export function AsbuiltMeasurementPageView() {
           continue;
         }
 
-        const groupKey = [project.id, asbuiltMeasurementKind, reason?.id ?? "", observation].join("|");
+        const groupKey = [project.id, serviceCoverageEndDate, asbuiltMeasurementKind, reason?.id ?? "", observation].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
+          serviceCoverageEndDate,
           asbuiltMeasurementKind,
           noProductionReasonId: reason?.id ?? "",
           notes: observation,
@@ -842,6 +857,15 @@ export function AsbuiltMeasurementPageView() {
           <label className={styles.field}>
             <span>Projeto</span>
             <input list="asbuiltMeasurement-projects" value={form.projectSearch} onChange={(event) => updateProjectFromInput(event.target.value)} />
+          </label>
+          <label className={styles.field}>
+            <span>Servicos considerados ate</span>
+            <input
+              type="date"
+              value={form.serviceCoverageEndDate}
+              onChange={(event) => setForm((current) => ({ ...current, serviceCoverageEndDate: event.target.value }))}
+              required
+            />
           </label>
           <label className={styles.field}>
             <span>Tipo de medicao-asbuilt</span>
@@ -998,6 +1022,7 @@ export function AsbuiltMeasurementPageView() {
               <tr>
                 <th>Numero</th>
                 <th>Projeto</th>
+                <th>Servicos considerados ate</th>
                 <th>Tipo</th>
                 <th>Motivo</th>
                 <th>Itens</th>
@@ -1012,6 +1037,7 @@ export function AsbuiltMeasurementPageView() {
                 <tr key={order.id}>
                   <td>{order.asbuiltMeasurementNumber}</td>
                   <td>{order.projectCode}</td>
+                  <td>{formatDate(order.serviceCoverageEndDate)}</td>
                   <td>{asbuiltMeasurementKindLabel(order.asbuiltMeasurementKind)}</td>
                   <td>{order.noProductionReasonName || "-"}</td>
                   <td>{order.itemCount}</td>
@@ -1029,7 +1055,7 @@ export function AsbuiltMeasurementPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={9} className={styles.emptyRow}>{isLoadingOrders ? "Carregando medicoes asbuilt..." : "Nenhum medicao-asbuilt encontrado."}</td></tr>}
+              )) : <tr><td colSpan={10} className={styles.emptyRow}>{isLoadingOrders ? "Carregando medicoes asbuilt..." : "Nenhum medicao-asbuilt encontrado."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1053,6 +1079,7 @@ export function AsbuiltMeasurementPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Numero:</strong> {detailOrder.asbuiltMeasurementNumber}</div>
                 <div><strong>Projeto:</strong> {detailOrder.projectCode}</div>
+                <div><strong>Servicos considerados ate:</strong> {formatDate(detailOrder.serviceCoverageEndDate)}</div>
                 <div><strong>Status:</strong> {asbuiltMeasurementStatusLabel(detailOrder.status)}</div>
                 <div><strong>Tipo:</strong> {asbuiltMeasurementKindLabel(detailOrder.asbuiltMeasurementKind)}</div>
                 <div><strong>Motivo:</strong> {detailOrder.noProductionReasonName || "-"}</div>

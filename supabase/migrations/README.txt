@@ -475,6 +475,10 @@ Resumo por arquivo
 
 217_copy_programming_to_multiple_dates.sql
 - Cria `copy_project_programming_to_dates` para copiar uma Programacao ativa para multiplas datas com ETAPA por destino, ajustando o rastreio de lotes para `single_to_dates` e mantendo validacao por tenant, concorrencia, conflito de horario e ETAPA.
+
+218_add_asbuilt_service_coverage_end_date.sql
+- Adiciona `project_asbuilt_measurement_orders.service_coverage_end_date` para registrar a data limite inclusiva dos servicos cobertos pelo Asbuilt.
+- Mantem registros legados sem backfill, exige a data em novos cadastros, atualiza RPC normal/lote, registra historico e cria indice por tenant/data/projeto.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

@@ -40,6 +40,7 @@ Cadastro
 --------
 - Campos principais:
   - Projeto
+  - Servicos considerados ate
   - Tipo (`Com producao` ou `Sem producao`)
   - Motivo sem producao (obrigatorio somente em `Sem producao`)
   - Observacao
@@ -54,6 +55,8 @@ Cadastro
   - Observacao do item
 - Regras:
   - Projeto e obrigatorio.
+  - `Servicos considerados ate` e obrigatorio em novos cadastros e representa a data limite inclusiva dos servicos cobertos pelo Asbuilt.
+  - Registros antigos permanecem com a data nula ate serem editados, sem backfill automatico.
   - Projeto deve estar ativo no cadastro manual e no cadastro em massa.
   - Projeto ja lancado em Medicao Asbuilt nao pode receber novo cadastro enquanto houver registro diferente de `CANCELADA`.
   - Edicao do proprio registro continua permitida somente quando o status for `ABERTA`, sem liberar troca para outro projeto ja lancado.
@@ -84,6 +87,7 @@ Filtros, auto-complete e listagem
 - Listagem:
   - Numero
   - Projeto
+  - Servicos considerados ate
   - Tipo
   - Motivo
   - Quantidade de itens
@@ -136,8 +140,9 @@ Atalhos
   - `GET /api/medicao-asbuilt/meta`
   - `GET /api/medicao-asbuilt/activities/catalog`
 - Modelo cadastro em massa:
-  - `projeto;tipo_medicao_asbuilt;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao`
-  - Valores obrigatorios: `projeto`, `tipo_medicao_asbuilt`, `codigo_atividade`, `quantidade` e `taxa`.
+  - `projeto;servicos_considerados_ate;tipo_medicao_asbuilt;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao`
+  - Valores obrigatorios: `projeto`, `servicos_considerados_ate`, `tipo_medicao_asbuilt`, `codigo_atividade`, `quantidade` e `taxa`.
+  - `servicos_considerados_ate` aceita `YYYY-MM-DD` ou `DD/MM/YYYY`.
   - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
   - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
   - Linhas com projeto inativo sao rejeitadas e retornam erro no resultado da importacao parcial.
@@ -184,13 +189,36 @@ Atualizacao 2026-05
 - Lacunas explicitas:
   - O dashboard comparativo entre Faturamento e Medicao Asbuilt fica para etapa futura.
 
+Atualizacao 2026-06
+-------------------
+- Arquivos alterados:
+  - `supabase/migrations/218_add_asbuilt_service_coverage_end_date.sql`
+  - `src/app/api/medicao-asbuilt/route.ts`
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao-asbuilt/types.ts`
+  - `src/modules/dashboard/medicao-asbuilt/constants.ts`
+  - `src/modules/dashboard/medicao-asbuilt/utils.ts`
+  - `docs/Tela_Medicao_Asbuilt_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - A Medicao Asbuilt nao registrava a data limite dos servicos cobertos.
+- Depois:
+  - Novos cadastros exigem `Servicos considerados ate`.
+  - A data e persistida em `project_asbuilt_measurement_orders.service_coverage_end_date`.
+  - Cadastro manual, edicao, lista, detalhes e exportacoes exibem a data.
+  - O cadastro em massa exige `servicos_considerados_ate`.
+  - Registros antigos permanecem nulos e exigem preenchimento ao serem editados.
+  - Alteracoes da data geram historico transacional.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
-  - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico, status e bloqueio frontend para projeto ja lancado.
+  - Responsavel por: fluxo de cadastro, campo `Servicos considerados ate`, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico, status e bloqueio frontend para projeto ja lancado.
 - Caminho: `src/app/api/medicao-asbuilt/route.ts`
-  - Responsavel por: validacao de payload, validacao de projeto ativo/ja lancado no cadastro manual/lote, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
+  - Responsavel por: validacao de payload e de `serviceCoverageEndDate`, validacao de projeto ativo/ja lancado no cadastro manual/lote, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
 - Caminho: `src/app/api/medicao-asbuilt/meta/route.ts`
   - Responsavel por: carregar projetos ativos, indicar projetos ja lancados em Medicao Asbuilt e carregar motivos de sem producao por tenant.
 - Caminho: `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
@@ -209,10 +237,12 @@ Constantes e configuracoes
   - Responsavel por: trigger de banco que impede insert/update de `project_id` em Medicao Asbuilt quando o projeto nao esta ativo.
 - Caminho: `supabase/migrations/211_block_duplicate_asbuilt_measurement_project.sql`
   - Responsavel por: trigger e patch de RPC para impedir Medicao Asbuilt duplicada por projeto ja lancado no mesmo tenant.
+- Caminho: `supabase/migrations/218_add_asbuilt_service_coverage_end_date.sql`
+  - Responsavel por: adicionar `service_coverage_end_date`, indice por tenant/data/projeto, obrigatoriedade para novos registros, nova assinatura transacional da RPC, suporte ao lote e historico da data de cobertura.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`
-  - Responsavel por: normalizacao, parse de CSV, formatacao de moeda/data e download CSV.
+  - Responsavel por: normalizacao, parse de CSV, validacao/formatacao da data de cobertura, formatacao de moeda e download CSV.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para autenticacao, usuario ativo e tenant ativo.
@@ -239,3 +269,4 @@ Ajuda contextual
   - `set_project_asbuilt_measurement_order_status`
   - `save_project_asbuilt_measurement_order_batch_partial`
   - `enforce_active_project_for_asbuilt_measurement_order`
+  - `enforce_asbuilt_service_coverage_end_date`

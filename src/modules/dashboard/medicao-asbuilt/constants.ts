@@ -8,6 +8,7 @@ export const INITIAL_FORM: AsbuiltMeasurementFormState = {
   expectedUpdatedAt: null,
   projectId: "",
   projectSearch: "",
+  serviceCoverageEndDate: "",
   asbuiltMeasurementKind: "COM_PRODUCAO",
   noProductionReasonId: "",
   notes: "",
@@ -28,6 +29,7 @@ export const INITIAL_FILTERS: AsbuiltMeasurementFilters = {
 
 export const IMPORT_TEMPLATE_HEADERS = [
   "projeto",
+  "servicos_considerados_ate",
   "tipo_medicao_asbuilt",
   "motivo_sem_producao",
   "codigo_atividade",
@@ -38,6 +40,7 @@ export const IMPORT_TEMPLATE_HEADERS = [
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
+  serviceCoverageEndDate: "Servicos considerados ate",
   asbuiltMeasurementKind: "Tipo de medicao-asbuilt",
   noProductionReasonId: "Motivo sem producao",
   notes: "Observacao",

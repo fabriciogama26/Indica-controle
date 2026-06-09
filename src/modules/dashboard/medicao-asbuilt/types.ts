@@ -49,6 +49,7 @@ export type AsbuiltMeasurementFormState = {
   expectedUpdatedAt: string | null;
   projectId: string;
   projectSearch: string;
+  serviceCoverageEndDate: string;
   asbuiltMeasurementKind: AsbuiltMeasurementKind;
   noProductionReasonId: string;
   notes: string;
@@ -72,6 +73,7 @@ export type AsbuiltMeasurementListItem = {
   asbuiltMeasurementNumber: string;
   projectId: string;
   projectCode: string;
+  serviceCoverageEndDate: string | null;
   asbuiltMeasurementKind: AsbuiltMeasurementKind;
   noProductionReasonId: string | null;
   noProductionReasonName: string;

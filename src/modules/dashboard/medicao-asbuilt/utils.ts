@@ -41,6 +41,37 @@ export function formatDateTime(value: string | null | undefined) {
   }).format(date);
 }
 
+export function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+  const [year, month, day] = value.slice(0, 10).split("-");
+  if (!year || !month || !day) return "-";
+  return `${day}/${month}/${year}`;
+}
+
+export function parseDateInput(value: unknown) {
+  const normalized = normalizeText(value);
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
+  const brMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(normalized);
+  const parts = isoMatch
+    ? { year: isoMatch[1], month: isoMatch[2], day: isoMatch[3] }
+    : brMatch
+      ? { year: brMatch[3], month: brMatch[2], day: brMatch[1] }
+      : null;
+
+  if (!parts) return null;
+
+  const date = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+  if (
+    date.getUTCFullYear() !== Number(parts.year)
+    || date.getUTCMonth() + 1 !== Number(parts.month)
+    || date.getUTCDate() !== Number(parts.day)
+  ) {
+    return null;
+  }
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 export function toIsoDate(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");

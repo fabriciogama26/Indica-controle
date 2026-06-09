@@ -10,6 +10,7 @@ type AsbuiltMeasurementOrderRow = {
   id: string;
   asbuilt_number: string;
   project_id: string;
+  service_coverage_end_date: string | null;
   asbuilt_kind: AsbuiltMeasurementKind;
   no_production_reason_id: string | null;
   no_production_reason_name_snapshot: string | null;
@@ -76,6 +77,7 @@ type SaveAsbuiltMeasurementPayload = {
   action?: string;
   id?: string;
   projectId?: string;
+  serviceCoverageEndDate?: string;
   asbuiltMeasurementKind?: string;
   noProductionReasonId?: string;
   notes?: string;
@@ -154,6 +156,23 @@ function normalizeText(value: unknown) {
 function normalizeUuid(value: unknown) {
   const normalized = normalizeText(value);
   return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
+}
+
+function normalizeIsoDate(value: unknown) {
+  const normalized = normalizeText(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
+  if (!match) return null;
+
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (
+    date.getUTCFullYear() !== Number(match[1])
+    || date.getUTCMonth() + 1 !== Number(match[2])
+    || date.getUTCDate() !== Number(match[3])
+  ) {
+    return null;
+  }
+
+  return normalized;
 }
 
 function normalizeAsbuiltMeasurementKind(value: unknown): AsbuiltMeasurementKind {
@@ -419,7 +438,7 @@ async function fetchAsbuiltMeasurementOrderDetail(params: {
 }) {
   const { data: order, error: orderError } = await params.supabase
     .from("project_asbuilt_measurement_orders")
-    .select("id, asbuilt_number, project_id, asbuilt_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
+    .select("id, asbuilt_number, project_id, service_coverage_end_date, asbuilt_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", params.tenantId)
     .eq("id", params.orderId)
     .maybeSingle<AsbuiltMeasurementOrderRow>();
@@ -481,6 +500,7 @@ async function fetchAsbuiltMeasurementOrderDetail(params: {
     asbuiltMeasurementNumber: normalizeText(order.asbuilt_number),
     projectId: order.project_id,
     projectCode: normalizeText(order.project_code_snapshot),
+    serviceCoverageEndDate: order.service_coverage_end_date,
     asbuiltMeasurementKind: normalizeAsbuiltMeasurementKind(order.asbuilt_kind),
     noProductionReasonId: order.no_production_reason_id,
     noProductionReasonName: normalizeText(order.no_production_reason_name_snapshot),
@@ -578,7 +598,7 @@ export async function GET(request: NextRequest) {
 
   let query = resolution.supabase
     .from("project_asbuilt_measurement_orders")
-    .select("id, asbuilt_number, project_id, asbuilt_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
+    .select("id, asbuilt_number, project_id, service_coverage_end_date, asbuilt_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", resolution.appUser.tenant_id)
     .order("updated_at", { ascending: false });
 
@@ -637,6 +657,7 @@ export async function GET(request: NextRequest) {
       asbuiltMeasurementNumber: normalizeText(item.asbuilt_number),
       projectId: item.project_id,
       projectCode: normalizeText(item.project_code_snapshot),
+      serviceCoverageEndDate: item.service_coverage_end_date,
       asbuiltMeasurementKind: normalizeAsbuiltMeasurementKind(item.asbuilt_kind),
       noProductionReasonId: item.no_production_reason_id,
       noProductionReasonName: normalizeText(item.no_production_reason_name_snapshot),
@@ -673,6 +694,7 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
   const payload = (await request.json().catch(() => null)) as SaveAsbuiltMeasurementPayload | null;
   const orderId = normalizeUuid(payload?.id);
   const projectId = normalizeUuid(payload?.projectId);
+  const serviceCoverageEndDate = normalizeIsoDate(payload?.serviceCoverageEndDate);
   const asbuiltMeasurementKind = normalizeAsbuiltMeasurementKind(payload?.asbuiltMeasurementKind);
   const noProductionReasonId = normalizeUuid(payload?.noProductionReasonId);
   const notes = normalizeText(payload?.notes) || null;
@@ -690,6 +712,10 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
 
   if (!projectId) {
     return NextResponse.json({ message: "Projeto e obrigatorio para cadastrar medicao-asbuilt." }, { status: 400 });
+  }
+
+  if (!serviceCoverageEndDate) {
+    return NextResponse.json({ message: "Informe uma data valida em Servicos considerados ate." }, { status: 400 });
   }
 
   const activeProjectIds = await loadActiveProjectIdSet({
@@ -749,6 +775,7 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
     p_notes: notes,
     p_items: items,
     p_expected_updated_at: expectedUpdatedAt,
+    p_service_coverage_end_date: serviceCoverageEndDate,
   });
 
   if (error) {
@@ -803,6 +830,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
   const rows = rowsInput.map((row, index) => ({
     rowNumbers: normalizePositiveIntegerArray(row.rowNumbers).length ? normalizePositiveIntegerArray(row.rowNumbers) : [index + 2],
     projectId: normalizeUuid(row.projectId),
+    serviceCoverageEndDate: normalizeIsoDate(row.serviceCoverageEndDate),
     asbuiltMeasurementKind: normalizeAsbuiltMeasurementKind(row.asbuiltMeasurementKind),
     noProductionReasonId: normalizeUuid(row.noProductionReasonId),
     notes: normalizeText(row.notes) || null,
