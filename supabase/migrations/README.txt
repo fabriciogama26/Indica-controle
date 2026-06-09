@@ -479,6 +479,13 @@ Resumo por arquivo
 218_add_asbuilt_service_coverage_end_date.sql
 - Adiciona `project_asbuilt_measurement_orders.service_coverage_end_date` para registrar a data limite inclusiva dos servicos cobertos pelo Asbuilt.
 - Mantem registros legados sem backfill, exige a data em novos cadastros, atualiza RPC normal/lote, registra historico e cria indice por tenant/data/projeto.
+
+219_fix_asbuilt_coverage_rpc_overload.sql
+- Renomeia a assinatura antiga de `save_project_asbuilt_measurement_order` para helper interno e recompila a RPC com data de cobertura, removendo o erro PostgreSQL `42725` de funcao ambigua.
+
+220_version_asbuilt_by_project_coverage_date.sql
+- Permite snapshots acumulados de Medicao Asbuilt para o mesmo projeto em datas de corte diferentes.
+- Cria unicidade parcial por `tenant_id + project_id + service_coverage_end_date` para registros nao cancelados e atualiza trigger/RPC para bloquear somente o mesmo corte.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

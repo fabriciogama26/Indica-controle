@@ -167,6 +167,7 @@ Boas praticas
 - Manter todas as consultas filtradas pelo tenant autenticado.
 - Considerar apenas ordens ativas e nao canceladas.
 - Considerar apenas Medicao `COM_PRODUCAO`.
+- Para Medicao Asbuilt, considerar somente o snapshot `FECHADA` com `Servicos considerados ate` mais recente de cada projeto; registros `ABERTA`, `CANCELADA` e cortes anteriores nao entram nos totais oficiais.
 - Excluir projetos marcados como `Obra de teste` ou `RETIRADO DA CARTEIRA` do catalogo da tela.
 - Usar `service_activities.ativo` e snapshots de atividade dos itens de Faturamento/Asbuilt para classificar atividade ativa/inativa.
 - Usar a categoria atual do cadastro de Atividades para o agrupamento por categoria cobrada.
@@ -258,6 +259,7 @@ Atualizacao 2026-06
   - A exportacao CSV de `Projetos por valor` passa a incluir `tipo_servico` e linha `TOTAL`.
   - A tabela `Projetos por valor` passa a ter checkboxes locais para ocultar linhas com valor zerado em `Medicao` ou em `Asbuilt`.
   - A tabela passa a permitir listar somente linhas com valor zerado em `Medicao` ou em `Asbuilt`; os filtros `Somente` e `Ocultar` da mesma origem sao mutuamente exclusivos.
+  - As consolidacoes de Asbuilt passam a usar somente o snapshot fechado com data de corte mais recente por projeto, evitando somar versoes acumuladas.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -265,7 +267,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
   - Responsavel por: renderizar grafico operacional antes dos cards globais por categoria, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar os doze cards comparativos de `Medidos`, `ASBUILT` e `Faturado`, exibir tickets medios de `Medicao` e `Asbuilt` por projetos/servicos, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, filtrar projetos por Centro de servico, Projeto, Estado de trabalho, Tipo de servico, valores zerados em Medicao/Asbuilt e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, calcular total filtrado, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar os doze cards globais comparando quantidades das tres origens por categoria atual, calcular tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e ordens/servicos de projetos presentes nas duas bases, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido e Tipo de Servico do cadastro do Projeto, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, selecionar o ultimo snapshot Asbuilt fechado por projeto, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar os doze cards globais comparando quantidades das tres origens por categoria atual, calcular tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e ordens/servicos de projetos presentes nas duas bases, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido e Tipo de Servico do cadastro do Projeto, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 

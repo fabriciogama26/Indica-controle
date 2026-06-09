@@ -395,10 +395,6 @@ export function AsbuiltMeasurementPageView() {
       setError("Selecione um projeto valido.");
       return;
     }
-    if (!form.id && selectedProject?.hasAsbuiltMeasurement) {
-      setError("Projeto ja possui Medicao Asbuilt lancada.");
-      return;
-    }
     if (!parseDateInput(form.serviceCoverageEndDate)) {
       setError("Informe uma data valida em Servicos considerados ate.");
       return;
@@ -763,14 +759,13 @@ export function AsbuiltMeasurementPageView() {
         const rate = parsePositiveDecimal(rateInput);
 
         if (!project) issues.push({ linha: rowNumber, coluna: "projeto", valor: projectInput, erro: "Projeto nao encontrado." });
-        if (project?.hasAsbuiltMeasurement) issues.push({ linha: rowNumber, coluna: "projeto", valor: projectInput, erro: "Projeto ja possui Medicao Asbuilt lancada." });
         if (!serviceCoverageEndDate) issues.push({ linha: rowNumber, coluna: "servicos_considerados_ate", valor: serviceCoverageEndDateInput, erro: "Data invalida. Use YYYY-MM-DD ou DD/MM/YYYY." });
         if (asbuiltMeasurementKind === "SEM_PRODUCAO" && !reason) issues.push({ linha: rowNumber, coluna: "motivo_sem_producao", valor: reasonInput, erro: "Motivo sem producao nao encontrado." });
         if (!activityInput) issues.push({ linha: rowNumber, coluna: "codigo_atividade", valor: activityInput, erro: "Atividade obrigatoria." });
         if (quantity === null) issues.push({ linha: rowNumber, coluna: "quantidade", valor: quantityInput, erro: "Quantidade invalida." });
         if (rate === null) issues.push({ linha: rowNumber, coluna: "taxa", valor: rateInput, erro: "Taxa invalida." });
 
-        if (!project || project.hasAsbuiltMeasurement || !serviceCoverageEndDate || (asbuiltMeasurementKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
+        if (!project || !serviceCoverageEndDate || (asbuiltMeasurementKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
           continue;
         }
 
@@ -905,7 +900,7 @@ export function AsbuiltMeasurementPageView() {
         <datalist id="asbuiltMeasurement-projects">
           {projects.map((project) => (
             <option key={project.id} value={project.code}>
-              {project.hasAsbuiltMeasurement ? `${project.label} - Medicao Asbuilt ja lancada` : project.label}
+              {project.label}
             </option>
           ))}
         </datalist>
