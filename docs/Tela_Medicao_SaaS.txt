@@ -126,6 +126,7 @@ Filtros, auto-complete e listagem
   - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
   - Equipe (lista carregada dos metadados da tela; filtra por `team_id`)
   - Tipo de Servico (catalogo ativo de `project_service_types`; filtra pelo tipo vinculado ao projeto)
+  - Atividade (autocomplete por codigo/descricao; retorna ordens que possuem item ativo da atividade selecionada)
   - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
   - Tipo (`TODOS`, `Com producao`, `Sem producao`)
   - Motivo sem producao (lista carregada de `measurement_no_production_reasons`; aceita `Todos`)
@@ -900,3 +901,24 @@ Atualizacao 2026-06-10 (Filtro por Tipo de Servico do projeto)
   - Depois: o bloco `Filtros` exibe `Tipo de Servico` com os registros ativos de `project_service_types`.
   - Depois: a API resolve os projetos vinculados ao tipo selecionado e restringe as ordens antes da paginacao, totalizacao e exportacoes.
   - Impacto multi-tenant: o catalogo e os projetos sao consultados com `tenant_id` do usuario autenticado; nao houve alteracao de schema ou RLS.
+
+Atualizacao 2026-06-10 (Filtro por Atividade)
+---------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Tipo `Filters`
+  - Funcao `buildOrdersQuery`
+  - Estado `filterActivitySearch`
+  - Efeito `loadFilterActivityCatalog`
+  - Funcao `applyFilters`
+  - `GET /api/medicao`
+- Comportamento antes/depois:
+  - Antes: a Medicao nao permitia localizar ordens pela atividade medida.
+  - Depois: o bloco `Filtros` possui autocomplete de Atividade por codigo ou descricao.
+  - Depois: a API seleciona as ordens que possuem item ativo com o `service_activity_id` informado antes da paginacao, totalizacao e exportacoes.
+  - Impacto multi-tenant: o catalogo e os itens da ordem sao consultados com `tenant_id` do usuario autenticado; sem alteracao de schema/RLS.

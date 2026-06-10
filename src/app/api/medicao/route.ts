@@ -110,6 +110,10 @@ type ProgrammingWorkCompletionHistoryRow = {
   created_at: string;
 };
 
+type MeasurementOrderActivityFilterRow = {
+  measurement_order_id: string;
+};
+
 type TeamCompositionContextRow = {
   project_id: string;
   team_id: string;
@@ -1374,6 +1378,8 @@ export async function GET(request: NextRequest) {
   const teamId = normalizeUuid(request.nextUrl.searchParams.get("teamId"));
   const serviceTypeIdRaw = normalizeText(request.nextUrl.searchParams.get("serviceTypeId"));
   const serviceTypeId = normalizeUuid(serviceTypeIdRaw);
+  const activityIdRaw = normalizeText(request.nextUrl.searchParams.get("activityId"));
+  const activityId = normalizeUuid(activityIdRaw);
   const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
   const measurementKindFilter = normalizeText(request.nextUrl.searchParams.get("measurementKind")).toUpperCase();
   const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
@@ -1392,6 +1398,10 @@ export async function GET(request: NextRequest) {
 
   if (serviceTypeIdRaw && !serviceTypeId) {
     return NextResponse.json({ message: "Tipo de Servico invalido." }, { status: 400 });
+  }
+
+  if (activityIdRaw && !activityId) {
+    return NextResponse.json({ message: "Atividade invalida." }, { status: 400 });
   }
 
   let serviceTypeProjectIdSet: Set<string> | null = null;
@@ -1443,6 +1453,26 @@ export async function GET(request: NextRequest) {
   if (error) {
     const hint = measurementModuleMigrationHint(error.message);
     return NextResponse.json({ message: `Falha ao listar ordens de medicao.${hint}`.trim() }, { status: 500 });
+  }
+
+  let activityOrderIdSet: Set<string> | null = null;
+  if (activityId) {
+    const activityOrdersResult = await fetchPagedSupabaseRows<MeasurementOrderActivityFilterRow>((from, to) =>
+      resolution.supabase
+        .from("project_measurement_order_items")
+        .select("measurement_order_id")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("service_activity_id", activityId)
+        .eq("is_active", true)
+        .range(from, to)
+        .returns<MeasurementOrderActivityFilterRow[]>(),
+    );
+
+    if (activityOrdersResult.error) {
+      return NextResponse.json({ message: "Falha ao filtrar ordens por atividade." }, { status: 500 });
+    }
+
+    activityOrderIdSet = new Set(activityOrdersResult.data.map((item) => item.measurement_order_id));
   }
 
   const userIds = Array.from(
@@ -1533,7 +1563,11 @@ export async function GET(request: NextRequest) {
       };
     });
 
-  const filteredByProjectType = baseOrders.filter((item) => !item.projectIsTest);
+  const filteredByActivity = activityOrderIdSet
+    ? baseOrders.filter((item) => activityOrderIdSet.has(item.id))
+    : baseOrders;
+
+  const filteredByProjectType = filteredByActivity.filter((item) => !item.projectIsTest);
 
   const filteredByProgrammingMatch = (programmingMatchFilter === "PROGRAMADA" || programmingMatchFilter === "NAO_PROGRAMADA")
     ? filteredByProjectType.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
