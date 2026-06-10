@@ -343,6 +343,7 @@ type Filters = {
   projectId: string;
   teamId: string;
   serviceTypeId: string;
+  activityId: string;
   status: "TODOS" | MeasurementStatus;
   measurementKind: "TODOS" | MeasurementKind;
   noProductionReasonId: string;
@@ -390,6 +391,7 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   if (filters.projectId) params.set("projectId", filters.projectId);
   if (filters.teamId) params.set("teamId", filters.teamId);
   if (filters.serviceTypeId) params.set("serviceTypeId", filters.serviceTypeId);
+  if (filters.activityId) params.set("activityId", filters.activityId);
   if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
   return params.toString();
 }
@@ -910,6 +912,7 @@ export function MeasurementPageView() {
       projectId: "",
       teamId: "",
       serviceTypeId: "",
+      activityId: "",
       status: "TODOS" as const,
       measurementKind: "TODOS" as const,
       noProductionReasonId: "",
@@ -931,6 +934,8 @@ export function MeasurementPageView() {
   const [workCompletionCatalog, setWorkCompletionCatalog] = useState<WorkCompletionCatalogItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
+  const [filterActivitySearch, setFilterActivitySearch] = useState("");
+  const [filterActivityOptions, setFilterActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [activeFilters, setActiveFilters] = useState<Filters>(initialFilters);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [page, setPage] = useState(1);
@@ -971,6 +976,7 @@ export function MeasurementPageView() {
   const refreshRequestedRef = useRef(false);
   const refreshHadErrorRef = useRef(false);
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
+  const deferredFilterActivitySearch = useDeferredValue(filterActivitySearch);
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams]);
@@ -1417,6 +1423,28 @@ export function MeasurementPageView() {
       ignore = true;
     };
   }, [accessToken, deferredActivitySearch]);
+
+  useEffect(() => {
+    if (!accessToken || deferredFilterActivitySearch.trim().length < 2) {
+      setFilterActivityOptions([]);
+      return;
+    }
+
+    let ignore = false;
+    async function loadFilterActivityCatalog() {
+      const response = await fetch(`/api/medicao/activities/catalog?q=${encodeURIComponent(deferredFilterActivitySearch)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as ActivityCatalogResponse | null;
+      if (!ignore) setFilterActivityOptions(data?.items ?? []);
+    }
+
+    void loadFilterActivityCatalog();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, deferredFilterActivitySearch]);
 
   useEffect(() => {
     if (!form.projectId) return;
@@ -2597,9 +2625,20 @@ export function MeasurementPageView() {
       return;
     }
 
-    const nextFilters = { ...filterDraft, projectId: matchedProject?.id ?? "" };
+    const matchedActivity = findActivitySelectionOption(filterActivitySearch, filterActivityOptions);
+    if (filterActivitySearch.trim() && !matchedActivity) {
+      setFeedback({ type: "error", message: "Atividade invalida no filtro. Selecione uma atividade da lista." });
+      return;
+    }
+
+    const nextFilters = {
+      ...filterDraft,
+      projectId: matchedProject?.id ?? "",
+      activityId: matchedActivity?.id ?? "",
+    };
     setFilterDraft(nextFilters);
     setFilterProjectSearch(matchedProject?.code ?? "");
+    setFilterActivitySearch(matchedActivity ? activityOptionLabel(matchedActivity) : "");
     setPage(1);
     setActiveFilters(nextFilters);
   }
@@ -2609,6 +2648,8 @@ export function MeasurementPageView() {
     setPage(1);
     setActiveFilters(initialFilters);
     setFilterProjectSearch("");
+    setFilterActivitySearch("");
+    setFilterActivityOptions([]);
   }
 
   async function exportOrdersCsv() {
@@ -3158,6 +3199,18 @@ export function MeasurementPageView() {
               {projectServiceTypes.map((serviceType) => <option key={serviceType.id} value={serviceType.id}>{serviceType.name}</option>)}
             </select>
           </label>
+          <label className={styles.field}>
+            <span>Atividade</span>
+            <input
+              value={filterActivitySearch}
+              onChange={(event) => {
+                setFilterActivitySearch(event.target.value);
+                setFilterDraft((current) => ({ ...current, activityId: "" }));
+              }}
+              list="medicao-activity-filter-list"
+              placeholder="Digite codigo ou descricao"
+            />
+          </label>
           <label className={styles.field}><span>Status</span><select value={filterDraft.status} onChange={(event) => setFilterDraft((current) => ({ ...current, status: event.target.value as Filters["status"] }))}><option value="TODOS">Todos</option><option value="ABERTA">Aberta</option><option value="FECHADA">Fechada</option><option value="CANCELADA">Cancelada</option></select></label>
           <label className={styles.field}>
             <span>Tipo</span>
@@ -3695,6 +3748,7 @@ export function MeasurementPageView() {
       ) : null}
 
       <datalist id="medicao-activity-list">{resolvedActivityOptions.map((item) => <option key={item.id} value={activityOptionLabel(item)} />)}</datalist>
+      <datalist id="medicao-activity-filter-list">{filterActivityOptions.map((item) => <option key={item.id} value={activityOptionLabel(item)} />)}</datalist>
       <datalist id="medicao-project-filter-list">
         {projects.map((item) => (
           <option key={item.id} value={item.code}>
