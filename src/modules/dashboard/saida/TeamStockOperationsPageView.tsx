@@ -198,6 +198,7 @@ export function TeamStockOperationsPageView() {
   const [reversalReasonCode, setReversalReasonCode] = useState("");
   const [reversalReasonNotes, setReversalReasonNotes] = useState("");
   const [reversalDate, setReversalDate] = useState(toIsoDate(new Date()));
+  const [reversalFeedback, setReversalFeedback] = useState<FeedbackState | null>(null);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -1255,42 +1256,58 @@ export function TeamStockOperationsPageView() {
   }
 
   function openReversalModal(item: TeamOperationListItem) {
+    if (!canReverseTeamOperation || item.isReversed || item.isReversal) {
+      return;
+    }
+
     setReversalModalItem(item);
     setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
     setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
+    setReversalFeedback(null);
   }
 
   function closeReversalModal() {
+    if (isReversing) return;
     setReversalModalItem(null);
     setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
     setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
-    setIsReversing(false);
+    setReversalFeedback(null);
   }
 
   async function handleConfirmReversal() {
     if (!accessToken || !reversalModalItem) {
-      showError("Sessao invalida para estornar operacao de equipe.");
+      setReversalFeedback({ type: "error", message: "Sessao invalida para estornar operacao de equipe." });
       return;
     }
 
-    if (!normalizeText(reversalReasonCode) || !normalizeText(reversalDate)) {
-      showError("Informe motivo padrao e data do estorno.");
+    const normalizedReasonCode = normalizeText(reversalReasonCode).toUpperCase();
+    const normalizedReasonNotes = normalizeText(reversalReasonNotes) || null;
+    const normalizedReversalDate = normalizeText(reversalDate);
+
+    if (!normalizedReasonCode || !normalizedReversalDate) {
+      setReversalFeedback({ type: "error", message: "Informe motivo padrao e data do estorno." });
       return;
     }
 
-    if (selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes)) {
-      showError("Informe a observacao do motivo do estorno.");
+    if (selectedReversalReason?.requiresNotes && !normalizedReasonNotes) {
+      setReversalFeedback({ type: "error", message: "Informe a observacao do motivo do estorno." });
+      return;
+    }
+
+    if (normalizedReversalDate > toIsoDate(new Date())) {
+      setReversalFeedback({ type: "error", message: "Data do estorno nao pode ser futura." });
       return;
     }
 
     setIsReversing(true);
-    setFeedback(null);
+    setReversalFeedback(null);
 
     try {
       const response = await fetch("/api/team-stock-operations/reversal", {
         method: "POST",
+        cache: "no-store",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
@@ -1298,31 +1315,62 @@ export function TeamStockOperationsPageView() {
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
           transferItemId: reversalModalItem.id,
-          reversalReasonCode,
-          reversalReasonNotes: normalizeText(reversalReasonNotes) || null,
-          reversalDate,
+          reversalReasonCode: normalizedReasonCode,
+          reversalReasonNotes: normalizedReasonNotes,
+          reversalDate: normalizedReversalDate,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        transferId?: string;
+        reason?: string;
+      };
       if (!response.ok) {
-        showError(data.message ?? "Falha ao estornar operacao de equipe.");
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar operacao de equipe." });
         await logError("Falha ao estornar operacao de equipe.", undefined, {
           responseStatus: response.status,
           responseMessage: data.message ?? null,
+          reason: data.reason ?? null,
           transferId: reversalModalItem.transferId,
+          transferItemId: reversalModalItem.id,
         });
         return;
       }
 
+      const reversedAt = new Date().toISOString();
+      const reversalReason = selectedReversalReason
+        ? normalizedReasonNotes
+          ? `${selectedReversalReason.label}: ${normalizedReasonNotes}`
+          : selectedReversalReason.label
+        : normalizedReasonNotes;
+      setHistoryItems((current) => current.map((item) => (
+        item.id === reversalModalItem.id
+          ? {
+              ...item,
+              isReversed: true,
+              reversalTransferId: data.transferId ?? item.reversalTransferId,
+              reversalReason: reversalReason || item.reversalReason,
+              reversedAt,
+            }
+          : item
+      )));
       setFeedback({ type: "success", message: data.message ?? "Operacao estornada com sucesso." });
-      closeReversalModal();
+      setReversalModalItem(null);
+      setReversalFeedback(null);
+      setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
+      setReversalReasonNotes("");
+      setReversalDate(toIsoDate(new Date()));
       setHistoryPage(1);
       setFilters((current) => ({ ...current }));
     } catch (error) {
-      showError("Falha ao estornar operacao de equipe.");
+      setReversalFeedback({
+        type: "error",
+        message: "Falha de comunicacao ao estornar. Verifique a conexao e tente novamente.",
+      });
       await logError("Falha ao estornar operacao de equipe.", error, {
         transferId: reversalModalItem.transferId,
+        transferItemId: reversalModalItem.id,
       });
     } finally {
       setIsReversing(false);
@@ -2208,6 +2256,15 @@ export function TeamStockOperationsPageView() {
               <p className={styles.reversalWarning}>
                 O estorno cria uma nova movimentacao inversa somente para este item no mesmo ledger. A operacao original permanece preservada para auditoria.
               </p>
+
+              {reversalFeedback ? (
+                <div
+                  className={reversalFeedback.type === "success" ? styles.successFeedback : styles.errorFeedback}
+                  role={reversalFeedback.type === "error" ? "alert" : "status"}
+                >
+                  {reversalFeedback.message}
+                </div>
+              ) : null}
 
               <div className={styles.detailGrid}>
                 <div><strong>Operacao original:</strong> {operationKindLabel(reversalModalItem.operationKind)}</div>

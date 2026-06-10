@@ -199,3 +199,45 @@ Mapa de Codigo (funcoes, hooks e constantes)
   - Tabelas `project`, `project_with_labels`, `teams`, `people`, `job_titles`
 - Ajuda contextual:
   - Nao ha componente de ajuda contextual especifico nesta entrega.
+
+Atualizacao 2026-06 - Auditoria de integridade
+-----------------------------------------------
+- Regras bem definidas:
+  - FKs compostas preservam `Projeto`, `Equipe`, `Pessoa`, `Composicao` e `tenant_id` no mesmo tenant.
+  - Existe somente uma composicao ativa por `Tenant + Data + Projeto + Equipe`.
+  - A mesma pessoa nao pode aparecer duas vezes na mesma composicao.
+  - A RPC valida campos obrigatorios, projeto/equipe/pessoas ativos, matricula duplicada e limite de um encarregado.
+  - Cabecalho e integrantes sao gravados na mesma transacao.
+  - A API exige `expectedUpdatedAt` na edicao e bloqueia sobrescrita concorrente.
+  - Snapshots preservam dados operacionais mesmo quando cadastros relacionados mudam.
+- Riscos identificados:
+  - As rotas validam sessao/tenant, mas nao consultam a permissao da pagina `composicao-equipe`; esconder a tela nao impede chamada direta da API.
+  - A migration `200` criou policies `FOR ALL` depois do endurecimento global da migration `173`, reabrindo `DELETE` direto de composicoes e integrantes para `authenticated` quando os grants da tabela estiverem disponiveis.
+  - O historico em `app_entity_history` e inserido depois da RPC, fora da transacao, e o erro do insert e ignorado. O cadastro pode ser salvo sem historico.
+  - A edicao apaga todos os integrantes e os reinsere. A transacao evita estado parcial, mas troca IDs e `created_at` dos membros e perde um diff detalhado de inclusoes, remocoes e presenca.
+  - A Medicao descobre a composicao apenas por `Projeto + Equipe + Data`, sem FK ou snapshot de revisao. Editar ou inativar a composicao pode mudar retroativamente o contexto apresentado para uma medicao existente.
+  - Nao existe regra global que impeça a mesma pessoa presente em duas equipes na mesma data.
+  - A regra de encarregado depende de texto do cargo contendo `ENCARREGADO`, permite zero encarregados e nao exige que o encarregado selecionado seja o `foreman_person_id` da equipe.
+  - A RPC aceita edicao sem `p_expected_updated_at` quando chamada fora da API.
+  - `phone_snapshot` guarda o telefone do encarregado em todas as linhas, embora o nome da coluna sugira telefone do integrante.
+- Regras recomendadas no banco:
+  - Substituir policies `FOR ALL` por `SELECT`, `INSERT` e `UPDATE`, sem `DELETE`, e restringir escrita direta para que a RPC seja o unico caminho.
+  - Mover a gravacao de `app_entity_history` para dentro da RPC transacional.
+  - Tornar `p_expected_updated_at` obrigatorio quando `p_composition_id` estiver preenchido.
+  - Persistir revisoes imutaveis da composicao ou vincular a Medicao a `team_composition_id` e a um snapshot/revisao.
+  - Definir a regra de pessoa presente em mais de uma equipe no mesmo dia; se proibida, aplicar trigger transacional ou coluna de data denormalizada com indice unico parcial.
+  - Validar o encarregado por `person_id` da equipe, definindo explicitamente se ele deve estar presente e se a composicao pode ser salva sem encarregado.
+  - Trocar o delete/reinsert por sincronizacao de integrantes ou manter versoes imutaveis para preservar identidade e auditoria.
+  - Separar `member_phone_snapshot` de `operational_contact_phone_snapshot`.
+  - Adicionar validacao de usuario/tenant/permissao dentro da RPC ou manter a RPC exclusiva de `service_role` com autorizacao obrigatoria na API.
+- Comportamento antes/depois desta auditoria:
+  - Antes: a documentacao descrevia as validacoes funcionais e a persistencia transacional.
+  - Depois: a documentacao tambem explicita os riscos de exclusao direta, historico fora da transacao e dependencia retroativa da Medicao.
+- Arquivos analisados:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/app/api/composicao-equipe/meta/route.ts`
+  - `src/app/api/medicao/route.ts`
+  - `supabase/migrations/173_harden_public_rls_no_delete.sql`
+  - `supabase/migrations/200_create_team_composition_page.sql`
+  - `supabase/migrations/201_fix_team_composition_save.sql`
+  - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
