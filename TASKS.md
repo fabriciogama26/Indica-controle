@@ -867,3 +867,5 @@
 - [x] Complementar a correcao do cadastro em massa de `Operacoes de Equipe` na funcao-base de estoque, reutilizando e limpando `tmp_stock_transfer_items` para evitar novo `relation already exists` depois da migration 222.
 
 - [x] Endurecer o estorno por item da `Movimentacao de Estoque`, bloqueando antecipadamente linha ja estornada ou linha de estorno, falhando de forma segura se os vinculos nao puderem ser lidos e atualizando imediatamente o estado visual da linha.
+
+- [x] Corrigir a listagem da `Movimentacao de Estoque` para carregar itens e vinculos de estorno em blocos de 100 IDs, evitando `TypeError: fetch failed` e o alerta de falha de validacao em tenants com muitas movimentacoes.

@@ -157,6 +157,38 @@ type HistoryValueMaps = {
   projects: Map<string, string>;
 };
 
+type QueryError = {
+  message: string;
+  code?: string;
+};
+
+const RELATION_QUERY_CHUNK_SIZE = 100;
+
+function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    chunks.push(values.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+async function loadRowsInChunks<T>(
+  values: string[],
+  loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: QueryError | null }>,
+) {
+  const rows: T[] = [];
+
+  for (const chunk of chunkValues(values)) {
+    const result = await loadChunk(chunk);
+    if (result.error) {
+      return { data: null, error: result.error };
+    }
+    rows.push(...(result.data ?? []));
+  }
+
+  return { data: rows, error: null };
+}
+
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value ?? "");
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -428,12 +460,15 @@ async function loadTransferList(request: NextRequest) {
 
   const transferIds = transferHeaders.map((row) => row.id);
 
-  const { data: itemRows, error: itemsError } = await supabase
-    .from("stock_transfer_items")
-    .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
-    .eq("tenant_id", appUser.tenant_id)
-    .in("stock_transfer_id", transferIds)
-    .returns<StockTransferItemRow[]>();
+  const { data: itemRows, error: itemsError } = await loadRowsInChunks<StockTransferItemRow>(
+    transferIds,
+    (transferIdChunk) => supabase
+      .from("stock_transfer_items")
+      .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+      .eq("tenant_id", appUser.tenant_id)
+      .in("stock_transfer_id", transferIdChunk)
+      .returns<StockTransferItemRow[]>(),
+  );
 
   if (itemsError) {
     return NextResponse.json({ message: "Falha ao carregar itens das movimentacoes de estoque." }, { status: 500 });
@@ -515,36 +550,48 @@ async function loadTransferList(request: NextRequest) {
           .returns<TeamStockOperationRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: TeamStockOperationRow[]; error: null }),
     transferIds.length
-      ? supabase
-          .from("stock_transfer_reversals")
-          .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("original_stock_transfer_id", transferIds)
-          .returns<StockTransferReversalRow[]>()
+      ? loadRowsInChunks<StockTransferReversalRow>(
+          transferIds,
+          (transferIdChunk) => supabase
+            .from("stock_transfer_reversals")
+            .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("original_stock_transfer_id", transferIdChunk)
+            .returns<StockTransferReversalRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferIds.length
-      ? supabase
-          .from("stock_transfer_reversals")
-          .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("reversal_stock_transfer_id", transferIds)
-          .returns<StockTransferReversalRow[]>()
+      ? loadRowsInChunks<StockTransferReversalRow>(
+          transferIds,
+          (transferIdChunk) => supabase
+            .from("stock_transfer_reversals")
+            .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("reversal_stock_transfer_id", transferIdChunk)
+            .returns<StockTransferReversalRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferItemIds.length
-      ? supabase
-          .from("stock_transfer_item_reversals")
-          .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("original_stock_transfer_item_id", transferItemIds)
-          .returns<StockTransferItemReversalRow[]>()
+      ? loadRowsInChunks<StockTransferItemReversalRow>(
+          transferItemIds,
+          (transferItemIdChunk) => supabase
+            .from("stock_transfer_item_reversals")
+            .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("original_stock_transfer_item_id", transferItemIdChunk)
+            .returns<StockTransferItemReversalRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
     transferItemIds.length
-      ? supabase
-          .from("stock_transfer_item_reversals")
-          .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("reversal_stock_transfer_item_id", transferItemIds)
-          .returns<StockTransferItemReversalRow[]>()
+      ? loadRowsInChunks<StockTransferItemReversalRow>(
+          transferItemIds,
+          (transferItemIdChunk) => supabase
+            .from("stock_transfer_item_reversals")
+            .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("reversal_stock_transfer_item_id", transferItemIdChunk)
+            .returns<StockTransferItemReversalRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
 
