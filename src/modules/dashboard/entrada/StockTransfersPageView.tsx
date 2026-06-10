@@ -1896,17 +1896,48 @@ export function StockTransfersPageView() {
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        transferId?: string;
+        reason?: string;
+      };
       if (!response.ok) {
         setFeedback({ type: "error", message: data.message ?? "Falha ao estornar movimentacao de estoque." });
+        await logError("Falha ao estornar movimentacao de estoque.", undefined, {
+          status: response.status,
+          reason: data.reason ?? null,
+          transferId: reversalModalItem.transferId,
+          transferItemId: reversalModalItem.id,
+        });
         return;
       }
 
+      const reversedAt = new Date().toISOString();
+      const reversalReason = selectedReversalReason
+        ? normalizedReasonNotes
+          ? `${selectedReversalReason.label}: ${normalizedReasonNotes}`
+          : selectedReversalReason.label
+        : normalizedReasonNotes;
+      setHistoryItems((current) => current.map((item) => (
+        item.id === reversalModalItem.id
+          ? {
+              ...item,
+              isReversed: true,
+              reversalTransferId: data.transferId ?? item.reversalTransferId,
+              reversalReason: reversalReason || item.reversalReason,
+              reversedAt,
+            }
+          : item
+      )));
       setFeedback({ type: "success", message: data.message ?? "Estorno realizado com sucesso." });
       closeReversalModal();
       await loadHistory(1);
-    } catch {
+    } catch (error) {
       setFeedback({ type: "error", message: "Falha ao estornar movimentacao de estoque." });
+      await logError("Falha ao estornar movimentacao de estoque.", error, {
+        transferId: reversalModalItem.transferId,
+        transferItemId: reversalModalItem.id,
+      });
     } finally {
       setIsReversing(false);
     }

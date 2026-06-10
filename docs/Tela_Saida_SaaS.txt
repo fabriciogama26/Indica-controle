@@ -371,3 +371,29 @@ Ajuda contextual
 - Depois: as migrations `208` e `209` chamam a assinatura completa da RPC de estoque como operacao `NORMAL`, removem a ambiguidade interna do overload e o helper server mostra mensagem tecnica acionavel se o banco ainda estiver sem as migrations/schema atualizado.
 - Antes: o estorno por item de Operacoes de Equipe podia chegar em erro tecnico generico quando a RPC de estorno chamava `save_stock_transfer_record` sem `p_operation_purpose`.
 - Depois: a migration `216` atualiza as RPCs de estorno para informar `p_direct_purchase`, `p_operation_purpose = NORMAL` e `p_balance_correction_reason = null`; o helper de equipe tambem mostra mensagem acionavel quando o banco ainda esta sem a migration/schema atualizado.
+
+Atualizacao 2026-06
+===================
+- O cadastro em massa passa a reutilizar a tabela temporaria de analise de seriais RET durante todas as linhas da mesma transacao.
+- A migration `222_reuse_retired_serial_temp_table_in_batches.sql` altera `save_stock_transfer_record_direct_purchase_v209` para criar `tmp_retired_serial_transfer_items` somente quando necessario e executar `TRUNCATE` antes de cada chamada.
+- A migration `223_reuse_stock_transfer_temp_table_in_batches.sql` aplica a mesma correcao em `save_stock_transfer_record_base_v181`, que cria a tabela principal `tmp_stock_transfer_items`.
+- Antes: a primeira linha do lote mantinha a tabela temporaria ate o commit e a segunda linha falhava com `relation "tmp_retired_serial_transfer_items" already exists`.
+- Diagnostico complementar: depois da `222`, o fluxo avancava ate a funcao-base e falhava pelo mesmo motivo com `relation "tmp_stock_transfer_items" already exists`.
+- Depois: cada linha inicia as duas tabelas temporarias vazias, preservando o rollback integral do lote, as validacoes de serial, os saldos e o escopo por `tenant_id`.
+
+Mapa da atualizacao 2026-06
+---------------------------
+- Caminho: `supabase/migrations/222_reuse_retired_serial_temp_table_in_batches.sql`
+  - Responsavel por: corrigir a reutilizacao da tabela temporaria de seriais RET dentro de `save_team_stock_operation_batch_full`.
+- Caminho: `supabase/migrations/223_reuse_stock_transfer_temp_table_in_batches.sql`
+  - Responsavel por: corrigir a reutilizacao da tabela temporaria principal de itens na funcao-base de estoque.
+- Caminho: `supabase/migrations/README.txt`
+  - Responsavel por: registrar a finalidade das migrations `222` e `223`.
+- Caminho: `docs/Tela_Saida_SaaS.txt`
+  - Responsavel por: mapear a causa, a correcao e o comportamento antes/depois da tela.
+- Caminho: `TASKS.md`
+  - Responsavel por: registrar a correcao concluida conforme o estado atual do codigo.
+- Funcoes tocadas: `save_stock_transfer_record_direct_purchase_v209` e `save_stock_transfer_record_base_v181`.
+- Constantes tecnicas tocadas: `pg_temp.tmp_retired_serial_transfer_items` e `pg_temp.tmp_stock_transfer_items`.
+- Servico relacionado: RPC `save_team_stock_operation_batch_full`.
+- Impacto multi-tenant: nenhuma mudanca de autorizacao ou RLS; a RPC continua validando e movimentando somente dados do `p_tenant_id`.

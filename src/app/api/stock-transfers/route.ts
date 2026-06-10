@@ -548,6 +548,18 @@ async function loadTransferList(request: NextRequest) {
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
 
+  if (
+    reversalsFromOriginalResult.error
+    || reversalsByReversalResult.error
+    || itemReversalsFromOriginalResult.error
+    || itemReversalsByReversalResult.error
+  ) {
+    return NextResponse.json(
+      { message: "Falha ao validar o status de estorno das movimentacoes de estoque." },
+      { status: 500 },
+    );
+  }
+
   let materialsData = materialsResult.data ?? [];
   if (materialsResult.error && materialIds.length) {
     const legacyMaterialsResult = await supabase
@@ -574,7 +586,7 @@ async function loadTransferList(request: NextRequest) {
     ((teamOperationsResult.error ? [] : teamOperationsResult.data) ?? []).map((row) => row.transfer_id),
   );
   const reversalByOriginalMap = new Map(
-    ((reversalsFromOriginalResult.error ? [] : reversalsFromOriginalResult.data) ?? []).map((row) => [
+    (reversalsFromOriginalResult.data ?? []).map((row) => [
       row.original_stock_transfer_id,
       {
         reversalTransferId: row.reversal_stock_transfer_id,
@@ -584,7 +596,7 @@ async function loadTransferList(request: NextRequest) {
     ]),
   );
   const originalByReversalMap = new Map(
-    ((reversalsByReversalResult.error ? [] : reversalsByReversalResult.data) ?? []).map((row) => [
+    (reversalsByReversalResult.data ?? []).map((row) => [
       row.reversal_stock_transfer_id,
       {
         originalTransferId: row.original_stock_transfer_id,
@@ -594,7 +606,7 @@ async function loadTransferList(request: NextRequest) {
     ]),
   );
   const itemReversalByOriginalMap = new Map(
-    ((itemReversalsFromOriginalResult.error ? [] : itemReversalsFromOriginalResult.data) ?? []).map((row) => [
+    (itemReversalsFromOriginalResult.data ?? []).map((row) => [
       row.original_stock_transfer_item_id,
       {
         originalTransferId: row.original_stock_transfer_id,
@@ -605,7 +617,7 @@ async function loadTransferList(request: NextRequest) {
     ]),
   );
   const originalByReversalItemMap = new Map(
-    ((itemReversalsByReversalResult.error ? [] : itemReversalsByReversalResult.data) ?? [])
+    (itemReversalsByReversalResult.data ?? [])
       .filter((row) => row.reversal_stock_transfer_item_id)
       .map((row) => [
         row.reversal_stock_transfer_item_id as string,

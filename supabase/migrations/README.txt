@@ -486,6 +486,15 @@ Resumo por arquivo
 220_version_asbuilt_by_project_coverage_date.sql
 - Permite snapshots acumulados de Medicao Asbuilt para o mesmo projeto em datas de corte diferentes.
 - Cria unicidade parcial por `tenant_id + project_id + service_coverage_end_date` para registros nao cancelados e atualiza trigger/RPC para bloquear somente o mesmo corte.
+
+221_preserve_programming_wrapper_error_details.sql
+- Preserva `reason` e `detail` das falhas SQL nas wrappers atuais de cadastro da Programacao Simples, sem alterar os overloads legados.
+
+222_reuse_retired_serial_temp_table_in_batches.sql
+- Corrige o cadastro em massa de Operacoes de Equipe para reutilizar e limpar `pg_temp.tmp_retired_serial_transfer_items` entre linhas do mesmo lote atomico, evitando `relation already exists`.
+
+223_reuse_stock_transfer_temp_table_in_batches.sql
+- Complementa a correcao do cadastro em massa de Operacoes de Equipe na funcao-base de estoque, reutilizando e limpando `pg_temp.tmp_stock_transfer_items` entre linhas do mesmo lote atomico.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

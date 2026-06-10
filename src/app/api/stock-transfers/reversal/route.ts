@@ -69,6 +69,50 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+    if (transferItemId) {
+      const [originalItemReversalResult, reversalItemResult] = await Promise.all([
+        supabase
+          .from("stock_transfer_item_reversals")
+          .select("reversal_stock_transfer_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("original_stock_transfer_item_id", transferItemId)
+          .maybeSingle<{ reversal_stock_transfer_id: string }>(),
+        supabase
+          .from("stock_transfer_item_reversals")
+          .select("original_stock_transfer_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("reversal_stock_transfer_item_id", transferItemId)
+          .maybeSingle<{ original_stock_transfer_id: string }>(),
+      ]);
+
+      if (originalItemReversalResult.error || reversalItemResult.error) {
+        return NextResponse.json(
+          { message: "Falha ao validar se o item ja foi estornado." },
+          { status: 500 },
+        );
+      }
+
+      if (originalItemReversalResult.data) {
+        return NextResponse.json(
+          {
+            message: "Este item da movimentacao ja foi estornado.",
+            reason: "ITEM_ALREADY_REVERSED",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (reversalItemResult.data) {
+        return NextResponse.json(
+          {
+            message: "Nao e permitido estornar um item que ja e estorno.",
+            reason: "REVERSAL_OF_REVERSAL_NOT_ALLOWED",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const reversalResult = await reverseStockTransferViaRpc(supabase, {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
