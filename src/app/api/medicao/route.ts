@@ -132,6 +132,10 @@ type ProjectServiceCenterLookupRow = {
   name: string | null;
 };
 
+type ProjectServiceTypeProjectRow = {
+  id: string;
+};
+
 type TeamRow = {
   id: string;
   team_type_id: string | null;
@@ -1368,6 +1372,8 @@ export async function GET(request: NextRequest) {
   const endDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
   const projectId = normalizeUuid(request.nextUrl.searchParams.get("projectId"));
   const teamId = normalizeUuid(request.nextUrl.searchParams.get("teamId"));
+  const serviceTypeIdRaw = normalizeText(request.nextUrl.searchParams.get("serviceTypeId"));
+  const serviceTypeId = normalizeUuid(serviceTypeIdRaw);
   const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
   const measurementKindFilter = normalizeText(request.nextUrl.searchParams.get("measurementKind")).toUpperCase();
   const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
@@ -1382,6 +1388,29 @@ export async function GET(request: NextRequest) {
 
   if (!startDate || !endDate) {
     return NextResponse.json({ message: "startDate e endDate sao obrigatorios." }, { status: 400 });
+  }
+
+  if (serviceTypeIdRaw && !serviceTypeId) {
+    return NextResponse.json({ message: "Tipo de Servico invalido." }, { status: 400 });
+  }
+
+  let serviceTypeProjectIdSet: Set<string> | null = null;
+  if (serviceTypeId) {
+    const serviceTypeProjectsResult = await fetchPagedSupabaseRows<ProjectServiceTypeProjectRow>((from, to) =>
+      resolution.supabase
+        .from("project")
+        .select("id")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("service_type", serviceTypeId)
+        .range(from, to)
+        .returns<ProjectServiceTypeProjectRow[]>(),
+    );
+
+    if (serviceTypeProjectsResult.error) {
+      return NextResponse.json({ message: "Falha ao filtrar projetos por Tipo de Servico." }, { status: 500 });
+    }
+
+    serviceTypeProjectIdSet = new Set(serviceTypeProjectsResult.data.map((item) => item.id));
   }
 
   const ordersResult = await fetchPagedSupabaseRows<MeasurementOrderRow>((from, to) => {
@@ -1407,7 +1436,9 @@ export async function GET(request: NextRequest) {
 
     return query.returns<MeasurementOrderRow[]>();
   });
-  const orders = ordersResult.data;
+  const orders = serviceTypeProjectIdSet
+    ? ordersResult.data.filter((item) => serviceTypeProjectIdSet.has(item.project_id))
+    : ordersResult.data;
   const error = ordersResult.error;
   if (error) {
     const hint = measurementModuleMigrationHint(error.message);

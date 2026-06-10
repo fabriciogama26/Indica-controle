@@ -76,8 +76,14 @@ type NoProductionReasonItem = {
   name: string;
 };
 
+type ProjectServiceTypeItem = {
+  id: string;
+  name: string;
+};
+
 type MeasurementMetaResponse = {
   noProductionReasons?: NoProductionReasonItem[];
+  projectServiceTypes?: ProjectServiceTypeItem[];
   workCompletionCatalog?: WorkCompletionCatalogItem[];
   message?: string;
 };
@@ -336,6 +342,7 @@ type Filters = {
   endDate: string;
   projectId: string;
   teamId: string;
+  serviceTypeId: string;
   status: "TODOS" | MeasurementStatus;
   measurementKind: "TODOS" | MeasurementKind;
   noProductionReasonId: string;
@@ -382,6 +389,7 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   params.set("pageSize", String(pageSize));
   if (filters.projectId) params.set("projectId", filters.projectId);
   if (filters.teamId) params.set("teamId", filters.teamId);
+  if (filters.serviceTypeId) params.set("serviceTypeId", filters.serviceTypeId);
   if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
   return params.toString();
 }
@@ -901,6 +909,7 @@ export function MeasurementPageView() {
       ...yearRange(today),
       projectId: "",
       teamId: "",
+      serviceTypeId: "",
       status: "TODOS" as const,
       measurementKind: "TODOS" as const,
       noProductionReasonId: "",
@@ -918,6 +927,7 @@ export function MeasurementPageView() {
   const [, setSchedules] = useState<ScheduleItem[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonItem[]>([]);
+  const [projectServiceTypes, setProjectServiceTypes] = useState<ProjectServiceTypeItem[]>([]);
   const [workCompletionCatalog, setWorkCompletionCatalog] = useState<WorkCompletionCatalogItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
@@ -1190,6 +1200,7 @@ export function MeasurementPageView() {
   useEffect(() => {
     if (!accessToken) {
       setNoProductionReasons([]);
+      setProjectServiceTypes([]);
       setWorkCompletionCatalog([]);
       setIsLoadingMeta(false);
       return;
@@ -1207,6 +1218,7 @@ export function MeasurementPageView() {
         if (!response.ok) throw new Error(data?.message ?? "Falha ao carregar metadados da medicao.");
         if (ignore) return;
         setNoProductionReasons(data?.noProductionReasons ?? []);
+        setProjectServiceTypes(data?.projectServiceTypes ?? []);
         setWorkCompletionCatalog(data?.workCompletionCatalog ?? []);
       } catch (error) {
         if (!ignore && refreshRequestedRef.current) {
@@ -3137,6 +3149,13 @@ export function MeasurementPageView() {
             <select value={filterDraft.teamId} onChange={(event) => setFilterDraft((current) => ({ ...current, teamId: event.target.value }))}>
               <option value="">Todas</option>
               {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span>Tipo de Servico</span>
+            <select value={filterDraft.serviceTypeId} onChange={(event) => setFilterDraft((current) => ({ ...current, serviceTypeId: event.target.value }))}>
+              <option value="">Todos</option>
+              {projectServiceTypes.map((serviceType) => <option key={serviceType.id} value={serviceType.id}>{serviceType.name}</option>)}
             </select>
           </label>
           <label className={styles.field}><span>Status</span><select value={filterDraft.status} onChange={(event) => setFilterDraft((current) => ({ ...current, status: event.target.value as Filters["status"] }))}><option value="TODOS">Todos</option><option value="ABERTA">Aberta</option><option value="FECHADA">Fechada</option><option value="CANCELADA">Cancelada</option></select></label>
