@@ -575,6 +575,7 @@ export async function GET(request: NextRequest) {
 
     const codeFilter = normalizeText(request.nextUrl.searchParams.get("codigo"));
     const descriptionFilter = normalizeText(request.nextUrl.searchParams.get("descricao"));
+    const umbFilter = normalizeText(request.nextUrl.searchParams.get("umb"));
     const typeFilter = normalizeType(request.nextUrl.searchParams.get("tipo"));
     const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toLowerCase();
 
@@ -594,6 +595,9 @@ export async function GET(request: NextRequest) {
     }
     if (descriptionFilter) {
       query = query.ilike("descricao", `%${descriptionFilter}%`);
+    }
+    if (umbFilter) {
+      query = query.ilike("umb", `%${umbFilter}%`);
     }
     if (typeFilter) {
       if (typeFilter === "NOVO" || typeFilter === "SUCATA") {
