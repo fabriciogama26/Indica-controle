@@ -18,6 +18,11 @@ type WorkCompletionCatalogRow = {
   sort_order: number | null;
 };
 
+type ProjectServiceTypeRow = {
+  id: string;
+  name: string;
+};
+
 function normalizeReasonKey(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -47,7 +52,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
-  const [noProductionReasonResult, workCompletionCatalogResult] = await Promise.all([
+  const [noProductionReasonResult, projectServiceTypesResult, workCompletionCatalogResult] = await Promise.all([
     resolution.supabase
       .from("measurement_no_production_reasons")
       .select("id, code, name, is_active, sort_order")
@@ -56,6 +61,13 @@ export async function GET(request: NextRequest) {
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true })
       .returns<NoProductionReasonRow[]>(),
+    resolution.supabase
+      .from("project_service_types")
+      .select("id, name")
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("ativo", true)
+      .order("name", { ascending: true })
+      .returns<ProjectServiceTypeRow[]>(),
     resolution.supabase
       .from("programming_work_completion_catalog")
       .select("id, code, label_pt, is_active, sort_order")
@@ -70,6 +82,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar motivos de sem producao da medicao." }, { status: 500 });
   }
 
+  if (projectServiceTypesResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar tipos de servico dos projetos." }, { status: 500 });
+  }
+
   const noProductionReasons = dedupeNoProductionReasons(noProductionReasonResult.data ?? []);
   const workCompletionCatalog = workCompletionCatalogResult.error
     ? []
@@ -79,6 +95,10 @@ export async function GET(request: NextRequest) {
     noProductionReasons: noProductionReasons.map((item) => ({
       id: item.id,
       code: String(item.code ?? "").trim(),
+      name: String(item.name ?? "").trim(),
+    })),
+    projectServiceTypes: (projectServiceTypesResult.data ?? []).map((item) => ({
+      id: item.id,
       name: String(item.name ?? "").trim(),
     })),
     workCompletionCatalog: workCompletionCatalog.map((item) => ({
