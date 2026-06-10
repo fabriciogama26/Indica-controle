@@ -61,6 +61,11 @@ type MaterialsResponse = {
   message?: string;
 };
 
+type MaterialsMetaResponse = {
+  umbOptions?: string[];
+  message?: string;
+};
+
 type MaterialHistoryResponse = {
   history?: MaterialHistoryEntry[];
   pagination?: { page: number; pageSize: number; total: number };
@@ -431,6 +436,7 @@ export function MaterialsPageView() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [filterDraft, setFilterDraft] = useState<FilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS);
+  const [umbOptions, setUmbOptions] = useState<string[]>([]);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -501,6 +507,46 @@ export function MaterialsPageView() {
   useEffect(() => {
     void loadMaterials(page, activeFilters);
   }, [activeFilters, loadMaterials, page]);
+
+  useEffect(() => {
+    if (!session?.accessToken) {
+      setUmbOptions([]);
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadMaterialsMeta() {
+      try {
+        const response = await fetch("/api/materials/meta", {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session?.accessToken}`,
+          },
+        });
+        const data = (await response.json().catch(() => ({}))) as MaterialsMetaResponse;
+        if (!response.ok) {
+          throw new Error(data.message ?? "Falha ao carregar UMBs dos materiais.");
+        }
+        if (!ignore) {
+          setUmbOptions(data.umbOptions ?? []);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setUmbOptions([]);
+          setFeedback({
+            type: "error",
+            message: error instanceof Error ? error.message : "Falha ao carregar UMBs dos materiais.",
+          });
+        }
+      }
+    }
+
+    void loadMaterialsMeta();
+    return () => {
+      ignore = true;
+    };
+  }, [session?.accessToken]);
 
   function resetFormState() {
     setForm(INITIAL_FORM);
@@ -1240,12 +1286,15 @@ export function MaterialsPageView() {
 
           <label className={styles.field}>
             <span>UMB</span>
-            <input
-              type="text"
+            <select
               value={filterDraft.umb}
               onChange={(event) => updateFilterField("umb", event.target.value)}
-              placeholder="Filtrar por UMB"
-            />
+            >
+              <option value="">Todas</option>
+              {umbOptions.map((umb) => (
+                <option key={umb} value={umb}>{umb}</option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
