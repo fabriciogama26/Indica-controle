@@ -642,10 +642,14 @@ function buildEvolutionRows(movements: MovementAggregate[], startDate: string, e
     ]),
   );
 
+  const countedOperations = new Set<string>();
   for (const movement of movements) {
     const key = monthKey(movement.entryDate);
     const row = map.get(key);
     if (!row) continue;
+    const operationKey = `${key}:${movement.operationKind}:${movement.transferId}`;
+    if (countedOperations.has(operationKey)) continue;
+    countedOperations.add(operationKey);
     if (movement.operationKind === "ENTRY") row.entry += 1;
     if (movement.operationKind === "EXIT") row.exit += 1;
     if (movement.operationKind === "TRANSFER") row.transfer += 1;
@@ -665,7 +669,7 @@ function buildScatterRows(movements: MovementAggregate[], balanceByMaterial: Map
     unit: string;
     operationKind: "REQUISITION" | "RETURN";
     quantity: number;
-    operationCount: number;
+    operationIds: Set<string>;
     projectIds: Set<string>;
     currentBalance: number;
   }>();
@@ -680,13 +684,13 @@ function buildScatterRows(movements: MovementAggregate[], balanceByMaterial: Map
       unit: movement.unit,
       operationKind: movement.operationKind,
       quantity: 0,
-      operationCount: 0,
+      operationIds: new Set<string>(),
       projectIds: new Set<string>(),
       currentBalance: balanceByMaterial.get(movement.materialId)?.balanceQuantity ?? 0,
     };
 
     current.quantity += movement.quantity;
-    current.operationCount += 1;
+    current.operationIds.add(movement.transferId);
     if (movement.projectId) current.projectIds.add(movement.projectId);
     map.set(key, current);
   }
@@ -699,7 +703,7 @@ function buildScatterRows(movements: MovementAggregate[], balanceByMaterial: Map
       unit: row.unit,
       operationKind: row.operationKind,
       quantity: row.quantity,
-      operationCount: row.operationCount,
+      operationCount: row.operationIds.size,
       projectCount: row.projectIds.size,
       currentBalance: row.currentBalance,
     }))
@@ -840,6 +844,7 @@ export async function GET(request: NextRequest) {
     const totalEstimatedValue = materials.reduce((sum, item) => sum + item.estimatedValue, 0);
     const criticalCount = materials.filter((item) => item.balanceQuantity <= criticalQty).length;
     const zeroCount = materials.filter((item) => item.balanceQuantity <= 0).length;
+    const movementCount = new Set(movements.map((movement) => movement.transferId)).size;
     const totalMovementQuantity = movements.reduce((sum, movement) => sum + movement.quantity, 0);
 
     return NextResponse.json({
@@ -864,7 +869,7 @@ export async function GET(request: NextRequest) {
         totalEstimatedValue,
         criticalCount,
         zeroCount,
-        movementCount: movements.length,
+        movementCount,
         totalMovementQuantity,
       },
       summaryByUnit,
