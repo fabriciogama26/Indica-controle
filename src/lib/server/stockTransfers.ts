@@ -282,9 +282,21 @@ export async function reverseStockTransferViaRpc(
             : normalizedReason === "REVERSAL_OF_REVERSAL_NOT_ALLOWED"
               ? "Nao e permitido estornar uma movimentacao de estorno."
               : normalizedReason === "INSUFFICIENT_STOCK"
-                ? "Saldo insuficiente no centro de estoque de origem para estorno."
-                : normalizedReason === "REVERSAL_DATE_IN_FUTURE"
-                  ? "Data do estorno nao pode ser futura."
+                ? (
+                    formatInsufficientStockMessage(
+                      result.details,
+                      "centro que recebeu o material na movimentacao original",
+                    )
+                    || "Saldo insuficiente no centro que recebeu o material na movimentacao original."
+                  )
+              : normalizedReason === "REVERSAL_DATE_IN_FUTURE"
+                ? "Data do estorno nao pode ser futura."
+                : normalizedReason === "INVALID_MOVEMENT_TYPE"
+                  ? "Tipo da movimentacao original invalido para estorno."
+                  : normalizedReason === "REVERSAL_TRANSFER_ID_MISSING"
+                    ? "O estorno foi processado sem retornar a movimentacao inversa. Recarregue a lista antes de tentar novamente."
+                    : normalizedReason === "REVERSAL_ITEM_ID_MISSING"
+                      ? "O estorno nao conseguiu identificar o item da movimentacao inversa."
                   : "";
 
   if (result.success !== true) {

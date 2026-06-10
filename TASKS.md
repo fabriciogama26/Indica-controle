@@ -869,3 +869,5 @@
 - [x] Endurecer o estorno por item da `Movimentacao de Estoque`, bloqueando antecipadamente linha ja estornada ou linha de estorno, falhando de forma segura se os vinculos nao puderem ser lidos e atualizando imediatamente o estado visual da linha.
 
 - [x] Corrigir a listagem da `Movimentacao de Estoque` para carregar itens e vinculos de estorno em blocos de 100 IDs, evitando `TypeError: fetch failed` e o alerta de falha de validacao em tenants com muitas movimentacoes.
+
+- [x] Exibir erros e impedimentos do estorno dentro do modal da `Movimentacao de Estoque`, detalhando saldo atual/solicitado/falta, orientando a regularizacao previa de `Operacoes de Equipe` e corrigindo o fechamento do modal apos sucesso.

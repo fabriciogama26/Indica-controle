@@ -453,3 +453,35 @@ Ajuda contextual
 - Antes: o bloqueio seguro exibia `Falha ao validar o status de estorno das movimentacoes de estoque` quando a URL da consulta ficava grande.
 - Depois: os vinculos continuam obrigatorios para liberar a lista, mas sao carregados em consultas menores e consolidados antes de calcular `isReversed` e `isReversal`.
 - Constantes e funcoes tocadas: `RELATION_QUERY_CHUNK_SIZE`, `chunkValues`, `loadRowsInChunks` e `loadTransferList`.
+- Regra operacional do estorno por item:
+  - O estorno cria uma nova movimentacao inversa; o registro original permanece para auditoria.
+  - `Entrada`: exige no centro `PARA` original saldo suficiente para gerar a `Saida` inversa.
+  - `Saida`: gera uma `Entrada` inversa no centro `DE` original.
+  - `Transferencia`: exige no centro `PARA` original saldo suficiente para devolver ao centro `DE`.
+  - Se o saldo foi consumido ou movimentado depois, inclusive por `Operacoes de Equipe`, as operacoes posteriores devem ser devolvidas ou estornadas antes.
+  - Uma linha original pode ser estornada somente uma vez.
+  - Uma linha criada como estorno nao pode ser estornada novamente.
+  - Uma linha pertencente diretamente a `Operacoes de Equipe` deve ser estornada naquela tela, preservando equipe, encarregado e centro vinculado.
+  - `transferItemId` deve pertencer ao `transferId` enviado; divergencia bloqueia a requisicao.
+  - Uma transferencia estornada integralmente nao aceita estorno adicional por item.
+  - Data futura, motivo ausente/inativo, observacao obrigatoria ausente, item inexistente e falta de permissao bloqueiam a operacao.
+- Caso analisado em 2026-06-10:
+  - Transferencia: `b3d10620-c399-44ba-8447-205fff957eb7`.
+  - Material: `310571`.
+  - Entrada original: `280` em `BASE - ANGRA`.
+  - Saldo disponivel no momento da analise: `7,6`.
+  - Impedimento: faltam `272,4` para criar a saida inversa de `280`.
+  - Foi localizada requisicao de `280` para a equipe `MK-03`; a regularizacao deve ocorrer primeiro em `Operacoes de Equipe`, respeitando o saldo atual da equipe.
+- Antes: erros do estorno eram exibidos no feedback geral da pagina, escondido atras do modal, e o fechamento no sucesso podia ser ignorado enquanto `isReversing` permanecia ativo.
+- Depois: validacoes, falhas HTTP/RPC e orientacoes operacionais aparecem dentro do modal; no sucesso, o modal fecha diretamente e a lista e recarregada.
+- Mensagens detalhadas:
+  - `INSUFFICIENT_STOCK`: material, saldo atual, solicitado, falta e orientacao para desfazer movimentacoes posteriores.
+  - `ITEM_ALREADY_REVERSED`: linha ja estornada.
+  - `REVERSAL_OF_REVERSAL_NOT_ALLOWED`: linha atual ja e um estorno.
+  - `FULL_TRANSFER_ALREADY_REVERSED`: movimentacao estornada integralmente.
+  - `REVERSAL_DATE_IN_FUTURE`: data futura.
+  - `INVALID_REVERSAL_REASON_CODE`/`REVERSAL_REASON_NOTES_REQUIRED`: motivo invalido ou observacao obrigatoria ausente.
+  - `ORIGINAL_ITEM_NOT_FOUND`: item nao pertence ao tenant ou nao existe.
+  - `TRANSFER_ITEM_MISMATCH`: item nao pertence a movimentacao selecionada.
+  - `TEAM_OPERATION_REVERSAL_REQUIRES_TEAM_FLOW`: linha deve ser estornada em `Operacoes de Equipe`.
+- Arquivos tocados: `src/lib/server/stockTransfers.ts`, `src/app/api/stock-transfers/reversal/route.ts`, `src/modules/dashboard/entrada/StockTransfersPageView.tsx`, `docs/Tela_Entrada_SaaS.txt` e `TASKS.md`.
