@@ -14,6 +14,27 @@ async function readJson<T>(response: Response) {
   return (await response.json().catch(() => ({}))) as T;
 }
 
+async function readJsonWithStatus<T>(response: Response) {
+  const responseText = await response.text();
+  if (!responseText.trim()) {
+    return { data: {} as T, parsed: false, responseText: "" };
+  }
+
+  try {
+    return {
+      data: JSON.parse(responseText) as T,
+      parsed: true,
+      responseText,
+    };
+  } catch {
+    return {
+      data: {} as T,
+      parsed: false,
+      responseText,
+    };
+  }
+}
+
 function authHeaders(accessToken: string) {
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -277,19 +298,57 @@ export async function saveProgramming(params: {
   accessToken: string;
   isEditing: boolean;
   requestBody: string;
-}) {
-  const response = await fetch("/api/programacao", {
-    method: params.isEditing ? "PUT" : "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(params.accessToken),
-    },
-    body: params.requestBody,
-  });
+}): Promise<{
+  status: number;
+  ok: boolean;
+  data: BatchCreateResponse & SaveProgrammingResponse;
+}> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 30_000);
 
-  return {
-    status: response.status,
-    ok: response.ok,
-    data: await readJson<BatchCreateResponse & SaveProgrammingResponse>(response),
-  };
+  try {
+    const response = await fetch("/api/programacao", {
+      method: params.isEditing ? "PUT" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(params.accessToken),
+      },
+      body: params.requestBody,
+      signal: controller.signal,
+    });
+    const parsedResponse = await readJsonWithStatus<BatchCreateResponse & SaveProgrammingResponse>(response);
+
+    if (!parsedResponse.parsed) {
+      return {
+        status: response.status,
+        ok: false,
+        data: {
+          reason: "INVALID_SERVER_RESPONSE",
+          message: "O servidor respondeu em formato invalido. Verifique a conexao e tente novamente.",
+          detail: parsedResponse.responseText.trim().slice(0, 500) || `Resposta HTTP ${response.status} sem conteudo JSON.`,
+        } satisfies BatchCreateResponse & SaveProgrammingResponse,
+      };
+    }
+
+    return {
+      status: response.status,
+      ok: response.ok,
+      data: parsedResponse.data,
+    };
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    return {
+      status: 0,
+      ok: false,
+      data: {
+        reason: timedOut ? "REQUEST_TIMEOUT" : "NETWORK_ERROR",
+        message: timedOut
+          ? "A comunicacao com o servidor demorou mais de 30 segundos. Verifique a conexao e tente novamente."
+          : "Nao foi possivel comunicar com o servidor. Verifique sua internet e tente novamente.",
+        detail: error instanceof Error ? error.message : null,
+      } satisfies BatchCreateResponse & SaveProgrammingResponse,
+    };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }

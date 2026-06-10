@@ -1982,10 +1982,17 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               payload: data,
             });
           } else {
+            const isCommunicationFailure = [
+              "NETWORK_ERROR",
+              "REQUEST_TIMEOUT",
+              "INVALID_SERVER_RESPONSE",
+            ].includes(data.reason ?? "");
             openAlertModal(
-              data.error === "conflict"
-                ? (editingScheduleId ? "Conflito ao salvar edicao" : "Conflito ao cadastrar programacao")
-                : (editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao"),
+              isCommunicationFailure
+                ? "Falha de comunicacao"
+                : data.error === "conflict"
+                  ? (editingScheduleId ? "Conflito ao salvar edicao" : "Conflito ao cadastrar programacao")
+                  : (editingScheduleId ? "Falha ao salvar edicao" : "Falha ao cadastrar programacao"),
               responseMessage,
               buildConflictAlertDetails(data),
             );
@@ -1997,6 +2004,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           responseStatus: saveResult.status,
           responseMessage,
           responseError: data.error ?? null,
+          responseReason: data.reason ?? null,
+          responseDetail: data.detail ?? null,
           hasConflict: Boolean(data.hasConflict),
         });
         return;
