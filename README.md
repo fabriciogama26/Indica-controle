@@ -453,7 +453,10 @@ npm run build
   - Solucao: aplicar `029_create_project_table.sql` antes de usar a tela `/projetos`.
 - `Falha ao salvar programacao em transacao unica.` ou `Falha ao cadastrar programacao em lote.`:
   - Causa: ambiente com RPC full da `Programacao` desatualizada ou ainda dependente da migration `090_add_programming_service_description.sql`.
-  - Solucao: aplicar `091_create_programming_full_save_rpcs.sql`, `094_add_programming_stage_and_completion_fields.sql`, `095_harden_programming_time_and_document_validations.sql`, `099_harden_programming_batch_full_self_contained.sql`, `100_harden_programming_full_self_contained.sql` e `106_move_programming_save_history_into_full_rpcs.sql`.
+  - Solucao: aplicar `091_create_programming_full_save_rpcs.sql`, `094_add_programming_stage_and_completion_fields.sql`, `095_harden_programming_time_and_document_validations.sql`, `099_harden_programming_batch_full_self_contained.sql`, `100_harden_programming_full_self_contained.sql`, `106_move_programming_save_history_into_full_rpcs.sql`, `159_fix_programming_full_wrappers_etapa_flags_recursion.sql` e `221_preserve_programming_wrapper_error_details.sql`.
+- `Nao foi possivel comunicar com o servidor.` ou timeout de 30 segundos na Programacao:
+  - Causa: perda de internet, indisponibilidade da API/Supabase ou demora excessiva da requisicao.
+  - Solucao: verificar a conexao e consultar a lista antes de repetir o cadastro, pois o banco pode ter concluido a transacao mesmo quando a resposta nao chegou ao navegador.
 - `A ETAPA informada ja existe ou esta abaixo do historico encontrado...`:
   - Causa: o usuario tentou salvar uma programacao com `ETAPA` igual ou menor do que etapas ja registradas para o mesmo projeto/equipe.
   - Solucao: fechar o modal de confronto/alerta, corrigir o campo `ETAPA` no formulario e salvar novamente com uma etapa coerente com o historico.

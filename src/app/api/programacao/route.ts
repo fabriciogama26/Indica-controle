@@ -304,6 +304,7 @@ type SaveProgrammingRpcResult = {
   status?: number;
   reason?: string;
   message?: string;
+  detail?: string;
   action?: "INSERT" | "UPDATE";
   programming_id?: string;
   project_code?: string;
@@ -370,6 +371,7 @@ type BatchProgrammingRpcResult = {
   status?: number;
   reason?: string;
   message?: string;
+  detail?: string;
   project_code?: string;
   inserted_count?: number;
   items?: BatchProgrammingRpcItem[];
@@ -2204,6 +2206,7 @@ async function saveProgrammingFullViaRpc(params: {
       status: Number(result.status ?? 400),
       message: result.message ?? "Falha ao salvar programacao.",
       reason: result.reason ?? null,
+      detail: result.detail ?? null,
     } as const;
   }
 
@@ -2360,6 +2363,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
       status: Number(result.status ?? 400),
       message: result.message ?? "Falha ao salvar programacao em lote.",
       reason: result.reason ?? null,
+      detail: result.detail ?? null,
     } as const;
   }
 
@@ -3697,7 +3701,11 @@ async function saveProgrammingBatch(request: NextRequest) {
         });
 
         return NextResponse.json(
-          { message: detailedConflictMessage ?? fullBatchSaveResult.message },
+          {
+            message: detailedConflictMessage ?? fullBatchSaveResult.message,
+            reason: fullBatchSaveResult.reason,
+            detail: fullBatchSaveResult.detail ?? null,
+          },
           { status: 409 },
         );
       }
@@ -3707,6 +3715,8 @@ async function saveProgrammingBatch(request: NextRequest) {
           {
             message:
               "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Verifique se as RPCs base e wrappers estao atualizadas (migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159).",
+            reason: fullBatchSaveResult.reason,
+            detail: fullBatchSaveResult.detail ?? null,
           },
           { status: 409 },
         );
@@ -3715,6 +3725,7 @@ async function saveProgrammingBatch(request: NextRequest) {
       if (
         (fullBatchSaveResult.reason === "BATCH_FULL_CREATE_FAILED"
           || fullBatchSaveResult.reason === "SAVE_PROGRAMMING_FULL_FAILED")
+        && !fullBatchSaveResult.detail
         && (
           fullBatchSaveResult.message === "Falha ao cadastrar programacao em lote."
           || fullBatchSaveResult.message === "Falha ao salvar programacao em transacao unica."
@@ -3724,12 +3735,20 @@ async function saveProgrammingBatch(request: NextRequest) {
           {
             message:
               "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com RPC full inconsistente. Verifique as migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159.",
+            reason: fullBatchSaveResult.reason,
           },
           { status: 409 },
         );
       }
 
-      return NextResponse.json({ message: fullBatchSaveResult.message }, { status: fullBatchSaveResult.status });
+      return NextResponse.json(
+        {
+          message: fullBatchSaveResult.message,
+          reason: fullBatchSaveResult.reason ?? null,
+          detail: fullBatchSaveResult.detail ?? null,
+        },
+        { status: fullBatchSaveResult.status },
+      );
     }
 
     const redeDecimalResult = await applyProgrammingRedeQtyDecimal({
@@ -4174,7 +4193,11 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       });
 
       return NextResponse.json(
-        { message: detailedConflictMessage ?? fullSaveResult.message },
+        {
+          message: detailedConflictMessage ?? fullSaveResult.message,
+          reason: fullSaveResult.reason,
+          detail: fullSaveResult.detail ?? null,
+        },
         { status: 409 },
       );
     }
@@ -4203,6 +4226,8 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
         {
           message:
             "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations 091, 094, 095, 100, 106, 111, 151 e 152 e tente novamente.",
+          reason: fullSaveResult.reason,
+          detail: fullSaveResult.detail ?? null,
         },
         { status: 409 },
       );
@@ -4210,18 +4235,27 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
 
     if (
       fullSaveResult.reason === "SAVE_PROGRAMMING_FULL_FAILED"
+      && !fullSaveResult.detail
       && fullSaveResult.message === "Falha ao salvar programacao em transacao unica."
     ) {
       return NextResponse.json(
         {
           message:
             "Falha ao salvar programacao no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 100, 106, 111, 151 e 152 e tente novamente.",
+          reason: fullSaveResult.reason,
         },
         { status: 409 },
       );
     }
 
-    return NextResponse.json({ message: fullSaveResult.message }, { status: fullSaveResult.status });
+    return NextResponse.json(
+      {
+        message: fullSaveResult.message,
+        reason: fullSaveResult.reason ?? null,
+        detail: fullSaveResult.detail ?? null,
+      },
+      { status: fullSaveResult.status },
+    );
   }
 
   const redeDecimalResult = await applyProgrammingRedeQtyDecimal({

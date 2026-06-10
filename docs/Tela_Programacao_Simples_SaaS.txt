@@ -89,6 +89,11 @@ Arquitetura
   - `supabase/migrations/159_fix_programming_full_wrappers_etapa_flags_recursion.sql`
   - Ajusta wrappers da `158` para chamar as funcoes base com assinatura correta.
   - Mantem no mesmo wrapper a persistencia de `Ponto eletrico`, `N EQ`, `ETAPA UNICA` e `ETAPA FINAL`.
+- Migration de diagnostico das wrappers:
+  - `supabase/migrations/221_preserve_programming_wrapper_error_details.sql`
+  - Preserva `reason/detail` de erros estruturados e inclui `SQLERRM` como detalhe quando a excecao do banco nao estiver em JSON.
+  - Seleciona somente as wrappers atuais com `p_etapa_unica` e `p_etapa_final`, ignorando overloads legados que ainda existam no ambiente.
+  - Nao altera tabelas, dados, RLS ou escopo por tenant.
 - Migration de compatibilidade do tipo SGD:
   - `supabase/migrations/108_allow_area_livre_programming_sgd_types.sql`
   - Catalogo `programming_sgd_types` passa a aceitar `AREA_LIVRE` em `export_column`.
@@ -440,6 +445,8 @@ Funcoes principais
   - Responsavel por: formulario, multi-selecao de equipes, filtros, listagem, exportacao, submit em lote, cancelamento e historico detalhado por campos alterados.
 - Caminho: `src/app/api/programacao/route.ts`
   - Responsavel por: tratar `action = BATCH_CREATE`, validar payload, chamar RPC transacional, retornar conflito rico (`409`) e responder sucesso com aviso quando a visualizacao falhar no pos-save.
+- Caminho: `src/modules/dashboard/programacao-simples/api.ts`
+  - Responsavel por: executar chamadas HTTP da tela, limitar o save a 30 segundos e diferenciar falha de rede, timeout e resposta invalida do servidor.
 - Caminho: `supabase/migrations/082_create_programming_batch_create_rpc.sql`
   - Responsavel por: transacao de cadastro em lote com rollback total em erro.
 
@@ -454,6 +461,7 @@ Funcoes utilitarias relacionadas
 - `normalizeHistoryChangeMap`, `formatHistoryValue`, `formatHistoryAction`.
 - `saveProgrammingBatchViaRpc`, `saveProgrammingBatch`.
 - `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`.
+- `readJsonWithStatus`, `saveProgramming`.
 - `setProgrammingEnelFieldsViaRpc`, `setProgrammingOutageWindowViaRpc`, `setProgrammingDocumentDatesViaRpc`, `resolveProgrammingSgdType`.
 - `setProgrammingExecutionResultViaRpc`.
 - `setProgrammingServiceDescriptionViaRpc`.
@@ -463,6 +471,7 @@ Funcoes utilitarias relacionadas
 Servicos e integracoes externas
 - `save_project_programming_batch` (RPC nova).
 - `save_project_programming_full` e `save_project_programming_batch_full` (RPCs transacionais full).
+- `save_project_programming_full_with_electrical_and_eq` e `save_project_programming_batch_full_with_electrical_and_eq` (wrappers com propagacao de `reason/detail`).
 - `save_project_programming_full_with_electrical_field` e `save_project_programming_batch_full_with_electrical_field` (RPCs full com Campo eletrico no mesmo commit).
 - `save_project_programming` (RPC reutilizada por equipe no lote).
 - `set_project_programming_outage_window` (RPC nova para janela de desligamento).
@@ -1374,3 +1383,28 @@ Atualizacao adicional 2026-06-05 (copia para multiplas datas)
   - A API injeta `tenant_id` e `actor_user_id` a partir da sessao autenticada.
   - A RPC filtra origem, projeto, equipe, conflitos e escrita por `tenant_id`.
   - A operacao e transacional: falha em qualquer data impede gravacao parcial.
+
+Atualizacao 2026-06-10 (diagnostico de falha no salvamento)
+-----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/221_preserve_programming_wrapper_error_details.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `readJsonWithStatus`: valida se a resposta HTTP contem JSON legivel.
+  - `saveProgramming`: aplica timeout de 30 segundos e retorna `NETWORK_ERROR`, `REQUEST_TIMEOUT` ou `INVALID_SERVER_RESPONSE`.
+  - `saveProgrammingFullViaRpc` e `saveProgrammingBatchFullViaRpc`: preservam `detail` retornado pelas wrappers.
+  - `ProgrammingSimplePageView`: abre o titulo `Falha de comunicacao` para erros de transporte e inclui `reason/detail` no log `programacao_simples`.
+  - Wrappers SQL full: deixam de substituir excecoes SQL nao JSON apenas por mensagem generica.
+  - Migration 221: filtra as assinaturas atuais pelos argumentos de flags de etapa para funcionar em bancos que ainda possuem overloads legados.
+- Comportamento antes/depois:
+  - Antes: queda de internet, timeout, resposta HTTP invalida e erro interno da RPC podiam resultar na mesma mensagem `Falha ao cadastrar programacao em lote.`.
+  - Depois: falhas de comunicacao apresentam mensagem propria; conflitos continuam com mensagem operacional; falhas do banco exibem codigo e detalhe retornados pela RPC.
+  - O cadastro continua transacional; timeout ou perda da resposta nao executa nova tentativa automatica para evitar duplicidade.
+- Multi-tenant:
+  - A API continua obtendo `tenant_id` e `actor_user_id` da sessao autenticada.
+  - A migration altera somente o tratamento de excecao das wrappers existentes e preserva todos os filtros por tenant.
