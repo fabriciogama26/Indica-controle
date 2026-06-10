@@ -861,3 +861,9 @@
 - [x] Corrigir o diagnostico do cadastro da `Programacao Simples` para preservar `reason/detail` das RPCs wrappers no retorno da API/modal e diferenciar falha HTTP/rede de erro do banco, evitando a mensagem generica `Falha ao cadastrar programacao em lote.`. Incluidos timeout de 30 segundos, codigos de transporte e migration 221 para preservar o detalhe SQL.
 
 - [x] Corrigir a migration `221_preserve_programming_wrapper_error_details.sql` para selecionar somente as wrappers atuais com flags de etapa, ignorando os quatro overloads legados encontrados no banco sem remover funcoes existentes.
+
+- [x] Corrigir o cadastro em massa de `Operacoes de Equipe` para reutilizar e limpar a tabela temporaria de seriais RET entre linhas da mesma transacao, evitando `relation "tmp_retired_serial_transfer_items" already exists` sem perder o rollback atomico.
+
+- [x] Complementar a correcao do cadastro em massa de `Operacoes de Equipe` na funcao-base de estoque, reutilizando e limpando `tmp_stock_transfer_items` para evitar novo `relation already exists` depois da migration 222.
+
+- [x] Endurecer o estorno por item da `Movimentacao de Estoque`, bloqueando antecipadamente linha ja estornada ou linha de estorno, falhando de forma segura se os vinculos nao puderem ser lidos e atualizando imediatamente o estado visual da linha.

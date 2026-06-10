@@ -438,3 +438,13 @@ Ajuda contextual
 - Depois: correcao de saldo fica marcada por finalidade propria, exige motivo e aparece nos detalhes/lista/historico.
 - Antes: o estorno por item podia chamar `save_stock_transfer_record` sem `p_operation_purpose`, deixando a execucao vulneravel a ambiguidade de assinatura apos as migrations `206/209`.
 - Depois: a migration `216` republica as RPCs de estorno com chamada explicita para `p_direct_purchase`, `p_operation_purpose = NORMAL` e `p_balance_correction_reason = null`, preservando o comportamento transacional e o escopo por tenant.
+- Antes: se a API nao conseguisse consultar os vinculos de estorno, a lista assumia silenciosamente `isReversed = false` e podia manter o botao de estorno habilitado para uma linha ja estornada.
+- Depois: a listagem falha de forma segura quando o status de estorno nao pode ser validado, a rota recusa antecipadamente item original ou item de estorno ja vinculado e a tela marca a linha como estornada imediatamente apos o sucesso da RPC.
+- Validacao no banco: `stock_transfer_item_reversals` mantem unicidade por `tenant_id + original_stock_transfer_item_id`, e `reverse_stock_transfer_item_record_v1` continua como protecao transacional contra duplo estorno.
+- Consulta de diagnostico em 2026-06-10: o estorno exibido na lista em `10/06/2026 17:46:13` possui vinculo por item gravado; o problema identificado e de estado/apresentacao da acao, nao duplicidade persistida desse registro.
+- Arquivos tocados na correcao:
+  - `src/app/api/stock-transfers/route.ts`: valida erros ao carregar vinculos antes de calcular `isReversed`/`isReversal`.
+  - `src/app/api/stock-transfers/reversal/route.ts`: pre-valida duplo estorno e estorno de um item que ja e reversao.
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`: atualiza o item localmente apos o estorno e registra falhas com `useErrorLogger("movimentacao_estoque")`.
+- Funcoes tocadas: `loadTransferList`, `POST /api/stock-transfers/reversal` e `handleConfirmReversal`.
+- Impacto multi-tenant: todas as consultas adicionais exigem `tenant_id = appUser.tenant_id`; RLS e a constraint existente permanecem inalteradas.
