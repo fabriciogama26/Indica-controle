@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
   }
 
   const umbSet = new Set<string>();
+  let hasMaterialsWithoutUmb = false;
   let from = 0;
 
   while (true) {
@@ -30,7 +31,6 @@ export async function GET(request: NextRequest) {
       .from("materials")
       .select("umb")
       .eq("tenant_id", resolution.appUser.tenant_id)
-      .not("umb", "is", null)
       .order("umb", { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
       .returns<MaterialUmbRow[]>();
@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
       const umb = normalizeUmb(item.umb);
       if (umb) {
         umbSet.add(umb);
+      } else {
+        hasMaterialsWithoutUmb = true;
       }
     }
 
@@ -55,5 +57,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     umbOptions: Array.from(umbSet).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    hasMaterialsWithoutUmb,
   });
 }

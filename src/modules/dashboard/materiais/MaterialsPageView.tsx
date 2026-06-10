@@ -63,6 +63,7 @@ type MaterialsResponse = {
 
 type MaterialsMetaResponse = {
   umbOptions?: string[];
+  hasMaterialsWithoutUmb?: boolean;
   message?: string;
 };
 
@@ -111,6 +112,7 @@ type MaterialBatchImportResponse = {
 const PAGE_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const EXPORT_PAGE_SIZE = 100;
+const WITHOUT_UMB_FILTER = "__SEM_UMB__";
 const INITIAL_FORM: FormState = {
   codigo: "",
   descricao: "",
@@ -437,6 +439,7 @@ export function MaterialsPageView() {
   const [filterDraft, setFilterDraft] = useState<FilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [umbOptions, setUmbOptions] = useState<string[]>([]);
+  const [hasMaterialsWithoutUmb, setHasMaterialsWithoutUmb] = useState(false);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -511,6 +514,7 @@ export function MaterialsPageView() {
   useEffect(() => {
     if (!session?.accessToken) {
       setUmbOptions([]);
+      setHasMaterialsWithoutUmb(false);
       return;
     }
 
@@ -530,10 +534,12 @@ export function MaterialsPageView() {
         }
         if (!ignore) {
           setUmbOptions(data.umbOptions ?? []);
+          setHasMaterialsWithoutUmb(Boolean(data.hasMaterialsWithoutUmb));
         }
       } catch (error) {
         if (!ignore) {
           setUmbOptions([]);
+          setHasMaterialsWithoutUmb(false);
           setFeedback({
             type: "error",
             message: error instanceof Error ? error.message : "Falha ao carregar UMBs dos materiais.",
@@ -1291,6 +1297,7 @@ export function MaterialsPageView() {
               onChange={(event) => updateFilterField("umb", event.target.value)}
             >
               <option value="">Todas</option>
+              {hasMaterialsWithoutUmb ? <option value={WITHOUT_UMB_FILTER}>Sem UMB</option> : null}
               {umbOptions.map((umb) => (
                 <option key={umb} value={umb}>{umb}</option>
               ))}

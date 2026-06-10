@@ -9,6 +9,8 @@ import {
 } from "@/lib/server/concurrency";
 import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 
+const WITHOUT_UMB_FILTER = "__SEM_UMB__";
+
 type MaterialRow = {
   id: string;
   codigo: string;
@@ -597,7 +599,9 @@ export async function GET(request: NextRequest) {
       query = query.ilike("descricao", `%${descriptionFilter}%`);
     }
     if (umbFilter) {
-      query = query.ilike("umb", umbFilter);
+      query = umbFilter === WITHOUT_UMB_FILTER
+        ? query.or("umb.is.null,umb.eq.")
+        : query.ilike("umb", umbFilter);
     }
     if (typeFilter) {
       if (typeFilter === "NOVO" || typeFilter === "SUCATA") {
@@ -683,7 +687,9 @@ export async function GET(request: NextRequest) {
         id: item.id,
         codigo: item.codigo,
         descricao: item.descricao,
-        umb: normalizeNullableText(item.umb) ?? umbFallbackByMaterialId.get(item.id) ?? null,
+        umb: umbFilter === WITHOUT_UMB_FILTER
+          ? null
+          : normalizeNullableText(item.umb) ?? umbFallbackByMaterialId.get(item.id) ?? null,
         tipo: item.tipo,
         isTransformer: Boolean(item.is_transformer),
         serialTrackingType: normalizeSerialTrackingType(item.serial_tracking_type ?? (item.is_transformer ? "TRAFO" : "NONE")),
