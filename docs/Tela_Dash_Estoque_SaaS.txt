@@ -42,8 +42,9 @@ Filtros, auto-complete e listagem
     - Botao `Devolucao`
     - Botao `Expandir`
     - Alternancia de escala entre `Raiz` e `Linear`
-    - Controle de `Zoom` no modal expandido para alterar o dominio da escala e separar visualmente pontos sobrepostos
     - Lista lateral completa com rolagem para selecionar material
+    - Lista lateral exibe `Material`, `UMB`, `Quantidade`, `Operacoes` e `Projetos`
+    - Legenda `Quantidade` fica acima da area plotada para nao cobrir os pontos
     - Foco individual: ao selecionar um material na lista, o grafico exibe somente o circulo correspondente
     - Eixo X: quantidade movimentada
     - Eixo Y: numero de operacoes, com rotulo `Operacoes` por extenso e na horizontal
@@ -60,7 +61,9 @@ Filtros, auto-complete e listagem
     - Modo `Valor`: classificacao por `saldo x unit_price`
     - Modo `Quantidade`: classificacao por quantidade em estoque
   - `Evolucao de movimentacoes`
-    - Linhas mensais por tipo de operacao
+    - Quantidade mensal de operacoes realizadas por tipo
+    - Cada `stock_transfers.id` e contado uma unica vez no mes e tipo, mesmo quando possui varios materiais
+    - O total de cada tipo e exibido diretamente acima da respectiva barra mensal
     - Nao soma quantidades de UMB diferentes no mesmo grafico
 - Cards:
   - Materiais
@@ -78,7 +81,7 @@ Boas praticas
 - Registrar erros com `useErrorLogger("dash_estoque")`.
 - Manter `Centro de estoque` apenas como filtro, sem ranking por centro.
 - Aplicar filtros somente pelo botao `Filtrar`; alteracoes nos campos nao recarregam automaticamente a tela.
-- Para evolucao temporal, usar contagem de linhas/movimentacoes quando houver mistura de UMB no periodo.
+- Para evolucao temporal, contar operacoes distintas por `transferId`, sem usar a quantidade de itens como quantidade de operacoes.
 - Excluir movimentacoes estornadas e movimentacoes de estorno dos agregados quando houver vinculo em `stock_transfer_reversals` ou `stock_transfer_item_reversals`.
 
 Cancelamento e saldo
@@ -93,7 +96,31 @@ Cancelamento e saldo
   - `teams`
   - `project`
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
-- O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta linhas por tipo de operacao.
+- O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta transferencias distintas por tipo de operacao.
+
+Atualizacao 2026-06
+-------------------
+- Arquivos alterados:
+  - `src/app/api/dash-estoque/route.ts`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - A legenda `Quantidade` ficava sobre a area plotada e podia esconder pontos.
+  - A lista lateral nao mostrava a UMB.
+  - O modal ampliado exibia controle de zoom.
+  - A evolucao e o total tratavam cada item de material como uma operacao.
+- Depois:
+  - A legenda fica em uma faixa acima do grafico.
+  - A lista lateral exibe a UMB de cada material.
+  - O controle e a regra de zoom foram removidos.
+  - Evolucao e total contam cada transferencia uma unica vez; Requisicao, Devolucao e Retorno de campo seguem a classificacao de `stock_transfer_team_operations`.
+  - A dispersao conta operacoes distintas por transferencia para cada material.
+- Impacto multi-tenant:
+  - Sem mudanca de schema, migration ou politica RLS.
+  - As consultas permanecem filtradas pelo `tenant_id` autenticado.
 
 Atalhos
 -------
@@ -124,9 +151,9 @@ Atualizacao 2026-05
     - A sidebar passa a exibir `Dashboard Estoque` em `Visao Geral`.
     - A matriz de permissoes passa a reconhecer `dash-estoque`.
     - A tela `Home` deixa de usar o rotulo visual `Dashboard Estoque`.
-    - A dispersao passa a ter modal ampliado, escala `Raiz`/`Linear`, controle de zoom por dominio, lista completa com rolagem, foco individual por material selecionado e legenda de cores por faixa de quantidade.
+    - A dispersao passa a ter modal ampliado, escala `Raiz`/`Linear`, lista completa com rolagem, foco individual por material selecionado e legenda de cores por faixa de quantidade.
     - Os filtros passam a executar nova consulta somente pelo botao `Filtrar`, sem recarregamento automatico ao alterar campos.
-    - A evolucao passa a contar linhas/movimentacoes por mes e tipo, sem somar quantidades de UMB diferentes.
+    - A evolucao passa a contar operacoes distintas por mes e tipo, sem somar quantidades de UMB diferentes.
     - A Curva ABC passa a alternar entre classificacao por valor e por quantidade em estoque.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -184,7 +211,6 @@ Funcoes utilitarias relacionadas
     - `ScatterChart`
     - `scaleScatterValue`
     - `scatterOffset`
-    - `scatterZoom`
     - `scatterQuantityPalette`
     - `buildScatterQuantityBands`
     - `getScatterQuantityBand`
@@ -233,7 +259,6 @@ Ajuda contextual
   - `ScatterChart`
   - `scaleScatterValue`
   - `scatterOffset`
-  - `scatterZoom`
   - `GET /api/dash-estoque`
   - `ensureDashPageAccess`
   - `resolveDashContext`
@@ -250,12 +275,14 @@ Ajuda contextual
   - Antes: `dash-estoque` nao existia em menu/permissao.
   - Depois: `dash-estoque` esta cadastrado em sidebar, autorizacao client-side, catalogo de permissoes e migration de backfill.
   - Antes: a dispersao expandida mantinha muitos pontos sobrepostos e abreviava o eixo Y como `Ops`.
-  - Depois: a dispersao expandida permite rolar e selecionar materiais na lista lateral, foca somente o circulo selecionado, usa zoom por dominio e exibe `Operacoes` por extenso na horizontal.
+  - Depois: a dispersao expandida permite rolar e selecionar materiais na lista lateral, foca somente o circulo selecionado e exibe `Operacoes` por extenso na horizontal.
   - Antes: todos os circulos da dispersao usavam praticamente a mesma cor por operacao.
   - Depois: a cor dos circulos indica a faixa de quantidade movimentada, com legenda visivel no grafico.
   - Antes: cada alteracao de filtro podia disparar nova carga automaticamente por dependencia do `useEffect`.
   - Depois: a tela faz carga inicial uma unica vez e novas consultas dependem do clique em `Filtrar`.
   - Antes: a evolucao somava quantidades mensais, misturando unidades como `M`, `KG` e `UN`.
-  - Depois: a evolucao mostra contagem de linhas/movimentacoes por tipo, que e comparavel mesmo com UMB diferentes.
+  - Depois: a evolucao mostra contagem de operacoes distintas por tipo, que e comparavel mesmo com UMB diferentes.
   - Antes: a Curva ABC era calculada apenas por valor estimado (`saldo x preco`).
   - Depois: a Curva ABC permite alternar entre valor estimado e quantidade em estoque.
+  - Antes: a evolucao e o total podiam multiplicar uma operacao pela quantidade de materiais vinculados.
+  - Depois: `buildEvolutionRows` e o resumo usam `transferId` distinto; a lista da dispersao mostra UMB, nao possui zoom e mantem a legenda fora da area plotada.

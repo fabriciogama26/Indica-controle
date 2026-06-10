@@ -361,15 +361,17 @@ function EvolutionChart({ rows }: { rows: EvolutionRow[] }) {
             <div key={row.period} className={styles.evolutionGroup}>
               <div className={styles.evolutionBars}>
                 {evolutionKeys.map((item) => (
-                  <div
-                    key={item.key}
-                    className={styles.evolutionBar}
-                    title={`${item.label}: ${formatDecimal(Number(row[item.key]) || 0)} linhas`}
-                    style={{
-                      height: `${Math.max(2, ((Number(row[item.key]) || 0) / max) * 100)}%`,
-                      background: item.color,
-                    }}
-                  />
+                  <div key={item.key} className={styles.evolutionBarItem}>
+                    <span className={styles.evolutionBarValue}>{formatDecimal(Number(row[item.key]) || 0)}</span>
+                    <div
+                      className={styles.evolutionBar}
+                      title={`${item.label}: ${formatDecimal(Number(row[item.key]) || 0)} operacoes`}
+                      style={{
+                        height: `${Math.max(2, ((Number(row[item.key]) || 0) / max) * 100)}%`,
+                        background: item.color,
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
               <strong>{row.label}</strong>
@@ -387,7 +389,6 @@ function ScatterChart({
   rows,
   operation,
   scale,
-  zoom = 1,
   expanded = false,
   selectedMaterialId = null,
   onSelectPoint,
@@ -395,7 +396,6 @@ function ScatterChart({
   rows: ScatterPoint[];
   operation: ScatterOperation;
   scale: ScatterScale;
-  zoom?: number;
   expanded?: boolean;
   selectedMaterialId?: string | null;
   onSelectPoint?: (materialId: string | null) => void;
@@ -405,13 +405,12 @@ function ScatterChart({
     ? filtered.find((row) => row.materialId === selectedMaterialId) ?? null
     : null;
   const visiblePoints = selectedPoint ? [selectedPoint] : filtered;
-  const safeZoom = Math.max(1, zoom);
   const maxQuantity = selectedPoint
     ? Math.max(1, selectedPoint.quantity / (scale === "sqrt" ? 0.36 : 0.55))
-    : maxValue(filtered.map((row) => row.quantity)) / (expanded ? safeZoom : 1);
+    : maxValue(filtered.map((row) => row.quantity));
   const maxCount = selectedPoint
     ? Math.max(1, selectedPoint.operationCount / (scale === "sqrt" ? 0.36 : 0.55))
-    : maxValue(filtered.map((row) => row.operationCount)) / (expanded ? safeZoom : 1);
+    : maxValue(filtered.map((row) => row.operationCount));
   const maxBalance = maxValue(filtered.map((row) => Math.abs(row.currentBalance)));
   const quantityBands = buildScatterQuantityBands(filtered);
   const visibleBands = quantityBands.filter((band) =>
@@ -494,6 +493,7 @@ function ScatterChart({
           <thead>
             <tr>
               <th>Material</th>
+              <th>UMB</th>
               <th>Quantidade</th>
               <th>Operacoes</th>
               <th>Projetos</th>
@@ -510,6 +510,7 @@ function ScatterChart({
                     {point.materialCode}
                   </button>
                 </td>
+                <td>{point.unit || "SEM UMB"}</td>
                 <td>{formatDecimal(point.quantity)}</td>
                 <td>{point.operationCount}</td>
                 <td>{point.projectCount}</td>
@@ -517,7 +518,7 @@ function ScatterChart({
             ))}
             {!filtered.length ? (
               <tr>
-                <td colSpan={4} className={styles.emptyRow}>Sem dados.</td>
+                <td colSpan={5} className={styles.emptyRow}>Sem dados.</td>
               </tr>
             ) : null}
           </tbody>
@@ -542,7 +543,6 @@ export function StockDashboardPageView() {
   const [criticalQty, setCriticalQty] = useState("5");
   const [scatterOperation, setScatterOperation] = useState<ScatterOperation>("REQUISITION");
   const [scatterScale, setScatterScale] = useState<ScatterScale>("sqrt");
-  const [scatterZoom, setScatterZoom] = useState(1);
   const [abcMode, setAbcMode] = useState<AbcMode>("value");
   const [isScatterExpanded, setIsScatterExpanded] = useState(false);
   const [selectedScatterMaterialId, setSelectedScatterMaterialId] = useState<string | null>(null);
@@ -849,10 +849,10 @@ export function StockDashboardPageView() {
         <div className={styles.cardHeader}>
           <div>
             <h2 className={styles.cardTitle}>Evolucao de movimentacoes</h2>
-            <p className={styles.cardSubtitle}>Linhas mensais por tipo de operacao.</p>
+            <p className={styles.cardSubtitle}>Quantidade mensal de operacoes realizadas por tipo.</p>
           </div>
           <div className={styles.movementTotal}>
-            {summary?.movementCount ?? 0} linhas
+            {summary?.movementCount ?? 0} operacoes
           </div>
         </div>
         <EvolutionChart rows={movementEvolution} />
@@ -902,18 +902,6 @@ export function StockDashboardPageView() {
                     Linear
                   </button>
                 </div>
-                <label className={styles.zoomControl}>
-                  <span>Zoom</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="3"
-                    step="0.25"
-                    value={scatterZoom}
-                    onChange={(event) => setScatterZoom(Number(event.target.value))}
-                  />
-                  <strong>{scatterZoom.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}x</strong>
-                </label>
                 <button type="button" className={styles.closeButton} onClick={() => setIsScatterExpanded(false)} aria-label="Fechar dispersao ampliada">
                   x
                 </button>
@@ -924,7 +912,6 @@ export function StockDashboardPageView() {
                 rows={scatter}
                 operation={scatterOperation}
                 scale={scatterScale}
-                zoom={scatterZoom}
                 expanded
                 selectedMaterialId={selectedScatterMaterialId}
                 onSelectPoint={setSelectedScatterMaterialId}
