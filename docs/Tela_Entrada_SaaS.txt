@@ -448,3 +448,8 @@ Ajuda contextual
   - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`: atualiza o item localmente apos o estorno e registra falhas com `useErrorLogger("movimentacao_estoque")`.
 - Funcoes tocadas: `loadTransferList`, `POST /api/stock-transfers/reversal` e `handleConfirmReversal`.
 - Impacto multi-tenant: todas as consultas adicionais exigem `tenant_id = appUser.tenant_id`; RLS e a constraint existente permanecem inalteradas.
+- Correcao complementar: a listagem passa a consultar `stock_transfer_items`, `stock_transfer_reversals` e `stock_transfer_item_reversals` em blocos de ate 100 IDs.
+- Causa confirmada: com 467 movimentacoes no tenant, o envio de todos os UUIDs em uma unica chamada `.in(...)` excedia o tamanho pratico da requisicao e retornava `TypeError: fetch failed`.
+- Antes: o bloqueio seguro exibia `Falha ao validar o status de estorno das movimentacoes de estoque` quando a URL da consulta ficava grande.
+- Depois: os vinculos continuam obrigatorios para liberar a lista, mas sao carregados em consultas menores e consolidados antes de calcular `isReversed` e `isReversal`.
+- Constantes e funcoes tocadas: `RELATION_QUERY_CHUNK_SIZE`, `chunkValues`, `loadRowsInChunks` e `loadTransferList`.
