@@ -17,6 +17,14 @@ type ReversalPayload = {
 
 const BLOCKED_REVERSAL_REASON_CODES = new Set(["OPERATION_CANCELED", "OTHER"]);
 
+function appendReversalGuidance(reason: string, message: string) {
+  if (reason !== "INSUFFICIENT_STOCK") {
+    return message;
+  }
+
+  return `${message} Regularize primeiro as movimentacoes posteriores. Se o material foi requisitado para uma equipe, faca a devolucao ou o estorno correspondente em Operacoes de Equipe antes de estornar esta entrada.`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -70,7 +78,13 @@ export async function POST(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
     if (transferItemId) {
-      const [originalItemReversalResult, reversalItemResult] = await Promise.all([
+      const [originalItemResult, originalItemReversalResult, reversalItemResult] = await Promise.all([
+        supabase
+          .from("stock_transfer_items")
+          .select("stock_transfer_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("id", transferItemId)
+          .maybeSingle<{ stock_transfer_id: string }>(),
         supabase
           .from("stock_transfer_item_reversals")
           .select("reversal_stock_transfer_id")
@@ -85,10 +99,30 @@ export async function POST(request: NextRequest) {
           .maybeSingle<{ original_stock_transfer_id: string }>(),
       ]);
 
-      if (originalItemReversalResult.error || reversalItemResult.error) {
+      if (originalItemResult.error || originalItemReversalResult.error || reversalItemResult.error) {
         return NextResponse.json(
           { message: "Falha ao validar se o item ja foi estornado." },
           { status: 500 },
+        );
+      }
+
+      if (!originalItemResult.data) {
+        return NextResponse.json(
+          {
+            message: "Item da movimentacao original nao encontrado para este tenant.",
+            reason: "ORIGINAL_ITEM_NOT_FOUND",
+          },
+          { status: 404 },
+        );
+      }
+
+      if (transferId && originalItemResult.data.stock_transfer_id !== transferId) {
+        return NextResponse.json(
+          {
+            message: "O item informado nao pertence a movimentacao selecionada.",
+            reason: "TRANSFER_ITEM_MISMATCH",
+          },
+          { status: 400 },
         );
       }
 
@@ -111,6 +145,30 @@ export async function POST(request: NextRequest) {
           { status: 409 },
         );
       }
+
+      const teamOperationResult = await supabase
+        .from("stock_transfer_team_operations")
+        .select("transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("transfer_id", originalItemResult.data.stock_transfer_id)
+        .maybeSingle<{ transfer_id: string }>();
+
+      if (teamOperationResult.error) {
+        return NextResponse.json(
+          { message: "Falha ao validar a origem operacional da movimentacao." },
+          { status: 500 },
+        );
+      }
+
+      if (teamOperationResult.data) {
+        return NextResponse.json(
+          {
+            message: "Esta linha pertence a Operacoes de Equipe. Realize o estorno na tela Operacoes de Equipe para preservar equipe, encarregado e centro vinculado.",
+            reason: "TEAM_OPERATION_REVERSAL_REQUIRES_TEAM_FLOW",
+          },
+          { status: 409 },
+        );
+      }
     }
 
     const reversalResult = await reverseStockTransferViaRpc(supabase, {
@@ -126,7 +184,7 @@ export async function POST(request: NextRequest) {
     if (!reversalResult.ok) {
       return NextResponse.json(
         {
-          message: reversalResult.message,
+          message: appendReversalGuidance(reversalResult.reason, reversalResult.message),
           reason: reversalResult.reason,
           details: reversalResult.details,
         },

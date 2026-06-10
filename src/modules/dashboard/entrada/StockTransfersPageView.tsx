@@ -550,6 +550,10 @@ export function StockTransfersPageView() {
   const [reversalReasonCode, setReversalReasonCode] = useState("");
   const [reversalReasonNotes, setReversalReasonNotes] = useState("");
   const [reversalDate, setReversalDate] = useState(toIsoDate(new Date()));
+  const [reversalFeedback, setReversalFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -1837,6 +1841,7 @@ export function StockTransfersPageView() {
     setReversalReasonCode(defaultReasonCode);
     setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
+    setReversalFeedback(null);
   }
 
   function closeReversalModal() {
@@ -1845,39 +1850,40 @@ export function StockTransfersPageView() {
     setReversalReasonCode(reversalReasons[0]?.code ?? "");
     setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
+    setReversalFeedback(null);
   }
 
   async function handleConfirmReversal() {
     if (!session?.accessToken || !reversalModalItem) {
-      setFeedback({ type: "error", message: "Sessao invalida para estornar movimentacao de estoque." });
+      setReversalFeedback({ type: "error", message: "Sessao invalida para estornar movimentacao de estoque." });
       return;
     }
 
     const normalizedReasonCode = normalizeText(reversalReasonCode).toUpperCase();
     if (!normalizedReasonCode) {
-      setFeedback({ type: "error", message: "Motivo padrao do estorno e obrigatorio." });
+      setReversalFeedback({ type: "error", message: "Motivo padrao do estorno e obrigatorio." });
       return;
     }
 
     const normalizedReasonNotes = normalizeText(reversalReasonNotes) || null;
     if (selectedReversalReason?.requiresNotes && !normalizedReasonNotes) {
-      setFeedback({ type: "error", message: "Observacao do motivo e obrigatoria para o motivo selecionado." });
+      setReversalFeedback({ type: "error", message: "Observacao do motivo e obrigatoria para o motivo selecionado." });
       return;
     }
 
     const normalizedReversalDate = normalizeText(reversalDate);
     if (!normalizedReversalDate) {
-      setFeedback({ type: "error", message: "Data do estorno e obrigatoria." });
+      setReversalFeedback({ type: "error", message: "Data do estorno e obrigatoria." });
       return;
     }
 
     if (normalizedReversalDate > toIsoDate(new Date())) {
-      setFeedback({ type: "error", message: "Data do estorno nao pode ser futura." });
+      setReversalFeedback({ type: "error", message: "Data do estorno nao pode ser futura." });
       return;
     }
 
     setIsReversing(true);
-    setFeedback(null);
+    setReversalFeedback(null);
 
     try {
       const response = await fetch("/api/stock-transfers/reversal", {
@@ -1902,7 +1908,7 @@ export function StockTransfersPageView() {
         reason?: string;
       };
       if (!response.ok) {
-        setFeedback({ type: "error", message: data.message ?? "Falha ao estornar movimentacao de estoque." });
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar movimentacao de estoque." });
         await logError("Falha ao estornar movimentacao de estoque.", undefined, {
           status: response.status,
           reason: data.reason ?? null,
@@ -1930,10 +1936,17 @@ export function StockTransfersPageView() {
           : item
       )));
       setFeedback({ type: "success", message: data.message ?? "Estorno realizado com sucesso." });
-      closeReversalModal();
+      setReversalModalItem(null);
+      setReversalFeedback(null);
+      setReversalReasonCode(reversalReasons[0]?.code ?? "");
+      setReversalReasonNotes("");
+      setReversalDate(toIsoDate(new Date()));
       await loadHistory(1);
     } catch (error) {
-      setFeedback({ type: "error", message: "Falha ao estornar movimentacao de estoque." });
+      setReversalFeedback({
+        type: "error",
+        message: "Falha de comunicacao ao estornar. Verifique a conexao e tente novamente.",
+      });
       await logError("Falha ao estornar movimentacao de estoque.", error, {
         transferId: reversalModalItem.transferId,
         transferItemId: reversalModalItem.id,
@@ -3028,6 +3041,15 @@ export function StockTransfersPageView() {
               <p className={styles.reversalWarning}>
                 O estorno cria uma nova movimentacao inversa somente para este item e nao altera o registro original.
               </p>
+
+              {reversalFeedback ? (
+                <p
+                  className={reversalFeedback.type === "success" ? styles.successFeedback : styles.errorFeedback}
+                  role="alert"
+                >
+                  {reversalFeedback.message}
+                </p>
+              ) : null}
 
               <div className={styles.detailGrid}>
                 <div><strong>Operacao original:</strong> {movementTypeLabel(reversalModalItem.movementType)}</div>
