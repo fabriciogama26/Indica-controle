@@ -485,3 +485,42 @@ Ajuda contextual
   - `TRANSFER_ITEM_MISMATCH`: item nao pertence a movimentacao selecionada.
   - `TEAM_OPERATION_REVERSAL_REQUIRES_TEAM_FLOW`: linha deve ser estornada em `Operacoes de Equipe`.
 - Arquivos tocados: `src/lib/server/stockTransfers.ts`, `src/app/api/stock-transfers/reversal/route.ts`, `src/modules/dashboard/entrada/StockTransfersPageView.tsx`, `docs/Tela_Entrada_SaaS.txt` e `TASKS.md`.
+
+Atualizacao 2026-06 - Auditoria de integridade
+-----------------------------------------------
+- Regras bem definidas:
+  - `quantity > 0` nos itens e saldo agregado nunca negativo.
+  - Origem e destino devem ser diferentes.
+  - `ENTRY`, `EXIT` e `TRANSFER` validam a combinacao entre centros `OWN` e `THIRD_PARTY`.
+  - A RPC valida projeto, centros, materiais ativos, saldo, Serial/LP e escopo do tenant.
+  - O estorno por item bloqueia duplo estorno e estorno de uma linha que ja e estorno.
+  - A edicao direta do cabecalho de `stock_transfers` e bloqueada por trigger.
+- Riscos identificados:
+  - `POST /api/stock-transfers`, importacao, meta e consultas validam sessao/tenant, mas nao consultam a permissao da pagina `entrada`; o bloqueio atual da tela nao protege chamada direta ao endpoint.
+  - A importacao em massa percorre as linhas e chama a RPC individualmente. Se uma linha posterior falhar, as anteriores permanecem salvas e a resposta retorna `207`.
+  - As policies permitem `INSERT/UPDATE` direto em `stock_center_balances`, `stock_transfers` e `stock_transfer_items`; alteracoes fora da RPC podem desalinhar saldo, ledger e auditoria.
+  - `stock_center_balances` e `stock_transfer_items` usam FKs simples para centro/material/transferencia, sem FK composta com `tenant_id`.
+  - A migration `216` voltou a conceder `EXECUTE` das RPCs `SECURITY DEFINER` de estorno para `authenticated`, apesar do endurecimento global da migration `210`; as funcoes recebem `tenant_id` e `actor_user_id` por parametro sem vinculo interno com `auth.uid()`.
+  - Nao existe uma constraint capaz de provar que `stock_center_balances` corresponde ao somatorio do ledger; um saldo positivo incorreto pode passar pela constraint de nao negativo.
+- Regras recomendadas no banco:
+  - Revogar escrita direta de `authenticated` nas tabelas operacionais de saldo/ledger e permitir gravacao somente pelas RPCs de servico.
+  - Criar triggers de imutabilidade para itens e saldos, liberados apenas por contexto transacional interno das RPCs.
+  - Adicionar chaves unicas `(id, tenant_id)` e FKs compostas para centro, material, transferencia e usuario de auditoria.
+  - Revogar `EXECUTE` de estornos para `authenticated` ou validar dentro da RPC o usuario autenticado, tenant e permissao da pagina/acao.
+  - Criar RPC atomica para importacao em massa quando a regra esperada for “tudo ou nada”; se o modo parcial for mantido, registrar lote e chave de idempotencia.
+  - Criar consulta de reconciliacao entre saldo agregado, ledger e posicao unitaria de SERIAL, com registro de divergencias.
+- Comportamento antes/depois desta auditoria:
+  - Antes: a documentacao descrevia apenas o fluxo funcional implementado.
+  - Depois: a documentacao tambem explicita os caminhos paralelos de escrita, o risco de lote parcial e as protecoes pendentes no banco.
+- Arquivos analisados:
+  - `src/app/api/stock-transfers/route.ts`
+  - `src/app/api/stock-transfers/import/route.ts`
+  - `src/app/api/stock-transfers/reversal/route.ts`
+  - `src/lib/server/stockTransfers.ts`
+  - `supabase/migrations/128_create_stock_transfer_module.sql`
+  - `supabase/migrations/130_fix_stock_center_type_and_enforce_movement_rule.sql`
+  - `supabase/migrations/173_harden_public_rls_no_delete.sql`
+  - `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
+  - `supabase/migrations/206_add_stock_transfer_operation_purpose.sql`
+  - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
+  - `supabase/migrations/216_fix_reversal_operation_purpose_rpc_calls.sql`

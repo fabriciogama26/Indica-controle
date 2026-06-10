@@ -62,6 +62,128 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+    if (transferItemId) {
+      const [
+        originalItemResult,
+        originalItemReversalResult,
+        reversalItemResult,
+        fullReversalResult,
+      ] = await Promise.all([
+        supabase
+          .from("stock_transfer_items")
+          .select("stock_transfer_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("id", transferItemId)
+          .maybeSingle<{ stock_transfer_id: string }>(),
+        supabase
+          .from("stock_transfer_item_reversals")
+          .select("reversal_stock_transfer_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("original_stock_transfer_item_id", transferItemId)
+          .maybeSingle<{ reversal_stock_transfer_id: string }>(),
+        supabase
+          .from("stock_transfer_item_reversals")
+          .select("original_stock_transfer_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("reversal_stock_transfer_item_id", transferItemId)
+          .maybeSingle<{ original_stock_transfer_id: string }>(),
+        transferId
+          ? supabase
+              .from("stock_transfer_reversals")
+              .select("reversal_stock_transfer_id")
+              .eq("tenant_id", appUser.tenant_id)
+              .eq("original_stock_transfer_id", transferId)
+              .maybeSingle<{ reversal_stock_transfer_id: string }>()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
+      if (
+        originalItemResult.error
+        || originalItemReversalResult.error
+        || reversalItemResult.error
+        || fullReversalResult.error
+      ) {
+        return NextResponse.json(
+          { message: "Falha ao validar se o item da operacao ja foi estornado." },
+          { status: 500 },
+        );
+      }
+
+      if (!originalItemResult.data) {
+        return NextResponse.json(
+          {
+            message: "Item da operacao de equipe original nao encontrado para este tenant.",
+            reason: "ORIGINAL_ITEM_NOT_FOUND",
+          },
+          { status: 404 },
+        );
+      }
+
+      if (transferId && originalItemResult.data.stock_transfer_id !== transferId) {
+        return NextResponse.json(
+          {
+            message: "O item informado nao pertence a operacao de equipe selecionada.",
+            reason: "TRANSFER_ITEM_MISMATCH",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (fullReversalResult.data) {
+        return NextResponse.json(
+          {
+            message: "Esta operacao de equipe ja foi estornada integralmente.",
+            reason: "FULL_TRANSFER_ALREADY_REVERSED",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (originalItemReversalResult.data) {
+        return NextResponse.json(
+          {
+            message: "Este item da operacao de equipe ja foi estornado.",
+            reason: "ITEM_ALREADY_REVERSED",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (reversalItemResult.data) {
+        return NextResponse.json(
+          {
+            message: "Nao e permitido estornar um item que ja e estorno.",
+            reason: "REVERSAL_OF_REVERSAL_NOT_ALLOWED",
+          },
+          { status: 409 },
+        );
+      }
+
+      const teamOperationResult = await supabase
+        .from("stock_transfer_team_operations")
+        .select("transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("transfer_id", originalItemResult.data.stock_transfer_id)
+        .maybeSingle<{ transfer_id: string }>();
+
+      if (teamOperationResult.error) {
+        return NextResponse.json(
+          { message: "Falha ao validar a origem da operacao de equipe." },
+          { status: 500 },
+        );
+      }
+
+      if (!teamOperationResult.data) {
+        return NextResponse.json(
+          {
+            message: "A movimentacao informada nao pertence ao fluxo de Operacoes de Equipe.",
+            reason: "TEAM_OPERATION_NOT_FOUND",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const reversalResult = await reverseTeamStockOperationViaRpc(supabase, {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,

@@ -138,6 +138,33 @@ type HistoryValueMaps = {
   projects: Map<string, string>;
 };
 
+const RELATION_QUERY_CHUNK_SIZE = 100;
+
+function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    chunks.push(values.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+async function loadRowsInChunks<T>(
+  values: string[],
+  loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+) {
+  const rows: T[] = [];
+
+  for (const chunk of chunkValues(values)) {
+    const result = await loadChunk(chunk);
+    if (result.error) {
+      return { data: null, error: result.error };
+    }
+    rows.push(...(result.data ?? []));
+  }
+
+  return { data: rows, error: null };
+}
+
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value ?? "");
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -623,38 +650,66 @@ async function loadTeamOperationList(request: NextRequest) {
           .returns<TeamRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: TeamRow[]; error: null }),
     currentTransferIds.length
-      ? supabase
-          .from("stock_transfer_reversals")
-          .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("original_stock_transfer_id", currentTransferIds)
-          .returns<StockTransferReversalRow[]>()
+      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk) =>
+          supabase
+            .from("stock_transfer_reversals")
+            .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("original_stock_transfer_id", chunk)
+            .returns<StockTransferReversalRow[]>())
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     currentTransferIds.length
-      ? supabase
-          .from("stock_transfer_reversals")
-          .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("reversal_stock_transfer_id", currentTransferIds)
-          .returns<StockTransferReversalRow[]>()
+      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk) =>
+          supabase
+            .from("stock_transfer_reversals")
+            .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("reversal_stock_transfer_id", chunk)
+            .returns<StockTransferReversalRow[]>())
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferItemIds.length
-      ? supabase
-          .from("stock_transfer_item_reversals")
-          .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("original_stock_transfer_item_id", transferItemIds)
-          .returns<StockTransferItemReversalRow[]>()
+      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk) =>
+          supabase
+            .from("stock_transfer_item_reversals")
+            .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("original_stock_transfer_item_id", chunk)
+            .returns<StockTransferItemReversalRow[]>())
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
     transferItemIds.length
-      ? supabase
-          .from("stock_transfer_item_reversals")
-          .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("reversal_stock_transfer_item_id", transferItemIds)
-          .returns<StockTransferItemReversalRow[]>()
+      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk) =>
+          supabase
+            .from("stock_transfer_item_reversals")
+            .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("reversal_stock_transfer_item_id", chunk)
+            .returns<StockTransferItemReversalRow[]>())
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
+
+  if (
+    reversalsFromOriginalResult.error
+    || reversalsByReversalResult.error
+    || itemReversalsFromOriginalResult.error
+    || itemReversalsByReversalResult.error
+  ) {
+    logTeamOperationLoadError(
+      "reversal-links",
+      reversalsFromOriginalResult.error
+        ?? reversalsByReversalResult.error
+        ?? itemReversalsFromOriginalResult.error
+        ?? itemReversalsByReversalResult.error,
+      {
+        tenantId: appUser.tenant_id,
+        transferCount: currentTransferIds.length,
+        itemCount: transferItemIds.length,
+      },
+    );
+    return NextResponse.json(
+      { message: "Falha ao validar o status de estorno das operacoes de equipe." },
+      { status: 500 },
+    );
+  }
 
   let materialsData = materialsResult.data ?? [];
   if (materialsResult.error && materialIds.length) {
@@ -705,7 +760,7 @@ async function loadTeamOperationList(request: NextRequest) {
     },
   ]));
   const itemReversalByOriginalMap = new Map(
-    ((itemReversalsFromOriginalResult.error ? [] : itemReversalsFromOriginalResult.data) ?? []).map((row) => [
+    (itemReversalsFromOriginalResult.data ?? []).map((row) => [
       row.original_stock_transfer_item_id,
       {
         originalTransferId: row.original_stock_transfer_id,
@@ -716,7 +771,7 @@ async function loadTeamOperationList(request: NextRequest) {
     ]),
   );
   const originalByReversalItemMap = new Map(
-    ((itemReversalsByReversalResult.error ? [] : itemReversalsByReversalResult.data) ?? [])
+    (itemReversalsByReversalResult.data ?? [])
       .filter((row) => row.reversal_stock_transfer_item_id)
       .map((row) => [
         row.reversal_stock_transfer_item_id as string,

@@ -871,3 +871,17 @@
 - [x] Corrigir a listagem da `Movimentacao de Estoque` para carregar itens e vinculos de estorno em blocos de 100 IDs, evitando `TypeError: fetch failed` e o alerta de falha de validacao em tenants com muitas movimentacoes.
 
 - [x] Exibir erros e impedimentos do estorno dentro do modal da `Movimentacao de Estoque`, detalhando saldo atual/solicitado/falta, orientando a regularizacao previa de `Operacoes de Equipe` e corrigindo o fechamento do modal apos sucesso.
+- [x] Auditar as regras de integridade, perda de dados e protecoes de banco de `Movimentacao de Estoque` e `Composicao de Equipe`, registrando os achados nas documentacoes das telas.
+- [ ] Exigir permissao de pagina/acao nas APIs de `Movimentacao de Estoque` e `Composicao de Equipe`, alem da autenticacao e do escopo de tenant.
+- [ ] Revogar escrita direta de `authenticated` em `stock_center_balances`, `stock_transfers`, `stock_transfer_items`, `team_compositions` e `team_composition_members`, mantendo gravacao apenas por RPC autorizada.
+- [ ] Remover policies `FOR ALL` de `team_compositions` e `team_composition_members`, garantindo ausencia de `DELETE` direto apos migrations novas.
+- [ ] Restringir RPCs `SECURITY DEFINER` de estorno ao `service_role` ou validar internamente `auth.uid()`, tenant, ator e permissao operacional.
+- [ ] Criar importacao atomica para `Movimentacao de Estoque` ou formalizar o modo parcial com identificador de lote, idempotencia e status por linha.
+- [ ] Adicionar FKs compostas com `tenant_id` nas entidades do ledger de estoque e nos usuarios de auditoria.
+- [ ] Criar reconciliacao automatizada entre `stock_center_balances`, ledger de transferencias e posicao unitaria de SERIAL.
+- [ ] Mover o historico da `Composicao de Equipe` para dentro da RPC transacional e registrar diff detalhado dos integrantes.
+- [ ] Preservar revisao da composicao usada pela `Medicao`, evitando que edicoes posteriores alterem retroativamente o contexto medido.
+- [ ] Definir e aplicar a regra de uma pessoa presente em mais de uma equipe na mesma data.
+- [ ] Validar o encarregado da composicao pelo `foreman_person_id` da equipe e definir se sua presenca e obrigatoria.
+- [ ] Substituir o delete/reinsert de integrantes da composicao por sincronizacao ou versionamento imutavel.
+- [x] Corrigir `Operacoes de Equipe` para carregar vinculos de estorno em blocos, bloquear linha ja estornada/linha de estorno no backend e atualizar imediatamente o estado visual apos o sucesso.

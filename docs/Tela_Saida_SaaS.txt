@@ -273,6 +273,48 @@ Constantes e configuracoes
   - Responsavel por: filtros iniciais, labels do historico e template CSV da tela.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
   - Responsavel por: estilo compartilhado dos botoes principais da Movimentacao de Estoque e Operacoes de Equipe, incluindo spinner de salvamento.
+
+Atualizacao 2026-06 - Bloqueio de duplo estorno por item
+---------------------------------------------------------
+- Causa:
+  - A listagem consultava todos os IDs de vinculos de estorno em uma unica chamada `.in(...)`.
+  - Quando a consulta ficava grande ou falhava, o erro de `stock_transfer_item_reversals` era ignorado e a linha era tratada como nao estornada.
+  - O endpoint de estorno dependia somente da RPC e nao antecipava o estado atual do item.
+- Correcao:
+  - As consultas de `stock_transfer_reversals` e `stock_transfer_item_reversals` passam a ser executadas em blocos de ate 100 IDs.
+  - Qualquer falha na leitura dos vinculos interrompe a listagem com mensagem segura, sem habilitar estorno indevidamente.
+  - O endpoint valida se o item pertence a transferencia, se ja foi estornado, se e um item de estorno, se houve estorno integral e se pertence a `Operacoes de Equipe`.
+  - A interface impede abrir o modal para linha estornada/estorno, atualiza a linha imediatamente apos o sucesso e recarrega a lista.
+  - Erros de validacao e da RPC passam a aparecer dentro do modal de estorno.
+- Regras:
+  - Uma linha original pode ser estornada somente uma vez.
+  - Uma linha criada por estorno nao pode ser estornada novamente.
+  - Uma operacao estornada integralmente nao permite novo estorno por item.
+  - `transferItemId` deve pertencer ao `transferId` e ao fluxo de `Operacoes de Equipe`.
+  - A constraint/RPC no banco permanece como ultima protecao contra concorrencia e duplo estorno.
+- Arquivos alterados:
+  - `src/app/api/team-stock-operations/route.ts`
+  - `src/app/api/team-stock-operations/reversal/route.ts`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `TASKS.md`
+- Funcoes e constantes:
+  - `RELATION_QUERY_CHUNK_SIZE`
+  - `chunkValues`
+  - `loadRowsInChunks`
+  - `loadTeamOperationList`
+  - `POST /api/team-stock-operations/reversal`
+  - `openReversalModal`
+  - `handleConfirmReversal`
+- Comportamento antes/depois:
+  - Antes: falha silenciosa ao consultar vinculos podia reabilitar o botao de uma linha ja estornada.
+  - Depois: a listagem reconhece o vinculo por item em lotes, bloqueia a acao e o backend retorna conflito mesmo em chamada direta.
+- Impacto multi-tenant:
+  - Todas as consultas de pre-validacao exigem `tenant_id = appUser.tenant_id`.
+  - Nao houve mudanca de schema, RLS ou permissao.
+- Validacao:
+  - `npm.cmd run lint -- src/app/api/team-stock-operations/route.ts src/app/api/team-stock-operations/reversal/route.ts src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `npm.cmd run build`
 - Caminho: `supabase/migrations/140_create_team_stock_operations.sql`
   - Responsavel por: modelo relacional, politicas RLS e RPCs do fluxo operacional por equipe.
 - Caminho: `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
