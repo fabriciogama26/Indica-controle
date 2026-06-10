@@ -597,7 +597,7 @@ export async function GET(request: NextRequest) {
       query = query.ilike("descricao", `%${descriptionFilter}%`);
     }
     if (umbFilter) {
-      query = query.ilike("umb", `%${umbFilter}%`);
+      query = query.ilike("umb", umbFilter);
     }
     if (typeFilter) {
       if (typeFilter === "NOVO" || typeFilter === "SUCATA") {
