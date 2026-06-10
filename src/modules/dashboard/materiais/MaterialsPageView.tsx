@@ -50,6 +50,7 @@ type FormState = {
 type FilterState = {
   codigo: string;
   descricao: string;
+  umb: string;
   tipo: "" | "NOVO" | "SUCATA";
   status: "" | "ativo" | "inativo";
 };
@@ -119,6 +120,7 @@ const INITIAL_FORM: FormState = {
 const INITIAL_FILTERS: FilterState = {
   codigo: "",
   descricao: "",
+  umb: "",
   tipo: "",
   status: "",
 };
@@ -162,6 +164,7 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
   if (filters.codigo.trim()) params.set("codigo", filters.codigo.trim());
   if (filters.descricao.trim()) params.set("descricao", filters.descricao.trim());
+  if (filters.umb.trim()) params.set("umb", filters.umb.trim());
   if (filters.tipo.trim()) params.set("tipo", filters.tipo.trim());
   if (filters.status) params.set("status", filters.status);
   params.set("page", String(page));
@@ -1232,6 +1235,16 @@ export function MaterialsPageView() {
               value={filterDraft.descricao}
               onChange={(event) => updateFilterField("descricao", event.target.value)}
               placeholder="Filtrar por descricao"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>UMB</span>
+            <input
+              type="text"
+              value={filterDraft.umb}
+              onChange={(event) => updateFilterField("umb", event.target.value)}
+              placeholder="Filtrar por UMB"
             />
           </label>
 

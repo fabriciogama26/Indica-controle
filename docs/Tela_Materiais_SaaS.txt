@@ -72,6 +72,7 @@ Filtros, auto-complete e listagem
 - Filtros implementados:
   - `Codigo` (texto)
   - `Descricao` (texto)
+  - `UMB` (texto)
   - `Tipo` (texto)
   - `Status` (`Ativo` / `Inativo`)
 - Listagem em colunas com paginacao server-side (`page` + `pageSize`).
@@ -161,6 +162,11 @@ Atualizacao 2026-03
   - Cadastro em massa passa a importar CSV com `codigo`, `descricao`, `tipo`, `umb`, `preco` e `rastreio_por_serial`, salvando linhas validas e gerando CSV de erros por linha.
   - Campo `UMB` passou a ser obrigatorio no formulario manual, no lote da API e na RPC `save_material_record`.
   - Criada migration `190_require_material_umb_in_save_rpc.sql` para bloquear escrita transacional de material sem `UMB`.
+- Atualizacao (2026-06-10):
+  - O bloco `Filtros` passou a incluir `UMB`.
+  - O frontend envia `umb` para `GET /api/materials`.
+  - A API aplica o filtro textual em `materials.umb` antes da paginacao, mantendo o mesmo recorte na lista e na exportacao CSV.
+  - Impacto multi-tenant: sem alteracao de schema/RLS; a consulta continua limitada pelo `tenant_id` autenticado.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -232,6 +238,7 @@ Ajuda contextual
   - Depois: cadastro completo com historico, preco opcional, inativacao/ativacao com motivo e bloqueio de sobrescrita concorrente por `expectedUpdatedAt`.
   - Atualizacao (2026-05): antes o cadastro distinguia apenas TRAFO; depois passa a distinguir TRAFO, RELIGADOR e CHAVE para rastreio por serial.
   - Atualizacao (2026-05): antes o cadastro nao tinha importacao em massa e `UMB` era opcional; depois o cadastro manual/lote exige `UMB` e a tela oferece importacao CSV com retorno de erros.
+  - Atualizacao (2026-06-10): antes `UMB` aparecia no cadastro e na lista, mas nao podia ser usado como filtro; depois o filtro textual de `UMB` recorta a lista paginada e a exportacao.
   - Depois: a escrita sensivel da tela passa a ser executada em RPC transacional no banco, em vez de update/historico distribuido na route.
   - Atualizacao (2026-03-24): exportacao `Exportar Excel (CSV)` passou a incluir campos obrigatorios do cadastro e metadados de auditoria (`Status`, `Registrado por/em`, `Atualizado por/em`).
 - Arquivos alterados/criados (2026-03-24):

@@ -848,4 +848,6 @@
 
 - [x] Corrigir o campo `Valor estimado` em `Projetos` para aceitar valor monetario em formato brasileiro, evitando bloqueio do `input type=number` com `step=0.01` e normalizando entradas como `22.035,33` para `22035.33` antes de salvar.
 
+- [x] Adicionar filtro textual `UMB` na tela de Materiais, aplicando o recorte na API antes da paginacao e mantendo a exportacao CSV alinhada ao tenant autenticado.
+
 - [x] Adicionar filtro `Tipo de Servico` na Medicao usando o catalogo ativo e o vinculo do projeto, aplicando o recorte antes da paginacao, totalizacao e exportacoes com escopo por tenant.
