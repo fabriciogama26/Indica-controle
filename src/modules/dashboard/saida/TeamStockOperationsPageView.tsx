@@ -111,7 +111,7 @@ function buildHistoryListParams(targetPage: number, pageSize: number, activeFilt
   if (activeFilters.endDate) params.set("endDate", activeFilters.endDate);
   if (activeFilters.operationKind !== "TODOS") params.set("operationKind", activeFilters.operationKind);
   if (activeFilters.teamId) params.set("teamId", activeFilters.teamId);
-  if (activeFilters.projectCode) params.set("projectCode", activeFilters.projectCode);
+  if (activeFilters.projectId) params.set("projectId", activeFilters.projectId);
   if (activeFilters.materialCode) params.set("materialCode", activeFilters.materialCode);
   if (activeFilters.entryType !== "TODOS") params.set("entryType", activeFilters.entryType);
   if (activeFilters.reversalStatus !== "TODOS") params.set("reversalStatus", activeFilters.reversalStatus);
@@ -152,13 +152,13 @@ function summarizeImportResponse(response: ImportResponse): MassImportResultSumm
 function isPendingItemVisibleWithFilters(
   item: TeamOperationFormItem,
   filters: FilterState,
-  context: Pick<FormState, "operationKind" | "teamId" | "projectCode" | "entryDate">,
+  context: Pick<FormState, "operationKind" | "teamId" | "projectId" | "entryDate">,
 ) {
   if (filters.startDate && context.entryDate < filters.startDate) return false;
   if (filters.endDate && context.entryDate > filters.endDate) return false;
   if (filters.operationKind !== "TODOS" && context.operationKind !== filters.operationKind) return false;
   if (filters.teamId && context.teamId !== filters.teamId) return false;
-  if (filters.projectCode && !context.projectCode.toUpperCase().includes(filters.projectCode.trim().toUpperCase())) return false;
+  if (filters.projectId && context.projectId !== filters.projectId) return false;
   if (filters.materialCode && !item.materialCode.toUpperCase().includes(filters.materialCode.trim().toUpperCase())) return false;
   if (filters.entryType !== "TODOS" && item.entryType !== filters.entryType) return false;
   if (filters.reversalStatus === "ESTORNADAS" || filters.reversalStatus === "ESTORNOS") return false;
@@ -190,6 +190,7 @@ export function TeamStockOperationsPageView() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [filterDraft, setFilterDraft] = useState<FilterState>(INITIAL_FILTERS);
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
+  const [filterProjectSearch, setFilterProjectSearch] = useState("");
 
   const [detailItem, setDetailItem] = useState<TeamOperationListItem | null>(null);
   const [historyModalItem, setHistoryModalItem] = useState<TeamOperationListItem | null>(null);
@@ -804,9 +805,25 @@ export function TeamStockOperationsPageView() {
 
   function handleApplyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalizedProjectCode = normalizeText(filterProjectSearch).toUpperCase();
+    const matchedProject = normalizedProjectCode
+      ? (projects ?? []).find((project) => project.projectCode.toUpperCase() === normalizedProjectCode) ?? null
+      : null;
+
+    if (normalizedProjectCode && !matchedProject) {
+      setFeedback({ type: "error", message: "Projeto invalido no filtro. Selecione um projeto da lista." });
+      return;
+    }
+
+    const nextFilters = {
+      ...filterDraft,
+      projectId: matchedProject?.id ?? "",
+    };
     setFeedback(null);
     setHistoryPage(1);
-    setFilters({ ...filterDraft });
+    setFilterDraft(nextFilters);
+    setFilterProjectSearch(matchedProject?.projectCode ?? "");
+    setFilters(nextFilters);
   }
 
   function handleClearFilters() {
@@ -814,6 +831,7 @@ export function TeamStockOperationsPageView() {
     setHistoryPage(1);
     setFilterDraft(INITIAL_FILTERS);
     setFilters(INITIAL_FILTERS);
+    setFilterProjectSearch("");
   }
 
   async function ensureSourceStockAvailability(params: {
@@ -1086,7 +1104,7 @@ export function TeamStockOperationsPageView() {
       const hiddenByFilters = !form.items.some((item) => isPendingItemVisibleWithFilters(item, filters, {
         operationKind: form.operationKind,
         teamId: form.teamId,
-        projectCode: form.projectCode,
+        projectId: form.projectId,
         entryDate: form.entryDate,
       }));
       setFeedback({
@@ -1435,7 +1453,23 @@ export function TeamStockOperationsPageView() {
       const rows = parseCsvContent(fileContent);
 
       if (rows.length === 0) {
-        showError("O arquivo CSV precisa ter cabecalho e pelo menos uma linha de dados.");
+        const report = createMassImportErrorReport(
+          [{
+            rowNumber: 1,
+            column: "arquivo",
+            value: importFile.name,
+            error: "Arquivo CSV vazio, sem linha de dados ou com formato invalido.",
+          }],
+          "operacoes_equipe_import_erros",
+        );
+        setImportErrorReport(report);
+        setImportResult({
+          status: "error",
+          message: "O arquivo CSV precisa ter cabecalho e pelo menos uma linha de dados.",
+          successCount: 0,
+          errorRows: report?.errorRows ?? 1,
+        });
+        showError("O arquivo CSV precisa ter cabecalho e pelo menos uma linha de dados. Baixe o CSV de erros para revisar.");
         return;
       }
 
@@ -1575,22 +1609,45 @@ export function TeamStockOperationsPageView() {
       });
 
       const data = (await response.json().catch(() => ({}))) as ImportResponse;
-      const resultSummary = summarizeImportResponse(data);
-      setImportResult(resultSummary);
-
       const serverIssues: MassImportIssue[] = data.validationIssues?.length
         ? data.validationIssues
         : (data.results ?? [])
             .filter((item) => !item.success)
             .map((item) => ({
-              rowNumber: item.rowNumber,
-              column: "linha",
-              value: "",
+              rowNumber: item.rowNumber > 0 ? item.rowNumber : 1,
+              column: item.rowNumber > 0 ? "linha" : "processamento",
+              value: item.reason ?? "",
               error: item.message,
             }));
+      const fallbackIssues: MassImportIssue[] = !response.ok && serverIssues.length === 0
+        ? [{
+            rowNumber: 1,
+            column: "processamento",
+            value: data.results?.[0]?.reason ?? "",
+            error: data.message ?? "Falha ao importar operacoes de equipe em massa.",
+          }]
+        : [];
 
-      const report = createMassImportErrorReport([...issues, ...serverIssues], "operacoes_equipe_import_erros");
+      const report = createMassImportErrorReport(
+        [...issues, ...serverIssues, ...fallbackIssues],
+        "operacoes_equipe_import_erros",
+      );
       setImportErrorReport(report);
+
+      const apiSummary = summarizeImportResponse(data);
+      const successCount = Number(data.summary?.successCount ?? apiSummary.successCount ?? 0);
+      const errorRows = report?.errorRows ?? Number(data.summary?.errorCount ?? apiSummary.errorRows ?? 0);
+      const resultSummary: MassImportResultSummary = errorRows > 0
+        ? {
+            status: successCount > 0 ? "partial" : "error",
+            message: successCount > 0
+              ? `Importacao parcial: ${successCount} linhas salvas e ${errorRows} linhas com erro.`
+              : `Importacao sem sucesso: nenhuma linha salva e ${errorRows} linhas com erro.`,
+            successCount,
+            errorRows,
+          }
+        : apiSummary;
+      setImportResult(resultSummary);
 
       if (!response.ok && response.status !== 207) {
         showError(
@@ -1610,7 +1667,7 @@ export function TeamStockOperationsPageView() {
         message: resultSummary.message,
       });
 
-      if (serverIssues.length > 0 || resultSummary.status !== "success") {
+      if (serverIssues.length > 0 || fallbackIssues.length > 0 || resultSummary.status !== "success") {
         showError(
           report
             ? `${resultSummary.message} Baixe o CSV de erros para revisar linha e coluna.`
@@ -1621,7 +1678,23 @@ export function TeamStockOperationsPageView() {
       setHistoryPage(1);
       setFilters((current) => ({ ...current }));
     } catch (error) {
-      showError("Falha ao importar operacoes de equipe em massa.");
+      const report = createMassImportErrorReport(
+        [{
+          rowNumber: 1,
+          column: "processamento",
+          value: importFile.name,
+          error: "Falha ao ler, processar ou enviar o arquivo CSV.",
+        }],
+        "operacoes_equipe_import_erros",
+      );
+      setImportErrorReport(report);
+      setImportResult({
+        status: "error",
+        message: "Falha ao importar operacoes de equipe em massa.",
+        successCount: 0,
+        errorRows: report?.errorRows ?? 1,
+      });
+      showError("Falha ao importar operacoes de equipe em massa. Baixe o CSV de erros para revisar.");
       await logError("Falha ao importar operacoes de equipe em massa.", error);
     } finally {
       setIsImporting(false);
@@ -1962,9 +2035,16 @@ export function TeamStockOperationsPageView() {
             <span>Projeto</span>
             <input
               type="text"
-              value={filterDraft.projectCode}
-              onChange={(event) => updateFilterDraft("projectCode", event.target.value)}
-              placeholder="Filtrar por projeto"
+              value={filterProjectSearch}
+              onChange={(event) => {
+                const value = event.target.value;
+                setFilterProjectSearch(value);
+                if (!value.trim()) {
+                  updateFilterDraft("projectId", "");
+                }
+              }}
+              list="saida-projeto-filtro-list"
+              placeholder="Digite o codigo do projeto"
             />
           </label>
 
@@ -2412,7 +2492,7 @@ export function TeamStockOperationsPageView() {
                   ) : null}
                 </div>
                 {importResult ? (
-                  <div className={importResult.status === "error" ? styles.errorFeedback : styles.successFeedback}>
+                  <div className={importResult.status === "success" ? styles.successFeedback : styles.errorFeedback}>
                     <strong>
                       {importResult.status === "success"
                         ? "Incluido com sucesso."
@@ -2454,6 +2534,11 @@ export function TeamStockOperationsPageView() {
       ) : null}
 
       <datalist id="saida-projeto-list">
+        {(projects ?? []).map((project) => (
+          <option key={project.id} value={project.projectCode} />
+        ))}
+      </datalist>
+      <datalist id="saida-projeto-filtro-list">
         {(projects ?? []).map((project) => (
           <option key={project.id} value={project.projectCode} />
         ))}

@@ -196,7 +196,7 @@ export type FilterState = {
   endDate: string;
   operationKind: "TODOS" | TeamOperationKind;
   teamId: string;
-  projectCode: string;
+  projectId: string;
   materialCode: string;
   entryType: "TODOS" | "NOVO" | "SUCATA";
   reversalStatus: "TODOS" | "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";

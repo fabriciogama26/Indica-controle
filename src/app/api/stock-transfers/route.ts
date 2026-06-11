@@ -542,12 +542,15 @@ async function loadTransferList(request: NextRequest) {
           .returns<AppUserRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
     transferIds.length
-      ? supabase
-          .from("stock_transfer_team_operations")
-          .select("transfer_id")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("transfer_id", transferIds)
-          .returns<TeamStockOperationRow[]>()
+      ? loadRowsInChunks<TeamStockOperationRow>(
+          transferIds,
+          (transferIdChunk) => supabase
+            .from("stock_transfer_team_operations")
+            .select("transfer_id")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("transfer_id", transferIdChunk)
+            .returns<TeamStockOperationRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: TeamStockOperationRow[]; error: null }),
     transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
@@ -596,13 +599,18 @@ async function loadTransferList(request: NextRequest) {
   ]);
 
   if (
-    reversalsFromOriginalResult.error
+    teamOperationsResult.error
+    || reversalsFromOriginalResult.error
     || reversalsByReversalResult.error
     || itemReversalsFromOriginalResult.error
     || itemReversalsByReversalResult.error
   ) {
     return NextResponse.json(
-      { message: "Falha ao validar o status de estorno das movimentacoes de estoque." },
+      {
+        message: teamOperationsResult.error
+          ? "Falha ao separar Operacoes de Equipe das movimentacoes de estoque."
+          : "Falha ao validar o status de estorno das movimentacoes de estoque.",
+      },
       { status: 500 },
     );
   }
@@ -630,7 +638,7 @@ async function loadTransferList(request: NextRequest) {
     ]),
   );
   const teamOperationTransferIds = new Set(
-    ((teamOperationsResult.error ? [] : teamOperationsResult.data) ?? []).map((row) => row.transfer_id),
+    (teamOperationsResult.data ?? []).map((row) => row.transfer_id),
   );
   const reversalByOriginalMap = new Map(
     (reversalsFromOriginalResult.data ?? []).map((row) => [

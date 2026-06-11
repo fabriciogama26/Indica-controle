@@ -626,6 +626,25 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch {
-    return NextResponse.json({ message: "Falha ao importar operacoes de equipe em massa." }, { status: 500 });
+    const issue = makeIssue(
+      1,
+      "processamento",
+      "",
+      "Falha tecnica ao processar o cadastro em massa. Nenhuma linha foi salva.",
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Falha ao importar operacoes de equipe em massa.",
+        summary: {
+          total: 0,
+          successCount: 0,
+          errorCount: 1,
+        },
+        results: buildErrorResults([issue]),
+        validationIssues: [issue],
+      },
+      { status: 500 },
+    );
   }
 }

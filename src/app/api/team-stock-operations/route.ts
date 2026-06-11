@@ -510,7 +510,7 @@ async function loadTeamOperationList(request: NextRequest) {
   const endDate = normalizeDateInput(request.nextUrl.searchParams.get("endDate"));
   const operationKindFilter = normalizeTeamOperationKind(request.nextUrl.searchParams.get("operationKind"));
   const teamIdFilter = normalizeText(request.nextUrl.searchParams.get("teamId"));
-  const projectCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("projectCode"));
+  const projectIdFilter = normalizeText(request.nextUrl.searchParams.get("projectId"));
   const materialCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("materialCode"));
   const entryTypeFilter =
     String(request.nextUrl.searchParams.get("entryType") ?? "").trim().toUpperCase() === "TODOS"
@@ -838,13 +838,12 @@ async function loadTeamOperationList(request: NextRequest) {
   });
 
   const filteredRows = allRows.filter((row) => {
-    const normalizedProjectCode = String(row.projectCode ?? "").trim().toUpperCase();
     const normalizedMaterialCode = String(row.materialCode ?? "").trim().toUpperCase();
 
     if (operationKindFilter && row.operationKind !== operationKindFilter) {
       return false;
     }
-    if (projectCodeFilter && !normalizedProjectCode.includes(projectCodeFilter)) {
+    if (projectIdFilter && row.projectId !== projectIdFilter) {
       return false;
     }
     if (materialCodeFilter && !normalizedMaterialCode.includes(materialCodeFilter)) {

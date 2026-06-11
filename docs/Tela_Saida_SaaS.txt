@@ -315,6 +315,65 @@ Atualizacao 2026-06 - Bloqueio de duplo estorno por item
 - Validacao:
   - `npm.cmd run lint -- src/app/api/team-stock-operations/route.ts src/app/api/team-stock-operations/reversal/route.ts src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
   - `npm.cmd run build`
+
+Atualizacao 2026-06 - CSV de erros do cadastro em massa
+--------------------------------------------------------
+- Causa:
+  - O CSV era criado somente quando existiam erros estruturados por linha.
+  - Arquivo vazio, falha tecnica da API/RPC sem `failed_row_number` e excecao de leitura/comunicacao podiam retornar apenas mensagem geral.
+  - Sem ocorrencias, `createMassImportErrorReport` retornava `null` e o botao `Baixar erros (CSV)` nao aparecia.
+- Correcao:
+  - Arquivo vazio ou invalido gera erro na coluna `arquivo`.
+  - Falha global da API/RPC gera erro na coluna `processamento`.
+  - Resultado tecnico com `rowNumber = 0` e normalizado para uma linha valida no relatorio.
+  - Excecao de leitura, processamento ou comunicacao tambem cria um relatorio baixavel.
+  - O fallback preserva os erros detalhados de `validationIssues` quando a API consegue identificar linha e coluna.
+  - O quadro de resultado usa o relatorio consolidado para calcular o status final.
+  - Se houver linhas salvas e linhas no CSV de erros, exibe `Importacao parcial`, total salvo e total com erro.
+  - Resultado parcial ou com erro usa destaque visual de erro; somente lote sem ocorrencias usa `Incluido com sucesso`.
+- Formato:
+  - `linha;coluna;valor;erro`
+  - Nome: `operacoes_equipe_import_erros_YYYY-MM-DD.csv`
+- Comportamento antes/depois:
+  - Antes: alguns erros exibiam alerta sem gerar o botao/arquivo de erros, e erros locais podiam coexistir com o quadro verde `Incluido com sucesso`.
+  - Depois: toda falha produz ao menos uma ocorrencia, libera `Baixar erros (CSV)` e aparece no resumo visual com contagem correta.
+- Arquivos alterados:
+  - `src/app/api/team-stock-operations/import/route.ts`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `TASKS.md`
+- Impacto multi-tenant:
+  - Nenhuma regra de tenant, RLS ou permissao foi alterada.
+  - O lote continua atomico; a mudanca afeta somente o diagnostico retornado ao usuario.
+- Validacao:
+  - `npm.cmd run lint -- src/app/api/team-stock-operations/import/route.ts src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `npm.cmd run build`
+
+Atualizacao 2026-06 - Filtro funcional de Projeto
+--------------------------------------------------
+- O filtro `Projeto` passa a seguir o comportamento da tela `Medicao`.
+- O campo continua digitavel e exibe os projetos ativos do tenant em `datalist`.
+- Ao aplicar:
+  - resolve o codigo digitado para o `projectId`;
+  - exige correspondencia exata com um projeto da lista;
+  - bloqueia codigo inexistente com a mensagem `Projeto invalido no filtro. Selecione um projeto da lista.`;
+  - normaliza o texto exibido para o codigo oficial do projeto.
+- A API recebe `projectId` e compara por igualdade, removendo a busca parcial por texto em `projectCode`.
+- A exportacao CSV reutiliza o mesmo filtro efetivo por `projectId`.
+- `Limpar` remove tanto o texto pesquisado quanto o identificador aplicado.
+- Arquivos alterados:
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/modules/dashboard/saida/types.ts`
+  - `src/modules/dashboard/saida/constants.ts`
+  - `src/app/api/team-stock-operations/route.ts`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `TASKS.md`
+- Impacto multi-tenant:
+  - As opcoes continuam vindo do meta restrito ao tenant autenticado.
+  - A listagem continua limitada por `tenant_id` e agora filtra pelo UUID exato do projeto.
+- Validacao:
+  - `npm.cmd run lint -- src/modules/dashboard/saida/TeamStockOperationsPageView.tsx src/modules/dashboard/saida/types.ts src/modules/dashboard/saida/constants.ts src/app/api/team-stock-operations/route.ts`
+  - `npm.cmd run build`
 - Caminho: `supabase/migrations/140_create_team_stock_operations.sql`
   - Responsavel por: modelo relacional, politicas RLS e RPCs do fluxo operacional por equipe.
 - Caminho: `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
