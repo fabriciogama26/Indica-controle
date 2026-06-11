@@ -107,6 +107,38 @@ type TeamStockCenterRow = {
   stock_center_id: string | null;
 };
 
+type QueryError = {
+  message: string;
+  code?: string;
+};
+
+const RELATION_QUERY_CHUNK_SIZE = 100;
+
+function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    chunks.push(values.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+async function loadRowsInChunks<T>(
+  values: string[],
+  loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: QueryError | null }>,
+) {
+  const rows: T[] = [];
+
+  for (const chunk of chunkValues(values)) {
+    const result = await loadChunk(chunk);
+    if (result.error) {
+      return { data: null, error: result.error };
+    }
+    rows.push(...(result.data ?? []));
+  }
+
+  return { data: rows, error: null };
+}
+
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value ?? "");
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -248,13 +280,16 @@ async function loadStockHistory(request: NextRequest) {
   }
 
   const transferIds = transferHeaders.map((row) => row.id);
-  const { data: itemRows, error: itemsError } = await supabase
-    .from("stock_transfer_items")
-    .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
-    .eq("tenant_id", appUser.tenant_id)
-    .eq("material_id", materialId)
-    .in("stock_transfer_id", transferIds)
-    .returns<StockTransferItemRow[]>();
+  const { data: itemRows, error: itemsError } = await loadRowsInChunks<StockTransferItemRow>(
+    transferIds,
+    (transferIdChunk) => supabase
+      .from("stock_transfer_items")
+      .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+      .eq("tenant_id", appUser.tenant_id)
+      .eq("material_id", materialId)
+      .in("stock_transfer_id", transferIdChunk)
+      .returns<StockTransferItemRow[]>(),
+  );
 
   if (itemsError) {
     return NextResponse.json({ message: "Falha ao carregar os itens do historico do estoque atual." }, { status: 500 });
@@ -294,36 +329,48 @@ async function loadStockHistory(request: NextRequest) {
     reversalsByReversalResult,
   ] = await Promise.all([
     stockCenterIds.length
-      ? supabase
-          .from("stock_centers")
-          .select("id, name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", stockCenterIds)
-          .returns<StockCenterRow[]>()
+      ? loadRowsInChunks<StockCenterRow>(
+          stockCenterIds,
+          (stockCenterIdChunk) => supabase
+            .from("stock_centers")
+            .select("id, name")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", stockCenterIdChunk)
+            .returns<StockCenterRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: StockCenterRow[]; error: null }),
     projectIds.length
-      ? supabase
-          .from("project")
-          .select("id, sob")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", projectIds)
-          .returns<ProjectRow[]>()
+      ? loadRowsInChunks<ProjectRow>(
+          projectIds,
+          (projectIdChunk) => supabase
+            .from("project")
+            .select("id, sob")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", projectIdChunk)
+            .returns<ProjectRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
     userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
+      ? loadRowsInChunks<AppUserRow>(
+          userIds,
+          (userIdChunk) => supabase
+            .from("app_users")
+            .select("id, display, login_name")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", userIdChunk)
+            .returns<AppUserRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
     transferIdsWithItems.length
-      ? supabase
-          .from("stock_transfer_team_operations")
-          .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("transfer_id", transferIdsWithItems)
-          .returns<TeamOperationRow[]>()
+      ? loadRowsInChunks<TeamOperationRow>(
+          transferIdsWithItems,
+          (transferIdChunk) => supabase
+            .from("stock_transfer_team_operations")
+            .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("transfer_id", transferIdChunk)
+            .returns<TeamOperationRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: TeamOperationRow[]; error: null }),
     transferIdsWithItems.length
       ? supabase
@@ -333,20 +380,26 @@ async function loadStockHistory(request: NextRequest) {
           .returns<TeamRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: TeamRow[]; error: null }),
     transferIds.length
-      ? supabase
-          .from("stock_transfer_reversals")
-          .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("original_stock_transfer_id", transferIds)
-          .returns<StockTransferReversalRow[]>()
+      ? loadRowsInChunks<StockTransferReversalRow>(
+          transferIds,
+          (transferIdChunk) => supabase
+            .from("stock_transfer_reversals")
+            .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("original_stock_transfer_id", transferIdChunk)
+            .returns<StockTransferReversalRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferIds.length
-      ? supabase
-          .from("stock_transfer_reversals")
-          .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("reversal_stock_transfer_id", transferIds)
-          .returns<StockTransferReversalRow[]>()
+      ? loadRowsInChunks<StockTransferReversalRow>(
+          transferIds,
+          (transferIdChunk) => supabase
+            .from("stock_transfer_reversals")
+            .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("reversal_stock_transfer_id", transferIdChunk)
+            .returns<StockTransferReversalRow[]>(),
+        )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
   ]);
 
@@ -649,21 +702,27 @@ export async function GET(request: NextRequest) {
       const historicalTransferMap = new Map((historicalTransfers ?? []).map((row) => [row.id, row]));
 
       if (transferIds.length > 0) {
-        let historicalItemsQuery = supabase
-          .from("stock_transfer_items")
-          .select("stock_transfer_id, material_id, materials!inner(id, codigo, descricao, umb, tipo, is_active)")
-          .in("stock_transfer_id", transferIds)
-          .eq("materials.is_active", true);
+        const { data: historicalItems, error: historicalItemsError } = await loadRowsInChunks<HistoricalTransferItemRow>(
+          transferIds,
+          (transferIdChunk) => {
+            let query = supabase
+              .from("stock_transfer_items")
+              .select("stock_transfer_id, material_id, materials!inner(id, codigo, descricao, umb, tipo, is_active)")
+              .eq("tenant_id", appUser.tenant_id)
+              .in("stock_transfer_id", transferIdChunk)
+              .eq("materials.is_active", true);
 
-        if (materialCode) {
-          historicalItemsQuery = historicalItemsQuery.ilike("materials.codigo", `%${materialCode}%`);
-        }
+            if (materialCode) {
+              query = query.ilike("materials.codigo", `%${materialCode}%`);
+            }
 
-        if (description) {
-          historicalItemsQuery = historicalItemsQuery.ilike("materials.descricao", `%${description}%`);
-        }
+            if (description) {
+              query = query.ilike("materials.descricao", `%${description}%`);
+            }
 
-        const { data: historicalItems, error: historicalItemsError } = await historicalItemsQuery.returns<HistoricalTransferItemRow[]>();
+            return query.returns<HistoricalTransferItemRow[]>();
+          },
+        );
 
         if (historicalItemsError) {
           return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });

@@ -204,3 +204,34 @@ Ajuda contextual
   - Atualizacao (2026-05): antes o resumo exibia um unico `Saldo total da pagina`; depois exibe saldos totais filtrados separados por UMB.
   - Atualizacao (2026-05): antes a exportacao podia parar na primeira chamada quando a API limitava `pageSize` para `100`; depois a exportacao usa o lote efetivo da API e continua ate atingir o total filtrado.
   - Atualizacao (2026-05): antes uma correcao de saldo aparecia como entrada/saida comum no historico; depois o historico identifica `Correcao de saldo` e mostra o motivo registrado.
+
+Atualizacao 2026-06 - Carregamento em blocos do Estoque Atual
+-------------------------------------------------------------
+- Causa:
+  - o filtro inicial inclui saldos zerados e reconstrui essas linhas a partir do historico de movimentacoes;
+  - a API enviava todos os `stock_transfer_id` em uma unica chamada `.in(...)` para `stock_transfer_items`;
+  - em tenants com muitas movimentacoes, a URL excedia o tamanho pratico da requisicao e a tela retornava `Falha ao carregar o estoque atual.` sem exibir itens.
+- Correcao:
+  - criados `RELATION_QUERY_CHUNK_SIZE`, `chunkValues` e `loadRowsInChunks`;
+  - os itens usados na recomposicao de saldo zerado passam a ser carregados em blocos de ate 100 transferencias;
+  - o modal de historico usa o mesmo carregamento em blocos para itens, centros, projetos, usuarios, operacoes de equipe e vinculos de estorno;
+  - a consulta de itens historicos passa a exigir explicitamente `tenant_id`.
+- Comportamento antes/depois:
+  - Antes: o crescimento do ledger podia impedir toda a lista de Estoque Atual de carregar.
+  - Depois: a quantidade de movimentacoes aumenta o numero de consultas controladas, sem criar uma URL unica excessiva.
+- Arquivos alterados:
+  - `src/app/api/stock-balance/route.ts`
+  - `docs/Tela_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Funcoes e constantes tocadas:
+  - `GET /api/stock-balance`
+  - `loadStockHistory`
+  - `RELATION_QUERY_CHUNK_SIZE`
+  - `chunkValues`
+  - `loadRowsInChunks`
+- Impacto multi-tenant:
+  - todas as consultas em blocos preservam `tenant_id = appUser.tenant_id`;
+  - nenhuma policy RLS, regra de saldo ou schema foi alterado.
+- Validacao:
+  - `npm.cmd run lint -- src/app/api/stock-balance/route.ts`
+  - `npm.cmd run build`
