@@ -889,3 +889,4 @@
 - [x] Corrigir o resumo visual do cadastro em massa de `Operacoes de Equipe` para exibir importacao parcial e quantidade de erros quando houver CSV de erros, mesmo com linhas salvas.
 - [x] Padronizar o filtro de Projeto em `Operacoes de Equipe` conforme `Medicao`, com datalist, validacao exata e filtro backend por `projectId`.
 - [x] Corrigir a separacao entre `Movimentacao de Estoque` e `Operacoes de Equipe`, carregando os vinculos em blocos e impedindo que requisicoes e estornos de equipe aparecam como transferencias fisicas.
+- [x] Corrigir o carregamento do `Estoque Atual` em tenants com muitas movimentacoes, consultando itens e relacoes historicas em blocos de ate 100 IDs.
