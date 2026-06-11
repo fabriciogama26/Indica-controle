@@ -31,6 +31,7 @@ const menuSections = [
       { href: "/programacao-simples", label: "Programacao", icon: "calendar" },
       { href: "/programacao-visualizacao", label: "Visualizacao Programacao", icon: "calendar" },
       { href: "/composicao-equipe", label: "Composicao de Equipe", icon: "users" },
+      { href: "/controle-apr", label: "Controle de APR", icon: "calendar" },
       { href: "/medicao", label: "Medicao", icon: "calendar" },
       { href: "/medicao-asbuilt", label: "Medicao Asbuilt", icon: "calendar" },
       { href: "/faturamento", label: "Faturamento", icon: "calendar" },
@@ -119,6 +120,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/composicao-equipe": {
     title: "Composicao de Equipe",
     subtitle: "Cadastro diario de integrantes por equipe, projeto e presenca.",
+  },
+  "/controle-apr": {
+    title: "Controle de APR",
+    subtitle: "Cadastro, conferencia e acompanhamento de APR por projeto, equipe e data.",
   },
   "/programacao": {
     title: "Programacao (Legado)",

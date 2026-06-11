@@ -904,3 +904,5 @@
 - [x] Padronizar o filtro de Projeto em `Operacoes de Equipe` conforme `Medicao`, com datalist, validacao exata e filtro backend por `projectId`.
 - [x] Corrigir a separacao entre `Movimentacao de Estoque` e `Operacoes de Equipe`, carregando os vinculos em blocos e impedindo que requisicoes e estornos de equipe aparecam como transferencias fisicas.
 - [x] Corrigir o carregamento do `Estoque Atual` em tenants com muitas movimentacoes, consultando itens e relacoes historicas em blocos de ate 100 IDs.
+
+- [x] Criar a tela `Controle de APR` no padrao visual da Medicao, com projeto cadastrado, ID APR globalmente unico, data sem futuro, equipe com encarregado, observacao, vinculo automatico com a Programacao do dia, situacoes Ativo/Cancelado/Divergente/Conferido, filtros, acoes Editar/Cancelar/Validar, historico transacional, RLS multi-tenant e extracao Excel.
