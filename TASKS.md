@@ -781,6 +781,12 @@
 
 - [x] Corrigir a listagem e o painel da Composicao de Equipe para funcionar durante a transicao anterior a migration `224`, tratando registros sem `work_status` como `Atuando` sem interromper a consulta.
 
+- [x] Adicionar filtro de data independente no painel de cartoes da Composicao de Equipe e permitir cadastro `Nao atuou` sem Projeto, mantendo Projeto obrigatorio para equipes atuando.
+
+- [x] Remover do painel de cartoes o texto redundante `Acompanhamento de <data>`, mantendo somente o campo `Data do acompanhamento`.
+
+- [x] Mover o filtro `Data do acompanhamento` para baixo do titulo `Composicoes das Equipes`, mantendo os contadores no lado direito do painel.
+
 - [x] Ajustar Dashboard Medicao e Lista de Ordens de Medicao para priorizar o Estado Trabalho salvo na propria Medicao, usando a Programacao apenas como fallback para ordens antigas sem snapshot.
 
 - [x] Corrigir normalizacao do Estado Trabalho na Medicao para preservar Parcial planejado beneficio atingido e permitir snapshots de estados normalizados alem de CONCLUIDO/PARCIAL.

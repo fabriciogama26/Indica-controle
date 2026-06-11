@@ -27,15 +27,35 @@
 .coverageHeader {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 14px;
   flex-wrap: wrap;
 }
 
-.coverageDate {
-  margin: 4px 0 0;
-  color: #5b6a85;
-  font-size: 0.92rem;
+.coverageTitleBlock {
+  display: grid;
+  gap: 10px;
+}
+
+.coverageDateFilter {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+}
+
+.coverageDateFilter span {
+  color: #17347a;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.coverageDateFilter input {
+  min-height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #1b294c;
+  padding: 8px 12px;
 }
 
 .coverageSummary {
@@ -555,6 +575,12 @@
 
   .coverageSummary {
     width: 100%;
+  }
+
+  .coverageTitleBlock,
+  .coverageDateFilter {
+    width: 100%;
+    justify-items: stretch;
   }
 
   .coverageSummary span {
