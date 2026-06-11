@@ -66,7 +66,7 @@ export const INITIAL_FILTERS: FilterState = {
   endDate: "",
   operationKind: "TODOS",
   teamId: "",
-  projectCode: "",
+  projectId: "",
   materialCode: "",
   entryType: "TODOS",
   reversalStatus: "TODOS",

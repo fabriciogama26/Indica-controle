@@ -885,3 +885,7 @@
 - [ ] Validar o encarregado da composicao pelo `foreman_person_id` da equipe e definir se sua presenca e obrigatoria.
 - [ ] Substituir o delete/reinsert de integrantes da composicao por sincronizacao ou versionamento imutavel.
 - [x] Corrigir `Operacoes de Equipe` para carregar vinculos de estorno em blocos, bloquear linha ja estornada/linha de estorno no backend e atualizar imediatamente o estado visual apos o sucesso.
+- [x] Garantir que todo erro do cadastro em massa de `Operacoes de Equipe`, inclusive arquivo invalido e falha tecnica sem linha identificada, gere CSV baixavel com linha, coluna, valor e erro.
+- [x] Corrigir o resumo visual do cadastro em massa de `Operacoes de Equipe` para exibir importacao parcial e quantidade de erros quando houver CSV de erros, mesmo com linhas salvas.
+- [x] Padronizar o filtro de Projeto em `Operacoes de Equipe` conforme `Medicao`, com datalist, validacao exata e filtro backend por `projectId`.
+- [x] Corrigir a separacao entre `Movimentacao de Estoque` e `Operacoes de Equipe`, carregando os vinculos em blocos e impedindo que requisicoes e estornos de equipe aparecam como transferencias fisicas.

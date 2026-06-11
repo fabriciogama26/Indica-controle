@@ -524,3 +524,40 @@ Atualizacao 2026-06 - Auditoria de integridade
   - `supabase/migrations/206_add_stock_transfer_operation_purpose.sql`
   - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
   - `supabase/migrations/216_fix_reversal_operation_purpose_rpc_calls.sql`
+
+Atualizacao 2026-06 - Separacao entre estoque fisico e Operacoes de Equipe
+--------------------------------------------------------------------------
+- Causa:
+  - a lista consultava todos os `transfer_id` de `stock_transfer_team_operations` em uma unica chamada `.in(...)`;
+  - com muitas movimentacoes, a requisicao podia exceder o tamanho pratico aceito pelo PostgREST;
+  - o erro era descartado e a lista assumia que nenhuma transferencia pertencia a Operacoes de Equipe.
+- Sintoma:
+  - requisicoes `BASE -> EQUIPE` apareciam incorretamente como `Transferencia`;
+  - estornos `EQUIPE -> BASE` tambem apareciam na Movimentacao de Estoque;
+  - o usuario tentava estornar a linha inversa, embora ela ja fosse um estorno.
+- Correcao:
+  - os vinculos de Operacoes de Equipe passam a ser carregados em blocos de ate 100 transferencias;
+  - a listagem falha de forma segura quando nao consegue classificar a origem operacional;
+  - requisicoes, devolucoes e respectivos estornos permanecem somente em Operacoes de Equipe.
+- Regra operacional:
+  - o estorno de uma requisicao devolve o saldo da equipe para a BASE;
+  - se a Entrada fisica original era incorreta, deve-se estornar a linha original de `Entrada` depois que o saldo retornar;
+  - nao e permitido estornar o proprio registro `EQUIPE -> BASE`, pois ele ja e a movimentacao inversa de auditoria;
+  - uma `Saida` nova representa retirada fisica posterior e nao substitui o estorno da Entrada incorreta.
+- Comportamento antes/depois:
+  - Antes: uma falha auxiliar podia misturar ledger de equipe com a lista de estoque fisico.
+  - Depois: a classificacao e obrigatoria e as linhas de equipe nao sao exibidas como movimentacao fisica.
+- Arquivos alterados:
+  - `src/app/api/stock-transfers/route.ts`
+  - `docs/Tela_Entrada_SaaS.txt`
+  - `TASKS.md`
+- Funcoes e constantes tocadas:
+  - `loadTransferList`
+  - `loadRowsInChunks`
+  - `RELATION_QUERY_CHUNK_SIZE`
+- Impacto multi-tenant:
+  - todas as consultas continuam exigindo `tenant_id = appUser.tenant_id`;
+  - nenhuma policy RLS, permissao ou schema foi alterado.
+- Validacao:
+  - `npm.cmd run lint -- src/app/api/stock-transfers/route.ts`
+  - `npm.cmd run build`
