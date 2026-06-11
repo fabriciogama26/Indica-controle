@@ -5,9 +5,10 @@ Visao geral
 - Tela para registrar a composicao diaria de uma equipe por `Projeto + Equipe + Data`.
 - O cadastro parte da equipe selecionada e permite adicionar pessoas do cadastro `Pessoas`.
 - A lista exibe uma linha por composicao, mantendo os integrantes dentro dos detalhes/edicao.
+- Acima do cadastro, o painel `Composicoes das Equipes` compara todas as equipes ativas do tenant com as composicoes da data selecionada.
 - A tela possui dois CSVs:
   - `Exportar lista (CSV)`: exporta uma linha por composicao, com as mesmas colunas exibidas na listagem.
-  - `Detalhes (CSV)`: exporta uma linha por integrante no padrao operacional: Data, PROJETO, Setor, Matricula, Colaborador, Funcao, CPF, TELEFONE, Patio, Placa, Hora inicial e Presente.
+  - `Detalhes (CSV)`: exporta uma linha por integrante no padrao operacional: Data, PROJETO, Situacao, Setor, Matricula, Colaborador, Funcao, CPF, TELEFONE, Patio, Placa, Hora inicial e Presente.
 
 Arquitetura
 -----------
@@ -34,6 +35,7 @@ Cadastro
   - Data
   - Projeto
   - Equipe
+  - Situacao da equipe (`Atuando` ou `Nao atuou`)
   - Setor
   - Hora inicial
   - Ao menos uma pessoa
@@ -54,6 +56,7 @@ Cadastro
   - Bloqueia matricula duplicada na mesma composicao, mesmo se vier de registros diferentes.
   - Bloqueia composicao com mais de um integrante cuja funcao/cargo contenha `ENCARREGADO`.
   - Permite marcar `Presente = Sim/Nao` por integrante.
+  - Quando `Situacao da equipe = Nao atuou`, a tela mantem somente o encarregado vinculado a equipe, marca `Presente = Nao` e bloqueia inclusao, remocao ou alteracao de presenca.
 - Validacao de salvamento:
   - A tela mostra todos os campos obrigatorios pendentes em uma unica mensagem.
   - Campos verificados: Data, Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
@@ -64,6 +67,17 @@ Cadastro
 
 Filtros, auto-complete e listagem
 ---------------------------------
+- Painel diario:
+  - Usa a data selecionada no formulario de cadastro.
+  - Exibe contadores de `Total`, `Cadastradas`, `Pendentes` e `Nao atuaram`.
+  - Exibe um cartao por equipe ativa no formato `Equipe / Encarregado`.
+  - Cartao vermelho: equipe sem composicao ativa na data.
+  - Cartao verde: equipe com ao menos uma composicao ativa na data.
+  - Cartao verde com `Nao atuou`: a composicao diaria foi registrada com `work_status = NOT_WORKING`.
+  - Pendencias aparecem antes das equipes concluidas.
+  - O clique em um cartao vermelho seleciona automaticamente a equipe no formulario.
+  - Se havia uma edicao em andamento, o clique no cartao vermelho inicia um novo cadastro e preserva a data acompanhada.
+  - A cobertura considera a equipe concluida quando existe composicao em qualquer projeto na data.
 - Filtros:
   - Data inicial
   - Data final
@@ -73,6 +87,7 @@ Filtros, auto-complete e listagem
   - Data
   - Projeto
   - Equipe
+  - Situacao
   - Setor
   - Integrantes
   - Encarregado
@@ -241,3 +256,91 @@ Atualizacao 2026-06 - Auditoria de integridade
   - `supabase/migrations/200_create_team_composition_page.sql`
   - `supabase/migrations/201_fix_team_composition_save.sql`
   - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
+
+Atualizacao 2026-06 - Registro de equipe sem atuacao
+----------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/224_add_team_composition_work_status.sql`
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `TeamCompositionPageView`
+  - `applyTeam`
+  - `applyWorkStatus`
+  - `addMember`
+  - `handleSubmit`
+  - `workStatusLabel`
+  - `buildVisibleCsv`
+  - `buildDetailedCsv`
+  - `normalizeWorkStatus`
+  - `mapComposition`
+  - `saveComposition`
+  - RPC `save_team_composition_record`
+- Comportamento antes/depois:
+  - Antes: a composicao nao diferenciava uma equipe que atuou de uma equipe sem atuacao.
+  - Depois: o cadastro exige `Situacao da equipe` com `Atuando` ou `Nao atuou`.
+  - Antes: uma composicao com apenas o encarregado era indistinguivel de uma equipe operacional incompleta.
+  - Depois: `Nao atuou` persiste `work_status = NOT_WORKING`, mantem exatamente o encarregado da equipe e grava sua presenca como `Nao`.
+  - Antes: lista, detalhes e CSV nao informavam a situacao operacional.
+  - Depois: lista, detalhes e as duas exportacoes CSV exibem a situacao.
+- Impacto multi-tenant:
+  - A API continua resolvendo `tenant_id` pelo usuario autenticado.
+  - A RPC valida a equipe e o encarregado dentro do mesmo `tenant_id`.
+  - A migration nao altera as policies RLS existentes e concede a nova assinatura somente a `service_role`.
+
+Atualizacao 2026-06 - Painel diario de cobertura
+------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `GET /api/composicao-equipe` com `coverageDate`
+  - `TeamCompositionPageView`
+  - `loadDailyCoverage`
+  - `dailyCoverageByTeam`
+  - `orderedCoverageTeams`
+  - `coverageSummary`
+  - `applyTeam`
+- Comportamento antes/depois:
+  - Antes: era necessario conferir manualmente a lista para descobrir quais equipes ainda nao tinham composicao.
+  - Depois: todas as equipes ativas aparecem em cartoes acima do cadastro, com vermelho para pendente e verde para concluida.
+  - Antes: nao havia totalizacao diaria de cobertura.
+  - Depois: o painel informa total, cadastradas, pendentes e equipes que nao atuaram.
+  - Antes: a equipe pendente precisava ser localizada novamente no select.
+  - Depois: clicar no cartao vermelho preenche a equipe no formulario.
+- Impacto multi-tenant:
+  - A API consulta somente `teams` e `team_compositions` com `tenant_id = appUser.tenant_id`.
+  - Somente equipes ativas entram no painel.
+  - A verificacao usa composicoes ativas da data e nao depende da pagina atual da listagem.
+
+Atualizacao 2026-06 - Compatibilidade anterior a migration 224
+---------------------------------------------------------------
+- Causa:
+  - A API selecionava explicitamente `team_compositions.work_status`.
+  - Em ambientes onde a migration `224_add_team_composition_work_status.sql` ainda nao foi aplicada, o PostgREST recusava a consulta e retornava `Falha ao listar composicoes de equipe`.
+- Correcao:
+  - As leituras de composicao e cobertura usam o registro disponivel sem exigir explicitamente a coluna nova.
+  - Quando `work_status` nao existe no registro retornado, a API considera `WORKING` para manter compatibilidade com composicoes legadas.
+  - O cadastro de `Nao atuou` continua exigindo a migration `224`, pois depende da coluna e da nova assinatura da RPC.
+- Arquivos alterados:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `TASKS.md`
+- Funcoes e tipos tocados:
+  - `CompositionRow`
+  - `CoverageCompositionRow`
+  - `mapComposition`
+  - `fetchCompositionById`
+  - `GET /api/composicao-equipe`
+  - `saveComposition`
+- Impacto multi-tenant:
+  - Todas as leituras continuam filtradas por `tenant_id = appUser.tenant_id`.
+  - Nenhuma policy RLS ou permissao foi alterada.

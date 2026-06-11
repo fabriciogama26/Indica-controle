@@ -775,6 +775,12 @@
 
 - [x] Exibir o encarregado junto ao nome da equipe nos selects de cadastro e filtro da Composicao de Equipe.
 
+- [x] Permitir registrar na Composicao de Equipe a situacao `Nao atuou`, mantendo somente o encarregado da equipe marcado como ausente e exibindo a situacao na lista, detalhes e CSV.
+
+- [x] Adicionar acima do cadastro da Composicao de Equipe um painel diario com cartoes vermelhos para equipes ativas pendentes e verdes para equipes com composicao cadastrada, incluindo contadores e selecao rapida da equipe pendente.
+
+- [x] Corrigir a listagem e o painel da Composicao de Equipe para funcionar durante a transicao anterior a migration `224`, tratando registros sem `work_status` como `Atuando` sem interromper a consulta.
+
 - [x] Ajustar Dashboard Medicao e Lista de Ordens de Medicao para priorizar o Estado Trabalho salvo na propria Medicao, usando a Programacao apenas como fallback para ordens antigas sem snapshot.
 
 - [x] Corrigir normalizacao do Estado Trabalho na Medicao para preservar Parcial planejado beneficio atingido e permitir snapshots de estados normalizados alem de CONCLUIDO/PARCIAL.
@@ -857,6 +863,8 @@
 - [x] Melhorar o `Dashboard Estoque`: mover a legenda `Quantidade` acima da area plotada da dispersao, exibir `UMB` na lista de materiais, remover o zoom e contar operacoes distintas por movimentacao na evolucao mensal e nos totais.
 
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-10 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.108.1`, `@tanstack/react-query` `5.90.21 -> 5.101.0`, `@types/node` `20.19.37 -> 20.19.42` (`latest 25.9.2`), `@types/react` `19.2.14 -> 19.2.17`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.9`), `next` `16.1.6` (`latest 16.2.9`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
+
+- [ ] Pendencias registradas por `npm outdated` em 2026-06-11 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.108.1`, `@tanstack/react-query` `5.90.21 -> 5.101.0`, `@types/node` `20.19.37 -> 20.19.43` (`latest 25.9.3`), `@types/react` `19.2.14 -> 19.2.17`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.9`), `next` `16.1.6` (`latest 16.2.9`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
 
 - [x] Corrigir o diagnostico do cadastro da `Programacao Simples` para preservar `reason/detail` das RPCs wrappers no retorno da API/modal e diferenciar falha HTTP/rede de erro do banco, evitando a mensagem generica `Falha ao cadastrar programacao em lote.`. Incluidos timeout de 30 segundos, codigos de transporte e migration 221 para preservar o detalhe SQL.
 
