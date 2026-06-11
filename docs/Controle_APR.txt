@@ -1,0 +1,120 @@
+Tela: Controle de APR
+
+Visao geral
+-----------
+- Tela de cadastro, conferencia e acompanhamento de APR por Projeto, Equipe e Data do servico.
+- O ID APR e unico em toda a base do sistema.
+- Os demais dados e consultas permanecem segregados por `tenant_id`.
+- O visual segue o padrao da tela de Medicao: cadastro, filtros, lista paginada, acoes circulares e modal.
+- Situacoes: `ATIVO`, `CONFERIDO`, `DIVERGENTE` e `CANCELADO`.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/controle-apr/page.tsx`
+- View: `src/modules/dashboard/controle-apr/AprControlPageView.tsx`
+- Estilo: `src/modules/dashboard/controle-apr/AprControlPageView.module.css`
+- API: `src/app/api/controle-apr/route.ts`
+- Banco/RLS/RPC/permissao: `supabase/migrations/226_create_apr_control_module.sql`
+- Navegacao/autorizacao:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Cadastro
+--------
+- Obrigatorios: Projeto, ID APR, Data do servico e Equipe.
+- Opcional: Observacao.
+- Projeto aceita somente codigo exato de projeto ativo cadastrado no tenant.
+- ID APR aceita numero ou texto, e normalizado para maiusculas e possui unicidade global por `upper(trim(apr_id))`.
+- Data futura e bloqueada no frontend, API e RPC; a RPC usa `America/Sao_Paulo`.
+- Equipe exibe `Codigo/Nome - Encarregado` e aceita somente equipe ativa do tenant.
+- O encarregado e exibido em campo somente leitura.
+- A Programacao e vinculada automaticamente por `tenant + Projeto + Equipe + Data do servico`.
+- Programacao cancelada nao e vinculada.
+- APR cancelada nao pode ser editada.
+- A edicao usa `expectedUpdatedAt`.
+- Editar uma APR conferida ou divergente devolve a situacao para `ATIVO`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros: Data inicial/final, Projeto, Equipe, ID APR, Status e Encarregado.
+- Lista: ID APR, Projeto, Data, Equipe, Encarregado, Programacao, Situacao, Observacao, Atualizado em e Acoes.
+- Paginacao server-side com 20 registros por pagina.
+- `Extrair para Excel` gera `.xlsx` real com todos os registros dos filtros ativos.
+
+Boas praticas
+-------------
+- Leituras usam o `tenant_id` autenticado.
+- `project_apr_controls` e `project_apr_control_history` possuem RLS ativa.
+- `authenticated` possui somente leitura direta; escritas usam RPC `SECURITY DEFINER` liberada ao `service_role`.
+- RPCs revalidam ator, tenant, projeto, equipe, data, concorrencia e duplicidade.
+- Erros de tela usam `useErrorLogger('controle_apr')`.
+- Snapshots preservam projeto, equipe, encarregado e status da Programacao.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento exige observacao minima de 10 caracteres.
+- Grava status, usuario, data/hora, motivo e historico.
+- Registro cancelado permanece consultavel e exportavel.
+- Nao existe impacto em saldo de estoque.
+
+Atalhos
+-------
+- Rota: `/controle-apr`
+- Endpoints:
+  - `GET /api/controle-apr`
+  - `GET /api/controle-apr?meta=1`
+  - `GET /api/controle-apr?historyId=<id>`
+  - `POST /api/controle-apr`
+  - `PUT /api/controle-apr`
+  - `PATCH /api/controle-apr`
+- Acoes PATCH: `CONFERIR`, `DIVERGIR` e `CANCELAR`.
+
+Atualizacao 2026-06
+-------------------
+- Antes: nao existia modulo de Controle de APR.
+- Depois:
+  - Cadastro com trava global de ID APR duplicado.
+  - Match automatico com a Programacao do dia.
+  - Conferencia, divergencia e cancelamento auditados.
+  - Filtros e extracao Excel.
+- Arquivos criados:
+  - `supabase/migrations/226_create_apr_control_module.sql`
+  - `src/app/api/controle-apr/route.ts`
+  - `src/app/(dashboard)/controle-apr/page.tsx`
+  - `src/modules/dashboard/controle-apr/AprControlPageView.tsx`
+  - `src/modules/dashboard/controle-apr/AprControlPageView.module.css`
+  - `docs/Controle_APR.txt`
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `README.md`
+  - `TASKS.md`
+
+Mapa de Codigo (funcoes, hooks e constantes)
+---------------------------------------------
+- Funcoes principais:
+  - Caminho: `src/modules/dashboard/controle-apr/AprControlPageView.tsx`
+  - `loadRecords`: lista, pagina e carrega metadados.
+  - `submitForm`: cadastra ou edita.
+  - `submitStatusAction`: confere, diverge ou cancela.
+  - `exportExcel`: gera o arquivo `.xlsx`.
+  - `handleProjectInput`: valida projeto por codigo exato.
+- Constantes e configuracoes:
+  - `PAGE_SIZE = 20`
+  - `EXPORT_PAGE_SIZE = 500`
+- Funcoes utilitarias relacionadas:
+  - `findProject`
+  - `buildQuery`
+  - `statusLabel`
+  - `statusClass`
+  - `downloadExcel`
+- Servicos e integracoes externas:
+  - Supabase/Postgres por `resolveAuthenticatedAppUser`.
+  - SheetJS/XLSX.
+  - RPC `save_project_apr_control`.
+  - RPC `set_project_apr_control_status`.
+- Ajuda contextual:
+  - O cadastro informa a chave de vinculo com a Programacao.
+  - A Observacao orienta justificativa de divergencia, cancelamento ou correcao.

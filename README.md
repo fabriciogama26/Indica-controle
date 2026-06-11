@@ -134,6 +134,7 @@ vercel --prod
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por projeto/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, detalhes, historico e CSV.
+  - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, respeitando o tipo cadastrado do material e preservando snapshot do encarregado por movimentacao.
   - `(dashboard)/estornos/page.tsx`: rota da tela `Estornos` para consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
@@ -166,6 +167,7 @@ vercel --prod
   - `api/locacao/activities/route.ts`: adiciona e edita atividades previstas da locacao via RPC com bloqueio de quantidade invalida e controle de concorrencia por `updated_at`.
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/medicao/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa ordens de medicao, incluindo os modos `Com producao` e `Sem producao`, filtros por Tipo de Servico e Atividade, exclusao de obras de teste das consolidacoes de ordens/valor e cruzamento ativo com a Composicao de Equipe por tenant, projeto, equipe e data de execucao.
+  - `api/controle-apr/route.ts`: carrega projetos/equipes, lista APRs do tenant, salva por RPC, vincula a Programacao do dia, confere, marca divergencia, cancela e fornece os dados para extracao Excel.
   - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao` e tipos de servico ativos dos projetos por tenant.
   - `api/medicao/activities/catalog/route.ts`: pesquisa atividades ativas para inclusao manual ou importacao da Medicao.
   - `api/medicao/rate-suggestion/route.ts`: sugere a taxa da nova ordem por `projectId`, priorizando historico da ultima medicao do projeto e retornando fallback para preenchimento manual.
@@ -230,6 +232,9 @@ vercel --prod
 - `src/modules/dashboard/medicao/`
   - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, lista paginada, filtros por Tipo de Servico e Atividade, modos `Com producao` e `Sem producao`, motivo estruturado por tenant, inclusao de atividades da medicao, taxa unica por ordem com coluna `Taxa aplicada` na edicao, sugestao automatica da taxa ao selecionar projeto (ultima medicao do projeto), cadastro em massa CSV com suporte aos dois tipos, detalhe por item com `taxa` visivel, importacao reforcada por match exato/univoco do codigo da atividade, bloqueio de atividade duplicada na mesma ordem com validacao tambem na RPC, status de execucao baseado no ultimo `Estado Trabalho` do projeto, coluna de composicao da equipe na data e resumo filtrado da garantia minima.
   - `MeasurementPageView.module.css`: estilos da tela de medicao.
+- `src/modules/dashboard/controle-apr/`
+  - `AprControlPageView.tsx`: cadastro, filtros, lista, validacao, divergencia, cancelamento e extracao `.xlsx` do Controle de APR.
+  - `AprControlPageView.module.css`: estilos da tela no padrao visual da Medicao.
 - `src/modules/dashboard/medicao-asbuilt/`
   - `AsbuiltMeasurementPageView.tsx`: tela Medicao Asbuilt com snapshots acumulados por `Projeto + Servicos considerados ate`, cadastro manual/em massa, filtros, lista, detalhe, historico, status e bloqueio de projeto inativo.
   - `AsbuiltMeasurementPageView.module.css`: estilos da tela Medicao Asbuilt.
@@ -327,6 +332,7 @@ vercel --prod
   - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
+  - `Controle_APR.txt`: documentacao da tela Controle de APR, regras de duplicidade, conferencia, filtros, seguranca multi-tenant e mapa de codigo.
   - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada, historico com correcao de saldo e exportacao CSV.
   - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de SERIAL com consulta em `trafo_instances`, atalho de movimentacao e fluxo `RET`.
   - `Tela_Cargo_SaaS.txt`: tela de cargos com cadastro, filtros, historico, status e manutencao de tipos/niveis.
@@ -357,6 +363,7 @@ vercel --prod
 - `supabase/migrations/198_add_people_cpf_optional.sql`: adiciona `CPF` opcional em `Pessoas`, com validacao de 11 digitos e persistencia pela RPC `save_person_record`.
 - `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`: torna `CPF` unico por tenant, adiciona trava `CPF + Matricula`, adiciona `Telefone` opcional e republica `save_person_record`.
 - `supabase/migrations/215_repair_reversals_page_permissions.sql`: repara o catalogo e o backfill multi-tenant da pagina `estornos` sem sobrescrever permissoes existentes.
+- `supabase/migrations/226_create_apr_control_module.sql`: cria tabelas, indices, RLS, historico, RPCs e permissoes do Controle de APR.
 
 ---
 
@@ -435,6 +442,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 66. A migration `043_project_forecast_import_guards.sql` adiciona RPC de pre-check e RPC de append para bloquear codigos duplicados no arquivo e codigos ja importados no projeto.
 67. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
 68. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
+69. A rota `/controle-apr` cadastra APR por Projeto + Equipe + Data do servico, bloqueia ID APR duplicado em toda a base, vincula automaticamente a Programacao nao cancelada do dia, permite editar, cancelar, marcar como Conferido/Divergente e extrair o resultado filtrado em Excel.
 
 ---
 
