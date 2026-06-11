@@ -44,6 +44,8 @@ type CompositionMember = {
   sortOrder?: number;
 };
 
+type WorkStatus = "WORKING" | "NOT_WORKING";
+
 type CompositionItem = {
   id: string;
   compositionDate: string;
@@ -54,6 +56,7 @@ type CompositionItem = {
   teamName: string;
   vehiclePlate: string;
   foremanName: string;
+  workStatus: WorkStatus;
   sector: string;
   yard: string;
   startTime: string;
@@ -75,6 +78,24 @@ type MetaResponse = {
 type ListResponse = {
   compositions?: CompositionItem[];
   pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
+type DailyCoverageItem = {
+  teamId: string;
+  isCompleted: boolean;
+  workStatus: WorkStatus | null;
+};
+
+type DailyCoverageResponse = {
+  coverageDate?: string;
+  coverage?: DailyCoverageItem[];
+  summary?: {
+    total: number;
+    completed: number;
+    pending: number;
+    notWorking: number;
+  };
   message?: string;
 };
 
@@ -106,6 +127,7 @@ type FormState = {
   compositionDate: string;
   projectCode: string;
   teamId: string;
+  workStatus: WorkStatus;
   sector: string;
   yard: string;
   startTime: string;
@@ -149,6 +171,7 @@ function createInitialForm(today: string): FormState {
     compositionDate: today,
     projectCode: "",
     teamId: "",
+    workStatus: "WORKING",
     sector: "OBRA",
     yard: "",
     startTime: "07:30",
@@ -218,6 +241,10 @@ function teamOptionLabel(team: TeamOption) {
   const teamName = normalizeText(team.name);
   const foremanName = normalizeText(team.foremanName);
   return foremanName && foremanName !== "Nao identificado" ? `${teamName} / ${foremanName}` : teamName;
+}
+
+function workStatusLabel(value: WorkStatus) {
+  return value === "NOT_WORKING" ? "Nao atuou" : "Atuando";
 }
 
 function formatDate(value: string) {
@@ -304,6 +331,7 @@ function buildVisibleCsv(compositions: CompositionItem[]) {
     "Data",
     "Projeto",
     "Equipe",
+    "Situacao",
     "Setor",
     "Integrantes",
     "Encarregado",
@@ -316,6 +344,7 @@ function buildVisibleCsv(compositions: CompositionItem[]) {
     formatDate(composition.compositionDate),
     composition.projectCode,
     composition.teamName,
+    workStatusLabel(composition.workStatus),
     composition.sector,
     composition.members.length,
     composition.foremanName,
@@ -331,6 +360,7 @@ function buildDetailedCsv(compositions: CompositionItem[]) {
   const header = [
     "Data",
     "PROJETO",
+    "Situacao",
     "Setor",
     "Matrícula",
     "Colaborador",
@@ -346,6 +376,7 @@ function buildDetailedCsv(compositions: CompositionItem[]) {
     composition.members.map((member) => [
       formatOperationalDate(composition.compositionDate),
       composition.projectCode,
+      workStatusLabel(composition.workStatus),
       composition.sector,
       member.matriculation ?? "",
       member.name,
@@ -390,6 +421,8 @@ export function TeamCompositionPageView() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
+  const [dailyCoverage, setDailyCoverage] = useState<DailyCoverageItem[]>([]);
+  const [isLoadingCoverage, setIsLoadingCoverage] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [detailComposition, setDetailComposition] = useState<CompositionItem | null>(null);
@@ -410,6 +443,30 @@ export function TeamCompositionPageView() {
   const selectedTeam = teams.find((team) => team.id === form.teamId) ?? null;
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
   const formForemanPhone = getFormForemanPhone(selectedTeam, form.members);
+  const dailyCoverageByTeam = useMemo(
+    () => new Map(dailyCoverage.map((item) => [item.teamId, item])),
+    [dailyCoverage],
+  );
+  const orderedCoverageTeams = useMemo(
+    () => [...teams].sort((left, right) => {
+      const leftCompleted = dailyCoverageByTeam.get(left.id)?.isCompleted ?? false;
+      const rightCompleted = dailyCoverageByTeam.get(right.id)?.isCompleted ?? false;
+      if (leftCompleted !== rightCompleted) {
+        return leftCompleted ? 1 : -1;
+      }
+      return left.name.localeCompare(right.name, "pt-BR");
+    }),
+    [dailyCoverageByTeam, teams],
+  );
+  const coverageSummary = useMemo(() => {
+    const items = teams.map((team) => dailyCoverageByTeam.get(team.id));
+    return {
+      total: teams.length,
+      completed: items.filter((item) => item?.isCompleted).length,
+      pending: items.filter((item) => !item?.isCompleted).length,
+      notWorking: items.filter((item) => item?.workStatus === "NOT_WORKING").length,
+    };
+  }, [dailyCoverageByTeam, teams]);
 
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -470,6 +527,34 @@ export function TeamCompositionPageView() {
     [logError, projectByCode, session?.accessToken],
   );
 
+  const loadDailyCoverage = useCallback(async (coverageDate: string) => {
+    if (!session?.accessToken || !coverageDate) {
+      setDailyCoverage([]);
+      return;
+    }
+    setIsLoadingCoverage(true);
+    try {
+      const params = new URLSearchParams({ coverageDate });
+      const response = await fetch(`/api/composicao-equipe?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      const data = (await response.json().catch(() => ({}))) as DailyCoverageResponse;
+      if (!response.ok) {
+        setDailyCoverage([]);
+        setFeedback({ type: "error", message: data.message ?? "Falha ao carregar acompanhamento diario." });
+        return;
+      }
+      setDailyCoverage(data.coverage ?? []);
+    } catch (error) {
+      setDailyCoverage([]);
+      setFeedback({ type: "error", message: "Falha ao carregar acompanhamento diario." });
+      await logError("Falha ao carregar acompanhamento diario da composicao.", error, { coverageDate });
+    } finally {
+      setIsLoadingCoverage(false);
+    }
+  }, [logError, session?.accessToken]);
+
   useEffect(() => {
     void loadMeta();
   }, [loadMeta]);
@@ -477,6 +562,10 @@ export function TeamCompositionPageView() {
   useEffect(() => {
     void loadCompositions(page, activeFilters);
   }, [activeFilters, loadCompositions, page]);
+
+  useEffect(() => {
+    void loadDailyCoverage(form.compositionDate);
+  }, [form.compositionDate, loadDailyCoverage]);
 
   function resetForm() {
     setForm(createInitialForm(today));
@@ -507,6 +596,25 @@ export function TeamCompositionPageView() {
   function applyTeam(teamId: string) {
     const nextTeam = teams.find((team) => team.id === teamId) ?? null;
     setForm((current) => {
+      if (current.workStatus === "NOT_WORKING") {
+        const foreman = nextTeam?.foremanId ? peopleById.get(nextTeam.foremanId) : null;
+        return {
+          ...current,
+          teamId,
+          yard: nextTeam?.serviceCenterName ?? "",
+          members: foreman && nextTeam
+            ? [{
+                personId: foreman.id,
+                name: foreman.name,
+                matriculation: foreman.matriculation,
+                cpf: foreman.cpf,
+                phone: nextTeam.foremanPhone,
+                jobTitleName: foreman.jobTitleName,
+                isPresent: false,
+              }]
+            : [],
+        };
+      }
       if (!nextTeam?.foremanId || current.members.some((member) => member.personId === nextTeam.foremanId)) {
         return {
           ...current,
@@ -551,6 +659,45 @@ export function TeamCompositionPageView() {
     });
   }
 
+  function selectPendingTeam(teamId: string) {
+    const coverageDate = form.compositionDate;
+    setForm(createInitialForm(coverageDate));
+    setFeedback(null);
+    applyTeam(teamId);
+  }
+
+  function applyWorkStatus(workStatus: WorkStatus) {
+    setForm((current) => {
+      if (workStatus === "WORKING") {
+        return {
+          ...current,
+          workStatus,
+          members: current.members.map((member) => (
+            member.personId === selectedTeam?.foremanId ? { ...member, isPresent: true } : member
+          )),
+        };
+      }
+      const foreman = selectedTeam?.foremanId ? peopleById.get(selectedTeam.foremanId) : null;
+      return {
+        ...current,
+        workStatus,
+        personSearch: "",
+        members: foreman && selectedTeam
+          ? [{
+              personId: foreman.id,
+              name: foreman.name,
+              matriculation: foreman.matriculation,
+              cpf: foreman.cpf,
+              phone: selectedTeam.foremanPhone,
+              jobTitleName: foreman.jobTitleName,
+              isPresent: false,
+            }]
+          : [],
+      };
+    });
+    setFeedback(null);
+  }
+
   function findPersonBySearch(value: string) {
     const normalized = normalizeLookupKey(value);
     if (!normalized) return null;
@@ -563,6 +710,10 @@ export function TeamCompositionPageView() {
   }
 
   function addMember() {
+    if (form.workStatus === "NOT_WORKING") {
+      setFeedback({ type: "error", message: "Equipe que nao atuou deve manter somente o encarregado." });
+      return;
+    }
     const person = findPersonBySearch(form.personSearch);
     if (!person) {
       setFeedback({ type: "error", message: "Selecione uma pessoa valida para adicionar." });
@@ -618,6 +769,7 @@ export function TeamCompositionPageView() {
       compositionDate: composition.compositionDate,
       projectCode: composition.projectCode,
       teamId: composition.teamId,
+      workStatus: composition.workStatus,
       sector: composition.sector,
       yard: composition.yard,
       startTime: composition.startTime,
@@ -670,6 +822,21 @@ export function TeamCompositionPageView() {
       return;
     }
 
+    if (
+      form.workStatus === "NOT_WORKING"
+      && (
+        form.members.length !== 1
+        || form.members[0]?.personId !== selectedTeam.foremanId
+        || form.members[0]?.isPresent !== false
+      )
+    ) {
+      setFeedback({
+        type: "error",
+        message: "Equipe que nao atuou deve possuir somente o encarregado da equipe, marcado como nao presente.",
+      });
+      return;
+    }
+
     setIsSaving(true);
     setFeedback(null);
     const resolvedYard = selectedTeam.serviceCenterName || form.yard;
@@ -686,6 +853,7 @@ export function TeamCompositionPageView() {
           compositionDate: form.compositionDate,
           projectId: project.id,
           teamId: form.teamId,
+          workStatus: form.workStatus,
           sector: form.sector,
           yard: resolvedYard,
           startTime: form.startTime,
@@ -701,7 +869,10 @@ export function TeamCompositionPageView() {
       setFeedback({ type: "success", message: data.message ?? "Composicao salva com sucesso." });
       resetForm();
       setPage(1);
-      await loadCompositions(1, activeFilters);
+      await Promise.all([
+        loadCompositions(1, activeFilters),
+        loadDailyCoverage(today),
+      ]);
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao salvar composicao." });
       await logError("Falha ao salvar composicao de equipe.", error, { form });
@@ -809,6 +980,52 @@ export function TeamCompositionPageView() {
 
   return (
     <section className={styles.wrapper}>
+      <article className={styles.card}>
+        <div className={styles.coverageHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Composicoes das Equipes</h2>
+            <p className={styles.coverageDate}>Acompanhamento de {formatDate(form.compositionDate)}</p>
+          </div>
+          <div className={styles.coverageSummary}>
+            <span>Total: <strong>{coverageSummary.total}</strong></span>
+            <span>Cadastradas: <strong>{coverageSummary.completed}</strong></span>
+            <span>Pendentes: <strong>{coverageSummary.pending}</strong></span>
+            <span>Nao atuaram: <strong>{coverageSummary.notWorking}</strong></span>
+          </div>
+        </div>
+        {isLoadingCoverage || isLoadingMeta ? <p className={styles.coverageMessage}>Carregando equipes...</p> : null}
+        {!isLoadingCoverage && !isLoadingMeta && orderedCoverageTeams.length === 0 ? (
+          <p className={styles.coverageMessage}>Nenhuma equipe ativa encontrada.</p>
+        ) : null}
+        {!isLoadingCoverage && !isLoadingMeta && orderedCoverageTeams.length > 0 ? (
+          <div className={styles.coverageGrid}>
+            {orderedCoverageTeams.map((team) => {
+              const coverage = dailyCoverageByTeam.get(team.id);
+              const isCompleted = coverage?.isCompleted ?? false;
+              const statusText = !isCompleted
+                ? "Composicao pendente"
+                : coverage?.workStatus === "NOT_WORKING"
+                  ? "Nao atuou"
+                  : "Composicao cadastrada";
+              return (
+                <button
+                  key={team.id}
+                  type="button"
+                  className={`${styles.coverageCard} ${isCompleted ? styles.coverageCardCompleted : styles.coverageCardPending}`}
+                  onClick={() => selectPendingTeam(team.id)}
+                  disabled={isCompleted}
+                  title={isCompleted ? statusText : "Selecionar equipe para cadastrar a composicao"}
+                >
+                  <strong>{team.name}</strong>
+                  <span>{formatOptional(team.foremanName)}</span>
+                  <small>{statusText}</small>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </article>
+
       <form className={`${styles.card} ${isEditing ? styles.editingCard : ""}`} onSubmit={handleSubmit}>
         <h2 className={styles.cardTitle}>{isEditing ? "Editar Composicao de Equipe" : "Cadastro de Composicao de Equipe"}</h2>
         <div className={styles.formGrid}>
@@ -830,6 +1047,13 @@ export function TeamCompositionPageView() {
           <label className={styles.field}>
             <span>Setor <span className="requiredMark">*</span></span>
             <input value={form.sector} onChange={(event) => setForm((current) => ({ ...current, sector: event.target.value }))} required />
+          </label>
+          <label className={styles.field}>
+            <span>Situacao da equipe <span className="requiredMark">*</span></span>
+            <select value={form.workStatus} onChange={(event) => applyWorkStatus(event.target.value as WorkStatus)} required>
+              <option value="WORKING">Atuando</option>
+              <option value="NOT_WORKING">Nao atuou</option>
+            </select>
           </label>
           <label className={styles.field}>
             <span>Hora inicial <span className="requiredMark">*</span></span>
@@ -865,12 +1089,15 @@ export function TeamCompositionPageView() {
             <div className={styles.memberAddGrid}>
               <label className={styles.field}>
                 <span>Pessoa</span>
-                <input list="composicao-people-list" value={form.personSearch} onChange={(event) => setForm((current) => ({ ...current, personSearch: event.target.value }))} placeholder="Digite matricula ou nome" />
+                <input list="composicao-people-list" value={form.personSearch} onChange={(event) => setForm((current) => ({ ...current, personSearch: event.target.value }))} placeholder="Digite matricula ou nome" disabled={form.workStatus === "NOT_WORKING"} />
               </label>
               <div className={styles.memberActions}>
-                <button type="button" className={styles.secondaryButton} onClick={addMember}>Adicionar</button>
+                <button type="button" className={styles.secondaryButton} onClick={addMember} disabled={form.workStatus === "NOT_WORKING"}>Adicionar</button>
               </div>
             </div>
+            {form.workStatus === "NOT_WORKING" ? (
+              <p className={styles.statusHint}>Equipe sem atuacao: somente o encarregado e mantido, com presenca marcada como Nao.</p>
+            ) : null}
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
                 <thead><tr><th>Matricula</th><th>Colaborador</th><th>Funcao</th><th>CPF</th><th>Telefone</th><th>Presente</th><th>Acoes</th></tr></thead>
@@ -884,12 +1111,12 @@ export function TeamCompositionPageView() {
                       <td>{formatOptional(formForemanPhone ?? member.phone)}</td>
                       <td>
                         <label className={styles.presenceToggle}>
-                          <input type="checkbox" checked={member.isPresent} onChange={(event) => toggleMemberPresence(member.personId, event.target.checked)} />
+                          <input type="checkbox" checked={member.isPresent} onChange={(event) => toggleMemberPresence(member.personId, event.target.checked)} disabled={form.workStatus === "NOT_WORKING"} />
                           {member.isPresent ? "Sim" : "Nao"}
                         </label>
                       </td>
                       <td>
-                        <button type="button" className={styles.dangerButton} onClick={() => removeMember(member.personId)}>Remover</button>
+                        <button type="button" className={styles.dangerButton} onClick={() => removeMember(member.personId)} disabled={form.workStatus === "NOT_WORKING"}>Remover</button>
                       </td>
                     </tr>
                   )) : <tr><td colSpan={7} className={styles.emptyRow}>Nenhuma pessoa adicionada.</td></tr>}
@@ -935,7 +1162,7 @@ export function TeamCompositionPageView() {
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
-              <tr><th>Data</th><th>Projeto</th><th>Equipe</th><th>Setor</th><th>Integrantes</th><th>Encarregado</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Acoes</th></tr>
+              <tr><th>Data</th><th>Projeto</th><th>Equipe</th><th>Situacao</th><th>Setor</th><th>Integrantes</th><th>Encarregado</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Acoes</th></tr>
             </thead>
             <tbody>
               {compositions.length ? compositions.map((composition) => (
@@ -943,6 +1170,7 @@ export function TeamCompositionPageView() {
                   <td>{formatDate(composition.compositionDate)}</td>
                   <td>{composition.projectCode}</td>
                   <td>{composition.teamName}</td>
+                  <td>{workStatusLabel(composition.workStatus)}</td>
                   <td>{composition.sector}</td>
                   <td>{composition.members.length} pessoa(s)</td>
                   <td>{formatOptional(composition.foremanName)}</td>
@@ -963,7 +1191,7 @@ export function TeamCompositionPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={10} className={styles.emptyRow}>{isLoadingList ? "Carregando composicoes..." : "Nenhuma composicao encontrada."}</td></tr>}
+              )) : <tr><td colSpan={11} className={styles.emptyRow}>{isLoadingList ? "Carregando composicoes..." : "Nenhuma composicao encontrada."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -989,6 +1217,7 @@ export function TeamCompositionPageView() {
                 <div><strong>Projeto:</strong> {detailComposition.projectCode}</div>
                 <div><strong>Centro de Servico:</strong> {formatOptional(detailComposition.projectServiceCenter)}</div>
                 <div><strong>Equipe:</strong> {detailComposition.teamName}</div>
+                <div><strong>Situacao:</strong> {workStatusLabel(detailComposition.workStatus)}</div>
                 <div><strong>Encarregado:</strong> {formatOptional(detailComposition.foremanName)}</div>
                 <div><strong>Placa:</strong> {formatOptional(detailComposition.vehiclePlate)}</div>
                 <div><strong>Setor:</strong> {detailComposition.sector}</div>

@@ -24,6 +24,91 @@
   font-size: 1.42rem;
 }
 
+.coverageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.coverageDate {
+  margin: 4px 0 0;
+  color: #5b6a85;
+  font-size: 0.92rem;
+}
+
+.coverageSummary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.coverageSummary span {
+  border-radius: 999px;
+  background: #f1f4fb;
+  color: #17347a;
+  padding: 8px 12px;
+  font-size: 0.86rem;
+}
+
+.coverageGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.coverageCard {
+  min-height: 112px;
+  border-radius: 16px;
+  padding: 14px;
+  display: grid;
+  gap: 5px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.coverageCard strong {
+  font-size: 1rem;
+}
+
+.coverageCard span {
+  font-size: 0.9rem;
+}
+
+.coverageCard small {
+  margin-top: 5px;
+  font-weight: 800;
+}
+
+.coverageCardPending {
+  border: 1px solid #d32f2f;
+  background: #fff0f0;
+  color: #8b1e1e;
+}
+
+.coverageCardPending:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(180, 30, 30, 0.14);
+}
+
+.coverageCardCompleted {
+  border: 1px solid #2e7d32;
+  background: #edf8ee;
+  color: #1f6424;
+  cursor: default;
+}
+
+.coverageCard:disabled {
+  opacity: 1;
+}
+
+.coverageMessage {
+  margin: 0;
+  color: #5b6a85;
+}
+
 .formGrid,
 .filterGrid {
   display: grid;
@@ -168,6 +253,17 @@
 .tableHint {
   color: #5b6a85;
   font-size: 0.88rem;
+}
+
+.statusHint {
+  margin: 0;
+  border-radius: 12px;
+  background: #fff8e1;
+  border: 1px solid rgba(176, 116, 0, 0.2);
+  color: #76520c;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .tableWrapper {
@@ -455,6 +551,14 @@
   .modalCard {
     max-height: calc(100vh - 20px);
     padding: 14px;
+  }
+
+  .coverageSummary {
+    width: 100%;
+  }
+
+  .coverageSummary span {
+    flex: 1 1 140px;
   }
 
   .actions,

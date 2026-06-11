@@ -18,6 +18,7 @@ type CompositionRow = {
   team_name_snapshot: string;
   vehicle_plate_snapshot: string | null;
   foreman_name_snapshot: string | null;
+  work_status?: "WORKING" | "NOT_WORKING";
   sector: string;
   yard: string | null;
   start_time: string;
@@ -55,6 +56,15 @@ type TeamRow = {
   service_center_id: string | null;
   foreman_person_id: string;
   ativo: boolean;
+};
+
+type CoverageTeamRow = {
+  id: string;
+};
+
+type CoverageCompositionRow = {
+  team_id: string;
+  work_status?: "WORKING" | "NOT_WORKING";
 };
 
 type PersonRow = {
@@ -103,6 +113,7 @@ type CompositionPayload = {
   compositionDate?: string;
   projectId?: string;
   teamId?: string;
+  workStatus?: string;
   sector?: string;
   yard?: string | null;
   startTime?: string;
@@ -147,6 +158,11 @@ function isForemanRole(value: unknown) {
 function normalizeNullableText(value: unknown) {
   const normalized = normalizeText(value);
   return normalized || null;
+}
+
+function normalizeWorkStatus(value: unknown): "WORKING" | "NOT_WORKING" | null {
+  const normalized = normalizeText(value).toUpperCase();
+  return normalized === "WORKING" || normalized === "NOT_WORKING" ? normalized : null;
 }
 
 function normalizeUuid(value: unknown) {
@@ -265,6 +281,7 @@ function mapComposition(row: CompositionRow, members: MemberRow[], userMap: Map<
     teamName: row.team_name_snapshot,
     vehiclePlate: row.vehicle_plate_snapshot ?? "",
     foremanName: row.foreman_name_snapshot ?? "",
+    workStatus: row.work_status ?? "WORKING",
     sector: row.sector,
     yard: row.yard ?? "",
     startTime: normalizeTime(row.start_time) ?? row.start_time,
@@ -407,7 +424,7 @@ async function fetchPeopleSnapshots(supabase: SupabaseClient, tenantId: string, 
 async function fetchCompositionById(supabase: SupabaseClient, tenantId: string, compositionId: string) {
   const { data, error } = await supabase
     .from("team_compositions")
-    .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by")
+    .select("*")
     .eq("tenant_id", tenantId)
     .eq("id", compositionId)
     .maybeSingle<CompositionRow>();
@@ -479,6 +496,58 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
     const detailId = normalizeUuid(params.get("detailId"));
     const historyId = normalizeUuid(params.get("historyCompositionId"));
+    const coverageDate = normalizeIsoDate(params.get("coverageDate"));
+
+    if (coverageDate) {
+      const [teamsResult, compositionsResult] = await Promise.all([
+        supabase
+          .from("teams")
+          .select("id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("ativo", true)
+          .order("name", { ascending: true })
+          .limit(5000)
+          .returns<CoverageTeamRow[]>(),
+        supabase
+          .from("team_compositions")
+          .select("*")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("composition_date", coverageDate)
+          .eq("is_active", true)
+          .limit(5000)
+          .returns<CoverageCompositionRow[]>(),
+      ]);
+
+      if (teamsResult.error || compositionsResult.error) {
+        return NextResponse.json({ message: "Falha ao carregar acompanhamento diario das equipes." }, { status: 500 });
+      }
+
+      const statusByTeam = new Map<string, "WORKING" | "NOT_WORKING">();
+      for (const composition of compositionsResult.data ?? []) {
+        const workStatus = composition.work_status ?? "WORKING";
+        const currentStatus = statusByTeam.get(composition.team_id);
+        if (!currentStatus || workStatus === "WORKING") {
+          statusByTeam.set(composition.team_id, workStatus);
+        }
+      }
+
+      const coverage = (teamsResult.data ?? []).map((team) => ({
+        teamId: team.id,
+        isCompleted: statusByTeam.has(team.id),
+        workStatus: statusByTeam.get(team.id) ?? null,
+      }));
+
+      return NextResponse.json({
+        coverageDate,
+        coverage,
+        summary: {
+          total: coverage.length,
+          completed: coverage.filter((item) => item.isCompleted).length,
+          pending: coverage.filter((item) => !item.isCompleted).length,
+          notWorking: coverage.filter((item) => item.workStatus === "NOT_WORKING").length,
+        },
+      });
+    }
 
     if (historyId) {
       const historyPage = parsePositiveInteger(params.get("historyPage"), 1, 50);
@@ -560,7 +629,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("team_compositions")
-      .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by", { count: "exact" })
+      .select("*", { count: "exact" })
       .eq("tenant_id", appUser.tenant_id)
       .eq("is_active", true);
 
@@ -635,6 +704,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   const compositionDate = normalizeIsoDate(body.compositionDate);
   const projectId = normalizeUuid(body.projectId);
   const teamId = normalizeUuid(body.teamId);
+  const workStatus = normalizeWorkStatus(body.workStatus);
   const sector = normalizeText(body.sector) || "OBRA";
   const startTime = normalizeTime(body.startTime);
   const notes = normalizeNullableText(body.notes);
@@ -652,6 +722,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     !compositionDate ? "Data" : "",
     !projectId ? "Projeto" : "",
     !teamId ? "Equipe" : "",
+    !workStatus ? "Situacao da equipe" : "",
     !sector ? "Setor" : "",
     !startTime ? "Hora inicial" : "",
     !rawMembers.length ? "Ao menos uma pessoa" : "",
@@ -743,6 +814,20 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
+  if (
+    workStatus === "NOT_WORKING"
+    && (
+      memberRows.length !== 1
+      || memberRows[0]?.person_id !== team.foremanId
+      || memberRows[0]?.is_present !== false
+    )
+  ) {
+    return NextResponse.json(
+      { message: "Equipe que nao atuou deve possuir somente o encarregado da equipe, marcado como nao presente." },
+      { status: 400 },
+    );
+  }
+
   const currentComposition = method === "PUT" && compositionId
     ? await fetchCompositionById(supabase, appUser.tenant_id, compositionId)
     : null;
@@ -761,6 +846,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     addChange(changes, "compositionDate", currentComposition.composition_date, compositionDate);
     addChange(changes, "projectCode", currentComposition.project_code_snapshot, project.code);
     addChange(changes, "teamName", currentComposition.team_name_snapshot, team.name);
+    addChange(changes, "workStatus", currentComposition.work_status ?? "WORKING", workStatus);
     addChange(changes, "sector", currentComposition.sector, sector);
     addChange(changes, "yard", currentComposition.yard, yard);
     addChange(changes, "startTime", normalizeTime(currentComposition.start_time), startTime);
@@ -775,6 +861,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     p_composition_date: compositionDate,
     p_project_id: projectId,
     p_team_id: teamId,
+    p_work_status: workStatus,
     p_sector: sector,
     p_start_time: startTime,
     p_notes: notes,
@@ -794,10 +881,11 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     const isMissingOrStaleRpc = normalizedError.includes("save_team_composition_record")
       || normalizedError.includes("schema cache")
       || normalizedError.includes("p_yard")
+      || normalizedError.includes("p_work_status")
       || rpcError.code === "PGRST202";
     const detail = [rawMessage, rawDetails, rawHint].filter(Boolean).join(" ");
     const message = isMissingOrStaleRpc
-      ? "Falha ao salvar composicao de equipe. Aplique a migration 201_fix_team_composition_save.sql e recarregue o cache do Supabase/PostgREST."
+      ? "Falha ao salvar composicao de equipe. Aplique a migration 224_add_team_composition_work_status.sql e recarregue o cache do Supabase/PostgREST."
       : `Falha ao salvar composicao de equipe.${detail ? ` Detalhe: ${detail}` : ""}`;
 
     return NextResponse.json(
@@ -835,10 +923,11 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
         compositionDate: { from: null, to: compositionDate },
         projectCode: { from: null, to: project.code },
         teamName: { from: null, to: team.name },
+        workStatus: { from: null, to: workStatus },
         members: { from: null, to: `${memberRows.length} integrante(s)` },
       }
       : changes,
-    metadata: { memberCount: memberRows.length },
+    metadata: { memberCount: memberRows.length, workStatus },
   });
 
   const detail = await fetchCompositionById(supabase, appUser.tenant_id, persistedId);

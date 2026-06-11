@@ -495,6 +495,10 @@ Resumo por arquivo
 
 223_reuse_stock_transfer_temp_table_in_batches.sql
 - Complementa a correcao do cadastro em massa de Operacoes de Equipe na funcao-base de estoque, reutilizando e limpando `pg_temp.tmp_stock_transfer_items` entre linhas do mesmo lote atomico.
+
+224_add_team_composition_work_status.sql
+- Adiciona `team_compositions.work_status` com os estados `WORKING` e `NOT_WORKING`.
+- Publica overload da RPC `save_team_composition_record` que exige somente o encarregado, marcado como ausente, quando a equipe nao atuou.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`
