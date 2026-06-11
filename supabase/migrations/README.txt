@@ -499,6 +499,10 @@ Resumo por arquivo
 224_add_team_composition_work_status.sql
 - Adiciona `team_compositions.work_status` com os estados `WORKING` e `NOT_WORKING`.
 - Publica overload da RPC `save_team_composition_record` que exige somente o encarregado, marcado como ausente, quando a equipe nao atuou.
+
+225_allow_not_working_composition_without_project.sql
+- Permite `project_id` e snapshots do projeto nulos exclusivamente quando `work_status = NOT_WORKING`.
+- Mantem Projeto obrigatorio para `WORKING`, cria unicidade diaria da equipe sem atuacao e republica a RPC transacional.
  
 Lacunas ainda nao versionadas
 - integracao de auditoria adicional para expiracao de sessao, se necessario alem do `login_audit`

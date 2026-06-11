@@ -49,7 +49,7 @@ type WorkStatus = "WORKING" | "NOT_WORKING";
 type CompositionItem = {
   id: string;
   compositionDate: string;
-  projectId: string;
+  projectId: string | null;
   teamId: string;
   projectCode: string;
   projectServiceCenter: string;
@@ -410,6 +410,7 @@ export function TeamCompositionPageView() {
   const today = useMemo(() => toIsoDate(new Date()), []);
   const initialFilters = useMemo<FilterState>(() => ({ ...monthRange(today), projectCode: "", teamId: "" }), [today]);
   const [form, setForm] = useState<FormState>(() => createInitialForm(today));
+  const [coverageDate, setCoverageDate] = useState(today);
   const [filterDraft, setFilterDraft] = useState<FilterState>(initialFilters);
   const [activeFilters, setActiveFilters] = useState<FilterState>(initialFilters);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -564,8 +565,8 @@ export function TeamCompositionPageView() {
   }, [activeFilters, loadCompositions, page]);
 
   useEffect(() => {
-    void loadDailyCoverage(form.compositionDate);
-  }, [form.compositionDate, loadDailyCoverage]);
+    void loadDailyCoverage(coverageDate);
+  }, [coverageDate, loadDailyCoverage]);
 
   function resetForm() {
     setForm(createInitialForm(today));
@@ -660,7 +661,6 @@ export function TeamCompositionPageView() {
   }
 
   function selectPendingTeam(teamId: string) {
-    const coverageDate = form.compositionDate;
     setForm(createInitialForm(coverageDate));
     setFeedback(null);
     applyTeam(teamId);
@@ -681,6 +681,7 @@ export function TeamCompositionPageView() {
       return {
         ...current,
         workStatus,
+        projectCode: "",
         personSearch: "",
         members: foreman && selectedTeam
           ? [{
@@ -787,10 +788,12 @@ export function TeamCompositionPageView() {
       setFeedback({ type: "error", message: "Sessao invalida para salvar composicao." });
       return;
     }
-    const project = projectByCode.get(normalizeLookupKey(form.projectCode)) ?? null;
+    const project = form.workStatus === "NOT_WORKING"
+      ? null
+      : projectByCode.get(normalizeLookupKey(form.projectCode)) ?? null;
     const missingFields = [
       !form.compositionDate ? "Data" : "",
-      !project ? "Projeto valido" : "",
+      form.workStatus === "WORKING" && !project ? "Projeto valido" : "",
       !form.teamId || !selectedTeam ? "Equipe valida" : "",
       !normalizeText(form.sector) ? "Setor" : "",
       !form.startTime ? "Hora inicial" : "",
@@ -803,7 +806,7 @@ export function TeamCompositionPageView() {
       return;
     }
 
-    if (!project || !selectedTeam) {
+    if ((form.workStatus === "WORKING" && !project) || !selectedTeam) {
       setFeedback({ type: "error", message: "Projeto ou equipe invalida para salvar." });
       return;
     }
@@ -851,7 +854,7 @@ export function TeamCompositionPageView() {
           id: form.id,
           expectedUpdatedAt: form.expectedUpdatedAt,
           compositionDate: form.compositionDate,
-          projectId: project.id,
+          projectId: project?.id ?? null,
           teamId: form.teamId,
           workStatus: form.workStatus,
           sector: form.sector,
@@ -871,7 +874,7 @@ export function TeamCompositionPageView() {
       setPage(1);
       await Promise.all([
         loadCompositions(1, activeFilters),
-        loadDailyCoverage(today),
+        loadDailyCoverage(coverageDate),
       ]);
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao salvar composicao." });
@@ -982,9 +985,17 @@ export function TeamCompositionPageView() {
     <section className={styles.wrapper}>
       <article className={styles.card}>
         <div className={styles.coverageHeader}>
-          <div>
+          <div className={styles.coverageTitleBlock}>
             <h2 className={styles.cardTitle}>Composicoes das Equipes</h2>
-            <p className={styles.coverageDate}>Acompanhamento de {formatDate(form.compositionDate)}</p>
+            <label className={styles.coverageDateFilter}>
+              <span>Data do acompanhamento</span>
+              <input
+                type="date"
+                value={coverageDate}
+                onChange={(event) => setCoverageDate(event.target.value || today)}
+                required
+              />
+            </label>
           </div>
           <div className={styles.coverageSummary}>
             <span>Total: <strong>{coverageSummary.total}</strong></span>
@@ -1034,8 +1045,15 @@ export function TeamCompositionPageView() {
             <input type="date" value={form.compositionDate} onChange={(event) => setForm((current) => ({ ...current, compositionDate: event.target.value }))} required />
           </label>
           <label className={styles.field}>
-            <span>Projeto <span className="requiredMark">*</span></span>
-            <input list="composicao-project-list" value={form.projectCode} onChange={(event) => setForm((current) => ({ ...current, projectCode: event.target.value }))} placeholder="Digite o SOB" required />
+            <span>Projeto {form.workStatus === "WORKING" ? <span className="requiredMark">*</span> : null}</span>
+            <input
+              list="composicao-project-list"
+              value={form.projectCode}
+              onChange={(event) => setForm((current) => ({ ...current, projectCode: event.target.value }))}
+              placeholder={form.workStatus === "NOT_WORKING" ? "Nao exigido para equipe sem atuacao" : "Digite o SOB"}
+              disabled={form.workStatus === "NOT_WORKING"}
+              required={form.workStatus === "WORKING"}
+            />
           </label>
           <label className={styles.field}>
             <span>Equipe <span className="requiredMark">*</span></span>
@@ -1168,7 +1186,7 @@ export function TeamCompositionPageView() {
               {compositions.length ? compositions.map((composition) => (
                 <tr key={composition.id}>
                   <td>{formatDate(composition.compositionDate)}</td>
-                  <td>{composition.projectCode}</td>
+                  <td>{formatOptional(composition.projectCode)}</td>
                   <td>{composition.teamName}</td>
                   <td>{workStatusLabel(composition.workStatus)}</td>
                   <td>{composition.sector}</td>
@@ -1208,13 +1226,13 @@ export function TeamCompositionPageView() {
         <div className={styles.modalOverlay} onClick={() => setDetailComposition(null)}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}><h4>Detalhes da Composicao</h4><p className={styles.modalSubtitle}>{detailComposition.projectCode} | {detailComposition.teamName}</p></div>
+              <div className={styles.modalTitleBlock}><h4>Detalhes da Composicao</h4><p className={styles.modalSubtitle}>{formatOptional(detailComposition.projectCode)} | {detailComposition.teamName}</p></div>
               <button type="button" className={styles.modalCloseButton} onClick={() => setDetailComposition(null)}>Fechar</button>
             </header>
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
                 <div><strong>Data:</strong> {formatDate(detailComposition.compositionDate)}</div>
-                <div><strong>Projeto:</strong> {detailComposition.projectCode}</div>
+                <div><strong>Projeto:</strong> {formatOptional(detailComposition.projectCode)}</div>
                 <div><strong>Centro de Servico:</strong> {formatOptional(detailComposition.projectServiceCenter)}</div>
                 <div><strong>Equipe:</strong> {detailComposition.teamName}</div>
                 <div><strong>Situacao:</strong> {workStatusLabel(detailComposition.workStatus)}</div>
@@ -1242,7 +1260,7 @@ export function TeamCompositionPageView() {
         <div className={styles.modalOverlay} onClick={closeHistory}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}><h4>Historico da Composicao</h4><p className={styles.modalSubtitle}>{historyComposition.projectCode} | {historyComposition.teamName}</p></div>
+              <div className={styles.modalTitleBlock}><h4>Historico da Composicao</h4><p className={styles.modalSubtitle}>{formatOptional(historyComposition.projectCode)} | {historyComposition.teamName}</p></div>
               <button type="button" className={styles.modalCloseButton} onClick={closeHistory}>Fechar</button>
             </header>
             <div className={styles.modalBody}>

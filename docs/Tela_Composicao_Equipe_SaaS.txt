@@ -33,13 +33,14 @@ Cadastro
 --------
 - Campos obrigatorios:
   - Data
-  - Projeto
+  - Projeto, somente quando `Situacao da equipe = Atuando`
   - Equipe
   - Situacao da equipe (`Atuando` ou `Nao atuou`)
   - Setor
   - Hora inicial
   - Ao menos uma pessoa
 - Campos opcionais:
+  - Projeto, quando `Situacao da equipe = Nao atuou`
   - Observacoes
 - Ao selecionar uma equipe:
   - A lista de selecao exibe a equipe no formato `Equipe / Encarregado`, quando o encarregado esta identificado.
@@ -57,6 +58,7 @@ Cadastro
   - Bloqueia composicao com mais de um integrante cuja funcao/cargo contenha `ENCARREGADO`.
   - Permite marcar `Presente = Sim/Nao` por integrante.
   - Quando `Situacao da equipe = Nao atuou`, a tela mantem somente o encarregado vinculado a equipe, marca `Presente = Nao` e bloqueia inclusao, remocao ou alteracao de presenca.
+  - Quando `Situacao da equipe = Nao atuou`, o campo Projeto e limpo, desabilitado e nao e enviado para persistencia.
 - Validacao de salvamento:
   - A tela mostra todos os campos obrigatorios pendentes em uma unica mensagem.
   - Campos verificados: Data, Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
@@ -68,7 +70,9 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - Painel diario:
-  - Usa a data selecionada no formulario de cadastro.
+  - Possui filtro proprio `Data do acompanhamento`, independente da data atual do formulario.
+  - O cabecalho nao repete a data em texto; a referencia visivel fica somente no filtro `Data do acompanhamento`.
+  - O filtro `Data do acompanhamento` fica imediatamente abaixo do titulo `Composicoes das Equipes`; os contadores permanecem alinhados no lado direito.
   - Exibe contadores de `Total`, `Cadastradas`, `Pendentes` e `Nao atuaram`.
   - Exibe um cartao por equipe ativa no formato `Equipe / Encarregado`.
   - Cartao vermelho: equipe sem composicao ativa na data.
@@ -76,7 +80,7 @@ Filtros, auto-complete e listagem
   - Cartao verde com `Nao atuou`: a composicao diaria foi registrada com `work_status = NOT_WORKING`.
   - Pendencias aparecem antes das equipes concluidas.
   - O clique em um cartao vermelho seleciona automaticamente a equipe no formulario.
-  - Se havia uma edicao em andamento, o clique no cartao vermelho inicia um novo cadastro e preserva a data acompanhada.
+  - Se havia uma edicao em andamento, o clique no cartao vermelho inicia um novo cadastro usando a data acompanhada.
   - A cobertura considera a equipe concluida quando existe composicao em qualquer projeto na data.
 - Filtros:
   - Data inicial
@@ -344,3 +348,35 @@ Atualizacao 2026-06 - Compatibilidade anterior a migration 224
 - Impacto multi-tenant:
   - Todas as leituras continuam filtradas por `tenant_id = appUser.tenant_id`.
   - Nenhuma policy RLS ou permissao foi alterada.
+
+Atualizacao 2026-06 - Data do painel e Nao atuou sem Projeto
+------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/225_allow_not_working_composition_without_project.sql`
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `coverageDate`
+  - `loadDailyCoverage`
+  - `selectPendingTeam`
+  - `applyWorkStatus`
+  - `handleSubmit`
+  - `saveComposition`
+  - RPC `save_team_composition_record`
+- Comportamento antes/depois:
+  - Antes: o painel acompanhava obrigatoriamente a data do formulario.
+  - Depois: o painel possui filtro proprio de data e permite conferir dias anteriores sem alterar o cadastro em andamento.
+  - Antes: Projeto era obrigatorio mesmo quando a equipe nao atuou.
+  - Depois: `Nao atuou` limpa/desabilita Projeto e persiste `project_id = null`; `Atuando` continua exigindo projeto ativo do tenant.
+  - Antes: a unicidade dependia de Projeto + Equipe + Data.
+  - Depois: registros `NOT_WORKING` possuem unicidade propria por Tenant + Equipe + Data.
+- Impacto multi-tenant:
+  - A RPC valida equipe e encarregado no mesmo `tenant_id`.
+  - A FK composta de projeto permanece ativa e aceita `null` somente pela regra condicional de `work_status`.
+  - A constraint exige Projeto para `WORKING`; a RPC garante `project_id = null` no fluxo `NOT_WORKING` e permite a transicao transacional entre os dois estados.
+  - RLS permanece habilitada e a assinatura da RPC continua restrita a `service_role`.
