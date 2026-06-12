@@ -511,3 +511,5 @@ Lacunas ainda nao versionadas
 Observacao
 - As migrations acima suportam o app atual.
 - A modelagem de `project` ja existe e pode evoluir com novos relacionamentos.
+227. 227_create_team_stock_balance_page.sql
+- Cadastra a pagina `estoque-equipes`, libera a consulta por role e preenche permissoes individuais ausentes sem sobrescrever configuracoes existentes.

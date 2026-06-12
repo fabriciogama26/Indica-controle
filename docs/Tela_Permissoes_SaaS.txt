@@ -65,7 +65,7 @@ Filtros, auto-complete e listagem
 - A listagem atual considera as telas do SaaS web:
   - Visao Geral: Home, Dashboard Medicao e Dash operacional e faturamento
   - Operacao: Projetos, Locacao, Programacao, Medicao
-  - Almoxarifado: Estoque Atual, Rastreio de SERIAL, Movimentacao de Estoque, Operacoes de Equipe, Estornos, Consumo por Projeto
+  - Almoxarifado: Estoque Atual, Estoque das Equipes, Rastreio de SERIAL, Movimentacao de Estoque, Operacoes de Equipe, Estornos, Consumo por Projeto
   - Cadastros: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
   - Cadastro Base: Prioridade, Centro de Servico, Contrato, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
 
@@ -135,7 +135,7 @@ Atualizacao 2026-03
 - Catalogo frontend de permissao atualizado para refletir o novo desenho de navegacao:
   - `Medicao` adicionada em `Operacao`
   - `Dashboard Medicao` adicionada em `Visao Geral`
-  - `Estoque Atual`, `Movimentacao de Estoque`, `Operacoes de Equipe` e `Estornos` agrupadas em `Almoxarifado`
+  - `Estoque Atual`, `Estoque das Equipes`, `Movimentacao de Estoque`, `Operacoes de Equipe` e `Estornos` agrupadas em `Almoxarifado`
   - `Materiais` movido para `Cadastros`
   - `Cargo` adicionado em `Cadastros`
   - `Equipes` adicionada em `Cadastros`

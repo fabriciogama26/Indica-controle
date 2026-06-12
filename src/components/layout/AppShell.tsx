@@ -41,6 +41,7 @@ const menuSections = [
     title: "Almoxarifado",
     items: [
       { href: "/estoque", label: "Estoque Atual", icon: "box" },
+      { href: "/estoque-equipes", label: "Estoque das Equipes", icon: "users" },
       { href: "/posicao-trafo", label: "Rastreio de SERIAL", icon: "box" },
       { href: "/entrada", label: "Movimentacao de Estoque", icon: "arrow-down" },
       { href: "/saida", label: "Operacoes de Equipe", icon: "arrow-up" },
@@ -164,6 +165,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/estoque": {
     title: "Estoque Atual",
     subtitle: "Consulta de saldo fisico atual por centro de estoque.",
+  },
+  "/estoque-equipes": {
+    title: "Estoque das Equipes",
+    subtitle: "Consulta do saldo atual de materiais vinculados a cada equipe.",
   },
   "/posicao-trafo": {
     title: "Rastreio de SERIAL",
