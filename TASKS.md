@@ -906,3 +906,5 @@
 - [x] Corrigir o carregamento do `Estoque Atual` em tenants com muitas movimentacoes, consultando itens e relacoes historicas em blocos de ate 100 IDs.
 
 - [x] Criar a tela `Controle de APR` no padrao visual da Medicao, com projeto cadastrado, ID APR globalmente unico, data sem futuro, equipe com encarregado, observacao, vinculo automatico com a Programacao do dia, situacoes Ativo/Cancelado/Divergente/Conferido, filtros, acoes Editar/Cancelar/Validar, historico transacional, RLS multi-tenant e extracao Excel.
+
+- [x] Adicionar na Lista de Ordens de Medicao o card `Valor descontando garantia minima`, calculado pelo `Valor total - Garantia de faturamento minimo` sobre todas as paginas filtradas e ignorando ordens canceladas.

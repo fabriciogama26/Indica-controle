@@ -3310,6 +3310,10 @@ export function MeasurementPageView() {
             <span>Garantia de faturamento minimo</span>
             <strong>{formatCurrency(filteredMinimumBillingAmount)}</strong>
           </div>
+          <div>
+            <span>Valor descontando garantia minima</span>
+            <strong>{formatCurrency(filteredOrdersTotalAmount - filteredMinimumBillingAmount)}</strong>
+          </div>
         </div>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
