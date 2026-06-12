@@ -148,7 +148,8 @@ vercel --prod
   - `(dashboard)/responsavel-distribuidora/page.tsx`: placeholder de Responsavel Distribuidora.
   - `(dashboard)/municipio/page.tsx`: placeholder de Municipio.
   - `(dashboard)/pessoas/page.tsx`: rota da tela de Pessoas com cadastro manual/em massa, filtros, listagem, historico, exportacao e troca de status.
-- `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, supervisor opcional, filtros, historico, troca de status e criacao automatica do centro de estoque proprio.
+  - `(dashboard)/equipes/page.tsx`: rota da tela de Equipes com base, tipo, encarregado, supervisor opcional, filtros, historico, troca de status e criacao automatica do centro de estoque proprio.
+  - `(dashboard)/estoque-equipes/page.tsx`: rota da consulta read-only de saldo por equipe e material, com filtros, cards, detalhes, historico e exportacao CSV.
   - `(dashboard)/permissoes/page.tsx`: tela administrativa base para permissoes por pagina.
   - `api/app-users/search/route.ts`: lista e busca usuarios reais do tenant autenticado para a tela de permissoes com filtro de tenant no backend.
   - `api/app-users/[userId]/permissions/route.ts`: carrega e salva role, status e permissoes por tela do usuario selecionado.
@@ -175,8 +176,8 @@ vercel --prod
   - `api/medicao-asbuilt/meta/route.ts`: carrega projetos ativos e motivos ativos de `Sem producao` da Medicao Asbuilt por tenant.
   - `api/medicao-asbuilt/activities/catalog/route.ts`: pesquisa atividades para inclusao manual ou importacao da Medicao Asbuilt.
   - `api/meta/route.ts`: carrega e salva em cadastro unico as metas de medicao por tipo de equipe e dias uteis por ciclo, sempre filtrando pelo tenant autenticado, formando ciclos a partir das datas reais de medicao e expondo lista/detalhes/historico de metas salvas.
-- `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico, supervisor opcional e a geracao automatica do centro de estoque proprio.
-- `api/teams/meta/route.ts`: carrega bases, tipos, encarregados e supervisores validos para a tela de Equipes.
+  - `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico, supervisor opcional e a geracao automatica do centro de estoque proprio.
+  - `api/teams/meta/route.ts`: carrega bases, tipos, encarregados e supervisores validos para a tela de Equipes.
   - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo (ignorando obras de teste), resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com filtro por `UMB`, validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a rastreio por serial e `Preco` opcional (default `0.00`).
   - `api/materials/meta/route.ts`: carrega as UMBs distintas cadastradas nos materiais do tenant e informa a existencia de registros sem UMB para o select de filtro.
@@ -185,11 +186,12 @@ vercel --prod
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em lote (CSV) para a tela de estoque.
   - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
   - `api/estornos/route.ts`: consulta estornos ja registrados por item e integrais legados, agregando Movimentacao de Estoque e Operacoes de Equipe sem executar nova reversao.
-- `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
-- `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
+  - `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
+  - `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
   - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV), com pre-validacao sequencial de saldo/TRAFO, rollback total do lote e retorno de erros por linha/coluna.
   - `api/team-stock-operations/reversal/route.ts`: executa estorno transacional das operacoes de equipe com permissao administrativa.
 - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, exclui centros de equipe da tela de Estoque Atual, recompõe materiais historicos com saldo `0` nos centros fisicos quando necessario e mantem historico enriquecido com `Equipe`/`Encarregado`, incluindo filtro por operacao/origem para localizar `Retorno de campo` via `CAMPO / INSTALADO`.
+  - `api/team-stock-balance/route.ts`: consulta saldo dos centros vinculados a equipes em blocos paginados, valida permissao propria e retorna metadados, lista paginada e historico por equipe/material.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` fisicos/principais usados no filtro da tela de Estoque Atual.
   - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada material rastreavel por serial a partir de `trafo_instances`, aplica filtros diretos e derivados, mantem o centro fisico de referencia na leitura principal, expõe historico por unidade com `Requisicao`, `Devolucao`, `Retorno de campo` e `RET`, e libera movimentacao fisica de unidade RET sem voltar a disponibilizar saldo.
   - `api/trafo-positions/meta/route.ts`: carrega os centros `OWN` fisicos ativos usados nos filtros da tela de posicao unitaria de TRAFO, excluindo centros vinculados a equipes.
@@ -242,7 +244,7 @@ vercel --prod
   - `MetaPageView.tsx`: tela de cadastro de metas da Medicao por tipo de equipe, equipes ativas como referencia, equipes medida manuais, meta diaria calculada, dias uteis por ciclo, dias padrao segunda a sexta, `Média Dias trabalhados` por medicoes Com producao recalculada no backend ao salvar, meta ciclo padrao, meta ciclo trabalhado e lista operacional com atualizacao, exportacao CSV, detalhes, historico e edicao.
   - `MetaPageView.module.css`: estilos da tela Meta.
 - `src/modules/dashboard/equipes/`
-- `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, supervisor opcional, centro de estoque proprio automatico, historico e cancelamento/ativacao.
+  - `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, supervisor opcional, centro de estoque proprio automatico, historico e cancelamento/ativacao.
   - `TeamsPageView.module.css`: estilos da tela de equipes.
 - `src/modules/dashboard/materiais/`
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros incluindo `UMB`, listagem, historico e cancelamento/ativacao.
@@ -265,6 +267,12 @@ vercel --prod
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
   - `CurrentStockPageView.tsx`: tela de Estoque Atual com `Filtros + Lista`, exportacao CSV, resumo da pagina e consulta read-only por centro/material, mantendo materiais historicos dos centros fisicos visiveis com saldo `0`.
   - `CurrentStockPageView.module.css`: estilos da tela de Estoque Atual.
+- `src/modules/dashboard/estoque-equipes/`
+  - `types.ts`: contratos de filtros, metadados, saldo, resumo e historico por equipe/material.
+  - `constants.ts`: paginacao, cooldown de exportacao e filtros iniciais.
+  - `utils.ts`: serializacao dos filtros, formatacao de quantidade/data e geracao de CSV.
+  - `TeamStockPageView.tsx`: tela read-only do estoque das equipes com filtros, cards por UMB, detalhes, historico e exportacao CSV.
+  - `TeamStockPageView.module.css`: estilos dos filtros, cards, tabela, paginacao e modais.
 - `src/modules/dashboard/posicao-trafo/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de posicao unitaria.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
@@ -326,6 +334,7 @@ vercel --prod
   - `Tela_Materiais_SaaS.txt`: tela de materiais com cadastro, filtros, historico e cancelamento/ativacao.
   - `Tela_Entrada_SaaS.txt`: tela de Movimentacao de Estoque com transferencia entre centros, finalidade de correcao de saldo, importacao CSV, estorno transacional e exportacao da lista com status de estorno.
   - `Tela_Estornos_SaaS.txt`: tela read-only para consulta centralizada de estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
+  - `Tela_Estoque_Equipes_SaaS.txt`: consulta read-only do saldo atual por equipe, material, encarregado e base.
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
   - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, supervisor, historico e troca de status.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
@@ -364,6 +373,7 @@ vercel --prod
 - `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`: torna `CPF` unico por tenant, adiciona trava `CPF + Matricula`, adiciona `Telefone` opcional e republica `save_person_record`.
 - `supabase/migrations/215_repair_reversals_page_permissions.sql`: repara o catalogo e o backfill multi-tenant da pagina `estornos` sem sobrescrever permissoes existentes.
 - `supabase/migrations/226_create_apr_control_module.sql`: cria tabelas, indices, RLS, historico, RPCs e permissoes do Controle de APR.
+- `supabase/migrations/227_create_team_stock_balance_page.sql`: cadastra `estoque-equipes` e preenche permissoes de role/usuario sem sobrescrever configuracoes individuais existentes.
 
 ---
 

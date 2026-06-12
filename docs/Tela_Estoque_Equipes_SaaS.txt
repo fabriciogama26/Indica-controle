@@ -1,0 +1,163 @@
+Tela: Estoque das Equipes SaaS
+
+Visao geral
+-----------
+- Tela read-only para consultar o saldo atual de materiais nos centros de estoque proprios vinculados as equipes.
+- Cada linha representa `Equipe + Material`.
+- O saldo e lido de `stock_center_balances`, sem recalculo no frontend.
+- A tela fica na secao `Almoxarifado` e possui permissao propria (`page_key = estoque-equipes`).
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/estoque-equipes/page.tsx`
+- View: `src/modules/dashboard/estoque-equipes/TeamStockPageView.tsx`
+- Estilo: `src/modules/dashboard/estoque-equipes/TeamStockPageView.module.css`
+- Tipos: `src/modules/dashboard/estoque-equipes/types.ts`
+- Constantes: `src/modules/dashboard/estoque-equipes/constants.ts`
+- Utilitarios: `src/modules/dashboard/estoque-equipes/utils.ts`
+- API: `src/app/api/team-stock-balance/route.ts`
+- Permissao:
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/227_create_team_stock_balance_page.sql`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - Equipe
+  - Encarregado
+  - Base
+  - Status da equipe (`Ativas`, `Inativas` ou `Todas`)
+  - Material
+  - Descricao
+  - Tipo
+  - UMB
+  - Saldo minimo
+  - Saldo maximo
+  - Exibir saldo zero
+- Cards:
+  - Equipes com estoque
+  - Materiais distintos
+  - Registros filtrados
+  - Saldo filtrado por UMB
+- Colunas:
+  - Equipe
+  - Encarregado
+  - Base
+  - Material
+  - Descricao
+  - UMB
+  - Tipo
+  - Saldo
+  - Ultima movimentacao
+  - Acoes
+- Acoes:
+  - Detalhes
+  - Historico
+- A exportacao CSV percorre todas as paginas filtradas e possui cooldown de 10 segundos.
+
+Boas praticas
+-------------
+- Toda consulta usa `tenant_id = appUser.tenant_id`.
+- A API valida a permissao `estoque-equipes` antes de consultar os dados.
+- O vinculo entre equipe e saldo usa `teams.stock_center_id = stock_center_balances.stock_center_id`.
+- Equipes e saldos sao carregados em paginas, e os centros sao consultados em blocos de ate 100 IDs para evitar truncamento ou URL excessiva no PostgREST.
+- A tela nao permite cadastro, edicao, correcao ou estorno.
+- Erros da tela usam `useErrorLogger("estoque_equipes")`.
+- Centros fisicos do almoxarifado nao sao misturados na consulta.
+
+Cancelamento e saldo
+--------------------
+- Equipes inativas podem ser consultadas pelo filtro de status.
+- Cancelar uma equipe nao altera automaticamente o saldo do centro vinculado.
+- Requisicoes creditam o centro da equipe.
+- Devolucoes debitam o centro da equipe.
+- Estornos e demais inversoes continuam sendo executados em `Operacoes de Equipe`.
+
+Atalhos
+-------
+- Rota: `/estoque-equipes`
+- Endpoint:
+  - `GET /api/team-stock-balance`
+  - `GET /api/team-stock-balance?mode=meta`
+  - `GET /api/team-stock-balance?mode=history`
+- Tela operacional relacionada: `/saida`
+- Consulta de estoque fisico relacionada: `/estoque`
+
+Atualizacao 2026-06
+-------------------
+- Arquivos criados:
+  - `src/app/(dashboard)/estoque-equipes/page.tsx`
+  - `src/app/api/team-stock-balance/route.ts`
+  - `src/modules/dashboard/estoque-equipes/TeamStockPageView.tsx`
+  - `src/modules/dashboard/estoque-equipes/TeamStockPageView.module.css`
+  - `src/modules/dashboard/estoque-equipes/types.ts`
+  - `src/modules/dashboard/estoque-equipes/constants.ts`
+  - `src/modules/dashboard/estoque-equipes/utils.ts`
+  - `supabase/migrations/227_create_team_stock_balance_page.sql`
+  - `docs/Tela_Estoque_Equipes_SaaS.txt`
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `docs/Layout_Principal_SaaS.txt`
+  - `docs/Tela_Permissoes_SaaS.txt`
+  - `docs/00_Indice_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `README.md`
+  - `TASKS.md`
+- Antes:
+  - O centro proprio de cada equipe mantinha saldo, mas nao existia uma consulta dedicada por equipe.
+- Depois:
+  - O usuario autorizado consulta saldo, equipe, encarregado, base e material sem expor os centros tecnicos na tela de Estoque Atual.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/estoque-equipes/TeamStockPageView.tsx`
+  - Responsavel por: metadados, filtros, lista paginada, cards, detalhes, historico e exportacao CSV.
+- Caminho: `src/app/api/team-stock-balance/route.ts`
+  - Responsavel por: validar sessao/permissao, resolver equipe e centro proprio, consultar saldo por tenant em blocos paginados e retornar metadados/historico, preservando multiplos seriais do mesmo material na mesma operacao.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/estoque-equipes/constants.ts`
+  - Responsavel por: paginacao, cooldown e filtros iniciais.
+- Caminho: `supabase/migrations/227_create_team_stock_balance_page.sql`
+  - Responsavel por: cadastrar a pagina e preencher permissoes de role/usuario sem sobrescrever permissoes individuais existentes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/estoque-equipes/utils.ts`
+  - Responsavel por: query string, formatacao decimal/data e geracao do arquivo CSV.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar erros com a tag `estoque_equipes`.
+
+Servicos e integracoes externas
+- Supabase Postgres:
+  - `teams`
+  - `people`
+  - `project_service_centers`
+  - `stock_center_balances`
+  - `stock_transfers`
+  - `stock_transfer_items`
+  - `stock_transfer_team_operations`
+  - `materials`
+  - `project`
+- RLS permanece ativa; a API administrativa aplica explicitamente o tenant autenticado.
+
+Ajuda contextual
+- Funcoes/hooks/constantes tocadas:
+  - `TeamStockPageView`
+  - `buildTeamStockQuery`
+  - `ensurePageAccess`
+  - `resolveContext`
+  - `loadMeta`
+  - `loadList`
+  - `loadHistory`
+  - `useErrorLogger("estoque_equipes")`
+  - `PAGE_SIZE`
+  - `EXPORT_PAGE_SIZE`
+  - `HISTORY_PAGE_SIZE`
+  - `EXPORT_COOLDOWN_MS`
+- Comportamento antes/depois:
+  - Antes: o modo tecnico `includeTeamCenters` da API de estoque podia incluir centros de equipe, mas sem uma tela propria ou identificacao operacional completa.
+  - Depois: a consulta dedicada parte de `teams`, identifica o centro correto e retorna somente os saldos das equipes permitidas no tenant.
