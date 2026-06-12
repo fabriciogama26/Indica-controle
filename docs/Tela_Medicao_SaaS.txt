@@ -148,6 +148,7 @@ Filtros, auto-complete e listagem
   - Valor total
   - Somatorio de `Valor total` do resultado filtrado completo (todas as paginas), recalculado conforme os filtros aplicados e sem computar ordens com `Status = CANCELADA`
   - Card `Garantia de faturamento minimo` com somatorio de `minimum_billing_amount` do resultado filtrado completo (todas as paginas), sem computar ordens com `Status = CANCELADA`
+  - Card `Valor descontando garantia minima` calculado por `Valor total - Garantia de faturamento minimo`, usando o resultado filtrado completo e sem computar ordens com `Status = CANCELADA`
   - Motivo sem producao
   - Status
   - Cor do status na lista: `ABERTA` em verde, `FECHADA` e `CANCELADA` em vermelho
@@ -922,3 +923,20 @@ Atualizacao 2026-06-10 (Filtro por Atividade)
   - Depois: o bloco `Filtros` possui autocomplete de Atividade por codigo ou descricao.
   - Depois: a API seleciona as ordens que possuem item ativo com o `service_activity_id` informado antes da paginacao, totalizacao e exportacoes.
   - Impacto multi-tenant: o catalogo e os itens da ordem sao consultados com `tenant_id` do usuario autenticado; sem alteracao de schema/RLS.
+
+Atualizacao 2026-06-12 (Valor descontando garantia minima)
+-----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+  - `README.md`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Renderizacao do resumo da `Lista de Ordens de Medicao`
+  - Classe CSS `listSummaryBar`
+- Comportamento antes/depois:
+  - Antes: o resumo exibia `Ordens`, `Valor total` e `Garantia de faturamento minimo`.
+  - Depois: o resumo tambem exibe `Valor descontando garantia minima`, calculado por `Valor total - Garantia de faturamento minimo`.
+  - Depois: o novo card usa os mesmos filtros, todas as paginas do resultado e a mesma exclusao de ordens `CANCELADA` aplicada aos dois valores de origem.
+  - Impacto multi-tenant: sem nova query, alteracao de schema ou RLS; o valor e derivado no frontend a partir das consolidacoes ja restritas ao tenant autenticado.
