@@ -1,0 +1,79 @@
+Tela: Projetos e Programacao - Auditoria Cruzada de Integridade
+================================================================
+Data: 2026-06-13
+
+Visao geral
+-----------
+- Escopo: cadastro de Projetos, materiais/atividades previstas e Programacao.
+- Objetivo: impedir duplicidade, sobrescrita concorrente, projeto inativo com agenda
+  operacional, bypass de autorizacao e referencia cruzada entre tenants.
+
+Arquitetura
+-----------
+- Projetos: `src/app/api/projects` e `src/modules/dashboard/projetos`.
+- Programacao: `src/app/api/programacao/route.ts` e
+  `src/modules/dashboard/programacao-simples`.
+- Banco: `project`, historicos, previstos, `project_programming` e tabelas filhas.
+
+Cadastro
+--------
+- Dois cadastros simultaneos do mesmo SOB sao bloqueados pelo indice unico
+  `(tenant_id, upper(sob))`.
+- A RPC `save_project_record` converte a colisao em 409 / `DUPLICATE_PROJECT_SOB`.
+- Edicao de Projeto exige `expectedUpdatedAt` e usa lock de linha na RPC.
+- A migration 233 impede INSERT/UPDATE direto por `authenticated` nas tabelas criticas.
+- RPCs criticas passam a ser executaveis somente por `service_role`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Leitura continua protegida por RLS e tenant.
+- Rotas Next de Projetos, metadados, catalogos e previstos validam page key `projetos`.
+- Imports XLSX validam a mesma permissao dentro das Edge Functions.
+
+Boas praticas
+-------------
+- O fallback de assinatura da RPC de Projetos so ocorre quando a assinatura nao existe.
+- Projeto e Programacao compartilham advisory transaction lock por tenant + projeto.
+- Programacao ativa revalida que o Projeto continua ativo depois do lock.
+- Inativacao revalida Programacao pendente depois do mesmo lock.
+- `PROGRAMADA`, `REPROGRAMADA` e `ADIADA` usam a mesma regra.
+- FKs compostas impedem vinculos cruzados nos historicos e previstos.
+- Nenhuma policy RLS ou permissao de `DELETE` foi criada.
+
+Atualizacao 2026-06
+-------------------
+- Antes:
+  - inativacao do Projeto e criacao de Programacao podiam passar simultaneamente;
+  - RPCs/tabelas criticas aceitavam escrita direta de authenticated;
+  - rotas/Edge Functions de Projetos nao validavam page/action;
+  - fallback da RPC principal podia repetir o save apos erro real.
+- Depois:
+  - migration 233 cria lock cruzado e triggers de ultima barreira;
+  - escrita critica passa pela API/Edge autorizada com service role;
+  - referencias de historico e previstos incluem tenant na FK;
+  - fallback ocorre somente para assinatura ausente.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+---------------------------------------------
+Funcoes principais
+- Caminho: `src/server/modules/projects/authorization.ts`
+  - Responsavel por: autorizar `projetos` por acao no servidor.
+- Caminho: `src/app/api/projects/route.ts`
+  - Responsavel por: cadastro, edicao, status e conflitos.
+- Caminho: `supabase/edge_functions/_shared/page_authorization.ts`
+  - Responsavel por: validar permissao nas importacoes com service role.
+- Caminho: `supabase/migrations/233_harden_projects_programming_cross_flow.sql`
+  - Responsavel por: lock cruzado, projeto ativo, grants, policies e FKs compostas.
+
+Constantes e configuracoes
+- Page key: `projetos`.
+- Acoes: `read`, `create`, `update`, `cancel` e `import`.
+- Status bloqueadores: `PROGRAMADA`, `REPROGRAMADA`, `ADIADA`.
+
+Servicos e integracoes externas
+- Supabase Postgres/RLS.
+- Edge Functions `import_project_forecast` e `import_project_activity_forecast`.
+
+Ajuda contextual
+- A migration 233 nao foi aplicada remotamente porque o Supabase CLI esta ligado a um
+  project ref diferente do ambiente configurado.
