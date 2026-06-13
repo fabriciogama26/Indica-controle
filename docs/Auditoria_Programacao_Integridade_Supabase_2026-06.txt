@@ -1,0 +1,446 @@
+Tela: Programacao - Auditoria de Integridade e Supabase
+========================================================
+Data da auditoria: 2026-06-13
+Escopo: Programacao Simples, API Next, RPCs/migrations Supabase, importacoes em massa, Edge Functions, concorrencia, multi-tenant, auditoria e duplicacao.
+
+================================================================================
+Visao geral
+================================================================================
+A Programacao e atualmente uma das telas mais proximas do padrao operacional desejado:
+- possui tabela principal, itens, historico, catalogos e rastreio de copias;
+- usa RPCs transacionais para cadastro individual, lote, copia, cancelamento e adiamento;
+- exige `expectedUpdatedAt` nas edicoes criticas;
+- trata conflito com HTTP 409;
+- integra `useErrorLogger("programacao_simples")`;
+- possui lote atomico para cadastro e copia.
+
+O modulo ainda nao pode ser considerado referencia final. Permanecem riscos de
+autorizacao, escrita direta por authenticated, idempotencia, importacao parcial e
+duplicacao.
+
+Veredito:
+- Estrutura de tabelas da Programacao: suficiente, com ressalvas de constraints multi-tenant.
+- Integridade transacional: parcialmente aprovada.
+- Concorrencia: aprovada no schema versionado pela migration 232; aplicacao remota pendente.
+- Seguranca server-side: parcialmente aprovada apos o guard da Etapa 1; falta granularidade
+  persistida por acao e aplicacao nas rotas auxiliares/Edge Functions relacionadas.
+- Importacao em massa/Edge Functions: reprovada ate definir atomicidade e extrair pipeline comum.
+- Manutenibilidade: parcialmente aprovada; houve modularizacao, mas PageView e API continuam grandes.
+
+================================================================================
+Arquitetura
+================================================================================
+Fluxo atual:
+  ProgramacaoSimplePageView
+  -> src/modules/dashboard/programacao-simples/api.ts
+  -> src/app/api/programacao/route.ts
+  -> cliente Supabase service role
+  -> RPCs/tabelas publicas
+
+Pontos positivos:
+- A UI foi dividida em `api.ts`, `components.tsx`, `constants.ts`, `exports.ts`,
+  `hooks.ts`, `types.ts`, `utils.ts`, `validators.ts` e `index.ts`.
+- A rota resolve usuario ativo e tenant permitido por `resolveAuthenticatedAppUser`.
+- O tenant e o usuario gravados pela API nao sao aceitos do body.
+- O historico principal de CREATE/UPDATE/RESCHEDULE foi movido para as RPCs full.
+
+Lacunas:
+- `ProgrammingSimplePageView.tsx` ainda possui 2821 linhas.
+- `src/app/api/programacao/route.ts` possui 4777 linhas e mistura controller,
+  validacao, repositorio, serializacao, compatibilidade legacy e regras operacionais.
+- A rota usa service role e, desde a Etapa 1 de 2026-06-13, valida
+  `programacao-simples` + acao antes de qualquer leitura/RPC de negocio.
+- A API nao delega para um modulo server-side de Programacao.
+
+Estrutura alvo:
+  src/server/modules/programacao/
+    controller.ts
+    service.ts
+    repository.ts
+    validator.ts
+    dto.ts
+    authorization.ts
+
+================================================================================
+Cadastro
+================================================================================
+Acertos:
+- Cadastro individual usa `save_project_programming_full_with_electrical_and_eq`.
+- Cadastro em lote usa `save_project_programming_batch_full_with_electrical_and_eq`.
+- O lote gera rollback quando qualquer equipe falha dentro da RPC.
+- Atividades e historico principal participam da operacao transacional.
+- Edicao exige versao esperada na RPC.
+
+Achado critico - REDE decimal fora da transacao (corrigido na Etapa 2):
+- A migration 228 criou:
+  - `save_project_programming_full_decimal_with_electrical_and_eq`;
+  - `save_project_programming_batch_full_decimal_with_electrical_and_eq`.
+- As duas wrappers recebem `p_rede_qty numeric`.
+- A base inteira e o ajuste decimal executam dentro da mesma chamada/transacao.
+- Falha no ajuste decimal ou no historico gera rollback da operacao individual ou do
+  lote inteiro.
+- A wrapper individual retorna o `updated_at` final do ajuste decimal.
+- A API envia o decimal diretamente e removeu `applyProgrammingRedeQtyDecimal`.
+- A API nao tenta a wrapper antiga quando a migration 228 estiver ausente; retorna 409
+  antes de qualquer gravacao parcial.
+- As novas wrappers sao `SECURITY DEFINER`, com `search_path = public, pg_temp`, EXECUTE
+  revogado de `PUBLIC`, `anon` e `authenticated` e concedido somente a `service_role`.
+- Nenhuma policy RLS foi criada ou alterada e nenhuma permissao `DELETE` foi adicionada.
+
+Limitacao de compatibilidade:
+- As funcoes-base historicas ainda recebem inteiro; a wrapper decimal chama a base com a
+  parte inteira e aplica o valor final antes de concluir a mesma transacao.
+- Isso preserva compatibilidade com as validacoes existentes sem manter um segundo save
+  na API.
+
+Achado alto - Estado Trabalho e historico separados (corrigido na Etapa 3):
+- A migration 229 criou `save_project_programming_work_completion_status_full`.
+- A RPC valida payload, codigo normalizado, catalogo ativo e bloqueia estado concluido.
+- A linha e carregada com `FOR UPDATE`.
+- `expectedUpdatedAt` e comparado dentro da mesma transacao antes do update.
+- Conflito retorna `409` com:
+  - `currentRecord`;
+  - `currentUpdatedAt`;
+  - `updatedBy`;
+  - `changedFields`.
+- O update dispara a sincronizacao existente das programacoes ativas do mesmo
+  Projeto + Data.
+- O historico do registro principal e gravado antes do commit.
+- Falha do historico provoca rollback do update e das sincronizacoes do trigger.
+- A API removeu o `UPDATE` direto e a chamada posterior de
+  `append_project_programming_history_record`.
+- O refresh detalhado da grade continua fora da transacao; se falhar, a API retorna
+  sucesso com aviso, sem erro falso.
+- A RPC e `SECURITY DEFINER`, usa `search_path = public, pg_temp`, revoga EXECUTE de
+  `PUBLIC`, `anon` e `authenticated` e permite somente `service_role`.
+- Nenhuma policy RLS foi criada ou alterada e nenhuma permissao `DELETE` foi adicionada.
+
+Compatibilidade legacy:
+- A API ainda tenta assinaturas antigas das RPCs quando a assinatura atual nao existe.
+- O fallback de flags de ETAPA grava depois do commit principal.
+- Em ambiente de producao totalmente migrado, a compatibilidade deve ser removida ou
+  bloqueada por feature flag de migracao.
+
+================================================================================
+Filtros, auto-complete e listagem
+================================================================================
+Pontos positivos:
+- Consultas da Programacao filtram por `tenant_id`.
+- Grade usa intervalo de datas.
+- Catalogos de SGD, N EQ, motivos e Estado Trabalho sao separados por tenant.
+- A tela avisa quando um registro salvo pode ficar fora dos filtros.
+
+Pontos de atencao:
+- A API central tem muitas consultas e fallbacks de colunas antigas.
+- O carregamento deve manter selecao explicita de colunas e limites por periodo.
+- Consultas de historico e catalogos devem continuar paginadas/limitadas.
+- O banco de runtime consultado em 2026-06-13 possui 344 programacoes e zero linhas em
+  `project_programming_activities`. A tabela existe, mas o dado deve ser verificado:
+  confirmar se as programacoes atuais realmente nao usam atividades ou se houve falha
+  historica de persistencia/backfill.
+
+================================================================================
+Boas praticas
+================================================================================
+Achado critico - permissao de pagina/acao (corrigido na rota principal):
+- `resolveAuthenticatedAppUser` valida sessao, usuario, role e tenant.
+- `src/lib/server/pageAuthorization.ts` centraliza `requirePageAction`.
+- `src/app/api/programacao/route.ts` exige `programacao-simples` com `read`,
+  `create`, `update` ou `cancel`, conforme o handler.
+- A consulta usa tenant, usuario e role resolvidos da sessao; nenhum desses valores vem
+  do body.
+- Administradores preservam o bypass ja adotado nas APIs existentes.
+- Permissao explicita do usuario prevalece; sem linha individual, ocorre fallback para
+  `role_page_permissions`.
+- Erro ao consultar a matriz bloqueia a operacao com `500`; ausencia/negacao retorna
+  `403`. Nao existe fallback permissivo.
+
+Limitacao remanescente:
+- A migration 026 removeu as colunas por acao e manteve somente `can_access`.
+- O guard identifica e registra a acao no contrato, mas a decisao persistida ainda e
+  unica por pagina.
+- Evoluir a matriz para permissoes distintas exige migration, backfill, ajuste da tela
+  Permissoes e testes de compatibilidade.
+- Aplicar o mesmo helper nas rotas auxiliares e Edge Functions relacionadas.
+
+Achado critico - bypass direto e FK multi-tenant:
+- As policies de `project_programming` e itens permitem INSERT/UPDATE ao role authenticated
+  quando `user_can_access_tenant(tenant_id)` for verdadeiro.
+- As FKs principais referenciam somente `id`, sem FK composta `(tenant_id, id)`.
+- Um cliente autenticado pode tentar gravar diretamente, fora da API/RPC.
+- Com UUID conhecido, e possivel criar referencia cruzada entre tenants porque RLS valida
+  o tenant da linha, nao o tenant da entidade referenciada.
+
+Correcao obrigatoria:
+- Revogar INSERT/UPDATE direto de `authenticated` nas tabelas operacionais criticas.
+- Permitir escrita somente por RPC service-role ou RPC segura com validacao do chamador.
+- Manter RLS SELECT por tenant e testes de bypass.
+
+FKs compostas - corrigido na Etapa 5:
+- A migration 231 adiciona chaves candidatas `(id, tenant_id)` onde ainda faltavam.
+- As relacoes da tabela principal, atividades, historico, copia e Medicao passam a
+  carregar o tenant na propria FK.
+- O preflight lista e bloqueia dados legados cruzados; nao altera tenant automaticamente
+  porque isso poderia transferir dado de negocio para outra conta.
+- Todas as FKs sao validadas antes do commit.
+- Testes negativos tentam UPDATE e INSERT cruzados em subtransacoes e exigem
+  `foreign_key_violation` quando existem dados suficientes.
+- Nenhuma policy RLS foi criada ou alterada e nenhuma permissao `DELETE` foi adicionada.
+
+Achado critico - regressao de privilegio na migration 217 (corrigido na Etapa 4):
+- A migration 210 remove EXECUTE de authenticated em toda funcao SECURITY DEFINER.
+- A migration 217 volta a conceder EXECUTE de
+  `copy_project_programming_to_dates` para authenticated.
+- A funcao recebe `p_tenant_id` e `p_actor_user_id`, mas nao valida `auth.uid()`.
+
+Correcao aplicada:
+- A migration 230 revoga EXECUTE de `PUBLIC`, `anon` e `authenticated`.
+- Somente `service_role` permanece com EXECUTE.
+- O `search_path` foi fixado em `public, pg_temp`.
+- A propria migration falha se `anon/authenticated` mantiverem EXECUTE ou se
+  `service_role` perder a permissao.
+- A rota `copyProgrammingToDates` ja executa o guard server-side com page key
+  `programacao-simples` e acao `create` antes de chamar a RPC.
+- Tenant e ator continuam derivados da sessao pela API, nao do payload do cliente.
+- Nenhuma policy RLS foi criada ou alterada e nenhuma permissao `DELETE` foi adicionada.
+
+Achado alto - concorrencia de insercao (corrigido na Etapa 6):
+- A RPC verifica sobreposicao por SELECT antes do INSERT.
+- Nao existe exclusion constraint por intervalo nem lock/advisory lock por
+  `tenant + equipe + data`.
+- Duas transacoes concorrentes podem passar na verificacao antes de qualquer uma inserir.
+- A unique ativa cobre `tenant + projeto + equipe + data`, mas nao cobre projetos
+  diferentes com horarios sobrepostos.
+
+Correcao aplicada:
+- A migration 232 cria trigger BEFORE INSERT/UPDATE para a agenda operacional.
+- Cada gravacao ativa adquire advisory transaction lock por `tenant/equipe/data`.
+- A sobreposicao e verificada dentro da mesma transacao, depois do lock.
+- O banco retorna 409 / `TEAM_TIME_CONFLICT` com o registro atual.
+- Intervalos adjacentes continuam permitidos.
+- Nenhuma policy RLS ou permissao `DELETE` foi criada ou alterada.
+
+Achado alto - idempotencia:
+- POST, lote, copia, cancelamento e adiamento nao usam idempotency key.
+- Retry apos timeout pode criar conflito ou repetir operacao sem devolver o resultado
+  original.
+
+Tabela generica recomendada:
+  api_idempotency_keys
+    tenant_id
+    actor_user_id
+    route_key
+    idempotency_key
+    request_hash
+    response_status
+    response_body
+    created_at
+    expires_at
+    UNIQUE (tenant_id, actor_user_id, route_key, idempotency_key)
+
+Nao falta tabela funcional especifica para a Programacao. Falta uma infraestrutura
+generica de idempotencia e, se `app_entity_history` nao for ampliada, uma tabela generica
+de auditoria de tentativas/resultado de operacoes.
+
+================================================================================
+Cancelamento e saldo
+================================================================================
+Acertos:
+- Cancelamento e adiamento usam RPC.
+- O historico funcional fica dentro da transacao dessas operacoes.
+- Adiamento cria o novo registro e altera o anterior atomicamente.
+- Atualizacao visual posterior e tratada como aviso.
+- Nao ha saldo de estoque diretamente afetado.
+
+Pendencias:
+- Adicionar idempotencia para cancelamento e adiamento.
+- Garantir lock por agenda para o novo registro criado no adiamento.
+
+================================================================================
+Importacao em massa e Edge Functions
+================================================================================
+Programacao:
+- `BATCH_CREATE`, copia de periodo e copia para varias datas sao atomicos dentro das RPCs.
+- Esses caminhos agora exigem a acao server-side `create` antes da RPC.
+- Cadastro individual e `BATCH_CREATE` gravam REDE decimal dentro da wrapper transacional
+  criada pela migration 228.
+
+Previsao de materiais e atividades:
+- `import_project_forecast` e `import_project_activity_forecast` processam projeto por projeto.
+- Cada chamada RPC e atomica somente para um projeto.
+- Se um projeto posterior falhar, projetos anteriores permanecem gravados e a Edge Function
+  pode responder erro global.
+- Linhas ja existentes sao ignoradas e o retorno assume sucesso parcial.
+- Nao ha rate limit, page/action guard ou idempotency key.
+- As funcoes usam o `tenant_id` padrao de `app_users` e nao o tenant ativo selecionado.
+- CORS esta como `Access-Control-Allow-Origin: *`.
+
+Duplicacao confirmada:
+- As duas Edge Functions possuem 408/411 linhas.
+- 252 linhas ocupam a mesma posicao nas duas funcoes (61,3%).
+- O detector jscpd encontrou clone principal de 202 linhas entre elas.
+
+Correcao obrigatoria:
+- Extrair `_shared/auth.ts`, `_shared/cors.ts`, `_shared/xlsx.ts`,
+  `_shared/import-validation.ts` e `_shared/tenant-context.ts`.
+- Definir explicitamente se o arquivo e atomico inteiro ou parcial.
+- Para atomicidade total, enviar todas as linhas a uma unica RPC transacional.
+- Para parcial, retornar sucesso 207/200 com resultado por projeto/linha e nunca erro
+  ambiguo depois de commits anteriores.
+- Aplicar limite de linhas, rate limit, page/action, tenant ativo e idempotencia.
+
+================================================================================
+Duplicacao e manutencao
+================================================================================
+Resultado jscpd em `src` + `supabase/edge_functions`:
+- 187 arquivos analisados.
+- 119 clones.
+- 2958 linhas duplicadas (7,8%).
+- TypeScript: 2774 linhas duplicadas (10,4%).
+
+Utilitarios ainda duplicados:
+- `downloadCsvFile`: 12 arquivos.
+- `formatDateTime`: 20 arquivos.
+- `toIsoDate`: 19 arquivos.
+- `parsePositiveNumber`: 7 arquivos.
+- `src/lib/utils/` ainda nao existe.
+
+Maiores PageViews:
+- Projetos: 4006 linhas.
+- Medicao: 3766 linhas.
+- Entrada: 3253 linhas.
+- Programacao Simples: 2821 linhas.
+- Saida: 2569 linhas.
+- Programacao legada: 2425 linhas.
+
+Prioridade de limpeza:
+1. Extrair guard de autorizacao e contexto de tenant.
+2. Extrair pipeline compartilhado das Edge Functions.
+3. Criar `src/lib/utils/formatters.ts`, `csv.ts` e `parsers.ts`.
+4. Mover backend da Programacao para `src/server/modules/programacao`.
+5. Reduzir PageView por componentes e hooks com responsabilidade unica.
+
+Dependencias - npm outdated em 2026-06-13:
+- `@supabase/supabase-js`: 2.98.0 -> wanted/latest 2.108.1.
+- `@tanstack/react-query`: 5.90.21 -> wanted/latest 5.101.0.
+- `@types/node`: 20.19.37 -> wanted 20.19.43; latest major 25.9.3.
+- `@types/react`: 19.2.14 -> wanted/latest 19.2.17.
+- `next`: 16.1.6 -> latest 16.2.9.
+- `react`: 19.2.3 -> latest 19.2.7.
+- `react-dom`: 19.2.3 -> latest 19.2.7.
+- `eslint`: 9.39.4; latest major 10.5.0.
+- `eslint-config-next`: 16.1.6; latest 16.2.9.
+- `typescript`: 5.9.3; latest major 6.0.3.
+- Nenhuma dependencia foi atualizada nesta auditoria.
+
+================================================================================
+Atalhos
+================================================================================
+- Tela principal: `/programacao-simples`
+- Alias/rota operacional: `/programacao`
+- API: `/api/programacao`
+- Edge Functions auditadas:
+  - `import_project_forecast`
+  - `import_project_activity_forecast`
+  - funcoes de auth/log/material como referencia de duplicacao e CORS
+
+================================================================================
+Atualizacao 2026-06
+================================================================================
+Verificacoes executadas:
+- Leitura completa de `AGENTS.md`, `docs/Auditoria_Completa_SaaS.txt` e
+  `verificacao/01..10`.
+- Revisao de `src/app/api/programacao/route.ts`.
+- Revisao do modulo `src/modules/dashboard/programacao-simples`.
+- Revisao das migrations de Programacao ate `217` e endurecimento `210`.
+- Consulta somente leitura ao Supabase configurado no `.env`.
+- `npm outdated`.
+- `jscpd`.
+- `supabase migration list --linked`.
+- `supabase db lint --linked`.
+
+Observacao de ambiente:
+- O projeto ligado em `supabase/.temp/project-ref` nao corresponde ao Supabase do `.env`.
+- O banco ligado pelo CLI possui historico remoto apenas ate `0047` e lint com erros de
+  outro schema.
+- Esses erros nao foram atribuidos ao runtime do SaaS.
+- Antes de qualquer auditoria/migration produtiva, alinhar o link do CLI ao ambiente certo
+  por procedimento controlado. Nao trocar link automaticamente.
+
+Leitura do runtime em 2026-06-13:
+- `project_programming`: 344 registros.
+- Programacoes ativas/reprogramadas: 285.
+- Sobreposicoes detectadas nos dados atuais: 0.
+- Registros com REDE decimal: 8.
+- `project_programming_history`: 874 registros.
+- `project_programming_activities`: 0 registros.
+- Tabelas de copia e catalogos da Programacao acessiveis.
+
+O resultado sem sobreposicao atual nao elimina a corrida de concorrencia descrita; ele
+apenas confirma que a amostra existente nao apresenta conflito gravado.
+
+================================================================================
+Mapa de Codigo (funcoes, hooks e constantes)
+================================================================================
+Funcoes principais
+- Caminho: `src/app/api/programacao/route.ts`
+  - Responsavel por: controller, validacao, leitura, save, lote, copia, status e historico.
+  - Pontos auditados: `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`,
+    `saveProgrammingWorkCompletionStatus`, `copyProgrammingToDates`.
+- Caminho: `supabase/migrations/228_make_programming_rede_decimal_transactional.sql`
+  - Responsavel por: wrappers decimais individual/lote, rollback atomico e retorno do
+    `updated_at` final.
+- Caminho: `supabase/migrations/229_save_programming_work_completion_status_transactional.sql`
+  - Responsavel por: lock, concorrencia, Estado Trabalho, sincronizacoes e historico
+    principal dentro da mesma transacao.
+- Caminho: `supabase/migrations/230_restrict_copy_programming_to_dates_execute.sql`
+  - Responsavel por: restringir a copia para multiplas datas ao `service_role`, fixar o
+    `search_path` e validar os privilegios efetivos da RPC.
+- Caminho: `supabase/migrations/231_enforce_programming_composite_tenant_fks.sql`
+  - Responsavel por: impedir referencias cruzadas entre tenants nas relacoes da
+    Programacao e validar dados legados/constraints antes do commit.
+- Caminho: `supabase/migrations/232_serialize_project_programming_schedule_writes.sql`
+  - Responsavel por: serializar gravacoes da agenda, impedir sobreposicao concorrente e
+    retornar conflito estruturado depois da aquisicao do lock.
+- Caminho: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - Responsavel por: fluxo de tela, edicao, lote, conflito, filtros e exportacao.
+- Caminho: `src/modules/dashboard/programacao-simples/api.ts`
+  - Responsavel por: contratos HTTP do modulo.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/programacao-simples/constants.ts`
+  - Responsavel por: documentos, labels e configuracoes da tela.
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: autenticacao, usuario ativo e tenant permitido.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: permissao de rota somente no frontend.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/programacao-simples/utils.ts`
+  - Responsavel por: normalizacao e formatacao especifica da feature.
+- Caminho: `src/modules/dashboard/programacao-simples/validators.ts`
+  - Responsavel por: validacao e feedback de filtro/conflito na UI.
+
+Servicos e integracoes externas
+- `project_programming`
+- `project_programming_activities`
+- `project_programming_history`
+- `project_programming_copy_batches`
+- `project_programming_copy_batch_items`
+- `programming_support_items`
+- `programming_sgd_types`
+- `programming_eq_catalog`
+- `programming_reason_catalog`
+- `programming_work_completion_catalog`
+
+Ajuda contextual
+- Arquivos criados/alterados nesta auditoria:
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+  - `docs/Auditoria_Completa_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `AGENTS.md`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Nao houve mudanca funcional.
+  - Antes: os riscos atuais nao estavam consolidados com evidencias de 2026-06-13.
+  - Depois: riscos, prioridades, tabelas e padrao obrigatorio ficaram documentados.

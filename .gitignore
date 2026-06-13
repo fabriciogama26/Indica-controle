@@ -31,6 +31,8 @@ yarn-error.log*
 
 # Supabase local artifacts
 .supabase/
+supabase/.temp
+
 
 # Keys
 *.pem
@@ -43,3 +45,6 @@ estrutura_saas_multitenant.md
 
 # Misc
 verificação/
+
+# Backups
+Backup/

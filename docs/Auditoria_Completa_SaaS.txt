@@ -3,7 +3,65 @@ Auditoria Completa - Indica Controle SaaS
 Data base: 2026-03-22
 Atualizacao: 2026-05-01 - inclusao de veredito de seguranca/manutenibilidade e plano de melhorias por modulo.
 Atualizacao: 2026-05-03 - revisao com base em docs/Estrutura e no estado atual do codigo SaaS.
+Atualizacao: 2026-06-13 - auditoria focada em Programacao, integridade transacional, concorrencia, Supabase runtime, Edge Functions e duplicacao. Detalhes em `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`.
 Escopo: integridade de dados, arquitetura SaaS multi-tenant, Supabase/RLS, rotas Next, Edge Functions, modularizacao de telas, documentacao e backlog tecnico.
+
+================================================================================
+0. ADENDO OBRIGATORIO 2026-06-13
+================================================================================
+Este adendo substitui os numeros antigos quando houver divergencia:
+- Migrations locais existem ate `227_create_team_stock_balance_page.sql`.
+- O modulo `programacao-simples` ja possui arquivos de fachada, API, hooks, validators,
+  componentes, tipos, constantes, utils e exportacao.
+- `ProgrammingSimplePageView.tsx` possui 2821 linhas.
+- `src/app/api/programacao/route.ts` possui 4777 linhas.
+- `src/lib/utils/` continua inexistente.
+- jscpd encontrou 119 clones e 2958 linhas duplicadas (7,8%) em `src` +
+  `supabase/edge_functions`.
+
+Achados criticos atuais:
+1. O guard central por page_key/acao foi aplicado em `/api/programacao`, mas as demais
+   rotas criticas ainda nao adotam um padrao unico e a matriz persiste somente `can_access`.
+2. Escrita direta nas tabelas operacionais continua permitida por RLS de tenant.
+3. Nao existe idempotencia padronizada nas operacoes criticas da Programacao.
+4. Edge Functions de previsao processam projeto por projeto, podendo deixar arquivo
+   parcialmente aplicado antes de erro posterior.
+
+Correcao de seguranca concluida na Etapa 4:
+- A migration 230 revoga EXECUTE de `PUBLIC`, `anon` e `authenticated` na RPC
+  `copy_project_programming_to_dates`, fixa `search_path = public, pg_temp` e mantem
+  somente `service_role`.
+- A API continua derivando tenant e ator da sessao e executa a copia somente depois do
+  guard server-side de `programacao-simples` com acao `create`.
+- Nenhuma policy RLS ou permissao `DELETE` foi criada ou alterada.
+
+Correcao multi-tenant concluida na Etapa 5:
+- A migration 231 substitui as FKs simples da Programacao por FKs compostas com tenant.
+- O escopo cobre tabela principal, atividades, historico, lotes/itens de copia e o
+  vinculo `project_measurement_orders.programming_id`.
+- O deploy falha antes da troca de constraints quando encontra dado legado cruzado.
+- As novas FKs sao validadas e a migration testa INSERT/UPDATE cruzado quando a base
+  possui registros de tenants distintos.
+- Nenhuma policy RLS ou permissao `DELETE` foi criada ou alterada.
+
+Correcao de concorrencia concluida na Etapa 6:
+- A migration 232 adiciona trigger BEFORE INSERT/UPDATE em `project_programming`.
+- O trigger serializa gravacoes por tenant + equipe + data com advisory transaction lock.
+- A sobreposicao e validada novamente no banco depois da aquisicao do lock.
+- Conflitos preservam o contrato 409 / `TEAM_TIME_CONFLICT` com o registro atual.
+- O preflight impede deploy sobre dados ativos ja sobrepostos.
+- Nenhuma policy RLS ou permissao `DELETE` foi criada ou alterada.
+
+Estado das tabelas:
+- A Programacao nao precisa de nova tabela funcional especifica.
+- Recomenda-se tabela generica de idempotencia e auditoria de tentativas.
+- `project_programming_activities` existe, mas estava com zero linhas no runtime consultado,
+  enquanto `project_programming` possuia 344 registros; validar regra de negocio/backfill.
+
+Ambiente Supabase:
+- O link do Supabase CLI nao corresponde ao projeto configurado no `.env`.
+- Resultados de migration list/lint do projeto ligado nao representam o runtime do SaaS.
+- Alinhar o link deve ser uma tarefa controlada antes de aplicar migrations ou usar Advisor.
 
 ================================================================================
 1. RESUMO EXECUTIVO
@@ -165,7 +223,12 @@ Recomendacao:
 -------------------
 a) Autorizacao por pagina/acao nas APIs:
    - O frontend usa `canAccessRoute`, `pageAccess` e `ADMIN_ONLY_ROUTE_PREFIXES`.
-   - As rotas criticas validam autenticacao/tenant, mas nao ha padrao unico para checar `app_user_page_permissions` por page_key e acao em cada API.
+   - `src/lib/server/pageAuthorization.ts` passou a fornecer o helper central
+     `requirePageAction`.
+   - `/api/programacao` aplica o helper antes de qualquer leitura/RPC de negocio.
+   - As demais rotas criticas ainda nao adotam o padrao central.
+   - A migration 026 simplificou a matriz para `can_access`; portanto, a acao e exigida
+     no contrato server-side, mas ainda nao possui concessao persistida independente.
    - Risco: usuario autenticado com tenant valido pode chamar uma API diretamente mesmo que a tela esteja bloqueada no menu, se a rota nao fizer checagem propria.
 
 b) Replay/idempotencia:
@@ -236,6 +299,13 @@ Risco pendente:
 Programacao:
 - Ainda ha fallbacks/compatibilidade legacy em `src/app/api/programacao/route.ts`.
 - Fallback e util para ambientes com migrations defasadas, mas pode mascarar erro real quando producao deveria estar totalmente migrada.
+- A migration 228 criou wrappers full decimais individual/lote, executaveis somente por
+  `service_role`, e a API deixou de corrigir `rede_qty` depois do commit.
+- Se a migration 228 nao estiver disponivel, a API retorna 409 sem executar a wrapper
+  inteira antiga nem salvar parcialmente.
+- A migration 229 moveu Estado Trabalho, sincronizacoes por Projeto + Data e historico
+  principal para uma unica RPC com lock e `expectedUpdatedAt`.
+- O refresh detalhado da tela permanece pos-commit e sua falha retorna sucesso com aviso.
 - Falta integrar `useErrorLogger` na tela principal.
 
 Entrada:
@@ -371,9 +441,9 @@ Todo modulo novo ou alterado deve preencher:
 
 Fase 1 - Seguranca server-side
 ------------------------------
-1. Criar helper central para validar page_key/acao nas rotas Next.
+1. [Concluido em 2026-06-13] Criar helper central para validar page_key/acao nas rotas Next.
 2. Aplicar em rotas criticas:
-   - `src/app/api/programacao/route.ts`
+   - [Concluido em 2026-06-13] `src/app/api/programacao/route.ts`
    - `src/app/api/stock-transfers/route.ts`
    - `src/app/api/team-stock-operations/route.ts`
    - `src/app/api/medicao/route.ts`
@@ -441,7 +511,8 @@ Ainda pendentes:
 - Integrar `useErrorLogger` nas demais telas operacionais.
 - Reduzir telas monoliticas.
 - Remover ou controlar fallbacks legacy em Programacao quando migrations de producao estiverem garantidas.
-- Padronizar page/action guard server-side.
+- Aplicar o page/action guard central nas rotas criticas restantes.
+- Evoluir a matriz de permissoes para concessoes persistidas independentes por acao.
 - Padronizar rate limit, replay/idempotencia e auditoria antifraude nas rotas Next.
 - Restringir CORS em Edge Functions.
 - Endurecer `/api/auth/local-login`.

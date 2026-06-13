@@ -513,3 +513,36 @@ Observacao
 - A modelagem de `project` ja existe e pode evoluir com novos relacionamentos.
 227. 227_create_team_stock_balance_page.sql
 - Cadastra a pagina `estoque-equipes`, libera a consulta por role e preenche permissoes individuais ausentes sem sobrescrever configuracoes existentes.
+
+228_make_programming_rede_decimal_transactional.sql
+- Cria wrappers full individual e em lote que recebem `rede_qty numeric` e concluem o
+  ajuste decimal dentro da mesma transacao da Programacao.
+- Restringe EXECUTE das novas wrappers ao `service_role`, sem criar ou alterar policies
+  RLS e sem adicionar permissao `DELETE`.
+
+229_save_programming_work_completion_status_transactional.sql
+- Cria RPC transacional para salvar Estado Trabalho com lock, `expectedUpdatedAt`,
+  conflito estruturado, sincronizacoes por Projeto + Data e historico principal.
+- Restringe EXECUTE ao `service_role`, sem criar ou alterar policies RLS e sem adicionar
+  permissao `DELETE`.
+
+230_restrict_copy_programming_to_dates_execute.sql
+- Corrige a regressao da migration 217, revogando EXECUTE de `PUBLIC`, `anon` e
+  `authenticated` na RPC `copy_project_programming_to_dates`.
+- Fixa `search_path = public, pg_temp`, mantem somente `service_role` e verifica os
+  privilegios durante a propria migration.
+- Nao cria ou altera policies RLS e nao adiciona permissao `DELETE`.
+
+231_enforce_programming_composite_tenant_fks.sql
+- Substitui FKs simples por FKs compostas com tenant na Programacao, atividades,
+  historico, lotes de copia e vinculo da Medicao.
+- Interrompe a migration quando encontra dado legado cruzado, valida todas as constraints
+  e executa testes negativos de INSERT/UPDATE quando existem dados de tenants distintos.
+- Preserva os comportamentos referenciais de cascade/set null aplicaveis.
+- Nao cria ou altera policies RLS e nao adiciona permissao `DELETE`.
+
+232_serialize_project_programming_schedule_writes.sql
+- Serializa INSERT/UPDATE de agenda por tenant, equipe e data com advisory transaction lock.
+- Impede corrida entre gravacoes concorrentes e bloqueia sobreposicao de intervalos ativos.
+- Preserva o contrato 409 / TEAM_TIME_CONFLICT com dados do registro conflitante.
+- Inclui preflight de sobreposicoes e nao cria ou altera policy RLS de `DELETE`.

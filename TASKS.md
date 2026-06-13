@@ -909,3 +909,23 @@
 
 - [x] Adicionar na Lista de Ordens de Medicao o card `Valor descontando garantia minima`, calculado pelo `Valor total - Garantia de faturamento minimo` sobre todas as paginas filtradas e ignorando ordens canceladas.
 - [x] Criar tela `Estoque das Equipes` em Almoxarifado, com consulta read-only por equipe/material, filtros por encarregado/base/status/material/UMB/tipo/saldo, cards por UMB, detalhes, historico, exportacao CSV e permissao multi-tenant dedicada.
+- [x] [P0][Programacao][Autorizacao] Criar helper server-side `requirePageAction` e aplicar `programacao-simples` + acao em todos os handlers de `/api/programacao`.
+- [ ] [P1][Permissoes][Granularidade] Evoluir a matriz persistida para diferenciar `read`, `create`, `update`, `cancel`, `reverse`, `import` e `export`; atualmente o guard server-side identifica a acao, mas todas usam o `can_access` unico da pagina.
+- [x] [P0][Programacao][Transacao] Criar wrappers full decimais para gravar `rede_qty numeric` na mesma transacao, remover o ajuste pos-commit `applyProgrammingRedeQtyDecimal` e bloquear fallback parcial quando a migration 228 nao estiver aplicada.
+- [x] [P0][Programacao][Historico] Criar RPC transacional para salvar Estado Trabalho com lock, `expectedUpdatedAt`, conflito estruturado e historico essencial no mesmo commit (migration 229).
+- [x] [P0][Programacao][Seguranca] Revogar EXECUTE de authenticated em `copy_project_programming_to_dates`, fixar `search_path` seguro e manter somente `service_role` (migration 230).
+- [ ] [P0][Multi-tenant] Revogar INSERT/UPDATE direto de authenticated nas tabelas operacionais criticas e migrar escrita para RPC/API autorizada.
+- [x] [P0][Multi-tenant] Adicionar chaves/FKs compostas nas relacoes de Programacao, com preflight de dados legados, validacao das constraints e testes negativos de INSERT/UPDATE (migration 231).
+- [x] [P0][Programacao][Concorrencia] Serializar insercoes por `tenant + equipe + data` com advisory transaction lock e trigger transacional (migration 232).
+- [ ] [P1][Operacional] Criar infraestrutura generica de idempotencia para POST/PUT/PATCH criticos e registrar resposta de retries.
+- [ ] [P1][Edge Functions] Tornar importacoes XLSX atomicas por arquivo ou documentar/retornar parcial por projeto sem erro ambiguo apos commit.
+- [ ] [P1][Edge Functions] Extrair `_shared` de auth, CORS, tenant ativo, XLSX e validacao para as importacoes de materiais/atividades previstas.
+- [ ] [P1][Edge Functions] Aplicar page/action guard, rate limit, tenant ativo e CORS por ambiente nas funcoes sensiveis.
+- [ ] [P1][Dados] Investigar por que `project_programming_activities` possui zero registros com 344 programacoes no runtime consultado; confirmar regra ou criar backfill.
+- [ ] [P1][Supabase] Alinhar de forma controlada o projeto ligado pelo Supabase CLI ao projeto configurado no ambiente antes de migration list, lint ou deploy.
+- [ ] [P1][Supabase] Criar verificacao CI que bloqueie SECURITY DEFINER executavel por anon/authenticated fora de allowlist validada.
+- [ ] [P2][Duplicacao] Criar `src/lib/utils/formatters.ts`, `csv.ts` e `parsers.ts` e migrar as copias confirmadas.
+- [ ] [P2][Duplicacao] Reduzir os 119 clones/2958 linhas duplicadas apontados pelo jscpd, priorizando Edge Functions e APIs de catalogo/importacao.
+- [ ] [P2][Programacao] Mover a regra server-side para `src/server/modules/programacao` e reduzir a rota de 4777 linhas.
+- [ ] [P2][Programacao] Continuar a modularizacao do PageView de 2821 linhas sem mover regra critica para o frontend.
+- [ ] [P2][Testes] Adicionar testes de bypass de tenant/permissao, concorrencia simultanea, retry idempotente, lote invalido e falha de historico.

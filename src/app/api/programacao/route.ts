@@ -1,7 +1,30 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
+
+const PROGRAMMING_PAGE_KEY = "programacao-simples";
+
+async function authorizeProgrammingAction(context: AuthenticatedAppUserContext, action: PageAction) {
+  const authorization = await requirePageAction({
+    context,
+    pageKey: PROGRAMMING_PAGE_KEY,
+    action,
+  });
+
+  if (authorization.allowed) return null;
+
+  return NextResponse.json(
+    {
+      message: authorization.error.message,
+      code: authorization.error.code,
+      pageKey: authorization.pageKey,
+      action: authorization.action,
+    },
+    { status: authorization.error.status },
+  );
+}
 
 type BoardProjectRow = {
   id: string;
@@ -375,6 +398,24 @@ type BatchProgrammingRpcResult = {
   project_code?: string;
   inserted_count?: number;
   items?: BatchProgrammingRpcItem[];
+};
+
+type WorkCompletionStatusRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  detail?: string;
+  skipped?: boolean;
+  programming_id?: string;
+  updated_at?: string;
+  work_completion_status?: string;
+  currentRecord?: ProgrammingConflictRecord & {
+    workCompletionStatus?: string | null;
+  };
+  currentUpdatedAt?: string;
+  updatedBy?: string | null;
+  changedFields?: string[];
 };
 
 type ProgrammingHistoryListResponse = {
@@ -847,14 +888,6 @@ function normalizeNonNegativeDecimal(value: unknown) {
   }
 
   return parsed;
-}
-
-function hasDecimalFraction(value: number) {
-  return Number.isFinite(value) && !Number.isInteger(value);
-}
-
-function normalizeStructureRpcInteger(value: number) {
-  return Math.trunc(Number.isFinite(value) ? value : 0);
 }
 
 function normalizeQuestionnaireAnswers(value: unknown) {
@@ -2087,7 +2120,7 @@ async function saveProgrammingFullViaRpc(params: {
   historyReason?: string | null;
   historyMetadata?: Record<string, unknown> | null;
 }) {
-  const rpcName = "save_project_programming_full_with_electrical_and_eq";
+  const rpcName = "save_project_programming_full_decimal_with_electrical_and_eq";
   const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -2112,7 +2145,7 @@ async function saveProgrammingFullViaRpc(params: {
     p_poste_qty: params.posteQty,
     p_estrutura_qty: params.estruturaQty,
     p_trafo_qty: params.trafoQty,
-    p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
+    p_rede_qty: params.redeQty,
     p_etapa_number: params.etapaNumber,
     p_work_completion_status: params.workCompletionStatus,
     p_affected_customers: params.affectedCustomers,
@@ -2129,67 +2162,18 @@ async function saveProgrammingFullViaRpc(params: {
     p_etapa_final: params.etapaFinal,
   };
 
-  let { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
-  let usedEmbeddedEtapaFlags = true;
+  const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
     if (isMissingRpcFunctionError(error.message, rpcName)) {
-      const legacyPayload = {
-        p_tenant_id: params.tenantId,
-        p_actor_user_id: params.actorUserId,
-        p_project_id: params.projectId,
-        p_team_id: params.teamId,
-        p_execution_date: params.executionDate,
-        p_period: params.period,
-        p_start_time: params.startTime,
-        p_end_time: params.endTime,
-        p_expected_minutes: params.expectedMinutes,
-        p_feeder: params.feeder ?? null,
-        p_support: params.support ?? null,
-        p_note: params.note ?? null,
-        p_documents: params.documents,
-        p_activities: params.activities.map((item) => ({
-          catalogId: item.catalogId,
-          quantity: item.quantity,
-        })),
-        p_programming_id: params.programmingId ?? null,
-        p_expected_updated_at: params.expectedUpdatedAt ?? null,
-        p_support_item_id: params.supportItemId ?? null,
-        p_poste_qty: params.posteQty,
-        p_estrutura_qty: params.estruturaQty,
-        p_trafo_qty: params.trafoQty,
-        p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
-        p_etapa_number: params.etapaNumber,
-        p_work_completion_status: params.workCompletionStatus,
-        p_affected_customers: params.affectedCustomers,
-        p_sgd_type_id: params.sgdTypeId,
-        p_outage_start_time: params.outageStartTime ?? null,
-        p_outage_end_time: params.outageEndTime ?? null,
-        p_service_description: params.serviceDescription ?? null,
-        p_history_action_override: params.historyActionOverride ?? null,
-        p_history_reason: params.historyReason ?? null,
-        p_history_metadata: params.historyMetadata ?? {},
-        p_campo_eletrico: params.electricalField ?? null,
-        p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
-      };
-
-      const legacyAttempt = await params.supabase.rpc(rpcName, legacyPayload);
-      data = legacyAttempt.data;
-      error = legacyAttempt.error;
-      usedEmbeddedEtapaFlags = false;
-
-      if (error && isMissingRpcFunctionError(error.message, rpcName)) {
-        return {
-          ok: false,
-          status: 409,
-          reason: "FULL_RPC_NOT_AVAILABLE",
-          message: "RPC transacional full da Programacao indisponivel no ambiente atual.",
-        } as const;
-      }
+      return {
+        ok: false,
+        status: 409,
+        reason: "FULL_RPC_NOT_AVAILABLE",
+        message: "RPC transacional decimal da Programacao indisponivel no ambiente atual. Aplique a migration 228.",
+      } as const;
     }
-  }
 
-  if (error) {
     return {
       ok: false,
       status: 500,
@@ -2212,7 +2196,6 @@ async function saveProgrammingFullViaRpc(params: {
 
   return {
     ok: true,
-    flagsEmbedded: usedEmbeddedEtapaFlags,
     action: result.action ?? null,
     programmingId: result.programming_id,
     projectCode: normalizeText(result.project_code),
@@ -2254,7 +2237,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
 }) {
-  const rpcName = "save_project_programming_batch_full_with_electrical_and_eq";
+  const rpcName = "save_project_programming_batch_full_decimal_with_electrical_and_eq";
   const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -2277,7 +2260,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_poste_qty: params.posteQty,
     p_estrutura_qty: params.estruturaQty,
     p_trafo_qty: params.trafoQty,
-    p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
+    p_rede_qty: params.redeQty,
     p_etapa_number: params.etapaNumber,
     p_work_completion_status: params.workCompletionStatus,
     p_affected_customers: params.affectedCustomers,
@@ -2291,62 +2274,18 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_etapa_final: params.etapaFinal,
   };
 
-  let { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
-  let usedEmbeddedEtapaFlags = true;
+  const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
     if (isMissingRpcFunctionError(error.message, rpcName)) {
-      const legacyPayload = {
-        p_tenant_id: params.tenantId,
-        p_actor_user_id: params.actorUserId,
-        p_project_id: params.projectId,
-        p_team_ids: params.teamIds,
-        p_execution_date: params.executionDate,
-        p_period: params.period,
-        p_start_time: params.startTime,
-        p_end_time: params.endTime,
-        p_expected_minutes: params.expectedMinutes,
-        p_feeder: params.feeder ?? null,
-        p_support: params.support ?? null,
-        p_note: params.note ?? null,
-        p_documents: params.documents,
-        p_activities: params.activities.map((item) => ({
-          catalogId: item.catalogId,
-          quantity: item.quantity,
-        })),
-        p_support_item_id: params.supportItemId ?? null,
-        p_poste_qty: params.posteQty,
-        p_estrutura_qty: params.estruturaQty,
-        p_trafo_qty: params.trafoQty,
-        p_rede_qty: normalizeStructureRpcInteger(params.redeQty),
-        p_etapa_number: params.etapaNumber,
-        p_work_completion_status: params.workCompletionStatus,
-        p_affected_customers: params.affectedCustomers,
-        p_sgd_type_id: params.sgdTypeId,
-        p_outage_start_time: params.outageStartTime ?? null,
-        p_outage_end_time: params.outageEndTime ?? null,
-        p_service_description: params.serviceDescription ?? null,
-        p_campo_eletrico: params.electricalField ?? null,
-        p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
-      };
-
-      const legacyAttempt = await params.supabase.rpc(rpcName, legacyPayload);
-      data = legacyAttempt.data;
-      error = legacyAttempt.error;
-      usedEmbeddedEtapaFlags = false;
-
-      if (error && isMissingRpcFunctionError(error.message, rpcName)) {
-        return {
-          ok: false,
-          status: 409,
-          reason: "FULL_RPC_NOT_AVAILABLE",
-          message: "RPC transacional full de lote da Programacao indisponivel no ambiente atual.",
-        } as const;
-      }
+      return {
+        ok: false,
+        status: 409,
+        reason: "FULL_RPC_NOT_AVAILABLE",
+        message: "RPC transacional decimal de lote da Programacao indisponivel no ambiente atual. Aplique a migration 228.",
+      } as const;
     }
-  }
 
-  if (error) {
     return {
       ok: false,
       status: 500,
@@ -2378,7 +2317,6 @@ async function saveProgrammingBatchFullViaRpc(params: {
 
   return {
     ok: true,
-    flagsEmbedded: usedEmbeddedEtapaFlags,
     insertedCount: Number(result.inserted_count ?? items.length),
     projectCode: normalizeText(result.project_code),
     message: result.message ?? "Programacao em lote salva com sucesso.",
@@ -2483,55 +2421,6 @@ async function resolveInitialProjectWorkCompletionStatus(params: {
   }
 
   return { ok: true, workCompletionStatus: "PARCIAL" } as const;
-}
-
-async function applyProgrammingRedeQtyDecimal(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  programmingIds: string[];
-  redeQty: number;
-  historyAction: "UPDATE" | "BATCH_CREATE";
-  historyReason?: string | null;
-  historyMetadata?: Record<string, unknown> | null;
-}) {
-  if (!hasDecimalFraction(params.redeQty)) {
-    return { ok: true } as const;
-  }
-
-  for (const programmingId of params.programmingIds) {
-    const { data, error } = await params.supabase.rpc("set_project_programming_rede_qty_decimal", {
-      p_tenant_id: params.tenantId,
-      p_actor_user_id: params.actorUserId,
-      p_programming_id: programmingId,
-      p_rede_qty: params.redeQty,
-      p_history_action: params.historyAction,
-      p_history_reason: params.historyReason ?? null,
-      p_history_metadata: params.historyMetadata ?? {},
-    });
-
-    if (error) {
-      return {
-        ok: false,
-        status: 500,
-        message: error.message
-          ? `Falha ao salvar REDE decimal da programacao: ${error.message}`
-          : "Falha ao salvar REDE decimal da programacao.",
-      } as const;
-    }
-
-    const result = (data ?? {}) as { success?: boolean; status?: number; message?: string; reason?: string };
-    if (result.success !== true) {
-      return {
-        ok: false,
-        status: Number(result.status ?? 400),
-        message: result.message ?? "Falha ao salvar REDE decimal da programacao.",
-        reason: result.reason ?? null,
-      } as const;
-    }
-  }
-
-  return { ok: true } as const;
 }
 
 async function resolveProgrammingEqCatalog(params: {
@@ -2659,47 +2548,6 @@ async function setProgrammingExecutionResultViaRpc(params: {
       ok: false,
       status: Number(result.status ?? 400),
       message: result.message ?? "Falha ao salvar ETAPA/Estado Trabalho da programacao.",
-    } as const;
-  }
-
-  return { ok: true } as const;
-}
-
-async function setProgrammingEtapaFlagsValue(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  programmingIds: string[];
-  etapaUnica: boolean;
-  etapaFinal: boolean;
-}) {
-  if (!params.programmingIds.length) {
-    return { ok: true } as const;
-  }
-
-  const { error } = await params.supabase
-    .from("project_programming")
-    .update({
-      etapa_unica: params.etapaUnica,
-      etapa_final: params.etapaFinal,
-      updated_by: params.actorUserId,
-    })
-    .eq("tenant_id", params.tenantId)
-    .in("id", params.programmingIds);
-
-  if (error) {
-    if (normalizeText(error.message).toLowerCase().includes("etapa_final")) {
-      return {
-        ok: false,
-        status: 409,
-        message: "Programacao salva, mas o ambiente ainda nao suporta ETAPA FINAL. Aplique a migration 156 e tente novamente.",
-      } as const;
-    }
-
-    return {
-      ok: false,
-      status: 500,
-      message: "Programacao salva, mas houve falha ao salvar os campos ETAPA.",
     } as const;
   }
 
@@ -2884,6 +2732,9 @@ async function copyProgramming(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizeProgrammingAction(resolution, "create");
+  if (authorizationError) return authorizationError;
+
   const payload = (await request.json().catch(() => null)) as CopyProgrammingPayload | null;
   const sourceTeamId = normalizeText(payload?.sourceTeamId);
   const startDate = normalizeIsoDate(payload?.startDate);
@@ -2937,6 +2788,9 @@ async function copyProgrammingToDates(request: NextRequest) {
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
+
+  const authorizationError = await authorizeProgrammingAction(resolution, "create");
+  if (authorizationError) return authorizationError;
 
   const payload = (await request.json().catch(() => null)) as CopyProgrammingToDatesPayload | null;
   const sourceProgrammingId = normalizeText(payload?.sourceProgrammingId);
@@ -3043,6 +2897,9 @@ export async function GET(request: NextRequest) {
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
+
+    const authorizationError = await authorizeProgrammingAction(resolution, "read");
+    if (authorizationError) return authorizationError;
 
     const historyProgrammingId = normalizeText(request.nextUrl.searchParams.get("historyProgrammingId"));
     if (historyProgrammingId) {
@@ -3403,6 +3260,9 @@ async function saveProgrammingBatch(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizeProgrammingAction(resolution, "create");
+  if (authorizationError) return authorizationError;
+
   try {
     const payload = (await request.json().catch(() => null)) as BatchCreateProgrammingPayload | null;
     const projectId = normalizeText(payload?.projectId);
@@ -3714,7 +3574,7 @@ async function saveProgrammingBatch(request: NextRequest) {
         return NextResponse.json(
           {
             message:
-              "Seu ambiente ainda nao suporta o cadastro transacional completo da programacao em lote. Verifique se as RPCs base e wrappers estao atualizadas (migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159).",
+              "Seu ambiente ainda nao suporta REDE decimal transacional no cadastro em lote. Aplique a migration 228 e tente novamente.",
             reason: fullBatchSaveResult.reason,
             detail: fullBatchSaveResult.detail ?? null,
           },
@@ -3734,7 +3594,7 @@ async function saveProgrammingBatch(request: NextRequest) {
         return NextResponse.json(
           {
             message:
-              "Falha ao cadastrar programacao em lote no banco. O ambiente pode estar com RPC full inconsistente. Verifique as migrations 091, 094, 095, 099, 100, 106, 111, 151, 152, 158 e 159.",
+              "Falha ao cadastrar programacao em lote no banco. Verifique as wrappers base e a migration 228.",
             reason: fullBatchSaveResult.reason,
           },
           { status: 409 },
@@ -3749,36 +3609,6 @@ async function saveProgrammingBatch(request: NextRequest) {
         },
         { status: fullBatchSaveResult.status },
       );
-    }
-
-    const redeDecimalResult = await applyProgrammingRedeQtyDecimal({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingIds: fullBatchSaveResult.items.map((item) => item.programmingId),
-      redeQty,
-      historyAction: "BATCH_CREATE",
-      historyMetadata: { source: "programacao-api", mode: "batch", field: "redeQty" },
-    });
-
-    if (!redeDecimalResult.ok) {
-      return NextResponse.json({ message: redeDecimalResult.message }, { status: redeDecimalResult.status });
-    }
-
-    if (!fullBatchSaveResult.flagsEmbedded) {
-      const batchProgrammingIds = fullBatchSaveResult.items.map((item) => item.programmingId);
-      const etapaFlagsResult = await setProgrammingEtapaFlagsValue({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingIds: batchProgrammingIds,
-        etapaUnica,
-        etapaFinal,
-      });
-
-      if (!etapaFlagsResult.ok) {
-        return NextResponse.json({ message: etapaFlagsResult.message }, { status: etapaFlagsResult.status });
-      }
     }
 
     return NextResponse.json({
@@ -3805,6 +3635,9 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
+
+  const authorizationError = await authorizeProgrammingAction(resolution, method === "POST" ? "create" : "update");
+  if (authorizationError) return authorizationError;
 
   const payload = (await request.json().catch(() => null)) as SaveProgrammingPayload | null;
   const programmingId = normalizeText(payload?.id);
@@ -4225,7 +4058,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Seu ambiente ainda nao suporta o salvamento transacional completo da programacao. Aplique as migrations 091, 094, 095, 100, 106, 111, 151 e 152 e tente novamente.",
+            "Seu ambiente ainda nao suporta REDE decimal transacional na Programacao. Aplique a migration 228 e tente novamente.",
           reason: fullSaveResult.reason,
           detail: fullSaveResult.detail ?? null,
         },
@@ -4241,7 +4074,7 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json(
         {
           message:
-            "Falha ao salvar programacao no banco. O ambiente pode estar com a RPC full desatualizada. Aplique as migrations 091, 094, 095, 100, 106, 111, 151 e 152 e tente novamente.",
+            "Falha ao salvar programacao no banco. Verifique as wrappers base e a migration 228.",
           reason: fullSaveResult.reason,
         },
         { status: 409 },
@@ -4258,21 +4091,6 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
-  const redeDecimalResult = await applyProgrammingRedeQtyDecimal({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    actorUserId: resolution.appUser.id,
-    programmingIds: [fullSaveResult.programmingId],
-    redeQty: redeQty ?? 0,
-    historyAction: "UPDATE",
-    historyReason: isPotentialReschedule ? changeReason : null,
-    historyMetadata: { source: "programacao-api", field: "redeQty" },
-  });
-
-  if (!redeDecimalResult.ok) {
-    return NextResponse.json({ message: redeDecimalResult.message }, { status: redeDecimalResult.status });
-  }
-
   const saveResult = {
     ok: true,
     action: fullSaveResult.action,
@@ -4283,21 +4101,6 @@ async function saveProgramming(request: NextRequest, method: "POST" | "PUT") {
   } as const;
 
   const persistedProgrammingId = saveResult.programmingId;
-
-  if (!fullSaveResult.flagsEmbedded) {
-    const etapaFlagsResult = await setProgrammingEtapaFlagsValue({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingIds: [persistedProgrammingId],
-      etapaUnica,
-      etapaFinal,
-    });
-
-    if (!etapaFlagsResult.ok) {
-      return NextResponse.json({ message: etapaFlagsResult.message }, { status: etapaFlagsResult.status });
-    }
-  }
 
   if (method === "PUT" && !electricalField) {
     const { error: clearElectricalFieldError } = await resolution.supabase
@@ -4393,6 +4196,9 @@ async function saveProgrammingWorkCompletionStatus(request: NextRequest, payload
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizeProgrammingAction(resolution, "update");
+  if (authorizationError) return authorizationError;
+
   const programmingId = normalizeText(payload.id);
   const expectedUpdatedAt = normalizeText(payload.expectedUpdatedAt) || null;
   const workCompletionStatus = normalizeWorkCompletionStatus(payload.workCompletionStatus);
@@ -4417,150 +4223,81 @@ async function saveProgrammingWorkCompletionStatus(request: NextRequest, payload
     );
   }
 
-  const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    workCompletionStatus,
+  const rpcName = "save_project_programming_work_completion_status_full";
+  const { data, error } = await resolution.supabase.rpc(rpcName, {
+    p_tenant_id: resolution.appUser.tenant_id,
+    p_actor_user_id: resolution.appUser.id,
+    p_programming_id: programmingId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_work_completion_status: workCompletionStatus,
+    p_reason: reason,
   });
 
-  if (!selectedWorkCompletionStatus) {
-    return NextResponse.json({ message: "Estado Trabalho invalido para o tenant atual." }, { status: 400 });
-  }
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) {
+      return NextResponse.json(
+        {
+          message: "Seu ambiente ainda nao suporta o salvamento transacional do Estado Trabalho. Aplique a migration 229.",
+          reason: "WORK_COMPLETION_STATUS_RPC_NOT_AVAILABLE",
+        },
+        { status: 409 },
+      );
+    }
 
-  const currentProgramming = await fetchProgrammingById(
-    resolution.supabase,
-    resolution.appUser.tenant_id,
-    programmingId,
-  );
-
-  if (!currentProgramming) {
-    return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
-  }
-
-  if (normalizeText(currentProgramming.updated_at) !== expectedUpdatedAt) {
     return NextResponse.json(
       {
-        error: "conflict",
-        reason: "CONCURRENT_MODIFICATION",
-        message: "Esta programacao foi alterada por outro usuario. Recarregue a grade antes de salvar novamente.",
-        currentRecord: {
-          id: currentProgramming.id,
-          projectId: currentProgramming.project_id,
-          teamId: currentProgramming.team_id,
-          status: currentProgramming.status,
-          executionDate: currentProgramming.execution_date,
-          startTime: formatTime(currentProgramming.start_time),
-          endTime: formatTime(currentProgramming.end_time),
-          updatedAt: currentProgramming.updated_at,
-        },
-        currentUpdatedAt: currentProgramming.updated_at,
-        changedFields: ["updatedAt"],
+        message: error.message
+          ? `Falha ao salvar Estado Trabalho: ${error.message}`
+          : "Falha ao salvar Estado Trabalho.",
       },
-      { status: 409 },
-    );
-  }
-
-  const previousWorkCompletionStatus = normalizeWorkCompletionStatus(currentProgramming.work_completion_status);
-
-  if (previousWorkCompletionStatus === workCompletionStatus) {
-    const schedule = await fetchProgrammingResponseItem(
-      resolution.supabase,
-      resolution.appUser.tenant_id,
-      programmingId,
-    );
-
-    return NextResponse.json({
-      success: true,
-      id: programmingId,
-      updatedAt: currentProgramming.updated_at,
-      schedule,
-      message: "Estado Trabalho ja estava salvo com o valor selecionado.",
-    });
-  }
-
-  const { data: updatedProgramming, error: updateError } = await resolution.supabase
-    .from("project_programming")
-    .update({
-      work_completion_status: workCompletionStatus,
-      updated_by: resolution.appUser.id,
-    })
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("id", programmingId)
-    .eq("updated_at", expectedUpdatedAt)
-    .select("id, updated_at")
-    .maybeSingle<{ id: string; updated_at: string }>();
-
-  if (updateError) {
-    return NextResponse.json(
-      { message: updateError.message ? `Falha ao salvar Estado Trabalho: ${updateError.message}` : "Falha ao salvar Estado Trabalho." },
       { status: 500 },
     );
   }
 
-  if (!updatedProgramming) {
+  const result = (data ?? {}) as WorkCompletionStatusRpcResult;
+  if (result.success !== true) {
+    const status = Number(result.status ?? 400);
+    if (status === 409) {
+      return NextResponse.json(
+        {
+          error: "conflict",
+          reason: result.reason ?? "CONCURRENT_MODIFICATION",
+          message: result.message ?? "Esta programacao foi alterada por outro usuario.",
+          currentRecord: result.currentRecord ?? null,
+          currentUpdatedAt: result.currentUpdatedAt ?? null,
+          updatedBy: result.updatedBy ?? null,
+          changedFields: result.changedFields ?? ["updatedAt", "workCompletionStatus"],
+        },
+        { status },
+      );
+    }
+
     return NextResponse.json(
       {
-        error: "conflict",
-        reason: "CONCURRENT_MODIFICATION",
-        message: "Esta programacao foi alterada por outro usuario. Recarregue a grade antes de salvar novamente.",
+        message: result.message ?? "Falha ao salvar Estado Trabalho.",
+        reason: result.reason ?? null,
+        detail: result.detail ?? null,
       },
-      { status: 409 },
+      { status },
     );
   }
-
-  const { data: historyResult, error: historyError } = await resolution.supabase.rpc(
-    "append_project_programming_history_record",
-    {
-      p_tenant_id: resolution.appUser.tenant_id,
-      p_actor_user_id: resolution.appUser.id,
-      p_programming_id: programmingId,
-      p_project_id: currentProgramming.project_id,
-      p_team_id: currentProgramming.team_id,
-      p_related_programming_id: null,
-      p_action_type: "UPDATE",
-      p_reason: reason,
-      p_changes: {
-        workCompletionStatus: {
-          from: previousWorkCompletionStatus,
-          to: workCompletionStatus,
-        },
-      },
-      p_metadata: {
-        action: "SAVE_WORK_COMPLETION_STATUS_FROM_COMPLETED_MODAL",
-      },
-      p_from_status: currentProgramming.status,
-      p_to_status: currentProgramming.status,
-      p_from_execution_date: currentProgramming.execution_date,
-      p_to_execution_date: currentProgramming.execution_date,
-      p_from_team_id: currentProgramming.team_id,
-      p_to_team_id: currentProgramming.team_id,
-      p_from_start_time: currentProgramming.start_time,
-      p_to_start_time: currentProgramming.start_time,
-      p_from_end_time: currentProgramming.end_time,
-      p_to_end_time: currentProgramming.end_time,
-      p_from_etapa_number: currentProgramming.etapa_number,
-      p_to_etapa_number: currentProgramming.etapa_number,
-    },
-  );
-
-  const parsedHistoryResult = (historyResult ?? {}) as { success?: boolean; message?: string };
-  const warning = historyError || parsedHistoryResult.success === false
-    ? "Estado Trabalho salvo, mas houve falha ao registrar o historico operacional."
-    : null;
 
   const schedule = await fetchProgrammingResponseItem(
     resolution.supabase,
     resolution.appUser.tenant_id,
     programmingId,
   );
+  const warning = !schedule
+    ? "Estado Trabalho salvo com sucesso, mas houve falha ao atualizar a visualizacao."
+    : null;
 
   return NextResponse.json({
     success: true,
     id: programmingId,
-    updatedAt: updatedProgramming.updated_at,
+    updatedAt: normalizeText(result.updated_at),
     schedule,
     warning,
-    message: warning ? `Estado Trabalho salvo com sucesso. ${warning}` : "Estado Trabalho salvo com sucesso.",
+    message: warning ? `${result.message ?? "Estado Trabalho salvo com sucesso."} ${warning}` : result.message,
   });
 }
 
@@ -4580,6 +4317,10 @@ export async function PATCH(request: NextRequest) {
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
+
+  const pageAction: PageAction = normalizedAction === "ADIAR" ? "update" : "cancel";
+  const authorizationError = await authorizeProgrammingAction(resolution, pageAction);
+  if (authorizationError) return authorizationError;
 
   const programmingId = normalizeText(payload?.id);
   const action = normalizeText(payload?.action).toUpperCase() === "ADIAR" ? "ADIADA" : "CANCELADA";
