@@ -1656,3 +1656,16 @@ Atualizacao 2026-06-13 - Etapa 6 de concorrencia da agenda
   - Confirmar que o preflight nao encontra sobreposicoes ativas.
   - Executar duas transacoes simultaneas para a mesma equipe/data e confirmar que apenas
     uma janela sobreposta e gravada.
+
+Atualizacao 2026-06-13 - fiscalizacao cruzada com Projetos
+-----------------------------------------------------------
+- Migration:
+  - `supabase/migrations/233_harden_projects_programming_cross_flow.sql`
+- Comportamento antes:
+  - validacao de Projeto ativo e inativacao do Projeto nao compartilhavam lock;
+  - inativacao e nova Programacao simultaneas podiam passar nas consultas.
+- Comportamento depois:
+  - Programacao operacional adquire lock por tenant + projeto e revalida o Projeto;
+  - inativacao usa o mesmo lock e revalida `PROGRAMADA`, `REPROGRAMADA` e `ADIADA`;
+  - escrita direta de authenticated nas tabelas/RPCs cobertas foi removida;
+  - nenhuma policy RLS ou permissao de `DELETE` foi criada.

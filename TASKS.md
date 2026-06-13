@@ -917,6 +917,10 @@
 - [ ] [P0][Multi-tenant] Revogar INSERT/UPDATE direto de authenticated nas tabelas operacionais criticas e migrar escrita para RPC/API autorizada.
 - [x] [P0][Multi-tenant] Adicionar chaves/FKs compostas nas relacoes de Programacao, com preflight de dados legados, validacao das constraints e testes negativos de INSERT/UPDATE (migration 231).
 - [x] [P0][Programacao][Concorrencia] Serializar insercoes por `tenant + equipe + data` com advisory transaction lock e trigger transacional (migration 232).
+- [x] [P0][Projetos/Programacao][Concorrencia] Serializar inativacao de Projeto e gravacao de Programacao por `tenant + projeto` (migration 233).
+- [x] [P0][Projetos][Autorizacao] Aplicar page/action guard nas rotas Next e imports XLSX.
+- [x] [P0][Projetos/Programacao][Escrita] Remover escrita e EXECUTE diretos de authenticated no escopo das duas telas (migration 233).
+- [x] [P0][Projetos][Multi-tenant] Aplicar FKs compostas nos historicos e previstos (migration 233).
 - [ ] [P1][Operacional] Criar infraestrutura generica de idempotencia para POST/PUT/PATCH criticos e registrar resposta de retries.
 - [ ] [P1][Edge Functions] Tornar importacoes XLSX atomicas por arquivo ou documentar/retornar parcial por projeto sem erro ambiguo apos commit.
 - [ ] [P1][Edge Functions] Extrair `_shared` de auth, CORS, tenant ativo, XLSX e validacao para as importacoes de materiais/atividades previstas.

@@ -546,3 +546,10 @@ Observacao
 - Impede corrida entre gravacoes concorrentes e bloqueia sobreposicao de intervalos ativos.
 - Preserva o contrato 409 / TEAM_TIME_CONFLICT com dados do registro conflitante.
 - Inclui preflight de sobreposicoes e nao cria ou altera policy RLS de `DELETE`.
+
+233_harden_projects_programming_cross_flow.sql
+- Serializa inativacao de Projeto e gravacao de Programacao pelo mesmo lock por tenant + projeto.
+- Impede Projeto inativo com Programacao `PROGRAMADA`, `REPROGRAMADA` ou `ADIADA`.
+- Remove INSERT/UPDATE e EXECUTE diretos de authenticated no escopo auditado.
+- Adiciona FKs compostas por tenant aos historicos e previstos de Projeto.
+- Nao cria policy RLS nem permissao de `DELETE`.

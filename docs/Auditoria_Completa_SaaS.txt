@@ -52,6 +52,17 @@ Correcao de concorrencia concluida na Etapa 6:
 - O preflight impede deploy sobre dados ativos ja sobrepostos.
 - Nenhuma policy RLS ou permissao `DELETE` foi criada ou alterada.
 
+Fiscalizacao cruzada Projetos + Programacao:
+- A migration 233 compartilha lock por tenant + projeto entre inativacao do Projeto e
+  criacao/alteracao de Programacao.
+- O banco impede Programacao operacional em Projeto inativo e impede inativacao enquanto
+  existir status `PROGRAMADA`, `REPROGRAMADA` ou `ADIADA`.
+- Rotas Next e imports XLSX de Projetos validam page/action no servidor.
+- Escrita direta e EXECUTE de authenticated foram removidos no escopo das duas telas.
+- Historicos e previstos de Projeto passaram a usar FKs compostas por tenant.
+- O fallback da RPC de Projeto nao repete save depois de erro real.
+- Detalhes em `docs/Auditoria_Projetos_Programacao_Integridade_2026-06.txt`.
+
 Estado das tabelas:
 - A Programacao nao precisa de nova tabela funcional especifica.
 - Recomenda-se tabela generica de idempotencia e auditoria de tentativas.

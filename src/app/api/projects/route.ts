@@ -8,6 +8,7 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
+import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 
 type ProjectRow = {
   id: string;
@@ -297,6 +298,32 @@ function isMissingWorkCompletionStatusIdColumnError(message: string) {
       || normalized.includes("schema cache")
     )
   );
+}
+
+function isMissingRpcSignatureError(message: string, functionName: string) {
+  const normalized = normalizeText(message).toLowerCase();
+  return normalized.includes(functionName.toLowerCase())
+    && (
+      normalized.includes("does not exist")
+      || normalized.includes("could not find")
+      || normalized.includes("schema cache")
+      || normalized.includes("pgrst202")
+    );
+}
+
+function parseStructuredDatabaseError(message: string) {
+  const normalized = normalizeText(message);
+  if (!normalized.startsWith("{")) return null;
+
+  try {
+    return JSON.parse(normalized) as {
+      status?: number;
+      reason?: string;
+      message?: string;
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function fetchCompletedProgrammingProjectIdsCompat(params: {
@@ -1277,7 +1304,7 @@ async function saveProjectViaRpc(params: {
     params.supabase.rpc("save_project_record", payload);
 
   let { data, error } = await executeSaveProjectRpc(rpcPayload);
-  if (error) {
+  if (error && isMissingRpcSignatureError(error.message, "save_project_record")) {
     const withoutWithdrawnPayload = Object.fromEntries(
       Object.entries(rpcPayload).filter(([key]) => key !== "p_is_withdrawn"),
     );
@@ -1353,7 +1380,13 @@ async function setProjectStatusViaRpc(params: {
   });
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao atualizar status do projeto." } as const;
+    const structuredError = parseStructuredDatabaseError(error.message);
+    return {
+      ok: false,
+      status: Number(structuredError?.status ?? 500),
+      message: structuredError?.message ?? "Falha ao atualizar status do projeto.",
+      reason: structuredError?.reason ?? null,
+    } as const;
   }
 
   const result = (data ?? {}) as ProjectSaveRpcResult;
@@ -1378,6 +1411,9 @@ export async function GET(request: NextRequest) {
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
+
+    const authorizationError = await authorizeProjectsAction(resolution, "read");
+    if (authorizationError) return authorizationError;
 
     const { supabase, appUser } = resolution;
     const params = request.nextUrl.searchParams;
@@ -1578,6 +1614,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const authorizationError = await authorizeProjectsAction(resolution, "create");
+    if (authorizationError) return authorizationError;
+
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as Partial<CreateProjectPayload>;
     const input = parseProjectInput(body);
@@ -1624,6 +1663,9 @@ export async function PUT(request: NextRequest) {
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
+
+    const authorizationError = await authorizeProjectsAction(resolution, "update");
+    if (authorizationError) return authorizationError;
 
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as Partial<UpdateProjectPayload>;
@@ -1711,6 +1753,12 @@ export async function PATCH(request: NextRequest) {
     const reason = normalizeText(body.reason);
     const action = normalizeText(body.action).toUpperCase() === "ACTIVATE" ? "ACTIVATE" : "CANCEL";
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
+
+    const authorizationError = await authorizeProjectsAction(
+      resolution,
+      action === "ACTIVATE" ? "update" : "cancel",
+    );
+    if (authorizationError) return authorizationError;
 
     if (!projectId) {
       return NextResponse.json({ message: "Projeto invalido para atualizar status." }, { status: 400 });

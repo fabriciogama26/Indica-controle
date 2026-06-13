@@ -611,3 +611,26 @@ Atualizacao adicional 2026-06
   - Antes: a API substituia apenas virgula por ponto, fazendo `22.035,33` virar valor invalido.
   - Depois: a API aceita `22.035,33`, `22.03533`, `22035,33` e `22035.33`, normalizando para `22035.33` antes de persistir.
   - Depois: o banco permanece sem alteracao de schema, mantendo `project.estimated_value` como `numeric(14,2)` por tenant.
+
+Atualizacao 2026-06 - fiscalizacao cruzada com Programacao
+-----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/server/modules/projects/authorization.ts`
+  - rotas `src/app/api/projects`
+  - `supabase/edge_functions/_shared/page_authorization.ts`
+  - Edge Functions de importacao de previstos
+  - `supabase/migrations/233_harden_projects_programming_cross_flow.sql`
+- Comportamento antes:
+  - Projeto podia ser inativado enquanto outra transacao criava Programacao;
+  - RPCs/tabelas criticas aceitavam chamada direta de authenticated;
+  - rotas auxiliares e imports nao validavam page key `projetos`;
+  - fallback de assinatura podia repetir chamada depois de erro real.
+- Comportamento depois:
+  - Projeto e Programacao compartilham lock por tenant + projeto;
+  - Projeto inativo nao recebe agenda e Projeto com agenda pendente nao e inativado;
+  - `PROGRAMADA`, `REPROGRAMADA` e `ADIADA` seguem a mesma regra;
+  - historicos e previstos usam FK composta com tenant;
+  - APIs e imports validam page/action server-side;
+  - escrita direta de authenticated foi removida no escopo auditado;
+  - fallback ocorre apenas quando a assinatura da RPC estiver ausente.
+- Nenhuma policy RLS ou permissao de `DELETE` foi criada.

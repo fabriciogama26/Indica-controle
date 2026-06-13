@@ -4,6 +4,7 @@
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
+import { requirePageAccess } from '../_shared/page_authorization.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -198,12 +199,17 @@ serve(async (req) => {
 
   const { data: appUser, error: appUserError } = await supabase
     .from('app_users')
-    .select('id, tenant_id, ativo')
+    .select('id, tenant_id, ativo, role_id')
     .eq('auth_user_id', authData.user.id)
     .maybeSingle()
 
   if (appUserError || !appUser?.tenant_id || appUser.ativo === false) {
     return respond(403, { success: false, message: 'Usuario sem permissao para importar materiais previstos.' })
+  }
+
+  const pageAuthorization = await requirePageAccess(supabase, appUser, 'projetos', 'import')
+  if (!pageAuthorization.allowed) {
+    return respond(pageAuthorization.status, { success: false, message: pageAuthorization.message })
   }
 
   const formData = await req.formData().catch(() => null)

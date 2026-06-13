@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 
 type ProjectRow = {
   id: string;
@@ -123,6 +124,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizeProjectsAction(resolution, "read");
+  if (authorizationError) return authorizationError;
+
   const projectId = normalizeText(request.nextUrl.searchParams.get("projectId"));
   if (!projectId) {
     return NextResponse.json({ message: "projectId obrigatorio." }, { status: 400 });
@@ -176,6 +180,9 @@ export async function POST(request: NextRequest) {
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
+
+    const authorizationError = await authorizeProjectsAction(resolution, "create");
+    if (authorizationError) return authorizationError;
 
     const payload = (await request.json().catch(() => null)) as {
       projectId?: string;
@@ -236,6 +243,9 @@ export async function PUT(request: NextRequest) {
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
+
+    const authorizationError = await authorizeProjectsAction(resolution, "update");
+    if (authorizationError) return authorizationError;
 
     const payload = (await request.json().catch(() => null)) as {
       projectId?: string;

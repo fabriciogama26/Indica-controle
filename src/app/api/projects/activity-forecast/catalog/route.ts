@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 
 type CatalogRow = {
   id: string;
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest) {
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
+
+    const authorizationError = await authorizeProjectsAction(resolution, "read");
+    if (authorizationError) return authorizationError;
 
     const query = normalizeText(request.nextUrl.searchParams.get("q"));
     if (query.length < 2) {
