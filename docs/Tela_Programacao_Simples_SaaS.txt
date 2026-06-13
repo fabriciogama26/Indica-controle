@@ -1408,3 +1408,251 @@ Atualizacao 2026-06-10 (diagnostico de falha no salvamento)
 - Multi-tenant:
   - A API continua obtendo `tenant_id` e `actor_user_id` da sessao autenticada.
   - A migration altera somente o tratamento de excecao das wrappers existentes e preserva todos os filtros por tenant.
+Atualizacao 2026-06-13 - auditoria de integridade
+-------------------------------------------------
+- Auditoria detalhada criada em:
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+- Pontos aprovados:
+  - tabelas funcionais suficientes;
+  - save individual/lote e copias baseados em RPC;
+  - concorrencia de edicao por `expectedUpdatedAt`;
+  - historico principal dentro das RPCs full;
+  - `useErrorLogger("programacao_simples")`;
+  - nenhum horario sobreposto encontrado nos 285 registros ativos consultados.
+- Lacunas prioritarias:
+  - autorizacao server-side aplicada em `/api/programacao`, mas ainda sem concessao
+    persistida independente por acao porque a matriz atual possui apenas `can_access`;
+  - REDE decimal passou a ser gravada dentro da wrapper transacional pela migration 228;
+  - Estado Trabalho e historico passaram para a RPC transacional da migration 229;
+  - ausencia de idempotency key;
+  - corrida de insercao por equipe/data corrigida pela migration 232 com advisory lock;
+  - EXECUTE direto de authenticated na RPC da migration 217 foi removido pela
+    migration 230;
+  - FKs compostas com tenant foram aplicadas pela migration 231;
+  - `project_programming_activities` estava sem registros no runtime consultado.
+- Nao houve mudanca funcional nesta atualizacao.
+
+Atualizacao 2026-06-13 - Etapa 1 de autorizacao server-side
+------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/lib/server/pageAuthorization.ts`
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+  - `docs/Auditoria_Completa_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `requirePageAction`: novo helper central que valida pagina e acao com escopo de
+    tenant, usuario e role obtido da sessao autenticada.
+  - `authorizeProgrammingAction`: adapta a negacao do helper para a resposta HTTP da
+    Programacao.
+  - `PROGRAMMING_PAGE_KEY`: fixa a chave `programacao-simples` no servidor.
+  - Handlers protegidos:
+    - `GET`: `read`;
+    - cadastro individual, lote e copias: `create`;
+    - `PUT`, adiamento e Estado Trabalho: `update`;
+    - cancelamento: `cancel`.
+- Comportamento antes/depois:
+  - Antes: usuario autenticado e ativo podia chamar `/api/programacao` diretamente sem
+    que a rota verificasse a permissao da pagina.
+  - Depois: o guard executa antes de qualquer SELECT/RPC de negocio; negacao retorna
+    `403` e falha na consulta da matriz retorna `500`, sem liberar por fallback.
+  - Permissao individual explicita prevalece; quando ausente, o helper consulta a
+    permissao do role. O bypass administrativo existente foi preservado.
+- Limitacao conhecida:
+  - `app_user_page_permissions` e `role_page_permissions` persistem apenas `can_access`.
+  - As acoes sao distinguidas no servidor e na resposta de erro, mas ainda compartilham
+    a mesma concessao da pagina.
+  - A granularidade real por acao exige migration, backfill, ajuste da tela Permissoes e
+    testes antes de ativacao.
+- Multi-tenant e RLS:
+  - `tenant_id`, usuario e role continuam derivados exclusivamente da sessao.
+  - Nenhuma migration, grant ou policy RLS foi criada ou alterada nesta etapa.
+  - Nenhuma tabela recebeu policy ou permissao RLS de `DELETE`.
+- Validacao:
+  - `npx eslint src/lib/server/pageAuthorization.ts src/app/api/programacao/route.ts`
+  - `npx tsc --noEmit`
+
+Atualizacao 2026-06-13 - Etapa 2 de integridade da REDE decimal
+----------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/228_make_programming_rede_decimal_transactional.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+  - `docs/Auditoria_Completa_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `saveProgrammingFullViaRpc`: chama exclusivamente a wrapper decimal individual e
+    envia `redeQty` sem truncar.
+  - `saveProgrammingBatchFullViaRpc`: chama exclusivamente a wrapper decimal de lote e
+    envia `redeQty` sem truncar.
+  - `applyProgrammingRedeQtyDecimal`: removida; nao existe mais ajuste de REDE depois da
+    resposta da RPC principal.
+  - `setProgrammingEtapaFlagsValue`: removida do fluxo porque as flags ja fazem parte da
+    wrapper obrigatoria; nao ha fallback pos-save.
+  - `save_project_programming_full_decimal_with_electrical_and_eq`: nova wrapper que
+    recebe `numeric`, executa a base existente, aplica o decimal e retorna o
+    `updated_at` final na mesma transacao.
+  - `save_project_programming_batch_full_decimal_with_electrical_and_eq`: nova wrapper
+    que aplica o decimal a todas as programacoes e faz rollback total se qualquer item
+    ou historico falhar.
+- Comportamento antes/depois:
+  - Antes: a RPC principal recebia a parte inteira; a API corrigia o decimal em chamada
+    posterior, podendo salvar valor truncado e responder erro.
+  - Depois: cadastro, edicao e lote concluem somente quando o valor decimal final e seu
+    historico foram gravados na mesma transacao.
+  - Antes: ambiente sem wrapper atual podia tentar fallback de assinatura e concluir
+    campos complementares depois do save.
+  - Depois: ausencia da migration 228 retorna `409` sem executar fallback parcial.
+- Multi-tenant, seguranca e RLS:
+  - tenant e ator continuam derivados da sessao autenticada pela API.
+  - As wrappers filtram e encaminham `tenant_id` para todas as operacoes existentes.
+  - EXECUTE esta revogado de `PUBLIC`, `anon` e `authenticated`; somente `service_role`
+    pode executar as novas wrappers.
+  - Nenhuma policy RLS foi criada ou alterada.
+  - Nenhuma tabela recebeu policy ou permissao RLS de `DELETE`.
+- Validacao:
+  - `npx eslint src/app/api/programacao/route.ts`
+  - `npx tsc --noEmit`
+  - Aplicar a migration 228 somente no projeto Supabase correto e testar valor decimal
+    individual e lote com falha forcada para confirmar rollback integral.
+
+Atualizacao 2026-06-13 - Etapa 3 de Estado Trabalho transacional
+-----------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/229_save_programming_work_completion_status_transactional.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+  - `docs/Auditoria_Completa_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `saveProgrammingWorkCompletionStatus`: deixa de atualizar
+    `project_programming` diretamente e de registrar historico em uma chamada posterior.
+  - `WorkCompletionStatusRpcResult`: contrato do retorno transacional, incluindo conflito
+    estruturado.
+  - `save_project_programming_work_completion_status_full`: nova RPC que valida catalogo,
+    bloqueia a linha, verifica versao, atualiza Estado Trabalho e registra historico.
+- Comportamento antes/depois:
+  - Antes: o Estado Trabalho podia ser salvo e o historico falhar depois, deixando a API
+    responder sucesso com aviso para uma lacuna de auditoria essencial.
+  - Depois: update, sincronizacoes do trigger e historico principal concluem ou fazem
+    rollback juntos.
+  - Antes: a API consultava a linha e depois tentava `UPDATE ... WHERE updated_at`,
+    exigindo montagem parcial do conflito fora da operacao.
+  - Depois: a RPC usa `FOR UPDATE`, valida `expectedUpdatedAt` e retorna `409` com registro
+    atual, versao, autor e campos alterados.
+  - Antes: falha de historico era tratada como efeito colateral.
+  - Depois: somente o refresh visual e efeito pos-commit; sua falha retorna sucesso com
+    aviso.
+- Multi-tenant, seguranca e RLS:
+  - tenant e ator continuam derivados da sessao autenticada pela API.
+  - A RPC filtra programacao, catalogo e autor pelo tenant recebido da camada server-side.
+  - EXECUTE esta revogado de `PUBLIC`, `anon` e `authenticated`; somente `service_role`
+    pode executar a RPC.
+  - Nenhuma policy RLS foi criada ou alterada.
+  - Nenhuma tabela recebeu policy ou permissao RLS de `DELETE`.
+- Validacao:
+  - `npx eslint src/app/api/programacao/route.ts`
+  - `npx tsc --noEmit`
+  - Aplicar a migration 229 somente no projeto Supabase correto.
+  - Testar sucesso, valor repetido, catalogo invalido, versao stale e falha forcada no
+    historico para confirmar rollback.
+
+Atualizacao 2026-06-13 - Etapa 4 de restricao da RPC de copia
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/230_restrict_copy_programming_to_dates_execute.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+  - `docs/Auditoria_Completa_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `copy_project_programming_to_dates`: mantem o comportamento transacional existente,
+    mas deixa de ser executavel diretamente por clientes `authenticated`.
+- Comportamento antes/depois:
+  - Antes: a migration 217 concedia EXECUTE a `authenticated`; como a RPC recebe tenant e
+    ator por parametro e nao valida `auth.uid()`, ela podia contornar o guard da API.
+  - Depois: `PUBLIC`, `anon` e `authenticated` nao possuem EXECUTE; somente a API com
+    `service_role`, apos autenticar e autorizar `programacao-simples/create`, pode chamar
+    a RPC.
+  - A migration valida os privilegios efetivos e falha se a restricao nao estiver ativa.
+- Multi-tenant, seguranca e RLS:
+  - tenant e ator permanecem derivados da sessao autenticada na API.
+  - O `search_path` da RPC foi fixado em `public, pg_temp`.
+  - Nenhuma policy RLS foi criada ou alterada.
+  - Nenhuma tabela recebeu policy ou permissao RLS de `DELETE`.
+- Validacao:
+  - Aplicar a migration 230 somente no projeto Supabase correto.
+  - Confirmar que a copia por datas funciona pela API.
+  - Confirmar que chamadas RPC diretas com `anon` e `authenticated` recebem negacao de
+    permissao.
+
+Atualizacao 2026-06-13 - Etapa 5 de FKs compostas por tenant
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/231_enforce_programming_composite_tenant_fks.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+  - `docs/Auditoria_Completa_SaaS.txt`
+  - `TASKS.md`
+- Tabelas e constraints tocadas:
+  - `project_programming`: Projeto, Equipe, Apoio, N EQ, origem e lote de copia.
+  - `project_programming_activities`: Programacao e Atividade.
+  - `project_programming_copy_batches` e `project_programming_copy_batch_items`.
+  - `project_programming_history`: Programacao, Projeto e Equipes relacionadas.
+  - `project_measurement_orders.programming_id`.
+- Comportamento antes/depois:
+  - Antes: a linha filha podia informar seu proprio tenant e referenciar por UUID uma
+    entidade pertencente a outro tenant.
+  - Depois: tenant e UUID fazem parte da mesma FK, bloqueando INSERT e UPDATE cruzados no
+    banco mesmo fora da API.
+  - Dados legados inconsistentes nao sao corrigidos silenciosamente; a migration falha
+    com a lista de relacoes afetadas para permitir remediacao controlada.
+- Multi-tenant, seguranca e RLS:
+  - A migration valida as 22 FKs compostas antes do commit.
+  - Testes negativos de INSERT/UPDATE sao executados quando existem registros de tenants
+    distintos suficientes para montar o cenario.
+  - Nenhuma policy RLS foi criada ou alterada.
+  - Nenhuma tabela recebeu policy ou permissao RLS de `DELETE`.
+- Validacao:
+  - Aplicar a migration 231 somente no projeto Supabase correto.
+  - Se o preflight falhar, revisar cada relacao reportada antes de qualquer backfill.
+  - Testar cadastro, edicao, copia, historico e criacao de Medicao pela API.
+
+Atualizacao 2026-06-13 - Etapa 6 de concorrencia da agenda
+-----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/232_serialize_project_programming_schedule_writes.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+  - `docs/Auditoria_Completa_SaaS.txt`
+  - `TASKS.md`
+- Funcao e trigger criados:
+  - `enforce_project_programming_schedule_concurrency`: adquire lock por tenant, equipe e
+    data e valida sobreposicao ativa dentro da transacao.
+  - `trg_00_project_programming_schedule_concurrency`: executa antes de INSERT ou alteracao
+    dos campos que definem a agenda.
+- Comportamento antes/depois:
+  - Antes: duas transacoes podiam passar pelo SELECT de conflito antes de qualquer INSERT.
+  - Depois: gravacoes da mesma equipe/data sao serializadas e a segunda transacao valida
+    o intervalo somente depois da primeira concluir.
+  - Conflito retorna 409 / `TEAM_TIME_CONFLICT` com registro atual e campos conflitantes.
+  - Intervalos adjacentes permanecem permitidos.
+- Multi-tenant, seguranca e RLS:
+  - A chave do lock inclui tenant, equipe e data.
+  - A funcao e SECURITY DEFINER com `search_path = public, pg_temp`.
+  - `authenticated` nao possui EXECUTE direto na funcao.
+  - Nenhuma policy RLS foi criada ou alterada.
+  - Nenhuma tabela recebeu policy ou permissao RLS de `DELETE`.
+- Validacao:
+  - Aplicar a migration 232 somente no projeto Supabase correto.
+  - Confirmar que o preflight nao encontra sobreposicoes ativas.
+  - Executar duas transacoes simultaneas para a mesma equipe/data e confirmar que apenas
+    uma janela sobreposta e gravada.
