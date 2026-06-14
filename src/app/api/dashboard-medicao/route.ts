@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { requirePageAction } from "@/lib/server/pageAuthorization";
+
+const DASHBOARD_MEASUREMENT_PAGE_KEY = "dashboard-medicao";
 
 type MeasurementOrderRow = {
   id: string;
@@ -433,6 +436,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorization = await requirePageAction({
+    context: resolution,
+    pageKey: DASHBOARD_MEASUREMENT_PAGE_KEY,
+    action: "read",
+  });
+  if (!authorization.allowed) {
+    return NextResponse.json(
+      {
+        message: authorization.error.message,
+        code: authorization.error.code,
+        pageKey: authorization.pageKey,
+        action: authorization.action,
+      },
+      { status: authorization.error.status },
+    );
+  }
+
   const tenantId = resolution.appUser.tenant_id;
   const selectedCycleStart = normalizeIsoDate(request.nextUrl.searchParams.get("cycleStart"));
   const startDateFilter = normalizeIsoDate(request.nextUrl.searchParams.get("startDate"));
@@ -814,7 +834,6 @@ export async function GET(request: NextRequest) {
   const dailyMetaByTeamType = new Map((targetItemsResult.data ?? []).map((item) => [item.team_type_id, Number(item.daily_value ?? 0)]));
   const cycleMetaValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.cycle_goal ?? 0), 0);
   const standardCycleMetaValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.standard_cycle_goal ?? 0), 0);
-  const workedCycleMetaValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.worked_cycle_goal ?? 0), 0);
   const workdays = Number(selectedCycleRecord?.workdays ?? 0);
   const defaultWorkdays = Number(selectedCycleRecord?.default_workdays ?? selectedCycleRecord?.workdays ?? 0);
   const workedDays = Math.round(Number(selectedCycleRecord?.worked_days ?? 0));
@@ -1344,6 +1363,8 @@ export async function GET(request: NextRequest) {
   const percentage = cycleMetaValue > 0 ? (realizedValue / cycleMetaValue) * 100 : 0;
   const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
   const averageDailyValue = executedWorkdays > 0 ? realizedValue / executedWorkdays : 0;
+  const workedObjectiveValue = teamsProductionRows.reduce((sum, team) => sum + team.workedMetaValue, 0);
+  const objectiveDailyValue = executedWorkdays > 0 ? workedObjectiveValue / executedWorkdays : 0;
   const forecastValue = averageDailyValue * workdays;
   const forecastPercentage = cycleMetaValue > 0 ? (forecastValue / cycleMetaValue) * 100 : 0;
   const forecastDifference = forecastValue - cycleMetaValue;
@@ -1371,6 +1392,8 @@ export async function GET(request: NextRequest) {
       workedDays,
       executedWorkdays,
       averageDailyValue,
+      workedObjectiveValue,
+      objectiveDailyValue,
       forecastValue,
       forecastPercentage,
       forecastDifference,
@@ -1397,7 +1420,7 @@ export async function GET(request: NextRequest) {
       value: realizedValue,
       meta: cycleMetaValue,
       standardMeta: standardCycleMetaValue,
-      workedMeta: workedCycleMetaValue,
+      workedMeta: workedObjectiveValue,
       workdays,
       defaultWorkdays,
       workedDays,
@@ -1407,6 +1430,8 @@ export async function GET(request: NextRequest) {
       averageServiceTicketValue,
       executedWorkdays,
       averageDailyValue,
+      workedObjectiveValue,
+      objectiveDailyValue,
       forecastValue,
       forecastPercentage,
       forecastDifference,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./DashboardMeasurementPageView.module.css";
 
 type Option = {
@@ -34,6 +35,8 @@ type Summary = {
   workedDays: number;
   executedWorkdays: number;
   averageDailyValue: number;
+  workedObjectiveValue: number;
+  objectiveDailyValue: number;
   forecastValue: number;
   forecastPercentage: number;
   forecastDifference: number;
@@ -70,6 +73,8 @@ type CycleComparison = {
   averageServiceTicketValue: number;
   executedWorkdays: number;
   averageDailyValue: number;
+  workedObjectiveValue: number;
+  objectiveDailyValue: number;
   forecastValue: number;
   forecastPercentage: number;
   forecastDifference: number;
@@ -317,6 +322,7 @@ function ExpandIcon() {
 
 export function DashboardMeasurementPageView() {
   const { session } = useAuth();
+  const logError = useErrorLogger("dashboard_medicao");
   const [cycles, setCycles] = useState<CycleOption[]>([]);
   const [projects, setProjects] = useState<Option[]>([]);
   const [teams, setTeams] = useState<Option[]>([]);
@@ -386,6 +392,10 @@ export function DashboardMeasurementPageView() {
       const data = (await response.json().catch(() => ({}))) as DashboardResponse;
 
       if (!response.ok) {
+        await logError("Falha ao carregar Dashboard Medicao", new Error(data.message ?? `HTTP ${response.status}`), {
+          status: response.status,
+          cycleStart: selectedCycleStart || null,
+        });
         setFeedback({ type: "error", message: data.message ?? "Falha ao carregar Dashboard Medicao." });
         return;
       }
@@ -417,12 +427,15 @@ export function DashboardMeasurementPageView() {
       setPeriodEndDraft((current) => current || data.endDate || "");
       setSelectedCycleStart((current) => current || data.selectedCycleStart || "");
       setFeedback(null);
-    } catch {
+    } catch (error) {
+      await logError("Falha ao carregar Dashboard Medicao", error, {
+        cycleStart: selectedCycleStart || null,
+      });
       setFeedback({ type: "error", message: "Falha ao carregar Dashboard Medicao." });
     } finally {
       setIsLoading(false);
     }
-  }, [completionStatus, endDate, foreman, projectSearch, selectedCycleStart, session?.accessToken, startDate, supervisorId, teamId]);
+  }, [completionStatus, endDate, foreman, logError, projectSearch, selectedCycleStart, session?.accessToken, startDate, supervisorId, teamId]);
 
   useEffect(() => {
     void loadDashboard();
@@ -435,6 +448,7 @@ export function DashboardMeasurementPageView() {
   const cycleMax = useMemo(
     () => maxValue([
       cycleComparison?.value ?? 0,
+      cycleComparison?.workedObjectiveValue ?? 0,
       cycleComparison && cycleMetaMode !== "worked" ? resolveCycleForecastValue(cycleComparison, cycleMetaMode) : 0,
       cycleComparison ? resolveCycleMetaValue(cycleComparison, cycleMetaMode) : 0,
     ]),
@@ -794,6 +808,7 @@ export function DashboardMeasurementPageView() {
     const metaValue = resolveCycleMetaValue(cycleComparison, cycleMetaMode);
     const forecastValue = resolveCycleForecastValue(cycleComparison, cycleMetaMode);
     const showForecast = cycleMetaMode !== "worked";
+    const showWorkedObjective = cycleMetaMode !== "worked";
     return (
       <div className={`${styles.dualChart} ${isExpanded ? styles.chartExpanded : ""}`}>
         <div className={styles.verticalBarGroup}>
@@ -803,6 +818,15 @@ export function DashboardMeasurementPageView() {
           </div>
           <strong>Valor</strong>
         </div>
+        {showWorkedObjective ? (
+          <div className={styles.verticalBarGroup}>
+            <div className={styles.valueLabel}>{formatCurrency(cycleComparison.workedObjectiveValue)}</div>
+            <div className={isExpanded ? styles.verticalBarTrackExpanded : styles.verticalBarTrack}>
+              <div className={styles.barPurple} style={{ height: `${Math.max(4, (cycleComparison.workedObjectiveValue / cycleMax) * 100)}%` }} />
+            </div>
+            <strong>Objetivo acumulado</strong>
+          </div>
+        ) : null}
         {showForecast ? (
           <div className={styles.verticalBarGroup}>
             <div className={styles.valueLabel}>{formatCurrency(forecastValue)}</div>
@@ -1298,6 +1322,7 @@ export function DashboardMeasurementPageView() {
                 <th>{metaDayLabels[cycleMetaMode]}</th>
                 {cycleMetaMode !== "worked" ? <th>Dias trabalhados</th> : null}
                 {cycleMetaMode !== "worked" ? <th>Ritmo atual</th> : null}
+                {cycleMetaMode !== "worked" ? <th>Ritmo objetivo</th> : null}
                 {cycleMetaMode !== "worked" ? <th>Dif. prevista</th> : null}
                 <th>%Porcentagem</th>
                 {cycleMetaMode !== "worked" ? <th>%Previsto</th> : null}
@@ -1322,6 +1347,7 @@ export function DashboardMeasurementPageView() {
                     <td>{resolveCycleDays(cycleComparison, cycleMetaMode)}</td>
                     {cycleMetaMode !== "worked" ? <td>{cycleComparison.executedWorkdays}</td> : null}
                     {cycleMetaMode !== "worked" ? <td>{formatCurrency(cycleComparison.averageDailyValue)}/dia</td> : null}
+                    {cycleMetaMode !== "worked" ? <td>{formatCurrency(cycleComparison.objectiveDailyValue)}/dia</td> : null}
                     {cycleMetaMode !== "worked" ? <td className={forecastDifferenceClass}>{formatCurrency(forecastDifference)}</td> : null}
                     <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (cycleComparison.value / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td>
                     {cycleMetaMode !== "worked" ? <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (resolveCycleForecastValue(cycleComparison, cycleMetaMode) / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td> : null}
@@ -1329,7 +1355,7 @@ export function DashboardMeasurementPageView() {
                 );
               })() : (
                 <tr>
-                  <td colSpan={cycleMetaMode === "worked" ? 6 : 11} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
+                  <td colSpan={cycleMetaMode === "worked" ? 6 : 12} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
                 </tr>
               )}
             </tbody>

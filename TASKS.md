@@ -933,3 +933,5 @@
 - [ ] [P2][Programacao] Mover a regra server-side para `src/server/modules/programacao` e reduzir a rota de 4777 linhas.
 - [ ] [P2][Programacao] Continuar a modularizacao do PageView de 2821 linhas sem mover regra critica para o frontend.
 - [ ] [P2][Testes] Adicionar testes de bypass de tenant/permissao, concorrencia simultanea, retry idempotente, lote invalido e falha de historico.
+- [x] Exibir no `Ciclo da medicao` o objetivo acumulado e o `Ritmo objetivo` diario, somando a meta diaria do tipo vigente para cada par unico de equipe + data com medicao valida, respeitando os filtros e o tenant.
+- [x] Aplicar autorizacao server-side `dashboard-medicao/read` no endpoint do dashboard e integrar `useErrorLogger("dashboard_medicao")` na tela.
