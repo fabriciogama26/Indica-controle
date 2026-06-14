@@ -935,3 +935,5 @@
 - [ ] [P2][Testes] Adicionar testes de bypass de tenant/permissao, concorrencia simultanea, retry idempotente, lote invalido e falha de historico.
 - [x] Exibir no `Ciclo da medicao` o objetivo acumulado e o `Ritmo objetivo` diario, somando a meta diaria do tipo vigente para cada par unico de equipe + data com medicao valida, respeitando os filtros e o tenant.
 - [x] Aplicar autorizacao server-side `dashboard-medicao/read` no endpoint do dashboard e integrar `useErrorLogger("dashboard_medicao")` na tela.
+- [x] Refinar o `Ritmo objetivo` para deixar explicito que usa somente equipes/datas com Medicao `COM_PRODUCAO` ativa e nao cancelada, excluindo `SEM_PRODUCAO` e Garantia de faturamento minimo.
+- [x] Mover `Ritmo atual` e `Ritmo objetivo` para cards, remover a barra `Objetivo acumulado` e exibir na tabela somente `Dif. ritmo = Ritmo atual - Ritmo objetivo`.
