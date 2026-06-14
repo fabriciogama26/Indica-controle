@@ -553,3 +553,8 @@ Observacao
 - Remove INSERT/UPDATE e EXECUTE diretos de authenticated no escopo auditado.
 - Adiciona FKs compostas por tenant aos historicos e previstos de Projeto.
 - Nao cria policy RLS nem permissao de `DELETE`.
+
+234_create_dashboard_teams_page.sql
+- Cadastra `dashboard-equipes` em `app_pages`.
+- Preenche somente permissoes ausentes por role e usuario, sem sobrescrever configuracoes existentes.
+- Mantem `viewer` bloqueado por padrao e libera os demais perfis operacionais.

@@ -940,3 +940,13 @@
 - [x] Recalcular `Dias reais` da `Meta ciclo trabalhado` diretamente no Dashboard pelas equipes/datas filtradas, sem depender do `worked_days` persistido ao salvar a tela Meta.
 - [x] Atualizar cards, lista e detalhe da tela Meta com a media atual de dias trabalhados no carregamento, mantendo persistencia somente no salvamento explicito e aplicando autorizacao server-side/log de erros.
 - [x] Adicionar `Ritmo meta` com base em `Valor diario x Equipes medida` do ciclo e exibir na tabela as diferencas do ritmo atual contra o ritmo produtivo e contra o ritmo meta.
+
+- [x] [Dashboard Equipes][Etapa 1] Definir o contrato funcional da nova tela: mover `Equipes no ciclo`, `Encarregados no ciclo`, ranking, bullet, gap financeiro e todo o bloco `Supervisor no ciclo`, mantendo os tres blocos gerais no Dashboard Medicao.
+- [x] [Dashboard Equipes][Etapa 1] Definir o MK/equipe por `team_id` como unidade oficial de meta e registrar que encarregado sera detalhamento de contribuicao dentro do MK, sem rateio da meta oficial.
+- [x] [Dashboard Equipes][Etapa 1] Mapear a lacuna de atribuicao simultanea: a Medicao atual possui somente um `foreman_name_snapshot` por ordem e nao divide uma mesma producao entre varios encarregados.
+- [ ] [Dashboard Equipes][Decisao de dados] Confirmar se cada ordem pertence integralmente a um encarregado ou se sera criada uma estrutura de contribuicoes por ordem com encarregado e valor/percentual.
+- [x] [Dashboard Equipes][Etapa 2] Extrair contratos e calculos compartilhados do Dashboard Medicao para `src/server/modules/team-performance`, com fachada publica e sem duplicar a rota atual.
+- [x] [Dashboard Equipes][Etapa 3] Criar rota, endpoint, modulo visual, permissao `dashboard-equipes/read`, menu, migration 234 e integracao com `useErrorLogger("dashboard_equipes")`.
+- [x] [Dashboard Equipes][Etapa 4] Mover os blocos de equipes, encarregados e supervisores para a nova tela e simplificar o Dashboard Medicao.
+- [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
+- [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.

@@ -347,7 +347,13 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local da `Visao geral por periodo` com botao `Filtrar periodo`, categoria financeira Garantia de faturamento minimo, tabela oficial `Equipes no ciclo`, checkboxes independentes de metas das equipes e encarregados, filtros locais de semana dos blocos `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, linha de total nas tabelas de status, contagem de projetos nas tabelas, modal de projetos por categoria/equipe/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: carregar medicoes, montar ciclos 21 a 20, montar semanas sequenciais do ciclo, aplicar filtro digitavel de projeto por SOB, aplicar filtro por supervisor via `teams.supervisor_person_id`, calcular Concluidos x Parciais x Parcial planejado beneficio atingido x Pendencias do ciclo e do periodo `De/Para` independente do ciclo selecionado, incluir Garantia de faturamento minimo somente na `Visao geral por periodo`, usando o ultimo `Estado Trabalho` conhecido do projeto ate o fim de cada recorte e mantendo o snapshot da Medicao apenas como fallback sem Programacao, calcular projetos distintos, ticket medio por projetos e ticket medio por servicos, montar projetos por categoria/equipe/encarregado/supervisor com centro e valor cobrado, calcular dias trabalhados por datas distintas de execucao, ritmo atual e projecao de fechamento do ciclo, excluir obras de teste, consolidar a meta oficial por equipe em `teamsProduction`, exibir no bloco gerencial somente encarregados salvos nas medicoes validas e ratear as tres metas conforme os dias medidos por equipe, consolidar supervisores no ciclo e por semana, calcular metas por tipo vigente da equipe em `team_type_history`, calcular meta de supervisor por equipes com producao e por equipes ativas vinculadas, carregar as tres metas do ciclo e montar retorno da dashboard.
+  - Responsavel por: autenticar e autorizar a leitura, carregar fontes filtradas pelo tenant, montar ciclos 21 a 20, aplicar filtros, calcular status do ciclo e periodo, garantia minima, tickets, ritmo e projecao, adaptar os dados para o modulo server-side de desempenho e montar o retorno da dashboard.
+- Caminho: `src/server/modules/team-performance/calculations.ts`
+  - Responsavel por: consolidar equipes, encarregados e supervisores no ciclo/semana, calcular metas pelo tipo vigente, meta trabalhada, projetos, percentuais e bases produtiva/potencial sem acessar Supabase.
+- Caminho: `src/server/modules/team-performance/contracts.ts`
+  - Responsavel por: definir os contratos neutros de entrada e saida usados pelo Dashboard Medicao e pelo futuro Dashboard Equipes.
+- Caminho: `src/server/modules/team-performance/index.ts`
+  - Responsavel por: expor a fachada publica do modulo server-side.
 - Caminho: `supabase/migrations/170_create_dashboard_measurement_page.sql`
   - Responsavel por: cadastrar `dashboard-medicao` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -361,7 +367,9 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
-  - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectMetaMap`, `fetchProjectCompletionTimeline`, `resolveProjectCompletionAtWindowEnd`, `resolveWindowEndDate`, `buildOrderCompletionMapForWindow`, `resolveTeamTypeForDate`, `resolveTeamTypeNameForDate`, `resolveTeamForemanNameForDate`, `listBusinessDayIsoDates`, `calculateTeamMetaForWindow`, `calculateWorkedTeamMeta`, `addTeamProductionOrder`, `buildTeamRows`, `addForemanOrder`, `allocateForemanMetas`, `buildForemanRows`, `addProjectProduction`, `buildProjectProductionRows`, montagem de `supervisorsProduction`, contagem de projetos distintos, ticket medio por projetos e ticket medio por servicos.
+  - Responsavel por: `buildCycleFromMeasurementDate`, `formatPeriodLabel`, `normalizeCompletionStatus`, `fetchProjectMetaMap`, `fetchProjectCompletionTimeline`, `resolveProjectCompletionAtWindowEnd`, `resolveWindowEndDate`, `buildOrderCompletionMapForWindow`, `resolveTeamTypeForDate`, `resolveTeamTypeNameForDate`, `resolveTeamForemanNameForDate`, adaptadores `toTeamPerformanceOrder`/`toTeamPerformanceTeam`, status, tickets e projecao.
+- Caminho: `src/server/modules/team-performance/calculations.ts`
+  - Responsavel por: `calculateTeamPerformanceWindow`, dias uteis, metas por equipe, meta trabalhada, rateio gerencial legado por encarregado, supervisor, percentuais e detalhes de projetos.
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
   - Responsavel por: `formatCurrency`, `formatPercent`, `maxValue`, `csvEscape`, `filenameToken`, `getCurrentYearPeriod`, `resolveCycleMetaValue`, `resolveCycleDays`, `resolveCycleForecastValue`, `resolveForemanMetaValue`, `resolveForemanDays`, `loadDashboard`, `applyDashboardFilters`, `applyPeriodFilter`, `openTeamProjectDetails`, `openForemanProjectDetails`, `openSupervisorProjectDetails`, `exportProjectDetailsCsv`, `toggleTeamMetaMode`, `toggleForemanMetaMode`, `renderPanelHeader`, `renderCompletionTable`, `renderCompletionChart`, `renderCycleChart`, `renderForemanRanking`, `renderForemanBulletChart`, `renderForemanGapChart`, `renderSupervisorRanking`, `renderSupervisorBulletChart`, `renderSupervisorGapChart`, `renderSupervisorProductionChart`, `renderForemanVisualizations`, cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, linha de total nas tabelas de status.
 
@@ -597,3 +605,95 @@ Atualizacao 2026-06-14 (ritmo meta)
 - Impacto multi-tenant:
   - Sem alteracao de schema ou RLS.
   - O ritmo meta usa somente itens do ciclo filtrados pelo `tenant_id` autenticado.
+
+Atualizacao 2026-06-14 (Etapa 1 - separacao do Dashboard Equipes)
+-----------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Comportamento nesta etapa:
+  - Nenhum componente, endpoint ou calculo em producao foi alterado.
+  - Foi definido que o futuro Dashboard Equipes recebera os blocos `Equipes no ciclo`, `Encarregados no ciclo`, seus graficos e todo o bloco `Supervisor no ciclo`.
+  - O Dashboard Medicao permanecera com `Concluidos X parciais no ciclo`, `Visao geral por periodo` e `Ciclo da medicao`.
+- Regra planejada:
+  - Ranking, bullet e gap financeiro usarao o MK/equipe identificado por `team_id` como unidade oficial de meta.
+  - Encarregados serao detalhados dentro de cada MK, sem consolidacao global somente por nome.
+  - A meta oficial do MK nao sera rateada para criar metas independentes por encarregado.
+- Lacuna identificada:
+  - A Medicao atual atribui somente um `foreman_name_snapshot` por ordem.
+  - Uma producao simultanea de varios encarregados na mesma ordem nao pode ser dividida com precisao sem novo contrato de persistencia.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS ou permissoes nesta etapa documental.
+- A futura rota devera exigir `dashboard-equipes/read` e filtrar todas as fontes pelo tenant autenticado.
+
+Atualizacao 2026-06-14 (Etapa 4 - separacao do Dashboard Equipes)
+-----------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.module.css`
+- Comportamento antes/depois:
+  - Antes: a tela reunia indicadores gerais da Medicao e os blocos operacionais por equipe, encarregado e supervisor.
+  - Depois: a tela mantém somente `Concluidos X parciais no ciclo`, `Visao geral por periodo` e `Ciclo da medicao`.
+  - Depois: os filtros gerais ficam limitados a Ciclo, Projeto e Status execucao.
+  - Depois: `Equipes no ciclo`, `Encarregados no ciclo`, `Supervisor no ciclo` e seus graficos/modais passam para `/dashboard-equipes`.
+- Mapa de codigo:
+  - `DashboardMeasurementPageView`: remove estados, filtros e calculos visuais exclusivos dos blocos operacionais.
+  - `DashboardMeasurementPageView.module.css`: ajusta a grade dos filtros gerais para tres colunas.
+- Impacto multi-tenant:
+  - `dashboard-medicao/read` permanece obrigatorio no endpoint da tela.
+  - Nenhuma query, RLS, policy, grant ou schema foi alterado nesta etapa visual.
+
+Atualizacao 2026-06-14 (Etapa 5 - contrato de desempenho)
+----------------------------------------------------------
+- O modulo compartilhado deixou de retornar metas rateadas por encarregado.
+- `ForemanPerformanceRow` e `allocateForemanMetas` foram removidos.
+- A API passa a retornar `teamForemen` e `teamForemenByWeek`, sempre separados por `team_id + foreman_name_snapshot`.
+- Os indicadores gerais do Dashboard Medicao nao usam esse payload e permanecem sem mudanca visual.
+- Nenhuma alteracao de tenant, RLS, policy, grant ou schema foi realizada.
+
+Atualizacao 2026-06-14 (Etapa 2 - extracao server-side)
+--------------------------------------------------------
+- Arquivos criados:
+  - `src/server/modules/team-performance/contracts.ts`
+  - `src/server/modules/team-performance/calculations.ts`
+  - `src/server/modules/team-performance/index.ts`
+- Arquivos alterados:
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: a rota declarava internamente tipos, mapas e funcoes de consolidacao de equipes, encarregados e supervisores.
+  - Depois: a rota consulta e filtra dados, adapta contratos e chama `calculateTeamPerformanceWindow` para ciclo completo e semanas.
+  - O retorno atual `teamsProduction`, `foremen`, `supervisorsProduction` e respectivos mapas por semana foi preservado.
+  - Nenhum bloco visual foi movido nesta etapa.
+- Impacto multi-tenant:
+  - O modulo extraido e puro e nao possui acesso a cliente Supabase.
+  - Autenticacao, `dashboard-medicao/read` e filtros por `tenant_id` permanecem na rota antes da chamada ao modulo.
+  - Sem alteracao de schema, RLS, grants ou migrations.
+- Plano de modularizacao:
+  - `src/app/api/dashboard-medicao/route.ts` foi reduzido de 1453 para aproximadamente 1168 linhas.
+  - A rota ainda concentra consultas e indicadores gerais; a separacao do endpoint do Dashboard Equipes ocorrera na Etapa 3.
+
+Atualizacao 2026-06-14 (Etapa 3 - controller compartilhado)
+------------------------------------------------------------
+- Arquivos criados/alterados:
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `src/server/modules/dashboard-measurement/index.ts`
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `src/app/api/dashboard-equipes/route.ts`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+- Comportamento antes/depois:
+  - Antes: toda a leitura estava implementada diretamente em `/api/dashboard-medicao`.
+  - Depois: o controller compartilhado recebe a `page_key` exigida pelo endpoint chamador.
+  - `/api/dashboard-medicao` exige `dashboard-medicao/read`.
+  - `/api/dashboard-equipes` exige `dashboard-equipes/read`.
+  - O payload e os blocos visuais atuais do Dashboard Medicao foram preservados nesta etapa.
+- Impacto multi-tenant:
+  - Autenticacao, tenant ativo e autorizacao server-side continuam executados antes de qualquer SELECT.
+  - Sem alteracao de schema, RLS ou dados de negocio.

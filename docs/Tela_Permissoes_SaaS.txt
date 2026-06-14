@@ -63,7 +63,7 @@ Filtros, auto-complete e listagem
 - Ao selecionar o resultado da busca, a tela aplica `role`, `status` e a matriz visual do usuario escolhido.
 - Ao selecionar um usuario da lista inicial, a tela reutiliza o mesmo carregamento de credenciais usado pelo auto-complete.
 - A listagem atual considera as telas do SaaS web:
-  - Visao Geral: Home, Dashboard Medicao e Dash operacional e faturamento
+  - Visao Geral: Home, Dashboard Medicao, Dashboard Equipes e Dash operacional e faturamento
   - Operacao: Projetos, Locacao, Programacao, Medicao
   - Almoxarifado: Estoque Atual, Estoque das Equipes, Rastreio de SERIAL, Movimentacao de Estoque, Operacoes de Equipe, Estornos, Consumo por Projeto
   - Cadastros: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
@@ -135,6 +135,7 @@ Atualizacao 2026-03
 - Catalogo frontend de permissao atualizado para refletir o novo desenho de navegacao:
   - `Medicao` adicionada em `Operacao`
   - `Dashboard Medicao` adicionada em `Visao Geral`
+  - `Dashboard Equipes` adicionada em `Visao Geral` com `page_key = dashboard-equipes`
   - `Estoque Atual`, `Estoque das Equipes`, `Movimentacao de Estoque`, `Operacoes de Equipe` e `Estornos` agrupadas em `Almoxarifado`
   - `Materiais` movido para `Cadastros`
   - `Cargo` adicionado em `Cadastros`
