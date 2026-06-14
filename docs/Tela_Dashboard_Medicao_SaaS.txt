@@ -91,10 +91,14 @@ Filtros, auto-complete e listagem
 - Quando a meta selecionada for `Meta ciclo trabalhado`, a tela oculta a `Projecao de fechamento`, pois essa meta usa `Média Dias trabalhados` por equipe e nao deve ser misturada com os dias distintos do ciclo.
 - `Dias trabalhados` e a quantidade de datas distintas em `Data execucao` nas medicoes `Com producao` dentro do ciclo e dos filtros gerais aplicados.
 - A tabela do ciclo exibe `Ritmo atual` e `Dif. prevista` contra a meta selecionada.
-- O `Ritmo objetivo` e calculado pela soma da meta diaria do tipo vigente para cada par unico de equipe + data com medicao `COM_PRODUCAO`, ativa e nao cancelada, dividida pelas datas distintas trabalhadas.
-- Ordens `SEM_PRODUCAO`, Garantia de faturamento minimo e ordens canceladas nao entram no `Ritmo objetivo`.
-- O bloco do ciclo exibe `Ritmo atual` e `Ritmo objetivo` em cards.
-- A tabela do ciclo exibe `Dif. ritmo`, calculada por `Ritmo atual - Ritmo objetivo`; valor positivo indica producao diaria acima do objetivo e valor negativo indica producao diaria abaixo do objetivo.
+- O `Ritmo produtivo` e calculado pela soma da meta diaria do tipo vigente para cada par unico de equipe + data com medicao `COM_PRODUCAO`, ativa e nao cancelada, dividida pelas datas distintas trabalhadas.
+- Ordens `SEM_PRODUCAO`, Garantia de faturamento minimo e ordens canceladas nao entram no `Ritmo produtivo`.
+- O `Ritmo meta` usa a soma de `measurement_cycle_target_items.daily_goal`, que representa `Valor diario x Equipes medida` cadastrado na Meta para o ciclo, independentemente de producao.
+- O bloco do ciclo exibe `Ritmo atual`, `Ritmo produtivo` e `Ritmo meta` em cards.
+- A tabela do ciclo exibe:
+  - `Dif. ritmo produtivo = Ritmo atual - Ritmo produtivo`.
+  - `Dif. ritmo meta = Ritmo atual - Ritmo meta`.
+- Nas duas diferencas, valor positivo indica producao diaria acima da referencia e valor negativo indica producao diaria abaixo da referencia.
 - A `Meta ciclo trabalhado` do comparativo principal usa o mesmo objetivo dinamico por equipe + data, em vez do total trabalhado pre-calculado sem considerar os filtros do dashboard.
 - Ao selecionar `Meta ciclo trabalhado`, `Dias reais` e recalculado no carregamento do Dashboard pela media arredondada dos dias distintos das equipes filtradas com producao valida; nao depende de abrir ou atualizar a tela Meta.
 - A coluna `Dif. prevista` exibe valores negativos em vermelho e valores positivos em verde.
@@ -548,6 +552,7 @@ Atualizacao 2026-06-14 (ritmo objetivo por equipe e dia)
   - `teamsProductionRows`
   - `workedObjectiveValue`
   - `objectiveDailyValue`
+  - `targetDailyValue`
   - `CycleComparison`
   - `renderCycleChart`
   - `useErrorLogger("dashboard_medicao")`
@@ -557,8 +562,8 @@ Atualizacao 2026-06-14 (ritmo objetivo por equipe e dia)
   - Antes: a `Meta ciclo trabalhado` do resumo principal vinha do total pre-calculado na tela Meta e nao acompanhava os filtros do dashboard.
   - Depois: o backend deduplica equipe + data, resolve o tipo vigente da equipe naquela data e soma a meta diaria correspondente para formar o `Objetivo acumulado`.
   - Depois: o backend considera somente medicoes `COM_PRODUCAO`, ativas e nao canceladas; `SEM_PRODUCAO`, Garantia de faturamento minimo e canceladas ficam fora do objetivo.
-  - Depois: `Ritmo atual` e `Ritmo objetivo` sao exibidos como cards, ambos em `R$/dia`.
-  - Depois: a tabela substitui as duas colunas de ritmo por `Dif. ritmo = Ritmo atual - Ritmo objetivo`, com positivo em verde e negativo em vermelho.
+  - Depois: `Ritmo atual`, `Ritmo produtivo` e `Ritmo meta` sao exibidos como cards, todos em `R$/dia`.
+  - Depois: a tabela exibe `Dif. ritmo produtivo` e `Dif. ritmo meta`, com positivo em verde e negativo em vermelho.
   - Depois: o grafico nao exibe barra de objetivo acumulado; permanece focado em Valor, Projecao de fechamento e meta selecionada.
   - Depois: a `Meta ciclo trabalhado` principal passa a usar o total dinamico filtrado.
   - Depois: `Dias reais` tambem passa a usar a media dinamica das equipes filtradas, eliminando a dependencia do valor `worked_days` salvo anteriormente pela tela Meta.
@@ -570,3 +575,25 @@ Atualizacao 2026-06-14 (ritmo objetivo por equipe e dia)
 - Plano de modularizacao:
   - `DashboardMeasurementPageView.tsx` permanece acima de 1000 linhas.
   - Proxima refatoracao estrutural deve extrair tipos/contratos, formatadores CSV/data e componentes dos blocos de ciclo, equipes, encarregados e supervisores para arquivos internos do modulo, preservando a regra de negocio no backend.
+
+Atualizacao 2026-06-14 (ritmo meta)
+------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/constantes tocadas:
+  - `CycleTargetItemRow.daily_goal`
+  - `targetDailyValue`
+  - `CycleComparison`
+  - Renderizacao dos cards e tabela do `Ciclo da medicao`
+- Comportamento antes/depois:
+  - Antes: o ritmo das equipes com producao era chamado `Ritmo objetivo` e nao havia comparacao diaria contra a quantidade de equipes definida na Meta.
+  - Depois: o indicador passa a se chamar `Ritmo produtivo`.
+  - Depois: `Ritmo meta` soma a meta diaria cadastrada para todas as `Equipes medida` do ciclo, tenham produzido ou nao.
+  - Depois: a tabela compara o ritmo atual separadamente contra o ritmo produtivo e contra o ritmo meta.
+- Impacto multi-tenant:
+  - Sem alteracao de schema ou RLS.
+  - O ritmo meta usa somente itens do ciclo filtrados pelo `tenant_id` autenticado.

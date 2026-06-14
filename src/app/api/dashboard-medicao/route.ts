@@ -102,6 +102,7 @@ type CycleWorkdaysRow = {
 type CycleTargetItemRow = {
   team_type_id: string;
   daily_value: number | string;
+  daily_goal: number | string;
   cycle_goal: number | string;
   standard_cycle_goal: number | string | null;
   worked_cycle_goal: number | string | null;
@@ -820,7 +821,7 @@ export async function GET(request: NextRequest) {
   const targetItemsResult = selectedCycleRecord
     ? await resolution.supabase
         .from("measurement_cycle_target_items")
-        .select("team_type_id, daily_value, cycle_goal, standard_cycle_goal, worked_cycle_goal")
+        .select("team_type_id, daily_value, daily_goal, cycle_goal, standard_cycle_goal, worked_cycle_goal")
         .eq("tenant_id", tenantId)
         .eq("cycle_id", selectedCycleRecord.id)
         .returns<CycleTargetItemRow[]>()
@@ -831,6 +832,7 @@ export async function GET(request: NextRequest) {
   }
 
   const dailyMetaByTeamType = new Map((targetItemsResult.data ?? []).map((item) => [item.team_type_id, Number(item.daily_value ?? 0)]));
+  const targetDailyValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.daily_goal ?? 0), 0);
   const cycleMetaValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.cycle_goal ?? 0), 0);
   const standardCycleMetaValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.standard_cycle_goal ?? 0), 0);
   const workdays = Number(selectedCycleRecord?.workdays ?? 0);
@@ -1395,6 +1397,7 @@ export async function GET(request: NextRequest) {
       averageDailyValue,
       workedObjectiveValue,
       objectiveDailyValue,
+      targetDailyValue,
       forecastValue,
       forecastPercentage,
       forecastDifference,
@@ -1433,6 +1436,7 @@ export async function GET(request: NextRequest) {
       averageDailyValue,
       workedObjectiveValue,
       objectiveDailyValue,
+      targetDailyValue,
       forecastValue,
       forecastPercentage,
       forecastDifference,

@@ -933,9 +933,10 @@
 - [ ] [P2][Programacao] Mover a regra server-side para `src/server/modules/programacao` e reduzir a rota de 4777 linhas.
 - [ ] [P2][Programacao] Continuar a modularizacao do PageView de 2821 linhas sem mover regra critica para o frontend.
 - [ ] [P2][Testes] Adicionar testes de bypass de tenant/permissao, concorrencia simultanea, retry idempotente, lote invalido e falha de historico.
-- [x] Exibir no `Ciclo da medicao` o objetivo acumulado e o `Ritmo objetivo` diario, somando a meta diaria do tipo vigente para cada par unico de equipe + data com medicao valida, respeitando os filtros e o tenant.
+- [x] Exibir no `Ciclo da medicao` o objetivo acumulado e o `Ritmo produtivo` diario, somando a meta diaria do tipo vigente para cada par unico de equipe + data com medicao valida, respeitando os filtros e o tenant.
 - [x] Aplicar autorizacao server-side `dashboard-medicao/read` no endpoint do dashboard e integrar `useErrorLogger("dashboard_medicao")` na tela.
-- [x] Refinar o `Ritmo objetivo` para deixar explicito que usa somente equipes/datas com Medicao `COM_PRODUCAO` ativa e nao cancelada, excluindo `SEM_PRODUCAO` e Garantia de faturamento minimo.
-- [x] Mover `Ritmo atual` e `Ritmo objetivo` para cards, remover a barra `Objetivo acumulado` e exibir na tabela somente `Dif. ritmo = Ritmo atual - Ritmo objetivo`.
+- [x] Refinar o `Ritmo produtivo` para deixar explicito que usa somente equipes/datas com Medicao `COM_PRODUCAO` ativa e nao cancelada, excluindo `SEM_PRODUCAO` e Garantia de faturamento minimo.
+- [x] Mover `Ritmo atual` e `Ritmo produtivo` para cards, remover a barra `Objetivo acumulado` e exibir a diferenca diaria na tabela.
 - [x] Recalcular `Dias reais` da `Meta ciclo trabalhado` diretamente no Dashboard pelas equipes/datas filtradas, sem depender do `worked_days` persistido ao salvar a tela Meta.
 - [x] Atualizar cards, lista e detalhe da tela Meta com a media atual de dias trabalhados no carregamento, mantendo persistencia somente no salvamento explicito e aplicando autorizacao server-side/log de erros.
+- [x] Adicionar `Ritmo meta` com base em `Valor diario x Equipes medida` do ciclo e exibir na tabela as diferencas do ritmo atual contra o ritmo produtivo e contra o ritmo meta.
