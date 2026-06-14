@@ -551,6 +551,7 @@
 .barBlue,
 .barGreen,
 .barOrange,
+.barPurple,
 .dynamicBar {
   width: 100%;
   min-height: 4px;
@@ -568,6 +569,10 @@
 
 .barOrange {
   background: #f07f2f;
+}
+
+.barPurple {
+  background: #7b61ff;
 }
 
 .tableWrapper {

@@ -91,6 +91,9 @@ Filtros, auto-complete e listagem
 - Quando a meta selecionada for `Meta ciclo trabalhado`, a tela oculta a `Projecao de fechamento`, pois essa meta usa `Média Dias trabalhados` por equipe e nao deve ser misturada com os dias distintos do ciclo.
 - `Dias trabalhados` e a quantidade de datas distintas em `Data execucao` nas medicoes `Com producao` dentro do ciclo e dos filtros gerais aplicados.
 - A tabela do ciclo exibe `Ritmo atual` e `Dif. prevista` contra a meta selecionada.
+- O grafico do ciclo exibe `Objetivo acumulado`, calculado pela soma da meta diaria do tipo vigente para cada par unico de equipe + data com medicao valida no recorte filtrado.
+- A tabela do ciclo exibe `Ritmo objetivo`, calculado por `Objetivo acumulado / datas distintas trabalhadas`, permitindo comparar em `R$/dia` com o `Ritmo atual`.
+- A `Meta ciclo trabalhado` do comparativo principal usa o mesmo objetivo dinamico por equipe + data, em vez do total trabalhado pre-calculado sem considerar os filtros do dashboard.
 - A coluna `Dif. prevista` exibe valores negativos em vermelho e valores positivos em verde.
 - O card `Ticket medio / Projetos` do ciclo calcula `Valor realizado / Projetos no ciclo`, usando projetos distintos do recorte filtrado.
 - O card `Ticket medio / Servicos` do ciclo calcula `Valor realizado / Ordens`, usando a quantidade de ordens `COM_PRODUCAO` do recorte filtrado.
@@ -526,3 +529,37 @@ Atualizacao 2026-06-05 (tickets por projetos e servicos)
 - Impacto multi-tenant:
   - Sem alteracao de schema/RLS.
   - Os novos calculos usam somente as ordens ja filtradas por `tenant_id` e pelos filtros aplicados no dashboard.
+
+Atualizacao 2026-06-14 (ritmo objetivo por equipe e dia)
+---------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `GET /api/dashboard-medicao`
+  - `calculateWorkedTeamMeta`
+  - `teamsProductionRows`
+  - `workedObjectiveValue`
+  - `objectiveDailyValue`
+  - `CycleComparison`
+  - `renderCycleChart`
+  - `useErrorLogger("dashboard_medicao")`
+  - `requirePageAction`
+- Comportamento antes/depois:
+  - Antes: o ciclo mostrava o ritmo atual pela producao realizada dividida pelas datas distintas trabalhadas, mas nao mostrava o ritmo esperado das equipes que trabalharam.
+  - Antes: a `Meta ciclo trabalhado` do resumo principal vinha do total pre-calculado na tela Meta e nao acompanhava os filtros do dashboard.
+  - Depois: o backend deduplica equipe + data, resolve o tipo vigente da equipe naquela data e soma a meta diaria correspondente para formar o `Objetivo acumulado`.
+  - Depois: a tabela mostra `Ritmo objetivo = Objetivo acumulado / datas distintas trabalhadas`, em `R$/dia`, ao lado do `Ritmo atual`.
+  - Depois: o grafico mostra a barra `Objetivo acumulado` e a `Meta ciclo trabalhado` principal passa a usar o total dinamico filtrado.
+  - Depois: falhas da tela sao registradas com a tag `dashboard_medicao`.
+- Impacto multi-tenant:
+  - Sem alteracao de schema ou RLS.
+  - Todas as ordens, equipes, historicos de tipo e metas permanecem filtrados pelo `tenant_id` autenticado.
+  - O endpoint passa a exigir permissao server-side `dashboard-medicao/read` antes de qualquer leitura de negocio.
+- Plano de modularizacao:
+  - `DashboardMeasurementPageView.tsx` permanece acima de 1000 linhas.
+  - Proxima refatoracao estrutural deve extrair tipos/contratos, formatadores CSV/data e componentes dos blocos de ciclo, equipes, encarregados e supervisores para arquivos internos do modulo, preservando a regra de negocio no backend.
