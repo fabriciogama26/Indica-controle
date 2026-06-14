@@ -1,0 +1,347 @@
+Tela: Dashboard Equipes SaaS
+
+Visao geral
+-----------
+- Especificacao funcional da nova tela read-only de desempenho por MK/equipe.
+- A tela sera criada na rota `/dashboard-equipes`.
+- A unidade oficial de meta sera a equipe identificada por `teams.id`.
+- O nome/codigo visivel do MK sera obtido de `team_name_snapshot`, com fallback para `teams.name`.
+- A tela recebera os blocos atualmente existentes no Dashboard Medicao:
+  - `Equipes no ciclo`
+  - `Encarregados no ciclo`
+  - graficos de ranking de atingimento, bullet de meta e gap financeiro
+  - todo o bloco `Supervisor no ciclo`, incluindo tabela, filtros e graficos
+- O Dashboard Medicao permanecera com:
+  - `Concluidos X parciais no ciclo`
+  - `Visao geral por periodo`
+  - `Ciclo da medicao`
+- A futura visao geral exclusiva do Dashboard Equipes fica fora desta primeira entrega.
+
+Arquitetura
+-----------
+- Estrutura atual da Etapa 3:
+  - `src/app/(dashboard)/dashboard-equipes/page.tsx`
+  - `src/app/api/dashboard-equipes/route.ts`
+  - `src/modules/dashboard/dashboard-equipes/types.ts`
+  - `src/modules/dashboard/dashboard-equipes/constants.ts`
+  - `src/modules/dashboard/dashboard-equipes/utils.ts`
+  - `src/modules/dashboard/dashboard-equipes/api.ts`
+  - `src/modules/dashboard/dashboard-equipes/hooks.ts`
+  - `src/modules/dashboard/dashboard-equipes/components/`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.module.css`
+  - `src/modules/dashboard/dashboard-equipes/index.ts`
+- Controller compartilhado:
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `src/server/modules/dashboard-measurement/index.ts`
+- A regra de consolidacao deve ficar no backend ou em modulo server-side neutro.
+- O novo endpoint nao deve copiar integralmente `src/app/api/dashboard-medicao/route.ts`.
+- Calculos compartilhados de ciclo, meta por tipo vigente e producao devem ser extraidos para contrato reutilizavel.
+- A nova rota deve exigir `dashboard-equipes/read` antes de qualquer leitura de negocio.
+- A tela deve integrar `useErrorLogger("dashboard_equipes")`.
+
+Cadastro
+--------
+- Nao havera cadastro ou alteracao de dados nesta tela.
+- A tela consumira:
+  - ordens validas da Medicao
+  - itens e valores medidos
+  - metas cadastradas por ciclo e tipo de equipe
+  - historico de tipo da equipe
+  - historico de encarregado da equipe
+  - vinculo de supervisor da equipe
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros gerais planejados:
+  - Ciclo
+  - Projeto
+  - MK/equipe
+  - Encarregado
+  - Supervisor
+- Filtros locais:
+  - Ciclo completo ou semana em cada bloco operacional
+  - Meta ciclo, Meta ciclo padrao e Meta ciclo trabalhado
+  - Base da meta de supervisor por equipes com producao ou todas vinculadas
+- Bloco `Equipes no ciclo`:
+  - uma linha por `team_id`
+  - nome do MK/equipe
+  - tipos vigentes
+  - encarregados identificados no recorte
+  - valor realizado
+  - projetos e ordens
+  - metas selecionadas
+  - dias e percentuais
+- Graficos oficiais por MK/equipe:
+  - ranking de percentual de atingimento
+  - bullet de valor realizado contra as metas selecionadas
+  - gap financeiro contra a meta principal selecionada
+- Bloco `Encarregados no ciclo`:
+  - deve preservar a separacao por MK/equipe
+  - nao deve consolidar somente pelo nome do encarregado entre MKs diferentes
+  - a chave de exibicao deve considerar `team_id + encarregado`
+  - a meta oficial continua pertencendo integralmente ao MK/equipe
+  - nao deve ratear a meta oficial do MK para criar metas independentes por encarregado
+- Modal de detalhe do MK:
+  - abre ao clicar na linha ou representacao grafica do MK
+  - mostra cada encarregado identificado no recorte
+  - mostra valor produzido, dias, ordens e projetos por encarregado
+  - mostra participacao do encarregado no valor realizado do MK
+  - mostra contribuicao do encarregado em relacao a meta integral selecionada do MK
+  - mostra total realizado e meta do MK para conferencia
+  - permite abrir a lista de projetos e exportar CSV
+- Bloco `Supervisor no ciclo`:
+  - sera movido integralmente para a nova tela
+  - preserva tabela, semana local, base da meta, ranking, bullet, gap e modal de projetos
+
+Boas praticas
+-------------
+- Toda consulta deve usar o `tenant_id` resolvido pela sessao autenticada.
+- O frontend nao pode enviar tenant, role ou usuario como fonte de verdade.
+- Somente ordens `COM_PRODUCAO`, ativas, nao canceladas e sem obra de teste entram nos indicadores operacionais.
+- A equipe deve ser identificada por `team_id`; nome e apenas snapshot de apresentacao.
+- A meta deve ser calculada pelo tipo vigente da equipe em cada data usando `team_type_history`.
+- A soma da producao atribuida aos encarregados de um MK deve ser igual ao valor realizado do MK.
+- Registros sem encarregado identificavel devem aparecer como `Nao identificado`, sem serem descartados.
+- O endpoint deve selecionar apenas as colunas necessarias e manter limite de periodo para evitar consultas sem recorte.
+
+Atalhos
+-------
+- Rota planejada: `/dashboard-equipes`
+- Endpoint planejado:
+  - `GET /api/dashboard-equipes`
+- Page key planejada:
+  - `dashboard-equipes`
+- Acao server-side:
+  - `read`
+
+Atualizacao 2026-06
+-------------------
+- Etapa 1 iniciada em 2026-06-14.
+- Esta etapa registra o contrato funcional e nao altera o comportamento atual das telas.
+- Regra confirmada:
+  - o novo Dashboard Equipes recebera `Equipes no ciclo`, `Encarregados no ciclo`, os graficos relacionados e todo o bloco `Supervisor no ciclo`
+  - o Dashboard Medicao mantera somente os tres blocos gerais de medicao
+- Decisao de calculo:
+  - ranking, bullet e gap oficiais passam a ter o MK/equipe como unidade de meta
+  - encarregado passa a ser detalhamento de contribuicao dentro do MK
+  - o rateio atual da meta entre encarregados nao deve ser levado para a nova tela
+- Limitacao de dados identificada:
+  - `project_measurement_orders` persiste somente `foreman_name_snapshot`
+  - cada ordem possui apenas um encarregado atribuido
+  - `teams` possui somente um `foreman_person_id` vigente
+  - o repositorio nao representa quanto cada encarregado produziu quando varios atuam simultaneamente na mesma ordem
+- Decisao pendente antes da implementacao do detalhamento simultaneo:
+  - confirmar se cada ordem deve pertencer integralmente a um unico encarregado; ou
+  - criar estrutura transacional de contribuicoes por ordem, com encarregado e valor/percentual, quando uma ordem puder ter varios encarregados
+- Supervisor:
+  - permanece baseado no vinculo atual `teams.supervisor_person_id`
+  - nao existe historico versionado de supervisor por equipe no estado atual do repositorio
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+- Funcoes principais analisadas:
+  - Caminho: `src/app/api/dashboard-medicao/route.ts`
+  - Responsavel por: `buildTeamRows`, `allocateForemanMetas`, `buildForemanRows`, `buildSupervisorRows`, metas por tipo vigente e retorno atual dos blocos que serao movidos.
+  - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - Responsavel por: tabelas de equipes, encarregados e supervisores, ranking, bullet, gap, filtros locais e modais atuais.
+- Constantes e configuracoes planejadas:
+  - `DASHBOARD_TEAMS_PAGE_KEY`
+  - modos de meta `cycle`, `standard` e `worked`
+  - base de supervisor `productive` e `potential`
+- Funcoes utilitarias relacionadas:
+  - calculo de meta por equipe e periodo
+  - resolucao de tipo vigente por data
+  - resolucao de encarregado historico por equipe e data
+  - consolidacao de producao por `team_id`
+  - consolidacao de contribuicao por `team_id + encarregado`
+- Servicos e integracoes externas:
+  - Supabase Admin via sessao autenticada
+  - `project_measurement_orders`
+  - `project_measurement_order_items`
+  - `measurement_cycle_workdays`
+  - `measurement_cycle_target_items`
+  - `teams`
+  - `team_type_history`
+  - `team_foreman_history`
+  - `people`
+  - `project`
+- Ajuda contextual:
+  - deve explicar que a meta pertence ao MK e que o encarregado representa contribuicao para essa meta.
+
+Atualizacao 2026-06-14 (Etapa 2 - contratos e calculos compartilhados)
+----------------------------------------------------------------------
+- Arquivos criados:
+  - `src/server/modules/team-performance/contracts.ts`
+  - `src/server/modules/team-performance/calculations.ts`
+  - `src/server/modules/team-performance/index.ts`
+- Arquivos alterados:
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes e contratos criados:
+  - `calculateTeamPerformanceWindow`
+  - `TeamPerformanceWindowInput`
+  - `TeamPerformanceWindowResult`
+  - `TeamPerformanceOrder`
+  - `TeamPerformanceTeam`
+  - `TeamPerformanceRow`
+  - `ForemanPerformanceRow`
+  - `SupervisorPerformanceRow`
+- Responsabilidades extraidas:
+  - consolidacao de producao por equipe
+  - calculo de meta por tipo vigente e dias do recorte
+  - calculo de meta trabalhada por equipe + data
+  - consolidacao gerencial atual por encarregado
+  - consolidacao de supervisor por equipes produtivas e vinculadas
+  - montagem de projetos por equipe, encarregado e supervisor
+- Fronteira arquitetural:
+  - o modulo nao consulta Supabase, nao resolve sessao e nao recebe `tenant_id`
+  - a API autenticada entrega somente ordens e catalogos ja filtrados pelo tenant
+  - datas, valores, tipos, pessoas e centros sao fornecidos por contratos/callbacks explicitos
+  - a fachada publica do modulo e `src/server/modules/team-performance/index.ts`
+- Comportamento antes/depois:
+  - Antes: contratos, mapas, rateio atual e consolidacoes ficavam declarados dentro de `src/app/api/dashboard-medicao/route.ts`.
+  - Depois: a rota delega as consolidacoes de ciclo/semana para `calculateTeamPerformanceWindow`.
+  - Sem alteracao nesta etapa: o payload, os filtros, os graficos e o rateio gerencial atual do Dashboard Medicao foram preservados.
+  - A nova regra visual por MK/equipe e o fim do rateio de encarregados continuam planejados para a Etapa 5.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS ou grants.
+  - `resolveAuthenticatedAppUser` e `requirePageAction("dashboard-medicao", "read")` permanecem antes das consultas.
+  - Todas as fontes entregues ao modulo continuam filtradas pelo `tenant_id` autenticado.
+
+Atualizacao 2026-06-14 (Etapa 3 - rota, tela e permissao)
+----------------------------------------------------------
+- Arquivos criados:
+  - `src/app/(dashboard)/dashboard-equipes/page.tsx`
+  - `src/app/api/dashboard-equipes/route.ts`
+  - `src/modules/dashboard/dashboard-equipes/types.ts`
+  - `src/modules/dashboard/dashboard-equipes/constants.ts`
+  - `src/modules/dashboard/dashboard-equipes/utils.ts`
+  - `src/modules/dashboard/dashboard-equipes/api.ts`
+  - `src/modules/dashboard/dashboard-equipes/hooks.ts`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.module.css`
+  - `src/modules/dashboard/dashboard-equipes/index.ts`
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `src/server/modules/dashboard-measurement/index.ts`
+  - `supabase/migrations/234_create_dashboard_teams_page.sql`
+- Arquivos alterados:
+  - `src/app/api/dashboard-medicao/route.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/README.txt`
+  - `docs/Layout_Principal_SaaS.txt`
+  - `docs/Tela_Permissoes_SaaS.txt`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `handleDashboardMeasurementGet`
+  - `fetchDashboardTeams`
+  - `useDashboardTeams`
+  - `DashboardTeamsPageView`
+  - `DASHBOARD_TEAMS_ENDPOINT`
+  - `ROUTE_PAGE_KEYS`
+  - `resolveDefaultPageAccess`
+  - `permissionCatalog`
+  - `menuSections`
+  - `titleMap`
+- Comportamento antes/depois:
+  - Antes: nao existia rota, endpoint, menu ou permissao propria para Dashboard Equipes.
+  - Depois: `/dashboard-equipes` possui tela read-only com filtros de ciclo, projeto, MK/equipe, encarregado, supervisor e semana.
+  - Depois: a tela exibe cards de conferencia e tabelas iniciais de equipes, encarregados e supervisores.
+  - Depois: `/api/dashboard-equipes` exige `dashboard-equipes/read` antes das consultas de negocio.
+  - Depois: o controller de leitura foi movido para modulo server-side reutilizavel; `/api/dashboard-medicao` continua exigindo `dashboard-medicao/read`.
+  - Sem alteracao nesta etapa: os blocos continuam visiveis no Dashboard Medicao ate a Etapa 4.
+  - Sem alteracao nesta etapa: ranking, bullet, gap e modal definitivo por MK ficam para as Etapas 4 e 5.
+- Permissoes:
+  - A migration 234 cadastra `dashboard-equipes` em `app_pages`.
+  - O backfill preenche somente permissoes ausentes, sem sobrescrever configuracoes existentes.
+  - `viewer` fica bloqueado por padrao; `master`, `admin`, `supervisor` e `user` recebem acesso padrao.
+  - A migration foi versionada, mas nao foi aplicada automaticamente ao Supabase.
+- Impacto multi-tenant:
+  - O endpoint resolve usuario e tenant pela sessao.
+  - O cliente nao envia `tenant_id`, role ou usuario como fonte de verdade.
+  - O controller mantem todas as consultas filtradas pelo `tenant_id` autenticado.
+  - O modo Dashboard Equipes nao consulta garantia minima nem timeline de Estado Trabalho, pois esses dados pertencem aos blocos gerais do Dashboard Medicao.
+  - Nenhuma tabela de negocio, policy RLS ou grant operacional foi alterado.
+
+Atualizacao 2026-06-14 (Etapa 4 - migracao visual dos blocos)
+--------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.module.css`
+  - `src/modules/dashboard/dashboard-equipes/types.ts`
+  - `src/modules/dashboard/dashboard-equipes/utils.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes e comportamentos migrados:
+  - tabelas completas de equipes, encarregados e supervisores
+  - filtros semanais independentes por bloco
+  - selecao de Meta ciclo, Meta ciclo padrao e Meta ciclo trabalhado
+  - alternancia da base de supervisor entre equipes produtivas e todas vinculadas
+  - ranking de atingimento, bullet de meta e gap financeiro
+  - expansao individual dos graficos
+  - modal clicavel de projetos com totalizadores e exportacao CSV
+- Comportamento antes/depois:
+  - Antes: `/dashboard-equipes` exibia apenas tabelas provisórias e os blocos completos continuavam no Dashboard Medicao.
+  - Depois: os blocos completos passam a ser exibidos em `/dashboard-equipes`.
+  - Depois: o Dashboard Medicao deixa de exibir filtros e blocos de equipe, encarregado e supervisor.
+  - Preservado nesta etapa: o ranking, bullet e gap de encarregados ainda usam a consolidacao gerencial legada recebida da API.
+  - Pendente para a Etapa 5: trocar os graficos oficiais para a unidade MK/equipe e implementar o modal de contribuicao dos encarregados dentro do MK.
+- Impacto multi-tenant:
+  - Nenhuma alteracao de schema, RLS, grants ou fonte de tenant.
+  - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read`.
+  - O tenant continua resolvido exclusivamente pela sessao autenticada e aplicado pelo controller antes das consultas.
+
+Atualizacao 2026-06-14 (Etapa 5 - meta oficial por MK)
+-------------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/team-performance/contracts.ts`
+  - `src/server/modules/team-performance/calculations.ts`
+  - `src/server/modules/team-performance/index.ts`
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `src/modules/dashboard/dashboard-equipes/types.ts`
+  - `src/modules/dashboard/dashboard-equipes/hooks.ts`
+  - `src/modules/dashboard/dashboard-equipes/utils.ts`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.module.css`
+  - `README.md`
+  - `TASKS.md`
+- Contratos e funcoes:
+  - `TeamForemanContributionRow`: contribuicao identificada por `teamId + foremanName`.
+  - `calculateTeamPerformanceWindow`: agrega valor, dias, ordens e projetos de cada encarregado dentro do MK.
+  - `buildTeamForemanContributions`: calcula participacao do encarregado no valor total do MK.
+  - `exportDashboardTeamContributionsCsv`: exporta a composicao do MK com cooldown de 10 segundos.
+- Regra oficial:
+  - ranking, bullet e gap usam somente linhas de `TeamPerformanceRow`.
+  - valor e meta pertencem integralmente ao `team_id`.
+  - nenhuma meta e rateada ou criada para encarregado.
+  - o contrato legado `ForemanPerformanceRow` e o rateio `allocateForemanMetas` foram removidos.
+- Bloco Encarregados no ciclo:
+  - uma linha por `team_id + foreman_name_snapshot`.
+  - exibe MK, encarregado, valor produzido, participacao, dias, ordens e projetos.
+  - o mesmo nome atuando em MKs diferentes aparece em linhas separadas.
+- Modal do MK:
+  - abre pela tabela de equipes ou pelo clique nas linhas de ranking, bullet e gap.
+  - exibe valor total do MK, meta integral selecionada, atingimento e quantidade de encarregados.
+  - detalha valor, participacao, contribuicao sobre a meta integral do MK, dias, ordens e projetos por encarregado.
+  - permite exportar a composicao em CSV.
+- Limitacao de dados preservada:
+  - cada ordem possui somente um `foreman_name_snapshot`.
+  - o modal atribui o valor integral da ordem ao encarregado salvo nela.
+  - nao e possivel dividir uma mesma ordem entre varios encarregados sem nova estrutura transacional.
+  - nomes iguais no mesmo MK sao consolidados porque o snapshot atual nao possui `foreman_person_id`.
+- Impacto multi-tenant:
+  - nenhuma tabela, migration, RLS ou grant foi alterado.
+  - as contribuicoes sao calculadas somente depois de autenticacao, `dashboard-equipes/read` e filtro por tenant.
+  - o cliente nao envia tenant ou identidade de encarregado como fonte de verdade.

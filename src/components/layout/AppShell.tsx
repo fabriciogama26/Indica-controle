@@ -20,6 +20,7 @@ const menuSections = [
       { href: "/home", label: "Home", icon: "home" },
       { href: "/dash-estoque", label: "Dashboard Estoque", icon: "box" },
       { href: "/dashboard-medicao", label: "Dashboard Medicao", icon: "calendar" },
+      { href: "/dashboard-equipes", label: "Dashboard Equipes", icon: "users" },
       { href: "/dash-operacional-faturamento", label: "Dash operacional e faturamento", icon: "calendar" },
     ],
   },
@@ -85,6 +86,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/dashboard-medicao": {
     title: "Dashboard Medicao",
     subtitle: "Indicadores de valor realizado, metas por ciclo e desempenho por encarregado.",
+  },
+  "/dashboard-equipes": {
+    title: "Dashboard Equipes",
+    subtitle: "Desempenho por MK, encarregado e supervisor no ciclo.",
   },
   "/dash-estoque": {
     title: "Dashboard Estoque",

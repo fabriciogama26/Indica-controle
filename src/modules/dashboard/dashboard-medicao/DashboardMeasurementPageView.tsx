@@ -17,39 +17,6 @@ type CycleOption = {
   label: string;
 };
 
-type CycleWeekOption = {
-  id: string;
-  label: string;
-  startDate: string;
-  endDate: string;
-  workdays: number;
-};
-
-type Summary = {
-  orderCount: number;
-  realizedValue: number;
-  metaValue: number;
-  percentage: number;
-  workdays: number;
-  defaultWorkdays: number;
-  workedDays: number;
-  executedWorkdays: number;
-  averageDailyValue: number;
-  workedObjectiveValue: number;
-  objectiveDailyValue: number;
-  targetDailyValue: number;
-  forecastValue: number;
-  forecastPercentage: number;
-  forecastDifference: number;
-  completedValue: number;
-  partialValue: number;
-  pendingValue: number;
-  noStatusValue: number;
-  projectCount: number;
-  averageTicketValue: number;
-  averageServiceTicketValue: number;
-};
-
 type CompletionChartItem = {
   label: string;
   value: number;
@@ -105,54 +72,6 @@ type ProjectProductionDetail = {
   orderCount: number;
 };
 
-type TeamProductionRow = {
-  teamId: string;
-  teamName: string;
-  teamTypeNames: string[];
-  foremanNames: string[];
-  totalValue: number;
-  metaValue: number;
-  standardMetaValue: number;
-  workedMetaValue: number;
-  projectCount: number;
-  projects: ProjectProductionDetail[];
-  metaDays?: number;
-  standardMetaDays?: number;
-  workedDays: number;
-  percentage: number;
-};
-
-type ForemanRow = {
-  foremanName: string;
-  totalValue: number;
-  metaValue: number;
-  standardMetaValue: number;
-  workedMetaValue: number;
-  projectCount: number;
-  projects: ProjectProductionDetail[];
-  teamCount: number;
-  metaDays?: number;
-  standardMetaDays?: number;
-  workedDays: number;
-  percentage: number;
-};
-
-type SupervisorProductionRow = {
-  supervisorId: string | null;
-  supervisorName: string;
-  totalValue: number;
-  orderCount: number;
-  projectCount: number;
-  projects: ProjectProductionDetail[];
-  productiveTeamCount: number;
-  potentialTeamCount: number;
-  productiveMetaValue: number;
-  potentialMetaValue: number;
-  productivePercentage: number;
-  potentialPercentage: number;
-  percentageOfTotal: number;
-};
-
 type DashboardResponse = {
   message?: string;
   cycles?: CycleOption[];
@@ -163,28 +82,16 @@ type DashboardResponse = {
   selectedCycleStart?: string | null;
   filters?: {
     projects: Option[];
-    teams: Option[];
-    foremen: Option[];
-    supervisors?: Option[];
   };
-  summary?: Summary | null;
   completionChart?: CompletionChartItem[];
   cycleCompletionChart?: CompletionChartItem[];
   periodCompletionChart?: CompletionChartItem[];
   periodSummary?: PeriodSummary | null;
   cycleComparison?: CycleComparison | null;
-  cycleWeeks?: CycleWeekOption[];
-  teamsProduction?: TeamProductionRow[];
-  teamsProductionByWeek?: Record<string, TeamProductionRow[]>;
-  foremen?: ForemanRow[];
-  foremenByWeek?: Record<string, ForemanRow[]>;
-  supervisorsProduction?: SupervisorProductionRow[];
-  supervisorsProductionByWeek?: Record<string, SupervisorProductionRow[]>;
 };
 
-type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | "foremanRanking" | "foremanBullet" | "foremanGap" | "supervisorProduction" | null;
-type ForemanMetaMode = "cycle" | "standard" | "worked";
-type SupervisorMetaBase = "productive" | "potential";
+type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | null;
+type MetaMode = "cycle" | "standard" | "worked";
 
 type ProjectDetailModal = {
   title: string;
@@ -193,19 +100,19 @@ type ProjectDetailModal = {
   filename: string;
 } | null;
 
-const foremanMetaLabels: Record<ForemanMetaMode, string> = {
+const metaLabels: Record<MetaMode, string> = {
   cycle: "Meta ciclo",
   standard: "Meta ciclo padrao",
   worked: "Meta ciclo trabalhado",
 };
 
-const metaDayLabels: Record<ForemanMetaMode, string> = {
+const metaDayLabels: Record<MetaMode, string> = {
   cycle: "Dias uteis",
   standard: "Dias padrao",
   worked: "Dias reais",
 };
 
-const foremanMetaColors: Record<ForemanMetaMode | "value", string> = {
+const metaColors: Record<MetaMode | "value", string> = {
   value: "#4b77c7",
   cycle: "#f07f2f",
   standard: "#17a884",
@@ -219,13 +126,6 @@ const completionChartColors: Record<string, string> = {
   Pendencias: "#e25555",
   "Garantia de faturamento minimo": "#7b61ff",
 };
-
-const chartStatusColors = {
-  reference: "#0f172a",
-  positive: "#17a884",
-  negative: "#e25555",
-};
-const BULLET_AXIS_PADDING_FACTOR = 1.12;
 
 function formatCurrency(value: number, compact = false) {
   return new Intl.NumberFormat("pt-BR", {
@@ -280,38 +180,24 @@ function getCurrentYearPeriod() {
   };
 }
 
-type MetaComparisonRow = Pick<ForemanRow, "metaValue" | "standardMetaValue" | "workedMetaValue" | "metaDays" | "standardMetaDays" | "workedDays">;
-
-function resolveForemanMetaValue(row: MetaComparisonRow, mode: ForemanMetaMode) {
-  if (mode === "standard") return row.standardMetaValue;
-  if (mode === "worked") return row.workedMetaValue;
-  return row.metaValue;
-}
-
-function resolveCycleMetaValue(cycle: CycleComparison, mode: ForemanMetaMode) {
+function resolveCycleMetaValue(cycle: CycleComparison, mode: MetaMode) {
   if (mode === "standard") return cycle.standardMeta;
   if (mode === "worked") return cycle.workedMeta;
   return cycle.meta;
 }
 
-function resolveCycleDays(cycle: CycleComparison, mode: ForemanMetaMode) {
+function resolveCycleDays(cycle: CycleComparison, mode: MetaMode) {
   if (mode === "standard") return cycle.defaultWorkdays;
   if (mode === "worked") return cycle.workedDays;
   return cycle.workdays;
 }
 
-function resolveCycleForecastValue(cycle: CycleComparison, mode: ForemanMetaMode) {
+function resolveCycleForecastValue(cycle: CycleComparison, mode: MetaMode) {
   return cycle.averageDailyValue * resolveCycleDays(cycle, mode);
 }
 
-function resolveCycleForecastDifference(cycle: CycleComparison, mode: ForemanMetaMode) {
+function resolveCycleForecastDifference(cycle: CycleComparison, mode: MetaMode) {
   return resolveCycleForecastValue(cycle, mode) - resolveCycleMetaValue(cycle, mode);
-}
-
-function resolveForemanDays(row: MetaComparisonRow, summary: Summary | null, mode: ForemanMetaMode) {
-  if (mode === "standard") return row.standardMetaDays ?? summary?.defaultWorkdays ?? 0;
-  if (mode === "worked") return row.workedDays;
-  return row.metaDays ?? summary?.workdays ?? 0;
 }
 
 function ExpandIcon() {
@@ -327,45 +213,22 @@ export function DashboardMeasurementPageView() {
   const logError = useErrorLogger("dashboard_medicao");
   const [cycles, setCycles] = useState<CycleOption[]>([]);
   const [projects, setProjects] = useState<Option[]>([]);
-  const [teams, setTeams] = useState<Option[]>([]);
-  const [foremenOptions, setForemenOptions] = useState<Option[]>([]);
-  const [supervisorOptions, setSupervisorOptions] = useState<Option[]>([]);
   const [startDate, setStartDate] = useState(() => getCurrentYearPeriod().start);
   const [endDate, setEndDate] = useState(() => getCurrentYearPeriod().end);
   const [periodStartDraft, setPeriodStartDraft] = useState(() => getCurrentYearPeriod().start);
   const [periodEndDraft, setPeriodEndDraft] = useState(() => getCurrentYearPeriod().end);
   const [selectedCycleStart, setSelectedCycleStart] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
-  const [teamId, setTeamId] = useState("");
-  const [foreman, setForeman] = useState("");
-  const [supervisorId, setSupervisorId] = useState("");
   const [completionStatus, setCompletionStatus] = useState("TODOS");
   const [cycleDraft, setCycleDraft] = useState("");
   const [projectSearchDraft, setProjectSearchDraft] = useState("");
-  const [teamIdDraft, setTeamIdDraft] = useState("");
-  const [foremanDraft, setForemanDraft] = useState("");
-  const [supervisorIdDraft, setSupervisorIdDraft] = useState("");
   const [completionStatusDraft, setCompletionStatusDraft] = useState("TODOS");
-  const [foremanMetaModes, setForemanMetaModes] = useState<ForemanMetaMode[]>(["cycle"]);
-  const [cycleMetaMode, setCycleMetaMode] = useState<ForemanMetaMode>("cycle");
-  const [supervisorMetaBase, setSupervisorMetaBase] = useState<SupervisorMetaBase>("productive");
+  const [cycleMetaMode, setCycleMetaMode] = useState<MetaMode>("cycle");
   const [expandedChart, setExpandedChart] = useState<ExpandedChart>(null);
-  const [summary, setSummary] = useState<Summary | null>(null);
   const [cycleCompletionChart, setCycleCompletionChart] = useState<CompletionChartItem[]>([]);
   const [periodCompletionChart, setPeriodCompletionChart] = useState<CompletionChartItem[]>([]);
   const [periodSummary, setPeriodSummary] = useState<PeriodSummary | null>(null);
   const [cycleComparison, setCycleComparison] = useState<CycleComparison | null>(null);
-  const [cycleWeeks, setCycleWeeks] = useState<CycleWeekOption[]>([]);
-  const [teamsProduction, setTeamsProduction] = useState<TeamProductionRow[]>([]);
-  const [teamsProductionByWeek, setTeamsProductionByWeek] = useState<Record<string, TeamProductionRow[]>>({});
-  const [teamWeekFilter, setTeamWeekFilter] = useState("");
-  const [teamMetaModes, setTeamMetaModes] = useState<ForemanMetaMode[]>(["cycle"]);
-  const [foremen, setForemen] = useState<ForemanRow[]>([]);
-  const [foremenByWeek, setForemenByWeek] = useState<Record<string, ForemanRow[]>>({});
-  const [foremanWeekFilter, setForemanWeekFilter] = useState("");
-  const [supervisorsProduction, setSupervisorsProduction] = useState<SupervisorProductionRow[]>([]);
-  const [supervisorsProductionByWeek, setSupervisorsProductionByWeek] = useState<Record<string, SupervisorProductionRow[]>>({});
-  const [supervisorWeekFilter, setSupervisorWeekFilter] = useState("");
   const [projectDetailModal, setProjectDetailModal] = useState<ProjectDetailModal>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -378,9 +241,6 @@ export function DashboardMeasurementPageView() {
     if (endDate) params.set("endDate", endDate);
     if (selectedCycleStart) params.set("cycleStart", selectedCycleStart);
     if (projectSearch.trim()) params.set("project", projectSearch.trim());
-    if (teamId) params.set("teamId", teamId);
-    if (foreman) params.set("foreman", foreman);
-    if (supervisorId) params.set("supervisorId", supervisorId);
     if (completionStatus !== "TODOS") params.set("completionStatus", completionStatus);
 
     setIsLoading(true);
@@ -404,25 +264,10 @@ export function DashboardMeasurementPageView() {
 
       setCycles(data.cycles ?? []);
       setProjects(data.filters?.projects ?? []);
-      setTeams(data.filters?.teams ?? []);
-      setForemenOptions(data.filters?.foremen ?? []);
-      setSupervisorOptions(data.filters?.supervisors ?? []);
-      setSummary(data.summary ?? null);
       setCycleCompletionChart(data.cycleCompletionChart ?? []);
       setPeriodCompletionChart(data.periodCompletionChart ?? data.completionChart ?? []);
       setPeriodSummary(data.periodSummary ?? null);
       setCycleComparison(data.cycleComparison ?? null);
-      setCycleWeeks(data.cycleWeeks ?? []);
-      setTeamsProduction(data.teamsProduction ?? []);
-      setTeamsProductionByWeek(data.teamsProductionByWeek ?? {});
-      setForemen(data.foremen ?? []);
-      setForemenByWeek(data.foremenByWeek ?? {});
-      setSupervisorsProduction(data.supervisorsProduction ?? []);
-      setSupervisorsProductionByWeek(data.supervisorsProductionByWeek ?? {});
-      const nextWeekIds = new Set((data.cycleWeeks ?? []).map((week) => week.id));
-      setTeamWeekFilter((current) => (current && !nextWeekIds.has(current) ? "" : current));
-      setForemanWeekFilter((current) => (current && !nextWeekIds.has(current) ? "" : current));
-      setSupervisorWeekFilter((current) => (current && !nextWeekIds.has(current) ? "" : current));
       setStartDate((current) => current || data.startDate || "");
       setEndDate((current) => current || data.endDate || "");
       setPeriodStartDraft((current) => current || data.startDate || "");
@@ -437,7 +282,7 @@ export function DashboardMeasurementPageView() {
     } finally {
       setIsLoading(false);
     }
-  }, [completionStatus, endDate, foreman, logError, projectSearch, selectedCycleStart, session?.accessToken, startDate, supervisorId, teamId]);
+  }, [completionStatus, endDate, logError, projectSearch, selectedCycleStart, session?.accessToken, startDate]);
 
   useEffect(() => {
     void loadDashboard();
@@ -456,85 +301,6 @@ export function DashboardMeasurementPageView() {
     [cycleComparison, cycleMetaMode],
   );
   const selectedCycleLabel = cycleComparison?.label ?? "Ciclo selecionado";
-  const selectedTeamsProduction = useMemo(
-    () => teamWeekFilter ? teamsProductionByWeek[teamWeekFilter] ?? [] : teamsProduction,
-    [teamWeekFilter, teamsProduction, teamsProductionByWeek],
-  );
-  const selectedForemen = useMemo(
-    () => foremanWeekFilter ? foremenByWeek[foremanWeekFilter] ?? [] : foremen,
-    [foremanWeekFilter, foremen, foremenByWeek],
-  );
-  const selectedSupervisorsProduction = useMemo(
-    () => supervisorWeekFilter ? supervisorsProductionByWeek[supervisorWeekFilter] ?? [] : supervisorsProduction,
-    [supervisorWeekFilter, supervisorsProduction, supervisorsProductionByWeek],
-  );
-  const selectedForemanPeriodLabel = useMemo(
-    () => cycleWeeks.find((week) => week.id === foremanWeekFilter)?.label ?? selectedCycleLabel,
-    [cycleWeeks, foremanWeekFilter, selectedCycleLabel],
-  );
-  const selectedSupervisorPeriodLabel = useMemo(
-    () => cycleWeeks.find((week) => week.id === supervisorWeekFilter)?.label ?? selectedCycleLabel,
-    [cycleWeeks, selectedCycleLabel, supervisorWeekFilter],
-  );
-  const primaryForemanMetaMode = foremanMetaModes[0] ?? "cycle";
-  const foremanRankingRows = useMemo(
-    () => [...selectedForemen]
-      .map((item) => {
-        const metaValue = resolveForemanMetaValue(item, primaryForemanMetaMode);
-        return {
-          ...item,
-          metaValue,
-          percentage: metaValue > 0 ? (item.totalValue / metaValue) * 100 : 0,
-        };
-      })
-      .sort((left, right) => right.percentage - left.percentage),
-    [primaryForemanMetaMode, selectedForemen],
-  );
-  const foremanRankingMax = useMemo(() => maxValue([100, ...foremanRankingRows.map((item) => item.percentage)]), [foremanRankingRows]);
-  const foremanBulletMax = useMemo(
-    () => maxValue(selectedForemen.flatMap((item) => [item.totalValue, ...foremanMetaModes.map((mode) => resolveForemanMetaValue(item, mode))])) * BULLET_AXIS_PADDING_FACTOR,
-    [foremanMetaModes, selectedForemen],
-  );
-  const foremanGapRows = useMemo(
-    () => selectedForemen.map((item) => {
-      const metaValue = resolveForemanMetaValue(item, primaryForemanMetaMode);
-      return {
-        ...item,
-        gap: item.totalValue - metaValue,
-        metaValue,
-      };
-    }),
-    [primaryForemanMetaMode, selectedForemen],
-  );
-  const foremanGapMax = useMemo(() => maxValue(foremanGapRows.map((item) => Math.abs(item.gap))), [foremanGapRows]);
-  const supervisorChartRows = useMemo(
-    () => selectedSupervisorsProduction.map((item) => {
-      const metaValue = supervisorMetaBase === "potential" ? item.potentialMetaValue : item.productiveMetaValue;
-      const percentage = supervisorMetaBase === "potential" ? item.potentialPercentage : item.productivePercentage;
-      const teamCount = supervisorMetaBase === "potential" ? item.potentialTeamCount : item.productiveTeamCount;
-      return {
-        ...item,
-        metaValue,
-        percentage,
-        teamCount,
-        gap: item.totalValue - metaValue,
-      };
-    }),
-    [selectedSupervisorsProduction, supervisorMetaBase],
-  );
-  const supervisorRankingRows = useMemo(
-    () => [...supervisorChartRows].sort((left, right) => right.percentage - left.percentage),
-    [supervisorChartRows],
-  );
-  const supervisorProductionMax = useMemo(
-    () => maxValue([100, ...supervisorRankingRows.map((item) => item.percentage)]),
-    [supervisorRankingRows],
-  );
-  const supervisorBulletMax = useMemo(
-    () => maxValue(supervisorChartRows.flatMap((item) => [item.totalValue, item.metaValue])) * BULLET_AXIS_PADDING_FACTOR,
-    [supervisorChartRows],
-  );
-  const supervisorGapMax = useMemo(() => maxValue(supervisorChartRows.map((item) => Math.abs(item.gap))), [supervisorChartRows]);
 
   function openChart(chart: Exclude<ExpandedChart, null>) {
     setExpandedChart(chart);
@@ -545,9 +311,6 @@ export function DashboardMeasurementPageView() {
     const filtersAreApplied =
       selectedCycleStart === cycleDraft &&
       projectSearch === nextProjectSearch &&
-      teamId === teamIdDraft &&
-      foreman === foremanDraft &&
-      supervisorId === supervisorIdDraft &&
       completionStatus === completionStatusDraft;
 
     if (filtersAreApplied) {
@@ -558,9 +321,6 @@ export function DashboardMeasurementPageView() {
     setSelectedCycleStart(cycleDraft);
     setProjectSearch(nextProjectSearch);
     setProjectSearchDraft(nextProjectSearch);
-    setTeamId(teamIdDraft);
-    setForeman(foremanDraft);
-    setSupervisorId(supervisorIdDraft);
     setCompletionStatus(completionStatusDraft);
   }
 
@@ -571,33 +331,6 @@ export function DashboardMeasurementPageView() {
     }
     setStartDate(periodStartDraft);
     setEndDate(periodEndDraft);
-  }
-
-  function openForemanProjectDetails(row: ForemanRow) {
-    setProjectDetailModal({
-      title: `Projetos de ${row.foremanName}`,
-      subtitle: selectedForemanPeriodLabel,
-      rows: row.projects,
-      filename: `dashboard_medicao_encarregado_${filenameToken(row.foremanName)}_${todayToken()}.csv`,
-    });
-  }
-
-  function openTeamProjectDetails(row: TeamProductionRow) {
-    setProjectDetailModal({
-      title: `Projetos da equipe ${row.teamName}`,
-      subtitle: cycleWeeks.find((week) => week.id === teamWeekFilter)?.label ?? selectedCycleLabel,
-      rows: row.projects,
-      filename: `dashboard_medicao_equipe_${filenameToken(row.teamName)}_${todayToken()}.csv`,
-    });
-  }
-
-  function openSupervisorProjectDetails(row: SupervisorProductionRow) {
-    setProjectDetailModal({
-      title: `Projetos de ${row.supervisorName}`,
-      subtitle: selectedSupervisorPeriodLabel,
-      rows: row.projects,
-      filename: `dashboard_medicao_supervisor_${filenameToken(row.supervisorName)}_${todayToken()}.csv`,
-    });
   }
 
   function openCompletionProjectDetails(row: CompletionChartItem, subtitle: string, filenamePrefix: string) {
@@ -646,85 +379,6 @@ export function DashboardMeasurementPageView() {
       <button type="button" className={styles.expandButton} onClick={() => openChart(chart)} aria-label={`Ampliar ${title}`} title={`Ampliar ${title}`}>
         <ExpandIcon />
       </button>
-    );
-  }
-
-  function toggleForemanMetaMode(mode: ForemanMetaMode) {
-    setForemanMetaModes((current) => {
-      if (current.includes(mode)) {
-        return current.length === 1 ? current : current.filter((item) => item !== mode);
-      }
-      return [...current, mode];
-    });
-  }
-
-  function toggleTeamMetaMode(mode: ForemanMetaMode) {
-    setTeamMetaModes((current) => {
-      if (current.includes(mode)) {
-        return current.length === 1 ? current : current.filter((item) => item !== mode);
-      }
-      return [...current, mode];
-    });
-  }
-
-  function renderLegendItem(label: string, color: string) {
-    return (
-      <span className={styles.legendItem}>
-        <span className={styles.legendDot} style={{ background: color }} />
-        {label}
-      </span>
-    );
-  }
-
-  function renderReferenceLegendItem(label: string) {
-    return (
-      <span className={styles.legendItem}>
-        <span className={styles.legendLine} />
-        {label}
-      </span>
-    );
-  }
-
-  function renderAchievementLegend() {
-    return (
-      <div className={styles.panelLegend}>
-        {renderReferenceLegendItem("Referencia 100%")}
-        {renderLegendItem("Atingiu a meta", chartStatusColors.positive)}
-        {renderLegendItem("Abaixo da meta", chartStatusColors.negative)}
-      </div>
-    );
-  }
-
-  function renderGapLegend() {
-    return (
-      <div className={styles.panelLegend}>
-        {renderReferenceLegendItem("Meta")}
-        {renderLegendItem("Excedente", chartStatusColors.positive)}
-        {renderLegendItem("Falta produzir", chartStatusColors.negative)}
-      </div>
-    );
-  }
-
-  function renderForemanBulletLegend() {
-    return (
-      <div className={styles.panelLegend}>
-        {renderLegendItem("Valor realizado", foremanMetaColors.value)}
-        {foremanMetaModes.map((mode) => (
-          <span key={mode} className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: foremanMetaColors[mode] }} />
-            {foremanMetaLabels[mode]}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  function renderSupervisorBulletLegend() {
-    return (
-      <div className={styles.panelLegend}>
-        {renderLegendItem("Producao realizada", foremanMetaColors.value)}
-        {renderLegendItem("Meta supervisor", foremanMetaColors.cycle)}
-      </div>
     );
   }
 
@@ -792,7 +446,7 @@ export function DashboardMeasurementPageView() {
               <div
                 className={styles.dynamicBar}
                 style={{
-                  background: completionChartColors[item.label] ?? foremanMetaColors.value,
+                  background: completionChartColors[item.label] ?? metaColors.value,
                   height: `${Math.max(4, (item.value / completionMax) * 100)}%`,
                 }}
               />
@@ -832,246 +486,8 @@ export function DashboardMeasurementPageView() {
           <div className={isExpanded ? styles.verticalBarTrackExpanded : styles.verticalBarTrack}>
             <div className={styles.barOrange} style={{ height: `${Math.max(4, (metaValue / cycleMax) * 100)}%` }} />
           </div>
-          <strong>{foremanMetaLabels[cycleMetaMode]}</strong>
+          <strong>{metaLabels[cycleMetaMode]}</strong>
         </div>
-      </div>
-    );
-  }
-
-  function renderPanelHeader(title: string, subtitle: string, chart: Exclude<ExpandedChart, null>, isExpanded = false) {
-    return (
-      <>
-        <div className={styles.panelHeader}>
-          <div>
-            <h3>{title}</h3>
-            <span>{subtitle}</span>
-          </div>
-          {!isExpanded ? renderExpandButton(chart, title) : null}
-        </div>
-      </>
-    );
-  }
-
-  function renderForemanRanking(isExpanded = false) {
-    return (
-      <article className={styles.chartPanel}>
-        {renderPanelHeader("Ranking % de atingimento", foremanMetaLabels[primaryForemanMetaMode], "foremanRanking", isExpanded)}
-        {renderAchievementLegend()}
-        <div className={styles.panelCycleTitle}>{selectedForemanPeriodLabel}</div>
-        <div className={styles.rankingList}>
-          {foremanRankingRows.map((item) => {
-            const barWidth = Math.min(100, (item.percentage / foremanRankingMax) * 100);
-            const referenceLeft = Math.min(100, (100 / foremanRankingMax) * 100);
-            return (
-              <div key={item.foremanName} className={styles.rankingRow}>
-                <strong title={item.foremanName}>{item.foremanName}</strong>
-                <div className={styles.rankingTrack}>
-                  <span className={styles.referenceLine} style={{ left: `${referenceLeft}%` }} />
-                  <span
-                    className={item.percentage >= 100 ? styles.rankingBarPositive : styles.rankingBarNegative}
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </div>
-                <span>{formatPercent(item.percentage)}</span>
-              </div>
-            );
-          })}
-        </div>
-      </article>
-    );
-  }
-
-  function renderForemanBulletChart(isExpanded = false) {
-    return (
-      <article className={styles.chartPanel}>
-        {renderPanelHeader("Bullet chart de metas", "Valor x metas marcadas", "foremanBullet", isExpanded)}
-        {renderForemanBulletLegend()}
-        <div className={styles.panelCycleTitle}>{selectedForemanPeriodLabel}</div>
-        <div className={styles.bulletList}>
-          {selectedForemen.map((item) => (
-            <div key={item.foremanName} className={styles.bulletRow}>
-              <strong title={item.foremanName}>{item.foremanName}</strong>
-              <div className={styles.bulletTrack}>
-                <span
-                  className={styles.bulletValue}
-                  style={{ width: `${Math.min(100, (item.totalValue / foremanBulletMax) * 100)}%` }}
-                  title={`Valor: ${formatCurrency(item.totalValue)}`}
-                />
-                {foremanMetaModes.map((mode) => (
-                  <span
-                    key={mode}
-                    className={styles.bulletMarker}
-                    style={{
-                      background: foremanMetaColors[mode],
-                      left: `${Math.min(100, (resolveForemanMetaValue(item, mode) / foremanBulletMax) * 100)}%`,
-                    }}
-                    title={`${foremanMetaLabels[mode]}: ${formatCurrency(resolveForemanMetaValue(item, mode))}`}
-                  />
-                ))}
-              </div>
-              <span>{formatCurrency(item.totalValue, true)}</span>
-            </div>
-          ))}
-        </div>
-      </article>
-    );
-  }
-
-  function renderForemanGapChart(isExpanded = false) {
-    return (
-      <article className={styles.chartPanel}>
-        {renderPanelHeader("Gap financeiro", foremanMetaLabels[primaryForemanMetaMode], "foremanGap", isExpanded)}
-        {renderGapLegend()}
-        <div className={styles.panelCycleTitle}>{selectedForemanPeriodLabel}</div>
-        <div className={styles.gapList}>
-          {foremanGapRows.map((item) => {
-            const gapWidth = Math.min(50, (Math.abs(item.gap) / foremanGapMax) * 50);
-            return (
-              <div key={item.foremanName} className={styles.gapRow}>
-                <strong title={item.foremanName}>{item.foremanName}</strong>
-                <div className={styles.gapTrack}>
-                  <span className={styles.gapCenterLine} />
-                  {item.gap >= 0 ? (
-                    <span className={styles.gapPositive} style={{ left: "50%", width: `${gapWidth}%` }} />
-                  ) : (
-                    <span className={styles.gapNegative} style={{ left: `${50 - gapWidth}%`, width: `${gapWidth}%` }} />
-                  )}
-                </div>
-                <span className={item.gap >= 0 ? styles.gapValuePositive : styles.gapValueNegative}>
-                  {formatCurrency(item.gap)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </article>
-    );
-  }
-
-  function renderForemanVisualizations(isExpanded = false) {
-    return (
-      <div className={isExpanded ? styles.foremanVisualGridExpanded : styles.foremanVisualGrid}>
-        <div className={styles.foremanVisualTop}>
-          {renderForemanRanking(isExpanded)}
-          {renderForemanBulletChart(isExpanded)}
-        </div>
-        {renderForemanGapChart(isExpanded)}
-      </div>
-    );
-  }
-
-  function renderSupervisorPanelHeader(title: string, subtitle: string) {
-    return (
-      <>
-        <div className={styles.panelHeader}>
-          <div>
-            <h3>{title}</h3>
-            <span>{subtitle}</span>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  function renderSupervisorRanking() {
-    const referenceLeft = Math.min(100, (100 / supervisorProductionMax) * 100);
-    return (
-      <article className={styles.chartPanel}>
-        {renderSupervisorPanelHeader("% atingimento", supervisorMetaBase === "potential" ? "Todas vinculadas" : "Equipes com producao")}
-        {renderAchievementLegend()}
-        <div className={styles.panelCycleTitle}>{selectedSupervisorPeriodLabel}</div>
-        <div className={styles.rankingList}>
-          {supervisorRankingRows.map((item) => (
-            <div key={item.supervisorId ?? item.supervisorName} className={styles.rankingRow}>
-              <strong title={item.supervisorName}>{item.supervisorName}</strong>
-              <div className={styles.rankingTrack}>
-                <span className={styles.referenceLine} style={{ left: `${referenceLeft}%` }} />
-                <span
-                  className={item.percentage >= 100 ? styles.rankingBarPositive : styles.rankingBarNegative}
-                  style={{ width: `${Math.min(100, (item.percentage / supervisorProductionMax) * 100)}%` }}
-                />
-              </div>
-              <span>{formatPercent(item.percentage)}</span>
-            </div>
-          ))}
-        </div>
-      </article>
-    );
-  }
-
-  function renderSupervisorBulletChart() {
-    return (
-      <article className={styles.chartPanel}>
-        {renderSupervisorPanelHeader("Bullet de meta", "Producao realizada x meta supervisor")}
-        {renderSupervisorBulletLegend()}
-        <div className={styles.panelCycleTitle}>{selectedSupervisorPeriodLabel}</div>
-        <div className={styles.bulletList}>
-          {supervisorChartRows.map((item) => (
-            <div key={item.supervisorId ?? item.supervisorName} className={styles.bulletRow}>
-              <strong title={item.supervisorName}>{item.supervisorName}</strong>
-              <div className={styles.bulletTrack}>
-                <span
-                  className={styles.bulletValue}
-                  style={{ width: `${Math.min(100, (item.totalValue / supervisorBulletMax) * 100)}%` }}
-                  title={`Producao realizada: ${formatCurrency(item.totalValue)}`}
-                />
-                <span
-                  className={styles.bulletMarker}
-                  style={{
-                    background: foremanMetaColors.cycle,
-                    left: `${Math.min(100, (item.metaValue / supervisorBulletMax) * 100)}%`,
-                  }}
-                  title={`Meta supervisor: ${formatCurrency(item.metaValue)}`}
-                />
-              </div>
-              <span>{formatCurrency(item.totalValue, true)}</span>
-            </div>
-          ))}
-        </div>
-      </article>
-    );
-  }
-
-  function renderSupervisorGapChart() {
-    return (
-      <article className={styles.chartPanel}>
-        {renderSupervisorPanelHeader("Gap financeiro", "Producao realizada - meta supervisor")}
-        {renderGapLegend()}
-        <div className={styles.panelCycleTitle}>{selectedSupervisorPeriodLabel}</div>
-        <div className={styles.gapList}>
-          {supervisorChartRows.map((item) => {
-            const gapWidth = Math.min(50, (Math.abs(item.gap) / supervisorGapMax) * 50);
-            return (
-              <div key={item.supervisorId ?? item.supervisorName} className={styles.gapRow}>
-                <strong title={item.supervisorName}>{item.supervisorName}</strong>
-                <div className={styles.gapTrack}>
-                  <span className={styles.gapCenterLine} />
-                  {item.gap >= 0 ? (
-                    <span className={styles.gapPositive} style={{ left: "50%", width: `${gapWidth}%` }} />
-                  ) : (
-                    <span className={styles.gapNegative} style={{ left: `${50 - gapWidth}%`, width: `${gapWidth}%` }} />
-                  )}
-                </div>
-                <span className={item.gap >= 0 ? styles.gapValuePositive : styles.gapValueNegative}>
-                  {formatCurrency(item.gap)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </article>
-    );
-  }
-
-  function renderSupervisorProductionChart(isExpanded = false) {
-    return (
-      <div className={isExpanded ? styles.supervisorVisualGridExpanded : styles.supervisorVisualGrid}>
-        <div className={styles.referenceHint}>Base: {supervisorMetaBase === "potential" ? "Todas as equipes vinculadas" : "Equipes com producao"}</div>
-        <div className={styles.supervisorVisualTop}>
-          {renderSupervisorRanking()}
-          {renderSupervisorBulletChart()}
-        </div>
-        {renderSupervisorGapChart()}
       </div>
     );
   }
@@ -1082,15 +498,7 @@ export function DashboardMeasurementPageView() {
       ? "Visao geral por periodo"
     : expandedChart === "cycle"
       ? "Ciclo da medicao"
-    : expandedChart === "foremanRanking"
-      ? "Ranking % de atingimento"
-    : expandedChart === "foremanBullet"
-      ? "Bullet chart de metas"
-    : expandedChart === "foremanGap"
-      ? "Gap financeiro"
-    : expandedChart === "supervisorProduction"
-      ? "Supervisor no ciclo"
-      : "Encarregados no ciclo";
+      : "";
 
   return (
     <section className={styles.wrapper}>
@@ -1141,42 +549,6 @@ export function DashboardMeasurementPageView() {
               <option key={project.id} value={project.label} />
             ))}
           </datalist>
-
-          <label className={styles.field}>
-            <span>Equipe</span>
-            <select value={teamIdDraft} onChange={(event) => setTeamIdDraft(event.target.value)} disabled={isLoading}>
-              <option value="">Todas</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Encarregado</span>
-            <select value={foremanDraft} onChange={(event) => setForemanDraft(event.target.value)} disabled={isLoading}>
-              <option value="">Todos</option>
-              {foremenOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Supervisor</span>
-            <select value={supervisorIdDraft} onChange={(event) => setSupervisorIdDraft(event.target.value)} disabled={isLoading}>
-              <option value="">Todos</option>
-              {supervisorOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
 
           <label className={styles.field}>
             <span>Status execucao</span>
@@ -1272,7 +644,7 @@ export function DashboardMeasurementPageView() {
           <div className={styles.chartActions}>
             <label className={styles.inlineSelect}>
               <span>Meta</span>
-              <select value={cycleMetaMode} onChange={(event) => setCycleMetaMode(event.target.value as ForemanMetaMode)}>
+              <select value={cycleMetaMode} onChange={(event) => setCycleMetaMode(event.target.value as MetaMode)}>
                 <option value="cycle">Meta ciclo</option>
                 <option value="standard">Meta ciclo padrao</option>
                 <option value="worked">Meta ciclo trabalhado</option>
@@ -1321,7 +693,7 @@ export function DashboardMeasurementPageView() {
                 <th>Valor</th>
                 <th>Projetos</th>
                 {cycleMetaMode !== "worked" ? <th>Projecao de fechamento</th> : null}
-                <th>{foremanMetaLabels[cycleMetaMode]}</th>
+                <th>{metaLabels[cycleMetaMode]}</th>
                 <th>{metaDayLabels[cycleMetaMode]}</th>
                 {cycleMetaMode !== "worked" ? <th>Dias trabalhados</th> : null}
                 <th>Dif. ritmo produtivo</th>
@@ -1380,6 +752,8 @@ export function DashboardMeasurementPageView() {
         {renderCycleChart()}
       </article>
 
+      {/*
+      Os blocos operacionais foram movidos para /dashboard-equipes na Etapa 4.
       <article className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
@@ -1678,6 +1052,7 @@ export function DashboardMeasurementPageView() {
 
         {renderSupervisorProductionChart()}
       </article>
+      */}
 
       {expandedChart ? (
         <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-label={expandedTitle}>
@@ -1715,6 +1090,8 @@ export function DashboardMeasurementPageView() {
                 </>
               ) : null}
               {expandedChart === "cycle" ? renderCycleChart(true) : null}
+              {/*
+              As expansoes de encarregado e supervisor pertencem ao Dashboard Equipes.
               {expandedChart === "foremanRanking" ? renderForemanRanking(true) : null}
               {expandedChart === "foremanBullet" ? (
                 renderForemanBulletChart(true)
@@ -1767,6 +1144,7 @@ export function DashboardMeasurementPageView() {
                   {renderSupervisorProductionChart(true)}
                 </>
               ) : null}
+              */}
             </div>
           </div>
         </div>
