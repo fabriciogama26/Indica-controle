@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
+
+const META_PAGE_KEY = "meta";
+
+async function authorizeMetaAction(context: AuthenticatedAppUserContext, action: PageAction) {
+  const authorization = await requirePageAction({
+    context,
+    pageKey: META_PAGE_KEY,
+    action,
+  });
+
+  if (authorization.allowed) return null;
+
+  return NextResponse.json(
+    {
+      message: authorization.error.message,
+      code: authorization.error.code,
+      pageKey: authorization.pageKey,
+      action: authorization.action,
+    },
+    { status: authorization.error.status },
+  );
+}
 
 type TeamTypeRow = {
   id: string;
@@ -328,6 +351,13 @@ async function loadMetaDetail(params: {
 
   if (cycleError || !cycle) return null;
 
+  const workedDays = await calculateWorkedDaysForCycle({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    cycleStart: cycle.cycle_start,
+    cycleEnd: cycle.cycle_end,
+  });
+
   const { data: items, error: itemsError } = await params.supabase
     .from("measurement_cycle_target_items")
     .select("id, cycle_id, team_type_id, daily_value, active_team_count, measured_team_count, daily_goal, cycle_goal, standard_cycle_goal, worked_cycle_goal, updated_at")
@@ -363,7 +393,7 @@ async function loadMetaDetail(params: {
       dailyGoal,
       cycleGoal: dailyGoal * Number(cycle.workdays ?? 0),
       standardCycleGoal: dailyGoal * Number(cycle.default_workdays ?? cycle.workdays ?? 0),
-      workedCycleGoal: dailyGoal * Math.round(Number(cycle.worked_days ?? 0)),
+      workedCycleGoal: dailyGoal * workedDays,
     };
   });
 
@@ -374,7 +404,7 @@ async function loadMetaDetail(params: {
     label: formatCycleLabelFromIso(cycle.cycle_start, cycle.cycle_end),
     workdays: Number(cycle.workdays ?? 0),
     defaultWorkdays: Number(cycle.default_workdays ?? cycle.workdays ?? 0),
-    workedDays: Math.round(Number(cycle.worked_days ?? 0)),
+    workedDays,
     notes: normalizeText(cycle.notes),
     updatedAt: cycle.updated_at,
     totalMeasuredTeams: normalizedItems.reduce((sum, item) => sum + item.measuredTeamCount, 0),
@@ -396,13 +426,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizeMetaAction(resolution, "read");
+  if (authorizationError) return authorizationError;
+
   const detailCycleId = normalizeUuid(request.nextUrl.searchParams.get("detailCycleId"));
   if (detailCycleId) {
-    const detail = await loadMetaDetail({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      cycleId: detailCycleId,
-    });
+    let detail = null;
+    try {
+      detail = await loadMetaDetail({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        cycleId: detailCycleId,
+      });
+    } catch {
+      return NextResponse.json({ message: "Falha ao recalcular detalhes da meta do ciclo." }, { status: 500 });
+    }
 
     if (!detail) {
       return NextResponse.json({ message: "Cadastro de meta do ciclo nao encontrado." }, { status: 404 });
@@ -574,7 +612,7 @@ export async function GET(request: NextRequest) {
     const items = registeredItemsByCycle.get(cycle.id) ?? [];
     const workdays = Number(cycle.workdays ?? 0);
     const defaultWorkdays = Number(cycle.default_workdays ?? cycle.workdays ?? 0);
-    const workedDays = Math.round(Number(cycle.worked_days ?? 0));
+    const workedDays = cycleMap.get(cycle.cycle_start)?.workedDays ?? 0;
     const normalizedItems = items.map((item) => {
       const dailyValue = Number(item.daily_value ?? 0);
       const measuredTeamCount = Number(item.measured_team_count ?? item.active_team_count ?? 0);
@@ -660,6 +698,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Acao invalida para salvar metas." }, { status: 400 });
   }
 
+  const cycleId = normalizeUuid(payload?.cycleId);
+  const authorizationError = await authorizeMetaAction(resolution, cycleId ? "update" : "create");
+  if (authorizationError) return authorizationError;
+
   const targets = Array.isArray(payload?.targets) ? payload.targets : [];
   const normalizedTargets = targets.map((target) => ({
     teamTypeId: normalizeUuid(target.teamTypeId),
@@ -676,7 +718,6 @@ export async function POST(request: NextRequest) {
   const workdays = normalizeWorkdays(payload?.workdays);
   const defaultWorkdays = normalizeWorkdays(payload?.defaultWorkdays);
   const notes = normalizeText(payload?.notes) || null;
-  const cycleId = normalizeUuid(payload?.cycleId);
   const reason = normalizeText(payload?.reason) || null;
 
   if (!cycleStart || !cycleEnd || workdays === null || defaultWorkdays === null) {
