@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
+import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./MetaPageView.module.css";
 
@@ -266,6 +267,7 @@ function isCycleCurrent(cycle: CycleOption) {
 
 export function MetaPageView() {
   const { session } = useAuth();
+  const logError = useErrorLogger("meta");
   const exportCooldown = useExportCooldown();
   const [teamTypes, setTeamTypes] = useState<TeamTypeTarget[]>([]);
   const [cycles, setCycles] = useState<CycleOption[]>([]);
@@ -352,6 +354,9 @@ export function MetaPageView() {
       const data = (await response.json().catch(() => ({}))) as MetaResponse;
 
       if (!response.ok) {
+        await logError("Falha ao carregar metas", new Error(data.message ?? `HTTP ${response.status}`), {
+          status: response.status,
+        });
         setTeamTypes([]);
         setCycles([]);
         setRegistrations([]);
@@ -376,7 +381,8 @@ export function MetaPageView() {
         const currentCycle = nextCycles.find(isCycleCurrent);
         return currentCycle?.cycleStart ?? nextCycles[0]?.cycleStart ?? "";
       });
-    } catch {
+    } catch (error) {
+      await logError("Falha ao carregar metas", error);
       setTeamTypes([]);
       setCycles([]);
       setRegistrations([]);
@@ -384,7 +390,7 @@ export function MetaPageView() {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [logError, session?.accessToken]);
 
   useEffect(() => {
     void loadMeta();
@@ -487,6 +493,11 @@ export function MetaPageView() {
       });
       const data = (await response.json().catch(() => ({}))) as SaveResponse;
       if (!response.ok || !data.success) {
+        await logError("Falha ao salvar cadastro de metas", new Error(data.message ?? `HTTP ${response.status}`), {
+          status: response.status,
+          cycleId: editingCycleId,
+          cycleStart: selectedCycle.cycleStart,
+        });
         setFeedback({ type: "error", message: data.message ?? "Falha ao salvar cadastro de metas." });
         return;
       }
@@ -494,7 +505,11 @@ export function MetaPageView() {
       setFeedback({ type: "success", message: data.message ?? "Cadastro de metas salvo com sucesso." });
       setEditingCycleId(null);
       await loadMeta();
-    } catch {
+    } catch (error) {
+      await logError("Falha ao salvar cadastro de metas", error, {
+        cycleId: editingCycleId,
+        cycleStart: selectedCycle.cycleStart,
+      });
       setFeedback({ type: "error", message: "Falha ao salvar cadastro de metas." });
     } finally {
       setIsSaving(false);
@@ -525,11 +540,16 @@ export function MetaPageView() {
       });
       const data = (await response.json().catch(() => ({}))) as MetaDetailResponse;
       if (!response.ok || !data.detail) {
+        await logError("Falha ao carregar detalhes da meta", new Error(data.message ?? `HTTP ${response.status}`), {
+          status: response.status,
+          cycleId,
+        });
         setFeedback({ type: "error", message: data.message ?? "Falha ao carregar detalhes da meta." });
         return null;
       }
       return data.detail;
-    } catch {
+    } catch (error) {
+      await logError("Falha ao carregar detalhes da meta", error, { cycleId });
       setFeedback({ type: "error", message: "Falha ao carregar detalhes da meta." });
       return null;
     } finally {
@@ -583,11 +603,16 @@ export function MetaPageView() {
       });
       const data = (await response.json().catch(() => ({}))) as MetaHistoryResponse;
       if (!response.ok) {
+        await logError("Falha ao carregar historico da meta", new Error(data.message ?? `HTTP ${response.status}`), {
+          status: response.status,
+          cycleId: registration.id,
+        });
         setFeedback({ type: "error", message: data.message ?? "Falha ao carregar historico da meta." });
         return;
       }
       setHistoryEntries(data.history ?? []);
-    } catch {
+    } catch (error) {
+      await logError("Falha ao carregar historico da meta", error, { cycleId: registration.id });
       setFeedback({ type: "error", message: "Falha ao carregar historico da meta." });
     } finally {
       setIsLoadingHistory(false);
@@ -625,7 +650,8 @@ export function MetaPageView() {
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(buildRegistrationsCsv(registrations), `metas_medicao_${exportDate}.csv`);
       setFeedback({ type: "success", message: `${registrations.length} meta(s) exportada(s) com sucesso.` });
-    } catch {
+    } catch (error) {
+      await logError("Falha ao exportar metas salvas", error, { registrationCount: registrations.length });
       setFeedback({ type: "error", message: "Falha ao exportar metas salvas." });
     } finally {
       setIsExporting(false);

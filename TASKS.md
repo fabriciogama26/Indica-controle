@@ -937,3 +937,5 @@
 - [x] Aplicar autorizacao server-side `dashboard-medicao/read` no endpoint do dashboard e integrar `useErrorLogger("dashboard_medicao")` na tela.
 - [x] Refinar o `Ritmo objetivo` para deixar explicito que usa somente equipes/datas com Medicao `COM_PRODUCAO` ativa e nao cancelada, excluindo `SEM_PRODUCAO` e Garantia de faturamento minimo.
 - [x] Mover `Ritmo atual` e `Ritmo objetivo` para cards, remover a barra `Objetivo acumulado` e exibir na tabela somente `Dif. ritmo = Ritmo atual - Ritmo objetivo`.
+- [x] Recalcular `Dias reais` da `Meta ciclo trabalhado` diretamente no Dashboard pelas equipes/datas filtradas, sem depender do `worked_days` persistido ao salvar a tela Meta.
+- [x] Atualizar cards, lista e detalhe da tela Meta com a media atual de dias trabalhados no carregamento, mantendo persistencia somente no salvamento explicito e aplicando autorizacao server-side/log de erros.

@@ -97,7 +97,6 @@ type CycleWorkdaysRow = {
   cycle_end: string;
   workdays: number | string;
   default_workdays: number | string | null;
-  worked_days: number | string | null;
 };
 
 type CycleTargetItemRow = {
@@ -812,7 +811,7 @@ export async function GET(request: NextRequest) {
 
   const selectedCycleRecordResult = await resolution.supabase
     .from("measurement_cycle_workdays")
-    .select("id, cycle_start, cycle_end, workdays, default_workdays, worked_days")
+    .select("id, cycle_start, cycle_end, workdays, default_workdays")
     .eq("tenant_id", tenantId)
     .eq("cycle_start", selectedCycle.cycleStart)
     .maybeSingle<CycleWorkdaysRow>();
@@ -836,7 +835,6 @@ export async function GET(request: NextRequest) {
   const standardCycleMetaValue = (targetItemsResult.data ?? []).reduce((sum, item) => sum + Number(item.standard_cycle_goal ?? 0), 0);
   const workdays = Number(selectedCycleRecord?.workdays ?? 0);
   const defaultWorkdays = Number(selectedCycleRecord?.default_workdays ?? selectedCycleRecord?.workdays ?? 0);
-  const workedDays = Math.round(Number(selectedCycleRecord?.worked_days ?? 0));
 
   function createCompletionTotals() {
     return new Map<string, CompletionAggregate>([
@@ -1364,6 +1362,9 @@ export async function GET(request: NextRequest) {
   const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
   const averageDailyValue = executedWorkdays > 0 ? realizedValue / executedWorkdays : 0;
   const workedObjectiveValue = teamsProductionRows.reduce((sum, team) => sum + team.workedMetaValue, 0);
+  const workedDays = teamsProductionRows.length > 0
+    ? Math.round(teamsProductionRows.reduce((sum, team) => sum + team.workedDays, 0) / teamsProductionRows.length)
+    : 0;
   const objectiveDailyValue = executedWorkdays > 0 ? workedObjectiveValue / executedWorkdays : 0;
   const forecastValue = averageDailyValue * workdays;
   const forecastPercentage = cycleMetaValue > 0 ? (forecastValue / cycleMetaValue) * 100 : 0;

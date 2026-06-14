@@ -43,7 +43,8 @@ Cadastro
   - Observacao: campo opcional para registrar feriados/ajustes.
 - O cadastro salva valores por tipo, dias uteis e snapshot de equipes do ciclo selecionado em uma unica acao.
 - Quando um ciclo ja possui cadastro salvo, o formulario carrega os valores salvos de `Valor diario` e `Equipes medida` daquele ciclo.
-- Ao salvar cadastro ou edicao, a API recalcula `Média Dias trabalhados` pelo ciclo selecionado antes de chamar a RPC, evitando manter valor antigo salvo quando surgem novas medicoes.
+- Ao carregar a tela, a API recalcula `Média Dias trabalhados` com as medicoes atuais para os cards, lista e detalhes, sem exigir entrada em edicao ou novo salvamento.
+- Ao salvar cadastro ou edicao, a API recalcula novamente `Média Dias trabalhados` pelo ciclo selecionado antes de chamar a RPC, persistindo o valor atual na mesma operacao auditada.
 - Quando o ciclo ainda nao possui cadastro salvo, `Equipes medida` inicia pela quantidade de equipes ativas apenas como sugestao editavel.
 - A RPC bloqueia duplicidade de ciclo no cadastro novo.
 - A API aceita o valor diario como numero decimal enviado pela tela e preserva os centavos.
@@ -185,6 +186,8 @@ Funcoes utilitarias relacionadas
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
+- `requirePageAction` para exigir `meta/read`, `meta/create` ou `meta/update` no servidor.
+- `useErrorLogger("meta")` para registrar falhas de carregamento, detalhe, historico, salvamento e exportacao.
 - Supabase/Postgres com RLS ativo nas tabelas novas.
 
 Ajuda contextual
@@ -215,3 +218,27 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: nao havia fonte oficial de meta para comparar valores medidos.
   - Depois: o sistema possui cadastro unico por tipo de equipe e ciclo, com calculo de meta diaria por quantidade manual de equipes medida, meta do ciclo por dias uteis, meta ciclo padrao por dias padrao, meta ciclo trabalhado por `Média Dias trabalhados` das equipes com medicao `COM_PRODUCAO`, bloqueio de duplicidade por ciclo, lista com atualizacao/exportacao CSV, detalhes, historico paginado no padrao da Medicao e edicao no formulario principal com borda amarela. A edicao regrava os itens por `cycle_id`, recalcula `Média Dias trabalhados` pelo ciclo selecionado antes de salvar, e a leitura da API tambem recalcula os totais exibidos por `Valor diario x Equipes medida` para evitar exibicao de registros legados inconsistentes.
+
+Atualizacao 2026-06-14 (media de dias trabalhados em tempo real)
+----------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/meta/route.ts`
+  - `src/modules/dashboard/meta/MetaPageView.tsx`
+  - `docs/Tela_Meta_SaaS.txt`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `calculateWorkedDaysForCycle`
+  - `loadMetaDetail`
+  - `GET /api/meta`
+  - `authorizeMetaAction`
+  - `useErrorLogger("meta")`
+- Comportamento antes/depois:
+  - Antes: a lista e o detalhe de metas usavam `measurement_cycle_workdays.worked_days`, que podia ficar defasado ate o usuario editar e salvar novamente o ciclo.
+  - Depois: cards, lista e detalhe recalculam a media arredondada de dias distintos por equipe usando medicoes `COM_PRODUCAO`, ativas, nao canceladas e sem projetos de teste.
+  - Depois: o carregamento permanece somente leitura; a persistencia continua ocorrendo apenas no salvamento explicito pela RPC auditada.
+  - Depois: a API exige permissao server-side por acao e a tela registra falhas com a tag `meta`.
+- Impacto multi-tenant:
+  - Sem alteracao de schema ou RLS.
+  - Todas as medicoes, projetos, ciclos e itens continuam filtrados pelo `tenant_id` autenticado.

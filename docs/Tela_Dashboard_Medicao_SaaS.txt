@@ -96,6 +96,7 @@ Filtros, auto-complete e listagem
 - O bloco do ciclo exibe `Ritmo atual` e `Ritmo objetivo` em cards.
 - A tabela do ciclo exibe `Dif. ritmo`, calculada por `Ritmo atual - Ritmo objetivo`; valor positivo indica producao diaria acima do objetivo e valor negativo indica producao diaria abaixo do objetivo.
 - A `Meta ciclo trabalhado` do comparativo principal usa o mesmo objetivo dinamico por equipe + data, em vez do total trabalhado pre-calculado sem considerar os filtros do dashboard.
+- Ao selecionar `Meta ciclo trabalhado`, `Dias reais` e recalculado no carregamento do Dashboard pela media arredondada dos dias distintos das equipes filtradas com producao valida; nao depende de abrir ou atualizar a tela Meta.
 - A coluna `Dif. prevista` exibe valores negativos em vermelho e valores positivos em verde.
 - O card `Ticket medio / Projetos` do ciclo calcula `Valor realizado / Projetos no ciclo`, usando projetos distintos do recorte filtrado.
 - O card `Ticket medio / Servicos` do ciclo calcula `Valor realizado / Ordens`, usando a quantidade de ordens `COM_PRODUCAO` do recorte filtrado.
@@ -560,6 +561,7 @@ Atualizacao 2026-06-14 (ritmo objetivo por equipe e dia)
   - Depois: a tabela substitui as duas colunas de ritmo por `Dif. ritmo = Ritmo atual - Ritmo objetivo`, com positivo em verde e negativo em vermelho.
   - Depois: o grafico nao exibe barra de objetivo acumulado; permanece focado em Valor, Projecao de fechamento e meta selecionada.
   - Depois: a `Meta ciclo trabalhado` principal passa a usar o total dinamico filtrado.
+  - Depois: `Dias reais` tambem passa a usar a media dinamica das equipes filtradas, eliminando a dependencia do valor `worked_days` salvo anteriormente pela tela Meta.
   - Depois: falhas da tela sao registradas com a tag `dashboard_medicao`.
 - Impacto multi-tenant:
   - Sem alteracao de schema ou RLS.
