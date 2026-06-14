@@ -37,6 +37,7 @@ type Summary = {
   averageDailyValue: number;
   workedObjectiveValue: number;
   objectiveDailyValue: number;
+  targetDailyValue: number;
   forecastValue: number;
   forecastPercentage: number;
   forecastDifference: number;
@@ -75,6 +76,7 @@ type CycleComparison = {
   averageDailyValue: number;
   workedObjectiveValue: number;
   objectiveDailyValue: number;
+  targetDailyValue: number;
   forecastValue: number;
   forecastPercentage: number;
   forecastDifference: number;
@@ -1302,8 +1304,12 @@ export function DashboardMeasurementPageView() {
             <strong>{formatCurrency(cycleComparison?.averageDailyValue ?? 0)}/dia</strong>
           </div>
           <div className={styles.metric}>
-            <span>Ritmo objetivo</span>
+            <span>Ritmo produtivo</span>
             <strong>{formatCurrency(cycleComparison?.objectiveDailyValue ?? 0)}/dia</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Ritmo meta</span>
+            <strong>{formatCurrency(cycleComparison?.targetDailyValue ?? 0)}/dia</strong>
           </div>
         </div>
 
@@ -1318,7 +1324,8 @@ export function DashboardMeasurementPageView() {
                 <th>{foremanMetaLabels[cycleMetaMode]}</th>
                 <th>{metaDayLabels[cycleMetaMode]}</th>
                 {cycleMetaMode !== "worked" ? <th>Dias trabalhados</th> : null}
-                {cycleMetaMode !== "worked" ? <th>Dif. ritmo</th> : null}
+                <th>Dif. ritmo produtivo</th>
+                <th>Dif. ritmo meta</th>
                 {cycleMetaMode !== "worked" ? <th>Dif. prevista</th> : null}
                 <th>%Porcentagem</th>
                 {cycleMetaMode !== "worked" ? <th>%Previsto</th> : null}
@@ -1327,15 +1334,21 @@ export function DashboardMeasurementPageView() {
             <tbody>
               {cycleComparison ? (() => {
                 const forecastDifference = resolveCycleForecastDifference(cycleComparison, cycleMetaMode);
-                const rhythmDifference = cycleComparison.averageDailyValue - cycleComparison.objectiveDailyValue;
+                const productiveRhythmDifference = cycleComparison.averageDailyValue - cycleComparison.objectiveDailyValue;
+                const targetRhythmDifference = cycleComparison.averageDailyValue - cycleComparison.targetDailyValue;
                 const forecastDifferenceClass = forecastDifference < 0
                   ? styles.forecastDifferenceNegative
                   : forecastDifference > 0
                     ? styles.forecastDifferencePositive
                     : undefined;
-                const rhythmDifferenceClass = rhythmDifference < 0
+                const productiveRhythmDifferenceClass = productiveRhythmDifference < 0
                   ? styles.forecastDifferenceNegative
-                  : rhythmDifference > 0
+                  : productiveRhythmDifference > 0
+                    ? styles.forecastDifferencePositive
+                    : undefined;
+                const targetRhythmDifferenceClass = targetRhythmDifference < 0
+                  ? styles.forecastDifferenceNegative
+                  : targetRhythmDifference > 0
                     ? styles.forecastDifferencePositive
                     : undefined;
 
@@ -1348,7 +1361,8 @@ export function DashboardMeasurementPageView() {
                     <td>{formatCurrency(resolveCycleMetaValue(cycleComparison, cycleMetaMode))}</td>
                     <td>{resolveCycleDays(cycleComparison, cycleMetaMode)}</td>
                     {cycleMetaMode !== "worked" ? <td>{cycleComparison.executedWorkdays}</td> : null}
-                    {cycleMetaMode !== "worked" ? <td className={rhythmDifferenceClass}>{formatCurrency(rhythmDifference)}/dia</td> : null}
+                    <td className={productiveRhythmDifferenceClass}>{formatCurrency(productiveRhythmDifference)}/dia</td>
+                    <td className={targetRhythmDifferenceClass}>{formatCurrency(targetRhythmDifference)}/dia</td>
                     {cycleMetaMode !== "worked" ? <td className={forecastDifferenceClass}>{formatCurrency(forecastDifference)}</td> : null}
                     <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (cycleComparison.value / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td>
                     {cycleMetaMode !== "worked" ? <td>{formatPercent(resolveCycleMetaValue(cycleComparison, cycleMetaMode) > 0 ? (resolveCycleForecastValue(cycleComparison, cycleMetaMode) / resolveCycleMetaValue(cycleComparison, cycleMetaMode)) * 100 : 0)}</td> : null}
@@ -1356,7 +1370,7 @@ export function DashboardMeasurementPageView() {
                 );
               })() : (
                 <tr>
-                  <td colSpan={cycleMetaMode === "worked" ? 6 : 11} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
+                  <td colSpan={cycleMetaMode === "worked" ? 8 : 12} className={styles.emptyRow}>Nenhum ciclo encontrado.</td>
                 </tr>
               )}
             </tbody>
