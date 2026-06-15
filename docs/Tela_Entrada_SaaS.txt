@@ -573,7 +573,8 @@ Arquitetura
 - Movimentacao manual com varios materiais: o agrupamento usa o proprio `stock_transfer_id`.
 - Cadastro em massa CSV: linhas bem-sucedidas do mesmo contexto recebem `stock_transfers.operation_batch_id`.
 - A importacao continua parcial e retorna status por linha; falhas nao removem linhas anteriores salvas com sucesso.
-- Importacoes historicas nao recebem backfill, pois nao existe chave confiavel para reconstruir o lote sem risco de agrupar movimentacoes independentes.
+- Importacoes historicas recebem backfill conservador pela migration `239`: somente transferencias de item unico, criadas no mesmo segundo, pelo mesmo ator e com operacao, centros, projeto, data e finalidade coincidentes.
+- Registros isolados, ambiguos, de Operacoes de Equipe ou criados como estorno permanecem sem agrupamento.
 
 Cancelamento e saldo
 - `GET /api/stock-transfers/reversal` retorna materiais, status e vinculos de estorno do lote no tenant autenticado.
@@ -606,7 +607,10 @@ Mapa de Codigo (funcoes, hooks e constantes)
 - `supabase/migrations/238_add_stock_transfer_batch_reversal.sql`
   - coluna/indice `operation_batch_id`.
   - RPCs `save_stock_transfer_import_entry_v1` e `reverse_stock_transfer_operation_batch_v1`.
+- `supabase/migrations/239_backfill_stock_transfer_import_batches.sql`
+  - preenche `operation_batch_id` para importacoes historicas com assinatura temporal e operacional conservadora.
 
 Comportamento antes/depois
 - Antes: o modal mostrava somente o item selecionado e permitia apenas estorno individual.
 - Depois: o modal mostra o conjunto completo e oferece as duas acoes, preservando itens ja estornados e a auditoria individual.
+- Correcao complementar: registros importados antes da migration `238` passam a compor o lote quando satisfazem integralmente os criterios da migration `239`.

@@ -398,6 +398,7 @@ vercel --prod
 - `supabase/migrations/236_add_team_stock_operation_batch_reversal.sql`: cria o estorno atomico de todos os itens ainda ativos de uma Operacao de Equipe, com validacao de ator/tenant e EXECUTE restrito ao `service_role`.
 - `supabase/migrations/237_group_team_stock_imports_for_batch_reversal.sql`: identifica requisicoes do cadastro em massa por `operation_batch_id`, faz backfill seguro e permite estornar materiais que foram gravados em transferencias distintas.
 - `supabase/migrations/238_add_stock_transfer_batch_reversal.sql`: adiciona agrupamento das importacoes de Movimentacao de Estoque e RPC para estornar atomicamente todos os itens ainda ativos do lote.
+- `supabase/migrations/239_backfill_stock_transfer_import_batches.sql`: identifica importacoes historicas pelo mesmo segundo, ator e contexto operacional, preenchendo `operation_batch_id` apenas em grupos conservadores de item unico.
 
 ---
 

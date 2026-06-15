@@ -276,8 +276,6 @@ export async function POST(request: NextRequest) {
         toStockCenterId,
         projectId,
         entryDate,
-        entryType,
-        notes,
       });
       const operationBatchId = operationBatchIds.get(operationBatchKey) ?? randomUUID();
       operationBatchIds.set(operationBatchKey, operationBatchId);
