@@ -171,6 +171,34 @@ export type TeamOperationFormItem = {
   serialTrackingType: SerialTrackingType;
 };
 
+export type TeamOperationBatchReversalItem = {
+  id: string;
+  materialId: string;
+  materialCode: string;
+  description: string;
+  quantity: number;
+  serialNumber: string | null;
+  lotCode: string | null;
+  isReversed: boolean;
+  reversalTransferId: string | null;
+};
+
+export type TeamOperationBatchReversalResponse = {
+  transferId?: string;
+  isReversal?: boolean;
+  isFullyReversed?: boolean;
+  items?: TeamOperationBatchReversalItem[];
+  activeItemCount?: number;
+  reversedItemCount?: number;
+  results?: Array<{
+    itemId: string;
+    reversalTransferId: string;
+    reversalItemId: string | null;
+  }>;
+  message?: string;
+  reason?: string;
+};
+
 export type FormState = {
   operationKind: TeamOperationKind;
   stockCenterId: string;

@@ -136,7 +136,7 @@ vercel --prod
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por projeto/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, detalhes, historico e CSV.
   - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
-  - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, respeitando o tipo cadastrado do material e preservando snapshot do encarregado por movimentacao.
+  - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
   - `(dashboard)/estornos/page.tsx`: rota da tela `Estornos` para consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
@@ -190,7 +190,7 @@ vercel --prod
   - `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
   - `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
   - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV), com pre-validacao sequencial de saldo/TRAFO, rollback total do lote e retorno de erros por linha/coluna.
-  - `api/team-stock-operations/reversal/route.ts`: executa estorno transacional das operacoes de equipe com permissao administrativa.
+  - `api/team-stock-operations/reversal/route.ts`: carrega os materiais agrupados pelo `transferId` e executa estorno individual ou em lote com autorizacao server-side da pagina `saida`.
 - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, exclui centros de equipe da tela de Estoque Atual, recompõe materiais historicos com saldo `0` nos centros fisicos quando necessario e mantem historico enriquecido com `Equipe`/`Encarregado`, incluindo filtro por operacao/origem para localizar `Retorno de campo` via `CAMPO / INSTALADO`.
   - `api/team-stock-balance/route.ts`: consulta saldo dos centros vinculados a equipes em blocos paginados, valida permissao propria e retorna metadados, lista paginada e historico por equipe/material.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` fisicos/principais usados no filtro da tela de Estoque Atual.
@@ -267,7 +267,7 @@ vercel --prod
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
   - `constants.ts`: configuracoes de pagina, labels de historico e template CSV da tela `Operacoes de Equipe`.
   - `utils.ts`: formatadores, parser CSV e geracao de relatorio de erros do cadastro em massa.
-- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, tipo automatico conforme cadastro do material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno, historico e exibicao do encarregado snapshot por operacao.
+- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, tipo automatico conforme cadastro do material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno individual ou em lote por requisicao, historico e exibicao do encarregado snapshot por operacao.
   - `TeamStockOperationsPageView.module.css`: estilo local da tela, reaproveitando o mesmo visual operacional da movimentacao de estoque.
 - `src/modules/dashboard/estornos/`
   - `ReversalsPageView.tsx`: tela read-only de Estornos com filtros, cards de resumo, lista paginada, detalhes e exportacao CSV dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
@@ -395,6 +395,7 @@ vercel --prod
 - `supabase/migrations/227_create_team_stock_balance_page.sql`: cadastra `estoque-equipes` e preenche permissoes de role/usuario sem sobrescrever configuracoes individuais existentes.
 - `supabase/migrations/228_make_programming_rede_decimal_transactional.sql`: cria wrappers transacionais para persistir `REDE` decimal no cadastro individual e em lote da Programacao.
 - `supabase/migrations/235_fix_programming_batch_decimal_rpc_name.sql`: publica nome curto para a wrapper decimal em lote, evitando truncamento do identificador PostgreSQL e falha `PGRST202` no PostgREST.
+- `supabase/migrations/236_add_team_stock_operation_batch_reversal.sql`: cria o estorno atomico de todos os itens ainda ativos de uma Operacao de Equipe, com validacao de ator/tenant e EXECUTE restrito ao `service_role`.
 
 ---
 
@@ -474,6 +475,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 67. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
 68. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
 69. A rota `/controle-apr` cadastra APR por Projeto + Equipe + Data do servico, bloqueia ID APR duplicado em toda a base, vincula automaticamente a Programacao nao cancelada do dia, permite editar, cancelar, marcar como Conferido/Divergente e extrair o resultado filtrado em Excel.
+70. Na rota `/saida`, clicar em uma linha original abre os materiais da mesma requisicao pelo `transferId`; o usuario pode estornar somente o item selecionado ou todos os itens ainda ativos em uma unica operacao atomica.
 
 ---
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
 import { reverseTeamStockOperationViaRpc } from "@/lib/server/teamStockOperations";
 
@@ -10,28 +11,202 @@ type ReversalPayload = {
   reversalReasonCode?: unknown;
   reversalReasonNotes?: unknown;
   reversalDate?: unknown;
+  mode?: unknown;
 };
 
 const BLOCKED_REVERSAL_REASON_CODES = new Set(["OPERATION_CANCELED", "OTHER"]);
 
-export async function POST(request: NextRequest) {
-  try {
-    const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para estornar operacao de equipe.",
-      inactiveMessage: "Usuario inativo.",
-    });
+type TransferItemRow = {
+  id: string;
+  material_id: string;
+  quantity: number;
+  serial_number: string | null;
+  lot_code: string | null;
+};
 
-    if ("error" in resolution) {
-      return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+type MaterialRow = {
+  id: string;
+  codigo: string;
+  descricao: string;
+};
+
+type ItemReversalRow = {
+  original_stock_transfer_item_id: string;
+  reversal_stock_transfer_id: string;
+};
+
+async function resolveReversalContext(request: NextRequest, action: "read" | "reverse") {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para estornar operacao de equipe.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return {
+      error: NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status }),
+    } as const;
+  }
+
+  const authorization = await requirePageAction({
+    context: resolution,
+    pageKey: "saida",
+    action,
+  });
+
+  if (!authorization.allowed) {
+    return {
+      error: NextResponse.json(
+        { message: authorization.error.message, reason: authorization.error.code },
+        { status: authorization.error.status },
+      ),
+    } as const;
+  }
+
+  return { resolution } as const;
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const context = await resolveReversalContext(request, "read");
+    if ("error" in context) {
+      return context.error;
     }
 
-    const normalizedRoleKey = String(resolution.role.roleKey ?? "").trim().toLowerCase();
-    const canReverse = resolution.role.isAdmin || normalizedRoleKey === "user";
-    if (!canReverse) {
+    const transferId = normalizeText(request.nextUrl.searchParams.get("transferId"));
+    if (!transferId) {
+      return NextResponse.json({ message: "transferId e obrigatorio." }, { status: 400 });
+    }
+
+    const { supabase, appUser } = context.resolution;
+    const [
+      teamOperationResult,
+      itemsResult,
+      fullReversalResult,
+      originalFullReversalResult,
+      originalItemReversalResult,
+    ] = await Promise.all([
+      supabase
+        .from("stock_transfer_team_operations")
+        .select("transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("transfer_id", transferId)
+        .maybeSingle<{ transfer_id: string }>(),
+      supabase
+        .from("stock_transfer_items")
+        .select("id, material_id, quantity, serial_number, lot_code")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("stock_transfer_id", transferId)
+        .order("created_at", { ascending: true })
+        .returns<TransferItemRow[]>(),
+      supabase
+        .from("stock_transfer_reversals")
+        .select("reversal_stock_transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("original_stock_transfer_id", transferId)
+        .maybeSingle<{ reversal_stock_transfer_id: string }>(),
+      supabase
+        .from("stock_transfer_reversals")
+        .select("original_stock_transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("reversal_stock_transfer_id", transferId)
+        .maybeSingle<{ original_stock_transfer_id: string }>(),
+      supabase
+        .from("stock_transfer_item_reversals")
+        .select("original_stock_transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("reversal_stock_transfer_id", transferId)
+        .limit(1)
+        .returns<Array<{ original_stock_transfer_id: string }>>(),
+    ]);
+
+    if (
+      teamOperationResult.error
+      || itemsResult.error
+      || fullReversalResult.error
+      || originalFullReversalResult.error
+      || originalItemReversalResult.error
+    ) {
+      return NextResponse.json({ message: "Falha ao carregar os materiais da operacao." }, { status: 500 });
+    }
+
+    if (!teamOperationResult.data) {
       return NextResponse.json(
-        { message: "Perfil sem permissao para estornar operacoes de equipe." },
-        { status: 403 },
+        { message: "Operacao de equipe nao encontrada para este tenant.", reason: "TEAM_OPERATION_NOT_FOUND" },
+        { status: 404 },
       );
+    }
+
+    const itemRows = itemsResult.data ?? [];
+    const itemIds = itemRows.map((item) => item.id);
+    const materialIds = Array.from(new Set(itemRows.map((item) => item.material_id)));
+    const [materialsResult, itemReversalsResult] = await Promise.all([
+      materialIds.length
+        ? supabase
+            .from("materials")
+            .select("id, codigo, descricao")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("id", materialIds)
+            .returns<MaterialRow[]>()
+        : Promise.resolve({ data: [], error: null }),
+      itemIds.length
+        ? supabase
+            .from("stock_transfer_item_reversals")
+            .select("original_stock_transfer_item_id, reversal_stock_transfer_id")
+            .eq("tenant_id", appUser.tenant_id)
+            .in("original_stock_transfer_item_id", itemIds)
+            .returns<ItemReversalRow[]>()
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (materialsResult.error || itemReversalsResult.error) {
+      return NextResponse.json({ message: "Falha ao carregar o status dos materiais da operacao." }, { status: 500 });
+    }
+
+    const materialMap = new Map((materialsResult.data ?? []).map((material) => [material.id, material]));
+    const reversalMap = new Map(
+      (itemReversalsResult.data ?? []).map((reversal) => [
+        reversal.original_stock_transfer_item_id,
+        reversal.reversal_stock_transfer_id,
+      ]),
+    );
+    const fullReversalTransferId = fullReversalResult.data?.reversal_stock_transfer_id ?? null;
+    const items = itemRows.map((item) => {
+      const material = materialMap.get(item.material_id);
+      const reversalTransferId = fullReversalTransferId ?? reversalMap.get(item.id) ?? null;
+      return {
+        id: item.id,
+        materialId: item.material_id,
+        materialCode: material?.codigo ?? "Nao informado",
+        description: material?.descricao ?? "Material nao encontrado",
+        quantity: Number(item.quantity ?? 0),
+        serialNumber: item.serial_number,
+        lotCode: item.lot_code,
+        isReversed: Boolean(reversalTransferId),
+        reversalTransferId,
+      };
+    });
+
+    const isReversal = Boolean(originalFullReversalResult.data || (originalItemReversalResult.data ?? []).length);
+    const reversedItemCount = items.filter((item) => item.isReversed).length;
+
+    return NextResponse.json({
+      transferId,
+      isReversal,
+      isFullyReversed: items.length > 0 && reversedItemCount === items.length,
+      items,
+      activeItemCount: items.length - reversedItemCount,
+      reversedItemCount,
+    });
+  } catch {
+    return NextResponse.json({ message: "Falha ao carregar os materiais da operacao." }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const context = await resolveReversalContext(request, "reverse");
+    if ("error" in context) {
+      return context.error;
     }
 
     const payload = (await request.json().catch(() => ({}))) as ReversalPayload;
@@ -41,8 +216,14 @@ export async function POST(request: NextRequest) {
     const reversalReasonNotes = normalizeText(payload.reversalReasonNotes) || null;
     const reversalDateRaw = normalizeText(payload.reversalDate);
     const reversalDate = reversalDateRaw ? normalizeDateInput(reversalDateRaw) : null;
+    const requestedMode = normalizeText(payload.mode).toUpperCase();
+    const mode = requestedMode === "BATCH"
+      ? "BATCH"
+      : requestedMode === "ITEM" || transferItemId
+        ? "ITEM"
+        : "FULL";
 
-    if (!transferId && !transferItemId) {
+    if ((!transferId && !transferItemId) || (mode === "BATCH" && !transferId)) {
       return NextResponse.json({ message: "transferId ou transferItemId e obrigatorio para estorno." }, { status: 400 });
     }
 
@@ -61,8 +242,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Data do estorno invalida." }, { status: 400 });
     }
 
-    const { supabase, appUser } = resolution;
-    if (transferItemId) {
+    const { supabase, appUser } = context.resolution;
+    if (mode === "ITEM" && transferItemId) {
       const [
         originalItemResult,
         originalItemReversalResult,
@@ -188,7 +369,8 @@ export async function POST(request: NextRequest) {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
       originalTransferId: transferId,
-      originalTransferItemId: transferItemId || null,
+      originalTransferItemId: mode === "ITEM" ? transferItemId : null,
+      reverseBatch: mode === "BATCH",
       reversalReasonCode,
       reversalReasonNotes,
       reversalDate,
@@ -208,6 +390,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       transferId: reversalResult.transferId,
+      reversedItemCount: reversalResult.reversedItemCount,
+      results: reversalResult.results,
       message: reversalResult.message,
     });
   } catch {
