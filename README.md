@@ -393,6 +393,8 @@ vercel --prod
 - `supabase/migrations/215_repair_reversals_page_permissions.sql`: repara o catalogo e o backfill multi-tenant da pagina `estornos` sem sobrescrever permissoes existentes.
 - `supabase/migrations/226_create_apr_control_module.sql`: cria tabelas, indices, RLS, historico, RPCs e permissoes do Controle de APR.
 - `supabase/migrations/227_create_team_stock_balance_page.sql`: cadastra `estoque-equipes` e preenche permissoes de role/usuario sem sobrescrever configuracoes individuais existentes.
+- `supabase/migrations/228_make_programming_rede_decimal_transactional.sql`: cria wrappers transacionais para persistir `REDE` decimal no cadastro individual e em lote da Programacao.
+- `supabase/migrations/235_fix_programming_batch_decimal_rpc_name.sql`: publica nome curto para a wrapper decimal em lote, evitando truncamento do identificador PostgreSQL e falha `PGRST202` no PostgREST.
 
 ---
 
@@ -492,6 +494,9 @@ npm run build
 - `Falha ao salvar programacao em transacao unica.` ou `Falha ao cadastrar programacao em lote.`:
   - Causa: ambiente com RPC full da `Programacao` desatualizada ou ainda dependente da migration `090_add_programming_service_description.sql`.
   - Solucao: aplicar `091_create_programming_full_save_rpcs.sql`, `094_add_programming_stage_and_completion_fields.sql`, `095_harden_programming_time_and_document_validations.sql`, `099_harden_programming_batch_full_self_contained.sql`, `100_harden_programming_full_self_contained.sql`, `106_move_programming_save_history_into_full_rpcs.sql`, `159_fix_programming_full_wrappers_etapa_flags_recursion.sql` e `221_preserve_programming_wrapper_error_details.sql`.
+- `FULL_RPC_NOT_AVAILABLE` ao cadastrar Programacao em lote, mesmo com a migration `228` aplicada:
+  - Causa: o nome original da wrapper decimal em lote possui 66 caracteres e foi truncado pelo PostgreSQL para 63, impedindo a resolucao do nome original pelo PostgREST.
+  - Solucao: publicar a API atualizada, que reconhece temporariamente o nome truncado, e aplicar `235_fix_programming_batch_decimal_rpc_name.sql` para consolidar o nome curto `save_project_programming_batch_full_decimal`.
 - `Nao foi possivel comunicar com o servidor.` ou timeout de 30 segundos na Programacao:
   - Causa: perda de internet, indisponibilidade da API/Supabase ou demora excessiva da requisicao.
   - Solucao: verificar a conexao e consultar a lista antes de repetir o cadastro, pois o banco pode ter concluido a transacao mesmo quando a resposta nao chegou ao navegador.

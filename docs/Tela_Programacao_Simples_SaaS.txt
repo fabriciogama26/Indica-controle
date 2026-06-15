@@ -1669,3 +1669,35 @@ Atualizacao 2026-06-13 - fiscalizacao cruzada com Projetos
   - inativacao usa o mesmo lock e revalida `PROGRAMADA`, `REPROGRAMADA` e `ADIADA`;
   - escrita direta de authenticated nas tabelas/RPCs cobertas foi removida;
   - nenhuma policy RLS ou permissao de `DELETE` foi criada.
+
+Atualizacao 2026-06-15 - nome da RPC decimal em lote
+----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `supabase/migrations/235_fix_programming_batch_decimal_rpc_name.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `saveProgrammingBatchFullViaRpc`: passa a chamar
+    `save_project_programming_batch_full_decimal` e, enquanto a migration 235 ainda nao
+    estiver aplicada, aceita o nome truncado de 63 caracteres publicado pela migration
+    228. As duas chamadas apontam para a mesma implementacao transacional.
+  - `isMissingRpcFunctionError`: deixa de classificar qualquer mensagem contendo o nome
+    da RPC como funcao ausente e exige indicio de `schema cache`, `could not find` ou
+    `does not exist`.
+  - `save_project_programming_batch_full_decimal`: nome curto publicado pela migration
+    235 para a wrapper transacional criada na migration 228.
+- Comportamento antes/depois:
+  - Antes: o nome de 66 caracteres da wrapper em lote era truncado pelo PostgreSQL para
+    63 caracteres; a API chamava o nome original e recebia `PGRST202`.
+  - Depois: API e banco usam um identificador de 43 caracteres resolvido pelo PostgREST,
+    mantendo o cadastro em lote atomico e a persistencia decimal de `REDE`.
+  - A API tambem reconhece temporariamente o nome truncado existente, permitindo aplicar
+    codigo e migration em qualquer ordem sem voltar ao save parcial.
+- Multi-tenant, seguranca e RLS:
+  - O corpo da RPC, os filtros por `tenant_id` e o rollback integral nao foram alterados.
+  - `PUBLIC`, `anon` e `authenticated` permanecem sem EXECUTE.
+  - Somente `service_role` executa a wrapper apos autenticacao e autorizacao na API.
+  - Nenhuma policy RLS foi criada ou alterada.
