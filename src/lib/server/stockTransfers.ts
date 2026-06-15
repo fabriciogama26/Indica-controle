@@ -10,6 +10,7 @@ export type StockTransferItemInput = {
 export type SaveStockTransferPayload = {
   tenantId: string;
   actorUserId: string;
+  operationBatchId?: string | null;
   movementType: "ENTRY" | "EXIT" | "TRANSFER";
   operationPurpose?: "NORMAL" | "BALANCE_CORRECTION";
   fromStockCenterId: string;
@@ -28,6 +29,7 @@ export type ReverseStockTransferPayload = {
   actorUserId: string;
   originalTransferId: string;
   originalTransferItemId?: string | null;
+  reverseBatch?: boolean;
   reversalReasonCode: string;
   reversalReasonNotes?: string | null;
   reversalDate?: string | null;
@@ -39,6 +41,11 @@ type StockTransferRpcResult = {
   reason?: string;
   message?: string;
   transfer_id?: string;
+  reversed_item_count?: number;
+  results?: Array<{
+    item_id?: string;
+    reversal_transfer_id?: string;
+  }>;
   details?: unknown;
 };
 
@@ -145,7 +152,10 @@ export async function saveStockTransferViaRpc(
   supabase: SupabaseClient,
   payload: SaveStockTransferPayload,
 ) {
-  const { data, error } = await supabase.rpc("save_stock_transfer_record", {
+  const rpcName = payload.operationBatchId
+    ? "save_stock_transfer_import_entry_v1"
+    : "save_stock_transfer_record";
+  const rpcPayload = {
     p_tenant_id: payload.tenantId,
     p_actor_user_id: payload.actorUserId,
     p_movement_type: payload.movementType,
@@ -159,7 +169,11 @@ export async function saveStockTransferViaRpc(
     p_direct_purchase: payload.directPurchase ?? false,
     p_operation_purpose: payload.operationPurpose ?? "NORMAL",
     p_balance_correction_reason: payload.balanceCorrectionReason ?? null,
-  });
+    ...(payload.operationBatchId
+      ? { p_operation_batch_id: payload.operationBatchId }
+      : {}),
+  };
+  const { data, error } = await supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
     const mappedDatabaseError = mapSerialTrackedDatabaseError(error.message);
@@ -225,10 +239,21 @@ export async function reverseStockTransferViaRpc(
   supabase: SupabaseClient,
   payload: ReverseStockTransferPayload,
 ) {
-  const rpcName = payload.originalTransferItemId
+  const rpcName = payload.reverseBatch
+    ? "reverse_stock_transfer_operation_batch_v1"
+    : payload.originalTransferItemId
     ? "reverse_stock_transfer_item_record_v1"
     : "reverse_stock_transfer_record_v2";
-  const rpcPayload = payload.originalTransferItemId
+  const rpcPayload = payload.reverseBatch
+    ? {
+        p_tenant_id: payload.tenantId,
+        p_actor_user_id: payload.actorUserId,
+        p_original_stock_transfer_id: payload.originalTransferId,
+        p_reversal_reason_code: payload.reversalReasonCode,
+        p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
+        p_reversal_date: payload.reversalDate ?? null,
+      }
+    : payload.originalTransferItemId
     ? {
         p_tenant_id: payload.tenantId,
         p_actor_user_id: payload.actorUserId,
@@ -312,6 +337,11 @@ export async function reverseStockTransferViaRpc(
   return {
     ok: true,
     transferId: String(result.transfer_id ?? ""),
+    reversedItemCount: Number(result.reversed_item_count ?? 0),
+    results: (result.results ?? []).map((item) => ({
+      itemId: String(item.item_id ?? ""),
+      reversalTransferId: String(item.reversal_transfer_id ?? ""),
+    })),
     message: normalizedMessage || "Estorno realizado com sucesso.",
   } as const;
 }

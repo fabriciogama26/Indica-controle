@@ -561,3 +561,52 @@ Atualizacao 2026-06 - Separacao entre estoque fisico e Operacoes de Equipe
 - Validacao:
   - `npm.cmd run lint -- src/app/api/stock-transfers/route.ts`
   - `npm.cmd run build`
+
+Atualizacao 2026-06 - Estorno individual e em lote
+---------------------------------------------------
+Visao geral
+- Ao clicar em uma linha original da Movimentacao de Estoque, o modal carrega todos os materiais vinculados.
+- O usuario pode estornar somente o material selecionado ou todos os itens ainda ativos.
+- O estorno em lote e atomico: se saldo, Serial/LP ou qualquer outra validacao falhar, nenhum item do lote e alterado.
+
+Arquitetura
+- Movimentacao manual com varios materiais: o agrupamento usa o proprio `stock_transfer_id`.
+- Cadastro em massa CSV: linhas bem-sucedidas do mesmo contexto recebem `stock_transfers.operation_batch_id`.
+- A importacao continua parcial e retorna status por linha; falhas nao removem linhas anteriores salvas com sucesso.
+- Importacoes historicas nao recebem backfill, pois nao existe chave confiavel para reconstruir o lote sem risco de agrupar movimentacoes independentes.
+
+Cancelamento e saldo
+- `GET /api/stock-transfers/reversal` retorna materiais, status e vinculos de estorno do lote no tenant autenticado.
+- `POST /api/stock-transfers/reversal` aceita `mode = ITEM` ou `mode = BATCH`.
+- `reverse_stock_transfer_operation_batch_v1` bloqueia concorrencia, ignora itens ja estornados e reverte todos os ativos em uma subtransacao.
+- Movimentacoes vinculadas a `stock_transfer_team_operations` continuam obrigatoriamente no fluxo de Operacoes de Equipe.
+- Cada item estornado continua gerando movimentacao inversa, vinculo em `stock_transfer_item_reversals` e auditoria em `material_history`.
+
+Boas praticas
+- A rota exige `requirePageAction` com pagina `entrada` para leitura do lote e execucao do estorno.
+- Todas as consultas e RPCs filtram `tenant_id`.
+- As novas RPCs possuem `SECURITY DEFINER`, `search_path` fixo e `EXECUTE` somente para `service_role`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+- `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `openReversalModal`: carrega todos os materiais da movimentacao/lote.
+  - `handleConfirmReversal`: preserva o estorno individual do item selecionado.
+  - `handleConfirmBatchReversal`: solicita o estorno atomico dos itens ativos.
+  - `activeReversalBatchItems` e `selectedReversalBatchItem`: controlam status e habilitacao das acoes.
+- `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+  - estilos da linha clicavel, tabela de materiais, status e botao de estorno em lote.
+- `src/app/api/stock-transfers/reversal/route.ts`
+  - `GET`: resolve o agrupamento e monta os status dos materiais.
+  - `POST`: autoriza e encaminha estorno individual ou em lote.
+- `src/app/api/stock-transfers/import/route.ts`
+  - gera `operationBatchId` por contexto operacional para as linhas validas.
+- `src/lib/server/stockTransfers.ts`
+  - `saveStockTransferViaRpc`: usa a wrapper de importacao quando existe lote.
+  - `reverseStockTransferViaRpc`: chama a RPC individual, integral legada ou em lote.
+- `supabase/migrations/238_add_stock_transfer_batch_reversal.sql`
+  - coluna/indice `operation_batch_id`.
+  - RPCs `save_stock_transfer_import_entry_v1` e `reverse_stock_transfer_operation_batch_v1`.
+
+Comportamento antes/depois
+- Antes: o modal mostrava somente o item selecionado e permitia apenas estorno individual.
+- Depois: o modal mostra o conjunto completo e oferece as duas acoes, preservando itens ja estornados e a auditoria individual.

@@ -575,3 +575,9 @@ Observacao
 - Adiciona `operation_batch_id` em `stock_transfer_team_operations` para identificar linhas da mesma requisicao criada pelo cadastro em massa.
 - Faz backfill dos lotes existentes somente quando transacao, usuario e contexto operacional coincidem.
 - Atualiza o cadastro em massa para persistir o agrupamento e cria `reverse_team_stock_operation_batch_v2` para estornar atomicamente materiais distribuidos em varios `transferId`.
+
+238_add_stock_transfer_batch_reversal.sql
+- Adiciona `operation_batch_id` em `stock_transfers` para agrupar linhas bem-sucedidas da mesma importacao e contexto operacional.
+- Cria wrapper de importacao restrita ao `service_role`, mantendo o modo parcial por linha e vinculando cada movimentacao ao lote.
+- Cria estorno atomico dos itens ainda ativos, com validacao de ator/tenant, bloqueio de Operacoes de Equipe e rollback total quando qualquer item falha.
+- Nao faz backfill de importacoes historicas, pois os registros antigos nao possuem uma chave confiavel de lote.
