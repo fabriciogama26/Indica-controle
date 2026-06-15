@@ -22,6 +22,8 @@ import type {
   TeamOperationHistoryEntry,
   TeamOperationHistoryResponse,
   TeamOperationKind,
+  TeamOperationBatchReversalItem,
+  TeamOperationBatchReversalResponse,
   TeamOperationListItem,
   TeamOperationListResponse,
 } from "./types";
@@ -196,6 +198,7 @@ export function TeamStockOperationsPageView() {
   const [historyModalItem, setHistoryModalItem] = useState<TeamOperationListItem | null>(null);
   const [historyModalItems, setHistoryModalItems] = useState<TeamOperationHistoryEntry[]>([]);
   const [reversalModalItem, setReversalModalItem] = useState<TeamOperationListItem | null>(null);
+  const [reversalBatchItems, setReversalBatchItems] = useState<TeamOperationBatchReversalItem[]>([]);
   const [reversalReasonCode, setReversalReasonCode] = useState("");
   const [reversalReasonNotes, setReversalReasonNotes] = useState("");
   const [reversalDate, setReversalDate] = useState(toIsoDate(new Date()));
@@ -205,6 +208,7 @@ export function TeamStockOperationsPageView() {
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingHistoryModal, setIsLoadingHistoryModal] = useState(false);
+  const [isLoadingReversalBatch, setIsLoadingReversalBatch] = useState(false);
   const [isLoadingSerialOptions, setIsLoadingSerialOptions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -262,6 +266,14 @@ export function TeamStockOperationsPageView() {
       && normalizeUnitText(option.lotCode || "-") === normalizeUnitText(form.lotCode || "-"),
     ) ?? null,
     [form.lotCode, form.materialId, form.serialNumber, serialOptions],
+  );
+  const activeReversalBatchItems = useMemo(
+    () => reversalBatchItems.filter((item) => !item.isReversed),
+    [reversalBatchItems],
+  );
+  const selectedReversalBatchItem = useMemo(
+    () => reversalBatchItems.find((item) => item.id === reversalModalItem?.id) ?? null,
+    [reversalBatchItems, reversalModalItem?.id],
   );
   const serialLotOptions = useMemo(
     () => serialOptions.filter((option) =>
@@ -1273,25 +1285,66 @@ export function TeamStockOperationsPageView() {
     setIsLoadingHistoryModal(false);
   }
 
-  function openReversalModal(item: TeamOperationListItem) {
-    if (!canReverseTeamOperation || item.isReversed || item.isReversal) {
+  async function openReversalModal(item: TeamOperationListItem) {
+    if (!canReverseTeamOperation || item.isReversal) {
       return;
     }
 
     setReversalModalItem(item);
+    setReversalBatchItems([]);
     setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
     setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
     setReversalFeedback(null);
+
+    if (!accessToken) {
+      setReversalFeedback({ type: "error", message: "Sessao invalida para carregar os materiais da operacao." });
+      return;
+    }
+
+    setIsLoadingReversalBatch(true);
+
+    try {
+      const params = new URLSearchParams({ transferId: item.transferId });
+      const response = await fetch(`/api/team-stock-operations/reversal?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const data = (await response.json().catch(() => ({}))) as TeamOperationBatchReversalResponse;
+
+      if (!response.ok) {
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao carregar os materiais da operacao." });
+        await logError("Falha ao carregar lote para estorno.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          transferId: item.transferId,
+        });
+        return;
+      }
+
+      setReversalBatchItems(data.items ?? []);
+      if (data.isReversal) {
+        setReversalFeedback({ type: "error", message: "Nao e permitido estornar uma operacao que ja e estorno." });
+      }
+    } catch (error) {
+      setReversalFeedback({ type: "error", message: "Falha de comunicacao ao carregar os materiais da operacao." });
+      await logError("Falha ao carregar lote para estorno.", error, { transferId: item.transferId });
+    } finally {
+      setIsLoadingReversalBatch(false);
+    }
   }
 
   function closeReversalModal() {
     if (isReversing) return;
     setReversalModalItem(null);
+    setReversalBatchItems([]);
     setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
     setReversalReasonNotes("");
     setReversalDate(toIsoDate(new Date()));
     setReversalFeedback(null);
+    setIsLoadingReversalBatch(false);
   }
 
   async function handleConfirmReversal() {
@@ -1333,6 +1386,7 @@ export function TeamStockOperationsPageView() {
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
           transferItemId: reversalModalItem.id,
+          mode: "ITEM",
           reversalReasonCode: normalizedReasonCode,
           reversalReasonNotes: normalizedReasonNotes,
           reversalDate: normalizedReversalDate,
@@ -1389,6 +1443,104 @@ export function TeamStockOperationsPageView() {
       await logError("Falha ao estornar operacao de equipe.", error, {
         transferId: reversalModalItem.transferId,
         transferItemId: reversalModalItem.id,
+      });
+    } finally {
+      setIsReversing(false);
+    }
+  }
+
+  async function handleConfirmBatchReversal() {
+    if (!accessToken || !reversalModalItem) {
+      setReversalFeedback({ type: "error", message: "Sessao invalida para estornar operacao de equipe." });
+      return;
+    }
+
+    const normalizedReasonCode = normalizeText(reversalReasonCode).toUpperCase();
+    const normalizedReasonNotes = normalizeText(reversalReasonNotes) || null;
+    const normalizedReversalDate = normalizeText(reversalDate);
+
+    if (!normalizedReasonCode || !normalizedReversalDate) {
+      setReversalFeedback({ type: "error", message: "Informe o motivo e a data do estorno." });
+      return;
+    }
+
+    if (selectedReversalReason?.requiresNotes && !normalizedReasonNotes) {
+      setReversalFeedback({ type: "error", message: "Informe a observacao obrigatoria para o motivo selecionado." });
+      return;
+    }
+
+    if (activeReversalBatchItems.length === 0) {
+      setReversalFeedback({ type: "error", message: "Nao existem materiais ativos para estornar neste lote." });
+      return;
+    }
+
+    setIsReversing(true);
+    setReversalFeedback(null);
+
+    try {
+      const response = await fetch("/api/team-stock-operations/reversal", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          transferId: reversalModalItem.transferId,
+          mode: "BATCH",
+          reversalReasonCode: normalizedReasonCode,
+          reversalReasonNotes: normalizedReasonNotes,
+          reversalDate: normalizedReversalDate,
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as TeamOperationBatchReversalResponse;
+      if (!response.ok) {
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar o lote da operacao." });
+        await logError("Falha ao estornar lote da operacao de equipe.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          reason: data.reason ?? null,
+          transferId: reversalModalItem.transferId,
+        });
+        return;
+      }
+
+      const reversedAt = new Date().toISOString();
+      const resultMap = new Map((data.results ?? []).map((result) => [result.itemId, result.reversalTransferId]));
+      const reversalReason = selectedReversalReason
+        ? normalizedReasonNotes
+          ? `${selectedReversalReason.label}: ${normalizedReasonNotes}`
+          : selectedReversalReason.label
+        : normalizedReasonNotes;
+
+      setHistoryItems((current) => current.map((item) => (
+        item.transferId === reversalModalItem.transferId && !item.isReversal
+          ? {
+              ...item,
+              isReversed: true,
+              reversalTransferId: resultMap.get(item.id) ?? item.reversalTransferId,
+              reversalReason: reversalReason || item.reversalReason,
+              reversedAt,
+            }
+          : item
+      )));
+      setFeedback({ type: "success", message: data.message ?? "Estorno em lote concluido com sucesso." });
+      setReversalModalItem(null);
+      setReversalBatchItems([]);
+      setReversalFeedback(null);
+      setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
+      setReversalReasonNotes("");
+      setReversalDate(toIsoDate(new Date()));
+      setHistoryPage(1);
+      setFilters((current) => ({ ...current }));
+    } catch (error) {
+      setReversalFeedback({
+        type: "error",
+        message: "Falha de comunicacao ao estornar o lote. Verifique a conexao e tente novamente.",
+      });
+      await logError("Falha ao estornar lote da operacao de equipe.", error, {
+        transferId: reversalModalItem.transferId,
       });
     } finally {
       setIsReversing(false);
@@ -2144,7 +2296,13 @@ export function TeamStockOperationsPageView() {
                 return (
                   <tr
                     key={item.id}
-                    className={item.isReversal ? styles.tableRowReversal : item.isReversed ? styles.tableRowReversed : undefined}
+                    className={`${item.isReversal ? styles.tableRowReversal : item.isReversed ? styles.tableRowReversed : ""} ${!item.isReversal && canReverseTeamOperation ? localStyles.batchClickableRow : ""}`}
+                    onClick={() => {
+                      if (!item.isReversal && canReverseTeamOperation) {
+                        void openReversalModal(item);
+                      }
+                    }}
+                    title={!item.isReversal && canReverseTeamOperation ? "Abrir materiais da requisicao e opcoes de estorno" : undefined}
                   >
                     <td>{stockCenterName}</td>
                     <td>{item.teamName}</td>
@@ -2173,7 +2331,10 @@ export function TeamStockOperationsPageView() {
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionView}`}
-                          onClick={() => setDetailItem(item)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDetailItem(item);
+                          }}
                           aria-label={`Detalhes da operacao ${item.transferId}`}
                           title="Detalhes"
                         >
@@ -2182,7 +2343,10 @@ export function TeamStockOperationsPageView() {
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionHistory}`}
-                          onClick={() => void openHistoryModal(item)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openHistoryModal(item);
+                          }}
                           aria-label={`Historico da operacao ${item.transferId}`}
                           title="Historico"
                         >
@@ -2191,10 +2355,13 @@ export function TeamStockOperationsPageView() {
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionReversal}`}
-                          onClick={() => openReversalModal(item)}
-                          disabled={!canReverseTeamOperation || isReversing || item.isReversal || item.isReversed}
-                          aria-label={`Estornar item da operacao ${item.transferId}`}
-                          title="Estornar este item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openReversalModal(item);
+                          }}
+                          disabled={!canReverseTeamOperation || isReversing || item.isReversal}
+                          aria-label={`Abrir estorno da operacao ${item.transferId}`}
+                          title="Abrir estorno individual ou em lote"
                         >
                           <ActionIcon name="cancel" />
                         </button>
@@ -2334,7 +2501,7 @@ export function TeamStockOperationsPageView() {
 
             <div className={styles.modalBody}>
               <p className={styles.reversalWarning}>
-                O estorno cria uma nova movimentacao inversa somente para este item no mesmo ledger. A operacao original permanece preservada para auditoria.
+                Revise todos os materiais desta requisicao. O estorno individual afeta apenas o item selecionado; o estorno em lote afeta atomicamente todos os itens ainda ativos.
               </p>
 
               {reversalFeedback ? (
@@ -2355,6 +2522,50 @@ export function TeamStockOperationsPageView() {
                 <div><strong>Quantidade:</strong> {reversalModalItem.quantity.toLocaleString("pt-BR")}</div>
                 <div><strong>{operationDateLabel(reversalModalItem.operationKind)}:</strong> {formatDate(reversalModalItem.entryDate)}</div>
               </div>
+
+              <section className={localStyles.reversalBatchSection}>
+                <div className={localStyles.reversalBatchHeader}>
+                  <div>
+                    <h5>Materiais da requisicao</h5>
+                    <p>{activeReversalBatchItems.length} ativo(s) de {reversalBatchItems.length} material(is).</p>
+                  </div>
+                </div>
+
+                {isLoadingReversalBatch ? <p>Carregando materiais da requisicao...</p> : null}
+
+                {!isLoadingReversalBatch && reversalBatchItems.length > 0 ? (
+                  <div className={localStyles.reversalBatchTableWrapper}>
+                    <table className={localStyles.reversalBatchTable}>
+                      <thead>
+                        <tr>
+                          <th>Material</th>
+                          <th>Descricao</th>
+                          <th>Quantidade</th>
+                          <th>Serial</th>
+                          <th>LP</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reversalBatchItems.map((item) => (
+                          <tr key={item.id} className={item.id === reversalModalItem.id ? localStyles.selectedBatchItem : undefined}>
+                            <td>{item.materialCode}</td>
+                            <td>{item.description}</td>
+                            <td>{item.quantity.toLocaleString("pt-BR")}</td>
+                            <td>{item.serialNumber ?? "-"}</td>
+                            <td>{item.lotCode ?? "-"}</td>
+                            <td>
+                              <span className={item.isReversed ? localStyles.batchStatusReversed : localStyles.batchStatusActive}>
+                                {item.isReversed ? "Estornado" : "Ativo"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </section>
 
               <label className={styles.field}>
                 <span>
@@ -2409,12 +2620,29 @@ export function TeamStockOperationsPageView() {
                   onClick={() => void handleConfirmReversal()}
                   disabled={
                     isReversing
+                    || isLoadingReversalBatch
+                    || Boolean(selectedReversalBatchItem?.isReversed ?? reversalModalItem.isReversed)
                     || !normalizeText(reversalReasonCode)
                     || !normalizeText(reversalDate)
                     || Boolean(selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes))
                   }
                 >
-                  {isReversing ? "Estornando..." : "Confirmar estorno"}
+                  {isReversing ? "Estornando..." : "Estornar material selecionado"}
+                </button>
+                <button
+                  type="button"
+                  className={localStyles.batchReversalButton}
+                  onClick={() => void handleConfirmBatchReversal()}
+                  disabled={
+                    isReversing
+                    || isLoadingReversalBatch
+                    || activeReversalBatchItems.length === 0
+                    || !normalizeText(reversalReasonCode)
+                    || !normalizeText(reversalDate)
+                    || Boolean(selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes))
+                  }
+                >
+                  {isReversing ? "Estornando..." : `Estornar lote (${activeReversalBatchItems.length})`}
                 </button>
               </div>
             </div>

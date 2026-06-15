@@ -126,3 +126,113 @@
   line-height: 1.5;
   white-space: pre-line;
 }
+
+.batchClickableRow {
+  cursor: pointer;
+}
+
+.batchClickableRow:hover {
+  background: rgba(23, 52, 122, 0.055);
+}
+
+.reversalBatchSection {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.14);
+  border-radius: 14px;
+  background: #f8faff;
+}
+
+.reversalBatchHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.reversalBatchHeader h5,
+.reversalBatchHeader p {
+  margin: 0;
+}
+
+.reversalBatchHeader h5 {
+  color: #17347a;
+  font-size: 0.95rem;
+}
+
+.reversalBatchHeader p {
+  margin-top: 4px;
+  color: #5b6a85;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.reversalBatchTableWrapper {
+  overflow-x: auto;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.reversalBatchTable {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.reversalBatchTable th,
+.reversalBatchTable td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(23, 52, 122, 0.1);
+  color: #1f2f54;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.reversalBatchTable th {
+  background: rgba(23, 52, 122, 0.06);
+  color: #17347a;
+  font-weight: 800;
+}
+
+.selectedBatchItem {
+  background: rgba(25, 118, 210, 0.08);
+}
+
+.batchStatusActive,
+.batchStatusReversed {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.batchStatusActive {
+  background: rgba(46, 125, 50, 0.12);
+  color: #256529;
+}
+
+.batchStatusReversed {
+  background: rgba(251, 192, 45, 0.18);
+  color: #7a5a00;
+}
+
+.batchReversalButton {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #a13e12;
+  border-radius: 10px;
+  background: #b84a17;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.batchReversalButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

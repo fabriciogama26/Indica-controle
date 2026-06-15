@@ -565,3 +565,8 @@ Observacao
   dos identificadores PostgreSQL e permitindo sua resolucao pelo PostgREST.
 - Preserva a implementacao transacional da migration 228, fixa `search_path` seguro e
   mantem EXECUTE somente para `service_role`.
+
+236_add_team_stock_operation_batch_reversal.sql
+- Cria `reverse_team_stock_operation_batch_v1` para estornar atomicamente todos os itens ainda ativos de uma Operacao de Equipe.
+- Permite concluir lotes parcialmente estornados, preserva a auditoria individual e reverte toda a chamada quando qualquer item falha.
+- Valida ator ativo e tenant, bloqueia estorno de estorno e mantem EXECUTE somente para `service_role`.
