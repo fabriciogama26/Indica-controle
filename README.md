@@ -399,6 +399,7 @@ vercel --prod
 - `supabase/migrations/237_group_team_stock_imports_for_batch_reversal.sql`: identifica requisicoes do cadastro em massa por `operation_batch_id`, faz backfill seguro e permite estornar materiais que foram gravados em transferencias distintas.
 - `supabase/migrations/238_add_stock_transfer_batch_reversal.sql`: adiciona agrupamento das importacoes de Movimentacao de Estoque e RPC para estornar atomicamente todos os itens ainda ativos do lote.
 - `supabase/migrations/239_backfill_stock_transfer_import_batches.sql`: identifica importacoes historicas pelo mesmo segundo, ator e contexto operacional, preenchendo `operation_batch_id` apenas em grupos conservadores de item unico.
+- `supabase/migrations/240_merge_split_stock_transfer_import_batches.sql`: une os blocos históricos que a migration 239 separou por segundo, usando continuidade de ate 2 segundos sem alterar lotes novos.
 
 ---
 
