@@ -175,7 +175,8 @@ Cadastro
   - Troca de equipe na edicao continua sendo tratada como reprogramacao e exige `Motivo da reprogramacao`.
   - Em edicao, quando `Estado Trabalho` for alterado, o sistema sincroniza o mesmo valor para outras equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
   - `Estado Trabalho` nao e propagado por posicao visual da lista nem por outros dias do mesmo projeto.
-  - No primeiro cadastro de programacao de um projeto dentro do tenant, o backend preenche automaticamente `Estado Trabalho = PARCIAL`.
+  - No cadastro de uma nova programacao, o backend herda o ultimo `Estado Trabalho` nao nulo da mesma obra dentro do tenant, ignorando programacoes canceladas e validando se o codigo continua ativo no catalogo.
+  - Quando a obra ainda nao possui `Estado Trabalho` valido no historico, o backend preenche automaticamente `Estado Trabalho = PARCIAL`.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
   - Para equipes `LV-xx`, a replicacao de documentos tambem alcanca as programacoes ativas do mesmo projeto com `Data de execucao` em ate `+7 dias` da programacao de origem.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
@@ -1701,3 +1702,21 @@ Atualizacao 2026-06-15 - nome da RPC decimal em lote
   - `PUBLIC`, `anon` e `authenticated` permanecem sem EXECUTE.
   - Somente `service_role` executa a wrapper apos autenticacao e autorizacao na API.
   - Nenhuma policy RLS foi criada ou alterada.
+
+Atualizacao 2026-06-15 - heranca do Estado Trabalho
+----------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/programacao/route.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes tocadas:
+  - `resolveInitialProjectWorkCompletionStatus`
+- Comportamento antes/depois:
+  - Antes: somente a primeira programacao da obra recebia `PARCIAL`; novos registros de uma obra ja programada eram criados sem Estado Trabalho.
+  - Depois: cadastro individual e cadastro em lote herdam o ultimo Estado Trabalho nao nulo da mesma obra.
+  - Depois: programacoes canceladas nao participam da heranca e codigos inativos no catalogo sao ignorados.
+  - Depois: quando nao existe estado anterior valido, permanece o fallback `PARCIAL`.
+- Multi-tenant:
+  - A consulta exige `tenant_id + project_id`.
+  - O estado herdado e validado no catalogo ativo do mesmo tenant antes de seguir para a RPC transacional.
+  - Nao houve alteracao de schema, grants ou policies RLS.
