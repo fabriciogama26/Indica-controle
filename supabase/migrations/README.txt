@@ -581,3 +581,9 @@ Observacao
 - Cria wrapper de importacao restrita ao `service_role`, mantendo o modo parcial por linha e vinculando cada movimentacao ao lote.
 - Cria estorno atomico dos itens ainda ativos, com validacao de ator/tenant, bloqueio de Operacoes de Equipe e rollback total quando qualquer item falha.
 - Nao faz backfill de importacoes historicas, pois os registros antigos nao possuem uma chave confiavel de lote.
+
+239_backfill_stock_transfer_import_batches.sql
+- Reconstrui lotes historicos sem `operation_batch_id` somente quando existem multiplas transferencias de item unico no mesmo segundo.
+- Exige coincidencia de tenant, ator, segundo, operacao, centros, projeto, data, compra direta e finalidade.
+- Exclui Operacoes de Equipe e movimentacoes criadas como estorno.
+- Mantem grupos ambiguos ou isolados sem lote para evitar estorno conjunto indevido.
