@@ -587,3 +587,9 @@ Observacao
 - Exige coincidencia de tenant, ator, segundo, operacao, centros, projeto, data, compra direta e finalidade.
 - Exclui Operacoes de Equipe e movimentacoes criadas como estorno.
 - Mantem grupos ambiguos ou isolados sem lote para evitar estorno conjunto indevido.
+
+240_merge_split_stock_transfer_import_batches.sql
+- Corrige o recorte por segundo da migration 239, que podia gerar lotes de aproximadamente cinco materiais.
+- Une transferencias historicas consecutivas do mesmo contexto quando a diferenca entre registros e de ate 2 segundos.
+- Processa somente registros sem lote ou com UUID deterministico da migration 239, preservando os UUIDs reais gerados pela importacao nova.
+- Exclui Operacoes de Equipe, estornos e transferencias com mais de um item.
