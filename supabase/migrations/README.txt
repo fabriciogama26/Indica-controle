@@ -570,3 +570,8 @@ Observacao
 - Cria `reverse_team_stock_operation_batch_v1` para estornar atomicamente todos os itens ainda ativos de uma Operacao de Equipe.
 - Permite concluir lotes parcialmente estornados, preserva a auditoria individual e reverte toda a chamada quando qualquer item falha.
 - Valida ator ativo e tenant, bloqueia estorno de estorno e mantem EXECUTE somente para `service_role`.
+
+237_group_team_stock_imports_for_batch_reversal.sql
+- Adiciona `operation_batch_id` em `stock_transfer_team_operations` para identificar linhas da mesma requisicao criada pelo cadastro em massa.
+- Faz backfill dos lotes existentes somente quando transacao, usuario e contexto operacional coincidem.
+- Atualiza o cadastro em massa para persistir o agrupamento e cria `reverse_team_stock_operation_batch_v2` para estornar atomicamente materiais distribuidos em varios `transferId`.

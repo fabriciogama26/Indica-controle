@@ -185,6 +185,8 @@ export type TeamOperationBatchReversalItem = {
 
 export type TeamOperationBatchReversalResponse = {
   transferId?: string;
+  transferIds?: string[];
+  operationBatchId?: string | null;
   isReversal?: boolean;
   isFullyReversed?: boolean;
   items?: TeamOperationBatchReversalItem[];

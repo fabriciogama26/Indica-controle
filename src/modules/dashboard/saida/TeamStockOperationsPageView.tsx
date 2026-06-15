@@ -1515,7 +1515,7 @@ export function TeamStockOperationsPageView() {
         : normalizedReasonNotes;
 
       setHistoryItems((current) => current.map((item) => (
-        item.transferId === reversalModalItem.transferId && !item.isReversal
+        resultMap.has(item.id) && !item.isReversal
           ? {
               ...item,
               isReversed: true,

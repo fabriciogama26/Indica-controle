@@ -399,6 +399,7 @@ Servicos e integracoes externas
 - RPC `reverse_team_stock_operation_record_v2`
 - RPC `reverse_team_stock_operation_item_record_v1`
 - RPC `reverse_team_stock_operation_batch_v1`
+- RPC `reverse_team_stock_operation_batch_v2`
 
 Ajuda contextual
 - Arquivos alterados/criados:
@@ -502,7 +503,7 @@ Mapa da atualizacao 2026-06
 
 Atualizacao 2026-06 - Estorno em lote por requisicao
 -----------------------------------------------------
-- A linha da lista passa a abrir o modal de estorno agrupado pelo `transferId`, que representa a requisicao original.
+- A linha da lista passa a abrir o modal de estorno agrupado pela requisicao: `transferId` no cadastro manual e `operation_batch_id` no cadastro em massa.
 - O modal lista todos os materiais da requisicao com:
   - codigo e descricao;
   - quantidade;
@@ -566,3 +567,49 @@ Ajuda contextual
   - Depois: o modal mostra toda a requisicao e permite escolher entre estorno individual e estorno atomico dos itens ativos.
   - Antes: a RPC integral legada bloqueava qualquer transferencia com estorno parcial.
   - Depois: a nova RPC conclui somente os itens restantes sem duplicar os que ja foram estornados.
+
+Atualizacao 2026-06 - Correcao do agrupamento do cadastro em massa
+------------------------------------------------------------------
+- Causa:
+  - O cadastro manual com varios materiais grava um unico `stock_transfers.id`.
+  - O cadastro em massa grava uma transferencia por linha do CSV, embora todas sejam salvas na mesma transacao.
+  - O primeiro estorno em lote consultava somente o `transferId` selecionado e, por isso, encontrava apenas um material importado.
+- Correcao:
+  - `stock_transfer_team_operations.operation_batch_id` passa a identificar as linhas do mesmo contexto de requisicao dentro do arquivo.
+  - Novos imports geram um UUID por contexto funcional:
+    - operacao;
+    - centro principal;
+    - equipe;
+    - projeto;
+    - data;
+    - tipo;
+    - observacao.
+  - O backfill agrupa registros existentes somente quando possuem o mesmo timestamp transacional, usuario e contexto operacional.
+  - O modal consulta todos os `transferId` do `operation_batch_id`.
+  - Operacoes manuais continuam usando o proprio `transferId`.
+  - A RPC `reverse_team_stock_operation_batch_v2` bloqueia e estorna atomicamente os itens ativos de todas as transferencias do grupo.
+- Arquivos alterados/criados:
+  - `supabase/migrations/237_group_team_stock_imports_for_batch_reversal.sql`
+  - `src/lib/server/teamStockOperations.ts`
+  - `src/app/api/team-stock-operations/reversal/route.ts`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/modules/dashboard/saida/types.ts`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes e contratos tocados:
+  - `saveTeamStockOperationBatchViaRpc`
+  - `reverseTeamStockOperationViaRpc`
+  - `GET /api/team-stock-operations/reversal`
+  - `handleConfirmBatchReversal`
+  - `save_team_stock_operation_batch_full`
+  - `reverse_team_stock_operation_batch_v2`
+  - `TeamOperationBatchReversalResponse`
+- Impacto multi-tenant:
+  - `operation_batch_id` sempre e consultado junto de `tenant_id`.
+  - O backfill nao agrupa linhas entre tenants.
+  - A RPC continua validando ator ativo e acesso ao tenant.
+- Comportamento antes/depois:
+  - Antes: import com tres materiais criava tres transferencias e o modal mostrava somente uma.
+  - Depois: as tres transferencias compartilham `operation_batch_id` e aparecem juntas no modal.
