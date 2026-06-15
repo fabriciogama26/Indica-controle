@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 
 import { formatInsufficientStockMessage, StockTransferItemInput } from "@/lib/server/stockTransfers";
 
@@ -30,6 +31,7 @@ export type ReverseTeamStockOperationPayload = {
 
 export type SaveTeamStockOperationBatchEntry = {
   rowNumber: number;
+  operationBatchId?: string;
   operationKind: TeamOperationKind;
   stockCenterId: string;
   teamId: string;
@@ -77,6 +79,7 @@ type TeamOperationBatchRpcResult = {
     rowNumber?: number;
     success?: boolean;
     transferId?: string;
+    operationBatchId?: string;
     message?: string;
   }>;
 };
@@ -167,10 +170,13 @@ function mapTeamOperationRpcErrorMessage(message: unknown) {
   }
 
   if (
-    normalized.includes("reverse_team_stock_operation_batch_v1")
+    (
+      normalized.includes("reverse_team_stock_operation_batch_v1")
+      || normalized.includes("reverse_team_stock_operation_batch_v2")
+    )
     && (normalized.includes("schema cache") || normalized.includes("could not find"))
   ) {
-    return "Estorno em lote ainda nao disponivel no banco. Aplique a migration 236 e recarregue o schema cache do Supabase.";
+    return "Estorno em lote ainda nao disponivel no banco. Aplique as migrations 236 e 237 e recarregue o schema cache do Supabase.";
   }
 
   return "";
@@ -232,10 +238,29 @@ export async function saveTeamStockOperationBatchViaRpc(
   supabase: SupabaseClient,
   payload: SaveTeamStockOperationBatchPayload,
 ) {
+  const batchIdByContext = new Map<string, string>();
+  const entries = payload.entries.map((entry) => {
+    const contextKey = JSON.stringify([
+      entry.operationKind,
+      entry.stockCenterId,
+      entry.teamId,
+      entry.projectId,
+      entry.entryDate,
+      entry.entryType,
+      entry.notes ?? null,
+    ]);
+    const operationBatchId = batchIdByContext.get(contextKey) ?? randomUUID();
+    batchIdByContext.set(contextKey, operationBatchId);
+    return {
+      ...entry,
+      operationBatchId,
+    };
+  });
+
   const { data, error } = await supabase.rpc("save_team_stock_operation_batch_full", {
     p_tenant_id: payload.tenantId,
     p_actor_user_id: payload.actorUserId,
-    p_entries: payload.entries,
+    p_entries: entries,
   });
 
   if (error) {
@@ -277,6 +302,7 @@ export async function saveTeamStockOperationBatchViaRpc(
       rowNumber: Number(item.rowNumber ?? 0),
       success: Boolean(item.success),
       transferId: String(item.transferId ?? "").trim(),
+      operationBatchId: String(item.operationBatchId ?? "").trim(),
       message: String(item.message ?? "").trim(),
     })),
   } as const;
@@ -287,7 +313,7 @@ export async function reverseTeamStockOperationViaRpc(
   payload: ReverseTeamStockOperationPayload,
 ) {
   const rpcName = payload.reverseBatch
-    ? "reverse_team_stock_operation_batch_v1"
+    ? "reverse_team_stock_operation_batch_v2"
     : payload.originalTransferItemId
       ? "reverse_team_stock_operation_item_record_v1"
       : "reverse_team_stock_operation_record_v2";

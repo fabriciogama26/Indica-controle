@@ -18,6 +18,7 @@ const BLOCKED_REVERSAL_REASON_CODES = new Set(["OPERATION_CANCELED", "OTHER"]);
 
 type TransferItemRow = {
   id: string;
+  stock_transfer_id: string;
   material_id: string;
   quantity: number;
   serial_number: string | null;
@@ -32,6 +33,16 @@ type MaterialRow = {
 
 type ItemReversalRow = {
   original_stock_transfer_item_id: string;
+  reversal_stock_transfer_id: string;
+};
+
+type TeamOperationGroupingRow = {
+  transfer_id: string;
+  operation_batch_id: string | null;
+};
+
+type FullReversalRow = {
+  original_stock_transfer_id: string;
   reversal_stock_transfer_id: string;
 };
 
@@ -78,55 +89,15 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = context.resolution;
-    const [
-      teamOperationResult,
-      itemsResult,
-      fullReversalResult,
-      originalFullReversalResult,
-      originalItemReversalResult,
-    ] = await Promise.all([
-      supabase
-        .from("stock_transfer_team_operations")
-        .select("transfer_id")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("transfer_id", transferId)
-        .maybeSingle<{ transfer_id: string }>(),
-      supabase
-        .from("stock_transfer_items")
-        .select("id, material_id, quantity, serial_number, lot_code")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("stock_transfer_id", transferId)
-        .order("created_at", { ascending: true })
-        .returns<TransferItemRow[]>(),
-      supabase
-        .from("stock_transfer_reversals")
-        .select("reversal_stock_transfer_id")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("original_stock_transfer_id", transferId)
-        .maybeSingle<{ reversal_stock_transfer_id: string }>(),
-      supabase
-        .from("stock_transfer_reversals")
-        .select("original_stock_transfer_id")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("reversal_stock_transfer_id", transferId)
-        .maybeSingle<{ original_stock_transfer_id: string }>(),
-      supabase
-        .from("stock_transfer_item_reversals")
-        .select("original_stock_transfer_id")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("reversal_stock_transfer_id", transferId)
-        .limit(1)
-        .returns<Array<{ original_stock_transfer_id: string }>>(),
-    ]);
+    const teamOperationResult = await supabase
+      .from("stock_transfer_team_operations")
+      .select("transfer_id, operation_batch_id")
+      .eq("tenant_id", appUser.tenant_id)
+      .eq("transfer_id", transferId)
+      .maybeSingle<TeamOperationGroupingRow>();
 
-    if (
-      teamOperationResult.error
-      || itemsResult.error
-      || fullReversalResult.error
-      || originalFullReversalResult.error
-      || originalItemReversalResult.error
-    ) {
-      return NextResponse.json({ message: "Falha ao carregar os materiais da operacao." }, { status: 500 });
+    if (teamOperationResult.error) {
+      return NextResponse.json({ message: "Falha ao identificar o lote da operacao." }, { status: 500 });
     }
 
     if (!teamOperationResult.data) {
@@ -134,6 +105,59 @@ export async function GET(request: NextRequest) {
         { message: "Operacao de equipe nao encontrada para este tenant.", reason: "TEAM_OPERATION_NOT_FOUND" },
         { status: 404 },
       );
+    }
+
+    const operationBatchId = teamOperationResult.data.operation_batch_id;
+    const groupedOperationsResult = operationBatchId
+      ? await supabase
+          .from("stock_transfer_team_operations")
+          .select("transfer_id, operation_batch_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("operation_batch_id", operationBatchId)
+          .returns<TeamOperationGroupingRow[]>()
+      : { data: [teamOperationResult.data], error: null };
+
+    if (groupedOperationsResult.error) {
+      return NextResponse.json({ message: "Falha ao carregar as operacoes vinculadas ao lote." }, { status: 500 });
+    }
+
+    const transferIds = Array.from(new Set((groupedOperationsResult.data ?? []).map((row) => row.transfer_id)));
+    const [itemsResult, fullReversalsResult, reversalTransfersResult, reversalItemsResult] = await Promise.all([
+      supabase
+        .from("stock_transfer_items")
+        .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("stock_transfer_id", transferIds)
+        .order("created_at", { ascending: true })
+        .returns<TransferItemRow[]>(),
+      supabase
+        .from("stock_transfer_reversals")
+        .select("original_stock_transfer_id, reversal_stock_transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("original_stock_transfer_id", transferIds)
+        .returns<FullReversalRow[]>(),
+      supabase
+        .from("stock_transfer_reversals")
+        .select("original_stock_transfer_id, reversal_stock_transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("reversal_stock_transfer_id", transferIds)
+        .returns<FullReversalRow[]>(),
+      supabase
+        .from("stock_transfer_item_reversals")
+        .select("original_stock_transfer_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("reversal_stock_transfer_id", transferIds)
+        .limit(1)
+        .returns<Array<{ original_stock_transfer_id: string }>>(),
+    ]);
+
+    if (
+      itemsResult.error
+      || fullReversalsResult.error
+      || reversalTransfersResult.error
+      || reversalItemsResult.error
+    ) {
+      return NextResponse.json({ message: "Falha ao carregar os materiais da operacao." }, { status: 500 });
     }
 
     const itemRows = itemsResult.data ?? [];
@@ -169,10 +193,15 @@ export async function GET(request: NextRequest) {
         reversal.reversal_stock_transfer_id,
       ]),
     );
-    const fullReversalTransferId = fullReversalResult.data?.reversal_stock_transfer_id ?? null;
+    const fullReversalMap = new Map(
+      (fullReversalsResult.data ?? []).map((reversal) => [
+        reversal.original_stock_transfer_id,
+        reversal.reversal_stock_transfer_id,
+      ]),
+    );
     const items = itemRows.map((item) => {
       const material = materialMap.get(item.material_id);
-      const reversalTransferId = fullReversalTransferId ?? reversalMap.get(item.id) ?? null;
+      const reversalTransferId = fullReversalMap.get(item.stock_transfer_id) ?? reversalMap.get(item.id) ?? null;
       return {
         id: item.id,
         materialId: item.material_id,
@@ -186,11 +215,13 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const isReversal = Boolean(originalFullReversalResult.data || (originalItemReversalResult.data ?? []).length);
+    const isReversal = Boolean((reversalTransfersResult.data ?? []).length || (reversalItemsResult.data ?? []).length);
     const reversedItemCount = items.filter((item) => item.isReversed).length;
 
     return NextResponse.json({
       transferId,
+      transferIds,
+      operationBatchId,
       isReversal,
       isFullyReversed: items.length > 0 && reversedItemCount === items.length,
       items,

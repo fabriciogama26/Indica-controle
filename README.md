@@ -190,7 +190,7 @@ vercel --prod
   - `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
   - `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
   - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV), com pre-validacao sequencial de saldo/TRAFO, rollback total do lote e retorno de erros por linha/coluna.
-  - `api/team-stock-operations/reversal/route.ts`: carrega os materiais agrupados pelo `transferId` e executa estorno individual ou em lote com autorizacao server-side da pagina `saida`.
+  - `api/team-stock-operations/reversal/route.ts`: carrega os materiais pelo `operation_batch_id` do cadastro em massa, com fallback para o `transferId` das operacoes manuais, e executa estorno individual ou em lote com autorizacao server-side da pagina `saida`.
 - `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, exclui centros de equipe da tela de Estoque Atual, recompõe materiais historicos com saldo `0` nos centros fisicos quando necessario e mantem historico enriquecido com `Equipe`/`Encarregado`, incluindo filtro por operacao/origem para localizar `Retorno de campo` via `CAMPO / INSTALADO`.
   - `api/team-stock-balance/route.ts`: consulta saldo dos centros vinculados a equipes em blocos paginados, valida permissao propria e retorna metadados, lista paginada e historico por equipe/material.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` fisicos/principais usados no filtro da tela de Estoque Atual.
@@ -396,6 +396,7 @@ vercel --prod
 - `supabase/migrations/228_make_programming_rede_decimal_transactional.sql`: cria wrappers transacionais para persistir `REDE` decimal no cadastro individual e em lote da Programacao.
 - `supabase/migrations/235_fix_programming_batch_decimal_rpc_name.sql`: publica nome curto para a wrapper decimal em lote, evitando truncamento do identificador PostgreSQL e falha `PGRST202` no PostgREST.
 - `supabase/migrations/236_add_team_stock_operation_batch_reversal.sql`: cria o estorno atomico de todos os itens ainda ativos de uma Operacao de Equipe, com validacao de ator/tenant e EXECUTE restrito ao `service_role`.
+- `supabase/migrations/237_group_team_stock_imports_for_batch_reversal.sql`: identifica requisicoes do cadastro em massa por `operation_batch_id`, faz backfill seguro e permite estornar materiais que foram gravados em transferencias distintas.
 
 ---
 
@@ -475,7 +476,7 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 67. A migration `045_create_tenants_and_user_tenant_access.sql` formaliza `tenants`, cria o vinculo `app_user_tenants` (usuario com multiplos contratos/tenants) e atualiza `user_can_access_tenant`.
 68. As rotas API que usam `resolveAuthenticatedAppUser` passam a aceitar `x-tenant-id` para trocar o tenant ativo da requisicao, validando permissao no vinculo do usuario.
 69. A rota `/controle-apr` cadastra APR por Projeto + Equipe + Data do servico, bloqueia ID APR duplicado em toda a base, vincula automaticamente a Programacao nao cancelada do dia, permite editar, cancelar, marcar como Conferido/Divergente e extrair o resultado filtrado em Excel.
-70. Na rota `/saida`, clicar em uma linha original abre os materiais da mesma requisicao pelo `transferId`; o usuario pode estornar somente o item selecionado ou todos os itens ainda ativos em uma unica operacao atomica.
+70. Na rota `/saida`, clicar em uma linha original abre os materiais da mesma requisicao pelo `operation_batch_id` quando vier do cadastro em massa ou pelo `transferId` quando for cadastro manual; o usuario pode estornar somente o item selecionado ou todos os itens ainda ativos em uma unica operacao atomica.
 
 ---
 
