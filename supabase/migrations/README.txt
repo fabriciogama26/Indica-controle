@@ -558,3 +558,10 @@ Observacao
 - Cadastra `dashboard-equipes` em `app_pages`.
 - Preenche somente permissoes ausentes por role e usuario, sem sobrescrever configuracoes existentes.
 - Mantem `viewer` bloqueado por padrao e libera os demais perfis operacionais.
+
+235_fix_programming_batch_decimal_rpc_name.sql
+- Renomeia a wrapper decimal em lote da Programacao para
+  `save_project_programming_batch_full_decimal`, respeitando o limite de 63 caracteres
+  dos identificadores PostgreSQL e permitindo sua resolucao pelo PostgREST.
+- Preserva a implementacao transacional da migration 228, fixa `search_path` seguro e
+  mantem EXECUTE somente para `service_role`.

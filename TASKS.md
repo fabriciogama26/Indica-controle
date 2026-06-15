@@ -950,3 +950,4 @@
 - [x] [Dashboard Equipes][Etapa 4] Mover os blocos de equipes, encarregados e supervisores para a nova tela e simplificar o Dashboard Medicao.
 - [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
 - [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.
+- [x] Corrigir `FULL_RPC_NOT_AVAILABLE` no cadastro em lote da Programacao causado pelo truncamento do nome da RPC decimal da migration 228 no limite de 63 caracteres do PostgreSQL, publicando nome curto pela migration 235, mantendo compatibilidade transacional durante o deploy e ajustando o diagnostico de funcao ausente.

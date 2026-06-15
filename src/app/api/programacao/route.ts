@@ -504,10 +504,15 @@ type ProjectConflictLookupRow = {
 
 function isMissingRpcFunctionError(errorMessage: string, functionName: string) {
   const normalizedError = normalizeText(errorMessage).toLowerCase();
+  const normalizedFunctionName = functionName.toLowerCase();
   return (
-    normalizedError.includes(functionName.toLowerCase())
-    || normalizedError.includes("function") && normalizedError.includes("does not exist")
-    || normalizedError.includes("could not find")
+    normalizedError.includes("could not find the function")
+    && normalizedError.includes(normalizedFunctionName)
+    || normalizedError.includes("function")
+    && normalizedError.includes(normalizedFunctionName)
+    && normalizedError.includes("does not exist")
+    || normalizedError.includes(normalizedFunctionName)
+    && normalizedError.includes("schema cache")
   );
 }
 
@@ -2237,7 +2242,7 @@ async function saveProgrammingBatchFullViaRpc(params: {
   documents: NonNullable<BatchCreateProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
 }) {
-  const rpcName = "save_project_programming_batch_full_decimal_with_electrical_and_eq";
+  const rpcName = "save_project_programming_batch_full_decimal";
   const rpcPayload = {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
@@ -2274,15 +2279,28 @@ async function saveProgrammingBatchFullViaRpc(params: {
     p_etapa_final: params.etapaFinal,
   };
 
-  const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
+  let rpcResponse = await params.supabase.rpc(rpcName, rpcPayload);
+  if (rpcResponse.error && isMissingRpcFunctionError(rpcResponse.error.message, rpcName)) {
+    const truncatedRpcName = "save_project_programming_batch_full_decimal_with_electrical_and";
+    rpcResponse = await params.supabase.rpc(truncatedRpcName, rpcPayload);
+  }
+
+  const { data, error } = rpcResponse;
 
   if (error) {
-    if (isMissingRpcFunctionError(error.message, rpcName)) {
+    if (
+      isMissingRpcFunctionError(error.message, rpcName)
+      || isMissingRpcFunctionError(
+        error.message,
+        "save_project_programming_batch_full_decimal_with_electrical_and",
+      )
+    ) {
       return {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional decimal de lote da Programacao indisponivel no ambiente atual. Aplique a migration 228.",
+        message:
+          "RPC transacional decimal de lote da Programacao indisponivel no ambiente atual. Aplique as migrations 228 e 235.",
       } as const;
     }
 
@@ -3574,7 +3592,7 @@ async function saveProgrammingBatch(request: NextRequest) {
         return NextResponse.json(
           {
             message:
-              "Seu ambiente ainda nao suporta REDE decimal transacional no cadastro em lote. Aplique a migration 228 e tente novamente.",
+              "Seu ambiente ainda nao suporta REDE decimal transacional no cadastro em lote. Aplique as migrations 228 e 235 e tente novamente.",
             reason: fullBatchSaveResult.reason,
             detail: fullBatchSaveResult.detail ?? null,
           },
