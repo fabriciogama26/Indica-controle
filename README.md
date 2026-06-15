@@ -133,7 +133,7 @@ vercel --prod
   - `(dashboard)/cargo/page.tsx`: rota da tela de Cargo com cadastro, filtros, listagem, detalhes, historico, troca de status e manutencao dos tipos por cargo/niveis consumidos por Pessoas.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
-  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, estorno transacional (motivo + data), mensagens em portugues e bloqueio de edicao direta.
+  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa e estorno individual ou atomico em lote.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por projeto/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, detalhes, historico e CSV.
   - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
@@ -184,8 +184,8 @@ vercel --prod
   - `api/materials/meta/route.ts`: carrega as UMBs distintas cadastradas nos materiais do tenant e informa a existencia de registros sem UMB para o select de filtro.
   - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos, materiais ativos e catalogo de motivos padrao de estorno para a tela de movimentacao.
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
-  - `api/stock-transfers/import/route.ts`: importa movimentacoes em lote (CSV) para a tela de estoque.
-  - `api/stock-transfers/reversal/route.ts`: executa estorno transacional da movimentacao com motivo padrao (`reason_code`) obrigatorio, observacao condicional (`reason_notes`) para `OTHER`, bloqueio de duplo estorno e permissao administrativa.
+  - `api/stock-transfers/import/route.ts`: importa movimentacoes em modo parcial por linha e registra `operation_batch_id` para agrupar os sucessos do mesmo contexto operacional.
+  - `api/stock-transfers/reversal/route.ts`: carrega os materiais da movimentacao/lote e executa estorno individual ou atomico de todos os itens ainda ativos, com autorizacao server-side da pagina `entrada`.
   - `api/estornos/route.ts`: consulta estornos ja registrados por item e integrais legados, agregando Movimentacao de Estoque e Operacoes de Equipe sem executar nova reversao.
   - `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
   - `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
@@ -261,7 +261,7 @@ vercel --prod
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros incluindo `UMB`, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
 - `src/modules/dashboard/entrada/`
-  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), finalidade (`Movimentacao normal` ou `Correcao de saldo` com motivo obrigatorio), regra de centro `OWN`/`THIRD_PARTY`, bloqueio de `DE/PARA` iguais, `Projeto` digitavel (`input + datalist`), sub-card `Materiais da Movimentacao` com lista local de itens antes do save final, `Tipo` automatico por `materials.tipo`, `Serial/LP` condicionais para TRAFO, alertas operacionais em modal com mensagem por material, cadastro em massa CSV via modal (modelo em portugues com `observacao` opcional e aliases em ingles), geracao de CSV de erros no import em massa, estorno com motivo padrao via catalogo (`reason_code`) + observacao condicional (`reason_notes`), filtros (incluindo status de estorno e finalidade), lista paginada e modais de detalhes/historico/estorno.
+  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), finalidade (`Movimentacao normal` ou `Correcao de saldo` com motivo obrigatorio), lista local de materiais, cadastro em massa CSV, filtros, lista paginada e modal que mostra todos os materiais vinculados e permite estorno individual ou atomico em lote.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
 - `src/modules/dashboard/saida/`
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
@@ -397,6 +397,7 @@ vercel --prod
 - `supabase/migrations/235_fix_programming_batch_decimal_rpc_name.sql`: publica nome curto para a wrapper decimal em lote, evitando truncamento do identificador PostgreSQL e falha `PGRST202` no PostgREST.
 - `supabase/migrations/236_add_team_stock_operation_batch_reversal.sql`: cria o estorno atomico de todos os itens ainda ativos de uma Operacao de Equipe, com validacao de ator/tenant e EXECUTE restrito ao `service_role`.
 - `supabase/migrations/237_group_team_stock_imports_for_batch_reversal.sql`: identifica requisicoes do cadastro em massa por `operation_batch_id`, faz backfill seguro e permite estornar materiais que foram gravados em transferencias distintas.
+- `supabase/migrations/238_add_stock_transfer_batch_reversal.sql`: adiciona agrupamento das importacoes de Movimentacao de Estoque e RPC para estornar atomicamente todos os itens ainda ativos do lote.
 
 ---
 
