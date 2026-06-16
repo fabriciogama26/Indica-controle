@@ -94,6 +94,15 @@ type OperationalMeasurementCategoryCard = {
   billingQuantity: number;
 };
 
+type OperationalMeasurementCategoryDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  executionDate: string | null;
+  measurementQuantity: number;
+  orderCount: number;
+};
+
 type OperationalAverageTickets = {
   measurementByProject: number;
   measurementByService: number;
@@ -143,6 +152,7 @@ type DashboardResponse = {
   operationalAverageTickets?: OperationalAverageTickets | null;
   projectValueRows?: ProjectValueRow[];
   asbuiltBreakdownRows?: AsbuiltBreakdownRow[];
+  operationalCategoryDetailRows?: OperationalMeasurementCategoryDetailRow[];
   summary?: Summary | null;
 };
 
@@ -150,6 +160,12 @@ type AsbuiltBreakdownModalState = {
   projectId: string;
   projectCode: string;
   serviceCenter: string;
+};
+
+type OperationalCategoryDetailModalState = {
+  key: string;
+  label: string;
+  categoryName: string;
 };
 
 function formatNumber(value: number) {
@@ -251,6 +267,8 @@ export function OperationalBillingDashboardPageView() {
   const [projectValueRows, setProjectValueRows] = useState<ProjectValueRow[]>([]);
   const [asbuiltBreakdownRows, setAsbuiltBreakdownRows] = useState<AsbuiltBreakdownRow[]>([]);
   const [asbuiltBreakdownModal, setAsbuiltBreakdownModal] = useState<AsbuiltBreakdownModalState | null>(null);
+  const [operationalCategoryDetailRows, setOperationalCategoryDetailRows] = useState<OperationalMeasurementCategoryDetailRow[]>([]);
+  const [operationalCategoryDetailModal, setOperationalCategoryDetailModal] = useState<OperationalCategoryDetailModalState | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -277,6 +295,7 @@ export function OperationalBillingDashboardPageView() {
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [isProjectValuesLoading, setIsProjectValuesLoading] = useState(false);
   const [isAsbuiltBreakdownLoading, setIsAsbuiltBreakdownLoading] = useState(false);
+  const [isOperationalCategoryDetailLoading, setIsOperationalCategoryDetailLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const visibleProjects = useMemo(
@@ -420,6 +439,11 @@ export function OperationalBillingDashboardPageView() {
   const asbuiltBreakdownTotalValue = useMemo(
     () => asbuiltBreakdownRows.reduce((sum, row) => sum + row.value, 0),
     [asbuiltBreakdownRows],
+  );
+
+  const operationalCategoryDetailTotalQuantity = useMemo(
+    () => operationalCategoryDetailRows.reduce((sum, row) => sum + row.measurementQuantity, 0),
+    [operationalCategoryDetailRows],
   );
 
   const loadMetadata = useCallback(async () => {
@@ -617,6 +641,45 @@ export function OperationalBillingDashboardPageView() {
     setAsbuiltBreakdownModal(null);
     setAsbuiltBreakdownRows([]);
     setIsAsbuiltBreakdownLoading(false);
+  }
+
+  const openOperationalCategoryDetail = useCallback(async (card: OperationalCategoryDetailModalState) => {
+    if (!session?.accessToken) return;
+
+    setOperationalCategoryDetailModal(card);
+    setOperationalCategoryDetailRows([]);
+    setIsOperationalCategoryDetailLoading(true);
+
+    try {
+      const params = new URLSearchParams({
+        includeOperationalCategoryDetail: "true",
+        operationalCategoryKey: card.key,
+      });
+
+      const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as DashboardResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Falha ao carregar detalhes da categoria operacional.");
+      }
+
+      setOperationalCategoryDetailRows(payload.operationalCategoryDetailRows ?? []);
+    } catch (error) {
+      setOperationalCategoryDetailModal(null);
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar detalhes da categoria operacional." });
+      await logError("Falha ao carregar detalhes da categoria operacional", error, card);
+    } finally {
+      setIsOperationalCategoryDetailLoading(false);
+    }
+  }, [logError, session?.accessToken]);
+
+  function closeOperationalCategoryDetailModal() {
+    setOperationalCategoryDetailModal(null);
+    setOperationalCategoryDetailRows([]);
+    setIsOperationalCategoryDetailLoading(false);
   }
 
   useEffect(() => {
@@ -992,7 +1055,22 @@ export function OperationalBillingDashboardPageView() {
             <div className={styles.operationalIndicatorGrid}>
               {operationalCategoryCards.map((card) => (
                 <div key={card.key} className={styles.operationalIndicator}>
-                  <span className={styles.operationalIndicatorTitle}>{card.label}</span>
+                  <div className={styles.operationalIndicatorHeader}>
+                    <span className={styles.operationalIndicatorTitle}>{card.label}</span>
+                    <button
+                      type="button"
+                      className={styles.iconButton}
+                      onClick={() => void openOperationalCategoryDetail({
+                        key: card.key,
+                        label: card.label,
+                        categoryName: card.categoryName,
+                      })}
+                      title={`Ver projetos e datas de execucao de ${card.label}`}
+                      aria-label={`Ver projetos e datas de execucao de ${card.label}`}
+                    >
+                      <ActionIcon name="details" />
+                    </button>
+                  </div>
                   <div className={styles.operationalIndicatorValues}>
                     <div className={styles.operationalIndicatorMetric}>
                       <span>Medidos</span>
@@ -1600,6 +1678,79 @@ export function OperationalBillingDashboardPageView() {
                         <td colSpan={3}><strong>Total</strong></td>
                         <td>{formatNumber(asbuiltBreakdownRows.reduce((sum, row) => sum + row.itemCount, 0))}</td>
                         <td>{formatCurrency(asbuiltBreakdownTotalValue)}</td>
+                      </tr>
+                    </tfoot>
+                  ) : null}
+                </table>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
+      {operationalCategoryDetailModal ? (
+        <div className={styles.modalOverlay} onClick={closeOperationalCategoryDetailModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3>Projetos e datas da Medicao</h3>
+                <p className={styles.modalSubtitle}>
+                  {operationalCategoryDetailModal.label} | {operationalCategoryDetailModal.categoryName}
+                </p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeOperationalCategoryDetailModal}>
+                Fechar
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <div className={styles.modalSummaryGrid}>
+                <div className={styles.modalSummaryCard}>
+                  <span>Projetos / Datas</span>
+                  <strong>{formatNumber(operationalCategoryDetailRows.length)}</strong>
+                </div>
+                <div className={styles.modalSummaryCard}>
+                  <span>Quantidade medida</span>
+                  <strong>{formatNumber(operationalCategoryDetailTotalQuantity)}</strong>
+                </div>
+              </div>
+
+              <div className={styles.tableWrapper}>
+                <table className={styles.modalTable}>
+                  <thead>
+                    <tr>
+                      <th>Projeto</th>
+                      <th>Centro de servico</th>
+                      <th>Data execucao</th>
+                      <th>Qtd. medida</th>
+                      <th>Ordens</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operationalCategoryDetailRows.length ? (
+                      operationalCategoryDetailRows.map((row) => (
+                        <tr key={`${row.projectId}-${row.executionDate ?? "sem-data"}`}>
+                          <td><strong>{row.projectCode}</strong></td>
+                          <td>{row.serviceCenter}</td>
+                          <td>{formatDate(row.executionDate)}</td>
+                          <td>{formatNumber(row.measurementQuantity)}</td>
+                          <td>{formatNumber(row.orderCount)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className={styles.emptyRow}>
+                          {isOperationalCategoryDetailLoading ? "Carregando detalhes..." : "Nenhum projeto com Medicao encontrado para esta categoria."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  {operationalCategoryDetailRows.length ? (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={3}><strong>Total</strong></td>
+                        <td>{formatNumber(operationalCategoryDetailTotalQuantity)}</td>
+                        <td>{formatNumber(operationalCategoryDetailRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
                       </tr>
                     </tfoot>
                   ) : null}

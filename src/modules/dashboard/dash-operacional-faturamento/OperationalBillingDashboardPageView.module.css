@@ -267,6 +267,13 @@
   padding: 12px 14px;
 }
 
+.operationalIndicatorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .operationalIndicatorTitle {
   color: #42557d;
   font-size: 11px;
