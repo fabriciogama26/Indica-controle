@@ -73,6 +73,8 @@ type MeasurementItemRow = {
 
 type CommercialItemRow = MeasurementItemRow & {
   activity_active_snapshot?: boolean | null;
+  asbuilt_measurement_order_id?: string | null;
+  billing_order_id?: string | null;
 };
 
 type OriginKey = "measurement" | "asbuilt" | "billing";
@@ -169,6 +171,16 @@ type OperationalMeasurementCategoryDetailRow = {
   executionDate: string | null;
   measurementQuantity: number;
   orderCount: number;
+};
+
+type OperationalAsbuiltCategoryDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  coverageStartDate: string | null;
+  coverageEndDate: string | null;
+  asbuiltQuantity: number;
+  itemCount: number;
 };
 
 type OperationalAverageTickets = {
@@ -574,7 +586,7 @@ async function loadCommercialItems(params: {
     for (let from = 0; ; from += QUERY_PAGE_SIZE) {
       const { data, error } = await params.supabase
         .from(params.table)
-        .select("service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value, activity_active_snapshot")
+        .select(`${params.orderColumn}, service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value, activity_active_snapshot`)
         .eq("tenant_id", params.tenantId)
         .eq("is_active", true)
         .in(params.orderColumn, ids)
@@ -844,6 +856,87 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
       if (projectCompare !== 0) return projectCompare;
       return (left.executionDate ?? "").localeCompare(right.executionDate ?? "", "pt-BR");
     });
+}
+
+async function buildOperationalAsbuiltCategoryDetailRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projects: Array<{ id: string; label: string; serviceCenter: string }>;
+  categoryKey: string;
+}) {
+  const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
+  if (!category) {
+    throw new Error("Categoria operacional nao encontrada para detalhamento do Asbuilt.");
+  }
+
+  const projectIds = params.projects.map((project) => project.id);
+  const asbuiltOrders = await loadClosedAsbuiltOrderRows({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds,
+  });
+
+  const asbuiltItems = await loadCommercialItems({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    table: "project_asbuilt_measurement_order_items",
+    orderColumn: "asbuilt_measurement_order_id",
+    orderIds: asbuiltOrders.map((order) => order.id),
+  });
+
+  const activityCategoryMap = await loadActivityCategoryMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    activityIds: asbuiltItems.map((item) => item.service_activity_id),
+  });
+
+  const projectById = new Map(params.projects.map((project) => [project.id, project]));
+  const orderById = new Map(asbuiltOrders.map((order) => [order.id, order]));
+  const previousCoverageByOrderId = new Map<string, string | null>();
+  const latestCoverageByProject = new Map<string, string | null>();
+  const targetCategoryName = normalizeCategoryName(category.categoryName);
+
+  for (const order of asbuiltOrders) {
+    previousCoverageByOrderId.set(order.id, latestCoverageByProject.get(order.project_id) ?? null);
+    latestCoverageByProject.set(order.project_id, normalizeText(order.service_coverage_end_date) || null);
+  }
+
+  const rowsByOrderId = new Map<string, OperationalAsbuiltCategoryDetailRow>();
+
+  for (const item of asbuiltItems) {
+    const categoryId = activityCategoryMap.activityToCategory.get(item.service_activity_id);
+    const categoryName = normalizeCategoryName(activityCategoryMap.categoryNameById.get(categoryId ?? ""));
+    if (!categoryName || categoryName !== targetCategoryName) continue;
+
+    const orderId = normalizeText((item as Record<string, unknown>).asbuilt_measurement_order_id);
+    const order = orderById.get(orderId);
+    if (!order) continue;
+
+    const project = projectById.get(order.project_id);
+    if (!project) continue;
+
+    const coverageEndDate = normalizeText(order.service_coverage_end_date) || null;
+    const previousCoverage = previousCoverageByOrderId.get(order.id) ?? null;
+    const current = rowsByOrderId.get(order.id) ?? {
+      projectId: order.project_id,
+      projectCode: project.label,
+      serviceCenter: project.serviceCenter,
+      coverageStartDate: previousCoverage ? addDaysToIsoDate(previousCoverage, 1) : null,
+      coverageEndDate,
+      asbuiltQuantity: 0,
+      itemCount: 0,
+    };
+
+    current.asbuiltQuantity += numberValue(item.quantity);
+    current.itemCount += 1;
+    rowsByOrderId.set(order.id, current);
+  }
+
+  return Array.from(rowsByOrderId.values()).sort((left, right) => {
+    const projectCompare = left.projectCode.localeCompare(right.projectCode, "pt-BR");
+    if (projectCompare !== 0) return projectCompare;
+    return (left.coverageEndDate ?? "").localeCompare(right.coverageEndDate ?? "", "pt-BR");
+  });
 }
 
 async function loadWorkCompletionCatalog(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
@@ -1536,16 +1629,25 @@ export async function GET(request: NextRequest) {
     }
 
     if (includeOperationalCategoryDetail) {
-      const operationalCategoryDetailRows = await buildOperationalMeasurementCategoryDetailRows({
-        supabase: resolution.supabase,
-        tenantId,
-        projects,
-        categoryKey: operationalCategoryKey,
-      });
+      const [operationalCategoryDetailRows, operationalAsbuiltCategoryDetailRows] = await Promise.all([
+        buildOperationalMeasurementCategoryDetailRows({
+          supabase: resolution.supabase,
+          tenantId,
+          projects,
+          categoryKey: operationalCategoryKey,
+        }),
+        buildOperationalAsbuiltCategoryDetailRows({
+          supabase: resolution.supabase,
+          tenantId,
+          projects,
+          categoryKey: operationalCategoryKey,
+        }),
+      ]);
 
       return NextResponse.json({
         filters: { projects, serviceCenters },
         operationalCategoryDetailRows,
+        operationalAsbuiltCategoryDetailRows,
       });
     }
 

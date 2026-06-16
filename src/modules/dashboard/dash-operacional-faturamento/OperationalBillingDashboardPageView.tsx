@@ -103,6 +103,16 @@ type OperationalMeasurementCategoryDetailRow = {
   orderCount: number;
 };
 
+type OperationalAsbuiltCategoryDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  coverageStartDate: string | null;
+  coverageEndDate: string | null;
+  asbuiltQuantity: number;
+  itemCount: number;
+};
+
 type OperationalAverageTickets = {
   measurementByProject: number;
   measurementByService: number;
@@ -153,6 +163,7 @@ type DashboardResponse = {
   projectValueRows?: ProjectValueRow[];
   asbuiltBreakdownRows?: AsbuiltBreakdownRow[];
   operationalCategoryDetailRows?: OperationalMeasurementCategoryDetailRow[];
+  operationalAsbuiltCategoryDetailRows?: OperationalAsbuiltCategoryDetailRow[];
   summary?: Summary | null;
 };
 
@@ -167,6 +178,8 @@ type OperationalCategoryDetailModalState = {
   label: string;
   categoryName: string;
 };
+
+type OperationalCategoryDetailTab = "measurement" | "asbuilt";
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -268,7 +281,9 @@ export function OperationalBillingDashboardPageView() {
   const [asbuiltBreakdownRows, setAsbuiltBreakdownRows] = useState<AsbuiltBreakdownRow[]>([]);
   const [asbuiltBreakdownModal, setAsbuiltBreakdownModal] = useState<AsbuiltBreakdownModalState | null>(null);
   const [operationalCategoryDetailRows, setOperationalCategoryDetailRows] = useState<OperationalMeasurementCategoryDetailRow[]>([]);
+  const [operationalAsbuiltCategoryDetailRows, setOperationalAsbuiltCategoryDetailRows] = useState<OperationalAsbuiltCategoryDetailRow[]>([]);
   const [operationalCategoryDetailModal, setOperationalCategoryDetailModal] = useState<OperationalCategoryDetailModalState | null>(null);
+  const [operationalCategoryDetailTab, setOperationalCategoryDetailTab] = useState<OperationalCategoryDetailTab>("measurement");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -444,6 +459,11 @@ export function OperationalBillingDashboardPageView() {
   const operationalCategoryDetailTotalQuantity = useMemo(
     () => operationalCategoryDetailRows.reduce((sum, row) => sum + row.measurementQuantity, 0),
     [operationalCategoryDetailRows],
+  );
+
+  const operationalAsbuiltCategoryDetailTotalQuantity = useMemo(
+    () => operationalAsbuiltCategoryDetailRows.reduce((sum, row) => sum + row.asbuiltQuantity, 0),
+    [operationalAsbuiltCategoryDetailRows],
   );
 
   const loadMetadata = useCallback(async () => {
@@ -648,6 +668,8 @@ export function OperationalBillingDashboardPageView() {
 
     setOperationalCategoryDetailModal(card);
     setOperationalCategoryDetailRows([]);
+    setOperationalAsbuiltCategoryDetailRows([]);
+    setOperationalCategoryDetailTab("measurement");
     setIsOperationalCategoryDetailLoading(true);
 
     try {
@@ -667,6 +689,7 @@ export function OperationalBillingDashboardPageView() {
       }
 
       setOperationalCategoryDetailRows(payload.operationalCategoryDetailRows ?? []);
+      setOperationalAsbuiltCategoryDetailRows(payload.operationalAsbuiltCategoryDetailRows ?? []);
     } catch (error) {
       setOperationalCategoryDetailModal(null);
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar detalhes da categoria operacional." });
@@ -679,6 +702,8 @@ export function OperationalBillingDashboardPageView() {
   function closeOperationalCategoryDetailModal() {
     setOperationalCategoryDetailModal(null);
     setOperationalCategoryDetailRows([]);
+    setOperationalAsbuiltCategoryDetailRows([]);
+    setOperationalCategoryDetailTab("measurement");
     setIsOperationalCategoryDetailLoading(false);
   }
 
@@ -1693,7 +1718,7 @@ export function OperationalBillingDashboardPageView() {
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
-                <h3>Projetos e datas da Medicao</h3>
+                <h3>Detalhamento operacional por origem</h3>
                 <p className={styles.modalSubtitle}>
                   {operationalCategoryDetailModal.label} | {operationalCategoryDetailModal.categoryName}
                 </p>
@@ -1704,57 +1729,118 @@ export function OperationalBillingDashboardPageView() {
             </div>
 
             <div className={styles.modalBody}>
+              <div className={styles.modalTabs} role="tablist" aria-label="Origem do detalhamento operacional">
+                <button
+                  type="button"
+                  className={operationalCategoryDetailTab === "measurement" ? styles.modalTabActive : styles.modalTab}
+                  onClick={() => setOperationalCategoryDetailTab("measurement")}
+                >
+                  Medicao
+                </button>
+                <button
+                  type="button"
+                  className={operationalCategoryDetailTab === "asbuilt" ? styles.modalTabActive : styles.modalTab}
+                  onClick={() => setOperationalCategoryDetailTab("asbuilt")}
+                >
+                  As Built
+                </button>
+              </div>
+
               <div className={styles.modalSummaryGrid}>
                 <div className={styles.modalSummaryCard}>
-                  <span>Projetos / Datas</span>
-                  <strong>{formatNumber(operationalCategoryDetailRows.length)}</strong>
+                  <span>{operationalCategoryDetailTab === "measurement" ? "Projetos / Datas" : "Projetos / Faixas"}</span>
+                  <strong>{formatNumber(operationalCategoryDetailTab === "measurement" ? operationalCategoryDetailRows.length : operationalAsbuiltCategoryDetailRows.length)}</strong>
                 </div>
                 <div className={styles.modalSummaryCard}>
-                  <span>Quantidade medida</span>
-                  <strong>{formatNumber(operationalCategoryDetailTotalQuantity)}</strong>
+                  <span>{operationalCategoryDetailTab === "measurement" ? "Quantidade medida" : "Quantidade asbuilt"}</span>
+                  <strong>{formatNumber(operationalCategoryDetailTab === "measurement" ? operationalCategoryDetailTotalQuantity : operationalAsbuiltCategoryDetailTotalQuantity)}</strong>
                 </div>
               </div>
 
               <div className={styles.tableWrapper}>
-                <table className={styles.modalTable}>
-                  <thead>
-                    <tr>
-                      <th>Projeto</th>
-                      <th>Centro de servico</th>
-                      <th>Data execucao</th>
-                      <th>Qtd. medida</th>
-                      <th>Ordens</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {operationalCategoryDetailRows.length ? (
-                      operationalCategoryDetailRows.map((row) => (
-                        <tr key={`${row.projectId}-${row.executionDate ?? "sem-data"}`}>
-                          <td><strong>{row.projectCode}</strong></td>
-                          <td>{row.serviceCenter}</td>
-                          <td>{formatDate(row.executionDate)}</td>
-                          <td>{formatNumber(row.measurementQuantity)}</td>
-                          <td>{formatNumber(row.orderCount)}</td>
+                {operationalCategoryDetailTab === "measurement" ? (
+                  <table className={styles.modalTable}>
+                    <thead>
+                      <tr>
+                        <th>Projeto</th>
+                        <th>Centro de servico</th>
+                        <th>Data execucao</th>
+                        <th>Qtd. medida</th>
+                        <th>Ordens</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {operationalCategoryDetailRows.length ? (
+                        operationalCategoryDetailRows.map((row) => (
+                          <tr key={`${row.projectId}-${row.executionDate ?? "sem-data"}`}>
+                            <td><strong>{row.projectCode}</strong></td>
+                            <td>{row.serviceCenter}</td>
+                            <td>{formatDate(row.executionDate)}</td>
+                            <td>{formatNumber(row.measurementQuantity)}</td>
+                            <td>{formatNumber(row.orderCount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className={styles.emptyRow}>
+                            {isOperationalCategoryDetailLoading ? "Carregando detalhes..." : "Nenhum projeto com Medicao encontrado para esta categoria."}
+                          </td>
                         </tr>
-                      ))
-                    ) : (
+                      )}
+                    </tbody>
+                    {operationalCategoryDetailRows.length ? (
+                      <tfoot>
+                        <tr>
+                          <td colSpan={3}><strong>Total</strong></td>
+                          <td>{formatNumber(operationalCategoryDetailTotalQuantity)}</td>
+                          <td>{formatNumber(operationalCategoryDetailRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
+                        </tr>
+                      </tfoot>
+                    ) : null}
+                  </table>
+                ) : (
+                  <table className={styles.modalTable}>
+                    <thead>
                       <tr>
-                        <td colSpan={5} className={styles.emptyRow}>
-                          {isOperationalCategoryDetailLoading ? "Carregando detalhes..." : "Nenhum projeto com Medicao encontrado para esta categoria."}
-                        </td>
+                        <th>Projeto</th>
+                        <th>Centro de servico</th>
+                        <th>Faixa As Built</th>
+                        <th>Servicos considerados ate</th>
+                        <th>Qtd. As Built</th>
+                        <th>Itens</th>
                       </tr>
-                    )}
-                  </tbody>
-                  {operationalCategoryDetailRows.length ? (
-                    <tfoot>
-                      <tr>
-                        <td colSpan={3}><strong>Total</strong></td>
-                        <td>{formatNumber(operationalCategoryDetailTotalQuantity)}</td>
-                        <td>{formatNumber(operationalCategoryDetailRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
-                      </tr>
-                    </tfoot>
-                  ) : null}
-                </table>
+                    </thead>
+                    <tbody>
+                      {operationalAsbuiltCategoryDetailRows.length ? (
+                        operationalAsbuiltCategoryDetailRows.map((row, index) => (
+                          <tr key={`${row.projectId}-${row.coverageEndDate ?? index}`}>
+                            <td><strong>{row.projectCode}</strong></td>
+                            <td>{row.serviceCenter}</td>
+                            <td>{formatAsbuiltRange(row.coverageStartDate, row.coverageEndDate)}</td>
+                            <td>{formatDate(row.coverageEndDate)}</td>
+                            <td>{formatNumber(row.asbuiltQuantity)}</td>
+                            <td>{formatNumber(row.itemCount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className={styles.emptyRow}>
+                            {isOperationalCategoryDetailLoading ? "Carregando detalhes..." : "Nenhum projeto com As Built encontrado para esta categoria."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    {operationalAsbuiltCategoryDetailRows.length ? (
+                      <tfoot>
+                        <tr>
+                          <td colSpan={4}><strong>Total</strong></td>
+                          <td>{formatNumber(operationalAsbuiltCategoryDetailTotalQuantity)}</td>
+                          <td>{formatNumber(operationalAsbuiltCategoryDetailRows.reduce((sum, row) => sum + row.itemCount, 0))}</td>
+                        </tr>
+                      </tfoot>
+                    ) : null}
+                  </table>
+                )}
               </div>
             </div>
           </article>
