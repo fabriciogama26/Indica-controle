@@ -114,6 +114,7 @@ Filtros, auto-complete e listagem
   - `Medidos`: quantidade da `Medicao COM_PRODUCAO`
   - `ASBUILT`: quantidade da `Medicao Asbuilt`
   - `Faturado`: quantidade do `Faturamento`
+- Nos cards operacionais, as quantidades sao exibidas sem casas decimais.
 - Cada card operacional possui icone de olho para abrir modal com abas por origem:
   - `Medicao`: projetos e `Data execucao` da categoria.
   - `As Built`: projetos e faixas calculadas por `Servicos considerados ate`.
