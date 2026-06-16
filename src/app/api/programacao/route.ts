@@ -2382,45 +2382,49 @@ async function resolveProgrammingWorkCompletionStatus(params: {
   return data;
 }
 
-async function hasProjectProgramming(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  projectId: string;
-}) {
-  const { data, error } = await params.supabase
-    .from("project_programming")
-    .select("id")
-    .eq("tenant_id", params.tenantId)
-    .eq("project_id", params.projectId)
-    .limit(1)
-    .returns<Array<{ id: string }>>();
-
-  if (error) {
-    return { ok: false, exists: false, message: error.message } as const;
-  }
-
-  return { ok: true, exists: Boolean(data?.length) } as const;
-}
-
 async function resolveInitialProjectWorkCompletionStatus(params: {
   supabase: SupabaseClient;
   tenantId: string;
   projectId: string;
 }) {
-  const existingProgramming = await hasProjectProgramming(params);
-  if (!existingProgramming.ok) {
+  const { data: previousProgrammingRows, error: previousProgrammingError } = await params.supabase
+    .from("project_programming")
+    .select("work_completion_status")
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .neq("status", "CANCELADA")
+    .not("work_completion_status", "is", null)
+    .order("execution_date", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(50)
+    .returns<Array<{ work_completion_status: string | null }>>();
+
+  if (previousProgrammingError) {
     return {
       ok: false,
       status: 500,
       workCompletionStatus: null,
-      message: existingProgramming.message
-        ? `Falha ao verificar programacoes existentes do projeto: ${existingProgramming.message}`
-        : "Falha ao verificar programacoes existentes do projeto.",
+      message: previousProgrammingError.message
+        ? `Falha ao consultar o ultimo Estado Trabalho do projeto: ${previousProgrammingError.message}`
+        : "Falha ao consultar o ultimo Estado Trabalho do projeto.",
     } as const;
   }
 
-  if (existingProgramming.exists) {
-    return { ok: true, workCompletionStatus: null } as const;
+  for (const row of previousProgrammingRows ?? []) {
+    const previousStatus = normalizeWorkCompletionStatus(row.work_completion_status);
+    if (!previousStatus) {
+      continue;
+    }
+
+    const activeStatus = await resolveProgrammingWorkCompletionStatus({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      workCompletionStatus: previousStatus,
+    });
+
+    if (activeStatus) {
+      return { ok: true, workCompletionStatus: activeStatus.code } as const;
+    }
   }
 
   const partialStatus = await resolveProgrammingWorkCompletionStatus({

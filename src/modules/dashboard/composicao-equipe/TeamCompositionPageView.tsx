@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { notifyTeamCompositionUpdated } from "@/lib/events/teamComposition";
 import styles from "./TeamCompositionPageView.module.css";
 
 type ProjectOption = {
@@ -870,6 +871,7 @@ export function TeamCompositionPageView() {
         return;
       }
       setFeedback({ type: "success", message: data.message ?? "Composicao salva com sucesso." });
+      notifyTeamCompositionUpdated();
       resetForm();
       setPage(1);
       await Promise.all([

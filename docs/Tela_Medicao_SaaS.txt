@@ -162,6 +162,8 @@ Filtros, auto-complete e listagem
   - No CSV de pontuacao, `Compensatorio` compara `Valor` com a meta diaria financeira do tipo/equipe no ciclo salvo em `measurement_cycle_target_items.daily_value`, com fallback em `measurement_team_type_targets.daily_value`.
   - Ao exportar, a tela exibe modal `Gerando...` com percentual de progresso e bloqueia os cliques da pagina ate concluir a geracao do arquivo.
   - Botao `Atualizar lista` ao lado de `Detalhamento (CSV)` para recarregar lista, filtros aplicados e consolidacoes com os dados mais recentes.
+  - A coluna `Composicao equipe` e atualizada automaticamente a cada 60 segundos, ao voltar para a aba/tela e quando outra aba do sistema salva uma composicao.
+  - As consultas da lista usam requisicao sem cache e identificador unico para evitar reutilizacao de resposta anterior.
 - Acoes:
   - Detalhes
   - Historico
@@ -940,3 +942,25 @@ Atualizacao 2026-06-12 (Valor descontando garantia minima)
   - Depois: o resumo tambem exibe `Valor descontando garantia minima`, calculado por `Valor total - Garantia de faturamento minimo`.
   - Depois: o novo card usa os mesmos filtros, todas as paginas do resultado e a mesma exclusao de ordens `CANCELADA` aplicada aos dois valores de origem.
   - Impacto multi-tenant: sem nova query, alteracao de schema ou RLS; o valor e derivado no frontend a partir das consolidacoes ja restritas ao tenant autenticado.
+
+Atualizacao 2026-06-15 (Atualizacao automatica da composicao)
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/lib/events/teamComposition.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `notifyTeamCompositionUpdated`
+  - `fetchOrdersPage`
+  - Estado `compositionRefreshTick`
+  - Constante `TEAM_COMPOSITION_AUTO_REFRESH_MS`
+- Comportamento antes/depois:
+  - Antes: a Medicao atualizava a composicao somente nos ciclos normais de carregamento e no refresh manual.
+  - Depois: a lista tambem recarrega ao retornar para a aba, restaurar a pagina, receber evento de composicao salva e a cada 60 segundos.
+  - Depois: cada GET da lista recebe identificador unico e continua usando `cache: no-store`.
+- Multi-tenant:
+  - O evento apenas invalida a visualizacao; ele nao transporta dados de negocio ou tenant.
+  - A API continua recalculando o match por `tenant_id + project_id + team_id + execution_date` com RLS ativa.
