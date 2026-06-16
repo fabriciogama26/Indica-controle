@@ -593,3 +593,8 @@ Observacao
 - Une transferencias historicas consecutivas do mesmo contexto quando a diferenca entre registros e de ate 2 segundos.
 - Processa somente registros sem lote ou com UUID deterministico da migration 239, preservando os UUIDs reais gerados pela importacao nova.
 - Exclui Operacoes de Equipe, estornos e transferencias com mais de um item.
+
+241_create_team_supervisor_history.sql
+- Cria `team_supervisor_history` para versionar supervisor por equipe com `valid_from` e `valid_to`.
+- Faz backfill a partir de `app_entity_history` e do supervisor atual de `teams`.
+- Sincroniza novas trocas por trigger em `teams.supervisor_person_id`, com RLS por tenant e sem permissao de `DELETE`.
