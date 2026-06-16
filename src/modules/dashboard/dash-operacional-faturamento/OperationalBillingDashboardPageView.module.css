@@ -730,6 +730,33 @@
   padding: 16px;
 }
 
+.modalTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modalTab,
+.modalTabActive {
+  min-height: 34px;
+  border-radius: 8px;
+  font-weight: 800;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.modalTab {
+  border: 1px solid #c8d4ea;
+  background: #ffffff;
+  color: #1f4ea3;
+}
+
+.modalTabActive {
+  border: 0;
+  background: #1f4ea3;
+  color: #ffffff;
+}
+
 .modalSummaryGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
