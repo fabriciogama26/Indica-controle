@@ -380,3 +380,25 @@ Atualizacao 2026-06 - Data do painel e Nao atuou sem Projeto
   - A FK composta de projeto permanece ativa e aceita `null` somente pela regra condicional de `work_status`.
   - A constraint exige Projeto para `WORKING`; a RPC garante `project_id = null` no fluxo `NOT_WORKING` e permite a transicao transacional entre os dois estados.
   - RLS permanece habilitada e a assinatura da RPC continua restrita a `service_role`.
+
+Atualizacao 2026-06-15 - Sincronizacao com a Medicao
+-----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/lib/events/teamComposition.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `notifyTeamCompositionUpdated`
+  - `handleSubmit`
+  - Evento `team-composition-updated`
+  - Chave local `saas:team-composition-updated`
+- Comportamento antes/depois:
+  - Antes: salvar uma composicao atualizava somente a propria tela.
+  - Depois: o sucesso do cadastro ou edicao publica um sinal local de invalidacao para a tela de Medicao.
+  - Depois: outra aba aberta na Medicao recebe o sinal pelo evento de armazenamento e recarrega a lista.
+- Multi-tenant:
+  - O sinal contem somente o horario da alteracao e nao transporta IDs ou dados de negocio.
+  - A Medicao continua consultando a API autenticada, que resolve o tenant pela sessao e aplica o cruzamento completo no servidor.
