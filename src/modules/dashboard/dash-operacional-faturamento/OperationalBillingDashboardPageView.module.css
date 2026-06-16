@@ -332,6 +332,19 @@
   gap: 10px;
 }
 
+.barButton {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
 .barLabel {
   min-height: 32px;
   display: flex;
@@ -596,6 +609,25 @@
   color: #14532d;
 }
 
+.iconButton {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8d4ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f4ea3;
+  cursor: pointer;
+  padding: 0;
+}
+
+.iconButton svg {
+  width: 16px;
+  height: 16px;
+}
+
 .paginationBar {
   display: flex;
   align-items: center;
@@ -630,6 +662,132 @@
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 22, 47, 0.45);
+  padding: 18px;
+}
+
+.modalCard {
+  width: min(980px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(16, 35, 77, 0.3);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(23, 52, 122, 0.12);
+  padding: 14px 16px;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  color: #17347a;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.modalSubtitle {
+  margin: 4px 0 0;
+  color: #63708d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modalCloseButton {
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17347a;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.modalBody {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.modalSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.modalSummaryCard {
+  min-height: 74px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px 14px;
+}
+
+.modalSummaryCard span {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.modalSummaryCard strong {
+  color: #002b7f;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.modalTable {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.modalTable th {
+  border-bottom: 1px solid #d9e1ef;
+  background: #eef2f8;
+  color: #002b7f;
+  text-align: left;
+  font-weight: 800;
+  padding: 10px;
+  white-space: nowrap;
+}
+
+.modalTable td {
+  border-bottom: 1px solid #e2e8f3;
+  color: #001f5b;
+  padding: 10px;
+  vertical-align: top;
+}
+
+.modalTable tbody tr:nth-child(even) {
+  background: #f8fbff;
+}
+
+.modalTable tfoot td {
+  border-top: 2px solid #c8d4ea;
+  border-bottom: 0;
+  background: #eef2f8;
+  color: #002b7f;
+  font-weight: 900;
 }
 
 .emptyRow {
@@ -729,6 +887,7 @@
   .summaryGrid,
   .valueCardGrid,
   .chartInsightGrid,
+  .modalSummaryGrid,
   .operationalTicketGrid,
   .operationalIndicatorGrid {
     grid-template-columns: 1fr;

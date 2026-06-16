@@ -958,3 +958,4 @@
 - [x] Corrigir `FULL_RPC_NOT_AVAILABLE` no cadastro em lote da Programacao causado pelo truncamento do nome da RPC decimal da migration 228 no limite de 63 caracteres do PostgreSQL, publicando nome curto pela migration 235, mantendo compatibilidade transacional durante o deploy e ajustando o diagnostico de funcao ausente.
 - [x] Atualizar automaticamente a coluna `Composicao equipe` da Medicao ao retornar para a tela, receber uma composicao salva em outra aba ou completar o intervalo de 60 segundos, mantendo refresh manual e requisicoes sem cache.
 - [x] Fazer novas programacoes herdarem o ultimo `Estado Trabalho` nao nulo da mesma obra e tenant, ignorando programacoes canceladas, validando o catalogo ativo e mantendo `PARCIAL` como fallback.
+- [x] Ajustar o `Dash operacional e faturamento` para somar todos os cortes `FECHADA` de `Medicao Asbuilt` por projeto e abrir modal com o detalhamento por faixa calculada a partir de `Servicos considerados ate`.
