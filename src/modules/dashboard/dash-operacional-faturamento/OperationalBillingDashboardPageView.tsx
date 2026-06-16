@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ActionIcon } from "@/components/ui/ActionIcon";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./OperationalBillingDashboardPageView.module.css";
@@ -73,6 +74,17 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type AsbuiltBreakdownRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenterId: string | null;
+  serviceCenter: string;
+  coverageStartDate: string | null;
+  coverageEndDate: string | null;
+  value: number;
+  itemCount: number;
+};
+
 type OperationalMeasurementCategoryCard = {
   key: string;
   label: string;
@@ -130,7 +142,14 @@ type DashboardResponse = {
   operationalCategoryCards?: OperationalMeasurementCategoryCard[];
   operationalAverageTickets?: OperationalAverageTickets | null;
   projectValueRows?: ProjectValueRow[];
+  asbuiltBreakdownRows?: AsbuiltBreakdownRow[];
   summary?: Summary | null;
+};
+
+type AsbuiltBreakdownModalState = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
 };
 
 function formatNumber(value: number) {
@@ -145,6 +164,13 @@ function formatCurrency(value: number) {
     style: "currency",
     currency: "BRL",
   }).format(Number.isFinite(value) ? value : 0);
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "-";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
 }
 
 function formatSignedCurrency(value: number) {
@@ -196,6 +222,12 @@ function chartDisplayLabel(item: ChartItem) {
   return item.key === "measurementAsbuilt" ? "Medido com AS Built" : item.label;
 }
 
+function formatAsbuiltRange(startDate: string | null, endDate: string | null) {
+  if (!endDate) return "Sem data de corte";
+  if (!startDate) return `Inicio do projeto ate ${formatDate(endDate)}`;
+  return `${formatDate(startDate)} ate ${formatDate(endDate)}`;
+}
+
 const chartHelpByKey: Record<string, string> = {
   totalMeasurement: "Soma de todas as medicoes com producao nos projetos filtrados.",
   measurementAsbuilt: "Soma da Medicao somente dos projetos que tambem possuem Medicao As Built.",
@@ -217,6 +249,8 @@ export function OperationalBillingDashboardPageView() {
   const [operationalCategoryCards, setOperationalCategoryCards] = useState<OperationalMeasurementCategoryCard[]>([]);
   const [operationalAverageTickets, setOperationalAverageTickets] = useState<OperationalAverageTickets | null>(null);
   const [projectValueRows, setProjectValueRows] = useState<ProjectValueRow[]>([]);
+  const [asbuiltBreakdownRows, setAsbuiltBreakdownRows] = useState<AsbuiltBreakdownRow[]>([]);
+  const [asbuiltBreakdownModal, setAsbuiltBreakdownModal] = useState<AsbuiltBreakdownModalState | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -242,6 +276,7 @@ export function OperationalBillingDashboardPageView() {
   const [isLoading, setIsLoading] = useState(false);
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [isProjectValuesLoading, setIsProjectValuesLoading] = useState(false);
+  const [isAsbuiltBreakdownLoading, setIsAsbuiltBreakdownLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const visibleProjects = useMemo(
@@ -289,6 +324,11 @@ export function OperationalBillingDashboardPageView() {
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projectId, projects],
+  );
+
+  const selectedChartProject = useMemo(
+    () => projects.find((project) => project.id === chartProjectId) ?? null,
+    [chartProjectId, projects],
   );
 
   const chartMaxValue = useMemo(
@@ -375,6 +415,11 @@ export function OperationalBillingDashboardPageView() {
   const paginatedProjectValueRows = useMemo(
     () => filteredProjectValueRows.slice((projectValuePage - 1) * PROJECT_VALUE_PAGE_SIZE, projectValuePage * PROJECT_VALUE_PAGE_SIZE),
     [filteredProjectValueRows, projectValuePage],
+  );
+
+  const asbuiltBreakdownTotalValue = useMemo(
+    () => asbuiltBreakdownRows.reduce((sum, row) => sum + row.value, 0),
+    [asbuiltBreakdownRows],
   );
 
   const loadMetadata = useCallback(async () => {
@@ -534,6 +579,45 @@ export function OperationalBillingDashboardPageView() {
       setIsChartLoading(false);
     }
   }, [chartProjectId, chartProjectSearch, chartServiceCenterId, logError, session?.accessToken]);
+
+  const openAsbuiltBreakdown = useCallback(async (project: AsbuiltBreakdownModalState) => {
+    if (!session?.accessToken) return;
+
+    setAsbuiltBreakdownModal(project);
+    setAsbuiltBreakdownRows([]);
+    setIsAsbuiltBreakdownLoading(true);
+
+    try {
+      const params = new URLSearchParams({
+        includeAsbuiltBreakdown: "true",
+        asbuiltBreakdownProjectId: project.projectId,
+      });
+
+      const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as DashboardResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Falha ao carregar detalhamento do Asbuilt.");
+      }
+
+      setAsbuiltBreakdownRows(payload.asbuiltBreakdownRows ?? []);
+    } catch (error) {
+      setAsbuiltBreakdownModal(null);
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar detalhamento do Asbuilt." });
+      await logError("Falha ao carregar detalhamento por faixa do Asbuilt", error, project);
+    } finally {
+      setIsAsbuiltBreakdownLoading(false);
+    }
+  }, [logError, session?.accessToken]);
+
+  function closeAsbuiltBreakdownModal() {
+    setAsbuiltBreakdownModal(null);
+    setAsbuiltBreakdownRows([]);
+    setIsAsbuiltBreakdownLoading(false);
+  }
 
   useEffect(() => {
     void loadMetadata();
@@ -786,8 +870,10 @@ export function OperationalBillingDashboardPageView() {
               const height = Math.max(4, (item.value / chartMaxValue) * 100);
               const helpText = chartHelpByKey[item.key] ?? "Indicador do grafico operacional.";
               const displayLabel = chartDisplayLabel(item);
-              return (
-                <div key={item.key} className={styles.barGroup}>
+              const chartProjectForBreakdown = item.key === "asbuilt" ? selectedChartProject : null;
+              const isAsbuiltClickable = Boolean(chartProjectForBreakdown);
+              const barContent = (
+                <>
                   <div className={styles.barValue}>{formatCurrency(item.value)}</div>
                   <div className={styles.barTrack}>
                     <div className={item.value > 0 ? styles.barFill : styles.barFillEmpty} style={{ height: `${height}%` }} />
@@ -798,6 +884,25 @@ export function OperationalBillingDashboardPageView() {
                       i
                     </span>
                   </div>
+                </>
+              );
+              return (
+                <div key={item.key} className={styles.barGroup}>
+                  {isAsbuiltClickable ? (
+                    <button
+                      type="button"
+                      className={styles.barButton}
+                      onClick={() => void openAsbuiltBreakdown({
+                        projectId: chartProjectForBreakdown!.id,
+                        projectCode: chartProjectForBreakdown!.label,
+                        serviceCenter: chartProjectForBreakdown!.serviceCenter,
+                      })}
+                      title={`Detalhar faixas do Asbuilt de ${chartProjectForBreakdown!.label}`}
+                      aria-label={`Detalhar faixas do Asbuilt de ${chartProjectForBreakdown!.label}`}
+                    >
+                      {barContent}
+                    </button>
+                  ) : barContent}
                 </div>
               );
             })
@@ -1328,22 +1433,23 @@ export function OperationalBillingDashboardPageView() {
 
         <div className={styles.tableWrapper}>
           <table className={styles.projectValueTable}>
-            <thead>
-              <tr>
-                <th>Projeto</th>
-                <th>Centro de servico</th>
-                <th>Estado de trabalho</th>
-                <th>Tipo de servico</th>
-                <th>Medicao</th>
-                <th>Asbuilt</th>
-                <th>Faturamento</th>
-                <th>Dif. Asbuilt x Medicao</th>
-                <th>Dif. Faturamento x Asbuilt</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedProjectValueRows.length ? (
-                paginatedProjectValueRows.map((row) => (
+              <thead>
+                <tr>
+                  <th>Projeto</th>
+                  <th>Centro de servico</th>
+                  <th>Estado de trabalho</th>
+                  <th>Tipo de servico</th>
+                  <th>Medicao</th>
+                  <th>Asbuilt</th>
+                  <th>Faturamento</th>
+                  <th>Dif. Asbuilt x Medicao</th>
+                  <th>Dif. Faturamento x Asbuilt</th>
+                  <th>Detalhar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedProjectValueRows.length ? (
+                  paginatedProjectValueRows.map((row) => (
                   <tr key={row.projectId}>
                     <td><strong>{row.projectCode}</strong></td>
                     <td>{row.serviceCenter}</td>
@@ -1358,11 +1464,26 @@ export function OperationalBillingDashboardPageView() {
                     <td className={row.billingAsbuiltDiff < 0 ? styles.negativeValue : styles.neutralValue}>
                       {formatSignedCurrency(row.billingAsbuiltDiff)}
                     </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.iconButton}
+                        onClick={() => void openAsbuiltBreakdown({
+                          projectId: row.projectId,
+                          projectCode: row.projectCode,
+                          serviceCenter: row.serviceCenter,
+                        })}
+                        title={`Detalhar faixas do Asbuilt do projeto ${row.projectCode}`}
+                        aria-label={`Detalhar faixas do Asbuilt do projeto ${row.projectCode}`}
+                      >
+                        <ActionIcon name="details" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyRow}>
+                  <td colSpan={10} className={styles.emptyRow}>
                     {isProjectValuesLoading ? "Carregando projetos..." : "Nenhum projeto encontrado para os filtros selecionados."}
                   </td>
                 </tr>
@@ -1381,6 +1502,7 @@ export function OperationalBillingDashboardPageView() {
                   <td className={projectValueTotals.billingAsbuiltDiff < 0 ? styles.negativeValue : styles.neutralValue}>
                     {formatSignedCurrency(projectValueTotals.billingAsbuiltDiff)}
                   </td>
+                  <td>-</td>
                 </tr>
               </tfoot>
             ) : null}
@@ -1414,6 +1536,79 @@ export function OperationalBillingDashboardPageView() {
           </div>
         </div>
       </article>
+
+      {asbuiltBreakdownModal ? (
+        <div className={styles.modalOverlay} onClick={closeAsbuiltBreakdownModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3>Faixas do Asbuilt</h3>
+                <p className={styles.modalSubtitle}>
+                  {asbuiltBreakdownModal.projectCode} | {asbuiltBreakdownModal.serviceCenter}
+                </p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeAsbuiltBreakdownModal}>
+                Fechar
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <div className={styles.modalSummaryGrid}>
+                <div className={styles.modalSummaryCard}>
+                  <span>Cortes fechados</span>
+                  <strong>{formatNumber(asbuiltBreakdownRows.length)}</strong>
+                </div>
+                <div className={styles.modalSummaryCard}>
+                  <span>Valor total Asbuilt</span>
+                  <strong>{formatCurrency(asbuiltBreakdownTotalValue)}</strong>
+                </div>
+              </div>
+
+              <div className={styles.tableWrapper}>
+                <table className={styles.modalTable}>
+                  <thead>
+                    <tr>
+                      <th>Faixa</th>
+                      <th>Inicio da faixa</th>
+                      <th>Servicos considerados ate</th>
+                      <th>Itens</th>
+                      <th>Valor Asbuilt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {asbuiltBreakdownRows.length ? (
+                      asbuiltBreakdownRows.map((row, index) => (
+                        <tr key={`${row.projectId}-${row.coverageEndDate ?? index}`}>
+                          <td><strong>{formatAsbuiltRange(row.coverageStartDate, row.coverageEndDate)}</strong></td>
+                          <td>{row.coverageStartDate ? formatDate(row.coverageStartDate) : "Inicio do projeto"}</td>
+                          <td>{formatDate(row.coverageEndDate)}</td>
+                          <td>{formatNumber(row.itemCount)}</td>
+                          <td>{formatCurrency(row.value)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className={styles.emptyRow}>
+                          {isAsbuiltBreakdownLoading ? "Carregando detalhamento..." : "Nenhum corte fechado de Asbuilt encontrado para este projeto."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  {asbuiltBreakdownRows.length ? (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={3}><strong>Total</strong></td>
+                        <td>{formatNumber(asbuiltBreakdownRows.reduce((sum, row) => sum + row.itemCount, 0))}</td>
+                        <td>{formatCurrency(asbuiltBreakdownTotalValue)}</td>
+                      </tr>
+                    </tfoot>
+                  ) : null}
+                </table>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
     </section>
   );
 }

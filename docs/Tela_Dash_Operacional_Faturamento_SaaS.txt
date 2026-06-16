@@ -88,10 +88,11 @@ Filtros, auto-complete e listagem
 - O filtro do grafico nao atualiza as tabelas.
 - O card `Filtros` do comparativo por projeto fica abaixo do `Grafico operacional`.
 - `Medido (AS BUILT)` soma o valor da Medicao apenas dos projetos que possuem registro em Medicao Asbuilt dentro do filtro proprio do grafico.
-- `As Built` soma o valor da Medicao Asbuilt.
+- `As Built` soma o valor da Medicao Asbuilt considerando todos os registros `FECHADA` do projeto, separados por `Servicos considerados ate`.
 - `Faturado` soma o valor do Faturamento.
 - Na interface, `Medido (AS BUILT)` e exibido como `Medido com AS Built` para deixar claro que se trata da base medida comparavel ao AS Built.
 - Cada barra do grafico possui icone de ajuda contextual explicando a origem do valor.
+- Quando o filtro proprio do grafico estiver com um Projeto selecionado, a barra `As Built` fica clicavel e abre modal com o detalhamento por faixa de corte.
 - Abaixo do grafico, a tela exibe cards de leitura:
   - `Fora da base AS Built`: `Total medido - Medido com AS Built`.
   - `Dif. AS Built x Medido`: `As Built - Medido com AS Built`.
@@ -139,7 +140,14 @@ Filtros, auto-complete e listagem
   - Valor de Faturamento
   - Diferenca Asbuilt x Medicao
   - Diferenca Faturamento x Asbuilt
+  - Acao de detalhamento do Asbuilt
   - Total filtrado no rodape da tabela
+- O detalhamento do Asbuilt abre um modal por projeto com:
+  - Faixa calculada (`Inicio do projeto ate data do primeiro corte`, depois `dia seguinte ao corte anterior ate data do corte atual`)
+  - Inicio da faixa
+  - `Servicos considerados ate`
+  - Quantidade de itens do corte
+  - Valor do corte
 - A tabela `Projetos por valor` possui filtro local por checkbox:
   - `Ocultar Medicao zerada`
   - `Ocultar Asbuilt zerado`
@@ -167,7 +175,9 @@ Boas praticas
 - Manter todas as consultas filtradas pelo tenant autenticado.
 - Considerar apenas ordens ativas e nao canceladas.
 - Considerar apenas Medicao `COM_PRODUCAO`.
-- Para Medicao Asbuilt, considerar somente o snapshot `FECHADA` com `Servicos considerados ate` mais recente de cada projeto; registros `ABERTA`, `CANCELADA` e cortes anteriores nao entram nos totais oficiais.
+- Para Medicao Asbuilt, considerar todos os registros `FECHADA` do projeto; registros `ABERTA` e `CANCELADA` nao entram nos totais oficiais.
+- O dashboard interpreta cada registro `FECHADA` de Asbuilt como uma faixa propria do projeto, ordenada por `Servicos considerados ate`.
+- O modal de detalhamento converte os cortes em faixas sequenciais, usando `Inicio do projeto` para o primeiro corte e `dia seguinte ao corte anterior` para os demais.
 - Excluir projetos marcados como `Obra de teste` ou `RETIRADO DA CARTEIRA` do catalogo da tela.
 - Usar `service_activities.ativo` e snapshots de atividade dos itens de Faturamento/Asbuilt para classificar atividade ativa/inativa.
 - Usar a categoria atual do cadastro de Atividades para o agrupamento por categoria cobrada.
@@ -195,6 +205,8 @@ Atalhos
   - `includeChart`
   - `chartProjectId`
   - `chartServiceCenterId`
+  - `includeAsbuiltBreakdown`
+  - `asbuiltBreakdownProjectId`
 
 Atualizacao 2026-05
 -------------------
@@ -259,15 +271,16 @@ Atualizacao 2026-06
   - A exportacao CSV de `Projetos por valor` passa a incluir `tipo_servico` e linha `TOTAL`.
   - A tabela `Projetos por valor` passa a ter checkboxes locais para ocultar linhas com valor zerado em `Medicao` ou em `Asbuilt`.
   - A tabela passa a permitir listar somente linhas com valor zerado em `Medicao` ou em `Asbuilt`; os filtros `Somente` e `Ocultar` da mesma origem sao mutuamente exclusivos.
-  - As consolidacoes de Asbuilt passam a usar somente o snapshot fechado com data de corte mais recente por projeto, evitando somar versoes acumuladas.
+  - As consolidacoes de Asbuilt passam a usar todos os cortes `FECHADA` do projeto, somando os valores por faixa de data.
+  - A tela passa a abrir modal de detalhamento do Asbuilt pelo grafico operacional e pela tabela `Projetos por valor`, exibindo a faixa de cada corte e o valor correspondente.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar grafico operacional antes dos cards globais por categoria, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar os doze cards comparativos de `Medidos`, `ASBUILT` e `Faturado`, exibir tickets medios de `Medicao` e `Asbuilt` por projetos/servicos, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, filtrar projetos por Centro de servico, Projeto, Estado de trabalho, Tipo de servico, valores zerados em Medicao/Asbuilt e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, calcular total filtrado, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
+  - Responsavel por: renderizar grafico operacional antes dos cards globais por categoria, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar os doze cards comparativos de `Medidos`, `ASBUILT` e `Faturado`, exibir tickets medios de `Medicao` e `Asbuilt` por projetos/servicos, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, abrir modal com detalhamento do Asbuilt por projeto, filtrar projetos por Centro de servico, Projeto, Estado de trabalho, Tipo de servico, valores zerados em Medicao/Asbuilt e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, calcular total filtrado, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, selecionar o ultimo snapshot Asbuilt fechado por projeto, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar os doze cards globais comparando quantidades das tres origens por categoria atual, calcular tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e ordens/servicos de projetos presentes nas duas bases, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido e Tipo de Servico do cadastro do Projeto, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, selecionar todos os cortes Asbuilt `FECHADA` por projeto, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar os doze cards globais comparando quantidades das tres origens por categoria atual, calcular tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e ordens/servicos de projetos presentes nas duas bases, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido e Tipo de Servico do cadastro do Projeto, montar detalhamento do Asbuilt por faixas de corte, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -281,10 +294,12 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildOperationalMeasurementCategoryCards`, `loadWorkCompletionCatalog`, `loadLatestWorkCompletionByProject`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `buildProjectValueRows`, `sumItemsByOrderIds`, `sumItemValuesByProject`, `addItem`, `finalizeRows`.
+  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadClosedAsbuiltOrderRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildOperationalMeasurementCategoryCards`, `loadWorkCompletionCatalog`, `loadLatestWorkCompletionByProject`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `buildProjectValueRows`, `buildAsbuiltBreakdownRows`, `sumItemsByOrderIds`, `sumItemValuesByProject`, `loadCommercialOrderMetrics`, `addItem`, `finalizeRows`.
   - Comportamento ajustado: `buildChartItems` passa a devolver, alem do valor financeiro, quantidade de projetos distintos e quantidade de ordens consideradas por indicador do grafico.
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
   - Comportamento ajustado: `loadProjects`, `loadOrderProjectRows`, `loadMeasurementItems` e `loadCommercialItems` passam a paginar as leituras usadas no agregado global para nao truncar os cards pelo limite padrao do PostgREST.
+  - Comportamento ajustado: `loadClosedAsbuiltOrderRows` deixa de reduzir o Asbuilt ao ultimo corte e passa a devolver todos os registros `FECHADA` do projeto.
+  - Comportamento ajustado: `buildAsbuiltBreakdownRows` ordena os cortes por `Servicos considerados ate` e monta as faixas exibidas no modal.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
   - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadMetadata`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `projectValueServiceTypeOptions`, `hideZeroMeasurementValues`, `hideZeroAsbuiltValues`, `onlyZeroMeasurementValues`, `onlyZeroAsbuiltValues`, `filteredProjectValueRows`, `projectValueTotals`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
 

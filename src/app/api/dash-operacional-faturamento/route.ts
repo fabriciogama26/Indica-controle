@@ -137,6 +137,17 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type AsbuiltBreakdownRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenterId: string | null;
+  serviceCenter: string;
+  coverageStartDate: string | null;
+  coverageEndDate: string | null;
+  value: number;
+  itemCount: number;
+};
+
 type OperationalMeasurementCategoryCard = {
   key: string;
   label: string;
@@ -366,7 +377,7 @@ async function loadOrderIds(params: {
   projectId: string;
 }) {
   if (params.table === "project_asbuilt_measurement_orders") {
-    const orders = await loadLatestClosedAsbuiltOrderRows({
+    const orders = await loadClosedAsbuiltOrderRows({
       supabase: params.supabase,
       tenantId: params.tenantId,
       projectIds: [params.projectId],
@@ -402,7 +413,7 @@ async function loadOrderProjectRows(params: {
   projectIds: string[];
 }) {
   if (params.table === "project_asbuilt_measurement_orders") {
-    return loadLatestClosedAsbuiltOrderRows({
+    return loadClosedAsbuiltOrderRows({
       supabase: params.supabase,
       tenantId: params.tenantId,
       projectIds: params.projectIds,
@@ -441,7 +452,7 @@ async function loadOrderProjectRows(params: {
   return rows;
 }
 
-async function loadLatestClosedAsbuiltOrderRows(params: {
+async function loadClosedAsbuiltOrderRows(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   projectIds: string[];
@@ -459,13 +470,13 @@ async function loadLatestClosedAsbuiltOrderRows(params: {
         .eq("status", "FECHADA")
         .in("project_id", projectIdChunk)
         .order("project_id", { ascending: true })
-        .order("service_coverage_end_date", { ascending: false, nullsFirst: false })
-        .order("updated_at", { ascending: false })
+        .order("service_coverage_end_date", { ascending: true, nullsFirst: false })
+        .order("updated_at", { ascending: true })
         .range(from, from + QUERY_PAGE_SIZE - 1)
         .returns<AsbuiltOrderProjectRow[]>();
 
       if (error) {
-        throw new Error("Falha ao carregar o ultimo Asbuilt fechado por projeto.");
+        throw new Error("Falha ao carregar os cortes fechados de Asbuilt por projeto.");
       }
 
       rows.push(...(data ?? []));
@@ -473,25 +484,7 @@ async function loadLatestClosedAsbuiltOrderRows(params: {
     }
   }
 
-  const latestByProject = new Map<string, AsbuiltOrderProjectRow>();
-  for (const row of rows) {
-    const current = latestByProject.get(row.project_id);
-    if (!current) {
-      latestByProject.set(row.project_id, row);
-      continue;
-    }
-
-    const rowCoverage = row.service_coverage_end_date ?? "";
-    const currentCoverage = current.service_coverage_end_date ?? "";
-    if (
-      rowCoverage > currentCoverage
-      || (rowCoverage === currentCoverage && (row.updated_at ?? "") > (current.updated_at ?? ""))
-    ) {
-      latestByProject.set(row.project_id, row);
-    }
-  }
-
-  return Array.from(latestByProject.values());
+  return rows;
 }
 
 async function loadMeasurementItems(params: {
@@ -975,6 +968,103 @@ async function sumItemValuesByProject(params: {
   return totals;
 }
 
+async function loadCommercialOrderMetrics(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  table: "project_asbuilt_measurement_order_items" | "project_billing_order_items";
+  orderColumn: "asbuilt_measurement_order_id" | "billing_order_id";
+  orderIds: string[];
+}) {
+  const metrics = new Map<string, { value: number; itemCount: number }>();
+  const orderIds = Array.from(new Set(params.orderIds.filter(Boolean)));
+
+  for (const orderIdChunk of chunk(orderIds, 500)) {
+    const { data, error } = await params.supabase
+      .from(params.table)
+      .select(`${params.orderColumn}, total_value`)
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .in(params.orderColumn, orderIdChunk)
+      .returns<Array<Record<string, number | string | null>>>();
+
+    if (error) {
+      throw new Error("Falha ao carregar metricas dos cortes comerciais.");
+    }
+
+    for (const item of data ?? []) {
+      const orderId = normalizeText(item[params.orderColumn]);
+      if (!orderId) continue;
+
+      const current = metrics.get(orderId) ?? { value: 0, itemCount: 0 };
+      current.value += numberValue(item.total_value);
+      current.itemCount += 1;
+      metrics.set(orderId, current);
+    }
+  }
+
+  return metrics;
+}
+
+function addDaysToIsoDate(value: string | null, days: number) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+async function buildAsbuiltBreakdownRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  project: { id: string; label: string; serviceCenterId: string | null; serviceCenter: string };
+}) {
+  const orders = await loadClosedAsbuiltOrderRows({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds: [params.project.id],
+  });
+
+  const metricsByOrderId = await loadCommercialOrderMetrics({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    table: "project_asbuilt_measurement_order_items",
+    orderColumn: "asbuilt_measurement_order_id",
+    orderIds: orders.map((order) => order.id),
+  });
+
+  const orderedRows = [...orders].sort((left, right) => {
+    const leftCoverage = left.service_coverage_end_date ?? "";
+    const rightCoverage = right.service_coverage_end_date ?? "";
+    if (leftCoverage !== rightCoverage) {
+      return leftCoverage.localeCompare(rightCoverage, "pt-BR");
+    }
+    return (left.updated_at ?? "").localeCompare(right.updated_at ?? "", "pt-BR");
+  });
+
+  let previousCoverageEndDate: string | null = null;
+
+  return orderedRows.map((order) => {
+    const metrics = metricsByOrderId.get(order.id) ?? { value: 0, itemCount: 0 };
+    const coverageEndDate = normalizeText(order.service_coverage_end_date) || null;
+    const coverageStartDate = previousCoverageEndDate ? addDaysToIsoDate(previousCoverageEndDate, 1) : null;
+
+    if (coverageEndDate) {
+      previousCoverageEndDate = coverageEndDate;
+    }
+
+    return {
+      projectId: params.project.id,
+      projectCode: params.project.label,
+      serviceCenterId: params.project.serviceCenterId,
+      serviceCenter: params.project.serviceCenter,
+      coverageStartDate,
+      coverageEndDate,
+      value: metrics.value,
+      itemCount: metrics.itemCount,
+    } satisfies AsbuiltBreakdownRow;
+  });
+}
+
 async function buildProjectValueRows(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -1280,8 +1370,10 @@ export async function GET(request: NextRequest) {
   const includeChart = normalizeBoolean(request.nextUrl.searchParams.get("includeChart"));
   const includeProjectValues = normalizeBoolean(request.nextUrl.searchParams.get("includeProjectValues"));
   const includeOperationalCategoryCards = normalizeBoolean(request.nextUrl.searchParams.get("includeOperationalCategoryCards"));
+  const includeAsbuiltBreakdown = normalizeBoolean(request.nextUrl.searchParams.get("includeAsbuiltBreakdown"));
   const chartProjectId = normalizeUuid(request.nextUrl.searchParams.get("chartProjectId"));
   const chartServiceCenterId = normalizeUuid(request.nextUrl.searchParams.get("chartServiceCenterId"));
+  const asbuiltBreakdownProjectId = normalizeUuid(request.nextUrl.searchParams.get("asbuiltBreakdownProjectId"));
 
   try {
     const projects = await loadProjects(resolution.supabase, tenantId);
@@ -1292,6 +1384,26 @@ export async function GET(request: NextRequest) {
           .map((project) => [project.serviceCenterId as string, { id: project.serviceCenterId as string, label: project.serviceCenter }]),
       ).values(),
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+
+    if (includeAsbuiltBreakdown) {
+      const breakdownProject = projects.find((project) => project.id === asbuiltBreakdownProjectId) ?? null;
+
+      if (!breakdownProject) {
+        return NextResponse.json({ message: "Projeto nao encontrado para detalhar o Asbuilt." }, { status: 404 });
+      }
+
+      const asbuiltBreakdownRows = await buildAsbuiltBreakdownRows({
+        supabase: resolution.supabase,
+        tenantId,
+        project: breakdownProject,
+      });
+
+      return NextResponse.json({
+        filters: { projects, serviceCenters },
+        selectedProject: breakdownProject,
+        asbuiltBreakdownRows,
+      });
+    }
 
     if (!projectId) {
       const [chartItems, projectValueRows, operationalIndicators] = await Promise.all([
