@@ -135,8 +135,9 @@ Atualizacao 2026-06
   - confirmar se cada ordem deve pertencer integralmente a um unico encarregado; ou
   - criar estrutura transacional de contribuicoes por ordem, com encarregado e valor/percentual, quando uma ordem puder ter varios encarregados
 - Supervisor:
-  - permanece baseado no vinculo atual `teams.supervisor_person_id`
-  - nao existe historico versionado de supervisor por equipe no estado atual do repositorio
+  - passa a usar historico versionado por periodo em `team_supervisor_history`
+  - a producao do supervisor e resolvida pela data de execucao da ordem
+  - a meta de supervisor e calculada pelos dias em que a equipe esteve vinculada ao supervisor dentro do ciclo/semana
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -345,3 +346,30 @@ Atualizacao 2026-06-14 (Etapa 5 - meta oficial por MK)
   - nenhuma tabela, migration, RLS ou grant foi alterado.
   - as contribuicoes sao calculadas somente depois de autenticacao, `dashboard-equipes/read` e filtro por tenant.
   - o cliente nao envia tenant ou identidade de encarregado como fonte de verdade.
+
+Atualizacao 2026-06-16 (Supervisor historico no ciclo)
+------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/241_create_team_supervisor_history.sql`
+  - `src/server/modules/team-performance/contracts.ts`
+  - `src/server/modules/team-performance/calculations.ts`
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `calculateTeamPerformanceWindow`
+  - `createSupervisorMap`
+  - `addSupervisorOrder`
+  - `buildSupervisorRows`
+  - `handleDashboardMeasurementGet`
+  - `resolveTeamSupervisorForDate`
+- Comportamento antes/depois:
+  - Antes: o bloco `Supervisor no ciclo` consolidava producao e meta usando apenas `teams.supervisor_person_id` vigente.
+  - Antes: um supervisor que deixou de estar vinculado atualmente a uma equipe podia desaparecer do ciclo, mesmo tendo sido supervisor em parte do mes.
+  - Depois: o bloco consulta `team_supervisor_history` e resolve o supervisor pela `execution_date` de cada ordem.
+  - Depois: a base `Todas vinculadas` considera equipes vinculadas ao supervisor em qualquer dia util do recorte.
+  - Depois: a meta do supervisor e somada por dias efetivos de vinculo, evitando duplicar meta quando uma equipe troca de supervisor no meio do ciclo.
+- Impacto multi-tenant:
+  - A migration cria `team_supervisor_history` com `tenant_id`, FK composta para `people(id, tenant_id)`, RLS por `user_can_access_tenant` e sem permissao de `DELETE`.
+  - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read` antes das leituras.
+  - O cliente nao envia `tenant_id`; o tenant permanece resolvido pela sessao autenticada.

@@ -71,6 +71,11 @@ export type SupervisorPerformanceRow = {
   percentageOfTotal: number;
 };
 
+export type TeamSupervisorAssignment = {
+  supervisorId: string | null;
+  supervisorName: string;
+};
+
 export type TeamPerformanceWindowInput = {
   orders: TeamPerformanceOrder[];
   potentialSupervisorTeams: TeamPerformanceTeam[];
@@ -79,6 +84,7 @@ export type TeamPerformanceWindowInput = {
   standardMetaWorkdays: number;
   startDate: string;
   endDate: string;
+  supervisorIdFilter?: string | null;
   getOrderValue: (orderId: string) => number;
   getProjectServiceCenter: (projectId: string) => string;
   getPersonName: (personId: string) => string;
@@ -86,6 +92,7 @@ export type TeamPerformanceWindowInput = {
   resolveTeamTypeId: (teamId: string, isoDate: string) => string | null;
   resolveTeamTypeName: (teamId: string, isoDate: string) => string;
   resolveTeamForemanName: (teamId: string, isoDate: string) => string;
+  resolveTeamSupervisor: (teamId: string, isoDate: string) => TeamSupervisorAssignment;
 };
 
 export type TeamPerformanceWindowResult = {

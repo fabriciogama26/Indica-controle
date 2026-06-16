@@ -86,6 +86,14 @@ type TeamForemanHistoryRow = {
   valid_to: string | null;
 };
 
+type TeamSupervisorHistoryRow = {
+  team_id: string;
+  supervisor_person_id: string | null;
+  supervisor_name_snapshot: string;
+  valid_from: string;
+  valid_to: string | null;
+};
+
 type TeamTypeRow = {
   id: string;
   name: string | null;
@@ -185,6 +193,10 @@ function normalizeCompletionStatus(value: unknown) {
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) return "PARCIAL";
   if (token === "PENDENCIA" || token === "PENDENCIAS" || token.startsWith("PENDEN")) return "PENDENCIA";
   return "NAO_INFORMADO";
+}
+
+function periodOverlaps(startDate: string, endDate: string | null, windowStart: string, windowEnd: string) {
+  return startDate <= windowEnd && (!endDate || endDate >= windowStart);
 }
 
 function isCanceledProgrammingStatus(value: unknown) {
@@ -670,6 +682,29 @@ export async function handleDashboardMeasurementGet(
     entries.sort((left, right) => right.valid_from.localeCompare(left.valid_from));
   }
 
+  const teamSupervisorHistoryResult = teamTypeHistoryTeamIds.length
+    ? await resolution.supabase
+        .from("team_supervisor_history")
+        .select("team_id, supervisor_person_id, supervisor_name_snapshot, valid_from, valid_to")
+        .eq("tenant_id", tenantId)
+        .in("team_id", teamTypeHistoryTeamIds)
+        .returns<TeamSupervisorHistoryRow[]>()
+    : { data: [] as TeamSupervisorHistoryRow[], error: null };
+
+  if (teamSupervisorHistoryResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar historico de supervisores das equipes." }, { status: 500 });
+  }
+
+  const teamSupervisorHistoryByTeam = new Map<string, TeamSupervisorHistoryRow[]>();
+  for (const entry of teamSupervisorHistoryResult.data ?? []) {
+    const entries = teamSupervisorHistoryByTeam.get(entry.team_id) ?? [];
+    entries.push(entry);
+    teamSupervisorHistoryByTeam.set(entry.team_id, entries);
+  }
+  for (const entries of teamSupervisorHistoryByTeam.values()) {
+    entries.sort((left, right) => right.valid_from.localeCompare(left.valid_from));
+  }
+
   const teamTypeIds = Array.from(new Set([
     ...(teamTypeHistoryResult.data ?? []).map((entry) => entry.team_type_id),
     ...(teamsResult.data ?? []).map((team) => team.team_type_id),
@@ -692,9 +727,11 @@ export async function handleDashboardMeasurementGet(
 
   const personIds = Array.from(
     new Set(
-      [...(teamsResult.data ?? []), ...(activeTeamsResult.data ?? [])]
-        .flatMap((team) => [team.foreman_person_id, team.supervisor_person_id])
-        .filter((id): id is string => Boolean(id)),
+      [
+        ...(teamsResult.data ?? []).flatMap((team) => [team.foreman_person_id, team.supervisor_person_id]),
+        ...(activeTeamsResult.data ?? []).flatMap((team) => [team.foreman_person_id, team.supervisor_person_id]),
+        ...(teamSupervisorHistoryResult.data ?? []).map((entry) => entry.supervisor_person_id),
+      ].filter((id): id is string => Boolean(id)),
     ),
   );
   const peopleResult = personIds.length
@@ -725,17 +762,60 @@ export async function handleDashboardMeasurementGet(
     new Set(cycleOrders.map((order) => normalizeText(order.foreman_name_snapshot)).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right));
 
+  function resolveTeamSupervisorForDate(teamId: string, isoDate: string) {
+    const history = teamSupervisorHistoryByTeam.get(teamId) ?? [];
+    const effectiveEntry = history.find((entry) => (
+      entry.valid_from <= isoDate
+      && (!entry.valid_to || entry.valid_to >= isoDate)
+    ));
+
+    if (effectiveEntry) {
+      const supervisorId = effectiveEntry.supervisor_person_id ?? null;
+      const historyName = normalizeText(effectiveEntry.supervisor_name_snapshot);
+      return {
+        supervisorId,
+        supervisorName: supervisorId
+          ? (personMap.get(supervisorId) || historyName || "Supervisor nao identificado")
+          : "Sem supervisor",
+      };
+    }
+
+    const team = teamMap.get(teamId) ?? activeTeamMap.get(teamId);
+    const supervisorId = team?.supervisor_person_id ?? null;
+    return {
+      supervisorId,
+      supervisorName: supervisorId
+        ? (personMap.get(supervisorId) || "Supervisor nao identificado")
+        : "Sem supervisor",
+    };
+  }
+
   const supervisorOptions = Array.from(
     new Map(
-      (activeTeamsResult.data ?? [])
-        .filter((team): team is TeamRow => Boolean(team?.supervisor_person_id))
-        .map((team) => [
-          team.supervisor_person_id as string,
-          {
+      [
+        ...(activeTeamsResult.data ?? [])
+          .filter((team): team is TeamRow => Boolean(team?.supervisor_person_id))
+          .map((team) => ({
             id: team.supervisor_person_id as string,
             label: personMap.get(team.supervisor_person_id as string) || "Supervisor nao identificado",
-          },
-        ]),
+          })),
+        ...(teamSupervisorHistoryResult.data ?? [])
+          .filter((entry) => Boolean(entry.supervisor_person_id))
+          .filter((entry) => periodOverlaps(entry.valid_from, entry.valid_to, selectedCycle.cycleStart, selectedCycle.cycleEnd))
+          .map((entry) => ({
+            id: entry.supervisor_person_id as string,
+            label: personMap.get(entry.supervisor_person_id as string)
+              || normalizeText(entry.supervisor_name_snapshot)
+              || "Supervisor nao identificado",
+          })),
+        ...cycleOrders
+          .map((order) => resolveTeamSupervisorForDate(order.team_id, order.execution_date))
+          .filter((supervisor) => Boolean(supervisor.supervisorId))
+          .map((supervisor) => ({
+            id: supervisor.supervisorId as string,
+            label: supervisor.supervisorName,
+          })),
+      ].map((option) => [option.id, option] as const),
     ).values(),
   ).sort((left, right) => left.label.localeCompare(right.label));
 
@@ -744,7 +824,7 @@ export async function handleDashboardMeasurementGet(
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
-    if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
+    if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
         completionFilter === "CONCLUIDO"
@@ -762,7 +842,7 @@ export async function handleDashboardMeasurementGet(
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
-    if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
+    if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
         completionFilter === "CONCLUIDO"
@@ -779,7 +859,7 @@ export async function handleDashboardMeasurementGet(
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
-    if (supervisorIdFilter && teamMap.get(order.team_id)?.supervisor_person_id !== supervisorIdFilter) return false;
+    if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       completionFilter === "CONCLUIDO"
       || completionFilter === "PARCIAL"
@@ -957,12 +1037,16 @@ export async function handleDashboardMeasurementGet(
   const periodCompletionTotals = createCompletionTotals();
   const periodMinimumBillingGuaranteeTotal = createCompletionAggregate();
 
-  const potentialSupervisorTeams = (activeTeamsResult.data ?? []).filter((team) => {
-    if (!team.supervisor_person_id) return false;
-    if (teamIdFilter && team.id !== teamIdFilter) return false;
-    if (supervisorIdFilter && team.supervisor_person_id !== supervisorIdFilter) return false;
-    return true;
-  });
+  const potentialSupervisorTeams = Array.from(
+    new Map(
+      [...(activeTeamsResult.data ?? []), ...(teamsResult.data ?? [])]
+        .filter((team) => {
+          if (teamIdFilter && team.id !== teamIdFilter) return false;
+          return true;
+        })
+        .map((team) => [team.id, team] as const),
+    ).values(),
+  );
 
   function resolveTeamTypeForDate(teamId: string, isoDate: string) {
     const history = teamTypeHistoryByTeam.get(teamId) ?? [];
@@ -1025,6 +1109,7 @@ export async function handleDashboardMeasurementGet(
       standardMetaWorkdays,
       startDate,
       endDate,
+      supervisorIdFilter,
       getOrderValue: (orderId) => valueByOrder.get(orderId) ?? 0,
       getProjectServiceCenter: (projectId) => projectMetaMap.get(projectId)?.serviceCenterName || "Centro nao informado",
       getPersonName: (personId) => personMap.get(personId) ?? "",
@@ -1032,6 +1117,7 @@ export async function handleDashboardMeasurementGet(
       resolveTeamTypeId: resolveTeamTypeForDate,
       resolveTeamTypeName: resolveTeamTypeNameForDate,
       resolveTeamForemanName: resolveTeamForemanNameForDate,
+      resolveTeamSupervisor: resolveTeamSupervisorForDate,
     });
   }
 

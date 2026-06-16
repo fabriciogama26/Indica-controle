@@ -35,6 +35,7 @@ type SupervisorAggregate = {
   projects: Map<string, TeamPerformanceProjectDetail>;
   productiveTeamIds: Set<string>;
   potentialTeamIds: Set<string>;
+  potentialTeamDates: Map<string, Set<string>>;
 };
 
 function normalizeText(value: unknown) {
@@ -115,6 +116,21 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
     }, 0);
   }
 
+  function calculateTeamMetaForDates(teamId: string, dates: Set<string>, metaWorkdays: number) {
+    if (metaWorkdays <= 0 || dates.size === 0) return 0;
+
+    const businessDays = listBusinessDayIsoDates(input.startDate, input.endDate);
+    if (!businessDays.length) return 0;
+
+    const dayWeight = metaWorkdays / businessDays.length;
+    return businessDays.reduce((total, isoDate) => {
+      if (!dates.has(isoDate)) return total;
+
+      const teamTypeId = input.resolveTeamTypeId(teamId, isoDate);
+      return total + (teamTypeId ? input.getDailyMetaByTeamType(teamTypeId) * dayWeight : 0);
+    }, 0);
+  }
+
   function calculateWorkedTeamMeta(teamId: string, dates: Set<string>) {
     let total = 0;
     for (const isoDate of dates) {
@@ -177,48 +193,39 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
   return {
     teams: teamRows,
     teamForemen: teamRows.flatMap((team) => team.foremanContributions),
-    supervisors: buildSupervisorRows(input, supervisors, realizedValue, calculateTeamMeta),
+    supervisors: buildSupervisorRows(input, supervisors, realizedValue, calculateTeamMetaForDates),
     realizedValue,
   };
 }
 
 function createSupervisorMap(input: TeamPerformanceWindowInput) {
   const map = new Map<string, SupervisorAggregate>();
+  const businessDays = listBusinessDayIsoDates(input.startDate, input.endDate);
 
   for (const team of input.potentialSupervisorTeams) {
-    const supervisorId = team.supervisorPersonId;
-    const supervisorName = supervisorId
-      ? input.getPersonName(supervisorId) || "Supervisor nao identificado"
-      : "Sem supervisor";
-    const supervisorKey = supervisorId ?? "__NO_SUPERVISOR__";
-    const current = map.get(supervisorKey) ?? {
-      supervisorId,
-      supervisorName,
-      totalValue: 0,
-      orderCount: 0,
-      projectIds: new Set<string>(),
-      projects: new Map<string, TeamPerformanceProjectDetail>(),
-      productiveTeamIds: new Set<string>(),
-      potentialTeamIds: new Set<string>(),
-    };
-    current.potentialTeamIds.add(team.id);
-    map.set(supervisorKey, current);
+    for (const isoDate of businessDays) {
+      const assignment = input.resolveTeamSupervisor(team.id, isoDate);
+      if (!assignment.supervisorId) continue;
+      if (input.supervisorIdFilter && assignment.supervisorId !== input.supervisorIdFilter) continue;
+
+      const current = ensureSupervisorAggregate(map, assignment.supervisorId, assignment.supervisorName);
+      current.potentialTeamIds.add(team.id);
+
+      const teamDates = current.potentialTeamDates.get(team.id) ?? new Set<string>();
+      teamDates.add(isoDate);
+      current.potentialTeamDates.set(team.id, teamDates);
+      map.set(assignment.supervisorId, current);
+    }
   }
 
   return map;
 }
 
-function addSupervisorOrder(
+function ensureSupervisorAggregate(
   target: Map<string, SupervisorAggregate>,
-  order: TeamPerformanceOrder,
-  totalValue: number,
-  input: TeamPerformanceWindowInput,
+  supervisorId: string | null,
+  supervisorName: string,
 ) {
-  const team = input.teamsById.get(order.teamId);
-  const supervisorId = team?.supervisorPersonId ?? null;
-  const supervisorName = supervisorId
-    ? input.getPersonName(supervisorId) || "Supervisor nao identificado"
-    : "Sem supervisor";
   const supervisorKey = supervisorId ?? "__NO_SUPERVISOR__";
   const current = target.get(supervisorKey) ?? {
     supervisorId,
@@ -229,15 +236,32 @@ function addSupervisorOrder(
     projects: new Map<string, TeamPerformanceProjectDetail>(),
     productiveTeamIds: new Set<string>(),
     potentialTeamIds: new Set<string>(),
+    potentialTeamDates: new Map<string, Set<string>>(),
   };
+
+  if (supervisorId && supervisorName) {
+    current.supervisorName = supervisorName;
+  }
+
+  return current;
+}
+
+function addSupervisorOrder(
+  target: Map<string, SupervisorAggregate>,
+  order: TeamPerformanceOrder,
+  totalValue: number,
+  input: TeamPerformanceWindowInput,
+) {
+  const assignment = input.resolveTeamSupervisor(order.teamId, order.executionDate);
+  if (input.supervisorIdFilter && assignment.supervisorId !== input.supervisorIdFilter) return;
+
+  const supervisorKey = assignment.supervisorId ?? "__NO_SUPERVISOR__";
+  const current = ensureSupervisorAggregate(target, assignment.supervisorId, assignment.supervisorName);
 
   current.totalValue += totalValue;
   current.orderCount += 1;
   current.projectIds.add(order.projectId);
   current.productiveTeamIds.add(order.teamId);
-  if (team?.isActive) {
-    current.potentialTeamIds.add(order.teamId);
-  }
   addProjectProduction(current.projects, order, totalValue, input.getProjectServiceCenter);
   target.set(supervisorKey, current);
 }
@@ -307,16 +331,20 @@ function buildSupervisorRows(
   input: TeamPerformanceWindowInput,
   target: Map<string, SupervisorAggregate>,
   totalRealized: number,
-  calculateTeamMeta: (teamId: string, metaWorkdays: number) => number,
+  calculateTeamMetaForDates: (teamId: string, dates: Set<string>, metaWorkdays: number) => number,
 ): SupervisorPerformanceRow[] {
   return Array.from(target.values())
     .map((supervisor) => {
-      const productiveMetaValue = Array.from(supervisor.productiveTeamIds).reduce(
-        (total, teamId) => total + calculateTeamMeta(teamId, input.metaWorkdays),
+      const productiveMetaValue = Array.from(supervisor.potentialTeamDates.entries()).reduce(
+        (total, [teamId, dates]) => (
+          supervisor.productiveTeamIds.has(teamId)
+            ? total + calculateTeamMetaForDates(teamId, dates, input.metaWorkdays)
+            : total
+        ),
         0,
       );
-      const potentialMetaValue = Array.from(supervisor.potentialTeamIds).reduce(
-        (total, teamId) => total + calculateTeamMeta(teamId, input.metaWorkdays),
+      const potentialMetaValue = Array.from(supervisor.potentialTeamDates.entries()).reduce(
+        (total, [teamId, dates]) => total + calculateTeamMetaForDates(teamId, dates, input.metaWorkdays),
         0,
       );
 

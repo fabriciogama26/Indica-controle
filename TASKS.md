@@ -954,6 +954,7 @@
 - [x] [Dashboard Equipes][Etapa 3] Criar rota, endpoint, modulo visual, permissao `dashboard-equipes/read`, menu, migration 234 e integracao com `useErrorLogger("dashboard_equipes")`.
 - [x] [Dashboard Equipes][Etapa 4] Mover os blocos de equipes, encarregados e supervisores para a nova tela e simplificar o Dashboard Medicao.
 - [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
+- [x] [Dashboard Equipes][Supervisor historico] Criar `team_supervisor_history` e ajustar `Supervisor no ciclo` para resolver supervisor por data da ordem e dias efetivos de vinculo na meta.
 - [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.
 - [x] Corrigir `FULL_RPC_NOT_AVAILABLE` no cadastro em lote da Programacao causado pelo truncamento do nome da RPC decimal da migration 228 no limite de 63 caracteres do PostgreSQL, publicando nome curto pela migration 235, mantendo compatibilidade transacional durante o deploy e ajustando o diagnostico de funcao ausente.
 - [x] Atualizar automaticamente a coluna `Composicao equipe` da Medicao ao retornar para a tela, receber uma composicao salva em outra aba ou completar o intervalo de 60 segundos, mantendo refresh manual e requisicoes sem cache.
