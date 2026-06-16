@@ -188,6 +188,14 @@ function formatNumber(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function formatWholeNumber(value: number) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.trunc(safeValue));
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -1099,15 +1107,15 @@ export function OperationalBillingDashboardPageView() {
                   <div className={styles.operationalIndicatorValues}>
                     <div className={styles.operationalIndicatorMetric}>
                       <span>Medidos</span>
-                      <strong>{formatNumber(card.measurementQuantity)}</strong>
+                      <strong>{formatWholeNumber(card.measurementQuantity)}</strong>
                     </div>
                     <div className={styles.operationalIndicatorMetric}>
                       <span>ASBUILT</span>
-                      <strong>{formatNumber(card.asbuiltQuantity)}</strong>
+                      <strong>{formatWholeNumber(card.asbuiltQuantity)}</strong>
                     </div>
                     <div className={styles.operationalIndicatorMetric}>
                       <span>Faturado</span>
-                      <strong>{formatNumber(card.billingQuantity)}</strong>
+                      <strong>{formatWholeNumber(card.billingQuantity)}</strong>
                     </div>
                   </div>
                 </div>
