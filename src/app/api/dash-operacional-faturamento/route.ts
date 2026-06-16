@@ -52,12 +52,17 @@ type OrderProjectRow = {
   project_id: string;
 };
 
+type MeasurementOrderProjectRow = OrderProjectRow & {
+  execution_date: string | null;
+};
+
 type AsbuiltOrderProjectRow = OrderProjectRow & {
   service_coverage_end_date: string | null;
   updated_at: string | null;
 };
 
 type MeasurementItemRow = {
+  measurement_order_id?: string;
   service_activity_id: string;
   activity_code: string;
   activity_description: string;
@@ -155,6 +160,15 @@ type OperationalMeasurementCategoryCard = {
   measurementQuantity: number;
   asbuiltQuantity: number;
   billingQuantity: number;
+};
+
+type OperationalMeasurementCategoryDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  executionDate: string | null;
+  measurementQuantity: number;
+  orderCount: number;
 };
 
 type OperationalAverageTickets = {
@@ -497,7 +511,7 @@ async function loadMeasurementItems(params: {
     for (let from = 0; ; from += QUERY_PAGE_SIZE) {
       const { data, error } = await params.supabase
         .from("project_measurement_order_items")
-        .select("service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value")
+        .select("measurement_order_id, service_activity_id, activity_code, activity_description, activity_unit, quantity, total_value")
         .eq("tenant_id", params.tenantId)
         .eq("is_active", true)
         .in("measurement_order_id", ids)
@@ -510,6 +524,41 @@ async function loadMeasurementItems(params: {
       if ((data ?? []).length < QUERY_PAGE_SIZE) break;
     }
   }
+  return rows;
+}
+
+async function loadMeasurementOrderRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projectIds: string[];
+}) {
+  const rows: MeasurementOrderProjectRow[] = [];
+  const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
+
+  for (const projectIdChunk of chunk(projectIds, 500)) {
+    for (let from = 0; ; from += QUERY_PAGE_SIZE) {
+      const { data, error } = await params.supabase
+        .from("project_measurement_orders")
+        .select("id, project_id, execution_date")
+        .eq("tenant_id", params.tenantId)
+        .eq("is_active", true)
+        .neq("status", "CANCELADA")
+        .eq("measurement_kind", "COM_PRODUCAO")
+        .in("project_id", projectIdChunk)
+        .order("execution_date", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true })
+        .range(from, from + QUERY_PAGE_SIZE - 1)
+        .returns<MeasurementOrderProjectRow[]>();
+
+      if (error) {
+        throw new Error("Falha ao carregar ordens detalhadas da Medicao.");
+      }
+
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < QUERY_PAGE_SIZE) break;
+    }
+  }
+
   return rows;
 }
 
@@ -716,6 +765,85 @@ async function buildOperationalMeasurementCategoryCards(params: {
       asbuiltByService: comparableServiceCount > 0 ? asbuiltValueForTickets / comparableServiceCount : 0,
     },
   } satisfies OperationalMeasurementIndicators;
+}
+
+async function buildOperationalMeasurementCategoryDetailRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projects: Array<{ id: string; label: string; serviceCenter: string }>;
+  categoryKey: string;
+}) {
+  const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
+  if (!category) {
+    throw new Error("Categoria operacional nao encontrada para detalhamento.");
+  }
+
+  const projectIds = params.projects.map((project) => project.id);
+  const measurementOrders = await loadMeasurementOrderRows({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds,
+  });
+
+  const measurementItemsResolved = await loadMeasurementItems({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    orderIds: measurementOrders.map((order) => order.id),
+  });
+
+  const activityCategoryMap = await loadActivityCategoryMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    activityIds: measurementItemsResolved.map((item) => item.service_activity_id),
+  });
+
+  const projectById = new Map(params.projects.map((project) => [project.id, project]));
+  const measurementOrderById = new Map(measurementOrders.map((order) => [order.id, order]));
+  const rowsByProjectDate = new Map<string, OperationalMeasurementCategoryDetailRow>();
+  const orderIdsByProjectDate = new Map<string, Set<string>>();
+  const targetCategoryName = normalizeCategoryName(category.categoryName);
+
+  for (const item of measurementItemsResolved) {
+    const categoryId = activityCategoryMap.activityToCategory.get(item.service_activity_id);
+    const categoryName = normalizeCategoryName(activityCategoryMap.categoryNameById.get(categoryId ?? ""));
+    if (!categoryName || categoryName !== targetCategoryName) continue;
+
+    const measurementOrderId = normalizeText(item.measurement_order_id);
+    const order = measurementOrderById.get(measurementOrderId);
+    if (!order) continue;
+
+    const project = projectById.get(order.project_id);
+    if (!project) continue;
+
+    const executionDate = normalizeText(order.execution_date) || null;
+    const groupKey = `${order.project_id}::${executionDate ?? "sem-data"}`;
+    const current = rowsByProjectDate.get(groupKey) ?? {
+      projectId: order.project_id,
+      projectCode: project.label,
+      serviceCenter: project.serviceCenter,
+      executionDate,
+      measurementQuantity: 0,
+      orderCount: 0,
+    };
+
+    current.measurementQuantity += numberValue(item.quantity);
+    rowsByProjectDate.set(groupKey, current);
+
+    const orderIds = orderIdsByProjectDate.get(groupKey) ?? new Set<string>();
+    orderIds.add(order.id);
+    orderIdsByProjectDate.set(groupKey, orderIds);
+  }
+
+  return Array.from(rowsByProjectDate.entries())
+    .map(([groupKey, row]) => ({
+      ...row,
+      orderCount: orderIdsByProjectDate.get(groupKey)?.size ?? 0,
+    }))
+    .sort((left, right) => {
+      const projectCompare = left.projectCode.localeCompare(right.projectCode, "pt-BR");
+      if (projectCompare !== 0) return projectCompare;
+      return (left.executionDate ?? "").localeCompare(right.executionDate ?? "", "pt-BR");
+    });
 }
 
 async function loadWorkCompletionCatalog(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
@@ -1371,9 +1499,11 @@ export async function GET(request: NextRequest) {
   const includeProjectValues = normalizeBoolean(request.nextUrl.searchParams.get("includeProjectValues"));
   const includeOperationalCategoryCards = normalizeBoolean(request.nextUrl.searchParams.get("includeOperationalCategoryCards"));
   const includeAsbuiltBreakdown = normalizeBoolean(request.nextUrl.searchParams.get("includeAsbuiltBreakdown"));
+  const includeOperationalCategoryDetail = normalizeBoolean(request.nextUrl.searchParams.get("includeOperationalCategoryDetail"));
   const chartProjectId = normalizeUuid(request.nextUrl.searchParams.get("chartProjectId"));
   const chartServiceCenterId = normalizeUuid(request.nextUrl.searchParams.get("chartServiceCenterId"));
   const asbuiltBreakdownProjectId = normalizeUuid(request.nextUrl.searchParams.get("asbuiltBreakdownProjectId"));
+  const operationalCategoryKey = normalizeText(request.nextUrl.searchParams.get("operationalCategoryKey"));
 
   try {
     const projects = await loadProjects(resolution.supabase, tenantId);
@@ -1402,6 +1532,20 @@ export async function GET(request: NextRequest) {
         filters: { projects, serviceCenters },
         selectedProject: breakdownProject,
         asbuiltBreakdownRows,
+      });
+    }
+
+    if (includeOperationalCategoryDetail) {
+      const operationalCategoryDetailRows = await buildOperationalMeasurementCategoryDetailRows({
+        supabase: resolution.supabase,
+        tenantId,
+        projects,
+        categoryKey: operationalCategoryKey,
+      });
+
+      return NextResponse.json({
+        filters: { projects, serviceCenters },
+        operationalCategoryDetailRows,
       });
     }
 
