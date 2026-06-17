@@ -165,6 +165,15 @@ function normalizeWorkStatus(value: unknown): "WORKING" | "NOT_WORKING" | null {
   return normalized === "WORKING" || normalized === "NOT_WORKING" ? normalized : null;
 }
 
+function isMissingWorkStatusColumnError(error: unknown) {
+  const rawMessage = error && typeof error === "object"
+    ? Object.values(error as Record<string, unknown>).map((value) => String(value ?? "")).join(" ")
+    : String(error ?? "");
+  const normalized = normalizeLookupKey(rawMessage);
+  return normalized.includes("WORK_STATUS")
+    && (normalized.includes("COLUMN") || normalized.includes("COULD NOT FIND") || normalized.includes("PGRST204"));
+}
+
 function normalizeUuid(value: unknown) {
   const normalized = normalizeText(value);
   return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
@@ -622,35 +631,55 @@ export async function GET(request: NextRequest) {
     const endDate = normalizeIsoDate(params.get("endDate"));
     const projectId = normalizeUuid(params.get("projectId"));
     const teamId = normalizeUuid(params.get("teamId"));
+    const workStatus = normalizeWorkStatus(params.get("workStatus"));
     const page = parsePositiveInteger(params.get("page"), 1);
     const pageSize = parsePositiveInteger(params.get("pageSize"), 20, 100);
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase
-      .from("team_compositions")
-      .select("*", { count: "exact" })
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("is_active", true);
+    const fetchCompositionPage = async (skipWorkStatusFilter = false) => {
+      let query = supabase
+        .from("team_compositions")
+        .select("*", { count: "exact" })
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("is_active", true);
 
-    if (startDate) {
-      query = query.gte("composition_date", startDate);
-    }
-    if (endDate) {
-      query = query.lte("composition_date", endDate);
-    }
-    if (projectId) {
-      query = query.eq("project_id", projectId);
-    }
-    if (teamId) {
-      query = query.eq("team_id", teamId);
-    }
+      if (startDate) {
+        query = query.gte("composition_date", startDate);
+      }
+      if (endDate) {
+        query = query.lte("composition_date", endDate);
+      }
+      if (projectId) {
+        query = query.eq("project_id", projectId);
+      }
+      if (teamId) {
+        query = query.eq("team_id", teamId);
+      }
+      if (workStatus && !skipWorkStatusFilter) {
+        query = workStatus === "WORKING"
+          ? query.or("work_status.eq.WORKING,work_status.is.null")
+          : query.eq("work_status", workStatus);
+      }
 
-    const { data, error, count } = await query
-      .order("composition_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .range(from, to)
-      .returns<CompositionRow[]>();
+      return query
+        .order("composition_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(from, to)
+        .returns<CompositionRow[]>();
+    };
+
+    let { data, error, count } = await fetchCompositionPage();
+
+    if (error && workStatus && isMissingWorkStatusColumnError(error)) {
+      if (workStatus === "NOT_WORKING") {
+        data = [];
+        count = 0;
+        error = null;
+      } else {
+        ({ data, error, count } = await fetchCompositionPage(true));
+      }
+    }
 
     if (error) {
       return NextResponse.json({ message: "Falha ao listar composicoes de equipe." }, { status: 500 });

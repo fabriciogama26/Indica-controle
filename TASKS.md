@@ -787,6 +787,8 @@
 
 - [x] Mover o filtro `Data do acompanhamento` para baixo do titulo `Composicoes das Equipes`, mantendo os contadores no lado direito do painel.
 
+- [x] Adicionar filtro `Situacao da equipe` na lista da Composicao de Equipe, com opcoes `Todas`, `Atuando` e `Nao atuou`, aplicado no backend antes da paginacao/exportacao e preservando registros legados sem `work_status` como `Atuando`.
+
 - [x] Ajustar Dashboard Medicao e Lista de Ordens de Medicao para priorizar o Estado Trabalho salvo na propria Medicao, usando a Programacao apenas como fallback para ordens antigas sem snapshot.
 
 - [x] Corrigir normalizacao do Estado Trabalho na Medicao para preservar Parcial planejado beneficio atingido e permitir snapshots de estados normalizados alem de CONCLUIDO/PARCIAL.

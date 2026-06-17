@@ -46,6 +46,7 @@ type CompositionMember = {
 };
 
 type WorkStatus = "WORKING" | "NOT_WORKING";
+type WorkStatusFilter = "" | WorkStatus;
 
 type CompositionItem = {
   id: string;
@@ -142,6 +143,7 @@ type FilterState = {
   endDate: string;
   projectCode: string;
   teamId: string;
+  workStatus: WorkStatusFilter;
 };
 
 const PAGE_SIZE = 20;
@@ -190,6 +192,7 @@ function buildQuery(filters: FilterState, projectId: string | null, page: number
   if (filters.endDate) params.set("endDate", filters.endDate);
   if (projectId) params.set("projectId", projectId);
   if (filters.teamId) params.set("teamId", filters.teamId);
+  if (filters.workStatus) params.set("workStatus", filters.workStatus);
   return params.toString();
 }
 
@@ -409,7 +412,7 @@ export function TeamCompositionPageView() {
   const logError = useErrorLogger("composicao-equipe");
   const exportCooldown = useExportCooldown();
   const today = useMemo(() => toIsoDate(new Date()), []);
-  const initialFilters = useMemo<FilterState>(() => ({ ...monthRange(today), projectCode: "", teamId: "" }), [today]);
+  const initialFilters = useMemo<FilterState>(() => ({ ...monthRange(today), projectCode: "", teamId: "", workStatus: "" }), [today]);
   const [form, setForm] = useState<FormState>(() => createInitialForm(today));
   const [coverageDate, setCoverageDate] = useState(today);
   const [filterDraft, setFilterDraft] = useState<FilterState>(initialFilters);
@@ -1159,6 +1162,7 @@ export function TeamCompositionPageView() {
           <label className={styles.field}><span>Data final</span><input type="date" value={filterDraft.endDate} onChange={(event) => updateFilterField("endDate", event.target.value)} /></label>
           <label className={styles.field}><span>Projeto</span><input list="composicao-project-list" value={filterDraft.projectCode} onChange={(event) => updateFilterField("projectCode", event.target.value)} placeholder="Todos" /></label>
           <label className={styles.field}><span>Equipe</span><select value={filterDraft.teamId} onChange={(event) => updateFilterField("teamId", event.target.value)}><option value="">Todas</option>{teams.map((team) => <option key={team.id} value={team.id}>{teamOptionLabel(team)}</option>)}</select></label>
+          <label className={styles.field}><span>Situacao da equipe</span><select value={filterDraft.workStatus} onChange={(event) => updateFilterField("workStatus", event.target.value as WorkStatusFilter)}><option value="">Todas</option><option value="WORKING">Atuando</option><option value="NOT_WORKING">Nao atuou</option></select></label>
         </div>
         <div className={styles.actions}>
           <button type="button" className={styles.secondaryButton} onClick={applyFilters} disabled={isLoadingList}>Aplicar</button>
