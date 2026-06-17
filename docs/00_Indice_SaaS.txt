@@ -16,6 +16,7 @@ Arquivos principais para nova task
 - docs/Tela_Programacao_SaaS.txt
 - docs/Tela_Programacao_Simples_SaaS.txt
 - docs/Tela_Visualizacao_Programacao_SaaS.txt
+- docs/Tela_Mapa_Programacao_SaaS.txt
 - docs/Tela_Medicao_SaaS.txt
 - docs/Tela_Medicao_Asbuilt_SaaS.txt
 - docs/Tela_Faturamento_SaaS.txt

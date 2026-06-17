@@ -42,7 +42,7 @@ Atalhos
 -------
 - Links de navegacao laterais para:
 - `Visao Geral`: Home, Dashboard Estoque, Dashboard Medicao, Dashboard Equipes e Dash operacional e faturamento
-  - `Operacao`: Projetos, Locacao, Programacao e Medicao
+  - `Operacao`: Projetos, Locacao, Programacao, Visualizacao Programacao, Mapa de Programacao, Composicao de Equipe, Controle de APR, Medicao, Medicao Asbuilt e Faturamento
   - `Almoxarifado`: Estoque Atual, Estoque das Equipes, Rastreio de SERIAL, Movimentacao de Estoque, Operacoes de Equipe, Estornos e Consumo por Projeto
   - `Cadastros`: Materiais, Pessoas, Cargo, Equipes, Atividades e Meta
   - `Cadastro Base`: Prioridade, Centro de Servico, Contrato, Tipo de Equipe, Imei, Tipo de Servico, Nivel de Tensao, Porte, Responsavel Distribuidora e Municipio
@@ -80,6 +80,7 @@ Atualizacao 2026-03
 - `Dashboard Estoque` adicionado em `Visao Geral`, com titulo dedicado no shell e bloqueio por `pageAccess`.
 - `Consumo por Projeto` adicionado em `Almoxarifado`, com titulo dedicado no shell e bloqueio por `pageAccess`.
 - Atalho de `/home` renomeado visualmente para `Home`.
+- Atualizacao (2026-06): `Mapa de Programacao` adicionado em `Operacao`, com titulo dedicado no shell e bloqueio por `pageAccess`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -118,5 +119,6 @@ Ajuda contextual
 - Estado atual: a sidebar passa a expor a rota `/posicao-trafo` quando a `page_key = posicao-trafo` estiver liberada para o usuario.
 - Estado atual: a sidebar passa a expor a rota `/dashboard-medicao` quando a `page_key = dashboard-medicao` estiver liberada para o usuario.
 - Estado atual: a sidebar expoe `/dashboard-equipes` quando `page_key = dashboard-equipes` estiver liberada para o usuario.
+- Estado atual: a sidebar passa a expor `/mapa-programacao` quando `page_key = mapa-programacao` estiver liberada para o usuario.
 - Estado atual: a sidebar passa a expor a rota `/dash-estoque` como `Dashboard Estoque` quando a `page_key = dash-estoque` estiver liberada para o usuario.
 - Estado atual: a sidebar passa a expor a rota `/consumo-projeto` como `Consumo por Projeto` quando a `page_key = consumo-projeto` estiver liberada para o usuario.
