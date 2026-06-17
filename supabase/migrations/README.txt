@@ -609,4 +609,10 @@ Observacao
 244_create_programming_map_page.sql
 - Cadastra `mapa-programacao` em `app_pages`.
 - Preenche somente permissoes ausentes em `role_page_permissions` para `master`, `admin`, `supervisor`, `user` e `viewer`, mantendo `viewer` bloqueado por padrao.
-- Faz backfill em `app_user_page_permissions` apenas para usuarios que ja possuem matriz customizada, sem sobrescrever configuracoes existentes.
+- Faz backfill em `app_user_page_permissions` apenas para usuarios que ja possuem matriz customizada, liberando admin/master e mantendo usuarios nao administrativos bloqueados.
+
+245_default_new_pages_inactive_for_users.sql
+- Adiciona `app_pages.default_user_access` com default `false` para que telas novas nascam inativas para usuarios nao administrativos.
+- Ajusta permissoes automaticas do `mapa-programacao` para preservar admin/master liberados e usuarios comuns bloqueados quando a linha foi criada por migration.
+- Preenche permissoes ausentes para usuarios legados conforme `default_user_access`, evitando que uma unica tela nova bloqueada transforme a sessao em matriz parcial.
+- Cria triggers para preencher `app_user_page_permissions` ao cadastrar novas telas ou novos usuarios, sem sobrescrever configuracoes existentes.

@@ -68,7 +68,7 @@ select
   users.tenant_id,
   users.user_id,
   'mapa-programacao',
-  coalesce(role_permissions.can_access, users.role_key <> 'viewer'),
+  users.role_key in ('admin', 'master'),
   null,
   null
 from target_users users
