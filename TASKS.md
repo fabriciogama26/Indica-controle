@@ -962,6 +962,7 @@
 - [x] Atualizar automaticamente a coluna `Composicao equipe` da Medicao ao retornar para a tela, receber uma composicao salva em outra aba ou completar o intervalo de 60 segundos, mantendo refresh manual e requisicoes sem cache.
 - [x] Fazer novas programacoes herdarem o ultimo `Estado Trabalho` nao nulo da mesma obra e tenant, ignorando programacoes canceladas, validando o catalogo ativo e mantendo `PARCIAL` como fallback.
 - [x] Ajustar `Copiar programacao` para criar destinos herdando o ultimo `Estado Trabalho` valido da obra, mantendo copia transacional via RPC e EXECUTE restrito ao `service_role`.
+- [x] Ajustar a `Extracao ENEL` antiga para consolidar uma linha por `SOB + Data Execucao`, agregando `Estrutura` e listando encarregados separados por ` / `.
 - [x] Ajustar o `Dash operacional e faturamento` para somar todos os cortes `FECHADA` de `Medicao Asbuilt` por projeto e abrir modal com o detalhamento por faixa calculada a partir de `Servicos considerados ate`.
 - [x] Adicionar icone de olho nos cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento`, abrindo modal com `Projeto`, `Centro de servico` e `Data execucao` da `Medicao` por categoria.
 - [x] Evoluir o modal do olho dos cards de `Indicadores operacionais medidos` para abas `Medicao` e `As Built`, exibindo `Medicao` por `Data execucao` e `As Built` por `Faixa + Servicos considerados ate`.
