@@ -311,18 +311,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     documentKeysWithNumber: DOCUMENT_KEYS.filter((item) => Boolean(form.documents[item.key].number.trim())).map((item) => item.key),
   });
   const selectedProject = projects.find((item) => item.id === form.projectId) ?? null;
-  const availableTeams = useMemo(() => {
-    return teams;
-  }, [teams]);
-
   const visibleTeamOptions = useMemo(() => {
     const search = form.teamSearch.trim().toLowerCase();
     if (!search) {
-      return availableTeams;
+      return teams;
     }
 
-    return availableTeams.filter((team) => team.name.toLowerCase().includes(search));
-  }, [availableTeams, form.teamSearch]);
+    return teams.filter((team) => team.name.toLowerCase().includes(search));
+  }, [form.teamSearch, teams]);
 
   const projectMap = useMemo(() => new Map(projects.map((item) => [item.id, item])), [projects]);
   const municipalityOptions = useMemo(
@@ -636,7 +632,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setForm((current) => {
       const validTeamIds = current.teamIds.filter((teamId) =>
-        availableTeams.some((team) => team.id === teamId),
+        teams.some((team) => team.id === teamId),
       );
 
       if (validTeamIds.length === current.teamIds.length) {
@@ -645,7 +641,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       return { ...current, teamIds: validTeamIds };
     });
-  }, [availableTeams, selectedProject]);
+  }, [selectedProject, teams]);
 
   function updateFormField<Key extends keyof FormState>(field: Key, value: FormState[Key]) {
     if (field === "etapaNumber") {
