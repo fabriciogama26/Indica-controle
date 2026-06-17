@@ -54,6 +54,7 @@ import {
   createInitialForm,
   createWeekDates,
   findActivityOption,
+  formatAuditActor,
   formatDate,
   formatDateTime,
   formatDeadlineStatusLabel,
@@ -2514,7 +2515,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                 <th>Equipe</th>
                 <th>Base</th>
                 <th>Horario</th>
-                <th>Periodo</th>
+                <th>Registrado por</th>
                 <th>Status</th>
                 <th>Estado Trabalho</th>
                 <th>Atualizado em</th>
@@ -2537,7 +2538,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                       <td>{team.name}</td>
                       <td>{team.serviceCenterName ?? "-"}</td>
                       <td>{schedule.startTime} - {schedule.endTime}</td>
-                      <td>{schedule.period === "integral" ? "Integral" : "Parcial"}</td>
+                      <td>{formatAuditActor(schedule.createdByName)}</td>
                       <td>
                         <div className={styles.sobCell}>
                           <span>{displayStatus}</span>
