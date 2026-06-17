@@ -24,6 +24,7 @@ Arquitetura
 - Banco (FK tenant global em tabelas com tenant_id): `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Banco (UMB obrigatorio na RPC de escrita): `supabase/migrations/190_require_material_umb_in_save_rpc.sql`
+- Banco (bloqueio de rastreio em uso): `supabase/migrations/243_block_material_serial_tracking_downgrade.sql`
 
 Cadastro
 --------
@@ -59,6 +60,8 @@ Cadastro
   - `Material RELIGADOR` grava `serial_tracking_type = RELIGADOR` e exige `Serial` na movimentacao.
   - `Material CHAVES` grava `serial_tracking_type = CHAVE` e exige `Serial` na movimentacao.
   - Os checkboxes sao mutuamente exclusivos; `materials.is_transformer` fica preservado apenas como compatibilidade para TRAFO.
+  - Se o material ja possui `trafo_instances` ou movimentacoes com `stock_transfer_items.serial_number`, a tela e a RPC bloqueiam alterar/remover o rastreio por serial.
+  - Mensagem exibida no bloqueio: `Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.`
 - Regra de duplicidade de codigo:
   - Cadastro e edicao executam pre-check via RPC (`precheck_material_code_conflict`).
   - Se o codigo ja existir no mesmo tenant, a operacao e bloqueada.
@@ -104,6 +107,7 @@ Boas praticas
 - Tratar inativacao por status (`is_active`) em vez de exclusao fisica.
 - Exigir `expectedUpdatedAt` na edicao e no cancelamento/ativacao para evitar sobrescrita silenciosa.
 - Preferir RPC transacional para `POST`, `PUT` e `PATCH`, concentrando escrita, historico e concorrencia no banco.
+- Nao remover `serial_tracking_type` de material com uso serializado diretamente pelo cadastro. Esse caso exige rotina administrativa de encerramento/reconciliacao para preservar consistencia entre saldo agregado, `stock_transfer_items` e `trafo_instances`.
 
 Cancelamento e saldo
 --------------------
@@ -171,14 +175,21 @@ Atualizacao 2026-03
   - A API aplica correspondencia exata sem diferenciar maiusculas/minusculas em `materials.umb` ou consulta valores nulos/vazios quando `Sem UMB` for selecionado, antes da paginacao e exportacao CSV.
   - No recorte `Sem UMB`, a lista exibe `-` na coluna UMB e nao aplica o fallback historico de `requisicao_itens`, deixando visivel que o cadastro oficial esta incompleto.
   - Impacto multi-tenant: sem alteracao de schema/RLS; a consulta continua limitada pelo `tenant_id` autenticado.
+- Atualizacao (2026-06):
+  - Antes: um material `TRAFO`, `RELIGADOR` ou `CHAVE` podia ser editado para `NONE` mesmo depois de possuir movimentacao serializada, permitindo divergencia entre saldo agregado e posicao unitaria.
+  - Depois: a tela recebe `hasSerialTrackingUsage`, bloqueia os checkboxes de rastreio durante a edicao quando ha uso serializado e orienta executar rotina de encerramento/reconciliacao.
+  - Depois: a API `PUT /api/materials` pre-valida o mesmo caso no tenant autenticado, consultando `trafo_instances` e `stock_transfer_items.serial_number`.
+  - Depois: a RPC `save_material_record` tambem bloqueia a alteracao/remocao de `serial_tracking_type` quando ha uso serializado, protegendo chamadas diretas fora da tela.
+  - Impacto em `Operacoes de Equipe`: requisicao, devolucao e retorno de campo continuam exigindo Serial para materiais ja rastreados, evitando que uma CHAVE com unidade em equipe seja devolvida como saldo agregado sem atualizar `trafo_instances`.
+  - Impacto multi-tenant: todas as validacoes filtram `tenant_id = p_tenant_id` ou `tenant_id = appUser.tenant_id`; RLS permanece inalterada.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
-  - Responsavel por: estado da tela, cadastro, edicao, cadastro em massa CSV, filtros, paginacao e modais de historico/cancelamento, incluindo envio de `expectedUpdatedAt` e refresh da lista quando houver conflito.
+  - Responsavel por: estado da tela, cadastro, edicao, cadastro em massa CSV, filtros, paginacao e modais de historico/cancelamento, incluindo envio de `expectedUpdatedAt`, bloqueio visual de rastreio por serial em uso e refresh da lista quando houver conflito.
 - Caminho: `src/app/api/materials/route.ts`
-  - Responsavel por: validar payload manual/lote, listar/historico, executar pre-check de codigo e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`.
+  - Responsavel por: validar payload manual/lote, listar/historico, calcular `hasSerialTrackingUsage`, executar pre-check de codigo, bloquear alteracao/remocao de rastreio em uso e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
@@ -193,6 +204,8 @@ Constantes e configuracoes
   - Responsavel por: aplicar integridade referencial de `tenant_id` para `tenants(id)` em todas as tabelas de negocio com coluna `tenant_id`.
 - Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
   - Responsavel por: criar `save_material_record` e `set_material_record_status` para escrita transacional da tela de materiais.
+- Caminho: `supabase/migrations/243_block_material_serial_tracking_downgrade.sql`
+  - Responsavel por: republicar `save_material_record` com bloqueio transacional de alteracao/remocao de `serial_tracking_type` quando houver `trafo_instances` ou `stock_transfer_items.serial_number`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -229,6 +242,7 @@ Ajuda contextual
   - `MaterialsPageView`, `loadMaterials`, `handleSubmit`, `openHistoryModal`, `confirmStatusChange`
   - `downloadMassTemplate`, `handleMassImportFile`, `submitMassImport`, `createMassImportErrorReport`
   - `updateSerialTrackingType`
+  - `materialHasSerialTrackingUsage`
   - `GET`/`POST`/`PUT`/`PATCH` de `/api/materials`
   - `importMaterialBatch`
   - `precheck_material_code_conflict` (RPC de validacao antes de insert/update)
