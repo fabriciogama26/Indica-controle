@@ -605,3 +605,8 @@ Observacao
 - Faz a copia por datas herdar o Estado Trabalho vigente da obra, mantendo
   validacoes de tenant, concorrencia, ETAPA, conflito de agenda e projeto concluido.
 - Reforca `search_path = public, pg_temp` e EXECUTE somente para `service_role`.
+
+244_create_programming_map_page.sql
+- Cadastra `mapa-programacao` em `app_pages`.
+- Preenche somente permissoes ausentes em `role_page_permissions` para `master`, `admin`, `supervisor`, `user` e `viewer`, mantendo `viewer` bloqueado por padrao.
+- Faz backfill em `app_user_page_permissions` apenas para usuarios que ja possuem matriz customizada, sem sobrescrever configuracoes existentes.
