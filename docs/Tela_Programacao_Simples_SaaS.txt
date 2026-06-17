@@ -48,6 +48,9 @@ Arquitetura
   - `supabase/migrations/217_copy_programming_to_multiple_dates.sql`
   - RPC: `copy_project_programming_to_dates`
   - Objetivo: copiar uma Programacao ativa para multiplas datas, exigindo ETAPA individual por destino e mantendo a operacao transacional.
+- Migration corretiva da copia por datas:
+  - `supabase/migrations/242_copy_programming_to_dates_inherit_work_status.sql`
+  - Objetivo: fazer a copia por datas herdar o ultimo `Estado Trabalho` valido da obra no tenant, sem reabrir EXECUTE para clientes autenticados.
 - Migration de permissao da tela de consulta:
   - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
   - `app_pages.page_key`: `programacao-visualizacao`
@@ -223,13 +226,14 @@ Filtros, auto-complete e listagem
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
   - Ordenacao da lista: `Data execucao` em ordem decrescente (mais recente primeiro). Em empate de data, prioridade para o cadastro mais recente (`created_at` desc).
   - Quando uma programacao e salva fora do intervalo, projeto, equipe ou status filtrados, a tela avisa no feedback de sucesso que o registro pode nao aparecer na lista atual por causa dos filtros.
-- Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Copiar para datas`, `Adiar` e `Cancelar`.
-- A acao `Copiar para datas`:
+- Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Copiar programacao`, `Adiar` e `Cancelar`.
+- A acao `Copiar programacao`:
   - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
   - valida antes do modal se a origem nao e `ETAPA UNICA` nem `ETAPA FINAL`
   - exige uma linha `Data destino + ETAPA` para cada copia
   - bloqueia data original, datas repetidas, ETAPAs repetidas e ETAPAs menores/iguais a ETAPA da origem
   - no backend, valida tenant, concorrencia por `updated_at`, etapa ja existente, conflito de horario e projeto concluido antes de salvar
+  - herda o ultimo `Estado Trabalho` valido da obra ao criar as programacoes destino
   - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
   - `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
   - Registros `ADIADA`/`CANCELADA` aparecem destacados na lista.
@@ -1720,3 +1724,26 @@ Atualizacao 2026-06-15 - heranca do Estado Trabalho
   - A consulta exige `tenant_id + project_id`.
   - O estado herdado e validado no catalogo ativo do mesmo tenant antes de seguir para a RPC transacional.
   - Nao houve alteracao de schema, grants ou policies RLS.
+
+Atualizacao 2026-06-17 - Copiar programacao herda Estado Trabalho
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `supabase/migrations/242_copy_programming_to_dates_inherit_work_status.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingSimplePageView`: atualiza o tooltip da acao de linha para `Copiar programacao`.
+  - `ProgrammingCopyToDatesModal`: atualiza o titulo e o botao principal do modal para `Copiar programacao`.
+  - `copy_project_programming_to_dates`: passa a resolver `v_inherited_work_completion_status` pelo ultimo estado valido da obra antes de criar cada destino.
+- Comportamento antes/depois:
+  - Antes: a copia para datas criava programacoes destino com `Estado Trabalho` vazio.
+  - Depois: as programacoes destino herdam o ultimo `Estado Trabalho` valido da obra; se nao houver valor anterior, usam `PARCIAL` quando ativo no catalogo.
+  - Antes: a acao aparecia como `Copiar para datas`.
+  - Depois: a acao aparece como `Copiar programacao`.
+- Multi-tenant:
+  - A API continua injetando `tenant_id` e `actor_user_id` a partir da sessao autenticada.
+  - A RPC preserva validacoes por tenant, concorrencia por `updated_at`, regras de ETAPA, conflito de agenda e bloqueio para projeto concluido.
+  - EXECUTE permanece revogado para `PUBLIC`, `anon` e `authenticated`; somente `service_role` executa a RPC server-side.

@@ -2615,7 +2615,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                                 type="button"
                                 className={`${styles.actionButton} ${styles.actionCopy}`}
                                 onClick={() => openCopyToDatesModal(schedule)}
-                                title="Copiar para datas"
+                                title="Copiar programação"
                                 aria-label={`Copiar programacao ${project?.code ?? schedule.id} para outras datas`}
                                 disabled={!isActiveProgrammingStatus(displayStatus)}
                               >

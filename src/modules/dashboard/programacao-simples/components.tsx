@@ -1419,7 +1419,7 @@ export function ProgrammingCopyToDatesModal(props: {
       <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <header className={styles.modalHeader}>
           <div className={styles.modalTitleBlock}>
-            <h4>Copiar para datas</h4>
+            <h4>Copiar programação</h4>
             <p className={styles.modalSubtitle}>
               {projectCode} | {formatDate(target.date)} | ETAPA {target.etapaNumber ?? "-"}
             </p>
@@ -1480,7 +1480,7 @@ export function ProgrammingCopyToDatesModal(props: {
               Adicionar data
             </button>
             <button type="button" className={styles.secondaryButton} onClick={onConfirm} disabled={isSubmitting}>
-              {isSubmitting ? "Copiando..." : "Validar copia"}
+              {isSubmitting ? "Copiando..." : "Copiar programação"}
             </button>
             <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
               Voltar

@@ -271,7 +271,7 @@
 - [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
 - [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, com `ETAPA` obrigatoria no cadastro novo e preservada automaticamente na edicao quando nao alterada; `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) fica disponivel na edicao.
 - [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
-- [x] Adicionar na Programacao Simples a acao `Copiar para datas`, com modal de multiplas datas, ETAPA por destino, bloqueio para `ETAPA UNICA`/`ETAPA FINAL` e copia transacional via RPC.
+- [x] Adicionar na Programacao Simples a acao `Copiar programacao`, com modal de multiplas datas, ETAPA por destino, bloqueio para `ETAPA UNICA`/`ETAPA FINAL` e copia transacional via RPC.
 - [x] Incluir suporte ao tipo de SGD `AREA_LIVRE` no catalogo `programming_sgd_types`, ajustando constraint SQL e seed por tenant.
 - [x] Destravar cadastro de novos `Tipo de SGD` removendo a unicidade por `tenant_id + export_column` em `programming_sgd_types` e definindo `AREA_LIVRE` como default de `export_column`.
 - [x] Remover o bloqueio de valores fixos em `programming_sgd_types.export_column`, aceitando qualquer valor nao vazio para permitir novos Tipos de SGD.
@@ -959,6 +959,7 @@
 - [x] Corrigir `FULL_RPC_NOT_AVAILABLE` no cadastro em lote da Programacao causado pelo truncamento do nome da RPC decimal da migration 228 no limite de 63 caracteres do PostgreSQL, publicando nome curto pela migration 235, mantendo compatibilidade transacional durante o deploy e ajustando o diagnostico de funcao ausente.
 - [x] Atualizar automaticamente a coluna `Composicao equipe` da Medicao ao retornar para a tela, receber uma composicao salva em outra aba ou completar o intervalo de 60 segundos, mantendo refresh manual e requisicoes sem cache.
 - [x] Fazer novas programacoes herdarem o ultimo `Estado Trabalho` nao nulo da mesma obra e tenant, ignorando programacoes canceladas, validando o catalogo ativo e mantendo `PARCIAL` como fallback.
+- [x] Ajustar `Copiar programacao` para criar destinos herdando o ultimo `Estado Trabalho` valido da obra, mantendo copia transacional via RPC e EXECUTE restrito ao `service_role`.
 - [x] Ajustar o `Dash operacional e faturamento` para somar todos os cortes `FECHADA` de `Medicao Asbuilt` por projeto e abrir modal com o detalhamento por faixa calculada a partir de `Servicos considerados ate`.
 - [x] Adicionar icone de olho nos cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento`, abrindo modal com `Projeto`, `Centro de servico` e `Data execucao` da `Medicao` por categoria.
 - [x] Evoluir o modal do olho dos cards de `Indicadores operacionais medidos` para abas `Medicao` e `As Built`, exibindo `Medicao` por `Data execucao` e `As Built` por `Faixa + Servicos considerados ate`.
