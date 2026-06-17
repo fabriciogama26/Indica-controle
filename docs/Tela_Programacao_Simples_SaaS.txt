@@ -1764,3 +1764,19 @@ Atualizacao 2026-06-17 - Extracao ENEL consolidada por SOB e data
 - Multi-tenant:
   - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
   - A exportacao continua usando somente dados ja carregados por `/api/programacao`, filtrados por `tenant_id` no backend.
+
+Atualizacao 2026-06-17 - Tipo de SGD sem restricao de equipe
+-------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `visibleTeamOptions`: passa a derivar diretamente de `teams`, sem camada intermediaria para restricao por tipo de SGD.
+  - `useEffect` de saneamento de `teamIds`: valida selecoes somente contra equipes ativas carregadas do tenant.
+- Comportamento antes/depois:
+  - Antes: a selecao de equipes podia ficar associada a uma protecao operacional esperada para `SGD TeT`, limitando a escolha a equipes LV.
+  - Depois: selecionar `SGD TeT` em `Tipo de SGD` nao restringe a lista de equipes; qualquer equipe ativa carregada para o tenant pode ser marcada.
+- Multi-tenant:
+  - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
+  - O endpoint continua carregando equipes por `tenant_id` autenticado e `ativo = true`.
