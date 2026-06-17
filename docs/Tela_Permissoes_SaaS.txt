@@ -26,6 +26,7 @@ Arquitetura
 - Base SQL: `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
 - Hardening de RPCs: `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
 - Reparo Estornos: `supabase/migrations/215_repair_reversals_page_permissions.sql`
+- Padrao de tela nova inativa para usuarios: `supabase/migrations/245_default_new_pages_inactive_for_users.sql`
 
 Cadastro
 --------
@@ -83,7 +84,9 @@ Boas praticas
 - Preferir RPC transacional para o save, concentrando role, status, matriz e historico no banco.
 - Manter RPCs `SECURITY DEFINER` sem execucao direta por `PUBLIC`, `anon` ou `authenticated`; o app deve chamar essas funcoes pelo backend com `service_role` e validacao explicita de tenant/usuario.
 - Checklist obrigatorio para toda nova tela:
-  - Criar migration versionada com insert em `app_pages` e backfill em `role_page_permissions` e `app_user_page_permissions`.
+  - Criar migration versionada com insert em `app_pages`.
+  - Manter `app_pages.default_user_access = false` para que usuarios nao administrativos nascam bloqueados na tela nova.
+  - Fazer backfill em `app_user_page_permissions` sem sobrescrever configuracoes existentes; admin/master podem nascer liberados, usuarios comuns devem nascer bloqueados.
   - Incluir a tela no `permissionCatalog` do frontend.
   - Incluir rota no `AppShell` (`menuSections`) e no `titleMap`.
   - Validar o save de permissoes para a nova `page_key` sem erro `nao estao cadastradas em app_pages`.
@@ -165,6 +168,7 @@ Atualizacao 2026-06
 -------------------
 - Criada migration `215_repair_reversals_page_permissions.sql` para reparar ambientes sem `page_key = estornos` em `app_pages`.
 - Criada migration `244_create_programming_map_page.sql` para cadastrar `mapa-programacao` em `app_pages` e preencher somente permissoes ausentes.
+- Criada migration `245_default_new_pages_inactive_for_users.sql` para adicionar `app_pages.default_user_access`, preencher permissoes ausentes sem sobrescrever configuracoes, criar triggers de matriz inicial e deixar novas telas bloqueadas para usuarios nao administrativos.
 - O reparo cadastra/reativa a pagina e preenche somente permissoes ausentes por role e usuario.
 - Antes: o backend recusava salvar a matriz com `As telas estornos nao estao cadastradas em app_pages.`.
 - Depois: o salvamento volta a aceitar a matriz completa sem sobrescrever configuracoes existentes.
@@ -172,6 +176,8 @@ Atualizacao 2026-06
 - A route de busca passou a aceitar `list=tenant`, mantendo validacao administrativa e filtro obrigatorio por `tenant_id`.
 - A tela passou a registrar falhas administrativas com `useErrorLogger("permissoes")`.
 - O catalogo frontend passou a incluir `Mapa de Programacao` na secao `Operacao`.
+- O `Mapa de Programacao` deixou de fazer parte do fallback padrao de navegacao para sessoes sem matriz explicita.
+- Os guards server-side (`requirePageAction` e Edge `_shared/page_authorization.ts`) passaram a consultar `app_pages.default_user_access` antes de aceitar fallback por perfil quando nao existe linha explicita em `app_user_page_permissions`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -189,11 +195,15 @@ Funcoes principais
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: validar a sessao, resolver o operador admin do tenant e garantir `role_id` antes do uso nas rotas administrativas.
 - Caminho: `src/lib/auth/authorization.ts`
-  - Responsavel por: `normalizeRole`, `isAdminRole`, fallback por role, resolucao de `pageAccess` e bloqueio de rotas do shell.
+  - Responsavel por: `normalizeRole`, `isAdminRole`, fallback legado por role, resolucao de `pageAccess` e bloqueio de rotas do shell.
 - Caminho: `src/components/layout/AppShell.tsx`
   - Responsavel por: expor a engrenagem de configuracao para admin, filtrar a sidebar pelas telas liberadas e redirecionar perfis sem acesso para a primeira rota disponivel, incluindo as novas rotas de operacao.
 - Caminho: `src/app/api/auth/session-access/route.ts`
   - Responsavel por: devolver `pageAccess` e `hasCustomPermissions` do usuario autenticado para o frontend.
+- Caminho: `src/lib/server/pageAuthorization.ts`
+  - Responsavel por: validar a permissao server-side de pagina/acao e negar fallback por perfil quando `app_pages.default_user_access` nao permite acesso padrao.
+- Caminho: `supabase/edge_functions/_shared/page_authorization.ts`
+  - Responsavel por: aplicar a mesma regra de `default_user_access` nas Edge Functions que usam autorizacao compartilhada.
 
 Constantes e configuracoes
 - Caminho: `supabase/migrations/022_create_page_permissions.sql`
@@ -225,7 +235,9 @@ Constantes e configuracoes
 - Caminho: `supabase/migrations/215_repair_reversals_page_permissions.sql`
   - Responsavel por: reparar o cadastro e o backfill ausentes de `estornos` sem sobrescrever permissoes existentes.
 - Caminho: `supabase/migrations/244_create_programming_map_page.sql`
-  - Responsavel por: cadastrar `mapa-programacao` e preencher permissoes ausentes por role/usuario sem sobrescrever configuracoes existentes.
+  - Responsavel por: cadastrar `mapa-programacao` e preencher permissoes ausentes por role/usuario sem sobrescrever configuracoes existentes, deixando usuarios nao administrativos bloqueados na matriz por usuario.
+- Caminho: `supabase/migrations/245_default_new_pages_inactive_for_users.sql`
+  - Responsavel por: adicionar `app_pages.default_user_access`, ajustar o fallback do `mapa-programacao`, preencher permissoes ausentes para usuarios legados, criar triggers para novas telas e novos usuarios, e registrar que telas novas nascem inativas para usuarios comuns.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
@@ -248,8 +260,11 @@ Ajuda contextual
   - `supabase/migrations/207_create_reversals_page_permissions.sql`
   - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
   - `supabase/migrations/215_repair_reversals_page_permissions.sql`
+  - `supabase/migrations/245_default_new_pages_inactive_for_users.sql`
   - `src/app/api/app-users/[userId]/permissions/route.ts`
   - `src/app/api/app-users/[userId]/invite/route.ts`
+  - `src/lib/server/pageAuthorization.ts`
+  - `supabase/edge_functions/_shared/page_authorization.ts`
   - `src/lib/server/concurrency.ts`
   - `supabase/migrations/079_create_people_and_invite_write_rpcs.sql`
   - `docs/Tela_Permissoes_SaaS.txt`
@@ -264,6 +279,9 @@ Ajuda contextual
   - `append_user_invite_history`
   - `normalizeExpectedUpdatedAt`, `hasUpdatedAtConflict`, `buildConcurrencyConflictResponse`
   - `search_path`, `EXECUTE`, `SECURITY DEFINER`
+  - `default_user_access`
+  - `ensure_app_page_default_user_permissions`
+  - `ensure_app_user_default_page_permissions`
 - Antes: a rota existia, mas ainda estava no formato de base visual inicial.
 - Depois: a rota `/permissoes` representa o fluxo real esperado para selecionar usuario e liberar ou bloquear cada tela.
 - Estado atual: a tela ja consome e grava `app_user_page_permissions`, e o shell ja passa a esconder as telas desabilitadas quando o usuario faz login ou reabre a sessao.
@@ -276,6 +294,7 @@ Ajuda contextual
 - Estado atual: a tela passou a incluir a pagina `Consumo por Projeto` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - Estado atual: a tela passou a incluir a pagina `Estornos` no bloco `Almoxarifado`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
 - Estado atual: a tela passou a incluir a pagina `Mapa de Programacao` no bloco `Operacao`, mantendo cadastro da tela, permissao por role e fallback de navegacao no mesmo pacote.
+- Estado atual: novas telas cadastradas em `app_pages` nascem com `default_user_access = false`; para usuarios comuns, a tela fica bloqueada ate liberacao explicita na tela de Permissoes.
 - Estado atual: a migration `215` repara ambientes onde o cadastro de `estornos` nao acompanhou a publicacao do frontend.
 - Estado atual: a tela exibe os usuarios do tenant antes do formulario e permite selecionar qualquer linha para carregar as credenciais.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.

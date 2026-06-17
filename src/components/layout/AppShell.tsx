@@ -10,7 +10,7 @@ import { canAccessRoute, isAdminRole, normalizeRole } from "@/lib/auth/authoriza
 import styles from "./AppShell.module.css";
 
 // Checklist obrigatorio para nova tela:
-// 1) Migration com cadastro da pagina em app_pages e backfill de permissoes por tenant.
+// 1) Migration com cadastro da pagina em app_pages; usuarios nao administrativos devem nascer bloqueados.
 // 2) Atualizar permissionCatalog em PermissionsPageView.
 // 3) Incluir rota nesta estrutura e no titleMap abaixo.
 const menuSections = [

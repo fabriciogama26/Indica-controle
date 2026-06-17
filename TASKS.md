@@ -969,3 +969,4 @@
 - [x] Adicionar icone de olho nos cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento`, abrindo modal com `Projeto`, `Centro de servico` e `Data execucao` da `Medicao` por categoria.
 - [x] Evoluir o modal do olho dos cards de `Indicadores operacionais medidos` para abas `Medicao` e `As Built`, exibindo `Medicao` por `Data execucao` e `As Built` por `Faixa + Servicos considerados ate`.
 - [x] Ajustar os cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento` para exibir quantidades sem casas decimais.
+- [x] Garantir que toda tela nova cadastrada em `app_pages` nasca inativa para usuarios nao administrativos, com `default_user_access = false`, backfill de permissoes ausentes para usuarios legados, triggers de matriz inicial, guards respeitando o fallback e `Mapa de Programacao` fora do acesso padrao legado.

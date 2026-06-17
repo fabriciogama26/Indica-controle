@@ -69,7 +69,6 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
     "locacao",
     "programacao-simples",
     "programacao-visualizacao",
-    "mapa-programacao",
     "composicao-equipe",
     "controle-apr",
     "medicao-asbuilt",

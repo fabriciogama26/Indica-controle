@@ -67,6 +67,22 @@ export async function requirePageAccess(
       : { allowed: false, status: 403, message: `Acesso negado para executar ${action} em ${pageKey}.` }
   }
 
+  const { data: pageDefaultAccess, error: pageDefaultAccessError } = await supabase
+    .from('app_pages')
+    .select('default_user_access')
+    .eq('page_key', pageKey)
+    .eq('ativo', true)
+    .maybeSingle()
+
+  if (pageDefaultAccessError) {
+    return { allowed: false, status: 500, message: 'Nao foi possivel validar a permissao da importacao.' }
+  }
+
+  const pageDefaultAccessRecord = pageDefaultAccess as { default_user_access?: boolean } | null
+  if (pageDefaultAccessRecord?.default_user_access !== true) {
+    return { allowed: false, status: 403, message: `Acesso negado para executar ${action} em ${pageKey}.` }
+  }
+
   if (!appUser.role_id) {
     return { allowed: false, status: 403, message: `Acesso negado para executar ${action} em ${pageKey}.` }
   }
