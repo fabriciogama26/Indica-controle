@@ -17,6 +17,7 @@ type MaterialItem = {
   tipo: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  hasSerialTrackingUsage: boolean;
   unitPrice: number;
   isActive: boolean;
   cancellationReason: string | null;
@@ -466,6 +467,12 @@ export function MaterialsPageView() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(editingMaterialId);
+  const editingMaterial = materials.find((material) => material.id === editingMaterialId) ?? null;
+  const serialTrackingChangeBlocked = Boolean(
+    isEditing
+    && editingMaterial?.hasSerialTrackingUsage
+    && editingMaterial.serialTrackingType !== "NONE",
+  );
   const statusAction = statusMaterial?.isActive ? "cancel" : "activate";
   const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
 
@@ -564,6 +571,15 @@ export function MaterialsPageView() {
   }
 
   function updateSerialTrackingType(value: SerialTrackingType, checked: boolean) {
+    if (serialTrackingChangeBlocked) {
+      setFeedback({
+        type: "error",
+        message:
+          "Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.",
+      });
+      return;
+    }
+
     setForm((current) => {
       const nextType = checked ? value : "NONE";
       return {
@@ -680,6 +696,15 @@ export function MaterialsPageView() {
     setFeedback(null);
 
     try {
+      if (serialTrackingChangeBlocked && form.serialTrackingType !== editingMaterial?.serialTrackingType) {
+        setFeedback({
+          type: "error",
+          message:
+            "Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.",
+        });
+        return;
+      }
+
       const payload = {
         ...(isEditing ? { id: editingMaterialId } : {}),
         codigo: normalizeCode(form.codigo),
@@ -1212,6 +1237,7 @@ export function MaterialsPageView() {
             <input
               type="checkbox"
               checked={form.serialTrackingType === "TRAFO"}
+              disabled={serialTrackingChangeBlocked}
               onChange={(event) => updateSerialTrackingType("TRAFO", event.target.checked)}
             />
             Material TRAFO (exige Serial e LP na movimentacao)
@@ -1221,6 +1247,7 @@ export function MaterialsPageView() {
             <input
               type="checkbox"
               checked={form.serialTrackingType === "RELIGADOR"}
+              disabled={serialTrackingChangeBlocked}
               onChange={(event) => updateSerialTrackingType("RELIGADOR", event.target.checked)}
             />
             Material RELIGADOR (exige Serial na movimentacao)
@@ -1230,10 +1257,17 @@ export function MaterialsPageView() {
             <input
               type="checkbox"
               checked={form.serialTrackingType === "CHAVE"}
+              disabled={serialTrackingChangeBlocked}
               onChange={(event) => updateSerialTrackingType("CHAVE", event.target.checked)}
             />
             Material CHAVES (exige Serial na movimentacao)
           </label>
+
+          {serialTrackingChangeBlocked ? (
+            <p className={styles.serialTrackingLockNotice}>
+              Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.
+            </p>
+          ) : null}
 
           <label className={styles.field}>
             <span>

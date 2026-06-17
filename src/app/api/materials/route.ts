@@ -36,6 +36,10 @@ type MaterialUmbFallbackRow = {
   updated_at: string;
 };
 
+type SerialTrackingUsageRow = {
+  material_id: string;
+};
+
 type AppUserRow = {
   id: string;
   display: string | null;
@@ -265,6 +269,37 @@ function buildUserLoginNameMap(users: AppUserRow[]) {
   );
 }
 
+async function materialHasSerialTrackingUsage(
+  supabase: SupabaseClient,
+  tenantId: string,
+  materialId: string,
+) {
+  const [instanceResult, itemResult] = await Promise.all([
+    supabase
+      .from("trafo_instances")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("material_id", materialId)
+      .limit(1),
+    supabase
+      .from("stock_transfer_items")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("material_id", materialId)
+      .not("serial_number", "is", null)
+      .limit(1),
+  ]);
+
+  if (instanceResult.error || itemResult.error) {
+    return { ok: false, hasUsage: false } as const;
+  }
+
+  return {
+    ok: true,
+    hasUsage: Boolean((instanceResult.data ?? []).length || (itemResult.data ?? []).length),
+  } as const;
+}
+
 async function fetchMaterialById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -359,6 +394,16 @@ async function saveMaterialViaRpc(params: {
   });
 
   if (error) {
+    const normalizedMessage = String(error.message ?? "").trim().toUpperCase();
+    if (normalizedMessage.includes("SERIAL_TRACKING_IN_USE")) {
+      return {
+        ok: false,
+        status: 409,
+        message: "Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.",
+        reason: "SERIAL_TRACKING_IN_USE",
+      } as const;
+    }
+
     return { ok: false, status: 500, message: "Falha ao salvar material." } as const;
   }
 
@@ -681,6 +726,37 @@ export async function GET(request: NextRequest) {
 
     const userDisplayMap = buildUserDisplayMap(users);
     const userLoginNameMap = buildUserLoginNameMap(users);
+    const materialIds = (data ?? []).map((item) => item.id);
+    const serialTrackingUsageMaterialIds = new Set<string>();
+
+    if (materialIds.length > 0) {
+      const [instancesResult, serializedItemsResult] = await Promise.all([
+        supabase
+          .from("trafo_instances")
+          .select("material_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("material_id", materialIds)
+          .returns<SerialTrackingUsageRow[]>(),
+        supabase
+          .from("stock_transfer_items")
+          .select("material_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("material_id", materialIds)
+          .not("serial_number", "is", null)
+          .returns<SerialTrackingUsageRow[]>(),
+      ]);
+
+      if (instancesResult.error || serializedItemsResult.error) {
+        return NextResponse.json({ message: "Falha ao validar uso de rastreio por serial dos materiais." }, { status: 500 });
+      }
+
+      for (const row of instancesResult.data ?? []) {
+        serialTrackingUsageMaterialIds.add(row.material_id);
+      }
+      for (const row of serializedItemsResult.data ?? []) {
+        serialTrackingUsageMaterialIds.add(row.material_id);
+      }
+    }
 
     return NextResponse.json({
       materials: (data ?? []).map((item) => ({
@@ -693,6 +769,7 @@ export async function GET(request: NextRequest) {
         tipo: item.tipo,
         isTransformer: Boolean(item.is_transformer),
         serialTrackingType: normalizeSerialTrackingType(item.serial_tracking_type ?? (item.is_transformer ? "TRAFO" : "NONE")),
+        hasSerialTrackingUsage: serialTrackingUsageMaterialIds.has(item.id),
         unitPrice: item.unit_price,
         isActive: item.is_active,
         cancellationReason: item.cancellation_reason,
@@ -850,6 +927,27 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: precheck.message }, { status: precheck.status });
     }
 
+    const currentSerialTrackingType = normalizeSerialTrackingType(
+      currentMaterial.serial_tracking_type ?? (currentMaterial.is_transformer ? "TRAFO" : "NONE"),
+    );
+    if (currentSerialTrackingType !== "NONE" && currentSerialTrackingType !== input.serialTrackingType) {
+      const usageResult = await materialHasSerialTrackingUsage(supabase, appUser.tenant_id, materialId);
+      if (!usageResult.ok) {
+        return NextResponse.json({ message: "Falha ao validar uso de rastreio por serial do material." }, { status: 500 });
+      }
+
+      if (usageResult.hasUsage) {
+        return NextResponse.json(
+          {
+            message:
+              "Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.",
+            code: "SERIAL_TRACKING_IN_USE",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const changes: Record<string, HistoryChange> = {};
     addChange(changes, "codigo", currentMaterial.codigo, input.codigo);
     addChange(changes, "descricao", currentMaterial.descricao, input.descricao);
@@ -859,7 +957,7 @@ export async function PUT(request: NextRequest) {
     addChange(
       changes,
       "serialTrackingType",
-      normalizeSerialTrackingType(currentMaterial.serial_tracking_type ?? (currentMaterial.is_transformer ? "TRAFO" : "NONE")),
+      currentSerialTrackingType,
       input.serialTrackingType,
     );
     addChange(changes, "unitPrice", currentMaterial.unit_price, unitPrice);
