@@ -248,7 +248,7 @@ Filtros, auto-complete e listagem
     - Ordem de colunas segue exatamente o layout operacional solicitado para `ENEL excel` (incluindo `ENCARREGADO` apos `Estrutura` e `Mão de obra` no bloco final).
     - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
     - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
-    - `ENCARREGADO` = nome do encarregado da equipe programada.
+    - `ENCARREGADO` = nomes dos encarregados do grupo consolidado, separados por ` / `.
     - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
     - `Tipo de SGD` = selecao do formulario da Programacao.
     - `AREA_LIVRE` em `Tipo de SGD` nao preenche `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT`.
@@ -1747,3 +1747,20 @@ Atualizacao 2026-06-17 - Copiar programacao herda Estado Trabalho
   - A API continua injetando `tenant_id` e `actor_user_id` a partir da sessao autenticada.
   - A RPC preserva validacoes por tenant, concorrencia por `updated_at`, regras de ETAPA, conflito de agenda e bloqueio para projeto concluido.
   - EXECUTE permanece revogado para `PUBLIC`, `anon` e `authenticated`; somente `service_role` executa a RPC server-side.
+
+Atualizacao 2026-06-17 - Extracao ENEL consolidada por SOB e data
+------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `buildEnelCsvContent`: passa a agrupar a exportacao antiga por `SOB + Data Execucao`.
+  - `resolveFirstFilledText`: helper local para buscar o primeiro valor textual preenchido dentro do grupo consolidado.
+- Comportamento antes/depois:
+  - Antes: a `Extracao ENEL` antiga gerava uma linha para cada equipe/encarregado, mesmo quando as programacoes pertenciam ao mesmo `SOB + Data Execucao`.
+  - Depois: a `Extracao ENEL` antiga gera uma linha unica por `SOB + Data Execucao`.
+  - Depois: `Estrutura` e consolidada por tipo de equipe e `ENCARREGADO` lista todos os encarregados do grupo separados por ` / `.
+- Multi-tenant:
+  - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
+  - A exportacao continua usando somente dados ja carregados por `/api/programacao`, filtrados por `tenant_id` no backend.
