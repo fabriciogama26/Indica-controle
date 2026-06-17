@@ -598,3 +598,10 @@ Observacao
 - Cria `team_supervisor_history` para versionar supervisor por equipe com `valid_from` e `valid_to`.
 - Faz backfill a partir de `app_entity_history` e do supervisor atual de `teams`.
 - Sincroniza novas trocas por trigger em `teams.supervisor_person_id`, com RLS por tenant e sem permissao de `DELETE`.
+
+242_copy_programming_to_dates_inherit_work_status.sql
+- Reaplica `copy_project_programming_to_dates` para resolver o ultimo `Estado Trabalho`
+  valido da obra no mesmo tenant antes de criar os destinos.
+- Faz a copia por datas herdar o Estado Trabalho vigente da obra, mantendo
+  validacoes de tenant, concorrencia, ETAPA, conflito de agenda e projeto concluido.
+- Reforca `search_path = public, pg_temp` e EXECUTE somente para `service_role`.
