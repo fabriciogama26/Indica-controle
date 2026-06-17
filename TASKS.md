@@ -963,6 +963,7 @@
 - [x] Fazer novas programacoes herdarem o ultimo `Estado Trabalho` nao nulo da mesma obra e tenant, ignorando programacoes canceladas, validando o catalogo ativo e mantendo `PARCIAL` como fallback.
 - [x] Ajustar `Copiar programacao` para criar destinos herdando o ultimo `Estado Trabalho` valido da obra, mantendo copia transacional via RPC e EXECUTE restrito ao `service_role`.
 - [x] Remover a protecao visual que associava `Tipo de SGD = SGD TeT` apenas a equipes LV na Programacao Simples, mantendo a selecao baseada em todas as equipes ativas do tenant.
+- [x] Remover a coluna `Periodo` da `Lista de Programacoes` e exibir `Registrado por` com o autor do cadastro da programacao.
 - [x] Ajustar a `Extracao ENEL` antiga para consolidar uma linha por `SOB + Data Execucao`, agregando `Estrutura` e listando encarregados separados por ` / `.
 - [x] Criar a tela `Mapa de Programacao` para indicar obras ativas que nunca foram programadas considerando o historico geral do projeto, e equipes ativas sem programacao no periodo filtrado, com endpoint protegido por `mapa-programacao/read`, menu, permissao e migration `244_create_programming_map_page.sql`.
 - [x] Ajustar o `Dash operacional e faturamento` para somar todos os cortes `FECHADA` de `Medicao Asbuilt` por projeto e abrir modal com o detalhamento por faixa calculada a partir de `Servicos considerados ate`.

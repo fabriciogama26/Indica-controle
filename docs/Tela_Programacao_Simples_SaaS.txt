@@ -223,7 +223,7 @@ Filtros, auto-complete e listagem
   - Cada card de `SOB` exibe `SOB`, `Data limite` e `Status do prazo` (`Vencida ha X dias`, `Vence hoje` ou `Vence em X dias`), com cor por criticidade.
   - O modal de prazos exibe as colunas `SOB`, `Centro de servico`, `Prioridade`, `Tipo de obra`, `Data limite`, `Data Programacao`, `Motivo`, `Estado Trabalho`, `Status do prazo`, `Dias para vencimento` e `Faixa`; a exportacao CSV do modal usa os mesmos dados e inclui a janela selecionada.
   - Navegacao do carrossel por setas (`esquerda/direita`), avancando ou voltando 1 pagina de 6 cards por clique.
-  - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Periodo, Status, Atualizado em.
+  - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Registrado por, Status, Estado Trabalho, Atualizado em.
   - Ordenacao da lista: `Data execucao` em ordem decrescente (mais recente primeiro). Em empate de data, prioridade para o cadastro mais recente (`created_at` desc).
   - Quando uma programacao e salva fora do intervalo, projeto, equipe ou status filtrados, a tela avisa no feedback de sucesso que o registro pode nao aparecer na lista atual por causa dos filtros.
 - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Copiar programacao`, `Adiar` e `Cancelar`.
@@ -1780,3 +1780,19 @@ Atualizacao 2026-06-17 - Tipo de SGD sem restricao de equipe
 - Multi-tenant:
   - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
   - O endpoint continua carregando equipes por `tenant_id` autenticado e `ativo = true`.
+
+Atualizacao 2026-06-17 - Lista com Registrado por
+--------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingSimplePageView`: tabela `Lista de Programacoes`.
+  - `formatAuditActor`: usado para exibir fallback quando o autor do cadastro nao for identificado.
+- Comportamento antes/depois:
+  - Antes: a lista exibia a coluna `Periodo`.
+  - Depois: a lista remove `Periodo` e exibe `Registrado por`, usando `createdByName` retornado pela API.
+- Multi-tenant:
+  - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
+  - O autor continua sendo resolvido no backend pelo `created_by` da programacao dentro do tenant autenticado.
