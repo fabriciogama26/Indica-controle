@@ -216,12 +216,15 @@ export type SaveProgrammingResponse = {
 export type CopyProgrammingToDatesTarget = {
   date: string;
   etapaNumber: number;
+  teamIds: string[];
 };
 
 export type CopyProgrammingToDatesResponse = {
   success?: boolean;
   copiedCount?: number;
   copyBatchId?: string | null;
+  copyBatchIds?: string[];
+  sourceCount?: number;
   message?: string;
   reason?: string | null;
   detail?: string | null;

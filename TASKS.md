@@ -248,7 +248,7 @@
 - [x] Adicionar exportacao `ENEL-EXCEL` na nova Programacao com colunas no layout solicitado e preenchimento em branco para campos sem informacao.
 - [x] Ajustar export `ENEL-EXCEL` da nova Programacao para preencher `Observação do Cancelamento / Parcial / Adiamento` com o motivo informado no cancelamento.
 - [x] Ajustar mapeamento completo do `ENEL-EXCEL` na nova Programacao (Responsáveis Enel/Gestor/Endereco por Projeto, Tipo de SGD, Nº Clientes Afetados e roteamento do SGD por tipo).
-- [x] Ajustar o `ENEL-EXCEL` da Programacao para: `Estrutura` por composicao de equipes (`MK/CETO/LV`) por projeto/data, `Nº EQ` por total de equipes, `Data da programacao` por `created_at`, `Responsavel Execucao = INDICA`, `Tempo Previsto` em horas e `Periodo` em maiusculas.
+- [x] Ajustar o `ENEL-EXCEL` da Programacao para: `Estrutura` por composicao de equipes (`MK/CESTO/LV`) por projeto/data, `Nº EQ` por total de equipes, `Data da programacao` por `created_at`, `Responsavel Execucao = INDICA`, `Tempo Previsto` em horas e `Periodo` em maiusculas.
 - [x] Criar o campo obrigatorio `Campo eletrico` na Programacao, persistir em `project_programming` e usar esse valor na coluna `Nº EQ (RE, CO, CF, CC ou TR)` do `ENEL-EXCEL`, com reflexo no historico operacional.
 - [x] Corrigir export `ENEL-EXCEL` da Programacao para preencher a coluna de `Encarregado` (`Mão de obra`) com o nome do encarregado da equipe programada.
 - [x] Reordenar as colunas do `ENEL-EXCEL` da Programacao para o layout operacional solicitado, com `ENCARREGADO` apos `Estrutura` e `Mão de obra` mantida no bloco final.
@@ -964,10 +964,18 @@
 - [x] Atualizar automaticamente a coluna `Composicao equipe` da Medicao ao retornar para a tela, receber uma composicao salva em outra aba ou completar o intervalo de 60 segundos, mantendo refresh manual e requisicoes sem cache.
 - [x] Fazer novas programacoes herdarem o ultimo `Estado Trabalho` nao nulo da mesma obra e tenant, ignorando programacoes canceladas, validando o catalogo ativo e mantendo `PARCIAL` como fallback.
 - [x] Ajustar `Copiar programacao` para criar destinos herdando o ultimo `Estado Trabalho` valido da obra, mantendo copia transacional via RPC e EXECUTE restrito ao `service_role`.
+- [x] Permitir `Adiar` Programacao sem nova data, marcando apenas a linha como `ADIADA`, e manter a criacao de `REPROGRAMADA` quando a nova data for informada.
+- [x] Adicionar escopo ao `Copiar programacao` para copiar somente a equipe selecionada ou todas as equipes do mesmo `Projeto + Data execucao + ETAPA`, com prevalidacao de etapa e agenda por equipe.
+- [x] Evoluir `Copiar programacao` para selecionar equipes por linha de destino, permitindo copiar para equipes da programacao original ou novas equipes ativas, com validacao de tenant, etapa e agenda.
 - [x] Remover a protecao visual que associava `Tipo de SGD = SGD TeT` apenas a equipes LV na Programacao Simples, mantendo a selecao baseada em todas as equipes ativas do tenant.
 - [x] Remover a coluna `Periodo` da `Lista de Programacoes` e exibir `Registrado por` com o autor do cadastro da programacao.
 - [x] Ajustar a `Extracao ENEL` antiga para consolidar uma linha por `SOB + Data Execucao`, agregando `Estrutura` e listando encarregados separados por ` / `.
 - [x] Criar a tela `Mapa de Programacao` para indicar obras ativas que nunca foram programadas considerando o historico geral do projeto, e equipes ativas sem programacao no periodo filtrado, com endpoint protegido por `mapa-programacao/read`, menu, permissao e migration `244_create_programming_map_page.sql`.
+- [x] Evoluir o `Mapa de Programacao` para consolidar uma obra por ultima programacao, usando `Estado Trabalho` como referencia dos cards, tratando `ADIADA` como `CANCELADA`, permitindo periodo opcional para obras e abrindo modal com programacoes/etapas por situacao.
+- [x] Refinar o `Mapa de Programacao` para usar o ultimo `Estado Trabalho` valido da obra, impedindo que `CANCELADA`/`ADIADA` posterior sem apontamento reabra obra ja concluida, manter cards de carteira fora do filtro de periodo e exibir `Obras prioritarias`/`Nunca programadas` em tabelas paginadas com modal de detalhe.
+- [x] Ajustar o modal de detalhe do `Mapa de Programacao` para exibir `ID: {uuid}` da obra no topo, sem descricao no cabecalho.
+- [x] Ajustar o modal dos cards do `Mapa de Programacao` para exibir obras em tabela paginada, abrindo o detalhe em card ao clicar na linha.
+- [x] Corrigir a `Extracao ENEL` para exportar estrutura `CESTO` em vez de `CETO`, mantendo compatibilidade de leitura com equipes cadastradas como cesto/ceto.
 - [x] Ajustar o `Dash operacional e faturamento` para somar todos os cortes `FECHADA` de `Medicao Asbuilt` por projeto e abrir modal com o detalhamento por faixa calculada a partir de `Servicos considerados ate`.
 - [x] Adicionar icone de olho nos cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento`, abrindo modal com `Projeto`, `Centro de servico` e `Data execucao` da `Medicao` por categoria.
 - [x] Evoluir o modal do olho dos cards de `Indicadores operacionais medidos` para abas `Medicao` e `As Built`, exibindo `Medicao` por `Data execucao` e `As Built` por `Faixa + Servicos considerados ate`.

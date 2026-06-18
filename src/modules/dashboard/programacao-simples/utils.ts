@@ -409,7 +409,7 @@ export function resolveTeamStructureCode(team?: TeamItem | null) {
   }
 
   if (normalized.includes("cesto") || normalized.includes("ceto")) {
-    return "CETO";
+    return "CESTO";
   }
 
   if (normalized.includes("linha viva") || normalized.includes("viva") || /\blv\b/.test(normalized)) {
@@ -448,7 +448,7 @@ export function resolveReasonOption(
 }
 
 export function formatStructureSummaryByCode(codeCountMap: Record<string, number>) {
-  const priorityOrder = ["MK", "CETO", "LV"];
+  const priorityOrder = ["MK", "CESTO", "LV"];
   const codes = Object.keys(codeCountMap)
     .filter((code) => codeCountMap[code] > 0)
     .sort((left, right) => {
