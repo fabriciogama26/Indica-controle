@@ -115,6 +115,7 @@ type CopyToDatesDraftRow = {
   id: string;
   date: string;
   etapaNumber: string;
+  teamIds: string[];
 };
 
 
@@ -164,12 +165,13 @@ function formatDeadlineRangeLabel(daysDiff: number) {
   return "61 a 90 dias";
 }
 
-function createCopyToDatesDraftRow(etapaNumber = ""): CopyToDatesDraftRow {
+function createCopyToDatesDraftRow(etapaNumber = "", teamIds: string[] = []): CopyToDatesDraftRow {
   const randomSuffix = Math.random().toString(36).slice(2);
   return {
     id: `copy-date-${Date.now()}-${randomSuffix}`,
     date: "",
     etapaNumber,
+    teamIds,
   };
 }
 
@@ -1160,7 +1162,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setPostponeTarget(schedule);
     setPostponeReasonCode("");
     setPostponeReasonNotes("");
-    setPostponeDate(schedule.date);
+    setPostponeDate("");
     setFeedback(null);
   }
 
@@ -1204,9 +1206,27 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    const defaultTeamIds = resolveCopyToDatesDefaultTeamIds(schedule);
     setCopyToDatesTarget(schedule);
-    setCopyToDatesRows([createCopyToDatesDraftRow(String(schedule.etapaNumber + 1))]);
+    setCopyToDatesRows([createCopyToDatesDraftRow(String(schedule.etapaNumber + 1), defaultTeamIds)]);
     setFeedback(null);
+  }
+
+  function resolveCopyToDatesDefaultTeamIds(schedule: ScheduleItem) {
+    const groupTeamIds = schedules
+      .filter((item) =>
+        item.projectId === schedule.projectId
+        && item.date === schedule.date
+        && item.etapaNumber === schedule.etapaNumber
+        && !item.etapaUnica
+        && !item.etapaFinal
+        && isActiveProgrammingStatus(getDisplayProgrammingStatus(item)),
+      )
+      .map((item) => item.teamId)
+      .filter(Boolean);
+
+    const uniqueTeamIds = Array.from(new Set(groupTeamIds));
+    return uniqueTeamIds.length ? uniqueTeamIds : [schedule.teamId].filter(Boolean);
   }
 
   function closeCopyToDatesModal() {
@@ -1231,6 +1251,34 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     );
   }
 
+  function toggleCopyToDatesTeam(rowId: string, teamId: string) {
+    setCopyToDatesRows((current) =>
+      current.map((row) => {
+        if (row.id !== rowId) return row;
+        const nextTeamIds = row.teamIds.includes(teamId)
+          ? row.teamIds.filter((item) => item !== teamId)
+          : [...row.teamIds, teamId];
+
+        return {
+          ...row,
+          teamIds: nextTeamIds,
+        };
+      }),
+    );
+  }
+
+  function selectAllCopyToDatesTeams(rowId: string) {
+    setCopyToDatesRows((current) =>
+      current.map((row) => row.id === rowId ? { ...row, teamIds: teams.map((team) => team.id) } : row),
+    );
+  }
+
+  function clearCopyToDatesTeams(rowId: string) {
+    setCopyToDatesRows((current) =>
+      current.map((row) => row.id === rowId ? { ...row, teamIds: [] } : row),
+    );
+  }
+
   function addCopyToDatesRow() {
     setCopyToDatesRows((current) => {
       const currentEtapas = current
@@ -1238,7 +1286,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         .filter((value) => Number.isInteger(value) && value > 0);
       const baseEtapa = copyToDatesTarget?.etapaNumber ?? 0;
       const nextEtapa = Math.max(baseEtapa, ...currentEtapas) + 1;
-      return [...current, createCopyToDatesDraftRow(String(nextEtapa))];
+      const previousTeamIds = current[current.length - 1]?.teamIds ?? (copyToDatesTarget ? resolveCopyToDatesDefaultTeamIds(copyToDatesTarget) : []);
+      return [...current, createCopyToDatesDraftRow(String(nextEtapa), previousTeamIds)];
     });
   }
 
@@ -1383,16 +1432,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
-    if (!postponeDate) {
-      openAlertModal(
-        "Valide os dados do adiamento",
-        "Informe a nova data da programacao antes de validar o adiamento.",
-        ["A nova data precisa ser posterior a data atual da programacao."],
-      );
-      return;
-    }
-
-    if (postponeDate <= postponeTarget.date) {
+    if (postponeDate && postponeDate <= postponeTarget.date) {
       openAlertModal(
         "Conflito na nova data",
         "A nova data da programacao precisa ser posterior a data atual.",
@@ -1418,7 +1458,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         accessToken,
         id: postponeTarget.id,
         reason: selectedReasonText,
-        newDate: postponeDate,
+        newDate: postponeDate || undefined,
         expectedUpdatedAt: postponeTarget.updatedAt,
       });
 
@@ -1447,7 +1487,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           teamId: postponeTarget.teamId,
           status: postponeTarget.status,
           expectedUpdatedAt: postponeTarget.updatedAt,
-          newDate: postponeDate,
+          newDate: postponeDate || null,
           responseMessage: message,
           responseError: data.error ?? null,
         });
@@ -1474,7 +1514,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           programmingId: postponeTarget.id,
           projectId: postponeTarget.projectId,
           teamId: postponeTarget.teamId,
-          newDate: postponeDate,
+          newDate: postponeDate || null,
         });
         if (!data.warning) {
           setFeedback({
@@ -1496,7 +1536,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         teamId: postponeTarget.teamId,
         status: postponeTarget.status,
         expectedUpdatedAt: postponeTarget.updatedAt,
-        newDate: postponeDate,
+        newDate: postponeDate || null,
       });
     } finally {
       setIsPostponing(false);
@@ -1513,12 +1553,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const normalizedTargets = copyToDatesRows.map((row) => ({
       date: row.date,
       etapaNumber: Number(row.etapaNumber),
+      teamIds: Array.from(new Set(row.teamIds.filter(Boolean))),
     }));
-    const invalidRows = normalizedTargets.filter((row) => !row.date || !Number.isInteger(row.etapaNumber) || row.etapaNumber <= 0);
+    const invalidRows = normalizedTargets.filter((row) =>
+      !row.date || !Number.isInteger(row.etapaNumber) || row.etapaNumber <= 0 || !row.teamIds.length,
+    );
     if (invalidRows.length) {
       openAlertModal(
         "Revise as datas da copia",
-        "Informe Data destino e ETAPA numerica em todas as linhas.",
+        "Informe Data destino, ETAPA numerica e ao menos uma equipe em todas as linhas.",
       );
       return;
     }
@@ -1589,6 +1632,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           teamId: copyToDatesTarget.teamId,
           sourceDate: copyToDatesTarget.date,
           targetDates: normalizedTargets.map((item) => item.date),
+          targetTeamIds: normalizedTargets.flatMap((item) => item.teamIds),
           responseMessage: message,
           responseReason: data.reason ?? null,
         });
@@ -1612,6 +1656,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           operation: "refresh_after_copy_to_dates",
           programmingId: copyToDatesTarget.id,
           targetDates: normalizedTargets.map((item) => item.date),
+          targetTeamIds: normalizedTargets.flatMap((item) => item.teamIds),
         });
         setFeedback({
           type: "success",
@@ -1626,6 +1671,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         programmingId: copyToDatesTarget.id,
         projectId: copyToDatesTarget.projectId,
         teamId: copyToDatesTarget.teamId,
+        targetTeamIds: normalizedTargets.flatMap((item) => item.teamIds),
       });
     } finally {
       setIsCopyingToDates(false);
@@ -2777,6 +2823,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         target={copyToDatesTarget}
         projectCode={copyToDatesTarget ? (projectMap.get(copyToDatesTarget.projectId)?.code ?? copyToDatesTarget.projectId) : ""}
         rows={copyToDatesRows}
+        teamOptions={teams}
         minDate=""
         isSubmitting={isCopyingToDates}
         onClose={closeCopyToDatesModal}
@@ -2784,6 +2831,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         onAddRow={addCopyToDatesRow}
         onRemoveRow={removeCopyToDatesRow}
         onRowChange={updateCopyToDatesRow}
+        onTeamToggle={toggleCopyToDatesTeam}
+        onSelectAllTeams={selectAllCopyToDatesTeams}
+        onClearTeams={clearCopyToDatesTeams}
       />
       <ProgrammingCancelModal
         target={cancelTarget}

@@ -7,18 +7,57 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./MapProgrammingPageView.module.css";
 
-type DeadlineStatus = "OVERDUE" | "TODAY" | "SOON" | "NORMAL" | "NO_DEADLINE";
+type ProjectSituationKey =
+  | "PORTFOLIO"
+  | "CONCLUDED"
+  | "TO_REPROGRAM"
+  | "PENDING"
+  | "PARTIAL_PLANNED"
+  | "PARTIAL"
+  | "BENEFIT_REACHED"
+  | "INTERRUPTED"
+  | "WITHOUT_STATUS"
+  | "NEVER_PROGRAMMED";
 
-type NeverProgrammedProject = {
+type PriorityLevel = "NORMAL" | "ATTENTION" | "PRIORITY" | "INCONSISTENCY";
+
+type MapProject = {
   id: string;
   sob: string;
+  projectName: string;
+  contract: string;
   serviceCenter: string;
   priority: string;
   serviceType: string;
   city: string;
   executionDeadline: string;
-  daysUntilDeadline: number | null;
-  deadlineStatus: DeadlineStatus;
+  latestProgrammingId: string | null;
+  latestDate: string;
+  latestProgrammingStatus: string;
+  latestWorkCompletionStatus: string | null;
+  latestWorkCompletionLabel: string;
+  latestTeamName: string;
+  latestForemanName: string;
+  latestStageLabel: string;
+  programmingCount: number;
+  stageCount: number;
+  reason: string;
+  daysSinceLatest: number | null;
+  priorityLevel: PriorityLevel;
+  hasFutureActiveProgramming: boolean;
+  completed: boolean;
+  interrupted: boolean;
+  withoutStatus: boolean;
+  actionRequired: boolean;
+  neverProgrammed: boolean;
+};
+
+type StatusCard = {
+  key: ProjectSituationKey;
+  title: string;
+  description: string;
+  count: number;
+  projects: MapProject[];
 };
 
 type TeamWithoutProgramming = {
@@ -28,25 +67,31 @@ type TeamWithoutProgramming = {
   serviceCenter: string;
   teamType: string;
   foremanName: string;
+  active: boolean;
 };
 
 type MapProgrammingResponse = {
   filters?: {
-    startDate: string;
-    endDate: string;
+    startDate: string | null;
+    endDate: string | null;
     generatedAt: string;
+    teamPeriodEnabled: boolean;
   };
   summary?: {
-    activeProjectCount: number;
+    portfolioProjectCount: number;
+    actionRequiredProjectCount: number;
+    concludedProjectCount: number;
+    toReprogramProjectCount: number;
     neverProgrammedProjectCount: number;
-    overdueNeverProgrammedProjectCount: number;
-    dueSoonNeverProgrammedProjectCount: number;
-    noDeadlineNeverProgrammedProjectCount: number;
+    interruptedProjectCount: number;
+    withoutStatusProjectCount: number;
     activeTeamCount: number;
     teamsWithoutProgrammingCount: number;
     programmedTeamCount: number;
   };
-  neverProgrammedProjects?: NeverProgrammedProject[];
+  statusCards?: StatusCard[];
+  priorityProjects?: MapProject[];
+  neverProgrammedProjects?: MapProject[];
   teamsWithoutProgramming?: TeamWithoutProgramming[];
   message?: string;
 };
@@ -59,6 +104,8 @@ type FilterState = {
   serviceCenter: string;
 };
 
+const TABLE_PAGE_SIZE = 8;
+
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
@@ -69,9 +116,9 @@ function addDays(date: string, amount: number) {
   return toIsoDate(value);
 }
 
-function formatDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value || "-";
+function formatDate(value: string | null | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return "-";
   }
   const [year, month, day] = value.split("-");
   return `${day}/${month}/${year}`;
@@ -85,20 +132,33 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
-function getDeadlineLabel(item: NeverProgrammedProject) {
-  if (item.deadlineStatus === "NO_DEADLINE") return "Sem data limite";
-  if (item.daysUntilDeadline === null) return "-";
-  if (item.daysUntilDeadline < 0) return `Vencida ha ${Math.abs(item.daysUntilDeadline)} dias`;
-  if (item.daysUntilDeadline === 0) return "Vence hoje";
-  return `Vence em ${item.daysUntilDeadline} dias`;
+function formatDaysSince(value: number | null) {
+  if (value === null) return "-";
+  if (value < 0) return `em ${Math.abs(value)} dias`;
+  if (value === 0) return "hoje";
+  if (value === 1) return "ha 1 dia";
+  return `ha ${value} dias`;
 }
 
-function getDeadlineClassName(status: DeadlineStatus) {
-  if (status === "OVERDUE") return styles.statusOverdue;
-  if (status === "TODAY") return styles.statusToday;
-  if (status === "SOON") return styles.statusSoon;
-  if (status === "NO_DEADLINE") return styles.statusMuted;
-  return styles.statusNormal;
+function getPriorityLabel(value: PriorityLevel) {
+  if (value === "INCONSISTENCY") return "Inconsistencia";
+  if (value === "PRIORITY") return "Prioridade";
+  if (value === "ATTENTION") return "Atencao";
+  return "Normal";
+}
+
+function getPriorityClassName(value: PriorityLevel) {
+  if (value === "INCONSISTENCY") return styles.priorityInconsistency;
+  if (value === "PRIORITY") return styles.priorityHigh;
+  if (value === "ATTENTION") return styles.priorityAttention;
+  return styles.priorityNormal;
+}
+
+function getCardClassName(key: ProjectSituationKey) {
+  if (key === "TO_REPROGRAM" || key === "INTERRUPTED" || key === "WITHOUT_STATUS") return styles.summaryDanger;
+  if (key === "PENDING" || key === "PARTIAL" || key === "PARTIAL_PLANNED" || key === "BENEFIT_REACHED") return styles.summaryWarning;
+  if (key === "CONCLUDED") return styles.summarySuccess;
+  return styles.summaryNeutral;
 }
 
 function exportCsv(filename: string, header: string[], rows: Array<Array<string | number | null>>) {
@@ -123,21 +183,26 @@ export function MapProgrammingPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("mapa_programacao");
   const today = useMemo(() => toIsoDate(new Date()), []);
-  const [draftFilters, setDraftFilters] = useState<FilterState>(() => ({
-    startDate: today,
-    endDate: addDays(today, 6),
+  const [draftFilters, setDraftFilters] = useState<FilterState>({
+    startDate: "",
+    endDate: "",
     projectSearch: "",
     teamSearch: "",
     serviceCenter: "",
-  }));
-  const [activeFilters, setActiveFilters] = useState<FilterState>(() => ({
-    startDate: today,
-    endDate: addDays(today, 6),
+  });
+  const [activeFilters, setActiveFilters] = useState<FilterState>({
+    startDate: "",
+    endDate: "",
     projectSearch: "",
     teamSearch: "",
     serviceCenter: "",
-  }));
+  });
   const [data, setData] = useState<MapProgrammingResponse | null>(null);
+  const [selectedCardKey, setSelectedCardKey] = useState<ProjectSituationKey | null>(null);
+  const [selectedProject, setSelectedProject] = useState<MapProject | null>(null);
+  const [selectedCardPage, setSelectedCardPage] = useState(1);
+  const [priorityPage, setPriorityPage] = useState(1);
+  const [neverProgrammedPage, setNeverProgrammedPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -153,10 +218,12 @@ export function MapProgrammingPageView() {
     setFeedback(null);
 
     try {
-      const query = new URLSearchParams({
-        startDate: activeFilters.startDate,
-        endDate: activeFilters.endDate,
-      });
+      const query = new URLSearchParams();
+      if (activeFilters.startDate && activeFilters.endDate) {
+        query.set("startDate", activeFilters.startDate);
+        query.set("endDate", activeFilters.endDate);
+      }
+
       const response = await fetch(`/api/mapa-programacao?${query.toString()}`, {
         cache: "no-store",
         headers: {
@@ -170,6 +237,11 @@ export function MapProgrammingPageView() {
       }
 
       setData(responseData);
+      setSelectedCardKey(null);
+      setSelectedProject(null);
+      setSelectedCardPage(1);
+      setPriorityPage(1);
+      setNeverProgrammedPage(1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar Mapa de Programacao.";
       setFeedback({ type: "error", message });
@@ -187,26 +259,58 @@ export function MapProgrammingPageView() {
     void loadData();
   }, [loadData]);
 
+  const statusCards = useMemo(() => data?.statusCards ?? [], [data]);
+
   const serviceCenterOptions = useMemo(() => {
     const values = new Set<string>();
-    for (const project of data?.neverProgrammedProjects ?? []) {
-      if (project.serviceCenter) values.add(project.serviceCenter);
+    for (const card of statusCards) {
+      for (const project of card.projects) {
+        if (project.serviceCenter) values.add(project.serviceCenter);
+      }
     }
     for (const team of data?.teamsWithoutProgramming ?? []) {
       if (team.serviceCenter) values.add(team.serviceCenter);
     }
     return Array.from(values).sort((left, right) => left.localeCompare(right));
-  }, [data]);
+  }, [data, statusCards]);
 
-  const filteredProjects = useMemo(() => {
+  const selectedCard = statusCards.find((card) => card.key === selectedCardKey) ?? null;
+
+  const filterProjects = useCallback((projects: MapProject[]) => {
     const search = normalizeSearch(activeFilters.projectSearch);
-    return (data?.neverProgrammedProjects ?? []).filter((project) => {
+    return projects.filter((project) => {
       if (activeFilters.serviceCenter && project.serviceCenter !== activeFilters.serviceCenter) return false;
       if (!search) return true;
-      return normalizeSearch(`${project.sob} ${project.serviceCenter} ${project.priority} ${project.serviceType} ${project.city}`)
-        .includes(search);
+      return normalizeSearch([
+        project.sob,
+        project.projectName,
+        project.contract,
+        project.serviceCenter,
+        project.serviceType,
+        project.city,
+        project.latestTeamName,
+        project.latestForemanName,
+        project.latestWorkCompletionLabel,
+        project.latestProgrammingStatus,
+      ].join(" ")).includes(search);
     });
-  }, [activeFilters.projectSearch, activeFilters.serviceCenter, data]);
+  }, [activeFilters.projectSearch, activeFilters.serviceCenter]);
+
+  const filteredSelectedProjects = selectedCard ? filterProjects(selectedCard.projects) : [];
+  const filteredPriorityProjects = useMemo(
+    () => filterProjects(data?.priorityProjects ?? []),
+    [data, filterProjects],
+  );
+  const filteredNeverProgrammedProjects = useMemo(
+    () => filterProjects(data?.neverProgrammedProjects ?? []),
+    [data, filterProjects],
+  );
+
+  useEffect(() => {
+    setPriorityPage(1);
+    setNeverProgrammedPage(1);
+    setSelectedCardPage(1);
+  }, [activeFilters.projectSearch, activeFilters.serviceCenter]);
 
   const filteredTeams = useMemo(() => {
     const search = normalizeSearch(activeFilters.teamSearch);
@@ -219,18 +323,34 @@ export function MapProgrammingPageView() {
   }, [activeFilters.serviceCenter, activeFilters.teamSearch, data]);
 
   const summary = data?.summary;
-  const periodLabel = `${formatDate(activeFilters.startDate)} a ${formatDate(activeFilters.endDate)}`;
+  const periodLabel = activeFilters.startDate && activeFilters.endDate
+    ? `${formatDate(activeFilters.startDate)} a ${formatDate(activeFilters.endDate)}`
+    : "Sem periodo";
 
   function updateDraftField(field: keyof FilterState, value: string) {
     setDraftFilters((current) => ({ ...current, [field]: value }));
   }
 
   function applyFilters() {
-    if (draftFilters.endDate < draftFilters.startDate) {
+    if ((draftFilters.startDate && !draftFilters.endDate) || (!draftFilters.startDate && draftFilters.endDate)) {
+      setFeedback({ type: "error", message: "Informe data inicial e data final, ou deixe as duas em branco." });
+      return;
+    }
+    if (draftFilters.startDate && draftFilters.endDate && draftFilters.endDate < draftFilters.startDate) {
       setFeedback({ type: "error", message: "Data final deve ser maior ou igual a data inicial." });
       return;
     }
     setActiveFilters(draftFilters);
+  }
+
+  function clearPeriod() {
+    const nextFilters = {
+      ...draftFilters,
+      startDate: "",
+      endDate: "",
+    };
+    setDraftFilters(nextFilters);
+    setActiveFilters(nextFilters);
   }
 
   function setPeriod(days: number) {
@@ -243,23 +363,47 @@ export function MapProgrammingPageView() {
     setActiveFilters(nextFilters);
   }
 
-  function exportNeverProgrammedProjects() {
-    if (!filteredProjects.length) {
-      setFeedback({ type: "error", message: "Nenhuma obra nunca programada para exportar." });
+  function exportProjects(card: StatusCard, projects: MapProject[]) {
+    if (!projects.length) {
+      setFeedback({ type: "error", message: "Nenhuma obra para exportar." });
       return;
     }
 
     exportCsv(
-      `mapa_programacao_obras_nunca_programadas_${today}.csv`,
-      ["SOB", "Centro de servico", "Prioridade", "Tipo de obra", "Municipio", "Data limite", "Status do prazo"],
-      filteredProjects.map((project) => [
+      `mapa_programacao_${card.key.toLowerCase()}_${today}.csv`,
+      [
+        "SOB",
+        "Projeto",
+        "Centro",
+        "Contrato",
+        "Tipo",
+        "Municipio",
+        "Ultima data",
+        "Equipe",
+        "Encarregado",
+        "Estado Trabalho",
+        "Status Programacao",
+        "Programacoes",
+        "Etapas",
+        "Dias desde ultima",
+        "Motivo",
+      ],
+      projects.map((project) => [
         project.sob,
+        project.projectName,
         project.serviceCenter,
-        project.priority,
+        project.contract,
         project.serviceType,
         project.city,
-        formatDate(project.executionDeadline),
-        getDeadlineLabel(project),
+        formatDate(project.latestDate),
+        project.latestTeamName,
+        project.latestForemanName,
+        project.latestWorkCompletionLabel,
+        project.latestProgrammingStatus,
+        project.programmingCount,
+        project.stageCount,
+        project.daysSinceLatest,
+        project.reason,
       ]),
     );
   }
@@ -294,10 +438,13 @@ export function MapProgrammingPageView() {
 
       <article className={styles.toolbar}>
         <div>
-          <h2>Filtros do Mapa de Programacao</h2>
-          <p>Controle de carteira nunca programada e disponibilidade de equipes no periodo.</p>
+          <h2>Mapa de Programacao</h2>
+          <p>Carteira consolidada por obra e ultima programacao.</p>
         </div>
         <div className={styles.quickActions}>
+          <button type="button" className={styles.ghostButton} onClick={clearPeriod} disabled={isLoading}>
+            Sem periodo
+          </button>
           <button type="button" className={styles.ghostButton} onClick={() => setPeriod(1)} disabled={isLoading}>
             Hoje
           </button>
@@ -334,7 +481,7 @@ export function MapProgrammingPageView() {
           </label>
           <label className={styles.field}>
             <span>Obra</span>
-            <input value={draftFilters.projectSearch} onChange={(event) => updateDraftField("projectSearch", event.target.value)} placeholder="SOB, municipio, prioridade" />
+            <input value={draftFilters.projectSearch} onChange={(event) => updateDraftField("projectSearch", event.target.value)} placeholder="SOB, projeto, status" />
           </label>
           <label className={styles.field}>
             <span>Equipe</span>
@@ -351,112 +498,261 @@ export function MapProgrammingPageView() {
         </div>
       </article>
 
-      <div className={styles.summaryGrid}>
-        <article className={styles.summaryCard}>
-          <span>Obras ativas</span>
-          <strong>{summary?.activeProjectCount ?? 0}</strong>
+      <div className={styles.overviewGrid}>
+        <article className={styles.overviewCard}>
+          <span>Total que precisa de acao</span>
+          <strong>{summary?.actionRequiredProjectCount ?? 0}</strong>
         </article>
-        <article className={`${styles.summaryCard} ${styles.summaryAlert}`}>
-          <span>Nunca programadas</span>
-          <strong>{summary?.neverProgrammedProjectCount ?? 0}</strong>
+        <article className={styles.overviewCard}>
+          <span>Carteira valida</span>
+          <strong>{summary?.portfolioProjectCount ?? 0}</strong>
         </article>
-        <article className={`${styles.summaryCard} ${styles.summaryDanger}`}>
-          <span>Vencidas sem programacao</span>
-          <strong>{summary?.overdueNeverProgrammedProjectCount ?? 0}</strong>
+        <article className={styles.overviewCard}>
+          <span>Concluidas</span>
+          <strong>{summary?.concludedProjectCount ?? 0}</strong>
         </article>
-        <article className={`${styles.summaryCard} ${styles.summaryWarning}`}>
-          <span>Vencem em ate 15 dias</span>
-          <strong>{summary?.dueSoonNeverProgrammedProjectCount ?? 0}</strong>
+        <article className={styles.overviewCard}>
+          <span>Para reprogramar</span>
+          <strong>{summary?.toReprogramProjectCount ?? 0}</strong>
         </article>
-        <article className={styles.summaryCard}>
+        <article className={styles.overviewCard}>
           <span>Equipes sem programacao</span>
           <strong>{summary?.teamsWithoutProgrammingCount ?? 0}</strong>
         </article>
+      </div>
+
+      <div className={styles.summaryGrid}>
+        {statusCards.map((card) => {
+          const visibleCount = filterProjects(card.projects).length;
+          return (
+            <button
+              type="button"
+              key={card.key}
+              className={`${styles.summaryCard} ${getCardClassName(card.key)}`}
+              onClick={() => setSelectedCardKey(card.key)}
+            >
+              <span>{card.title}</span>
+              <strong>{visibleCount}</strong>
+              <small>{card.description}</small>
+            </button>
+          );
+        })}
       </div>
 
       <div className={styles.contentGrid}>
         <article className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h3>Obras nunca programadas</h3>
-              <span>Projetos ativos da carteira sem nenhum historico em Programacao.</span>
+              <h3>Obras prioritarias</h3>
+              <span>Indicadores de carteira nao mudam com o periodo; a data afeta apenas equipes.</span>
             </div>
-            <button type="button" className={styles.secondaryButton} onClick={exportNeverProgrammedProjects}>
-              Exportar CSV
-            </button>
           </div>
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>SOB</th>
-                  <th>Centro</th>
-                  <th>Prioridade</th>
-                  <th>Tipo</th>
-                  <th>Municipio</th>
-                  <th>Data limite</th>
-                  <th>Status</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProjects.length ? filteredProjects.map((project) => (
-                  <tr key={project.id}>
-                    <td>{project.sob}</td>
-                    <td>{project.serviceCenter}</td>
-                    <td>{project.priority}</td>
-                    <td>{project.serviceType}</td>
-                    <td>{project.city}</td>
-                    <td>{formatDate(project.executionDeadline)}</td>
-                    <td><span className={`${styles.statusPill} ${getDeadlineClassName(project.deadlineStatus)}`}>{getDeadlineLabel(project)}</span></td>
-                    <td><Link className={styles.tableLink} href="/programacao-simples">Programar</Link></td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={8} className={styles.emptyRow}>Nenhuma obra nunca programada para os filtros atuais.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ProjectTable
+            projects={filteredPriorityProjects}
+            page={priorityPage}
+            onPageChange={setPriorityPage}
+            emptyMessage="Nenhuma obra prioritaria para os filtros atuais."
+            onProjectClick={setSelectedProject}
+          />
         </article>
 
         <article className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
               <h3>Equipes sem programacao</h3>
-              <span>Equipes ativas sem programacao PROGRAMADA/REPROGRAMADA no periodo {periodLabel}.</span>
+              <span>{data?.filters?.teamPeriodEnabled ? periodLabel : "Informe periodo para analisar equipes."}</span>
             </div>
-            <button type="button" className={styles.secondaryButton} onClick={exportTeamsWithoutProgramming}>
+            <button type="button" className={styles.secondaryButton} onClick={exportTeamsWithoutProgramming} disabled={!data?.filters?.teamPeriodEnabled}>
               Exportar CSV
             </button>
           </div>
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Equipe</th>
-                  <th>Tipo</th>
-                  <th>Centro</th>
-                  <th>Encarregado</th>
-                  <th>Placa</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTeams.length ? filteredTeams.map((team) => (
-                  <tr key={team.id}>
-                    <td>{team.name}</td>
-                    <td>{team.teamType}</td>
-                    <td>{team.serviceCenter}</td>
-                    <td>{team.foremanName}</td>
-                    <td>{team.vehiclePlate || "-"}</td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={5} className={styles.emptyRow}>Nenhuma equipe sem programacao para os filtros atuais.</td></tr>
-                )}
-              </tbody>
-            </table>
+          <div className={styles.teamList}>
+            {data?.filters?.teamPeriodEnabled ? (
+              filteredTeams.length ? filteredTeams.map((team) => (
+                <article key={team.id} className={styles.teamItem}>
+                  <strong>{team.name}</strong>
+                  <span>{team.teamType} | {team.serviceCenter}</span>
+                  <span>{team.foremanName}</span>
+                  <small>{team.vehiclePlate || "-"}</small>
+                </article>
+              )) : (
+                <div className={styles.emptyState}>Nenhuma equipe sem programacao para os filtros atuais.</div>
+              )
+            ) : (
+              <div className={styles.emptyState}>Periodo nao informado.</div>
+            )}
           </div>
         </article>
       </div>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h3>Obras nunca programadas</h3>
+            <span>Carteira valida sem historico em Programacao.</span>
+          </div>
+        </div>
+        <ProjectTable
+          projects={filteredNeverProgrammedProjects}
+          page={neverProgrammedPage}
+          onPageChange={setNeverProgrammedPage}
+          emptyMessage="Nenhuma obra nunca programada para os filtros atuais."
+          onProjectClick={setSelectedProject}
+        />
+      </article>
+
+      {selectedCard ? (
+        <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedCardKey(null)}>
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="map-programming-modal-title" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3 id="map-programming-modal-title">{selectedCard.title}</h3>
+                <span>{filteredSelectedProjects.length} obras</span>
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => exportProjects(selectedCard, filteredSelectedProjects)}>
+                  Exportar CSV
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={() => setSelectedCardKey(null)}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+            <ProjectTable
+              projects={filteredSelectedProjects}
+              page={selectedCardPage}
+              onPageChange={setSelectedCardPage}
+              emptyMessage="Nenhuma obra encontrada para os filtros atuais."
+              onProjectClick={setSelectedProject}
+            />
+          </section>
+        </div>
+      ) : null}
+
+      {selectedProject ? (
+        <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedProject(null)}>
+          <section className={styles.detailModal} role="dialog" aria-modal="true" aria-labelledby="map-programming-project-title" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3 id="map-programming-project-title">ID: {selectedProject.id}</h3>
+              </div>
+              <button type="button" className={styles.ghostButton} onClick={() => setSelectedProject(null)}>
+                Fechar
+              </button>
+            </div>
+            <ProjectMiniCard project={selectedProject} expanded />
+          </section>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function ProjectTable({
+  projects,
+  page,
+  onPageChange,
+  emptyMessage,
+  onProjectClick,
+}: {
+  projects: MapProject[];
+  page: number;
+  onPageChange: (page: number) => void;
+  emptyMessage: string;
+  onProjectClick: (project: MapProject) => void;
+}) {
+  const pageCount = Math.max(1, Math.ceil(projects.length / TABLE_PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), pageCount);
+  const pageProjects = projects.slice((safePage - 1) * TABLE_PAGE_SIZE, safePage * TABLE_PAGE_SIZE);
+
+  if (!projects.length) {
+    return <div className={styles.emptyState}>{emptyMessage}</div>;
+  }
+
+  return (
+    <div className={styles.tableBlock}>
+      <div className={styles.tableWrapper}>
+        <table className={styles.compactTable}>
+          <thead>
+            <tr>
+              <th>SOB</th>
+              <th>Ultima data</th>
+              <th>Status</th>
+              <th>Estado Trabalho</th>
+              <th>Equipe</th>
+              <th>Encarregado</th>
+              <th>Prog.</th>
+              <th>Etapas</th>
+              <th>Dias</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pageProjects.map((project) => (
+              <tr key={project.id} onClick={() => onProjectClick(project)} tabIndex={0} onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onProjectClick(project);
+                }
+              }}>
+                <td><strong>{project.sob}</strong></td>
+                <td>{formatDate(project.latestDate)}</td>
+                <td>{project.latestProgrammingStatus}</td>
+                <td>{project.latestWorkCompletionLabel}</td>
+                <td>{project.latestTeamName}</td>
+                <td>{project.latestForemanName}</td>
+                <td>{project.programmingCount}</td>
+                <td>{project.stageCount}</td>
+                <td>{formatDaysSince(project.daysSinceLatest)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className={styles.paginationBar}>
+        <span>{projects.length} obras | pagina {safePage} de {pageCount}</span>
+        <div className={styles.quickActions}>
+          <button type="button" className={styles.ghostButton} onClick={() => onPageChange(safePage - 1)} disabled={safePage <= 1}>
+            Anterior
+          </button>
+          <button type="button" className={styles.ghostButton} onClick={() => onPageChange(safePage + 1)} disabled={safePage >= pageCount}>
+            Proxima
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectMiniCard({ project, expanded = false }: { project: MapProject; expanded?: boolean }) {
+  return (
+    <article className={styles.projectCard}>
+      <div className={styles.projectCardHeader}>
+        <div>
+          <strong>{project.sob}</strong>
+          <span>{project.projectName}</span>
+        </div>
+        <span className={`${styles.priorityPill} ${getPriorityClassName(project.priorityLevel)}`}>
+          {getPriorityLabel(project.priorityLevel)}
+        </span>
+      </div>
+      <div className={styles.projectMetaGrid}>
+        <span>Ultima data <strong>{formatDate(project.latestDate)}</strong></span>
+        <span>Equipe <strong>{project.latestTeamName}</strong></span>
+        <span>Encarregado <strong>{project.latestForemanName}</strong></span>
+        <span>Estado Trabalho <strong>{project.latestWorkCompletionLabel}</strong></span>
+        <span>Programacoes <strong>{project.programmingCount}</strong></span>
+        <span>Etapas <strong>{project.stageCount}</strong></span>
+        <span>Ultima etapa <strong>{project.latestStageLabel}</strong></span>
+        <span>Dias desde ultima <strong>{formatDaysSince(project.daysSinceLatest)}</strong></span>
+      </div>
+      {expanded && project.reason ? (
+        <p className={styles.reasonText}>{project.reason}</p>
+      ) : null}
+      <div className={styles.projectActions}>
+        <Link className={styles.tableLink} href="/programacao-simples">Programar</Link>
+        <Link className={styles.tableLink} href="/programacao-simples">Historico</Link>
+        <Link className={styles.tableLink} href="/projetos">Detalhes</Link>
+      </div>
+    </article>
   );
 }

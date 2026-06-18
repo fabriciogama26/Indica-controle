@@ -2,9 +2,11 @@ Tela: Mapa de Programacao SaaS
 
 Visao geral
 -----------
-- Tela operacional read-only para controle de carteira e disponibilidade de equipes.
-- A tela indica obras ativas que nunca foram programadas em nenhum momento do historico do projeto.
-- A tela indica equipes ativas sem programacao no periodo filtrado.
+- Tela operacional read-only para controle de carteira, acompanhamento de Estado Trabalho e disponibilidade de equipes.
+- A tela consolida uma linha por obra/projeto, usando a programacao mais recente como referencia operacional.
+- A tela classifica os cards pelo ultimo Estado Trabalho valido da obra.
+- A tela indica obras nunca programadas, obras sem Estado Trabalho, obras pendentes/parciais e obras com ultima programacao cancelada ou adiada.
+- A tela indica equipes ativas sem programacao quando o periodo e informado.
 - Rota: `/mapa-programacao`.
 - Page key: `mapa-programacao`.
 - Acao server-side: `read`.
@@ -30,41 +32,70 @@ Cadastro
 --------
 - Nao ha cadastro, edicao, cancelamento ou exclusao nesta tela.
 - A tela e somente consulta/exportacao.
+- Acoes exibidas nos cards direcionam para telas existentes (`Programacao` e `Projetos`).
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
-  - data inicial
-  - data final
+  - data inicial opcional
+  - data final opcional
   - centro de servico
-  - busca por obra
+  - busca por obra/projeto/status
   - busca por equipe
+- Regra do periodo:
+  - se data inicial e data final estiverem vazias, a tela analisa a carteira inteira.
+  - se uma data for preenchida, a outra tambem e obrigatoria.
+  - os cards de carteira nao mudam com o periodo.
+  - equipes sem programacao so sao calculadas quando o periodo e informado.
 - Atalhos de periodo:
+  - sem periodo
   - hoje
   - semana
   - 15 dias
   - 30 dias
 - Cards:
-  - obras ativas
-  - nunca programadas
-  - vencidas sem programacao
-  - vencem em ate 15 dias
-  - equipes sem programacao
-- Listas:
-  - Obras nunca programadas
+  - Carteira valida
+  - Concluidas
+  - Para reprogramar
+  - Pendentes
+  - Parcial planejada
+  - Parciais
+  - Beneficio atingido
+  - Canceladas/adiadas
+  - Sem Estado Trabalho vencido
+  - Nunca programadas
+- Modal:
+  - aberto ao clicar em um card.
+  - mostra obras daquela situacao em tabela paginada.
+  - ao clicar em uma linha, abre o detalhe da obra em formato de card.
+  - a tabela exibe SOB, ultima data, status, Estado Trabalho, equipe, encarregado, quantidade de programacoes, quantidade de etapas e dias desde a ultima programacao.
+  - o detalhe exibe SOB, projeto, ultima data, equipe, encarregado, Estado Trabalho, quantidade de programacoes, quantidade de etapas, ultima etapa, dias desde a ultima programacao e motivo/observacao quando existir.
+  - no detalhe aberto pela tabela, o titulo usa `ID: {uuid}` da obra.
+- Secoes:
+  - Obras prioritarias em tabela paginada
+  - Obras nunca programadas em tabela paginada
   - Equipes sem programacao
 - Exportacao:
-  - CSV de obras nunca programadas
-  - CSV de equipes sem programacao
+  - CSV das obras do card aberto.
+  - CSV de equipes sem programacao quando houver periodo.
 
 Boas praticas
 -------------
 - O frontend nao envia `tenant_id`, role ou usuario como fonte de verdade.
 - O endpoint resolve o tenant pela sessao autenticada.
 - A rota exige `mapa-programacao/read` antes de consultar dados de negocio.
-- Obras de teste, retiradas da carteira e inativas nao entram no bloco de obras nunca programadas.
-- A classificacao "Nunca programada" consulta `project_programming` sem filtro de data.
-- O filtro de datas afeta somente o bloco de equipes sem programacao.
+- Obras de teste, retiradas da carteira, inativas e emergenciais nao entram na carteira valida.
+- A mesma obra aparece uma unica vez nos cards, mesmo quando possui varias programacoes.
+- A referencia operacional da obra considera a ultima programacao por `execution_date`, com desempate por `updated_at`, `created_at` e `id`.
+- A classificacao dos cards de Estado Trabalho usa o ultimo Estado Trabalho valido encontrado no historico da obra.
+- A obra nao e considerada pendente por uma programacao antiga quando existe Estado Trabalho valido mais recente concluido.
+- A obra tambem nao e reaberta por uma programacao `CANCELADA` ou `ADIADA` posterior sem Estado Trabalho quando o ultimo Estado Trabalho valido anterior ja era concluido.
+- `Estado Trabalho` concluido segue a regra tecnica: `CONCLUIDO`, `COMPLETO` ou codigo iniciado por `CONCLUIDO`.
+- `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
+- Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
+- `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
+- A quantidade de programacoes conta linhas/registros de `project_programming`.
+- A quantidade de etapas conta etapas distintas por `etapa_number`, `etapa_unica` e `etapa_final`.
 - Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` no periodo.
 - Falhas da tela sao registradas com `useErrorLogger("mapa_programacao")`.
 
@@ -81,15 +112,27 @@ Atualizacao 2026-06
 - Menu lateral passou a exibir `Mapa de Programacao` na secao `Operacao`.
 - Catalogo de permissoes passou a incluir `mapa-programacao`.
 - Migration `244_create_programming_map_page.sql` cadastra a pagina e faz backfill de permissoes ausentes.
+- Mapa evoluido para consolidar a carteira por obra usando a ultima programacao e o Estado Trabalho.
+- Data inicial/data final deixaram de ser obrigatorias para a analise de obras.
+- `ADIADA` passou a ter o mesmo tratamento operacional de `CANCELADA` no mapa.
+- Cards passaram a abrir modal com as obras da situacao.
+- Obras prioritarias passaram a ser exibidas em tabela paginada, com detalhe em modal ao clicar na linha.
+- Obras nunca programadas voltaram a ter bloco separado em tabela paginada.
+- Modal aberto pelos cards tambem passou a exibir tabela paginada, com detalhe por linha.
+- Cards de carteira passaram a ignorar o filtro de periodo; o periodo afeta somente equipes sem programacao.
+- Programacao `CANCELADA`/`ADIADA` posterior sem Estado Trabalho deixou de reabrir obra cujo ultimo Estado Trabalho valido e concluido.
+- Modal de detalhe por linha passou a exibir `ID: {uuid}` da obra no topo.
 - Comportamento antes/depois:
-  - Antes: nao havia uma tela dedicada para ver obras nunca programadas ou equipes sem agenda.
-  - Depois: a tela separa carteira nunca programada de disponibilidade de equipes, com exportacao CSV.
-  - Antes: a avaliacao de "nao programada" poderia ser confundida com o filtro de datas.
-  - Depois: "Nunca programada" consulta o historico geral do projeto, fora do filtro de datas.
+  - Antes: a tela mostrava principalmente obras nunca programadas e equipes sem agenda.
+  - Depois: a tela mostra carteira valida, concluidas, nao concluidas, parciais, pendentes, canceladas/adiadas, sem Estado Trabalho e nunca programadas.
+  - Antes: a avaliacao de obras dependia de listas extensas.
+  - Depois: a visualizacao principal usa cards e modal.
+  - Antes: o periodo era obrigatorio na carga inicial.
+  - Depois: periodo e opcional para obras e obrigatorio somente para analisar equipes sem programacao.
 - Impacto multi-tenant:
   - Todas as leituras usam o `tenant_id` autenticado.
-  - A migration nao altera RLS nem grants de tabelas de negocio.
-  - O backfill de permissoes nao sobrescreve configuracoes existentes.
+  - A mudanca nao altera RLS, grants ou schema.
+  - A rota continua protegida por `mapa-programacao/read`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -97,9 +140,11 @@ Funcoes principais
 - Caminho: `src/app/(dashboard)/mapa-programacao/page.tsx`
   - Responsavel por: expor a rota `/mapa-programacao`.
 - Caminho: `src/app/api/mapa-programacao/route.ts`
-  - Responsavel por: autenticar, autorizar, consultar obras/equipes e montar o payload da tela.
+  - Responsavel por: autenticar, autorizar, consultar carteira/programacoes/equipes e montar o payload consolidado por obra.
 - Caminho: `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
-  - Responsavel por: renderizar filtros, cards, listas, exportacoes e mensagens da tela.
+  - Responsavel por: renderizar filtros, cards, modal de obras, obras prioritarias, equipes sem programacao, exportacoes e mensagens da tela.
+- Caminho: `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
+  - Responsavel por: estilos dos cards, modal, prioridades, filtros e listas.
 - Caminho: `src/components/layout/AppShell.tsx`
   - Responsavel por: exibir o item de menu e titulo/subtitulo da rota.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -110,33 +155,48 @@ Funcoes principais
 Constantes e configuracoes
 - `MAP_PROGRAMMING_PAGE_KEY`
   - Define a page key usada no guard server-side.
-- `DUE_SOON_DAYS`
-  - Define a janela de aviso para obras que vencem em ate 15 dias.
+- `ACTIVE_PROGRAMMING_STATUSES`
+  - Define status ativos de agenda (`PROGRAMADA`, `REPROGRAMADA`).
+- `INTERRUPTED_PROGRAMMING_STATUSES`
+  - Define status interrompidos no mapa (`CANCELADA`, `ADIADA`).
 
 Funcoes utilitarias relacionadas
 - `fetchProjects`
-  - Carrega projetos ativos da carteira e remove teste/retirado quando as flags existem.
-- `fetchProgrammedProjectIds`
-  - Carrega o historico geral de projetos programados, sem filtro de datas.
+  - Carrega projetos ativos da carteira e remove teste, retirado e emergencial.
+- `fetchProgrammingRows`
+  - Carrega o historico geral de programacao do tenant.
+- `fetchWorkCompletionCatalog`
+  - Resolve label de exibicao do catalogo de Estado Trabalho.
 - `fetchTeams`
-  - Carrega equipes ativas e resolve tipo, encarregado e centro de servico.
+  - Carrega equipes ativas e inativas para resolver historico, tipo, encarregado e centro de servico.
 - `fetchProgrammedTeamIds`
   - Carrega equipes programadas no periodo filtrado.
-- `getDeadlineLabel`
-  - Traduz prazo e vencimento para exibicao na lista.
+- `normalizeToken`
+  - Normaliza textos tecnicos para comparar status e Estado Trabalho.
+- `isCompletedWorkStatus`
+  - Resolve se o Estado Trabalho e conclusivo.
+- `resolvePriorityLevel`
+  - Classifica a prioridade visual por dias desde a ultima programacao e ausencia de Estado Trabalho.
+- `ProjectTable`
+  - Renderiza tabelas paginadas de obras prioritarias e nunca programadas.
+- `filterProjects`
+  - Aplica filtros locais de busca/centro sobre cards, tabelas e modal.
 - `exportCsv`
-  - Gera CSV local das listas filtradas.
+  - Gera CSV local das obras do card e das equipes.
 
 Servicos e integracoes externas
 - Supabase Postgres via client server-side autenticado.
 - Tabelas/views consultadas:
   - `project_with_labels`
   - `project_programming`
+  - `programming_work_completion_catalog`
   - `teams`
   - `team_types`
   - `people`
   - `service_centers`
 
 Ajuda contextual
-- Use a lista de obras nunca programadas para priorizar carteira que ainda nao entrou em nenhuma agenda.
-- Use a lista de equipes sem programacao para realocar capacidade dentro do periodo escolhido.
+- Use os cards de Estado Trabalho para acompanhar obras cujo ultimo Estado Trabalho valido ainda nao concluiu a execucao.
+- Use `Canceladas/adiadas` para localizar obras cuja ultima tentativa foi interrompida e nao teve continuidade posterior.
+- Use `Sem Estado Trabalho` para corrigir inconsistencias de apontamento.
+- Use `Nunca programadas` para localizar carteira que ainda nao entrou em nenhuma programacao.

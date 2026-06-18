@@ -230,34 +230,37 @@ Filtros, auto-complete e listagem
 - A acao `Copiar programacao`:
   - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
   - valida antes do modal se a origem nao e `ETAPA UNICA` nem `ETAPA FINAL`
-  - exige uma linha `Data destino + ETAPA` para cada copia
+  - exige uma linha `Data destino + ETAPA + Equipes` para cada copia
+  - inicia cada linha com as equipes ativas da programacao original (`Projeto + Data execucao + ETAPA`) ja selecionadas
+  - permite selecionar/remover equipes por linha de destino, incluindo equipes ativas que nao estavam na programacao original
+  - quando a equipe ja existe na programacao original, usa a propria linha dela como modelo; quando nao existe, usa a linha clicada como modelo
   - bloqueia data original, datas repetidas, ETAPAs repetidas e ETAPAs menores/iguais a ETAPA da origem
   - no backend, valida tenant, concorrencia por `updated_at`, etapa ja existente, conflito de horario e projeto concluido antes de salvar
   - herda o ultimo `Estado Trabalho` valido da obra ao criar as programacoes destino
-  - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
-  - `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
-  - Registros `ADIADA`/`CANCELADA` aparecem destacados na lista.
-  - Exportacao CSV da lista filtrada.
-  - Exportacao `ENEL-EXCEL` com layout de colunas na ordem operacional solicitada.
-  - Botoes de extracao na lista:
-    - `Exportar Excel (CSV)` (CSV da lista filtrada)
-    - `Extracao ENEL` (layout operacional ENEL)
-    - `Extracao ENEL NOVO` (layout operacional novo)
-  - Todos os botoes de exportacao da lista passam a ter trava de novo clique por `10` segundos para evitar exportacoes repetidas.
-  - Mapeamentos ENEL:
-    - Ordem de colunas segue exatamente o layout operacional solicitado para `ENEL excel` (incluindo `ENCARREGADO` apos `Estrutura` e `Mão de obra` no bloco final).
-    - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
-    - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
-    - `ENCARREGADO` = nomes dos encarregados do grupo consolidado, separados por ` / `.
-    - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
-    - `Tipo de SGD` = selecao do formulario da Programacao.
+- `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
+- `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
+- Registros `ADIADA`/`CANCELADA` aparecem destacados na lista.
+- Exportacao CSV da lista filtrada.
+- Exportacao `ENEL-EXCEL` com layout de colunas na ordem operacional solicitada.
+- Botoes de extracao na lista:
+  - `Exportar Excel (CSV)` (CSV da lista filtrada)
+  - `Extracao ENEL` (layout operacional ENEL)
+  - `Extracao ENEL NOVO` (layout operacional novo)
+- Todos os botoes de exportacao da lista passam a ter trava de novo clique por `10` segundos para evitar exportacoes repetidas.
+- Mapeamentos ENEL:
+  - Ordem de colunas segue exatamente o layout operacional solicitado para `ENEL excel` (incluindo `ENCARREGADO` apos `Estrutura` e `Mão de obra` no bloco final).
+  - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
+  - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
+  - `ENCARREGADO` = nomes dos encarregados do grupo consolidado, separados por ` / `.
+  - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
+  - `Tipo de SGD` = selecao do formulario da Programacao.
     - `AREA_LIVRE` em `Tipo de SGD` nao preenche `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT`.
     - `SGD AT/MT/VyP`, `SGD AT/MT`, `SGD AT`, `SGD MT` e `SGD VyP` preenchem a coluna `SGD AT/MT/VyP` com o valor de `Nº EQ - Numero`.
     - `SGD BT` preenche a coluna `SGD BT` com o valor de `Nº EQ - Numero`.
     - `SGD TeT` preenche a coluna `SGD TeT` com o valor de `Nº EQ - Numero`.
     - `Numero de Clientes Afetados` = campo do formulario da Programacao.
     - `Descricao do servico` = campo `Descricao do servico` da Programacao (substitui o valor anterior).
-    - `Estrutura` = composicao de equipes por tipo (ex.: `2 MK`, `1 MK + 1 CETO`, `1 LV`) por `Projeto + Data de execucao`.
+    - `Estrutura` = composicao de equipes por tipo (ex.: `2 MK`, `1 MK + 1 CESTO`, `1 LV`) por `Projeto + Data de execucao`.
     - `Nº EQ (RE, CO, CF, CC ou TR)` = `Nº EQ - Numero + Nº EQ - Tipo`.
     - `INFO STATUS` = `ETAPA ÚNICA` quando o checkbox estiver marcado; caso contrario, usa `ETAPA` no formato `xª ETAPA`.
     - `PerÃ­odo` exportado sempre em maiusculas (`INTEGRAL`/`PARCIAL`).
@@ -316,12 +319,12 @@ Boas praticas
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
   - O backend impede salvar a mesma obra para a mesma equipe na mesma data quando ainda existir programacao ativa para esse conjunto.
   - Quando houver `TEAM_TIME_CONFLICT`, a API enriquece a mensagem de erro com `Equipe` e `Encarregado` para facilitar identificacao no modal de alerta.
-  - O adiamento exige nova data posterior a data atual da programacao no frontend, na API e na RPC do banco.
+  - O adiamento permite nova data opcional: com data, cria registro `REPROGRAMADA`; sem data, apenas marca a programacao como `ADIADA`.
   - O frontend abre modal de alerta para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`, antes de depender apenas do feedback no topo.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
   - API exige RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
   - Reprogramacao na edicao ocorre quando muda `Projeto`, `Equipe`, `Data execucao`, `Hora inicio`, `Hora termino` ou `Periodo`.
-  - `PATCH` exige `expectedUpdatedAt` e `ADIAR` exige `newDate`, reduzindo sobrescrita silenciosa.
+  - `PATCH` exige `expectedUpdatedAt`; `ADIAR` exige `newDate` somente quando o usuario quiser criar reprogramacao automatica.
   - Quando houver conflito de concorrencia, a API devolve `409` com `currentRecord`, `currentUpdatedAt`, `updatedBy` e `changedFields`.
   - Se o commit concluir e a grade falhar ao atualizar, a tela mostra sucesso com aviso em vez de erro falso.
   - O `PATCH` de `Adiamento/Cancelamento` segue o mesmo padrao: a alteracao principal salva primeiro e a recarga da visualizacao nao derruba a resposta de sucesso.
@@ -334,11 +337,12 @@ Cancelamento e saldo
 --------------------
 - Esta tela nao altera saldo de estoque.
 - Cancelamento agora esta disponivel na propria lista da tela simples, com modal de motivo obrigatorio (minimo de 10 caracteres), no mesmo padrao de Projetos.
-- Adiamento com nova data:
-  - Modal proprio com `Nova data da programacao` + `Motivo do adiamento` (minimo 10 caracteres).
-  - Ao validar: a programacao atual vira `ADIADA` e um novo registro `REPROGRAMADA` e criado na nova data.
-  - O novo registro criado pelo adiamento passa a ser persistido e exibido como `REPROGRAMADA` na listagem e no calendario semanal.
-  - Fluxo executado por RPC transacional `postpone_project_programming`.
+- Adiamento:
+  - Modal proprio com `Motivo do adiamento` obrigatorio e `Nova data da programacao` opcional.
+  - Sem nova data: a programacao atual vira `ADIADA` sem criar registro futuro.
+  - Com nova data: a programacao atual vira `ADIADA` e um novo registro `REPROGRAMADA` e criado na nova data.
+  - Quando a nova data e informada, ela deve ser posterior a data atual da programacao.
+  - Sem nova data, o fluxo usa `set_project_programming_status`; com nova data, usa `postpone_project_programming`.
 - O cancelamento reutiliza `PATCH /api/programacao` e a RPC `set_project_programming_status`.
 - O cadastro em lote gera registros `PROGRAMADA`, seguindo as mesmas regras de status da Programacao.
 - O historico exibido no modal usa somente `project_programming_history`.
@@ -431,7 +435,7 @@ Atualizacao 2026-03
 - Tornado opcional o campo `Estado Trabalho` na edicao da Programacao Simples.
 - Criada a migration `109_make_programming_stage_optional_on_edit.sql` para permitir ETAPA nula na RPC `set_project_programming_execution_result`.
 - Ajustado padrao inicial dos filtros para cobrir o ano vigente completo (`01/01` a `31/12`).
-- Ajustado export `ENEL-EXCEL`: `Estrutura` passa a refletir a composicao de equipes por tipo (`MK`, `CETO`, `LV`) por projeto/data.
+- Ajustado export `ENEL-EXCEL`: `Estrutura` passa a refletir a composicao de equipes por tipo (`MK`, `CESTO`, `LV`) por projeto/data.
 - Ajustado export `ENEL-EXCEL`: `Nº EQ (RE, CO, CF, CC ou TR)` passa a ser preenchido por `Nº EQ - Numero + Nº EQ - Tipo` (ex.: `12345678#FUSIVEL`).
 - Ajustado export `ENEL-EXCEL`: coluna `ENCARREGADO` (apos `Estrutura`) passa a usar o nome do encarregado da equipe programada.
 - Ajustado export `ENEL-EXCEL`: mantida a coluna `Mão de obra` no bloco final do layout.
@@ -1747,6 +1751,60 @@ Atualizacao 2026-06-17 - Copiar programacao herda Estado Trabalho
   - A API continua injetando `tenant_id` e `actor_user_id` a partir da sessao autenticada.
   - A RPC preserva validacoes por tenant, concorrencia por `updated_at`, regras de ETAPA, conflito de agenda e bloqueio para projeto concluido.
   - EXECUTE permanece revogado para `PUBLIC`, `anon` e `authenticated`; somente `service_role` executa a RPC server-side.
+
+Atualizacao 2026-06-18 - Adiamento opcional e copia por equipes
+----------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `confirmPostpone`: permite validar adiamento sem nova data.
+  - `postponeProgramming`: envia `newDate` somente quando preenchida.
+  - `PATCH /api/programacao`: sem `newDate`, marca a linha como `ADIADA`; com `newDate`, cria `REPROGRAMADA`.
+  - `ProgrammingPostponeModal`: remove obrigatoriedade visual da nova data.
+  - `ProgrammingCopyToDatesModal`: adiciona selecao de equipes por linha de destino.
+  - `copyProgrammingToDates`: envia `teamIds` em cada item de `targets`.
+  - `copyProgrammingToDates`: no backend, copia por `Data destino + ETAPA + Equipes`.
+- Comportamento antes/depois:
+  - Antes: `Adiar` sempre exigia nova data.
+  - Depois: nova data e opcional; em branco apenas marca `ADIADA`.
+  - Antes: `Copiar programacao` copiava somente a linha/equipe selecionada.
+  - Depois: por padrao marca as equipes da mesma programacao, mas permite escolher exatamente quais equipes serao programadas em cada nova data.
+- Multi-tenant:
+  - API continua resolvendo tenant e usuario pela sessao.
+  - Validacoes de copia usam `tenant_id`, `project_id`, `team_id`, `execution_date` e `etapa_number`.
+  - A copia por equipe usa a RPC transacional de salvamento da Programacao, executada server-side com `service_role`.
+
+Atualizacao 2026-06-18 - Copiar programacao com selecao de equipes por data
+----------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/programacao/route.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `CopyToDatesDraftRow`: passa a armazenar `teamIds`.
+  - `resolveCopyToDatesDefaultTeamIds`: resolve equipes padrao da programacao original.
+  - `ProgrammingCopyToDatesModal`: renderiza checklist de equipes por linha.
+  - `confirmCopyToDates`: valida equipe obrigatoria por destino e envia `teamIds`.
+  - `copyProgrammingToDates`: valida equipes ativas por tenant e cria copia por par `data + equipe`.
+- Comportamento antes/depois:
+  - Antes: a copia trabalhava por escopo fechado (`somente esta equipe` ou `todas as equipes da programacao`).
+  - Depois: cada nova data permite escolher exatamente as equipes que serao programadas.
+  - Depois: se a equipe selecionada ja possui linha na programacao original, seus proprios dados sao usados como modelo; caso contrario, a linha clicada e usada como modelo.
+- Multi-tenant:
+  - API valida todas as equipes selecionadas com `tenant_id` e `ativo = true`.
+  - Validacoes de etapa e agenda continuam filtradas por `tenant_id`, `project_id`, `team_id` e `execution_date`.
+  - Nao houve alteracao de schema, grants ou policies RLS.
 
 Atualizacao 2026-06-17 - Extracao ENEL consolidada por SOB e data
 ------------------------------------------------------------------

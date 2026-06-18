@@ -973,6 +973,89 @@
   background: #f8fbff;
 }
 
+.copyTeamPicker {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.copyTeamPickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #1f2f54;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.copyTeamPickerHeader div {
+  display: flex;
+  gap: 6px;
+}
+
+.inlineButton {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b4be8;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.inlineButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.copyTeamList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  max-height: 190px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.copyTeamOption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #1f2f54;
+  cursor: pointer;
+}
+
+.copyTeamOption input {
+  margin-top: 3px;
+}
+
+.copyTeamOption span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.copyTeamOption strong,
+.copyTeamOption small {
+  overflow-wrap: anywhere;
+}
+
+.copyTeamOption small {
+  color: #5b6a85;
+  font-size: 0.74rem;
+}
+
 .deadlineModalActions {
   display: flex;
   justify-content: flex-end;

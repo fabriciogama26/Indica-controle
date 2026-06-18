@@ -268,9 +268,11 @@ type CopyProgrammingToDatesPayload = {
   action?: "COPY_TO_DATES";
   sourceProgrammingId?: string;
   expectedUpdatedAt?: string;
+  copyScope?: "single" | "group";
   targets?: Array<{
     date?: string;
     etapaNumber?: number | string;
+    teamIds?: string[];
   }>;
 };
 
@@ -364,6 +366,8 @@ type CopyProgrammingToDatesResponse = {
   success?: boolean;
   copiedCount?: number;
   copyBatchId?: string | null;
+  copyBatchIds?: string[];
+  sourceCount?: number;
   message?: string;
   reason?: string | null;
   detail?: string | null;
@@ -2116,7 +2120,7 @@ async function saveProgrammingFullViaRpc(params: {
   etapaFinal: boolean;
   workCompletionStatus: string | null;
   affectedCustomers: number;
-  sgdTypeId: string;
+  sgdTypeId: string | null;
   electricalEqCatalogId: string | null;
   documents: NonNullable<SaveProgrammingPayload["documents"]>;
   activities: Array<{ catalogId: string; quantity: number }>;
@@ -2817,11 +2821,8 @@ async function copyProgrammingToDates(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as CopyProgrammingToDatesPayload | null;
   const sourceProgrammingId = normalizeText(payload?.sourceProgrammingId);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+  const copyScope = payload?.copyScope === "group" ? "group" : "single";
   const targetsInput = Array.isArray(payload?.targets) ? payload.targets : [];
-  const targets = targetsInput.map((item) => ({
-    date: normalizeIsoDate(item?.date),
-    etapaNumber: normalizePositiveInteger(item?.etapaNumber),
-  }));
 
   if (!sourceProgrammingId) {
     return NextResponse.json({ message: "Informe a programacao de origem para copiar." }, { status: 400 });
@@ -2831,15 +2832,88 @@ async function copyProgrammingToDates(request: NextRequest) {
     return NextResponse.json({ message: "Atualize a grade antes de copiar a programacao." }, { status: 409 });
   }
 
-  if (!targets.length || targets.some((item) => !item.date || item.etapaNumber === null)) {
+  if (!targetsInput.length) {
     return NextResponse.json(
       { message: "Informe Data destino e ETAPA valida para cada copia." },
       { status: 400 },
     );
   }
 
+  const source = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, sourceProgrammingId);
+  if (!source) {
+    return NextResponse.json({ message: "Programacao de origem nao encontrada." }, { status: 404 });
+  }
+
+  if (source.updated_at !== expectedUpdatedAt) {
+    return NextResponse.json(
+      { message: "Esta programacao foi alterada por outro usuario. Recarregue a grade antes de copiar." },
+      { status: 409 },
+    );
+  }
+
+  if (!["PROGRAMADA", "REPROGRAMADA"].includes(source.status)) {
+    return NextResponse.json(
+      { message: "Somente programacoes ativas podem ser copiadas para outras datas." },
+      { status: 409 },
+    );
+  }
+
+  if (!source.etapa_number || source.etapa_number < 1 || source.etapa_unica || source.etapa_final) {
+    return NextResponse.json(
+      { message: "A programacao de origem precisa ter ETAPA numerica e nao pode ser ETAPA UNICA/FINAL para copiar." },
+      { status: 409 },
+    );
+  }
+
+  const { data: groupIds, error: groupError } = await resolution.supabase
+    .from("project_programming")
+    .select("id")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("project_id", source.project_id)
+    .eq("execution_date", source.execution_date)
+    .eq("etapa_number", source.etapa_number)
+    .eq("etapa_unica", false)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .returns<Array<{ id: string }>>();
+
+  if (groupError) {
+    return NextResponse.json({ message: "Falha ao carregar equipes da programacao de origem." }, { status: 500 });
+  }
+
+  const groupRows = (
+    await Promise.all(
+      (groupIds ?? []).map((item) => fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, item.id)),
+    )
+  ).filter((item): item is ProgrammingRow => Boolean(item));
+  if (!groupRows.some((item) => item.id === source.id)) {
+    groupRows.push(source);
+  }
+
+  const sourceRowsByTeam = new Map(groupRows.map((item) => [item.team_id, item]));
+  const defaultTeamIds = copyScope === "group"
+    ? Array.from(new Set(groupRows.map((item) => item.team_id).filter(Boolean)))
+    : [source.team_id].filter(Boolean);
+
+  const targets = targetsInput.map((item) => {
+    const targetTeamIds = Array.from(new Set(normalizeStringArray(item?.teamIds)));
+    return {
+      date: normalizeIsoDate(item?.date),
+      etapaNumber: normalizePositiveInteger(item?.etapaNumber),
+      teamIds: targetTeamIds.length ? targetTeamIds : defaultTeamIds,
+    };
+  });
+
+  if (!targets.length || targets.some((item) => !item.date || item.etapaNumber === null || !item.teamIds.length)) {
+    return NextResponse.json(
+      { message: "Informe Data destino, ETAPA valida e ao menos uma equipe para cada copia." },
+      { status: 400 },
+    );
+  }
+
   const targetDates = targets.map((item) => item.date).filter((item): item is string => Boolean(item));
   const targetEtapas = targets.map((item) => item.etapaNumber).filter((item): item is number => item !== null);
+  const allTargetTeamIds = Array.from(new Set(targets.flatMap((item) => item.teamIds)));
+
   if (new Set(targetDates).size !== targetDates.length) {
     return NextResponse.json({ message: "Cada data destino deve aparecer apenas uma vez." }, { status: 400 });
   }
@@ -2848,64 +2922,245 @@ async function copyProgrammingToDates(request: NextRequest) {
     return NextResponse.json({ message: "Cada data destino deve receber uma ETAPA diferente." }, { status: 400 });
   }
 
-  const { data, error } = await resolution.supabase.rpc("copy_project_programming_to_dates", {
-    p_tenant_id: resolution.appUser.tenant_id,
-    p_actor_user_id: resolution.appUser.id,
-    p_source_programming_id: sourceProgrammingId,
-    p_expected_updated_at: expectedUpdatedAt,
-    p_targets: targets.map((item) => ({
-      date: item.date,
-      etapaNumber: item.etapaNumber,
-    })),
-  });
-
-  if (error) {
-    const status = isMissingRpcFunctionError(error.message, "copy_project_programming_to_dates") ? 409 : 500;
+  if (targetDates.includes(source.execution_date)) {
     return NextResponse.json(
-      {
-        message: status === 409
-          ? "Seu ambiente ainda nao suporta copia da Programacao para varias datas. Aplique a migration 217 e tente novamente."
-          : "Falha ao copiar programacao para as datas selecionadas.",
-      },
-      { status },
+      { message: "A data original da programacao nao pode ser selecionada como destino da copia." },
+      { status: 400 },
     );
   }
 
-  const result = (data ?? {}) as {
-    success?: boolean;
-    status?: number;
-    reason?: string | null;
-    detail?: string | null;
-    message?: string;
-    copied_count?: number;
-    copy_batch_id?: string | null;
-    enteredEtapaNumber?: number;
-    hasConflict?: boolean;
-    highestStage?: number;
-    teams?: ProgrammingStageValidationTeamSummary[];
-  };
+  const { data: targetTeams, error: targetTeamsError } = await resolution.supabase
+    .from("teams")
+    .select("id, name")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("ativo", true)
+    .in("id", allTargetTeamIds)
+    .returns<Array<{ id: string; name: string | null }>>();
 
-  if (result.success !== true) {
+  if (targetTeamsError) {
+    return NextResponse.json({ message: "Falha ao validar equipes selecionadas para a copia." }, { status: 500 });
+  }
+
+  const targetTeamMap = new Map((targetTeams ?? []).map((item) => [item.id, normalizeText(item.name) || item.id]));
+  const missingTeamIds = allTargetTeamIds.filter((teamId) => !targetTeamMap.has(teamId));
+  if (missingTeamIds.length) {
+    return NextResponse.json(
+      { message: "Uma ou mais equipes selecionadas estao inativas ou nao pertencem ao tenant atual." },
+      { status: 400 },
+    );
+  }
+
+  const minTargetEtapaByTeam = new Map<string, number>();
+  for (const target of targets) {
+    for (const teamId of target.teamIds) {
+      const current = minTargetEtapaByTeam.get(teamId);
+      const etapaNumber = target.etapaNumber ?? 0;
+      minTargetEtapaByTeam.set(teamId, current ? Math.min(current, etapaNumber) : etapaNumber);
+    }
+  }
+
+  const { data: stageRows, error: stageError } = await resolution.supabase
+    .from("project_programming")
+    .select("team_id, etapa_number, execution_date")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("project_id", source.project_id)
+    .in("team_id", allTargetTeamIds)
+    .not("etapa_number", "is", null)
+    .returns<Array<{ team_id: string; etapa_number: number | null; execution_date: string | null }>>();
+
+  if (stageError) {
+    return NextResponse.json({ message: "Falha ao validar etapas existentes para a copia." }, { status: 500 });
+  }
+
+  const stageSummary = new Map<string, { highestStage: number; stages: Set<number>; dates: Set<string> }>();
+  for (const row of stageRows ?? []) {
+    const teamId = normalizeText(row.team_id);
+    const stage = Number(row.etapa_number ?? 0);
+    const minTargetEtapa = minTargetEtapaByTeam.get(teamId) ?? 0;
+    if (!teamId || !Number.isInteger(stage) || stage < minTargetEtapa) continue;
+    const current = stageSummary.get(teamId) ?? { highestStage: 0, stages: new Set<number>(), dates: new Set<string>() };
+    current.highestStage = Math.max(current.highestStage, stage);
+    current.stages.add(stage);
+    const date = normalizeText(row.execution_date);
+    if (date) current.dates.add(date);
+    stageSummary.set(teamId, current);
+  }
+
+  const conflictingStages = Array.from(stageSummary.entries())
+    .map(([teamId, summary]) => ({
+      teamId,
+      teamName: targetTeamMap.get(teamId) ?? teamId,
+      highestStage: summary.highestStage,
+      existingStages: Array.from(summary.stages).sort((left, right) => left - right),
+      existingDates: Array.from(summary.dates).sort(),
+    }));
+
+  if (conflictingStages.length) {
     return NextResponse.json(
       {
         success: false,
-        reason: result.reason ?? null,
-        detail: result.detail ?? null,
-        message: result.message ?? "Falha ao copiar programacao para as datas selecionadas.",
-        enteredEtapaNumber: result.enteredEtapaNumber,
-        hasConflict: result.hasConflict,
-        highestStage: result.highestStage,
-        teams: result.teams,
+        reason: "ETAPA_CONFLICT",
+        enteredEtapaNumber: Math.min(...targetEtapas),
+        hasConflict: true,
+        highestStage: Math.max(...conflictingStages.map((item) => item.highestStage)),
+        teams: conflictingStages,
+        message: "A ETAPA informada ja existe ou esta abaixo do historico encontrado para uma ou mais equipes.",
       } satisfies CopyProgrammingToDatesResponse,
-      { status: Number(result.status ?? 400) },
+      { status: 409 },
     );
+  }
+
+  const { data: dateRows, error: dateError } = await resolution.supabase
+    .from("project_programming")
+    .select("id, project_id, team_id, execution_date, start_time, end_time")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .in("team_id", allTargetTeamIds)
+    .in("execution_date", targetDates)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .returns<Array<{ id: string; project_id: string; team_id: string; execution_date: string; start_time: string | null; end_time: string | null }>>();
+
+  if (dateError) {
+    return NextResponse.json({ message: "Falha ao validar conflitos de agenda para a copia." }, { status: 500 });
+  }
+
+  for (const target of targets) {
+    for (const teamId of target.teamIds) {
+      const model = sourceRowsByTeam.get(teamId) ?? source;
+      const targetDate = target.date ?? "";
+      if (!targetDate) continue;
+        const conflict = (dateRows ?? []).find((row) => {
+          if (row.team_id !== teamId || row.execution_date !== targetDate) return false;
+          if (row.project_id === source.project_id) return true;
+          const sourceStart = normalizeText(model.start_time);
+          const sourceEnd = normalizeText(model.end_time);
+          const rowStart = normalizeText(row.start_time);
+          const rowEnd = normalizeText(row.end_time);
+          return Boolean(sourceStart && sourceEnd && rowStart && rowEnd && sourceStart < rowEnd && rowStart < sourceEnd);
+        });
+        if (conflict) {
+          return NextResponse.json(
+            {
+              success: false,
+              reason: "TARGET_DATE_CONFLICT",
+              message: `A equipe ${targetTeamMap.get(teamId) ?? teamId} ja possui programacao conflitante em ${targetDate}.`,
+            } satisfies CopyProgrammingToDatesResponse,
+            { status: 409 },
+          );
+        }
+    }
+  }
+
+  let copiedCount = 0;
+  const activityCache = new Map<string, Array<{ catalogId: string; quantity: number }>>();
+
+  const buildDocuments = (row: ProgrammingRow): NonNullable<SaveProgrammingPayload["documents"]> => ({
+    sgd: {
+      number: normalizeSgdNumber(row.sgd_number) ?? "",
+      approvedAt: row.sgd_included_at ?? "",
+      requestedAt: row.sgd_delivered_at ?? "",
+      includedAt: row.sgd_included_at ?? "",
+      deliveredAt: row.sgd_delivered_at ?? "",
+    },
+    pi: {
+      number: normalizeText(row.pi_number),
+      approvedAt: row.pi_included_at ?? "",
+      requestedAt: row.pi_delivered_at ?? "",
+      includedAt: row.pi_included_at ?? "",
+      deliveredAt: row.pi_delivered_at ?? "",
+    },
+    pep: {
+      number: normalizeText(row.pep_number),
+      approvedAt: row.pep_included_at ?? "",
+      requestedAt: row.pep_delivered_at ?? "",
+      includedAt: row.pep_included_at ?? "",
+      deliveredAt: row.pep_delivered_at ?? "",
+    },
+  });
+
+  for (const target of targets) {
+    for (const teamId of target.teamIds) {
+      const model = sourceRowsByTeam.get(teamId) ?? source;
+      let activities = activityCache.get(model.id);
+      if (!activities) {
+        activities = await fetchProgrammingActivitiesForSave({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          programmingId: model.id,
+        }) ?? [];
+        activityCache.set(model.id, activities);
+      }
+
+      const saveResult = await saveProgrammingFullViaRpc({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        projectId: source.project_id,
+        teamId,
+        executionDate: target.date ?? "",
+        period: model.period,
+        startTime: model.start_time,
+        endTime: model.end_time,
+        expectedMinutes: Number(model.expected_minutes ?? 0),
+        outageStartTime: model.outage_start_time,
+        outageEndTime: model.outage_end_time,
+        feeder: model.feeder,
+        support: model.support,
+        supportItemId: model.support_item_id,
+        note: model.note,
+        electricalField: model.campo_eletrico,
+        serviceDescription: model.service_description,
+        posteQty: Number(model.poste_qty ?? 0),
+        estruturaQty: Number(model.estrutura_qty ?? 0),
+        trafoQty: Number(model.trafo_qty ?? 0),
+        redeQty: Number(model.rede_qty ?? 0),
+        etapaNumber: target.etapaNumber,
+        etapaUnica: false,
+        etapaFinal: false,
+        workCompletionStatus: null,
+        affectedCustomers: Number(model.affected_customers ?? 0),
+        sgdTypeId: model.sgd_type_id,
+        electricalEqCatalogId: model.electrical_eq_catalog_id,
+        documents: buildDocuments(model),
+        activities,
+        historyActionOverride: "COPY",
+        historyReason: "Copia de programacao para outras datas.",
+        historyMetadata: {
+          source: "programacao-api",
+          action: "COPY_TO_DATES",
+          copyMode: "single_to_dates_selected_teams",
+          selectedFromProgrammingId: source.id,
+          sourceProgrammingId: model.id,
+          sourceTeamId: model.team_id,
+          targetTeamId: teamId,
+          sourceExecutionDate: model.execution_date,
+          targetExecutionDate: target.date,
+          targetEtapaNumber: target.etapaNumber,
+        },
+      });
+
+      if (!saveResult.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "reason" in saveResult ? saveResult.reason ?? null : null,
+            detail: "detail" in saveResult ? saveResult.detail ?? null : null,
+            message: saveResult.message ?? "Falha ao copiar programacao para as datas selecionadas.",
+          } satisfies CopyProgrammingToDatesResponse,
+          { status: saveResult.status },
+        );
+      }
+
+      copiedCount += 1;
+    }
   }
 
   return NextResponse.json({
     success: true,
-    copiedCount: Number(result.copied_count ?? 0),
-    copyBatchId: result.copy_batch_id ?? null,
-    message: result.message ?? "Programacao copiada com sucesso.",
+    copiedCount,
+    copyBatchId: null,
+    copyBatchIds: [],
+    sourceCount: allTargetTeamIds.length,
+    message: `Programacao copiada para ${allTargetTeamIds.length} equipe(s), totalizando ${copiedCount} registro(s).`,
   } satisfies CopyProgrammingToDatesResponse);
 }
 
@@ -4362,13 +4617,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ message: "Selecione um motivo para continuar." }, { status: 400 });
   }
 
-  if (action === "ADIADA" && !newDate) {
-    return NextResponse.json(
-      { message: "Informe a nova data da programacao para concluir o adiamento." },
-      { status: 400 },
-    );
-  }
-
   const currentProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId);
   if (!currentProgramming) {
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
@@ -4393,10 +4641,42 @@ export async function PATCH(request: NextRequest) {
 
   if (action === "ADIADA") {
     if (!newDate) {
-      return NextResponse.json(
-        { message: "Informe a nova data da programacao para concluir o adiamento." },
-        { status: 400 },
-      );
+      const statusResult = await cancelProgrammingViaRpc({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId,
+        action,
+        reason,
+        expectedUpdatedAt,
+      });
+
+      if (!statusResult.ok) {
+        return NextResponse.json(
+          { message: statusResult.message, reason: "reason" in statusResult ? statusResult.reason ?? null : null },
+          { status: statusResult.status },
+        );
+      }
+
+      let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
+      let warning: string | null = null;
+
+      try {
+        updatedSchedule = await fetchProgrammingResponseItem(
+          resolution.supabase,
+          resolution.appUser.tenant_id,
+          statusResult.programmingId,
+        );
+      } catch {
+        warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
+      }
+
+      return NextResponse.json({
+        success: true,
+        schedule: updatedSchedule,
+        warning,
+        message: warning ? `${statusResult.message} ${warning}` : statusResult.message,
+      });
     }
 
     if (newDate <= currentProgramming.execution_date) {
