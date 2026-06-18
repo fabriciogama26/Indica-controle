@@ -980,4 +980,8 @@
 - [x] Adicionar icone de olho nos cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento`, abrindo modal com `Projeto`, `Centro de servico` e `Data execucao` da `Medicao` por categoria.
 - [x] Evoluir o modal do olho dos cards de `Indicadores operacionais medidos` para abas `Medicao` e `As Built`, exibindo `Medicao` por `Data execucao` e `As Built` por `Faixa + Servicos considerados ate`.
 - [x] Ajustar os cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento` para exibir quantidades sem casas decimais.
+- [x] Evoluir os cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento` para exibir quantidade e valor total por origem (`Medicao`, `M. ASBUILT`, `ASBUILT` e `Faturado`) no card e no modal de detalhe, incluindo total financeiro por projeto/faixa.
+- [x] Adicionar cards operacionais de `Poda` e `Arrasto` no `Dash operacional e faturamento`, usando as categorias cadastradas `PODA` e `ARRASTO`.
+- [x] Adicionar filtro `Servicos considerados ate` da `Medicao Asbuilt` no `Dash operacional e faturamento`, aplicando o corte aos indicadores que usam As Built e aos detalhamentos por faixa/projeto.
+- [x] Tornar clicaveis as linhas da tabela do `Grafico operacional` no `Dash operacional e faturamento`, abrindo listagem dos projetos que compoem cada indicador (`Total medido`, `Medido com AS Built`, `As Built`, `Faturado`) com valor por projeto e quantidade de ordens.
 - [x] Garantir que toda tela nova cadastrada em `app_pages` nasca inativa para usuarios nao administrativos, com `default_user_access = false`, backfill de permissoes ausentes para usuarios legados, triggers de matriz inicial, guards respeitando o fallback e `Mapa de Programacao` fora do acesso padrao legado.
