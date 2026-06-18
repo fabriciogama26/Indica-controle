@@ -9,7 +9,7 @@ Visao geral
 - Exibe uma segunda tabela de categorias cobradas no Faturamento, somando quantidade e valor por categoria da atividade.
 - Exibe grafico operacional com `Total medido`, `Medido (AS BUILT)`, `As Built` e `Faturado`.
 - Exibe tabela abaixo do grafico com valor, quantidade de projetos e quantidade de medicoes para cada indicador.
-- Exibe cards globais para postes, rede, equipamentos, transformadores, cruzetas e estruturas, separados entre instalados e retirados, comparando quantidades de `Medidos`, `ASBUILT` e `Faturado`.
+- Exibe cards globais para postes, rede, equipamentos, transformadores, cruzetas, estruturas, poda e arrasto, separados quando aplicavel entre instalados e retirados, comparando quantidade e valor de `Medicao`, `M. ASBUILT`, `ASBUILT` e `Faturado`.
 - Exibe tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e por ordens/servicos, usando somente projetos que existem nas duas bases.
 - Exibe, abaixo de `Resumo por categoria`, uma tabela de projetos com valores consolidados de `Medicao`, `Asbuilt` e `Faturamento`.
 - A tela nao possui filtro de data nem filtro de equipe.
@@ -85,6 +85,7 @@ Filtros, auto-complete e listagem
 - A tela carrega apenas os filtros ao abrir; a consulta da tabela nao e automatica ao alterar campos.
 - O usuario precisa clicar em `Filtrar` para atualizar a tabela e os resumos.
 - O grafico operacional possui filtro proprio de Centro de servico e Projeto, com botao `Filtrar grafico`.
+- O grafico operacional possui filtro `Servicos considerados ate`, aplicado aos cortes `FECHADA` de Medicao Asbuilt e aos indicadores/detalhes derivados de As Built.
 - O filtro do grafico nao atualiza as tabelas.
 - O card `Filtros` do comparativo por projeto fica abaixo do `Grafico operacional`.
 - `Medido (AS BUILT)` soma o valor da Medicao apenas dos projetos que possuem registro em Medicao Asbuilt dentro do filtro proprio do grafico.
@@ -110,17 +111,18 @@ Filtros, auto-complete e listagem
   - `Medicao - Ticket medio / Servicos`: valor total da Medicao dos projetos que tambem possuem Medicao Asbuilt dividido pelas ordens `COM_PRODUCAO` desses projetos.
   - `Asbuilt - Ticket medio / Projetos`: valor total da Medicao Asbuilt dos projetos que tambem possuem Medicao dividido por esses projetos distintos.
   - `Asbuilt - Ticket medio / Servicos`: valor total da Medicao Asbuilt dos projetos que tambem possuem Medicao dividido pelas ordens `COM_PRODUCAO` da Medicao desses mesmos projetos.
-- Cada card exibe:
-  - `Medidos`: quantidade da `Medicao COM_PRODUCAO`
-  - `ASBUILT`: quantidade da `Medicao Asbuilt`
-  - `Faturado`: quantidade do `Faturamento`
+- Cada card exibe quantidade e valor de:
+  - `Medicao`: todos os itens de `Medicao COM_PRODUCAO`.
+  - `M. ASBUILT`: itens de Medicao dos projetos que possuem Medicao Asbuilt no corte filtrado.
+  - `ASBUILT`: itens de Medicao Asbuilt `FECHADA`.
+  - `Faturado`: itens de Faturamento.
 - Nos cards operacionais, as quantidades sao exibidas sem casas decimais.
 - Cada card operacional possui icone de olho para abrir modal com abas por origem:
   - `Medicao`: projetos e `Data execucao` da categoria.
   - `As Built`: projetos e faixas calculadas por `Servicos considerados ate`.
-- No desktop, os doze cards ficam organizados em duas linhas de seis cards.
+- No desktop, os cards operacionais ficam organizados em grade responsiva.
 - O titulo amigavel identifica o indicador; a categoria tecnica nao e repetida no rodape visual do card.
-- O bloco exibe doze cards:
+- O bloco exibe cards para:
   - `Postes instalados`: `POSTE (INSTALADO)`
   - `Rede instalada`: `CONDUTOR (REDE INSTALADO)`
   - `Equipamentos instalados`: `EQUIPAMENTO (INSTALADO)`
@@ -133,6 +135,10 @@ Filtros, auto-complete e listagem
   - `Transformadores retirados`: `TRANSFORMADOR (RETIRADO)`
   - `Cruzetas retiradas`: `CRUZETA (RETIRADO)`
   - `Estruturas retiradas`: `ESTRUTURA (RETIRADO)`
+- O bloco tambem exibe:
+  - `Poda`: `PODA`
+  - `Arrasto`: `ARRASTO`
+- A tabela complementar do `Grafico operacional` permite clicar no indicador para abrir modal com os projetos que compoem o total, exibindo Projeto, Centro de servico, Valor e Ordens.
 - A tabela `Projetos por valor` fica abaixo dos indicadores operacionais e antes dos filtros do comparativo por projeto.
 - A tabela `Projetos por valor` exibe:
   - Projeto
@@ -213,6 +219,9 @@ Atalhos
   - `asbuiltBreakdownProjectId`
   - `includeOperationalCategoryDetail`
   - `operationalCategoryKey`
+  - `asbuiltCoverageEndDate`
+  - `includeChartProjectDetail`
+  - `chartIndicatorKey`
 
 Atualizacao 2026-05
 -------------------
@@ -266,9 +275,9 @@ Atualizacao 2026-06
 - Antes:
   - A tela nao exibia resumo global por categoria operacional comparando as tres origens.
 - Depois:
-  - A tela passa a exibir doze cards globais entre `Grafico operacional` e `Projetos por valor`, separados por categoria instalada/retirada para postes, rede, equipamentos, transformadores, cruzetas e estruturas.
+  - A tela passa a exibir cards globais entre `Grafico operacional` e `Projetos por valor`, separados por categoria instalada/retirada para postes, rede, equipamentos, transformadores, cruzetas e estruturas.
   - Cada card compara quantidades de `Medidos`, `ASBUILT` e `Faturado`.
-  - No desktop, os cards ficam organizados em duas linhas de seis itens e deixam de repetir a categoria tecnica no rodape visual.
+  - No desktop, os cards ficam organizados em grade responsiva e deixam de repetir a categoria tecnica no rodape visual.
   - A consulta global pagina projetos, ordens e itens das tres origens para nao truncar totais pelo limite padrao do PostgREST.
   - O bloco `Indicadores operacionais medidos` passa a exibir tickets medios de `Medicao` e `Asbuilt` por projetos distintos e por ordens/servicos, usando a mesma base global dos cards operacionais.
   - Os tickets medios passam a usar valores de ordens somente dos projetos que possuem Medicao e Medicao Asbuilt, deixando Medicao e Asbuilt em base comparavel.
@@ -282,14 +291,19 @@ Atualizacao 2026-06
   - Os cards de `Indicadores operacionais medidos` passam a exibir icone de detalhe, abrindo modal com abas por origem:
     - `Medicao`: `Projeto`, `Centro de servico`, `Data execucao`, `Qtd. medida` e `Ordens`.
     - `As Built`: `Projeto`, `Centro de servico`, `Faixa As Built`, `Servicos considerados ate`, `Qtd. As Built` e `Itens`.
+  - Os cards de `Indicadores operacionais medidos` passam a exibir quantidade e valor por origem (`Medicao`, `M. ASBUILT`, `ASBUILT` e `Faturado`).
+  - Os cards operacionais passam a incluir as categorias `Poda` e `Arrasto`.
+  - O modal do card operacional passa a incluir valor nos detalhes e abas `M. ASBUILT` e `Faturado`.
+  - O filtro `Servicos considerados ate` passa a limitar cortes de Medicao Asbuilt usados nos indicadores e detalhamentos.
+  - A tabela complementar do grafico passa a abrir modal com projetos do indicador clicado.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: renderizar grafico operacional antes dos cards globais por categoria, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar os doze cards comparativos de `Medidos`, `ASBUILT` e `Faturado`, exibir tickets medios de `Medicao` e `Asbuilt` por projetos/servicos, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, abrir modal com detalhamento do Asbuilt por projeto, abrir modal com abas de `Medicao` e `As Built` por card operacional, filtrar projetos por Centro de servico, Projeto, Estado de trabalho, Tipo de servico, valores zerados em Medicao/Asbuilt e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, calcular total filtrado, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
+  - Responsavel por: renderizar grafico operacional antes dos cards globais por categoria, da tabela `Projetos por valor` e dos filtros do comparativo, renderizar filtros obrigatorios, controlar o input digitavel de Projeto, carregar metadados iniciais, carregar valores consolidados por projeto, carregar cards comparativos de quantidade e valor para `Medicao`, `M. ASBUILT`, `ASBUILT` e `Faturado`, exibir tickets medios de `Medicao` e `Asbuilt` por projetos/servicos, aplicar consulta da tabela somente pelo botao `Filtrar`, aplicar consulta do grafico somente pelo botao `Filtrar grafico`, abrir modal com detalhamento do Asbuilt por projeto, abrir modal com abas de `Medicao`, `M. ASBUILT`, `As Built` e `Faturado` por card operacional, filtrar projetos por Centro de servico, Projeto, Estado de trabalho, Tipo de servico, valores zerados em Medicao/Asbuilt e valores abaixo da etapa anterior ignorando zeros, paginar projetos por valor em 20 registros, calcular total filtrado, exibir resumo, montar cards financeiros no bloco `Codigos por origem`, montar grafico operacional com ajuda contextual por barra, calcular diferencas/percentuais de leitura do grafico, montar tabela de projetos/medicoes do grafico com modal de projetos por indicador, montar tabela comparativa, montar o resumo por categoria e exportar CSV no bloco da tabela principal, no bloco de categorias e na tabela de projetos por valor.
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, selecionar todos os cortes Asbuilt `FECHADA` por projeto, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar os doze cards globais comparando quantidades das tres origens por categoria atual, calcular tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e ordens/servicos de projetos presentes nas duas bases, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido e Tipo de Servico do cadastro do Projeto, montar detalhamento do Asbuilt por faixas de corte, montar detalhamento operacional por categoria com `Medicao` por data de execucao e `As Built` por faixa/corte, aplicar filtros e devolver resumo.
+  - Responsavel por: validar sessao/permissao, carregar projetos e centros de servico, selecionar cortes Asbuilt `FECHADA` por projeto respeitando `Servicos considerados ate` quando informado, agregar itens de Medicao, Medicao Asbuilt e Faturamento por codigo de atividade, montar colunas dinamicas de categoria por `service_activities.type_service`, montar cards globais comparando quantidade e valor de `Medicao`, `M. ASBUILT`, `ASBUILT` e `Faturado` por categoria atual, calcular tickets medios comparaveis de `Medicao` e `Asbuilt` por projetos distintos e ordens/servicos de projetos presentes nas duas bases, montar dados do grafico operacional por filtro proprio com valor, projetos e medicoes, montar modal de projetos por indicador do grafico, montar valores consolidados por projeto com ultimo Estado de trabalho conhecido e Tipo de Servico do cadastro do Projeto, montar detalhamento do Asbuilt por faixas de corte, montar detalhamento operacional por categoria com `Medicao`, `M. ASBUILT`, `As Built` e `Faturado`, aplicar filtros e devolver resumo.
 - Caminho: `supabase/migrations/182_create_operational_billing_dashboard_page.sql`
   - Responsavel por: cadastrar `dash-operacional-faturamento` em `app_pages` e fazer backfill de permissoes por role/usuario.
 
@@ -303,7 +317,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/app/api/dash-operacional-faturamento/route.ts`
-  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadClosedAsbuiltOrderRows`, `loadMeasurementOrderRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildOperationalMeasurementCategoryCards`, `buildOperationalMeasurementCategoryDetailRows`, `buildOperationalAsbuiltCategoryDetailRows`, `loadWorkCompletionCatalog`, `loadLatestWorkCompletionByProject`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `buildProjectValueRows`, `buildAsbuiltBreakdownRows`, `sumItemsByOrderIds`, `sumItemValuesByProject`, `loadCommercialOrderMetrics`, `addItem`, `finalizeRows`.
+  - Responsavel por: `loadProjects`, `loadOrderIds`, `loadOrderProjectRows`, `loadClosedAsbuiltOrderRows`, `loadMeasurementOrderRows`, `loadMeasurementItems`, `loadCommercialItems`, `loadActivityStatusMap`, `loadActivityCategoryMap`, `buildOperationalMeasurementCategoryCards`, `buildOperationalMeasurementCategoryDetailRows`, `buildOperationalAsbuiltCategoryDetailRows`, `buildOperationalBillingCategoryDetailRows`, `loadWorkCompletionCatalog`, `loadLatestWorkCompletionByProject`, `buildBillingCategoryRows`, `buildCategorySummary`, `buildChartItems`, `buildChartProjectDetailRows`, `buildProjectValueRows`, `buildAsbuiltBreakdownRows`, `sumItemsByOrderIds`, `sumItemValuesByProject`, `loadCommercialOrderMetrics`, `addItem`, `finalizeRows`.
   - Comportamento ajustado: `buildChartItems` passa a devolver, alem do valor financeiro, quantidade de projetos distintos e quantidade de ordens consideradas por indicador do grafico.
   - Comportamento ajustado: `buildCategorySummary` recebe as linhas finais filtradas e monta colunas por categoria para Medicao, Medicao Asbuilt e Faturamento.
   - Comportamento ajustado: `loadProjects`, `loadOrderProjectRows`, `loadMeasurementItems` e `loadCommercialItems` passam a paginar as leituras usadas no agregado global para nao truncar os cards pelo limite padrao do PostgREST.
@@ -350,8 +364,8 @@ Ajuda contextual
   - Ajuste posterior: `Projetos por valor` passa a permitir filtro por Centro de servico, filtro por Projeto e exportacao CSV do resultado filtrado.
   - Ajuste posterior: `Projetos por valor` passa a ignorar valores zerados nos filtros de menor que, filtrar por Estado de trabalho e exibir 20 registros por pagina.
   - Ajuste posterior: `Projetos por valor` passa a ficar imediatamente abaixo do `Grafico operacional`.
-  - Ajuste posterior: doze cards globais passam a ficar entre `Grafico operacional` e `Projetos por valor`, usando as categorias atuais de Atividades para separar instalado e retirado e comparando quantidades de `Medidos`, `ASBUILT` e `Faturado`.
-  - Ajuste posterior: os cards globais passam a usar grade desktop em duas linhas de seis itens e deixam de repetir a categoria tecnica no rodape visual.
+  - Ajuste posterior: cards globais passam a ficar entre `Grafico operacional` e `Projetos por valor`, usando as categorias atuais de Atividades para separar instalado e retirado e comparando quantidades de `Medidos`, `ASBUILT` e `Faturado`.
+  - Ajuste posterior: os cards globais passam a usar grade desktop responsiva e deixam de repetir a categoria tecnica no rodape visual.
   - Ajuste posterior: `Indicadores operacionais medidos` passa a exibir `Ticket medio / Projetos` e `Ticket medio / Servicos` para `Medicao` e `Asbuilt`, calculados sobre projetos ativos validos do tenant.
   - Ajuste posterior: tickets medios passam a considerar valores de ordens dos projetos presentes em Medicao e Medicao Asbuilt, mantendo base comparavel entre as duas origens.
   - Ajuste posterior: `Asbuilt - Ticket medio / Servicos` passa a dividir o valor Asbuilt pela quantidade de ordens `COM_PRODUCAO` da Medicao dos projetos comparaveis.

@@ -85,7 +85,7 @@
 
 .chartFilterGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 320px));
+  grid-template-columns: repeat(3, minmax(220px, 320px));
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
@@ -256,7 +256,7 @@
 }
 
 .operationalIndicator {
-  min-height: 132px;
+  min-height: 158px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -283,7 +283,7 @@
 
 .operationalIndicatorValues {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -305,8 +305,15 @@
 
 .operationalIndicatorMetric strong {
   color: #002b7f;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 900;
+}
+
+.operationalIndicatorMetric small {
+  color: #42557d;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .operationalIndicatorEmpty {
@@ -515,6 +522,21 @@
 
 .chartTable tbody tr:nth-child(even) {
   background: #f8fbff;
+}
+
+.tableRowButton {
+  border: 0;
+  background: transparent;
+  color: #002b7f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-align: left;
+}
+
+.tableRowButton:hover {
+  text-decoration: underline;
 }
 
 .metric {
@@ -899,6 +921,10 @@
   .operationalIndicatorGrid,
   .operationalTicketGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .operationalIndicatorValues {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

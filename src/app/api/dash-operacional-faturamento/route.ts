@@ -144,6 +144,16 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type ChartIndicatorKey = "totalMeasurement" | "measurementAsbuilt" | "asbuilt" | "billing";
+
+type ChartProjectDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  value: number;
+  orderCount: number;
+};
+
 type AsbuiltBreakdownRow = {
   projectId: string;
   projectCode: string;
@@ -155,13 +165,20 @@ type AsbuiltBreakdownRow = {
   itemCount: number;
 };
 
+type OperationalCategoryMetric = {
+  quantity: number;
+  value: number;
+  itemCount: number;
+};
+
 type OperationalMeasurementCategoryCard = {
   key: string;
   label: string;
   categoryName: string;
-  measurementQuantity: number;
-  asbuiltQuantity: number;
-  billingQuantity: number;
+  measurement: OperationalCategoryMetric;
+  measurementAsbuilt: OperationalCategoryMetric;
+  asbuilt: OperationalCategoryMetric;
+  billing: OperationalCategoryMetric;
 };
 
 type OperationalMeasurementCategoryDetailRow = {
@@ -170,6 +187,7 @@ type OperationalMeasurementCategoryDetailRow = {
   serviceCenter: string;
   executionDate: string | null;
   measurementQuantity: number;
+  measurementValue: number;
   orderCount: number;
 };
 
@@ -180,6 +198,17 @@ type OperationalAsbuiltCategoryDetailRow = {
   coverageStartDate: string | null;
   coverageEndDate: string | null;
   asbuiltQuantity: number;
+  asbuiltValue: number;
+  itemCount: number;
+};
+
+type OperationalBillingCategoryDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  billingQuantity: number;
+  billingValue: number;
+  orderCount: number;
   itemCount: number;
 };
 
@@ -223,6 +252,11 @@ function normalizeUuid(value: unknown) {
 function normalizeBoolean(value: unknown) {
   const normalized = normalizeText(value).toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "sim" || normalized === "yes";
+}
+
+function normalizeIsoDate(value: unknown) {
+  const normalized = normalizeText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
 function normalizeActivityStatusFilter(value: unknown): ActivityStatusFilter {
@@ -279,6 +313,8 @@ const OPERATIONAL_MEASUREMENT_CATEGORIES = [
   { key: "installed-transformers", label: "Transformadores instalados", categoryName: "TRANSFORMADOR (INSTALADO)" },
   { key: "installed-crossarms", label: "Cruzetas instaladas", categoryName: "CRUZETA (INSTALADO)" },
   { key: "installed-structures", label: "Estruturas instaladas", categoryName: "ESTRUTURA (INSTALADO)" },
+  { key: "pruning", label: "Poda", categoryName: "PODA" },
+  { key: "dragging", label: "Arrasto", categoryName: "ARRASTO" },
   { key: "removed-poles", label: "Postes retirados", categoryName: "POSTE (RETIRADO)" },
   { key: "removed-network", label: "Rede retirada", categoryName: "CONDUTOR (REDE RETIRADO)" },
   { key: "removed-equipment", label: "Equipamentos retirados", categoryName: "EQUIPAMENTO (RETIRADO)" },
@@ -482,19 +518,26 @@ async function loadClosedAsbuiltOrderRows(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   projectIds: string[];
+  coverageEndDate?: string | null;
 }) {
   const rows: AsbuiltOrderProjectRow[] = [];
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
 
   for (const projectIdChunk of chunk(projectIds, 500)) {
     for (let from = 0; ; from += QUERY_PAGE_SIZE) {
-      const { data, error } = await params.supabase
+      let query = params.supabase
         .from("project_asbuilt_measurement_orders")
         .select("id, project_id, service_coverage_end_date, updated_at")
         .eq("tenant_id", params.tenantId)
         .eq("is_active", true)
         .eq("status", "FECHADA")
-        .in("project_id", projectIdChunk)
+        .in("project_id", projectIdChunk);
+
+      if (params.coverageEndDate) {
+        query = query.lte("service_coverage_end_date", params.coverageEndDate);
+      }
+
+      const { data, error } = await query
         .order("project_id", { ascending: true })
         .order("service_coverage_end_date", { ascending: true, nullsFirst: false })
         .order("updated_at", { ascending: true })
@@ -675,20 +718,20 @@ async function buildOperationalMeasurementCategoryCards(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   projects: Array<{ id: string }>;
+  asbuiltCoverageEndDate?: string | null;
 }) {
   const projectIds = params.projects.map((project) => project.id);
   const [measurementOrders, asbuiltOrders, billingOrders] = await Promise.all([
-    loadOrderProjectRows({
+    loadMeasurementOrderRows({
       supabase: params.supabase,
       tenantId: params.tenantId,
-      table: "project_measurement_orders",
       projectIds,
     }),
-    loadOrderProjectRows({
+    loadClosedAsbuiltOrderRows({
       supabase: params.supabase,
       tenantId: params.tenantId,
-      table: "project_asbuilt_measurement_orders",
       projectIds,
+      coverageEndDate: params.asbuiltCoverageEndDate,
     }),
     loadOrderProjectRows({
       supabase: params.supabase,
@@ -724,27 +767,37 @@ async function buildOperationalMeasurementCategoryCards(params: {
     tenantId: params.tenantId,
     activityIds: allItems.map((item) => item.service_activity_id),
   });
-  const buildQuantityByCategory = (items: Array<MeasurementItemRow | CommercialItemRow>) => {
-    const quantityByCategory = new Map<string, number>();
+  const buildMetricByCategory = (items: Array<MeasurementItemRow | CommercialItemRow>) => {
+    const metricByCategory = new Map<string, OperationalCategoryMetric>();
 
     for (const item of items) {
       const categoryId = activityCategoryMap.activityToCategory.get(item.service_activity_id);
       const categoryName = normalizeCategoryName(activityCategoryMap.categoryNameById.get(categoryId ?? ""));
       if (!categoryName) continue;
 
-      quantityByCategory.set(categoryName, (quantityByCategory.get(categoryName) ?? 0) + numberValue(item.quantity));
+      const current = metricByCategory.get(categoryName) ?? emptyTotals();
+      current.quantity += numberValue(item.quantity);
+      current.value += numberValue(item.total_value);
+      current.itemCount += 1;
+      metricByCategory.set(categoryName, current);
     }
 
-    return quantityByCategory;
+    return metricByCategory;
   };
-  const measurementQuantityByCategory = buildQuantityByCategory(measurementItems);
-  const asbuiltQuantityByCategory = buildQuantityByCategory(asbuiltItems);
-  const billingQuantityByCategory = buildQuantityByCategory(billingItems);
   const measurementProjectIds = new Set(measurementOrders.map((order) => order.project_id));
   const asbuiltProjectIds = new Set(asbuiltOrders.map((order) => order.project_id));
   const comparableProjectIds = new Set(Array.from(measurementProjectIds).filter((projectId) => asbuiltProjectIds.has(projectId)));
-  const comparableMeasurementOrders = measurementOrders.filter((order) => comparableProjectIds.has(order.project_id));
+  const comparableMeasurementOrders = measurementOrders.filter((order) => (
+    comparableProjectIds.has(order.project_id)
+    && (!params.asbuiltCoverageEndDate || !order.execution_date || order.execution_date <= params.asbuiltCoverageEndDate)
+  ));
   const comparableAsbuiltOrders = asbuiltOrders.filter((order) => comparableProjectIds.has(order.project_id));
+  const comparableMeasurementOrderIds = new Set(comparableMeasurementOrders.map((order) => order.id));
+  const measurementAsbuiltItems = measurementItems.filter((item) => comparableMeasurementOrderIds.has(normalizeText(item.measurement_order_id)));
+  const measurementMetricByCategory = buildMetricByCategory(measurementItems);
+  const measurementAsbuiltMetricByCategory = buildMetricByCategory(measurementAsbuiltItems);
+  const asbuiltMetricByCategory = buildMetricByCategory(asbuiltItems);
+  const billingMetricByCategory = buildMetricByCategory(billingItems);
   const comparableServiceCount = comparableMeasurementOrders.length;
   const [measurementValueForTickets, asbuiltValueForTickets] = await Promise.all([
     sumItemsByOrderIds({
@@ -766,9 +819,10 @@ async function buildOperationalMeasurementCategoryCards(params: {
   return {
     categoryCards: OPERATIONAL_MEASUREMENT_CATEGORIES.map((category) => ({
       ...category,
-      measurementQuantity: measurementQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
-      asbuiltQuantity: asbuiltQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
-      billingQuantity: billingQuantityByCategory.get(normalizeCategoryName(category.categoryName)) ?? 0,
+      measurement: measurementMetricByCategory.get(normalizeCategoryName(category.categoryName)) ?? emptyTotals(),
+      measurementAsbuilt: measurementAsbuiltMetricByCategory.get(normalizeCategoryName(category.categoryName)) ?? emptyTotals(),
+      asbuilt: asbuiltMetricByCategory.get(normalizeCategoryName(category.categoryName)) ?? emptyTotals(),
+      billing: billingMetricByCategory.get(normalizeCategoryName(category.categoryName)) ?? emptyTotals(),
     })),
     averageTickets: {
       measurementByProject: comparableProjectIds.size > 0 ? measurementValueForTickets / comparableProjectIds.size : 0,
@@ -784,6 +838,8 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
   tenantId: string;
   projects: Array<{ id: string; label: string; serviceCenter: string }>;
   categoryKey: string;
+  onlyProjectsWithAsbuilt?: boolean;
+  asbuiltCoverageEndDate?: string | null;
 }) {
   const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
   if (!category) {
@@ -796,11 +852,27 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
     tenantId: params.tenantId,
     projectIds,
   });
+  const scopedMeasurementOrders = params.onlyProjectsWithAsbuilt
+    ? measurementOrders.filter((order) => (
+        !params.asbuiltCoverageEndDate || !order.execution_date || order.execution_date <= params.asbuiltCoverageEndDate
+      ))
+    : measurementOrders;
+  const asbuiltProjectIds = params.onlyProjectsWithAsbuilt
+    ? new Set((await loadClosedAsbuiltOrderRows({
+        supabase: params.supabase,
+        tenantId: params.tenantId,
+        projectIds,
+        coverageEndDate: params.asbuiltCoverageEndDate,
+      })).map((order) => order.project_id))
+    : null;
+  const filteredMeasurementOrders = asbuiltProjectIds
+    ? scopedMeasurementOrders.filter((order) => asbuiltProjectIds.has(order.project_id))
+    : scopedMeasurementOrders;
 
   const measurementItemsResolved = await loadMeasurementItems({
     supabase: params.supabase,
     tenantId: params.tenantId,
-    orderIds: measurementOrders.map((order) => order.id),
+    orderIds: filteredMeasurementOrders.map((order) => order.id),
   });
 
   const activityCategoryMap = await loadActivityCategoryMap({
@@ -810,7 +882,7 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
   });
 
   const projectById = new Map(params.projects.map((project) => [project.id, project]));
-  const measurementOrderById = new Map(measurementOrders.map((order) => [order.id, order]));
+  const measurementOrderById = new Map(filteredMeasurementOrders.map((order) => [order.id, order]));
   const rowsByProjectDate = new Map<string, OperationalMeasurementCategoryDetailRow>();
   const orderIdsByProjectDate = new Map<string, Set<string>>();
   const targetCategoryName = normalizeCategoryName(category.categoryName);
@@ -835,10 +907,12 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
       serviceCenter: project.serviceCenter,
       executionDate,
       measurementQuantity: 0,
+      measurementValue: 0,
       orderCount: 0,
     };
 
     current.measurementQuantity += numberValue(item.quantity);
+    current.measurementValue += numberValue(item.total_value);
     rowsByProjectDate.set(groupKey, current);
 
     const orderIds = orderIdsByProjectDate.get(groupKey) ?? new Set<string>();
@@ -863,6 +937,7 @@ async function buildOperationalAsbuiltCategoryDetailRows(params: {
   tenantId: string;
   projects: Array<{ id: string; label: string; serviceCenter: string }>;
   categoryKey: string;
+  asbuiltCoverageEndDate?: string | null;
 }) {
   const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
   if (!category) {
@@ -874,6 +949,7 @@ async function buildOperationalAsbuiltCategoryDetailRows(params: {
     supabase: params.supabase,
     tenantId: params.tenantId,
     projectIds,
+    coverageEndDate: params.asbuiltCoverageEndDate,
   });
 
   const asbuiltItems = await loadCommercialItems({
@@ -924,10 +1000,12 @@ async function buildOperationalAsbuiltCategoryDetailRows(params: {
       coverageStartDate: previousCoverage ? addDaysToIsoDate(previousCoverage, 1) : null,
       coverageEndDate,
       asbuiltQuantity: 0,
+      asbuiltValue: 0,
       itemCount: 0,
     };
 
     current.asbuiltQuantity += numberValue(item.quantity);
+    current.asbuiltValue += numberValue(item.total_value);
     current.itemCount += 1;
     rowsByOrderId.set(order.id, current);
   }
@@ -937,6 +1015,85 @@ async function buildOperationalAsbuiltCategoryDetailRows(params: {
     if (projectCompare !== 0) return projectCompare;
     return (left.coverageEndDate ?? "").localeCompare(right.coverageEndDate ?? "", "pt-BR");
   });
+}
+
+async function buildOperationalBillingCategoryDetailRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projects: Array<{ id: string; label: string; serviceCenter: string }>;
+  categoryKey: string;
+}) {
+  const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
+  if (!category) {
+    throw new Error("Categoria operacional nao encontrada para detalhamento do Faturamento.");
+  }
+
+  const projectIds = params.projects.map((project) => project.id);
+  const billingOrders = await loadOrderProjectRows({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    table: "project_billing_orders",
+    projectIds,
+  });
+
+  const billingItems = await loadCommercialItems({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    table: "project_billing_order_items",
+    orderColumn: "billing_order_id",
+    orderIds: billingOrders.map((order) => order.id),
+  });
+
+  const activityCategoryMap = await loadActivityCategoryMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    activityIds: billingItems.map((item) => item.service_activity_id),
+  });
+
+  const projectById = new Map(params.projects.map((project) => [project.id, project]));
+  const orderById = new Map(billingOrders.map((order) => [order.id, order]));
+  const rowsByProjectId = new Map<string, OperationalBillingCategoryDetailRow>();
+  const orderIdsByProjectId = new Map<string, Set<string>>();
+  const targetCategoryName = normalizeCategoryName(category.categoryName);
+
+  for (const item of billingItems) {
+    const categoryId = activityCategoryMap.activityToCategory.get(item.service_activity_id);
+    const categoryName = normalizeCategoryName(activityCategoryMap.categoryNameById.get(categoryId ?? ""));
+    if (!categoryName || categoryName !== targetCategoryName) continue;
+
+    const orderId = normalizeText((item as Record<string, unknown>).billing_order_id);
+    const order = orderById.get(orderId);
+    if (!order) continue;
+
+    const project = projectById.get(order.project_id);
+    if (!project) continue;
+
+    const current = rowsByProjectId.get(order.project_id) ?? {
+      projectId: order.project_id,
+      projectCode: project.label,
+      serviceCenter: project.serviceCenter,
+      billingQuantity: 0,
+      billingValue: 0,
+      orderCount: 0,
+      itemCount: 0,
+    };
+
+    current.billingQuantity += numberValue(item.quantity);
+    current.billingValue += numberValue(item.total_value);
+    current.itemCount += 1;
+    rowsByProjectId.set(order.project_id, current);
+
+    const orderIds = orderIdsByProjectId.get(order.project_id) ?? new Set<string>();
+    orderIds.add(order.id);
+    orderIdsByProjectId.set(order.project_id, orderIds);
+  }
+
+  return Array.from(rowsByProjectId.values())
+    .map((row) => ({
+      ...row,
+      orderCount: orderIdsByProjectId.get(row.projectId)?.size ?? 0,
+    }))
+    .sort((left, right) => left.projectCode.localeCompare(right.projectCode, "pt-BR"));
 }
 
 async function loadWorkCompletionCatalog(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
@@ -1238,11 +1395,13 @@ async function buildAsbuiltBreakdownRows(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   project: { id: string; label: string; serviceCenterId: string | null; serviceCenter: string };
+  asbuiltCoverageEndDate?: string | null;
 }) {
   const orders = await loadClosedAsbuiltOrderRows({
     supabase: params.supabase,
     tenantId: params.tenantId,
     projectIds: [params.project.id],
+    coverageEndDate: params.asbuiltCoverageEndDate,
   });
 
   const metricsByOrderId = await loadCommercialOrderMetrics({
@@ -1384,6 +1543,7 @@ async function buildChartItems(params: {
   projects: Array<{ id: string; serviceCenterId: string | null }>;
   serviceCenterId: string | null;
   projectId: string | null;
+  asbuiltCoverageEndDate?: string | null;
 }) {
   const scopedProjectIds = params.projects
     .filter((project) => !params.serviceCenterId || project.serviceCenterId === params.serviceCenterId)
@@ -1406,11 +1566,11 @@ async function buildChartItems(params: {
       table: "project_measurement_orders",
       projectIds: scopedProjectIds,
     }),
-    loadOrderProjectRows({
+    loadClosedAsbuiltOrderRows({
       supabase: params.supabase,
       tenantId: params.tenantId,
-      table: "project_asbuilt_measurement_orders",
       projectIds: scopedProjectIds,
+      coverageEndDate: params.asbuiltCoverageEndDate,
     }),
     loadOrderProjectRows({
       supabase: params.supabase,
@@ -1493,6 +1653,91 @@ async function buildChartItems(params: {
       measurementCount: billingOrders.length,
     },
   ] satisfies ChartItem[];
+}
+
+async function buildChartProjectDetailRows(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  projects: Array<{ id: string; label: string; serviceCenterId: string | null; serviceCenter: string }>;
+  serviceCenterId: string | null;
+  projectId: string | null;
+  indicatorKey: ChartIndicatorKey;
+  asbuiltCoverageEndDate?: string | null;
+}) {
+  const scopedProjects = params.projects
+    .filter((project) => !params.serviceCenterId || project.serviceCenterId === params.serviceCenterId)
+    .filter((project) => !params.projectId || project.id === params.projectId);
+  const scopedProjectIds = scopedProjects.map((project) => project.id);
+  const projectById = new Map(scopedProjects.map((project) => [project.id, project]));
+  if (!scopedProjectIds.length) return [] satisfies ChartProjectDetailRow[];
+
+  const [measurementOrders, asbuiltOrders, billingOrders] = await Promise.all([
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_measurement_orders",
+      projectIds: scopedProjectIds,
+    }),
+    loadClosedAsbuiltOrderRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds: scopedProjectIds,
+      coverageEndDate: params.asbuiltCoverageEndDate,
+    }),
+    loadOrderProjectRows({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      table: "project_billing_orders",
+      projectIds: scopedProjectIds,
+    }),
+  ]);
+
+  const asbuiltProjectIds = new Set(asbuiltOrders.map((order) => order.project_id));
+  const selectedOrders =
+    params.indicatorKey === "totalMeasurement"
+      ? measurementOrders
+      : params.indicatorKey === "measurementAsbuilt"
+        ? measurementOrders.filter((order) => asbuiltProjectIds.has(order.project_id))
+        : params.indicatorKey === "asbuilt"
+          ? asbuiltOrders
+          : billingOrders;
+
+  const totals = await sumItemValuesByProject({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    table: params.indicatorKey === "asbuilt"
+      ? "project_asbuilt_measurement_order_items"
+      : params.indicatorKey === "billing"
+        ? "project_billing_order_items"
+        : "project_measurement_order_items",
+    orderColumn: params.indicatorKey === "asbuilt"
+      ? "asbuilt_measurement_order_id"
+      : params.indicatorKey === "billing"
+        ? "billing_order_id"
+        : "measurement_order_id",
+    orders: selectedOrders,
+  });
+
+  const orderCountByProject = new Map<string, number>();
+  for (const order of selectedOrders) {
+    orderCountByProject.set(order.project_id, (orderCountByProject.get(order.project_id) ?? 0) + 1);
+  }
+
+  return Array.from(totals.entries())
+    .map(([projectId, value]) => {
+      const project = projectById.get(projectId);
+      return project
+        ? {
+            projectId,
+            projectCode: project.label,
+            serviceCenter: project.serviceCenter,
+            value,
+            orderCount: orderCountByProject.get(projectId) ?? 0,
+          }
+        : null;
+    })
+    .filter((row): row is ChartProjectDetailRow => Boolean(row))
+    .sort((left, right) => left.projectCode.localeCompare(right.projectCode, "pt-BR"));
 }
 
 function addItem(
@@ -1593,10 +1838,13 @@ export async function GET(request: NextRequest) {
   const includeOperationalCategoryCards = normalizeBoolean(request.nextUrl.searchParams.get("includeOperationalCategoryCards"));
   const includeAsbuiltBreakdown = normalizeBoolean(request.nextUrl.searchParams.get("includeAsbuiltBreakdown"));
   const includeOperationalCategoryDetail = normalizeBoolean(request.nextUrl.searchParams.get("includeOperationalCategoryDetail"));
+  const includeChartProjectDetail = normalizeBoolean(request.nextUrl.searchParams.get("includeChartProjectDetail"));
   const chartProjectId = normalizeUuid(request.nextUrl.searchParams.get("chartProjectId"));
   const chartServiceCenterId = normalizeUuid(request.nextUrl.searchParams.get("chartServiceCenterId"));
   const asbuiltBreakdownProjectId = normalizeUuid(request.nextUrl.searchParams.get("asbuiltBreakdownProjectId"));
   const operationalCategoryKey = normalizeText(request.nextUrl.searchParams.get("operationalCategoryKey"));
+  const chartIndicatorKey = normalizeText(request.nextUrl.searchParams.get("chartIndicatorKey")) as ChartIndicatorKey;
+  const asbuiltCoverageEndDate = normalizeIsoDate(request.nextUrl.searchParams.get("asbuiltCoverageEndDate"));
 
   try {
     const projects = await loadProjects(resolution.supabase, tenantId);
@@ -1619,6 +1867,7 @@ export async function GET(request: NextRequest) {
         supabase: resolution.supabase,
         tenantId,
         project: breakdownProject,
+        asbuiltCoverageEndDate,
       });
 
       return NextResponse.json({
@@ -1629,14 +1878,29 @@ export async function GET(request: NextRequest) {
     }
 
     if (includeOperationalCategoryDetail) {
-      const [operationalCategoryDetailRows, operationalAsbuiltCategoryDetailRows] = await Promise.all([
+      const [operationalCategoryDetailRows, operationalMeasurementAsbuiltCategoryDetailRows, operationalAsbuiltCategoryDetailRows, operationalBillingCategoryDetailRows] = await Promise.all([
         buildOperationalMeasurementCategoryDetailRows({
           supabase: resolution.supabase,
           tenantId,
           projects,
           categoryKey: operationalCategoryKey,
         }),
+        buildOperationalMeasurementCategoryDetailRows({
+          supabase: resolution.supabase,
+          tenantId,
+          projects,
+          categoryKey: operationalCategoryKey,
+          onlyProjectsWithAsbuilt: true,
+          asbuiltCoverageEndDate,
+        }),
         buildOperationalAsbuiltCategoryDetailRows({
+          supabase: resolution.supabase,
+          tenantId,
+          projects,
+          categoryKey: operationalCategoryKey,
+          asbuiltCoverageEndDate,
+        }),
+        buildOperationalBillingCategoryDetailRows({
           supabase: resolution.supabase,
           tenantId,
           projects,
@@ -1647,7 +1911,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         filters: { projects, serviceCenters },
         operationalCategoryDetailRows,
+        operationalMeasurementAsbuiltCategoryDetailRows,
         operationalAsbuiltCategoryDetailRows,
+        operationalBillingCategoryDetailRows,
+      });
+    }
+
+    if (includeChartProjectDetail) {
+      if (!["totalMeasurement", "measurementAsbuilt", "asbuilt", "billing"].includes(chartIndicatorKey)) {
+        return NextResponse.json({ message: "Indicador do grafico invalido para detalhamento." }, { status: 400 });
+      }
+
+      const chartProjectDetailRows = await buildChartProjectDetailRows({
+        supabase: resolution.supabase,
+        tenantId,
+        projects,
+        serviceCenterId: chartServiceCenterId,
+        projectId: chartProjectId,
+        indicatorKey: chartIndicatorKey,
+        asbuiltCoverageEndDate,
+      });
+
+      return NextResponse.json({
+        filters: { projects, serviceCenters },
+        chartProjectDetailRows,
       });
     }
 
@@ -1660,6 +1947,7 @@ export async function GET(request: NextRequest) {
               projects,
               serviceCenterId: chartServiceCenterId,
               projectId: chartProjectId,
+              asbuiltCoverageEndDate,
             })
           : Promise.resolve([]),
         includeProjectValues
@@ -1674,6 +1962,7 @@ export async function GET(request: NextRequest) {
               supabase: resolution.supabase,
               tenantId,
               projects,
+              asbuiltCoverageEndDate,
             })
           : Promise.resolve(null),
       ]);

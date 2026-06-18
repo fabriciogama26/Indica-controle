@@ -74,6 +74,14 @@ type ChartItem = {
   measurementCount: number;
 };
 
+type ChartProjectDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  value: number;
+  orderCount: number;
+};
+
 type AsbuiltBreakdownRow = {
   projectId: string;
   projectCode: string;
@@ -85,13 +93,20 @@ type AsbuiltBreakdownRow = {
   itemCount: number;
 };
 
+type OperationalCategoryMetric = {
+  quantity: number;
+  value: number;
+  itemCount: number;
+};
+
 type OperationalMeasurementCategoryCard = {
   key: string;
   label: string;
   categoryName: string;
-  measurementQuantity: number;
-  asbuiltQuantity: number;
-  billingQuantity: number;
+  measurement: OperationalCategoryMetric;
+  measurementAsbuilt: OperationalCategoryMetric;
+  asbuilt: OperationalCategoryMetric;
+  billing: OperationalCategoryMetric;
 };
 
 type OperationalMeasurementCategoryDetailRow = {
@@ -100,6 +115,7 @@ type OperationalMeasurementCategoryDetailRow = {
   serviceCenter: string;
   executionDate: string | null;
   measurementQuantity: number;
+  measurementValue: number;
   orderCount: number;
 };
 
@@ -110,6 +126,17 @@ type OperationalAsbuiltCategoryDetailRow = {
   coverageStartDate: string | null;
   coverageEndDate: string | null;
   asbuiltQuantity: number;
+  asbuiltValue: number;
+  itemCount: number;
+};
+
+type OperationalBillingCategoryDetailRow = {
+  projectId: string;
+  projectCode: string;
+  serviceCenter: string;
+  billingQuantity: number;
+  billingValue: number;
+  orderCount: number;
   itemCount: number;
 };
 
@@ -163,7 +190,10 @@ type DashboardResponse = {
   projectValueRows?: ProjectValueRow[];
   asbuiltBreakdownRows?: AsbuiltBreakdownRow[];
   operationalCategoryDetailRows?: OperationalMeasurementCategoryDetailRow[];
+  operationalMeasurementAsbuiltCategoryDetailRows?: OperationalMeasurementCategoryDetailRow[];
   operationalAsbuiltCategoryDetailRows?: OperationalAsbuiltCategoryDetailRow[];
+  operationalBillingCategoryDetailRows?: OperationalBillingCategoryDetailRow[];
+  chartProjectDetailRows?: ChartProjectDetailRow[];
   summary?: Summary | null;
 };
 
@@ -179,7 +209,12 @@ type OperationalCategoryDetailModalState = {
   categoryName: string;
 };
 
-type OperationalCategoryDetailTab = "measurement" | "asbuilt";
+type OperationalCategoryDetailTab = "measurement" | "measurementAsbuilt" | "asbuilt" | "billing";
+
+type ChartProjectDetailModalState = {
+  key: string;
+  label: string;
+};
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -289,9 +324,13 @@ export function OperationalBillingDashboardPageView() {
   const [asbuiltBreakdownRows, setAsbuiltBreakdownRows] = useState<AsbuiltBreakdownRow[]>([]);
   const [asbuiltBreakdownModal, setAsbuiltBreakdownModal] = useState<AsbuiltBreakdownModalState | null>(null);
   const [operationalCategoryDetailRows, setOperationalCategoryDetailRows] = useState<OperationalMeasurementCategoryDetailRow[]>([]);
+  const [operationalMeasurementAsbuiltCategoryDetailRows, setOperationalMeasurementAsbuiltCategoryDetailRows] = useState<OperationalMeasurementCategoryDetailRow[]>([]);
   const [operationalAsbuiltCategoryDetailRows, setOperationalAsbuiltCategoryDetailRows] = useState<OperationalAsbuiltCategoryDetailRow[]>([]);
+  const [operationalBillingCategoryDetailRows, setOperationalBillingCategoryDetailRows] = useState<OperationalBillingCategoryDetailRow[]>([]);
   const [operationalCategoryDetailModal, setOperationalCategoryDetailModal] = useState<OperationalCategoryDetailModalState | null>(null);
   const [operationalCategoryDetailTab, setOperationalCategoryDetailTab] = useState<OperationalCategoryDetailTab>("measurement");
+  const [chartProjectDetailRows, setChartProjectDetailRows] = useState<ChartProjectDetailRow[]>([]);
+  const [chartProjectDetailModal, setChartProjectDetailModal] = useState<ChartProjectDetailModalState | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [projectId, setProjectId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -299,6 +338,7 @@ export function OperationalBillingDashboardPageView() {
   const [chartProjectId, setChartProjectId] = useState("");
   const [chartProjectSearch, setChartProjectSearch] = useState("");
   const [chartServiceCenterId, setChartServiceCenterId] = useState("");
+  const [asbuiltCoverageEndDate, setAsbuiltCoverageEndDate] = useState("");
   const [projectValueProjectSearch, setProjectValueProjectSearch] = useState("");
   const [projectValueServiceCenterId, setProjectValueServiceCenterId] = useState("");
   const [projectValueWorkCompletionStatus, setProjectValueWorkCompletionStatus] = useState("");
@@ -319,6 +359,7 @@ export function OperationalBillingDashboardPageView() {
   const [isProjectValuesLoading, setIsProjectValuesLoading] = useState(false);
   const [isAsbuiltBreakdownLoading, setIsAsbuiltBreakdownLoading] = useState(false);
   const [isOperationalCategoryDetailLoading, setIsOperationalCategoryDetailLoading] = useState(false);
+  const [isChartProjectDetailLoading, setIsChartProjectDetailLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const visibleProjects = useMemo(
@@ -469,9 +510,44 @@ export function OperationalBillingDashboardPageView() {
     [operationalCategoryDetailRows],
   );
 
+  const operationalCategoryDetailTotalValue = useMemo(
+    () => operationalCategoryDetailRows.reduce((sum, row) => sum + row.measurementValue, 0),
+    [operationalCategoryDetailRows],
+  );
+
+  const operationalMeasurementAsbuiltCategoryDetailTotalQuantity = useMemo(
+    () => operationalMeasurementAsbuiltCategoryDetailRows.reduce((sum, row) => sum + row.measurementQuantity, 0),
+    [operationalMeasurementAsbuiltCategoryDetailRows],
+  );
+
+  const operationalMeasurementAsbuiltCategoryDetailTotalValue = useMemo(
+    () => operationalMeasurementAsbuiltCategoryDetailRows.reduce((sum, row) => sum + row.measurementValue, 0),
+    [operationalMeasurementAsbuiltCategoryDetailRows],
+  );
+
   const operationalAsbuiltCategoryDetailTotalQuantity = useMemo(
     () => operationalAsbuiltCategoryDetailRows.reduce((sum, row) => sum + row.asbuiltQuantity, 0),
     [operationalAsbuiltCategoryDetailRows],
+  );
+
+  const operationalAsbuiltCategoryDetailTotalValue = useMemo(
+    () => operationalAsbuiltCategoryDetailRows.reduce((sum, row) => sum + row.asbuiltValue, 0),
+    [operationalAsbuiltCategoryDetailRows],
+  );
+
+  const operationalBillingCategoryDetailTotalQuantity = useMemo(
+    () => operationalBillingCategoryDetailRows.reduce((sum, row) => sum + row.billingQuantity, 0),
+    [operationalBillingCategoryDetailRows],
+  );
+
+  const operationalBillingCategoryDetailTotalValue = useMemo(
+    () => operationalBillingCategoryDetailRows.reduce((sum, row) => sum + row.billingValue, 0),
+    [operationalBillingCategoryDetailRows],
+  );
+
+  const chartProjectDetailTotalValue = useMemo(
+    () => chartProjectDetailRows.reduce((sum, row) => sum + row.value, 0),
+    [chartProjectDetailRows],
   );
 
   const loadMetadata = useCallback(async () => {
@@ -511,6 +587,7 @@ export function OperationalBillingDashboardPageView() {
     const params = new URLSearchParams();
     params.set("includeProjectValues", "true");
     params.set("includeOperationalCategoryCards", "true");
+    if (asbuiltCoverageEndDate) params.set("asbuiltCoverageEndDate", asbuiltCoverageEndDate);
 
     setIsProjectValuesLoading(true);
     try {
@@ -535,7 +612,7 @@ export function OperationalBillingDashboardPageView() {
     } finally {
       setIsProjectValuesLoading(false);
     }
-  }, [logError, session?.accessToken]);
+  }, [asbuiltCoverageEndDate, logError, session?.accessToken]);
 
   const loadDashboard = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -604,6 +681,7 @@ export function OperationalBillingDashboardPageView() {
     params.set("includeChart", "true");
     if (chartServiceCenterId) params.set("chartServiceCenterId", chartServiceCenterId);
     if (chartProjectId) params.set("chartProjectId", chartProjectId);
+    if (asbuiltCoverageEndDate) params.set("asbuiltCoverageEndDate", asbuiltCoverageEndDate);
 
     setIsChartLoading(true);
     try {
@@ -630,7 +708,7 @@ export function OperationalBillingDashboardPageView() {
     } finally {
       setIsChartLoading(false);
     }
-  }, [chartProjectId, chartProjectSearch, chartServiceCenterId, logError, session?.accessToken]);
+  }, [asbuiltCoverageEndDate, chartProjectId, chartProjectSearch, chartServiceCenterId, logError, session?.accessToken]);
 
   const openAsbuiltBreakdown = useCallback(async (project: AsbuiltBreakdownModalState) => {
     if (!session?.accessToken) return;
@@ -644,6 +722,7 @@ export function OperationalBillingDashboardPageView() {
         includeAsbuiltBreakdown: "true",
         asbuiltBreakdownProjectId: project.projectId,
       });
+      if (asbuiltCoverageEndDate) params.set("asbuiltCoverageEndDate", asbuiltCoverageEndDate);
 
       const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
         cache: "no-store",
@@ -663,7 +742,7 @@ export function OperationalBillingDashboardPageView() {
     } finally {
       setIsAsbuiltBreakdownLoading(false);
     }
-  }, [logError, session?.accessToken]);
+  }, [asbuiltCoverageEndDate, logError, session?.accessToken]);
 
   function closeAsbuiltBreakdownModal() {
     setAsbuiltBreakdownModal(null);
@@ -676,7 +755,9 @@ export function OperationalBillingDashboardPageView() {
 
     setOperationalCategoryDetailModal(card);
     setOperationalCategoryDetailRows([]);
+    setOperationalMeasurementAsbuiltCategoryDetailRows([]);
     setOperationalAsbuiltCategoryDetailRows([]);
+    setOperationalBillingCategoryDetailRows([]);
     setOperationalCategoryDetailTab("measurement");
     setIsOperationalCategoryDetailLoading(true);
 
@@ -685,6 +766,7 @@ export function OperationalBillingDashboardPageView() {
         includeOperationalCategoryDetail: "true",
         operationalCategoryKey: card.key,
       });
+      if (asbuiltCoverageEndDate) params.set("asbuiltCoverageEndDate", asbuiltCoverageEndDate);
 
       const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
         cache: "no-store",
@@ -697,7 +779,9 @@ export function OperationalBillingDashboardPageView() {
       }
 
       setOperationalCategoryDetailRows(payload.operationalCategoryDetailRows ?? []);
+      setOperationalMeasurementAsbuiltCategoryDetailRows(payload.operationalMeasurementAsbuiltCategoryDetailRows ?? []);
       setOperationalAsbuiltCategoryDetailRows(payload.operationalAsbuiltCategoryDetailRows ?? []);
+      setOperationalBillingCategoryDetailRows(payload.operationalBillingCategoryDetailRows ?? []);
     } catch (error) {
       setOperationalCategoryDetailModal(null);
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar detalhes da categoria operacional." });
@@ -705,14 +789,58 @@ export function OperationalBillingDashboardPageView() {
     } finally {
       setIsOperationalCategoryDetailLoading(false);
     }
-  }, [logError, session?.accessToken]);
+  }, [asbuiltCoverageEndDate, logError, session?.accessToken]);
 
   function closeOperationalCategoryDetailModal() {
     setOperationalCategoryDetailModal(null);
     setOperationalCategoryDetailRows([]);
+    setOperationalMeasurementAsbuiltCategoryDetailRows([]);
     setOperationalAsbuiltCategoryDetailRows([]);
+    setOperationalBillingCategoryDetailRows([]);
     setOperationalCategoryDetailTab("measurement");
     setIsOperationalCategoryDetailLoading(false);
+  }
+
+  const openChartProjectDetail = useCallback(async (item: ChartItem) => {
+    if (!session?.accessToken) return;
+
+    setChartProjectDetailModal({ key: item.key, label: chartDisplayLabel(item) });
+    setChartProjectDetailRows([]);
+    setIsChartProjectDetailLoading(true);
+
+    try {
+      const params = new URLSearchParams({
+        includeChartProjectDetail: "true",
+        chartIndicatorKey: item.key,
+      });
+      if (chartServiceCenterId) params.set("chartServiceCenterId", chartServiceCenterId);
+      if (chartProjectId) params.set("chartProjectId", chartProjectId);
+      if (asbuiltCoverageEndDate) params.set("asbuiltCoverageEndDate", asbuiltCoverageEndDate);
+
+      const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as DashboardResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Falha ao carregar projetos do indicador.");
+      }
+
+      setChartProjectDetailRows(payload.chartProjectDetailRows ?? []);
+    } catch (error) {
+      setChartProjectDetailModal(null);
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar projetos do indicador." });
+      await logError("Falha ao carregar projetos do indicador do grafico", error, item);
+    } finally {
+      setIsChartProjectDetailLoading(false);
+    }
+  }, [asbuiltCoverageEndDate, chartProjectId, chartServiceCenterId, logError, session?.accessToken]);
+
+  function closeChartProjectDetailModal() {
+    setChartProjectDetailModal(null);
+    setChartProjectDetailRows([]);
+    setIsChartProjectDetailLoading(false);
   }
 
   useEffect(() => {
@@ -907,6 +1035,17 @@ export function OperationalBillingDashboardPageView() {
     ]);
   }
 
+  const currentOperationalMeasurementRows = operationalCategoryDetailTab === "measurementAsbuilt"
+    ? operationalMeasurementAsbuiltCategoryDetailRows
+    : operationalCategoryDetailRows;
+  const currentOperationalMeasurementTotalQuantity = operationalCategoryDetailTab === "measurementAsbuilt"
+    ? operationalMeasurementAsbuiltCategoryDetailTotalQuantity
+    : operationalCategoryDetailTotalQuantity;
+  const currentOperationalMeasurementTotalValue = operationalCategoryDetailTab === "measurementAsbuilt"
+    ? operationalMeasurementAsbuiltCategoryDetailTotalValue
+    : operationalCategoryDetailTotalValue;
+  const isOperationalMeasurementTab = operationalCategoryDetailTab === "measurement" || operationalCategoryDetailTab === "measurementAsbuilt";
+
   return (
     <section className={styles.wrapper}>
       {feedback ? (
@@ -957,6 +1096,16 @@ export function OperationalBillingDashboardPageView() {
                 </option>
               ))}
             </datalist>
+          </label>
+
+          <label className={styles.field}>
+            <span>Servicos considerados ate</span>
+            <input
+              type="date"
+              value={asbuiltCoverageEndDate}
+              onChange={(event) => setAsbuiltCoverageEndDate(event.target.value)}
+              disabled={isChartLoading || isProjectValuesLoading}
+            />
           </label>
         </div>
 
@@ -1038,7 +1187,16 @@ export function OperationalBillingDashboardPageView() {
               <tbody>
                 {chartItems.map((item) => (
                   <tr key={`chart-table-${item.key}`}>
-                    <td><strong>{chartDisplayLabel(item)}</strong></td>
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.tableRowButton}
+                        onClick={() => void openChartProjectDetail(item)}
+                        title={`Ver projetos de ${chartDisplayLabel(item)}`}
+                      >
+                        {chartDisplayLabel(item)}
+                      </button>
+                    </td>
                     <td>{formatCurrency(item.value)}</td>
                     <td>{formatNumber(item.projectCount)}</td>
                     <td>{formatNumber(item.measurementCount)}</td>
@@ -1106,16 +1264,24 @@ export function OperationalBillingDashboardPageView() {
                   </div>
                   <div className={styles.operationalIndicatorValues}>
                     <div className={styles.operationalIndicatorMetric}>
-                      <span>Medidos</span>
-                      <strong>{formatWholeNumber(card.measurementQuantity)}</strong>
+                      <span>Medicao</span>
+                      <strong>{formatWholeNumber(card.measurement?.quantity ?? 0)}</strong>
+                      <small>{formatCurrency(card.measurement?.value ?? 0)}</small>
+                    </div>
+                    <div className={styles.operationalIndicatorMetric}>
+                      <span>M. ASBUILT</span>
+                      <strong>{formatWholeNumber(card.measurementAsbuilt?.quantity ?? 0)}</strong>
+                      <small>{formatCurrency(card.measurementAsbuilt?.value ?? 0)}</small>
                     </div>
                     <div className={styles.operationalIndicatorMetric}>
                       <span>ASBUILT</span>
-                      <strong>{formatWholeNumber(card.asbuiltQuantity)}</strong>
+                      <strong>{formatWholeNumber(card.asbuilt?.quantity ?? 0)}</strong>
+                      <small>{formatCurrency(card.asbuilt?.value ?? 0)}</small>
                     </div>
                     <div className={styles.operationalIndicatorMetric}>
                       <span>Faturado</span>
-                      <strong>{formatWholeNumber(card.billingQuantity)}</strong>
+                      <strong>{formatWholeNumber(card.billing?.quantity ?? 0)}</strong>
+                      <small>{formatCurrency(card.billing?.value ?? 0)}</small>
                     </div>
                   </div>
                 </div>
@@ -1721,6 +1887,75 @@ export function OperationalBillingDashboardPageView() {
         </div>
       ) : null}
 
+      {chartProjectDetailModal ? (
+        <div className={styles.modalOverlay} onClick={closeChartProjectDetailModal}>
+          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3>Projetos do indicador</h3>
+                <p className={styles.modalSubtitle}>{chartProjectDetailModal.label}</p>
+              </div>
+              <button type="button" className={styles.modalCloseButton} onClick={closeChartProjectDetailModal}>
+                Fechar
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <div className={styles.modalSummaryGrid}>
+                <div className={styles.modalSummaryCard}>
+                  <span>Projetos</span>
+                  <strong>{formatNumber(chartProjectDetailRows.length)}</strong>
+                </div>
+                <div className={styles.modalSummaryCard}>
+                  <span>Valor total</span>
+                  <strong>{formatCurrency(chartProjectDetailTotalValue)}</strong>
+                </div>
+              </div>
+
+              <div className={styles.tableWrapper}>
+                <table className={styles.modalTable}>
+                  <thead>
+                    <tr>
+                      <th>Projeto</th>
+                      <th>Centro de servico</th>
+                      <th>Valor</th>
+                      <th>Ordens</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chartProjectDetailRows.length ? (
+                      chartProjectDetailRows.map((row) => (
+                        <tr key={row.projectId}>
+                          <td><strong>{row.projectCode}</strong></td>
+                          <td>{row.serviceCenter}</td>
+                          <td>{formatCurrency(row.value)}</td>
+                          <td>{formatNumber(row.orderCount)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className={styles.emptyRow}>
+                          {isChartProjectDetailLoading ? "Carregando projetos..." : "Nenhum projeto encontrado para este indicador."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  {chartProjectDetailRows.length ? (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2}><strong>Total</strong></td>
+                        <td>{formatCurrency(chartProjectDetailTotalValue)}</td>
+                        <td>{formatNumber(chartProjectDetailRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
+                      </tr>
+                    </tfoot>
+                  ) : null}
+                </table>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
+
       {operationalCategoryDetailModal ? (
         <div className={styles.modalOverlay} onClick={closeOperationalCategoryDetailModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -1747,26 +1982,44 @@ export function OperationalBillingDashboardPageView() {
                 </button>
                 <button
                   type="button"
+                  className={operationalCategoryDetailTab === "measurementAsbuilt" ? styles.modalTabActive : styles.modalTab}
+                  onClick={() => setOperationalCategoryDetailTab("measurementAsbuilt")}
+                >
+                  M. ASBUILT
+                </button>
+                <button
+                  type="button"
                   className={operationalCategoryDetailTab === "asbuilt" ? styles.modalTabActive : styles.modalTab}
                   onClick={() => setOperationalCategoryDetailTab("asbuilt")}
                 >
                   As Built
                 </button>
+                <button
+                  type="button"
+                  className={operationalCategoryDetailTab === "billing" ? styles.modalTabActive : styles.modalTab}
+                  onClick={() => setOperationalCategoryDetailTab("billing")}
+                >
+                  Faturado
+                </button>
               </div>
 
               <div className={styles.modalSummaryGrid}>
                 <div className={styles.modalSummaryCard}>
-                  <span>{operationalCategoryDetailTab === "measurement" ? "Projetos / Datas" : "Projetos / Faixas"}</span>
-                  <strong>{formatNumber(operationalCategoryDetailTab === "measurement" ? operationalCategoryDetailRows.length : operationalAsbuiltCategoryDetailRows.length)}</strong>
+                  <span>{isOperationalMeasurementTab ? "Projetos / Datas" : operationalCategoryDetailTab === "asbuilt" ? "Projetos / Faixas" : "Projetos"}</span>
+                  <strong>{formatNumber(isOperationalMeasurementTab ? currentOperationalMeasurementRows.length : operationalCategoryDetailTab === "asbuilt" ? operationalAsbuiltCategoryDetailRows.length : operationalBillingCategoryDetailRows.length)}</strong>
                 </div>
                 <div className={styles.modalSummaryCard}>
-                  <span>{operationalCategoryDetailTab === "measurement" ? "Quantidade medida" : "Quantidade asbuilt"}</span>
-                  <strong>{formatNumber(operationalCategoryDetailTab === "measurement" ? operationalCategoryDetailTotalQuantity : operationalAsbuiltCategoryDetailTotalQuantity)}</strong>
+                  <span>{isOperationalMeasurementTab ? "Quantidade medida" : operationalCategoryDetailTab === "asbuilt" ? "Quantidade asbuilt" : "Quantidade faturada"}</span>
+                  <strong>{formatNumber(isOperationalMeasurementTab ? currentOperationalMeasurementTotalQuantity : operationalCategoryDetailTab === "asbuilt" ? operationalAsbuiltCategoryDetailTotalQuantity : operationalBillingCategoryDetailTotalQuantity)}</strong>
+                </div>
+                <div className={styles.modalSummaryCard}>
+                  <span>Valor total</span>
+                  <strong>{formatCurrency(isOperationalMeasurementTab ? currentOperationalMeasurementTotalValue : operationalCategoryDetailTab === "asbuilt" ? operationalAsbuiltCategoryDetailTotalValue : operationalBillingCategoryDetailTotalValue)}</strong>
                 </div>
               </div>
 
               <div className={styles.tableWrapper}>
-                {operationalCategoryDetailTab === "measurement" ? (
+                {isOperationalMeasurementTab ? (
                   <table className={styles.modalTable}>
                     <thead>
                       <tr>
@@ -1774,39 +2027,42 @@ export function OperationalBillingDashboardPageView() {
                         <th>Centro de servico</th>
                         <th>Data execucao</th>
                         <th>Qtd. medida</th>
+                        <th>Valor</th>
                         <th>Ordens</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {operationalCategoryDetailRows.length ? (
-                        operationalCategoryDetailRows.map((row) => (
+                      {currentOperationalMeasurementRows.length ? (
+                        currentOperationalMeasurementRows.map((row) => (
                           <tr key={`${row.projectId}-${row.executionDate ?? "sem-data"}`}>
                             <td><strong>{row.projectCode}</strong></td>
                             <td>{row.serviceCenter}</td>
                             <td>{formatDate(row.executionDate)}</td>
                             <td>{formatNumber(row.measurementQuantity)}</td>
+                            <td>{formatCurrency(row.measurementValue)}</td>
                             <td>{formatNumber(row.orderCount)}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={5} className={styles.emptyRow}>
+                          <td colSpan={6} className={styles.emptyRow}>
                             {isOperationalCategoryDetailLoading ? "Carregando detalhes..." : "Nenhum projeto com Medicao encontrado para esta categoria."}
                           </td>
                         </tr>
                       )}
                     </tbody>
-                    {operationalCategoryDetailRows.length ? (
+                    {currentOperationalMeasurementRows.length ? (
                       <tfoot>
                         <tr>
                           <td colSpan={3}><strong>Total</strong></td>
-                          <td>{formatNumber(operationalCategoryDetailTotalQuantity)}</td>
-                          <td>{formatNumber(operationalCategoryDetailRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
+                          <td>{formatNumber(currentOperationalMeasurementTotalQuantity)}</td>
+                          <td>{formatCurrency(currentOperationalMeasurementTotalValue)}</td>
+                          <td>{formatNumber(currentOperationalMeasurementRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
                         </tr>
                       </tfoot>
                     ) : null}
                   </table>
-                ) : (
+                ) : operationalCategoryDetailTab === "asbuilt" ? (
                   <table className={styles.modalTable}>
                     <thead>
                       <tr>
@@ -1815,6 +2071,7 @@ export function OperationalBillingDashboardPageView() {
                         <th>Faixa As Built</th>
                         <th>Servicos considerados ate</th>
                         <th>Qtd. As Built</th>
+                        <th>Valor</th>
                         <th>Itens</th>
                       </tr>
                     </thead>
@@ -1827,12 +2084,13 @@ export function OperationalBillingDashboardPageView() {
                             <td>{formatAsbuiltRange(row.coverageStartDate, row.coverageEndDate)}</td>
                             <td>{formatDate(row.coverageEndDate)}</td>
                             <td>{formatNumber(row.asbuiltQuantity)}</td>
+                            <td>{formatCurrency(row.asbuiltValue)}</td>
                             <td>{formatNumber(row.itemCount)}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={6} className={styles.emptyRow}>
+                          <td colSpan={7} className={styles.emptyRow}>
                             {isOperationalCategoryDetailLoading ? "Carregando detalhes..." : "Nenhum projeto com As Built encontrado para esta categoria."}
                           </td>
                         </tr>
@@ -1843,7 +2101,52 @@ export function OperationalBillingDashboardPageView() {
                         <tr>
                           <td colSpan={4}><strong>Total</strong></td>
                           <td>{formatNumber(operationalAsbuiltCategoryDetailTotalQuantity)}</td>
+                          <td>{formatCurrency(operationalAsbuiltCategoryDetailTotalValue)}</td>
                           <td>{formatNumber(operationalAsbuiltCategoryDetailRows.reduce((sum, row) => sum + row.itemCount, 0))}</td>
+                        </tr>
+                      </tfoot>
+                    ) : null}
+                  </table>
+                ) : (
+                  <table className={styles.modalTable}>
+                    <thead>
+                      <tr>
+                        <th>Projeto</th>
+                        <th>Centro de servico</th>
+                        <th>Qtd. faturada</th>
+                        <th>Valor</th>
+                        <th>Ordens</th>
+                        <th>Itens</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {operationalBillingCategoryDetailRows.length ? (
+                        operationalBillingCategoryDetailRows.map((row) => (
+                          <tr key={row.projectId}>
+                            <td><strong>{row.projectCode}</strong></td>
+                            <td>{row.serviceCenter}</td>
+                            <td>{formatNumber(row.billingQuantity)}</td>
+                            <td>{formatCurrency(row.billingValue)}</td>
+                            <td>{formatNumber(row.orderCount)}</td>
+                            <td>{formatNumber(row.itemCount)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className={styles.emptyRow}>
+                            {isOperationalCategoryDetailLoading ? "Carregando detalhes..." : "Nenhum projeto com Faturamento encontrado para esta categoria."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    {operationalBillingCategoryDetailRows.length ? (
+                      <tfoot>
+                        <tr>
+                          <td colSpan={2}><strong>Total</strong></td>
+                          <td>{formatNumber(operationalBillingCategoryDetailTotalQuantity)}</td>
+                          <td>{formatCurrency(operationalBillingCategoryDetailTotalValue)}</td>
+                          <td>{formatNumber(operationalBillingCategoryDetailRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
+                          <td>{formatNumber(operationalBillingCategoryDetailRows.reduce((sum, row) => sum + row.itemCount, 0))}</td>
                         </tr>
                       </tfoot>
                     ) : null}
