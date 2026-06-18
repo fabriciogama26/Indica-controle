@@ -251,16 +251,16 @@
 
 .operationalIndicatorGrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
   gap: 12px;
 }
 
 .operationalIndicator {
-  min-height: 158px;
+  min-height: 190px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 10px;
   border: 1px solid #d9e1ef;
   border-radius: 8px;
   background: #f8fbff;
@@ -283,29 +283,32 @@
 
 .operationalIndicatorValues {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .operationalIndicatorMetric {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
   border-radius: 6px;
   background: #ffffff;
-  padding: 7px 6px;
+  padding: 8px;
 }
 
 .operationalIndicatorMetric span {
   color: #60708f;
   font-size: 9px;
+  line-height: 1.2;
   font-weight: 800;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .operationalIndicatorMetric strong {
   color: #002b7f;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
 }
 
@@ -313,7 +316,8 @@
   color: #42557d;
   font-size: 10px;
   font-weight: 900;
-  white-space: nowrap;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .operationalIndicatorEmpty {
@@ -781,7 +785,7 @@
 
 .modalSummaryGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
   gap: 12px;
 }
 
