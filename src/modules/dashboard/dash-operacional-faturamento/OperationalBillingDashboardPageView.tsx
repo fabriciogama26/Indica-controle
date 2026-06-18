@@ -178,6 +178,7 @@ type DashboardResponse = {
   filters?: {
     projects: ProjectOption[];
     serviceCenters: Option[];
+    asbuiltCoverageDates?: Option[];
   };
   selectedProject?: ProjectOption | null;
   rows?: DashboardRow[];
@@ -314,6 +315,7 @@ export function OperationalBillingDashboardPageView() {
   const logError = useErrorLogger("dash-operacional-faturamento");
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<Option[]>([]);
+  const [asbuiltCoverageDates, setAsbuiltCoverageDates] = useState<Option[]>([]);
   const [rows, setRows] = useState<DashboardRow[]>([]);
   const [categoryColumns, setCategoryColumns] = useState<CategoryColumn[]>([]);
   const [categorySummaryRows, setCategorySummaryRows] = useState<CategorySummaryRow[]>([]);
@@ -567,6 +569,7 @@ export function OperationalBillingDashboardPageView() {
 
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
+      setAsbuiltCoverageDates(payload.filters?.asbuiltCoverageDates ?? []);
       setRows([]);
       setCategoryColumns([]);
       setCategorySummaryRows([]);
@@ -603,6 +606,7 @@ export function OperationalBillingDashboardPageView() {
 
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
+      setAsbuiltCoverageDates(payload.filters?.asbuiltCoverageDates ?? []);
       setProjectValueRows(payload.projectValueRows ?? []);
       setOperationalCategoryCards(payload.operationalCategoryCards ?? []);
       setOperationalAverageTickets(payload.operationalAverageTickets ?? null);
@@ -649,6 +653,7 @@ export function OperationalBillingDashboardPageView() {
 
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
+      setAsbuiltCoverageDates(payload.filters?.asbuiltCoverageDates ?? []);
       setRows(payload.rows ?? []);
       setCategoryColumns(payload.categoryColumns ?? []);
       setCategorySummaryRows(payload.categorySummaryRows ?? []);
@@ -697,6 +702,7 @@ export function OperationalBillingDashboardPageView() {
 
       setProjects(payload.filters?.projects ?? []);
       setServiceCenters(payload.filters?.serviceCenters ?? []);
+      setAsbuiltCoverageDates(payload.filters?.asbuiltCoverageDates ?? []);
       setChartItems(payload.chartItems ?? []);
       setFeedback({ type: "success", message: "Grafico atualizado." });
     } catch (error) {
@@ -1100,12 +1106,18 @@ export function OperationalBillingDashboardPageView() {
 
           <label className={styles.field}>
             <span>Servicos considerados ate</span>
-            <input
-              type="date"
+            <select
               value={asbuiltCoverageEndDate}
               onChange={(event) => setAsbuiltCoverageEndDate(event.target.value)}
               disabled={isChartLoading || isProjectValuesLoading}
-            />
+            >
+              <option value="">Todos</option>
+              {asbuiltCoverageDates.map((coverageDate) => (
+                <option key={coverageDate.id} value={coverageDate.id}>
+                  {formatDate(coverageDate.id)}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 
@@ -1216,6 +1228,26 @@ export function OperationalBillingDashboardPageView() {
               Quantidades de Medicao, ASBUILT e Faturamento consolidadas em todos os projetos ativos validos do tenant.
             </p>
           </div>
+          <div className={styles.actions}>
+            <label className={styles.field}>
+              <span>Servicos considerados ate</span>
+              <select
+                value={asbuiltCoverageEndDate}
+                onChange={(event) => setAsbuiltCoverageEndDate(event.target.value)}
+                disabled={isProjectValuesLoading || isChartLoading}
+              >
+                <option value="">Todos</option>
+                {asbuiltCoverageDates.map((coverageDate) => (
+                  <option key={coverageDate.id} value={coverageDate.id}>
+                    {formatDate(coverageDate.id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className={styles.secondaryButton} onClick={() => void loadProjectValues()} disabled={isProjectValuesLoading}>
+              {isProjectValuesLoading ? "Atualizando..." : "Atualizar indicadores"}
+            </button>
+          </div>
         </div>
 
         {operationalCategoryCards.length ? (
@@ -1269,7 +1301,7 @@ export function OperationalBillingDashboardPageView() {
                       <small>{formatCurrency(card.measurement?.value ?? 0)}</small>
                     </div>
                     <div className={styles.operationalIndicatorMetric}>
-                      <span>M. ASBUILT</span>
+                      <span>M. As built</span>
                       <strong>{formatWholeNumber(card.measurementAsbuilt?.quantity ?? 0)}</strong>
                       <small>{formatCurrency(card.measurementAsbuilt?.value ?? 0)}</small>
                     </div>
@@ -1985,7 +2017,7 @@ export function OperationalBillingDashboardPageView() {
                   className={operationalCategoryDetailTab === "measurementAsbuilt" ? styles.modalTabActive : styles.modalTab}
                   onClick={() => setOperationalCategoryDetailTab("measurementAsbuilt")}
                 >
-                  M. ASBUILT
+                  M. As built
                 </button>
                 <button
                   type="button"
