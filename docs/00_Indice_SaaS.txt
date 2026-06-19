@@ -17,6 +17,7 @@ Arquivos principais para nova task
 - docs/Tela_Programacao_Simples_SaaS.txt
 - docs/Tela_Visualizacao_Programacao_SaaS.txt
 - docs/Tela_Mapa_Programacao_SaaS.txt
+- docs/Tela_Apuracao_Fator_Minimo_SaaS.txt
 - docs/Tela_Medicao_SaaS.txt
 - docs/Tela_Medicao_Asbuilt_SaaS.txt
 - docs/Tela_Faturamento_SaaS.txt
@@ -54,6 +55,7 @@ Estado atual resumido
 - Tela de Projetos com cadastro/filtros/lista implementada
 - Tela de Faturamento com cadastro manual, cadastro em massa, lista, historico e status aberto/fechado implementada
 - Tela de Medicao Asbuilt criada como fluxo separado baseado no Faturamento, com persistencia propria e precificacao alinhada a regra da Medicao
+- Tela Apuracao de Fator Minimo criada em Operacao para simular pontuacao minima por equipe/data e codigo de servico sem calcular no navegador
 - Tela Dash operacional e faturamento criada para comparar codigos entre Medicao, Medicao Asbuilt e Faturamento por projeto
 - Tela Dashboard Estoque criada com 6 graficos iniciais de saldo, giro, ABC, evolucao e dispersao Requisicao/Devolucao
 - Tela Consumo por Projeto criada em Almoxarifado para comparar materiais previstos, requisitados, devolvidos, qtd liquida e desvio por projeto

@@ -1,0 +1,156 @@
+Tela: Apuracao de Fator Minimo
+=================================================
+
+Visao geral
+-------------------------------------------------
+- Tela operacional para simular a pontuacao minima por equipe e data.
+- A tela usa as ordens de Medicao com producao (`COM_PRODUCAO`) e itens ativos.
+- O resultado e consolidado por `Equipe + Data execucao`.
+- Quando o usuario filtra um `Codigo de servico`, somente os itens daquele codigo entram no calculo da pontuacao e do valor.
+- A primeira versao nao grava extracao oficial nem altera ordens de Medicao.
+
+Arquitetura
+-------------------------------------------------
+- Rota:
+  - `src/app/(dashboard)/apuracao-fator-minimo/page.tsx`
+- View:
+  - `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.tsx`
+- Estilo:
+  - `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.module.css`
+- Export:
+  - `src/modules/dashboard/apuracao-fator-minimo/index.ts`
+- API:
+  - `src/app/api/apuracao-fator-minimo/route.ts`
+- Migration:
+  - `supabase/migrations/246_create_minimum_factor_analysis_page.sql`
+
+Filtros, auto-complete e listagem
+-------------------------------------------------
+- Filtros disponiveis:
+  - Data inicio
+  - Data fim
+  - Status (`FECHADA`, `ABERTA`, `TODOS` ativos)
+  - Tipo de servico do Projeto
+  - Projeto, com selecao por `Adicionar` e suporte a mais de um projeto
+  - Equipe, com selecao por `Adicionar` e suporte a mais de uma equipe
+  - Codigo de servico, com selecao por `Adicionar` e suporte a mais de um codigo
+- Metadados carregados por:
+  - `GET /api/apuracao-fator-minimo?mode=meta`
+- Simulacao carregada por:
+  - `GET /api/apuracao-fator-minimo`
+- A tela nao executa a simulacao automaticamente ao abrir ou limpar filtros; o calculo ocorre somente ao clicar em `Simular`.
+- Detalhe sob demanda:
+  - `GET /api/apuracao-fator-minimo` com `detailTeamId` e `detailDate`
+- A listagem exibe:
+  - Data
+  - Equipe
+  - Tipo de equipe vigente
+  - Pontos apurados
+  - Meta de pontos
+  - Diferenca de pontos
+  - Valor apurado
+  - Complemento financeiro estimado
+  - Status (`Atingiu`, `Nao atingiu`, `Sem meta`)
+  - Quantidade de ordens
+  - Codigos considerados
+- A linha da tabela abre modal com os itens considerados.
+- A tela exporta CSV do consolidado e CSV do detalhe aberto.
+- O bloco `Resultado da simulacao` possui botoes `Limpar` e `Exportar CSV`.
+- O resultado consolidado e paginado localmente em 20 linhas por pagina.
+
+Boas praticas
+-------------------------------------------------
+- O frontend nao carrega todas as linhas brutas para calcular.
+- A consolidacao fica no endpoint server-side.
+- O endpoint usa `tenant_id` do usuario autenticado em todas as consultas.
+- A tela usa `useErrorLogger("apuracao_fator_minimo")` para registrar falhas.
+- A simulacao tem limite de periodo de 366 dias para reduzir risco de timeout.
+- A migration adiciona indice em `project_measurement_order_items` para apoiar filtro por `service_activity_id`.
+
+Atalhos
+-------------------------------------------------
+- Nao existem atalhos de teclado dedicados nesta versao.
+
+Atualizacao 2026-06
+-------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/apuracao-fator-minimo/page.tsx`
+  - `src/app/api/apuracao-fator-minimo/route.ts`
+  - `src/modules/dashboard/apuracao-fator-minimo/index.ts`
+  - `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.tsx`
+  - `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.module.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/246_create_minimum_factor_analysis_page.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Apuracao_Fator_Minimo_SaaS.txt`
+  - `docs/00_Indice_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `MinimumFactorAnalysisPageView`
+  - `GET /api/apuracao-fator-minimo`
+  - `loadMeta`
+  - `buildAnalysis`
+  - `fetchEligibleProjects`
+  - `fetchOrders`
+  - `fetchItems`
+  - `fetchTeamTypeResolutionMaps`
+  - `resolveTeamType`
+  - `fetchPointTargetMap`
+  - `fetchFinancialTargetMap`
+  - `useErrorLogger("apuracao_fator_minimo")`
+  - `PAGE_KEY = "apuracao-fator-minimo"`
+- Comportamento antes/depois:
+  - Antes: a analise de pontuacao por filtro ficava limitada ao `Exportar pontuacao` da tela Medicao, com montagem do CSV no navegador.
+  - Depois: existe uma tela propria em `Operacao > Apuracao de Fator Minimo` para simular o resultado consolidado por equipe e data.
+  - Depois: quando um ou mais codigos de servico sao informados, somente os itens desses codigos sao usados no calculo.
+  - Depois: filtros de Projeto, Equipe e Codigo de servico aceitam multiplos itens adicionados.
+  - Depois: a simulacao ocorre somente ao clicar em `Simular`.
+  - Depois: `Limpar` e `Exportar CSV` ficam no bloco `Resultado da simulacao`.
+  - Depois: o resultado consolidado possui paginacao local.
+  - Depois: o detalhe dos itens e carregado apenas ao clicar em uma linha consolidada.
+  - Depois: a tela nasce bloqueada para usuarios nao administrativos por `default_user_access = false`.
+- Impacto multi-tenant:
+  - API usa `resolveAuthenticatedAppUser` e `requirePageAction` com `pageKey = apuracao-fator-minimo`.
+  - Todas as consultas filtram pelo `tenant_id` do usuario autenticado.
+  - Migration cria permissao explicita inicial liberando apenas perfis administrativos.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+-------------------------------------------------
+Funcoes principais:
+- Caminho: `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.tsx`
+  - Responsavel por: renderizar filtros, chamar simulacao, exibir resumo, tabela, modal de detalhe e exportacoes CSV.
+- Caminho: `src/app/api/apuracao-fator-minimo/route.ts`
+  - Responsavel por: autenticar usuario, validar permissao, carregar metadados, consolidar a simulacao e retornar detalhe sob demanda.
+
+Constantes e configuracoes:
+- Caminho: `src/app/api/apuracao-fator-minimo/route.ts`
+  - `PAGE_KEY = "apuracao-fator-minimo"`
+  - `QUERY_PAGE_SIZE = 1000`
+  - `FILTER_CHUNK_SIZE = 100`
+
+Funcoes utilitarias relacionadas:
+- Caminho: `src/app/api/apuracao-fator-minimo/route.ts`
+  - `normalizeText`
+  - `normalizeUuid`
+  - `normalizeIsoDate`
+  - `normalizeStatus`
+  - `fetchPagedSupabaseRows`
+  - `buildMeasurementCycleStart`
+  - `daysBetween`
+
+Servicos e integracoes externas:
+- Supabase:
+  - `project_with_labels`
+  - `project_measurement_orders`
+  - `project_measurement_order_items`
+  - `team_type_history`
+  - `team_types`
+  - `measurement_score_targets`
+  - `measurement_cycle_workdays`
+  - `measurement_cycle_target_items`
+  - `measurement_team_type_targets`
+
+Ajuda contextual:
+- Nao existe ajuda contextual dedicada nesta versao.

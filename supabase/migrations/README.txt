@@ -616,3 +616,8 @@ Observacao
 - Ajusta permissoes automaticas do `mapa-programacao` para preservar admin/master liberados e usuarios comuns bloqueados quando a linha foi criada por migration.
 - Preenche permissoes ausentes para usuarios legados conforme `default_user_access`, evitando que uma unica tela nova bloqueada transforme a sessao em matriz parcial.
 - Cria triggers para preencher `app_user_page_permissions` ao cadastrar novas telas ou novos usuarios, sem sobrescrever configuracoes existentes.
+
+246_create_minimum_factor_analysis_page.sql
+- Cadastra `apuracao-fator-minimo` em `app_pages` com `default_user_access = false`.
+- Preenche permissoes ausentes liberando somente perfis administrativos por padrao.
+- Adiciona indice em `project_measurement_order_items` por `tenant_id`, `service_activity_id`, `is_active` e `measurement_order_id` para apoiar a simulacao filtrada por codigo de servico.
