@@ -429,6 +429,30 @@
   transition: height 0.2s ease;
 }
 
+.barFillSegmented {
+  width: 100%;
+  min-height: 4px;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  border-radius: 6px 6px 0 0;
+  transition: height 0.2s ease;
+}
+
+.barSegmentPrimary,
+.barSegmentSecondary {
+  width: 100%;
+  min-height: 4px;
+}
+
+.barSegmentPrimary {
+  background: #1f4ea3;
+}
+
+.barSegmentSecondary {
+  background: #1f9a8a;
+}
+
 .chartInsightGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -756,6 +780,13 @@
   padding: 16px;
 }
 
+.modalFilterGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(140px, 180px) max-content;
+  gap: 12px;
+  align-items: end;
+}
+
 .modalTabs {
   display: inline-flex;
   align-items: center;
@@ -948,6 +979,7 @@
   .filterGrid,
   .chartFilterGrid,
   .projectValueFilterGrid,
+  .modalFilterGrid,
   .summaryGrid,
   .valueCardGrid,
   .chartInsightGrid,
