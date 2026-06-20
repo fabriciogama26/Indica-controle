@@ -290,32 +290,21 @@ async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
     .filter((project) => !isEmergencyServiceType(project.service_type_text));
 }
 
-async function fetchProgrammingRows(supabase: SupabaseClient, tenantId: string) {
+async function fetchProgrammingRows(supabase: SupabaseClient, tenantId: string, windowStart: string) {
   const { data, error } = await supabase
     .from("project_programming")
     .select("id, project_id, team_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, cancellation_reason, note, created_at, updated_at")
     .eq("tenant_id", tenantId)
     .not("project_id", "is", null)
-    .limit(100000)
+    .gte("execution_date", windowStart)
+    .limit(5000)
     .returns<ProgrammingRow[]>();
 
-  if (!error) {
-    return data ?? [];
-  }
-
-  const fallback = await supabase
-    .from("project_programming")
-    .select("id, project_id, team_id, status, execution_date, etapa_number, etapa_unica, work_completion_status, cancellation_reason, note, created_at, updated_at")
-    .eq("tenant_id", tenantId)
-    .not("project_id", "is", null)
-    .limit(100000)
-    .returns<ProgrammingRow[]>();
-
-  if (fallback.error) {
+  if (error) {
     throw new Error("Falha ao carregar historico geral de Programacao.");
   }
 
-  return (fallback.data ?? []).map((item) => ({ ...item, etapa_final: false }));
+  return data ?? [];
 }
 
 async function fetchWorkCompletionCatalog(supabase: SupabaseClient, tenantId: string) {
@@ -421,9 +410,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const programmingWindowStartDate = new Date();
+    programmingWindowStartDate.setUTCMonth(programmingWindowStartDate.getUTCMonth() - 18);
+    const programmingWindowStart = toIsoDate(programmingWindowStartDate);
+
     const [projects, programmingRows, workCompletionLabelMap, teamMap] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
-      fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id),
+      fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, programmingWindowStart),
       fetchWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
     ]);

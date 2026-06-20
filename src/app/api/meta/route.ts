@@ -482,6 +482,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  const measurementWindowStart = toIsoDate(addMonths(new Date(), -24));
   const [teamTypesResult, targetsResult, teamsResult, measurementDatesResult] = await Promise.all([
     resolution.supabase
       .from("team_types")
@@ -509,8 +510,9 @@ export async function GET(request: NextRequest) {
       .eq("is_active", true)
       .eq("measurement_kind", "COM_PRODUCAO")
       .neq("status", "CANCELADA")
+      .gte("execution_date", measurementWindowStart)
       .order("execution_date", { ascending: false })
-      .limit(10000)
+      .limit(3000)
       .returns<MeasurementOrderDateRow[]>(),
   ]);
 

@@ -643,33 +643,27 @@ export async function handleDashboardMeasurementGet(
   });
 
   const allVisibleTeamIds = Array.from(new Set([...cycleOrders, ...periodOrders, ...periodMinimumBillingGuaranteeOrders].map((order) => order.team_id).filter(Boolean)));
-  const teamsResult = allVisibleTeamIds.length
+  const allTeamsResult = allVisibleTeamIds.length
     ? await resolution.supabase
         .from("teams")
         .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
         .eq("tenant_id", tenantId)
-        .in("id", allVisibleTeamIds)
+        .or(`ativo.eq.true,id.in.(${allVisibleTeamIds.join(",")})`)
         .returns<TeamRow[]>()
-    : { data: [] as TeamRow[], error: null };
+    : await resolution.supabase
+        .from("teams")
+        .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
+        .eq("tenant_id", tenantId)
+        .eq("ativo", true)
+        .returns<TeamRow[]>();
 
-  if (teamsResult.error) {
+  if (allTeamsResult.error) {
     return NextResponse.json({ message: "Falha ao carregar equipes para dashboard." }, { status: 500 });
   }
 
-  const activeTeamsResult = await resolution.supabase
-    .from("teams")
-    .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .returns<TeamRow[]>();
-
-  if (activeTeamsResult.error) {
-    return NextResponse.json({ message: "Falha ao carregar equipes ativas para metas de supervisores." }, { status: 500 });
-  }
-
-  const teamTypeHistoryTeamIds = Array.from(
-    new Set([...allVisibleTeamIds, ...(activeTeamsResult.data ?? []).map((team) => team.id).filter(Boolean)]),
-  );
+  const allTeams = allTeamsResult.data ?? [];
+  const visibleTeamSet = new Set(allVisibleTeamIds);
+  const teamTypeHistoryTeamIds = allTeams.map((team) => team.id).filter(Boolean);
   const teamTypeHistoryResult = teamTypeHistoryTeamIds.length
     ? await resolution.supabase
         .from("team_type_history")
@@ -683,8 +677,8 @@ export async function handleDashboardMeasurementGet(
     return NextResponse.json({ message: "Falha ao carregar historico de tipo das equipes." }, { status: 500 });
   }
 
-  const teamMap = new Map((teamsResult.data ?? []).map((team) => [team.id, team]));
-  const activeTeamMap = new Map((activeTeamsResult.data ?? []).map((team) => [team.id, team]));
+  const teamMap = new Map(allTeams.filter((team) => visibleTeamSet.has(team.id)).map((team) => [team.id, team]));
+  const activeTeamMap = new Map(allTeams.filter((team) => team.ativo).map((team) => [team.id, team]));
   const teamTypeHistoryByTeam = new Map<string, TeamTypeHistoryRow[]>();
   for (const entry of teamTypeHistoryResult.data ?? []) {
     const entries = teamTypeHistoryByTeam.get(entry.team_id) ?? [];
@@ -743,8 +737,7 @@ export async function handleDashboardMeasurementGet(
 
   const teamTypeIds = Array.from(new Set([
     ...(teamTypeHistoryResult.data ?? []).map((entry) => entry.team_type_id),
-    ...(teamsResult.data ?? []).map((team) => team.team_type_id),
-    ...(activeTeamsResult.data ?? []).map((team) => team.team_type_id),
+    ...allTeams.map((team) => team.team_type_id),
   ].filter((id): id is string => Boolean(id))));
   const teamTypesResult = teamTypeIds.length
     ? await resolution.supabase
@@ -764,8 +757,7 @@ export async function handleDashboardMeasurementGet(
   const personIds = Array.from(
     new Set(
       [
-        ...(teamsResult.data ?? []).flatMap((team) => [team.foreman_person_id, team.supervisor_person_id]),
-        ...(activeTeamsResult.data ?? []).flatMap((team) => [team.foreman_person_id, team.supervisor_person_id]),
+        ...allTeams.flatMap((team) => [team.foreman_person_id, team.supervisor_person_id]),
         ...(teamSupervisorHistoryResult.data ?? []).map((entry) => entry.supervisor_person_id),
       ].filter((id): id is string => Boolean(id)),
     ),
@@ -829,7 +821,7 @@ export async function handleDashboardMeasurementGet(
   const supervisorOptions = Array.from(
     new Map(
       [
-        ...(activeTeamsResult.data ?? [])
+        ...allTeams
           .filter((team): team is TeamRow => Boolean(team?.supervisor_person_id))
           .map((team) => ({
             id: team.supervisor_person_id as string,
@@ -1075,7 +1067,7 @@ export async function handleDashboardMeasurementGet(
 
   const potentialSupervisorTeams = Array.from(
     new Map(
-      [...(activeTeamsResult.data ?? []), ...(teamsResult.data ?? [])]
+      allTeams
         .filter((team) => {
           if (teamIdFilter && team.id !== teamIdFilter) return false;
           return true;
@@ -1123,7 +1115,7 @@ export async function handleDashboardMeasurementGet(
   }
 
   const performanceTeamsById = new Map<string, TeamPerformanceTeam>();
-  for (const team of [...(activeTeamsResult.data ?? []), ...(teamsResult.data ?? [])]) {
+  for (const team of allTeams) {
     const mappedTeam = toTeamPerformanceTeam(team);
     mappedTeam.isActive = activeTeamMap.has(team.id);
     performanceTeamsById.set(team.id, mappedTeam);
