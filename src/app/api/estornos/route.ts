@@ -225,7 +225,7 @@ async function loadItemReversals(context: AuthenticatedAppUserContext, startDate
     )
     .eq("tenant_id", context.appUser.tenant_id)
     .order("created_at", { ascending: false })
-    .limit(50000);
+    .limit(2000);
 
   if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
   if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);
@@ -243,7 +243,7 @@ async function loadFullReversals(context: AuthenticatedAppUserContext, startDate
     )
     .eq("tenant_id", context.appUser.tenant_id)
     .order("created_at", { ascending: false })
-    .limit(50000);
+    .limit(2000);
 
   if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
   if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);

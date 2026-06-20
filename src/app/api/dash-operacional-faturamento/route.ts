@@ -381,7 +381,7 @@ async function loadOrderIds(params: {
     .eq("project_id", params.projectId)
     .eq("is_active", true)
     .neq("status", "CANCELADA")
-    .limit(50000);
+    .limit(5000);
 
   if (params.table === "project_measurement_orders") {
     query = query.eq("measurement_kind", "COM_PRODUCAO");
@@ -764,7 +764,7 @@ async function loadLatestWorkCompletionByProject(params: {
       .in("project_id", projectIdChunk)
       .not("work_completion_status", "is", null)
       .order("updated_at", { ascending: false })
-      .limit(50000)
+      .limit(2000)
       .returns<ProgrammingWorkCompletionRow[]>();
 
     if (error) {
