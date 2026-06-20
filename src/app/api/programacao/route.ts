@@ -3,6 +3,89 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
+import {
+  BOARD_PROJECT_SELECT_LEGACY,
+  BOARD_PROJECT_SELECT_WITH_TEST,
+  PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL,
+} from "@/server/modules/programacao/selects";
+import type {
+  AppUserLookupRow,
+  BatchCreateProgrammingPayload,
+  BatchCreateProgrammingResponse,
+  BatchProgrammingRpcItem,
+  BatchProgrammingRpcResult,
+  BoardProjectBaseRow,
+  BoardProjectRow,
+  CancelProgrammingPayload,
+  CancelProgrammingRpcResult,
+  CopyProgrammingPayload,
+  CopyProgrammingResponse,
+  CopyProgrammingToDatesPayload,
+  CopyProgrammingToDatesResponse,
+  ForemanConflictLookupRow,
+  LocationPlanSupportRow,
+  PersonRow,
+  PostponeProgrammingRpcResult,
+  ProgrammingActivityRow,
+  ProgrammingConflictPayload,
+  ProgrammingConflictRecord,
+  ProgrammingEqCatalogRow,
+  ProgrammingHistoryListResponse,
+  ProgrammingHistoryRow,
+  ProgrammingOperationalHistoryRow,
+  ProgrammingReasonCatalogRow,
+  ProgrammingRow,
+  ProgrammingSgdTypeRow,
+  ProgrammingStageValidationResponse,
+  ProgrammingStageValidationTeamSummary,
+  ProgrammingTimeConflictLookupRow,
+  ProgrammingWorkCompletionCatalogRow,
+  ProjectConcludedProgrammingContext,
+  ProjectConflictLookupRow,
+  SaveProgrammingPayload,
+  SaveProgrammingRpcResult,
+  ServiceCenterRow,
+  SupportOptionRow,
+  TeamConflictLookupRow,
+  TeamRow,
+  TeamTypeRow,
+  TeamWeekSummaryRow,
+  WorkCompletionStatusRpcResult,
+} from "@/server/modules/programacao/types";
+import {
+  buildHistoryChangesWithDerivedExecutionDate,
+  buildProjectCompletedConflictResponse,
+  formatDatePtBr,
+  formatTime,
+  getInvalidRequestedDateLabel,
+  isCompletedWorkStatus,
+  isIsoDate,
+  isMissingProjectTestColumn,
+  isMissingRpcFunctionError,
+  isNegativeNumericLikeText,
+  normalizeBoolean,
+  normalizeElectricalEqNumber,
+  normalizeIsoDate,
+  normalizeNonNegativeDecimal,
+  normalizeNonNegativeInteger,
+  normalizeNullableText,
+  normalizeOptionalTime,
+  normalizePeriod,
+  normalizePositiveInteger,
+  normalizePositiveNumber,
+  normalizeProgrammingDocuments,
+  normalizeProgrammingStructureFields,
+  normalizeQuestionnaireAnswers,
+  normalizeSgdNumber,
+  normalizeStatusToken,
+  normalizeStringArray,
+  normalizeText,
+  normalizeTime,
+  normalizeUniqueTextArray,
+  normalizeWorkCompletionStatus,
+  resolveAppUserName,
+  startOfWeekMonday,
+} from "@/server/modules/programacao/normalizers";
 
 const PROGRAMMING_PAGE_KEY = "programacao-simples";
 
@@ -26,514 +109,6 @@ async function authorizeProgrammingAction(context: AuthenticatedAppUserContext, 
   );
 }
 
-type BoardProjectRow = {
-  id: string;
-  sob: string;
-  execution_deadline: string | null;
-  service_center_text: string | null;
-  service_type_text: string | null;
-  city_text: string | null;
-  priority_text: string | null;
-  partner_text: string | null;
-  utility_responsible_text: string | null;
-  utility_field_manager_text: string | null;
-  street: string | null;
-  neighborhood: string | null;
-  service_description: string | null;
-  observation: string | null;
-  has_locacao: boolean | null;
-  is_active: boolean;
-  is_test: boolean;
-};
-
-type BoardProjectBaseRow = Omit<BoardProjectRow, "is_test"> & {
-  is_test?: boolean | null;
-};
-
-type TeamRow = {
-  id: string;
-  name: string;
-  vehicle_plate: string | null;
-  service_center_id: string | null;
-  team_type_id: string;
-  foreman_person_id: string;
-  ativo: boolean;
-};
-
-type TeamTypeRow = {
-  id: string;
-  name: string;
-};
-
-type PersonRow = {
-  id: string;
-  nome: string;
-};
-
-type ServiceCenterRow = {
-  id: string;
-  name: string;
-};
-
-type SupportOptionRow = {
-  id: string;
-  description: string;
-  location_support_item_id: string | null;
-  is_active: boolean;
-};
-
-type ProgrammingSgdTypeRow = {
-  id: string;
-  description: string;
-  export_column: string;
-  is_active: boolean;
-};
-
-type ProgrammingEqCatalogRow = {
-  id: string;
-  code: string;
-  label_pt: string;
-  is_active: boolean;
-  sort_order: number;
-};
-
-type ProgrammingReasonCatalogRow = {
-  code: string;
-  label_pt: string;
-  requires_notes: boolean;
-  is_active: boolean;
-  sort_order: number;
-};
-
-type ProgrammingWorkCompletionCatalogRow = {
-  id: string;
-  code: string;
-  label_pt: string;
-  is_active: boolean;
-  sort_order: number;
-};
-
-type LocationPlanSupportRow = {
-  project_id: string;
-  questionnaire_answers: Record<string, unknown> | null;
-};
-
-type TeamWeekSummaryRow = {
-  team_id: string;
-  week_start: string;
-  week_end: string;
-  worked_days: number | string;
-  capacity_days: number | string;
-  free_days: number | string;
-  load_percent: number | string;
-  load_status: "FREE" | "NORMAL" | "WARNING" | "OVERLOAD";
-};
-
-type ProgrammingRow = {
-  id: string;
-  project_id: string;
-  team_id: string;
-  status: "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
-  execution_date: string;
-  period: "INTEGRAL" | "PARCIAL";
-  start_time: string;
-  end_time: string;
-  expected_minutes: number;
-  outage_start_time: string | null;
-  outage_end_time: string | null;
-  feeder: string | null;
-  support: string | null;
-  support_item_id: string | null;
-  note: string | null;
-  campo_eletrico: string | null;
-  service_description: string | null;
-  poste_qty: number | null;
-  estrutura_qty: number | null;
-  trafo_qty: number | null;
-  rede_qty: number | null;
-  etapa_number: number | null;
-  etapa_unica: boolean | null;
-  etapa_final: boolean | null;
-  work_completion_status: string | null;
-  affected_customers: number | null;
-  sgd_type_id: string | null;
-  electrical_eq_catalog_id: string | null;
-  sgd_number: string | null;
-  sgd_included_at: string | null;
-  sgd_delivered_at: string | null;
-  pi_number: string | null;
-  pi_included_at: string | null;
-  pi_delivered_at: string | null;
-  pep_number: string | null;
-  pep_included_at: string | null;
-  pep_delivered_at: string | null;
-  cancellation_reason: string | null;
-  canceled_at: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type AppUserLookupRow = {
-  id: string;
-  display: string | null;
-  login_name: string | null;
-};
-
-type ProgrammingActivityRow = {
-  id: string;
-  programming_id: string;
-  service_activity_id: string;
-  activity_code: string;
-  activity_description: string;
-  activity_unit: string;
-  quantity: number | string;
-  is_active: boolean;
-};
-
-type ProgrammingHistoryRow = {
-  id: string;
-  entity_id: string;
-  created_by: string | null;
-  changed_by_name: string;
-  reason: string | null;
-  changes: Record<string, unknown> | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-};
-
-type ProgrammingOperationalHistoryRow = {
-  id: string;
-  programming_id: string;
-  related_programming_id: string | null;
-  created_by: string | null;
-  action_type: string;
-  reason: string | null;
-  changes: Record<string, unknown> | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-};
-
-type SaveProgrammingPayload = {
-  id?: string;
-  projectId?: string;
-  teamId?: string;
-  date?: string;
-  period?: string;
-  startTime?: string;
-  endTime?: string;
-  expectedMinutes?: number | string;
-  outageStartTime?: string;
-  outageEndTime?: string;
-  feeder?: string;
-  support?: string;
-  supportItemId?: string;
-  note?: string;
-  electricalField?: string;
-  serviceDescription?: string;
-  posteQty?: number | string;
-  estruturaQty?: number | string;
-  trafoQty?: number | string;
-  redeQty?: number | string;
-  etapaNumber?: number | string;
-  etapaUnica?: boolean;
-  etapaFinal?: boolean;
-  workCompletionStatus?: string;
-  affectedCustomers?: number | string;
-  sgdTypeId?: string;
-  electricalEqCatalogId?: string;
-  changeReason?: string;
-  expectedUpdatedAt?: string;
-  documents?: {
-    sgd?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
-    pi?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
-    pep?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
-  };
-  activities?: Array<{
-    catalogId?: string;
-    quantity?: number | string;
-  }>;
-};
-
-type CopyProgrammingPayload = {
-  action?: "COPY";
-  sourceTeamId?: string;
-  targetTeamIds?: string[];
-  startDate?: string;
-  endDate?: string;
-};
-
-type CopyProgrammingToDatesPayload = {
-  action?: "COPY_TO_DATES";
-  sourceProgrammingId?: string;
-  expectedUpdatedAt?: string;
-  copyScope?: "single" | "group";
-  targets?: Array<{
-    date?: string;
-    etapaNumber?: number | string;
-    teamIds?: string[];
-  }>;
-};
-
-type BatchCreateProgrammingPayload = {
-  action?: "BATCH_CREATE";
-  projectId?: string;
-  teamIds?: string[];
-  date?: string;
-  period?: string;
-  startTime?: string;
-  endTime?: string;
-  expectedMinutes?: number | string;
-  outageStartTime?: string;
-  outageEndTime?: string;
-  feeder?: string;
-  support?: string;
-  supportItemId?: string;
-  note?: string;
-  electricalField?: string;
-  serviceDescription?: string;
-  posteQty?: number | string;
-  estruturaQty?: number | string;
-  trafoQty?: number | string;
-  redeQty?: number | string;
-  etapaNumber?: number | string;
-  etapaUnica?: boolean;
-  etapaFinal?: boolean;
-  workCompletionStatus?: string;
-  affectedCustomers?: number | string;
-  sgdTypeId?: string;
-  electricalEqCatalogId?: string;
-  documents?: {
-    sgd?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
-    pi?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
-    pep?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
-  };
-  activities?: Array<{
-    catalogId?: string;
-    quantity?: number | string;
-  }>;
-};
-
-type CancelProgrammingPayload = {
-  id?: string;
-  action?: string;
-  reason?: string;
-  newDate?: string;
-  expectedUpdatedAt?: string;
-  workCompletionStatus?: string;
-};
-
-type SaveProgrammingRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  detail?: string;
-  action?: "INSERT" | "UPDATE";
-  programming_id?: string;
-  project_code?: string;
-  updated_at?: string;
-};
-
-type ProgrammingConflictRecord = {
-  id: string;
-  projectId: string;
-  teamId: string;
-  status: string;
-  executionDate: string;
-  startTime: string;
-  endTime: string;
-  updatedAt: string;
-};
-
-type ProgrammingConflictPayload = {
-  error: "conflict";
-  message: string;
-  currentRecord: ProgrammingConflictRecord | null;
-  currentUpdatedAt: string | null;
-  updatedBy: string | null;
-  changedFields: string[];
-};
-
-type CopyProgrammingResponse = {
-  success?: boolean;
-  copiedCount?: number;
-  message?: string;
-};
-
-type CopyProgrammingToDatesResponse = {
-  success?: boolean;
-  copiedCount?: number;
-  copyBatchId?: string | null;
-  copyBatchIds?: string[];
-  sourceCount?: number;
-  message?: string;
-  reason?: string | null;
-  detail?: string | null;
-  enteredEtapaNumber?: number;
-  hasConflict?: boolean;
-  highestStage?: number;
-  teams?: ProgrammingStageValidationTeamSummary[];
-};
-
-type BatchCreateProgrammingResponse = {
-  success?: boolean;
-  insertedCount?: number;
-  message?: string;
-  warning?: string | null;
-  enteredEtapaNumber?: number;
-  hasConflict?: boolean;
-  highestStage?: number;
-  teams?: ProgrammingStageValidationTeamSummary[];
-};
-
-type BatchProgrammingRpcItem = {
-  teamId?: string;
-  programmingId?: string;
-};
-
-type BatchProgrammingRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  detail?: string;
-  project_code?: string;
-  inserted_count?: number;
-  items?: BatchProgrammingRpcItem[];
-};
-
-type WorkCompletionStatusRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  detail?: string;
-  skipped?: boolean;
-  programming_id?: string;
-  updated_at?: string;
-  work_completion_status?: string;
-  currentRecord?: ProgrammingConflictRecord & {
-    workCompletionStatus?: string | null;
-  };
-  currentUpdatedAt?: string;
-  updatedBy?: string | null;
-  changedFields?: string[];
-};
-
-type ProgrammingHistoryListResponse = {
-  history: Array<{
-    id: string;
-    changedAt: string;
-    reason: string;
-    action: string;
-    changes: Record<string, unknown>;
-    metadata: Record<string, unknown>;
-  }>;
-};
-
-type ProgrammingStageValidationTeamSummary = {
-  teamId: string;
-  teamName: string;
-  highestStage: number;
-  existingStages: number[];
-  existingDates: string[];
-};
-
-type ProgrammingStageValidationResponse = {
-  enteredEtapaNumber: number;
-  hasConflict: boolean;
-  highestStage: number;
-  teams: ProgrammingStageValidationTeamSummary[];
-  message: string;
-};
-
-type CancelProgrammingRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  programming_id?: string;
-  project_code?: string;
-  updated_at?: string;
-  programming_status?: "ADIADA" | "CANCELADA";
-};
-
-type PostponeProgrammingRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  detail?: string;
-  programming_id?: string;
-  new_programming_id?: string;
-  project_code?: string;
-  updated_at?: string;
-};
-
-type ProgrammingTimeConflictLookupRow = {
-  id: string;
-  team_id: string;
-  project_id: string;
-  start_time: string;
-  end_time: string;
-};
-
-type TeamConflictLookupRow = {
-  id: string;
-  name: string | null;
-  foreman_person_id: string | null;
-};
-
-type ForemanConflictLookupRow = {
-  id: string;
-  nome: string | null;
-};
-
-type ProjectConcludedProgrammingContext = {
-  programmingId: string;
-  executionDate: string;
-  teamId: string;
-  teamName: string;
-  foremanName: string;
-  workCompletionStatus: string;
-  updatedAt: string;
-};
-
-type ProjectConflictLookupRow = {
-  id: string;
-  sob: string | null;
-};
-
-function isMissingRpcFunctionError(errorMessage: string, functionName: string) {
-  const normalizedError = normalizeText(errorMessage).toLowerCase();
-  const normalizedFunctionName = functionName.toLowerCase();
-  return (
-    normalizedError.includes("could not find the function")
-    && normalizedError.includes(normalizedFunctionName)
-    || normalizedError.includes("function")
-    && normalizedError.includes(normalizedFunctionName)
-    && normalizedError.includes("does not exist")
-    || normalizedError.includes(normalizedFunctionName)
-    && normalizedError.includes("schema cache")
-  );
-}
-
-const PROGRAMMING_SELECT_WITH_OUTAGE_STRUCTURE_AND_ENEL =
-  "id, project_id, team_id, status, execution_date, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time, feeder, support, support_item_id, note, campo_eletrico, service_description, poste_qty, estrutura_qty, trafo_qty, rede_qty, etapa_number, etapa_unica, etapa_final, work_completion_status, affected_customers, sgd_type_id, electrical_eq_catalog_id, sgd_number, sgd_included_at, sgd_delivered_at, pi_number, pi_included_at, pi_delivered_at, pep_number, pep_included_at, pep_delivered_at, cancellation_reason, canceled_at, created_by, updated_by, created_at, updated_at";
-
-function normalizeText(value: unknown) {
-  return String(value ?? "").trim();
-}
-
-function resolveAppUserName(user: AppUserLookupRow | undefined) {
-  if (!user) {
-    return "Nao identificado";
-  }
-
-  return normalizeText(user.login_name) || normalizeText(user.display) || "Nao identificado";
-}
 
 async function resolveTeamTimeConflictDetailedMessage(params: {
   supabase: SupabaseClient;
@@ -670,343 +245,7 @@ async function resolveProjectCompletedProgrammingContext(params: {
   } satisfies ProjectConcludedProgrammingContext;
 }
 
-function buildProjectCompletedConflictResponse(params: {
-  message: string;
-  context: ProjectConcludedProgrammingContext;
-}) {
-  const detail = `Registro CONCLUIDO encontrado em ${formatDatePtBr(params.context.executionDate)} na equipe ${params.context.teamName} (Encarregado: ${params.context.foremanName}).`;
 
-  return {
-    error: "conflict" as const,
-    reason: "PROJECT_COMPLETED_REQUIRES_REOPEN",
-    message: params.message,
-    detail,
-    currentRecord: {
-      id: params.context.programmingId,
-      executionDate: params.context.executionDate,
-      startTime: "",
-      endTime: "",
-      updatedAt: params.context.updatedAt,
-    },
-  };
-}
-
-function isNegativeNumericLikeText(value: string | null) {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return false;
-  }
-
-  return /^-\d+([.,]\d+)?$/.test(normalized);
-}
-
-function getInvalidRequestedDateLabel(
-  documents: SaveProgrammingPayload["documents"] | BatchCreateProgrammingPayload["documents"] | undefined,
-) {
-  const entries: Array<{ key: "sgd" | "pi" | "pep"; label: string }> = [
-    { key: "sgd", label: "SGD" },
-    { key: "pi", label: "PI" },
-    { key: "pep", label: "PEP" },
-  ];
-
-  for (const entry of entries) {
-    const approvedAt = normalizeIsoDate(documents?.[entry.key]?.approvedAt ?? documents?.[entry.key]?.includedAt);
-    const requestedAt = normalizeIsoDate(documents?.[entry.key]?.requestedAt ?? documents?.[entry.key]?.deliveredAt);
-    if (approvedAt && requestedAt && requestedAt > approvedAt) {
-      return entry.label;
-    }
-  }
-
-  return null;
-}
-
-function normalizeNullableText(value: unknown) {
-  const normalized = normalizeText(value);
-  return normalized || null;
-}
-
-function normalizeBoolean(value: unknown) {
-  if (typeof value === "boolean") {
-    return value;
-  }
-
-  const normalized = normalizeText(value).toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-
-  if (["true", "1", "sim", "yes"].includes(normalized)) {
-    return true;
-  }
-
-  if (["false", "0", "nao", "não", "no"].includes(normalized)) {
-    return false;
-  }
-
-  return null;
-}
-
-function normalizeElectricalEqNumber(value: unknown) {
-  const normalized = normalizeText(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (!normalized) {
-    return null;
-  }
-
-  return /^[A-Z0-9]+$/.test(normalized) ? normalized : null;
-}
-
-function normalizeSgdNumber(value: unknown) {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return null;
-  }
-
-  const segments = normalized
-    .split("/")
-    .map((segment) => normalizeText(segment))
-    .filter(Boolean);
-
-  if (!segments.length) {
-    return null;
-  }
-
-  return segments.join(" / ");
-}
-
-function isIsoDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function normalizeIsoDate(value: unknown) {
-  const normalized = normalizeText(value);
-  return isIsoDate(normalized) ? normalized : null;
-}
-
-function normalizeTime(value: unknown) {
-  const normalized = normalizeText(value);
-  if (/^\d{2}:\d{2}$/.test(normalized)) {
-    return `${normalized}:00`;
-  }
-
-  if (/^\d{2}:\d{2}:\d{2}$/.test(normalized)) {
-    return normalized;
-  }
-
-  return null;
-}
-
-function normalizeOptionalTime(value: unknown) {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return null;
-  }
-
-  return normalizeTime(normalized);
-}
-
-function normalizeWorkCompletionStatus(value: unknown) {
-  const normalized = normalizeText(value).toUpperCase();
-  return normalized || null;
-}
-
-function normalizeStatusToken(value: unknown) {
-  return normalizeText(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase();
-}
-
-function isCompletedWorkStatus(value: unknown) {
-  const token = normalizeStatusToken(value);
-  return token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO");
-}
-
-function formatTime(value: string | null) {
-  return normalizeText(value).slice(0, 5);
-}
-
-function formatDatePtBr(value: string | null | undefined) {
-  const raw = normalizeText(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return raw || "-";
-  }
-
-  const [year, month, day] = raw.split("-");
-  return `${day}/${month}/${year}`;
-}
-
-function normalizePositiveInteger(value: unknown) {
-  const parsed = Number(value ?? "");
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function normalizePositiveNumber(value: unknown) {
-  const raw = String(value ?? "").trim().replace(",", ".");
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-
-  return Number(parsed.toFixed(2));
-}
-
-function normalizeNonNegativeDecimal(value: unknown) {
-  const raw = normalizeText(value).replace(",", ".");
-  if (!raw) {
-    return 0;
-  }
-
-  if (!/^\d+(\.\d+)?$/.test(raw)) {
-    return null;
-  }
-
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function normalizeQuestionnaireAnswers(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function normalizeStringArray(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.map((item) => normalizeText(item)).filter(Boolean);
-}
-
-function normalizeProgrammingStructureFields<T extends Record<string, unknown>>(row: T): ProgrammingRow {
-  const normalized = {
-    ...row,
-    outage_start_time: normalizeNullableText(row.outage_start_time),
-    outage_end_time: normalizeNullableText(row.outage_end_time),
-    campo_eletrico: normalizeNullableText(row.campo_eletrico),
-    service_description: normalizeNullableText(row.service_description),
-    poste_qty: Number(row.poste_qty ?? 0),
-    estrutura_qty: Number(row.estrutura_qty ?? 0),
-    trafo_qty: Number(row.trafo_qty ?? 0),
-    rede_qty: Number(row.rede_qty ?? 0),
-    etapa_number: row.etapa_number === null || row.etapa_number === undefined ? null : Number(row.etapa_number),
-    etapa_unica: Boolean(row.etapa_unica ?? false),
-    etapa_final: Boolean((row as { etapa_final?: unknown }).etapa_final ?? false),
-    work_completion_status: normalizeWorkCompletionStatus(row.work_completion_status),
-    affected_customers: Number(row.affected_customers ?? 0),
-    sgd_type_id: normalizeNullableText(row.sgd_type_id),
-    electrical_eq_catalog_id: normalizeNullableText(row.electrical_eq_catalog_id),
-  };
-
-  return normalized as unknown as ProgrammingRow;
-}
-
-function normalizeNonNegativeInteger(value: unknown) {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return 0;
-  }
-
-  const parsed = Number(normalized);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    return null;
-  }
-
-  return parsed;
-}
-
-function normalizeUniqueTextArray(value: unknown) {
-  return Array.from(new Set(normalizeStringArray(value)));
-}
-
-function normalizeProgrammingDocuments(
-  documents: SaveProgrammingPayload["documents"] | BatchCreateProgrammingPayload["documents"] | undefined,
-) {
-  return {
-    sgd: {
-      number: normalizeSgdNumber(documents?.sgd?.number) ?? undefined,
-      approvedAt: normalizeIsoDate(documents?.sgd?.approvedAt ?? documents?.sgd?.includedAt) ?? undefined,
-      requestedAt: normalizeIsoDate(documents?.sgd?.requestedAt ?? documents?.sgd?.deliveredAt) ?? undefined,
-    },
-    pi: {
-      number: normalizeNullableText(documents?.pi?.number) ?? undefined,
-      approvedAt: normalizeIsoDate(documents?.pi?.approvedAt ?? documents?.pi?.includedAt) ?? undefined,
-      requestedAt: normalizeIsoDate(documents?.pi?.requestedAt ?? documents?.pi?.deliveredAt) ?? undefined,
-    },
-    pep: {
-      number: normalizeNullableText(documents?.pep?.number) ?? undefined,
-      approvedAt: normalizeIsoDate(documents?.pep?.approvedAt ?? documents?.pep?.includedAt) ?? undefined,
-      requestedAt: normalizeIsoDate(documents?.pep?.requestedAt ?? documents?.pep?.deliveredAt) ?? undefined,
-    },
-  };
-}
-
-function startOfWeekMonday(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  const dayOfWeek = date.getDay();
-  const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  date.setDate(date.getDate() + offset);
-  const nextYear = date.getFullYear();
-  const nextMonth = String(date.getMonth() + 1).padStart(2, "0");
-  const nextDay = String(date.getDate()).padStart(2, "0");
-  return `${nextYear}-${nextMonth}-${nextDay}`;
-}
-
-function normalizePeriod(value: unknown) {
-  const normalized = normalizeText(value).toUpperCase();
-  if (normalized === "INTEGRAL") {
-    return "INTEGRAL";
-  }
-
-  if (normalized === "PARCIAL" || normalized === "PARTIAL") {
-    return "PARCIAL";
-  }
-
-  return null;
-}
-
-function buildHistoryChangesWithDerivedExecutionDate(
-  changes: Record<string, unknown> | null,
-  metadata: Record<string, unknown> | null,
-) {
-  const normalizedChanges = { ...(changes ?? {}) };
-  const action = normalizeText(metadata?.action).toUpperCase();
-
-  if (action === "ADIADA" && !normalizedChanges.executionDate) {
-    const fromDate = normalizeIsoDate(metadata?.executionDate);
-    const toDate = normalizeIsoDate(metadata?.newExecutionDate);
-
-    if (fromDate && toDate && fromDate !== toDate) {
-      normalizedChanges.executionDate = {
-        from: fromDate,
-        to: toDate,
-      };
-    }
-  }
-
-  return normalizedChanges;
-}
-
-const BOARD_PROJECT_SELECT_WITH_TEST =
-  "id, sob, execution_deadline, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active, is_test";
-
-const BOARD_PROJECT_SELECT_LEGACY =
-  "id, sob, execution_deadline, service_center_text, service_type_text, city_text, priority_text, partner_text, utility_responsible_text, utility_field_manager_text, street, neighborhood, service_description, observation, has_locacao, is_active";
-
-function isMissingProjectTestColumn(message: string) {
-  return normalizeText(message).toLowerCase().includes("is_test");
-}
 
 async function fetchProjects(
   supabase: SupabaseClient,
