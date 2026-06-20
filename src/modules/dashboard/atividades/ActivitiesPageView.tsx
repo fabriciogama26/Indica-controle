@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./ActivitiesPageView.module.css";
+import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 
 type ActivityItem = {
   id: string;
@@ -160,14 +161,6 @@ function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_
   return params.toString();
 }
 
-function escapeCsvValue(value: string | number | null | undefined) {
-  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (raw.includes(";") || raw.includes('"')) {
-    return `"${raw.replace(/"/g, '""')}"`;
-  }
-  return raw;
-}
-
 function buildActivitiesCsv(activityItems: ActivityItem[]) {
   const header = [
     "Codigo",
@@ -204,16 +197,6 @@ function buildActivitiesCsv(activityItems: ActivityItem[]) {
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
   return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function formatMoney(value: number) {

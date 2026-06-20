@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./TeamsPageView.module.css";
+import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 
 type TeamItem = {
   id: string;
@@ -168,14 +169,6 @@ function buildQuery(filters: TeamFilterState, page: number, pageSize = PAGE_SIZE
   return params.toString();
 }
 
-function escapeCsvValue(value: string | number | null | undefined) {
-  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (raw.includes(";") || raw.includes('"')) {
-    return `"${raw.replace(/"/g, '""')}"`;
-  }
-  return raw;
-}
-
 function buildTeamsCsv(teamItems: TeamItem[]) {
   const header = [
     "Nome da equipe",
@@ -208,16 +201,6 @@ function buildTeamsCsv(teamItems: TeamItem[]) {
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
   return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function formatDateTime(value: string | null) {

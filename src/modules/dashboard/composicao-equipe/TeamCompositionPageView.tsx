@@ -7,6 +7,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { notifyTeamCompositionUpdated } from "@/lib/events/teamComposition";
 import styles from "./TeamCompositionPageView.module.css";
+import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 
 type ProjectOption = {
   id: string;
@@ -298,24 +299,6 @@ function formatCsvPhone(value: string | null | undefined) {
 function formatOptional(value: string | null | undefined) {
   const normalized = normalizeText(value);
   return normalized || "-";
-}
-
-function escapeCsvValue(value: string | number | boolean | null | undefined) {
-  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (raw.includes(";") || raw.includes('"')) {
-    return `"${raw.replace(/"/g, '""')}"`;
-  }
-  return raw;
-}
-
-function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function getCompositionForemanPhone(composition: CompositionItem) {

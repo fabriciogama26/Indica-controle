@@ -7,6 +7,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { supabase } from "@/lib/supabase/client";
 import styles from "./ProgrammingSimplePageView.module.css";
+import { downloadCsvFile } from "@/lib/utils/csv";
 import {
   ProgrammingAlertModal,
   ProgrammingCancelModal,
@@ -118,16 +119,6 @@ type CopyToDatesDraftRow = {
   teamIds: string[];
 };
 
-
-function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
 
 function resolveDeadlineWindowDays(viewMode: DeadlineViewMode) {
   if (viewMode === "90") {

@@ -54,26 +54,7 @@ export function buildCurrentStockQuery(
   return params.toString();
 }
 
-export function csvEscape(value: string | number | null | undefined) {
-  const normalized = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (normalized.includes(";") || normalized.includes("\"")) {
-    return `"${normalized.replace(/"/g, "\"\"")}"`;
-  }
-
-  return normalized;
-}
-
-export function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-
-  URL.revokeObjectURL(url);
-}
+export { escapeCsvValue as csvEscape, downloadCsvFile } from "@/lib/utils/csv";
 
 export function toIsoDate(value: Date) {
   const year = value.getFullYear();
