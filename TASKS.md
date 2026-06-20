@@ -951,6 +951,7 @@
 - [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
 - [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.
 
+- [x] Criar migration 235_add_performance_indexes.sql com dois índices ausentes: project_measurement_orders(tenant_id, measurement_kind, is_active, status) para o dashboard-medicao e stock_transfer_item_reversals(tenant_id, created_at desc) para filtro de data na tela de Estornos.
 - [x] Aplicar singleton e cache de auth (TTL 45s por token+tenant) em appUsersAdmin.ts, eliminando novo client Supabase a cada request e reduzindo 4 queries de auth para 0 em requests repetidos dentro do TTL nas 68 rotas de API.
 - [x] Remover select("*") de composicao-equipe/route.ts nas 3 ocorrencias (fetchCompositionById, cobertura diaria e lista paginada), substituindo por colunas explicitas conforme os tipos declarados.
 - [x] Reduzir limit(50000) para limites conservadores em 6 pontos de 4 endpoints: consumo-projeto e dash-operacional-faturamento para 5.000, estornos (item e integral) e dash-operacional-faturamento/programacao para 2.000, dash-estoque para 5.000., eliminando novo client Supabase a cada request e reduzindo 4 queries de auth para 0 em requests repetidos dentro do TTL nas 68 rotas de API.
