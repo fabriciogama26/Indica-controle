@@ -558,3 +558,61 @@ Observacao
 - Cadastra `dashboard-equipes` em `app_pages`.
 - Preenche somente permissoes ausentes por role e usuario, sem sobrescrever configuracoes existentes.
 - Mantem `viewer` bloqueado por padrao e libera os demais perfis operacionais.
+
+235_fix_programming_batch_decimal_rpc_name.sql
+- Renomeia a wrapper decimal em lote da Programacao para
+  `save_project_programming_batch_full_decimal`, respeitando o limite de 63 caracteres
+  dos identificadores PostgreSQL e permitindo sua resolucao pelo PostgREST.
+- Preserva a implementacao transacional da migration 228, fixa `search_path` seguro e
+  mantem EXECUTE somente para `service_role`.
+
+236_add_team_stock_operation_batch_reversal.sql
+- Cria `reverse_team_stock_operation_batch_v1` para estornar atomicamente todos os itens ainda ativos de uma Operacao de Equipe.
+- Permite concluir lotes parcialmente estornados, preserva a auditoria individual e reverte toda a chamada quando qualquer item falha.
+- Valida ator ativo e tenant, bloqueia estorno de estorno e mantem EXECUTE somente para `service_role`.
+
+237_group_team_stock_imports_for_batch_reversal.sql
+- Adiciona `operation_batch_id` em `stock_transfer_team_operations` para identificar linhas da mesma requisicao criada pelo cadastro em massa.
+- Faz backfill dos lotes existentes somente quando transacao, usuario e contexto operacional coincidem.
+- Atualiza o cadastro em massa para persistir o agrupamento e cria `reverse_team_stock_operation_batch_v2` para estornar atomicamente materiais distribuidos em varios `transferId`.
+
+238_add_stock_transfer_batch_reversal.sql
+- Adiciona `operation_batch_id` em `stock_transfers` para agrupar linhas bem-sucedidas da mesma importacao e contexto operacional.
+- Cria wrapper de importacao restrita ao `service_role`, mantendo o modo parcial por linha e vinculando cada movimentacao ao lote.
+- Cria estorno atomico dos itens ainda ativos, com validacao de ator/tenant, bloqueio de Operacoes de Equipe e rollback total quando qualquer item falha.
+- Nao faz backfill de importacoes historicas, pois os registros antigos nao possuem uma chave confiavel de lote.
+
+239_backfill_stock_transfer_import_batches.sql
+- Reconstrui lotes historicos sem `operation_batch_id` somente quando existem multiplas transferencias de item unico no mesmo segundo.
+- Exige coincidencia de tenant, ator, segundo, operacao, centros, projeto, data, compra direta e finalidade.
+- Exclui Operacoes de Equipe e movimentacoes criadas como estorno.
+- Mantem grupos ambiguos ou isolados sem lote para evitar estorno conjunto indevido.
+
+240_merge_split_stock_transfer_import_batches.sql
+- Corrige o recorte por segundo da migration 239, que podia gerar lotes de aproximadamente cinco materiais.
+- Une transferencias historicas consecutivas do mesmo contexto quando a diferenca entre registros e de ate 2 segundos.
+- Processa somente registros sem lote ou com UUID deterministico da migration 239, preservando os UUIDs reais gerados pela importacao nova.
+- Exclui Operacoes de Equipe, estornos e transferencias com mais de um item.
+
+241_create_team_supervisor_history.sql
+- Cria `team_supervisor_history` para versionar supervisor por equipe com `valid_from` e `valid_to`.
+- Faz backfill a partir de `app_entity_history` e do supervisor atual de `teams`.
+- Sincroniza novas trocas por trigger em `teams.supervisor_person_id`, com RLS por tenant e sem permissao de `DELETE`.
+
+242_copy_programming_to_dates_inherit_work_status.sql
+- Reaplica `copy_project_programming_to_dates` para resolver o ultimo `Estado Trabalho`
+  valido da obra no mesmo tenant antes de criar os destinos.
+- Faz a copia por datas herdar o Estado Trabalho vigente da obra, mantendo
+  validacoes de tenant, concorrencia, ETAPA, conflito de agenda e projeto concluido.
+- Reforca `search_path = public, pg_temp` e EXECUTE somente para `service_role`.
+
+244_create_programming_map_page.sql
+- Cadastra `mapa-programacao` em `app_pages`.
+- Preenche somente permissoes ausentes em `role_page_permissions` para `master`, `admin`, `supervisor`, `user` e `viewer`, mantendo `viewer` bloqueado por padrao.
+- Faz backfill em `app_user_page_permissions` apenas para usuarios que ja possuem matriz customizada, liberando admin/master e mantendo usuarios nao administrativos bloqueados.
+
+245_default_new_pages_inactive_for_users.sql
+- Adiciona `app_pages.default_user_access` com default `false` para que telas novas nascam inativas para usuarios nao administrativos.
+- Ajusta permissoes automaticas do `mapa-programacao` para preservar admin/master liberados e usuarios comuns bloqueados quando a linha foi criada por migration.
+- Preenche permissoes ausentes para usuarios legados conforme `default_user_access`, evitando que uma unica tela nova bloqueada transforme a sessao em matriz parcial.
+- Cria triggers para preencher `app_user_page_permissions` ao cadastrar novas telas ou novos usuarios, sem sobrescrever configuracoes existentes.

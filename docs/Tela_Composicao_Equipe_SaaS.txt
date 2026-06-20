@@ -87,6 +87,7 @@ Filtros, auto-complete e listagem
   - Data final
   - Projeto (input + datalist por SOB)
   - Equipe (opcoes no formato `Equipe / Encarregado`, quando o encarregado esta identificado)
+  - Situacao da equipe (`Todas`, `Atuando` ou `Nao atuou`)
 - Listagem:
   - Data
   - Projeto
@@ -380,3 +381,49 @@ Atualizacao 2026-06 - Data do painel e Nao atuou sem Projeto
   - A FK composta de projeto permanece ativa e aceita `null` somente pela regra condicional de `work_status`.
   - A constraint exige Projeto para `WORKING`; a RPC garante `project_id = null` no fluxo `NOT_WORKING` e permite a transicao transacional entre os dois estados.
   - RLS permanece habilitada e a assinatura da RPC continua restrita a `service_role`.
+
+Atualizacao 2026-06-15 - Sincronizacao com a Medicao
+-----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/lib/events/teamComposition.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `notifyTeamCompositionUpdated`
+  - `handleSubmit`
+  - Evento `team-composition-updated`
+  - Chave local `saas:team-composition-updated`
+- Comportamento antes/depois:
+  - Antes: salvar uma composicao atualizava somente a propria tela.
+  - Depois: o sucesso do cadastro ou edicao publica um sinal local de invalidacao para a tela de Medicao.
+  - Depois: outra aba aberta na Medicao recebe o sinal pelo evento de armazenamento e recarrega a lista.
+- Multi-tenant:
+  - O sinal contem somente o horario da alteracao e nao transporta IDs ou dados de negocio.
+  - A Medicao continua consultando a API autenticada, que resolve o tenant pela sessao e aplica o cruzamento completo no servidor.
+
+Atualizacao 2026-06-17 - Filtro de Situacao da equipe
+------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `FilterState`
+  - `buildQuery`
+  - `TeamCompositionPageView`
+  - `GET /api/composicao-equipe`
+  - `normalizeWorkStatus`
+  - `isMissingWorkStatusColumnError`
+- Comportamento antes/depois:
+  - Antes: a lista podia ser filtrada por periodo, projeto e equipe, mas nao pela situacao operacional.
+  - Depois: o bloco `Filtros` possui `Situacao da equipe` com opcoes `Todas`, `Atuando` e `Nao atuou`.
+  - Depois: o filtro e enviado como `workStatus` para a API e aplicado antes da paginacao, totalizacao e exportacoes CSV.
+  - Depois: `Atuando` tambem inclui composicoes legadas com `work_status` nulo, mantendo a regra de compatibilidade da tela.
+- Impacto multi-tenant:
+  - A API continua usando `tenant_id = appUser.tenant_id` em todas as leituras.
+  - Nao houve alteracao de schema, RLS, policies ou RPC.

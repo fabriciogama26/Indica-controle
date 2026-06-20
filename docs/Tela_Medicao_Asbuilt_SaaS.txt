@@ -60,7 +60,8 @@ Cadastro
   - Projeto deve estar ativo no cadastro manual e no cadastro em massa.
   - O mesmo projeto pode possuir varios registros de Medicao Asbuilt em datas de corte diferentes.
   - A combinacao `Projeto + Servicos considerados ate` nao pode se repetir enquanto o registro anterior estiver diferente de `CANCELADA`.
-  - Cada registro representa um snapshot acumulado completo do projeto ate a data de corte.
+  - Cada registro representa um corte fechado proprio do projeto, identificado por `Servicos considerados ate`.
+  - No Dash operacional e faturamento, os registros `FECHADA` do mesmo projeto sao somados entre si e detalhados por faixa de corte.
   - Edicao do proprio registro continua permitida somente quando o status for `ABERTA`.
   - Ao menos uma atividade com quantidade e taxa e obrigatoria.
   - Quantidade e taxa devem ser maiores que zero.

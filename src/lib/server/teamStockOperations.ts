@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 
 import { formatInsufficientStockMessage, StockTransferItemInput } from "@/lib/server/stockTransfers";
 
@@ -22,6 +23,7 @@ export type ReverseTeamStockOperationPayload = {
   actorUserId: string;
   originalTransferId: string;
   originalTransferItemId?: string | null;
+  reverseBatch?: boolean;
   reversalReasonCode: string;
   reversalReasonNotes?: string | null;
   reversalDate?: string | null;
@@ -29,6 +31,7 @@ export type ReverseTeamStockOperationPayload = {
 
 export type SaveTeamStockOperationBatchEntry = {
   rowNumber: number;
+  operationBatchId?: string;
   operationKind: TeamOperationKind;
   stockCenterId: string;
   teamId: string;
@@ -52,6 +55,12 @@ type TeamOperationRpcResult = {
   message?: string;
   transfer_id?: string;
   details?: unknown;
+  reversed_item_count?: number;
+  results?: Array<{
+    item_id?: string;
+    reversal_transfer_id?: string;
+    reversal_item_id?: string | null;
+  }>;
 };
 
 type TeamOperationBatchRpcResult = {
@@ -70,6 +79,7 @@ type TeamOperationBatchRpcResult = {
     rowNumber?: number;
     success?: boolean;
     transferId?: string;
+    operationBatchId?: string;
     message?: string;
   }>;
 };
@@ -107,6 +117,10 @@ function mapTeamOperationErrorMessage(reason: string) {
       return "Item da operacao de equipe original nao encontrado.";
     case "REVERSAL_OF_REVERSAL_NOT_ALLOWED":
       return "Nao e permitido estornar uma operacao de estorno.";
+    case "ALL_ITEMS_ALREADY_REVERSED":
+      return "Todos os materiais desta operacao ja foram estornados.";
+    case "ACTOR_NOT_ALLOWED":
+      return "Usuario nao autorizado para estornar operacoes deste tenant.";
     default:
       return "";
   }
@@ -153,6 +167,16 @@ function mapTeamOperationRpcErrorMessage(message: unknown) {
     && (normalized.includes("schema cache") || normalized.includes("could not find"))
   ) {
     return "Falha tecnica na RPC de Operacoes de Equipe. Recarregue o schema cache do Supabase e tente novamente.";
+  }
+
+  if (
+    (
+      normalized.includes("reverse_team_stock_operation_batch_v1")
+      || normalized.includes("reverse_team_stock_operation_batch_v2")
+    )
+    && (normalized.includes("schema cache") || normalized.includes("could not find"))
+  ) {
+    return "Estorno em lote ainda nao disponivel no banco. Aplique as migrations 236 e 237 e recarregue o schema cache do Supabase.";
   }
 
   return "";
@@ -214,10 +238,29 @@ export async function saveTeamStockOperationBatchViaRpc(
   supabase: SupabaseClient,
   payload: SaveTeamStockOperationBatchPayload,
 ) {
+  const batchIdByContext = new Map<string, string>();
+  const entries = payload.entries.map((entry) => {
+    const contextKey = JSON.stringify([
+      entry.operationKind,
+      entry.stockCenterId,
+      entry.teamId,
+      entry.projectId,
+      entry.entryDate,
+      entry.entryType,
+      entry.notes ?? null,
+    ]);
+    const operationBatchId = batchIdByContext.get(contextKey) ?? randomUUID();
+    batchIdByContext.set(contextKey, operationBatchId);
+    return {
+      ...entry,
+      operationBatchId,
+    };
+  });
+
   const { data, error } = await supabase.rpc("save_team_stock_operation_batch_full", {
     p_tenant_id: payload.tenantId,
     p_actor_user_id: payload.actorUserId,
-    p_entries: payload.entries,
+    p_entries: entries,
   });
 
   if (error) {
@@ -259,6 +302,7 @@ export async function saveTeamStockOperationBatchViaRpc(
       rowNumber: Number(item.rowNumber ?? 0),
       success: Boolean(item.success),
       transferId: String(item.transferId ?? "").trim(),
+      operationBatchId: String(item.operationBatchId ?? "").trim(),
       message: String(item.message ?? "").trim(),
     })),
   } as const;
@@ -268,26 +312,37 @@ export async function reverseTeamStockOperationViaRpc(
   supabase: SupabaseClient,
   payload: ReverseTeamStockOperationPayload,
 ) {
-  const rpcName = payload.originalTransferItemId
-    ? "reverse_team_stock_operation_item_record_v1"
-    : "reverse_team_stock_operation_record_v2";
-  const rpcPayload = payload.originalTransferItemId
+  const rpcName = payload.reverseBatch
+    ? "reverse_team_stock_operation_batch_v2"
+    : payload.originalTransferItemId
+      ? "reverse_team_stock_operation_item_record_v1"
+      : "reverse_team_stock_operation_record_v2";
+  const rpcPayload = payload.reverseBatch
     ? {
-        p_tenant_id: payload.tenantId,
-        p_actor_user_id: payload.actorUserId,
-        p_original_stock_transfer_item_id: payload.originalTransferItemId,
-        p_reversal_reason_code: payload.reversalReasonCode,
-        p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
-        p_reversal_date: payload.reversalDate ?? null,
-      }
-    : {
         p_tenant_id: payload.tenantId,
         p_actor_user_id: payload.actorUserId,
         p_original_stock_transfer_id: payload.originalTransferId,
         p_reversal_reason_code: payload.reversalReasonCode,
         p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
         p_reversal_date: payload.reversalDate ?? null,
-      };
+      }
+    : payload.originalTransferItemId
+      ? {
+          p_tenant_id: payload.tenantId,
+          p_actor_user_id: payload.actorUserId,
+          p_original_stock_transfer_item_id: payload.originalTransferItemId,
+          p_reversal_reason_code: payload.reversalReasonCode,
+          p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
+          p_reversal_date: payload.reversalDate ?? null,
+        }
+      : {
+          p_tenant_id: payload.tenantId,
+          p_actor_user_id: payload.actorUserId,
+          p_original_stock_transfer_id: payload.originalTransferId,
+          p_reversal_reason_code: payload.reversalReasonCode,
+          p_reversal_reason_notes: payload.reversalReasonNotes ?? null,
+          p_reversal_date: payload.reversalDate ?? null,
+        };
   const { data, error } = await supabase.rpc(rpcName, rpcPayload);
 
   if (error) {
@@ -322,6 +377,12 @@ export async function reverseTeamStockOperationViaRpc(
   return {
     ok: true,
     transferId: String(result.transfer_id ?? ""),
+    reversedItemCount: Number(result.reversed_item_count ?? 0),
+    results: (result.results ?? []).map((item) => ({
+      itemId: String(item.item_id ?? ""),
+      reversalTransferId: String(item.reversal_transfer_id ?? ""),
+      reversalItemId: String(item.reversal_item_id ?? "") || null,
+    })),
     message: normalizedMessage || "Estorno realizado com sucesso.",
   } as const;
 }

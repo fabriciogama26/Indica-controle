@@ -10,7 +10,7 @@ import { canAccessRoute, isAdminRole, normalizeRole } from "@/lib/auth/authoriza
 import styles from "./AppShell.module.css";
 
 // Checklist obrigatorio para nova tela:
-// 1) Migration com cadastro da pagina em app_pages e backfill de permissoes por tenant.
+// 1) Migration com cadastro da pagina em app_pages; usuarios nao administrativos devem nascer bloqueados.
 // 2) Atualizar permissionCatalog em PermissionsPageView.
 // 3) Incluir rota nesta estrutura e no titleMap abaixo.
 const menuSections = [
@@ -31,6 +31,7 @@ const menuSections = [
       { href: "/locacao", label: "Locacao", icon: "briefcase" },
       { href: "/programacao-simples", label: "Programacao", icon: "calendar" },
       { href: "/programacao-visualizacao", label: "Visualizacao Programacao", icon: "calendar" },
+      { href: "/mapa-programacao", label: "Mapa de Programacao", icon: "calendar" },
       { href: "/composicao-equipe", label: "Composicao de Equipe", icon: "users" },
       { href: "/controle-apr", label: "Controle de APR", icon: "calendar" },
       { href: "/medicao", label: "Medicao", icon: "calendar" },
@@ -122,6 +123,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/programacao-visualizacao": {
     title: "Visualizacao Programacao",
     subtitle: "Lista filtrada e calendario semanal da programacao.",
+  },
+  "/mapa-programacao": {
+    title: "Mapa de Programacao",
+    subtitle: "Controle de carteira nunca programada e equipes sem programacao.",
   },
   "/composicao-equipe": {
     title: "Composicao de Equipe",

@@ -211,25 +211,42 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
     "Gestor de campo",
   ];
 
-  const structureAccumulator = new Map<string, { codeCount: Record<string, number>; teamCount: number }>();
-  for (const schedule of schedules) {
-    const key = `${schedule.projectId}__${schedule.date}`;
-    const current = structureAccumulator.get(key) ?? { codeCount: {}, teamCount: 0 };
-    current.teamCount += 1;
+  const groupedAccumulator = new Map<string, {
+    baseSchedule: ScheduleItem;
+    schedules: ScheduleItem[];
+    codeCount: Record<string, number>;
+    foremanNames: Set<string>;
+  }>();
 
-    const teamCode = resolveTeamStructureCode(resolveScheduleTeamInfo(schedule, teamMap));
+  for (const schedule of schedules) {
+    const project = projectMap.get(schedule.projectId);
+    const key = buildEnelNovoGroupKey(schedule, project);
+    const current = groupedAccumulator.get(key) ?? {
+      baseSchedule: schedule,
+      schedules: [],
+      codeCount: {},
+      foremanNames: new Set<string>(),
+    };
+
+    current.schedules.push(schedule);
+
+    const team = resolveScheduleTeamInfo(schedule, teamMap);
+    const foremanName = String(team.foremanName ?? "").trim();
+    if (foremanName) {
+      current.foremanNames.add(foremanName);
+    }
+
+    const teamCode = resolveTeamStructureCode(team);
     if (teamCode) {
       current.codeCount[teamCode] = (current.codeCount[teamCode] ?? 0) + 1;
     }
 
-    structureAccumulator.set(key, current);
+    groupedAccumulator.set(key, current);
   }
 
-  const rows = schedules.map((schedule) => {
+  const rows = Array.from(groupedAccumulator.values()).map((group) => {
+    const schedule = group.baseSchedule;
     const project = projectMap.get(schedule.projectId);
-    const team = resolveScheduleTeamInfo(schedule, teamMap);
-    const scheduleGroupKey = `${schedule.projectId}__${schedule.date}`;
-    const structureSummaryGroup = structureAccumulator.get(scheduleGroupKey);
     const displayStatus = getDisplayProgrammingStatus(schedule);
     const periodLabel = schedule.period === "integral" ? "INTEGRAL" : "PARCIAL";
     const sgdExportValue = schedule.electricalField ?? "";
@@ -261,9 +278,21 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
     const sgdTet = isSgdTet ? sgdExportValue : "";
     const infoStatus = formatInfoStatusEtapa(schedule.etapaNumber, schedule.etapaUnica, schedule.etapaFinal);
     const scheduleCreatedDate = schedule.createdAt ? schedule.createdAt.slice(0, 10) : "";
-    const estruturaValue = structureSummaryGroup
-      ? formatStructureSummaryByCode(structureSummaryGroup.codeCount)
-      : "";
+    const estruturaValue = formatStructureSummaryByCode(group.codeCount);
+    const foremanNamesValue = Array.from(group.foremanNames).sort((a, b) => a.localeCompare(b)).join(" / ");
+    const supportValue = resolveFirstFilledText(group.schedules, (item) => item.support, schedule.support);
+    const serviceDescriptionValue = resolveFirstFilledText(
+      group.schedules,
+      (item) => item.serviceDescription,
+      schedule.serviceDescription,
+    );
+    const statusReasonValue = resolveFirstFilledText(group.schedules, (item) => item.statusReason, schedule.statusReason);
+    const noteValue = resolveFirstFilledText(group.schedules, (item) => item.note, schedule.note);
+    const workCompletionStatusValue = resolveFirstFilledText(
+      group.schedules,
+      (item) => item.workCompletionStatus,
+      schedule.workCompletionStatus,
+    );
 
     return [
       project?.base ?? "",
@@ -279,8 +308,8 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
       infoStatus,
       project?.priority ?? "",
       estruturaValue,
-      team.foremanName ?? "",
-      schedule.support ?? "",
+      foremanNamesValue,
+      supportValue,
       project?.utilityResponsible ?? "",
       project?.partner ?? "",
       "INDICA",
@@ -296,13 +325,13 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
       project?.street ?? "",
       project?.district ?? "",
       project?.city ?? "",
-      schedule.serviceDescription ?? "",
-      schedule.statusReason ?? "",
-      schedule.statusReason ?? "",
+      serviceDescriptionValue,
+      statusReasonValue,
+      statusReasonValue,
       formatDate(scheduleCreatedDate),
       schedule.trafoQty ?? "",
-      schedule.note ?? "",
-      schedule.workCompletionStatus ?? "",
+      noteValue,
+      workCompletionStatusValue,
       "",
       schedule.documents?.pep?.number ?? "",
       project?.serviceType ?? "",
@@ -314,6 +343,17 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
   });
 
   return buildCsvContent(header, rows);
+}
+
+function resolveFirstFilledText(
+  schedules: ScheduleItem[],
+  selector: (schedule: ScheduleItem) => string | null | undefined,
+  fallback?: string | null,
+) {
+  return schedules
+    .map((schedule) => String(selector(schedule) ?? "").trim())
+    .find(Boolean)
+    ?? String(fallback ?? "").trim();
 }
 
 function buildEnelNovoGroupKey(schedule: ScheduleItem, project?: ProjectItem) {

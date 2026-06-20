@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import { isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
@@ -156,6 +157,7 @@ export async function POST(request: NextRequest) {
 
     let successCount = 0;
     let errorCount = 0;
+    const operationBatchIds = new Map<string, string>();
 
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
@@ -268,10 +270,20 @@ export async function POST(request: NextRequest) {
         }
         return item;
       });
+      const operationBatchKey = JSON.stringify({
+        movementType,
+        fromStockCenterId,
+        toStockCenterId,
+        projectId,
+        entryDate,
+      });
+      const operationBatchId = operationBatchIds.get(operationBatchKey) ?? randomUUID();
+      operationBatchIds.set(operationBatchKey, operationBatchId);
 
       const saveResult = await saveStockTransferViaRpc(supabase, {
         tenantId: appUser.tenant_id,
         actorUserId: appUser.id,
+        operationBatchId,
         movementType,
         fromStockCenterId,
         toStockCenterId,

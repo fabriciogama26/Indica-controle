@@ -248,7 +248,7 @@
 - [x] Adicionar exportacao `ENEL-EXCEL` na nova Programacao com colunas no layout solicitado e preenchimento em branco para campos sem informacao.
 - [x] Ajustar export `ENEL-EXCEL` da nova Programacao para preencher `Observação do Cancelamento / Parcial / Adiamento` com o motivo informado no cancelamento.
 - [x] Ajustar mapeamento completo do `ENEL-EXCEL` na nova Programacao (Responsáveis Enel/Gestor/Endereco por Projeto, Tipo de SGD, Nº Clientes Afetados e roteamento do SGD por tipo).
-- [x] Ajustar o `ENEL-EXCEL` da Programacao para: `Estrutura` por composicao de equipes (`MK/CETO/LV`) por projeto/data, `Nº EQ` por total de equipes, `Data da programacao` por `created_at`, `Responsavel Execucao = INDICA`, `Tempo Previsto` em horas e `Periodo` em maiusculas.
+- [x] Ajustar o `ENEL-EXCEL` da Programacao para: `Estrutura` por composicao de equipes (`MK/CESTO/LV`) por projeto/data, `Nº EQ` por total de equipes, `Data da programacao` por `created_at`, `Responsavel Execucao = INDICA`, `Tempo Previsto` em horas e `Periodo` em maiusculas.
 - [x] Criar o campo obrigatorio `Campo eletrico` na Programacao, persistir em `project_programming` e usar esse valor na coluna `Nº EQ (RE, CO, CF, CC ou TR)` do `ENEL-EXCEL`, com reflexo no historico operacional.
 - [x] Corrigir export `ENEL-EXCEL` da Programacao para preencher a coluna de `Encarregado` (`Mão de obra`) com o nome do encarregado da equipe programada.
 - [x] Reordenar as colunas do `ENEL-EXCEL` da Programacao para o layout operacional solicitado, com `ENCARREGADO` apos `Estrutura` e `Mão de obra` mantida no bloco final.
@@ -271,7 +271,7 @@
 - [x] Criar campo `Descricao do servico` na nova Programacao, usar este valor na coluna `Descricao do servico` do ENEL-EXCEL e rolar ao topo ao clicar em `Editar`.
 - [x] Adicionar campo `ETAPA` na Programacao para alimentar `INFO STATUS` do ENEL-EXCEL no formato `x ETAPA`, com `ETAPA` obrigatoria no cadastro novo e preservada automaticamente na edicao quando nao alterada; `Estado Trabalho` (`CONCLUIDO`/`PARCIAL`) fica disponivel na edicao.
 - [x] Padronizar o campo `Projeto (SOB)` da Programacao Simples para o mesmo formato de selecao por `input + datalist` usado no SOB da Locacao.
-- [x] Adicionar na Programacao Simples a acao `Copiar para datas`, com modal de multiplas datas, ETAPA por destino, bloqueio para `ETAPA UNICA`/`ETAPA FINAL` e copia transacional via RPC.
+- [x] Adicionar na Programacao Simples a acao `Copiar programacao`, com modal de multiplas datas, ETAPA por destino, bloqueio para `ETAPA UNICA`/`ETAPA FINAL` e copia transacional via RPC.
 - [x] Incluir suporte ao tipo de SGD `AREA_LIVRE` no catalogo `programming_sgd_types`, ajustando constraint SQL e seed por tenant.
 - [x] Destravar cadastro de novos `Tipo de SGD` removendo a unicidade por `tenant_id + export_column` em `programming_sgd_types` e definindo `AREA_LIVRE` como default de `export_column`.
 - [x] Remover o bloqueio de valores fixos em `programming_sgd_types.export_column`, aceitando qualquer valor nao vazio para permitir novos Tipos de SGD.
@@ -787,6 +787,8 @@
 
 - [x] Mover o filtro `Data do acompanhamento` para baixo do titulo `Composicoes das Equipes`, mantendo os contadores no lado direito do painel.
 
+- [x] Adicionar filtro `Situacao da equipe` na lista da Composicao de Equipe, com opcoes `Todas`, `Atuando` e `Nao atuou`, aplicado no backend antes da paginacao/exportacao e preservando registros legados sem `work_status` como `Atuando`.
+
 - [x] Ajustar Dashboard Medicao e Lista de Ordens de Medicao para priorizar o Estado Trabalho salvo na propria Medicao, usando a Programacao apenas como fallback para ordens antigas sem snapshot.
 
 - [x] Corrigir normalizacao do Estado Trabalho na Medicao para preservar Parcial planejado beneficio atingido e permitir snapshots de estados normalizados alem de CONCLUIDO/PARCIAL.
@@ -885,12 +887,19 @@
 - [x] Corrigir a listagem da `Movimentacao de Estoque` para carregar itens e vinculos de estorno em blocos de 100 IDs, evitando `TypeError: fetch failed` e o alerta de falha de validacao em tenants com muitas movimentacoes.
 
 - [x] Exibir erros e impedimentos do estorno dentro do modal da `Movimentacao de Estoque`, detalhando saldo atual/solicitado/falta, orientando a regularizacao previa de `Operacoes de Equipe` e corrigindo o fechamento do modal apos sucesso.
+- [x] [P1][Operacoes de Equipe][Estorno em lote] Ao selecionar uma linha, abrir modal agrupado pela requisicao, listar todos os materiais e seus status de estorno e permitir estornar atomicamente todos os itens ainda ativos, preservando o estorno individual, o escopo por tenant, a auditoria, a validacao de saldo/serial e a protecao contra concorrencia; base implementada pela migration `236_add_team_stock_operation_batch_reversal.sql` e agrupamento do import complementado pela migration `237_group_team_stock_imports_for_batch_reversal.sql`.
+- [x] [P1][Operacoes de Equipe][Agrupamento do lote] Corrigir o estorno em lote do cadastro em massa, que criava um `transferId` por linha e mostrava somente um material no modal; adicionado `operation_batch_id`, backfill seguro dos lotes existentes e RPC `reverse_team_stock_operation_batch_v2` pela migration `237_group_team_stock_imports_for_batch_reversal.sql`.
+- [x] [P1][Movimentacao de Estoque][Estorno em lote] Abrir o modal a partir da linha selecionada, listar todos os materiais da movimentacao ou do lote importado e permitir estorno individual ou atomico dos itens ainda ativos; importacoes novas recebem `operation_batch_id` pela migration `238_add_stock_transfer_batch_reversal.sql`, sem agrupamento retroativo inseguro por horario.
+- [x] [P1][Movimentacao de Estoque][Backfill de lote] Corrigir movimentacoes importadas antes da migration 238 que exibiam somente um material no modal, agrupando apenas transferencias de item unico com mesmo tenant, ator, segundo e contexto operacional pela migration `239_backfill_stock_transfer_import_batches.sql`.
+- [x] [P1][Movimentacao de Estoque][Lotes de cinco] Corrigir o backfill da migration 239, que separava a importacao por segundo e formava lotes de aproximadamente cinco materiais; a migration `240_merge_split_stock_transfer_import_batches.sql` une a sequencia continua do mesmo contexto sem alterar UUIDs de importacoes novas.
 - [x] Auditar as regras de integridade, perda de dados e protecoes de banco de `Movimentacao de Estoque` e `Composicao de Equipe`, registrando os achados nas documentacoes das telas.
+- [x] Bloquear em `Materiais` a alteracao/remocao acidental de rastreio por serial (`TRAFO`, `RELIGADOR`, `CHAVE`) quando o material ja possui `trafo_instances` ou movimentacoes com `serial_number`, protegendo `Movimentacao de Estoque` e `Operacoes de Equipe` contra divergencia entre saldo agregado e posicao unitaria.
+- [ ] Definir politica operacional para dispensar ou manter `Serial/LP` na `Movimentacao de Estoque`, separando material comum, material rastreavel por serial (`TRAFO`, `RELIGADOR`, `CHAVE`), impacto em `trafo_instances` e estrategia de migration/backfill para dados existentes.
 - [ ] Exigir permissao de pagina/acao nas APIs de `Movimentacao de Estoque` e `Composicao de Equipe`, alem da autenticacao e do escopo de tenant.
 - [ ] Revogar escrita direta de `authenticated` em `stock_center_balances`, `stock_transfers`, `stock_transfer_items`, `team_compositions` e `team_composition_members`, mantendo gravacao apenas por RPC autorizada.
 - [ ] Remover policies `FOR ALL` de `team_compositions` e `team_composition_members`, garantindo ausencia de `DELETE` direto apos migrations novas.
 - [ ] Restringir RPCs `SECURITY DEFINER` de estorno ao `service_role` ou validar internamente `auth.uid()`, tenant, ator e permissao operacional.
-- [ ] Criar importacao atomica para `Movimentacao de Estoque` ou formalizar o modo parcial com identificador de lote, idempotencia e status por linha.
+- [ ] Adicionar chave de idempotencia ao cadastro em massa da `Movimentacao de Estoque`; o modo parcial, o identificador de lote e o status por linha ja estao implementados.
 - [ ] Adicionar FKs compostas com `tenant_id` nas entidades do ledger de estoque e nos usuarios de auditoria.
 - [ ] Criar reconciliacao automatizada entre `stock_center_balances`, ledger de transferencias e posicao unitaria de SERIAL.
 - [ ] Mover o historico da `Composicao de Equipe` para dentro da RPC transacional e registrar diff detalhado dos integrantes.
@@ -949,6 +958,7 @@
 - [x] [Dashboard Equipes][Etapa 3] Criar rota, endpoint, modulo visual, permissao `dashboard-equipes/read`, menu, migration 234 e integracao com `useErrorLogger("dashboard_equipes")`.
 - [x] [Dashboard Equipes][Etapa 4] Mover os blocos de equipes, encarregados e supervisores para a nova tela e simplificar o Dashboard Medicao.
 - [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
+- [x] [Dashboard Equipes][Supervisor historico] Criar `team_supervisor_history` e ajustar `Supervisor no ciclo` para resolver supervisor por data da ordem e dias efetivos de vinculo na meta.
 - [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.
 
 - [x] Aplicar singleton e cache de auth (TTL 45s por token+tenant) em appUsersAdmin.ts, eliminando novo client Supabase a cada request e reduzindo 4 queries de auth para 0 em requests repetidos dentro do TTL nas 68 rotas de API.
