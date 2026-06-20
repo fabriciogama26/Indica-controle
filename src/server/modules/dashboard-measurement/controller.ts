@@ -457,16 +457,46 @@ export async function handleDashboardMeasurementGet(
   const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
   const completionFilter = normalizeText(request.nextUrl.searchParams.get("completionStatus")).toUpperCase();
 
-  const { data: orders, error: ordersError } = await resolution.supabase
-    .from("project_measurement_orders")
-    .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .eq("measurement_kind", "COM_PRODUCAO")
-    .neq("status", "CANCELADA")
-    .order("execution_date", { ascending: false })
-    .limit(10000)
-    .returns<MeasurementOrderRow[]>();
+  // Resolve the data window from params before any DB query so the main queries are bounded by date.
+  // Discovery query (dates only) runs in parallel to build the full cycles list for the selector.
+  const resolvedCycleStart = selectedCycleStart ?? toIsoDate(resolveCycleStart(new Date()));
+  const resolvedCycleEndRef = addMonths(parseIsoDate(resolvedCycleStart), 1);
+  resolvedCycleEndRef.setUTCDate(20);
+  const resolvedCycleEnd = toIsoDate(resolvedCycleEndRef);
+  const windowStart = [resolvedCycleStart, startDateFilter].filter((d): d is string => Boolean(d)).sort()[0] ?? resolvedCycleStart;
+  const windowEnd = [resolvedCycleEnd, endDateFilter].filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? resolvedCycleEnd;
+
+  const [cyclesDiscoveryResult, ordersResult] = await Promise.all([
+    resolution.supabase
+      .from("project_measurement_orders")
+      .select("execution_date")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .eq("measurement_kind", "COM_PRODUCAO")
+      .neq("status", "CANCELADA")
+      .order("execution_date", { ascending: false })
+      .limit(3000)
+      .returns<{ execution_date: string }[]>(),
+    resolution.supabase
+      .from("project_measurement_orders")
+      .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .eq("measurement_kind", "COM_PRODUCAO")
+      .neq("status", "CANCELADA")
+      .gte("execution_date", windowStart)
+      .lte("execution_date", windowEnd)
+      .order("execution_date", { ascending: false })
+      .limit(2000)
+      .returns<MeasurementOrderRow[]>(),
+  ]);
+
+  if (cyclesDiscoveryResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar historico de ciclos." }, { status: 500 });
+  }
+
+  const orders = ordersResult.data;
+  const ordersError = ordersResult.error;
 
   if (ordersError) {
     return NextResponse.json({ message: "Falha ao carregar medicoes para dashboard." }, { status: 500 });
@@ -482,8 +512,10 @@ export async function handleDashboardMeasurementGet(
         .eq("measurement_kind", "SEM_PRODUCAO")
         .gt("minimum_billing_amount", 0)
         .neq("status", "CANCELADA")
+        .gte("execution_date", windowStart)
+        .lte("execution_date", windowEnd)
         .order("execution_date", { ascending: false })
-        .limit(10000)
+        .limit(1000)
         .returns<MeasurementOrderRow[]>();
   const minimumBillingGuaranteeOrders = minimumBillingGuaranteeResult.data;
   const minimumBillingGuaranteeOrdersError = minimumBillingGuaranteeResult.error;
@@ -506,13 +538,17 @@ export async function handleDashboardMeasurementGet(
     .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
 
   const cycleMap = new Map<string, ReturnType<typeof buildCycleFromMeasurementDate>>();
-  for (const order of validOrders) {
-    const executionDate = normalizeIsoDate(order.execution_date);
+  for (const row of cyclesDiscoveryResult.data ?? []) {
+    const executionDate = normalizeIsoDate(row.execution_date);
     if (!executionDate) continue;
     const cycle = buildCycleFromMeasurementDate(executionDate);
     if (!cycleMap.has(cycle.cycleStart)) {
       cycleMap.set(cycle.cycleStart, cycle);
     }
+  }
+  // Ensure the explicitly requested cycle always appears in the selector even if outside the discovery window
+  if (selectedCycleStart && !cycleMap.has(selectedCycleStart)) {
+    cycleMap.set(selectedCycleStart, buildCycleFromMeasurementDate(selectedCycleStart));
   }
 
   const cycles = Array.from(cycleMap.values()).sort((left, right) => right.cycleStart.localeCompare(left.cycleStart));
