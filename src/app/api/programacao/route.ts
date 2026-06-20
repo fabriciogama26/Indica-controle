@@ -1012,6 +1012,9 @@ async function fetchProjects(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
+  const cached = _boardProjectsCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
   const primary = await supabase
     .from("project_with_labels")
     .select(BOARD_PROJECT_SELECT_WITH_TEST)
@@ -1022,10 +1025,12 @@ async function fetchProjects(
     .returns<BoardProjectBaseRow[]>();
 
   if (!primary.error) {
-    return (primary.data ?? []).map((item) => ({
+    const result = (primary.data ?? []).map((item) => ({
       ...item,
       is_test: Boolean(item.is_test),
     })) as BoardProjectRow[];
+    _boardProjectsCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+    return result;
   }
 
   if (!isMissingProjectTestColumn(primary.error.message ?? "")) {
@@ -1044,16 +1049,21 @@ async function fetchProjects(
     return [] as BoardProjectRow[];
   }
 
-  return (fallback.data ?? []).map((item) => ({
+  const result = (fallback.data ?? []).map((item) => ({
     ...item,
     is_test: false,
   })) as BoardProjectRow[];
+  _boardProjectsCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+  return result;
 }
 
 async function fetchTeams(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
+  const cached = _boardTeamsCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
   const { data: teams, error } = await supabase
     .from("teams")
     .select("id, name, vehicle_plate, service_center_id, team_type_id, foreman_person_id, ativo")
@@ -1101,7 +1111,7 @@ async function fetchTeams(
   const foremanMap = new Map((people ?? []).map((item) => [item.id, normalizeText(item.nome)]));
   const serviceCenterMap = new Map((serviceCenters ?? []).map((item) => [item.id, normalizeText(item.name)]));
 
-  return teams.map((team) => ({
+  const result = teams.map((team) => ({
     id: team.id,
     name: normalizeText(team.name),
     vehiclePlate: normalizeText(team.vehicle_plate),
@@ -1110,6 +1120,9 @@ async function fetchTeams(
     teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
     foremanName: foremanMap.get(team.foreman_person_id) ?? "Sem encarregado",
   }));
+
+  _boardTeamsCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+  return result;
 }
 
 async function fetchTeamsByIds(
@@ -1642,6 +1655,10 @@ const _sgdTypesCache = new Map<string, CatalogCacheEntry<ProgrammingSgdTypeRow[]
 const _eqCatalogCache = new Map<string, CatalogCacheEntry<ProgrammingEqCatalogRow[]>>();
 const _reasonCatalogCache = new Map<string, CatalogCacheEntry<ProgrammingReasonCatalogRow[]>>();
 const _workCompletionCatalogCache = new Map<string, CatalogCacheEntry<ProgrammingWorkCompletionCatalogRow[]>>();
+
+type BoardTeamEntry = { id: string; name: string; vehiclePlate: string; serviceCenterId: string | null; serviceCenterName: string; teamTypeName: string; foremanName: string; };
+const _boardTeamsCache = new Map<string, CatalogCacheEntry<BoardTeamEntry[]>>();
+const _boardProjectsCache = new Map<string, CatalogCacheEntry<BoardProjectRow[]>>();
 
 async function fetchProgrammingSgdTypes(
   supabase: SupabaseClient,
