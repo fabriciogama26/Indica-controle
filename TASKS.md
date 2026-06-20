@@ -951,6 +951,7 @@
 - [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
 - [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.
 
+- [x] Aplicar singleton e cache de auth (TTL 45s por token+tenant) em appUsersAdmin.ts, eliminando novo client Supabase a cada request e reduzindo 4 queries de auth para 0 em requests repetidos dentro do TTL nas 68 rotas de API.
 - [x] Fortalecer AGENTS.md com protocolo obrigatorio de uso da pasta verificacao, mapa de quando ler cada arquivo, regras de performance e trafego (banco, auth, API, front-end) e checklist completo por tela com 4 dimensoes (integridade, seguranca, performance, documentacao).
 - [x] Expandir verificacao/06_performance.md com criterios objetivos por camada (banco, API, front-end), exemplos antes/depois, como confirmar com EXPLAIN ANALYZE e checklist de PR.
 - [x] Criar verificacao/11_front_ui.md com regras exclusivas de front-end: debounce, dependencias de useEffect, filtro padrao de periodo, autenticacao centralizada e limite de linhas no PageView.
