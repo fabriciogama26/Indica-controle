@@ -1,6 +1,39 @@
 import { NextRequest } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
+// --- Singleton: um único cliente admin por processo ---
+let _adminClient: SupabaseClient | null = null;
+
+// --- Cache de auth por token+tenant com TTL de 45s ---
+const AUTH_CACHE_TTL_MS = 45_000;
+
+type AuthCacheEntry = {
+  result: AuthenticatedAppUserContext;
+  expiresAt: number;
+};
+
+const _authCache = new Map<string, AuthCacheEntry>();
+
+function getCachedAuth(key: string): AuthenticatedAppUserContext | null {
+  const entry = _authCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    _authCache.delete(key);
+    return null;
+  }
+  return entry.result;
+}
+
+function setCachedAuth(key: string, result: AuthenticatedAppUserContext): void {
+  if (_authCache.size > 500) {
+    const now = Date.now();
+    for (const [k, e] of _authCache) {
+      if (now > e.expiresAt) _authCache.delete(k);
+    }
+  }
+  _authCache.set(key, { result, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
+}
+
 type CurrentUserRow = {
   id: string;
   tenant_id: string;
@@ -72,7 +105,9 @@ export type AuthenticatedAppUserResolution =
       };
     };
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(): SupabaseClient {
+  if (_adminClient) return _adminClient;
+
   const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
@@ -80,12 +115,14 @@ function getSupabaseAdmin() {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing for tenant admin routes.");
   }
 
-  return createClient(supabaseUrl, serviceRoleKey, {
+  _adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
   });
+
+  return _adminClient;
 }
 
 function extractBearerToken(request: NextRequest) {
@@ -115,6 +152,11 @@ export async function resolveAuthenticatedAppUser(
       },
     };
   }
+
+  const requestedTenantId = normalizeHeaderTenantId(request.headers.get("x-tenant-id"));
+  const cacheKey = `${token}:${requestedTenantId ?? ""}`;
+  const cached = getCachedAuth(cacheKey);
+  if (cached) return cached;
 
   const supabase = getSupabaseAdmin();
   const {
@@ -170,7 +212,6 @@ export async function resolveAuthenticatedAppUser(
     };
   }
 
-  const requestedTenantId = normalizeHeaderTenantId(request.headers.get("x-tenant-id"));
   let availableTenantIds = [currentUser.tenant_id];
   let activeTenantId = currentUser.tenant_id;
 
@@ -202,7 +243,7 @@ export async function resolveAuthenticatedAppUser(
     activeTenantId = requestedTenantId;
   }
 
-  return {
+  const result: AuthenticatedAppUserContext = {
     supabase,
     authUserId: user.id,
     appUser: {
@@ -219,6 +260,9 @@ export async function resolveAuthenticatedAppUser(
       isAdmin: Boolean(currentRole.is_admin),
     },
   };
+
+  setCachedAuth(cacheKey, result);
+  return result;
 }
 
 export async function resolveAdminOperator(request: NextRequest): Promise<AdminOperatorResolution> {
