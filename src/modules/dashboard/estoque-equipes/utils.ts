@@ -36,19 +36,4 @@ export function formatDateTime(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("pt-BR");
 }
 
-export function csvEscape(value: unknown) {
-  const normalized = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  return normalized.includes(";") || normalized.includes("\"")
-    ? `"${normalized.replace(/"/g, "\"\"")}"`
-    : normalized;
-}
-
-export function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
+export { escapeCsvValue as csvEscape, downloadCsvFile } from "@/lib/utils/csv";

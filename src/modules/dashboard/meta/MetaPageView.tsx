@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./MetaPageView.module.css";
+import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 
 type TeamTypeTarget = {
   id: string;
@@ -145,24 +146,6 @@ function formatDateTime(value: string | null) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString("pt-BR");
-}
-
-function escapeCsvValue(value: string | number | null | undefined) {
-  const normalized = String(value ?? "").replace(/\r?\n/g, " ").trim();
-  if (/[;"\n]/.test(normalized)) {
-    return `"${normalized.replace(/"/g, '""')}"`;
-  }
-  return normalized;
-}
-
-function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 function buildRegistrationsCsv(registrations: MetaRegistration[]) {

@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./ProjectsPageView.module.css";
+import { downloadBlobFile, downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 
 type ProjectItem = {
   id: string;
@@ -443,14 +444,6 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   return params.toString();
 }
 
-function escapeCsvValue(value: string | number | null | undefined) {
-  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (raw.includes(";") || raw.includes('"')) {
-    return `"${raw.replace(/"/g, '""')}"`;
-  }
-  return raw;
-}
-
 function buildProjectsCsv(projectItems: ProjectItem[]) {
   const header = [
     "Prioridade",
@@ -568,16 +561,6 @@ function buildActivityForecastCsv(forecastItems: ProjectActivityForecastItem[]) 
   return `\uFEFF${csvLines.join("\n")}`;
 }
 
-function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 function buildImportErrorReport(
   response: ProjectForecastImportResponse,
   filePrefix: string,
@@ -640,15 +623,6 @@ function buildImportErrorReport(
     errorRows,
     totalIssues: sortedIssues.length,
   };
-}
-
-function downloadBlobFile(content: Blob, filename: string) {
-  const url = URL.createObjectURL(content);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function supabaseFunctionsBaseUrl() {

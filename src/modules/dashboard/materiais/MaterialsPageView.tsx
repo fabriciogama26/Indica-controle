@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./MaterialsPageView.module.css";
+import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 
 type MaterialItem = {
   id: string;
@@ -180,14 +181,6 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   return params.toString();
 }
 
-function escapeCsvValue(value: string | number | null | undefined) {
-  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (raw.includes(";") || raw.includes('"')) {
-    return `"${raw.replace(/"/g, '""')}"`;
-  }
-  return raw;
-}
-
 function parseCsvLine(line: string) {
   const values: string[] = [];
   let current = "";
@@ -343,16 +336,6 @@ function createMassImportErrorReport(issues: MassImportIssue[]) {
     errorRows,
     totalIssues: issues.length,
   };
-}
-
-function downloadCsvFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function formatDateTime(value: string) {
