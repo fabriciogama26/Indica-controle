@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./ProjectsPageView.module.css";
 import { downloadBlobFile, downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { formatAuditActor, formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 
 type ProjectItem = {
   id: string;
@@ -301,45 +302,6 @@ const INITIAL_FORECAST_FILTERS: ForecastFilterState = {
   description: "",
   type: "",
 };
-
-function formatDate(value: string) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleDateString("pt-BR");
-}
-
-function formatDateTime(value: string) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatAuditActor(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  return normalized || "Nao identificado";
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-  }).format(value);
-}
 
 function parseEstimatedValue(value: unknown) {
   if (typeof value === "number") {

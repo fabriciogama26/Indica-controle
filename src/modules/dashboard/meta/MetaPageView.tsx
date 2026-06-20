@@ -8,6 +8,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./MetaPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 
 type TeamTypeTarget = {
   id: string;
@@ -128,24 +129,6 @@ function scrollDashboardContentToTop() {
     return;
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}
-
-function formatDate(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("pt-BR");
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
 }
 
 function buildRegistrationsCsv(registrations: MetaRegistration[]) {

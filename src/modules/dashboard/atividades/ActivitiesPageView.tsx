@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./ActivitiesPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 
 type ActivityItem = {
   id: string;
@@ -224,24 +225,6 @@ function toInputMoney(value: number) {
 function toInputPoints(value: number | null | undefined) {
   const numericValue = Number(value ?? "");
   return Number.isFinite(numericValue) && numericValue > 0 ? String(numericValue) : "";
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatAuditActor(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  return normalized || "Nao identificado";
 }
 
 function formatHistoryValue(field: string, value: string | null) {

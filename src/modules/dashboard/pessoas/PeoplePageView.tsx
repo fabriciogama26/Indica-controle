@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./PeoplePageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
+import { parseCsvLine } from "@/lib/utils/parsers";
 
 type PersonItem = {
   id: string;
@@ -264,39 +266,6 @@ function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SI
   return params.toString();
 }
 
-function parseCsvLine(line: string) {
-  const values: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-
-    if (char === '"' && inQuotes && next === '"') {
-      current += '"';
-      index += 1;
-      continue;
-    }
-
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-
-    if (char === ";" && !inQuotes) {
-      values.push(current.trim());
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  values.push(current.trim());
-  return values;
-}
-
 function normalizeCsvHeader(value: string) {
   return normalizeText(value)
     .replace(/^\uFEFF/, "")
@@ -376,24 +345,6 @@ function createMassImportErrorReport(issues: MassImportIssue[]) {
     errorRows,
     totalIssues: issues.length,
   };
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatAuditActor(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  return normalized || "Nao identificado";
 }
 
 function normalizeLookupKey(value: string | null | undefined) {

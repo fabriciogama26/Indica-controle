@@ -8,6 +8,7 @@ import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { notifyTeamCompositionUpdated } from "@/lib/events/teamComposition";
 import styles from "./TeamCompositionPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 
 type ProjectOption = {
   id: string;
@@ -252,13 +253,6 @@ function workStatusLabel(value: WorkStatus) {
   return value === "NOT_WORKING" ? "Nao atuou" : "Atuando";
 }
 
-function formatDate(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("pt-BR");
-}
-
 function formatOperationalDate(value: string) {
   if (!value) return "";
   const parsed = new Date(`${value}T00:00:00`);
@@ -272,13 +266,6 @@ function formatOperationalTime(value: string) {
   if (!normalized) return "";
   if (/^\d{2}:\d{2}$/.test(normalized)) return `${normalized}:00`;
   return normalized;
-}
-
-function formatDateTime(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
 }
 
 function onlyDigits(value: string | null | undefined) {

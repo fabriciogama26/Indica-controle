@@ -4,6 +4,7 @@ import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react
 
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./LocationPageView.module.css";
+import { formatDateTime } from "@/lib/utils/formatters";
 
 type ProjectOption = {
   id: string;
@@ -166,19 +167,6 @@ function formatCurrency(value: number) {
     currency: "BRL",
     minimumFractionDigits: 2,
   }).format(value ?? 0);
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("pt-BR");
 }
 
 function formatLocationStatus(status: LocationOverviewStatus) {
