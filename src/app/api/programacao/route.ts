@@ -3247,7 +3247,7 @@ export async function GET(request: NextRequest) {
 
     const programmingUserMap = new Map(programmingUsers.map((item) => [item.id, item]));
 
-    return NextResponse.json({
+    const boardPayload = {
       projects: projects.map((item) => ({
           id: item.id,
           code: normalizeText(item.sob),
@@ -3399,7 +3399,12 @@ export async function GET(request: NextRequest) {
           },
         };
       }),
-    });
+    };
+    const boardPayloadSize = JSON.stringify(boardPayload).length;
+    if (boardPayloadSize > 100_000) {
+      console.warn(`[resp-size] GET /api/programacao board ${Math.round(boardPayloadSize / 1024)}KB tenant=${resolution.appUser.tenant_id}`);
+    }
+    return NextResponse.json(boardPayload);
   } catch {
     return NextResponse.json({ message: "Falha ao consultar programacao." }, { status: 500 });
   }
