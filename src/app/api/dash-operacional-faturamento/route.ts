@@ -2292,7 +2292,7 @@ export async function GET(request: NextRequest) {
       },
     );
 
-    return NextResponse.json({
+    const payload = {
       filters: { projects, serviceCenters, asbuiltCoverageDates },
       selectedProject,
       rows: allRows,
@@ -2300,7 +2300,12 @@ export async function GET(request: NextRequest) {
       categoryColumns: categorySummary.categoryColumns,
       categorySummaryRows: categorySummary.categorySummaryRows,
       summary,
-    });
+    };
+    const payloadSize = JSON.stringify(payload).length;
+    if (payloadSize > 100_000) {
+      console.warn(`[resp-size] GET /api/dash-operacional-faturamento ${Math.round(payloadSize / 1024)}KB tenant=${tenantId}`);
+    }
+    return NextResponse.json(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao carregar Dash operacional e faturamento.";
     return NextResponse.json({ message }, { status: 500 });

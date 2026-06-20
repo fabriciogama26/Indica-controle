@@ -1220,7 +1220,7 @@ export async function handleDashboardMeasurementGet(
   const forecastPercentage = cycleMetaValue > 0 ? (forecastValue / cycleMetaValue) * 100 : 0;
   const forecastDifference = forecastValue - cycleMetaValue;
 
-  return NextResponse.json({
+  const payload = {
     cycles,
     periods,
     selectedPeriod: selectedCycle.cycleEnd.slice(0, 7),
@@ -1297,5 +1297,10 @@ export async function handleDashboardMeasurementGet(
     teamForemenByWeek,
     supervisorsProduction: supervisorsProductionRows,
     supervisorsProductionByWeek,
-  });
+  };
+  const payloadSize = JSON.stringify(payload).length;
+  if (payloadSize > 100_000) {
+    console.warn(`[resp-size] dashboard-medicao ${Math.round(payloadSize / 1024)}KB tenant=${tenantId}`);
+  }
+  return NextResponse.json(payload);
 }
