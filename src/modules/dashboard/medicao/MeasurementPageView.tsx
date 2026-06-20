@@ -8,6 +8,8 @@ import {
   TEAM_COMPOSITION_UPDATED_STORAGE_KEY,
 } from "@/lib/events/teamComposition";
 import styles from "./MeasurementPageView.module.css";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { parseCsvLine } from "@/lib/utils/parsers";
 
 type MeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
@@ -468,24 +470,6 @@ function parseNonNegativeNumber(value: string | number) {
   return Number(parsed.toFixed(6));
 }
 
-function formatDate(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("pt-BR");
-}
-
-function formatDateTime(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}
-
 function formatDecimal(value: number, digits = 2) {
   return Number(value ?? 0).toLocaleString("pt-BR", {
     minimumFractionDigits: digits,
@@ -756,33 +740,6 @@ function normalizeHeader(value: string) {
     .replace(/\s+/g, "")
     .trim()
     .toLowerCase();
-}
-
-function parseCsvLine(line: string, delimiter: "," | ";") {
-  const cells: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    if (char === "\"") {
-      if (inQuotes && line[index + 1] === "\"") {
-        current += "\"";
-        index += 1;
-        continue;
-      }
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === delimiter && !inQuotes) {
-      cells.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  cells.push(current.trim());
-  return cells;
 }
 
 function parseCsv(content: string) {

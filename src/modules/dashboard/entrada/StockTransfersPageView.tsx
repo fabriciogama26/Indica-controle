@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { isSerialTrackedMaterial, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./StockTransfersPageView.module.css";
+import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 
 type StockCenterOption = {
   id: string;
@@ -301,20 +302,6 @@ function normalizeCode(value: string) {
 
 function normalizeUnitText(value: string | null | undefined) {
   return normalizeText(value).toUpperCase();
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "-";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("pt-BR");
 }
 
 function toIsoDate(value: Date) {

@@ -7,6 +7,7 @@ import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./ReversalsPageView.module.css";
+import { formatDateTime } from "@/lib/utils/formatters";
 
 type ReversalRow = {
   id: string;
@@ -116,13 +117,6 @@ function formatDate(value: string | null | undefined) {
   const parts = datePart.split("-");
   if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
   return value;
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
 }
 
 function formatQuantity(value: number) {

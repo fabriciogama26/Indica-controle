@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./AprControlPageView.module.css";
+import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 
 type AprStatus = "ATIVO" | "CANCELADO" | "DIVERGENTE" | "CONFERIDO";
 type StatusAction = "CONFERIR" | "DIVERGIR" | "CANCELAR";
@@ -131,18 +132,6 @@ function findProject(value: string, projects: ProjectItem[]) {
   const normalized = normalizeSearch(value);
   if (!normalized) return null;
   return projects.find((item) => normalizeSearch(item.code) === normalized) ?? null;
-}
-
-function formatDate(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("pt-BR");
-}
-
-function formatDateTime(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("pt-BR");
 }
 
 function statusLabel(status: AprStatus) {

@@ -9,6 +9,8 @@ import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./MaterialsPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { formatAuditActor, formatCurrency, formatDateTime } from "@/lib/utils/formatters";
+import { parseCsvLine } from "@/lib/utils/parsers";
 
 type MaterialItem = {
   id: string;
@@ -181,39 +183,6 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   return params.toString();
 }
 
-function parseCsvLine(line: string) {
-  const values: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-
-    if (char === '"' && inQuotes && next === '"') {
-      current += '"';
-      index += 1;
-      continue;
-    }
-
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-
-    if (char === ";" && !inQuotes) {
-      values.push(current.trim());
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  values.push(current.trim());
-  return values;
-}
-
 function normalizeCsvHeader(value: string) {
   return normalizeText(value)
     .replace(/^\uFEFF/, "")
@@ -338,29 +307,9 @@ function createMassImportErrorReport(issues: MassImportIssue[]) {
   };
 }
 
-function formatDateTime(value: string) {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatAuditActor(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  return normalized || "Nao identificado";
-}
-
 function formatOptionalText(value: string | null | undefined, fallback = "-") {
   const normalized = String(value ?? "").trim();
   return normalized || fallback;
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-  }).format(value);
 }
 
 function formatHistoryValue(field: string, value: string | null) {

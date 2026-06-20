@@ -6,6 +6,7 @@ import { ActionIcon } from "@/components/ui/ActionIcon";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./OperationalBillingDashboardPageView.module.css";
+import { formatDate } from "@/lib/utils/formatters";
 
 type Option = {
   id: string;
@@ -247,13 +248,6 @@ function formatCurrency(value: number) {
     style: "currency",
     currency: "BRL",
   }).format(Number.isFinite(value) ? value : 0);
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "-";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
 }
 
 function formatSignedCurrency(value: number) {

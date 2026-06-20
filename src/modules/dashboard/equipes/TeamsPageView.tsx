@@ -7,6 +7,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./TeamsPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 
 type TeamItem = {
   id: string;
@@ -201,24 +202,6 @@ function buildTeamsCsv(teamItems: TeamItem[]) {
 
   const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
   return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("pt-BR");
-}
-
-function formatAuditActor(value: string | null | undefined) {
-  const normalized = String(value ?? "").trim();
-  return normalized || "Nao identificado";
 }
 
 function formatHistoryValue(field: string, value: string | null) {
