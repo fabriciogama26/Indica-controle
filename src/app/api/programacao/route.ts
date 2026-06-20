@@ -1746,10 +1746,20 @@ async function fetchProgrammingStageValidation(params: {
     .sort((left, right) => left.teamName.localeCompare(right.teamName));
 }
 
+const CATALOG_TTL_MS = 5 * 60 * 1000;
+type CatalogCacheEntry<T> = { data: T; expiresAt: number };
+const _sgdTypesCache = new Map<string, CatalogCacheEntry<ProgrammingSgdTypeRow[]>>();
+const _eqCatalogCache = new Map<string, CatalogCacheEntry<ProgrammingEqCatalogRow[]>>();
+const _reasonCatalogCache = new Map<string, CatalogCacheEntry<ProgrammingReasonCatalogRow[]>>();
+const _workCompletionCatalogCache = new Map<string, CatalogCacheEntry<ProgrammingWorkCompletionCatalogRow[]>>();
+
 async function fetchProgrammingSgdTypes(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
+  const cached = _sgdTypesCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
   const { data, error } = await supabase
     .from("programming_sgd_types")
     .select("id, description, export_column, is_active")
@@ -1762,13 +1772,18 @@ async function fetchProgrammingSgdTypes(
     return [] as ProgrammingSgdTypeRow[];
   }
 
-  return data ?? [];
+  const result = data ?? [];
+  _sgdTypesCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+  return result;
 }
 
 async function fetchProgrammingEqCatalog(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
+  const cached = _eqCatalogCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
   const { data, error } = await supabase
     .from("programming_eq_catalog")
     .select("id, code, label_pt, is_active, sort_order")
@@ -1782,13 +1797,18 @@ async function fetchProgrammingEqCatalog(
     return [] as ProgrammingEqCatalogRow[];
   }
 
-  return data ?? [];
+  const result = data ?? [];
+  _eqCatalogCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+  return result;
 }
 
 async function fetchProgrammingReasonCatalog(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
+  const cached = _reasonCatalogCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
   const { data, error } = await supabase
     .from("programming_reason_catalog")
     .select("code, label_pt, requires_notes, is_active, sort_order")
@@ -1802,13 +1822,18 @@ async function fetchProgrammingReasonCatalog(
     return [] as ProgrammingReasonCatalogRow[];
   }
 
-  return data ?? [];
+  const result = data ?? [];
+  _reasonCatalogCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+  return result;
 }
 
 async function fetchProgrammingWorkCompletionCatalog(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
+  const cached = _workCompletionCatalogCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
   const { data, error } = await supabase
     .from("programming_work_completion_catalog")
     .select("id, code, label_pt, is_active, sort_order")
@@ -1822,7 +1847,9 @@ async function fetchProgrammingWorkCompletionCatalog(
     return [] as ProgrammingWorkCompletionCatalogRow[];
   }
 
-  return data ?? [];
+  const result = data ?? [];
+  _workCompletionCatalogCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+  return result;
 }
 
 async function fetchProgrammingById(
