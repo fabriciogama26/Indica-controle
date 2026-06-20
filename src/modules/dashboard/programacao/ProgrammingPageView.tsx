@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { CSSProperties, DragEvent, FormEvent, useCallback, useDeferredValue, useEffect, useState } from "react";
 
@@ -6,464 +6,67 @@ import { useAuth } from "@/hooks/useAuth";
 
 import styles from "./ProgrammingPageView.module.css";
 
-type ViewMode = "week" | "day";
-type ScheduleTone =
-  | "planned"
-  | "partial"
-  | "complete"
-  | "issue"
-  | "rescheduled"
-  | "postponed"
-  | "cancelled";
-type PeriodMode = "integral" | "partial";
-type DocumentKey = "sgd" | "pi" | "pep";
-type ProgrammingStatus = "PROGRAMADA" | "ADIADA" | "CANCELADA";
+import type {
+  ActivityCatalogItem,
+  ActivityCatalogResponse,
+  CancelModalState,
+  CopyModalState,
+  CopyProgrammingResponse,
+  DocumentEntry,
+  DocumentKey,
+  DragPayload,
+  FeedbackState,
+  ModalState,
+  PeriodMode,
+  ProgrammingResponse,
+  ProgrammingStatus,
+  ProjectItem,
+  ReprogramModalState,
+  SaveProgrammingResponse,
+  SaveRequestPayload,
+  ScheduleFormState,
+  ScheduleItem,
+  ScheduleTone,
+  StatusAction,
+  SupportOptionItem,
+  TeamItem,
+  TeamSummaryItem,
+  ViewMode,
+} from "./types";
+import {
+  activityOptionLabel,
+  addDays,
+  buildConflictFeedbackMessage,
+  buildDefaultForm,
+  buildIncludedAtLabel,
+  calculateExpectedMinutes,
+  CHANGE_REASON_MIN_LENGTH,
+  createDocuments,
+  createEmptyDocuments,
+  createVisibleDates,
+  detectScheduleIssue,
+  DOCUMENT_KEYS,
+  findActivityOption,
+  formatBoardDate,
+  formatDateShort,
+  formatDisplayDate,
+  formatDisplayDateTime,
+  formatDuration,
+  formatPeriodLabel,
+  getDocumentState,
+  getScheduleTone,
+  INITIAL_PERIOD_START,
+  normalizeSchedule,
+  parseIsoDate,
+  sortSchedules,
+  startOfWeekMonday,
+  toIsoDate,
+  WEEKDAY_LABELS,
+  workloadPrimaryLabel,
+  workloadStatusLabel,
+} from "./utils";
 
-type ProjectItem = {
-  id: string;
-  code: string;
-  serviceName: string;
-  city: string;
-  base: string;
-  serviceType: string;
-  priority: string;
-  note: string;
-  hasLocacao: boolean;
-  defaultSupportItemId?: string | null;
-  defaultSupportLabel?: string | null;
-};
-
-type TeamItem = {
-  id: string;
-  name: string;
-  serviceCenterId?: string | null;
-  serviceCenterName: string;
-  teamTypeName: string;
-  foremanName: string;
-};
-
-type DocumentEntry = {
-  number: string;
-  includedAt: string;
-  deliveredAt: string;
-};
-
-type ActivityCatalogItem = {
-  id: string;
-  code: string;
-  description: string;
-  unit: string;
-};
-
-type ScheduleActivityItem = {
-  catalogId: string;
-  code: string;
-  description: string;
-  quantity: number;
-  unit: string;
-};
-
-type ScheduleItem = {
-  id: string;
-  projectId: string;
-  teamId: string;
-  status: ProgrammingStatus;
-  date: string;
-  period: PeriodMode;
-  startTime: string;
-  endTime: string;
-  updatedAt: string;
-  expectedMinutes: number;
-  activities: ScheduleActivityItem[];
-  documents: Record<DocumentKey, DocumentEntry>;
-  feeder: string;
-  support: string;
-  supportItemId: string | null;
-  note: string;
-  projectBase: string;
-  statusReason: string;
-  statusChangedAt: string;
-  hasIssue: boolean;
-  wasRescheduled: boolean;
-  lastReschedule: {
-    id: string;
-    changedAt: string;
-    reason: string;
-    fromDate: string;
-    toDate: string;
-  } | null;
-};
-
-type SupportOptionItem = {
-  id: string;
-  description: string;
-};
-
-type TeamSummaryItem = {
-  teamId: string;
-  weekStart: string;
-  weekEnd: string;
-  workedDays: number;
-  capacityDays: number;
-  freeDays: number;
-  loadPercent: number;
-  loadStatus: "FREE" | "NORMAL" | "WARNING" | "OVERLOAD";
-};
-
-type DragPayload =
-  | { kind: "project"; projectId: string }
-  | { kind: "schedule"; scheduleId: string };
-
-type ScheduleFormState = {
-  period: PeriodMode;
-  startTime: string;
-  endTime: string;
-  activities: ScheduleActivityItem[];
-  activitySearch: string;
-  activityQuantity: string;
-  documents: Record<DocumentKey, DocumentEntry>;
-  feeder: string;
-  supportItemId: string;
-  note: string;
-};
-
-type ModalState = {
-  scheduleId: string | null;
-  projectId: string;
-  teamId: string;
-  date: string;
-  form: ScheduleFormState;
-};
-
-type StatusAction = "cancel" | "postpone";
-
-type CancelModalState = {
-  scheduleId: string;
-  projectCode: string;
-  expectedUpdatedAt: string;
-  action: StatusAction;
-};
-
-type SaveRequestPayload = {
-  id?: string;
-  projectId: string;
-  teamId: string;
-  date: string;
-  period: PeriodMode;
-  startTime: string;
-  endTime: string;
-  expectedMinutes: number;
-  feeder: string;
-  note: string;
-  supportItemId?: string;
-  expectedUpdatedAt?: string;
-  changeReason?: string;
-  documents: Record<DocumentKey, { number: string; deliveredAt: string }>;
-  activities: Array<{ catalogId: string; quantity: number }>;
-};
-
-type ReprogramModalState = {
-  projectCode: string;
-  payload: SaveRequestPayload;
-};
-
-type CopyModalState = {
-  sourceTeamId: string;
-  targetTeamIds: string[];
-};
-
-type FeedbackState = {
-  type: "success" | "error";
-  message: string;
-};
-
-type ProgrammingResponse = {
-  projects?: ProjectItem[];
-  teams?: TeamItem[];
-  supportOptions?: SupportOptionItem[];
-  teamSummaries?: TeamSummaryItem[];
-  schedules?: Array<{
-    id: string;
-    projectId: string;
-    teamId: string;
-    status: ProgrammingStatus;
-    date: string;
-    period: PeriodMode;
-    startTime: string;
-    endTime: string;
-    updatedAt: string;
-    expectedMinutes: number;
-    feeder: string;
-    support: string;
-    supportItemId?: string | null;
-    note: string;
-    projectBase: string;
-    statusReason?: string;
-    statusChangedAt?: string;
-    wasRescheduled?: boolean;
-    lastReschedule?: {
-      id: string;
-      changedAt: string;
-      reason: string;
-      fromDate: string;
-      toDate: string;
-    } | null;
-    activities?: ScheduleActivityItem[];
-    documents?: Partial<Record<DocumentKey, Partial<DocumentEntry>>>;
-  }>;
-  message?: string;
-};
-
-type ActivityCatalogResponse = {
-  items?: Array<{
-    id: string;
-    code: string;
-    description: string;
-    unit: string;
-  }>;
-  message?: string;
-};
-
-type SaveProgrammingResponse = {
-  id?: string;
-  updatedAt?: string;
-  warning?: string;
-  error?: "conflict";
-  currentUpdatedAt?: string | null;
-  updatedBy?: string | null;
-  changedFields?: string[];
-  currentRecord?: {
-    id: string;
-    executionDate: string;
-    startTime: string;
-    endTime: string;
-    updatedAt: string;
-  } | null;
-  message?: string;
-};
-
-type CopyProgrammingResponse = {
-  copiedCount?: number;
-  message?: string;
-};
-
-const WEEKDAY_LABELS = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
-const CHANGE_REASON_MIN_LENGTH = 10;
-const DOCUMENT_KEYS: Array<{ key: DocumentKey; label: string }> = [
-  { key: "sgd", label: "SGD" },
-  { key: "pi", label: "PI" },
-  { key: "pep", label: "PEP" },
-];
-const INITIAL_PERIOD_START = toIsoDate(new Date());
-
-function parseIsoDate(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function toIsoDate(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(value: string, amount: number) {
-  const nextDate = parseIsoDate(value);
-  nextDate.setDate(nextDate.getDate() + amount);
-  return toIsoDate(nextDate);
-}
-
-function startOfWeekMonday(value: string) {
-  const date = parseIsoDate(value);
-  const dayOfWeek = date.getDay();
-  const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  date.setDate(date.getDate() + offset);
-  return toIsoDate(date);
-}
-
-function createVisibleDates(startDate: string, viewMode: ViewMode) {
-  const normalizedStartDate = viewMode === "week" ? startOfWeekMonday(startDate) : startDate;
-  const totalDays = viewMode === "week" ? 7 : 1;
-  return Array.from({ length: totalDays }, (_, index) => addDays(normalizedStartDate, index));
-}
-
-function formatDateShort(value: string) {
-  const date = parseIsoDate(value);
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatBoardDate(value: string) {
-  const date = parseIsoDate(value);
-  return `${WEEKDAY_LABELS[date.getDay()]} ${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function formatPeriodLabel(dates: string[]) {
-  if (dates.length === 1) {
-    return formatDateShort(dates[0]);
-  }
-
-  return `${formatDateShort(dates[0])} a ${formatDateShort(dates[dates.length - 1])}`;
-}
-
-function calculateExpectedMinutes(startTime: string, endTime: string, period: PeriodMode) {
-  if (startTime && endTime) {
-    const [startHour, startMinute] = startTime.split(":").map(Number);
-    const [endHour, endMinute] = endTime.split(":").map(Number);
-    const startMinutes = startHour * 60 + startMinute;
-    const endMinutes = endHour * 60 + endMinute;
-
-    if (endMinutes > startMinutes) {
-      return endMinutes - startMinutes;
-    }
-  }
-
-  return period === "integral" ? 480 : 240;
-}
-
-function formatDuration(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-
-  if (!remainingMinutes) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h${String(remainingMinutes).padStart(2, "0")}min`;
-}
-
-function formatDisplayDate(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  return parseIsoDate(value).toLocaleDateString("pt-BR");
-}
-
-function formatDisplayDateTime(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  const parsedDate = new Date(value);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return "";
-  }
-
-  return parsedDate.toLocaleString("pt-BR");
-}
-
-function createEmptyDocuments(): Record<DocumentKey, DocumentEntry> {
-  return {
-    sgd: { number: "", includedAt: "", deliveredAt: "" },
-    pi: { number: "", includedAt: "", deliveredAt: "" },
-    pep: { number: "", includedAt: "", deliveredAt: "" },
-  };
-}
-
-function createDocuments(documents?: Partial<Record<DocumentKey, Partial<DocumentEntry>>>) {
-  const fallback = createEmptyDocuments();
-
-  return DOCUMENT_KEYS.reduce(
-    (accumulator, documentItem) => {
-      const current = documents?.[documentItem.key];
-      accumulator[documentItem.key] = {
-        number: String(current?.number ?? fallback[documentItem.key].number),
-        includedAt: String(current?.includedAt ?? fallback[documentItem.key].includedAt),
-        deliveredAt: String(current?.deliveredAt ?? fallback[documentItem.key].deliveredAt),
-      };
-      return accumulator;
-    },
-    {} as Record<DocumentKey, DocumentEntry>,
-  );
-}
-
-function activityOptionLabel(activity: ActivityCatalogItem) {
-  return `${activity.code} - ${activity.description}`;
-}
-
-function buildDefaultForm(project: ProjectItem, schedule?: ScheduleItem, nextDate?: string, nextTeamId?: string): ModalState {
-  return {
-    scheduleId: schedule?.id ?? null,
-    projectId: project.id,
-    teamId: nextTeamId ?? schedule?.teamId ?? "",
-    date: nextDate ?? schedule?.date ?? INITIAL_PERIOD_START,
-    form: {
-      period: schedule?.period ?? "integral",
-      startTime: schedule?.startTime ?? "08:00",
-      endTime: schedule?.endTime ?? "17:00",
-      activities: schedule?.activities.length ? schedule.activities.map((activity) => ({ ...activity })) : [],
-      activitySearch: "",
-      activityQuantity: "1",
-      documents: schedule ? createDocuments(schedule.documents) : createEmptyDocuments(),
-      feeder: schedule?.feeder ?? "",
-      supportItemId: schedule?.supportItemId ?? project.defaultSupportItemId ?? "",
-      note: schedule?.note ?? project.note,
-    },
-  };
-}
-
-function getDocumentState(document: DocumentEntry) {
-  if (document.number && document.deliveredAt) {
-    return "complete";
-  }
-
-  if (document.number || document.includedAt) {
-    return "partial";
-  }
-
-  return "missing";
-}
-
-function detectScheduleIssue(note: string) {
-  const normalizedNote = note.trim().toLowerCase();
-  if (!normalizedNote) {
-    return false;
-  }
-
-  return ["atras", "penden", "problema", "issue", "delay"].some((term) => normalizedNote.includes(term));
-}
-
-function getScheduleTone(schedule: ScheduleItem): ScheduleTone {
-  if (schedule.status === "CANCELADA") {
-    return "cancelled";
-  }
-
-  if (schedule.status === "ADIADA") {
-    return "postponed";
-  }
-
-  if (schedule.hasIssue) {
-    return "issue";
-  }
-
-  if (schedule.wasRescheduled) {
-    return "rescheduled";
-  }
-
-  const states = DOCUMENT_KEYS.map((item) => getDocumentState(schedule.documents[item.key]));
-  if (states.every((item) => item === "complete")) {
-    return "complete";
-  }
-
-  if (states.some((item) => item !== "missing")) {
-    return "partial";
-  }
-
-  return "planned";
-}
-
-function sortSchedules(items: ScheduleItem[]) {
-  return [...items].sort((left, right) => {
-    if (left.date === right.date) {
-      return left.startTime.localeCompare(right.startTime);
-    }
-
-    return left.date.localeCompare(right.date);
-  });
-}
-
-export function priorityClassName(priority: string) {
+function priorityClassName(priority: string) {
   const normalizedPriority = priority.trim().toLowerCase();
 
   if (normalizedPriority.includes("alta")) {
@@ -515,124 +118,6 @@ function workloadBarClassName(loadStatus: TeamSummaryItem["loadStatus"]) {
   }
 
   return `${styles.workloadBar} ${styles.workloadBarNormal}`;
-}
-
-function workloadStatusLabel(summary?: TeamSummaryItem) {
-  if (!summary || summary.workedDays <= 0) {
-    return "Folga";
-  }
-
-  if (summary.loadStatus === "WARNING") {
-    return "Alerta";
-  }
-
-  if (summary.loadStatus === "OVERLOAD") {
-    return "Sobrecarga";
-  }
-
-  return "Normal";
-}
-
-function workloadPrimaryLabel(summary?: TeamSummaryItem) {
-  if (!summary || summary.workedDays <= 0) {
-    return "Carga livre";
-  }
-
-  return `Carga: ${summary.workedDays}/${summary.capacityDays} dias`;
-}
-
-function normalizeSchedule(
-  item: NonNullable<ProgrammingResponse["schedules"]>[number],
-): ScheduleItem {
-  return {
-    id: item.id,
-    projectId: item.projectId,
-    teamId: item.teamId,
-    status: item.status,
-    date: item.date,
-    period: item.period,
-    startTime: item.startTime,
-    endTime: item.endTime,
-    expectedMinutes: Number(item.expectedMinutes ?? 0),
-    updatedAt: item.updatedAt,
-    activities: (item.activities ?? []).map((activity) => ({
-      catalogId: activity.catalogId,
-      code: activity.code,
-      description: activity.description,
-      quantity: Number(activity.quantity ?? 0),
-      unit: activity.unit,
-    })),
-    documents: createDocuments(item.documents),
-    feeder: item.feeder ?? "",
-    support: item.support ?? "",
-    supportItemId: item.supportItemId ?? null,
-    note: item.note ?? "",
-    projectBase: item.projectBase ?? "Sem base",
-    statusReason: item.statusReason ?? "",
-    statusChangedAt: item.statusChangedAt ?? "",
-    hasIssue: detectScheduleIssue(item.note ?? ""),
-    wasRescheduled: Boolean(item.wasRescheduled),
-    lastReschedule: item.lastReschedule
-      ? {
-          id: item.lastReschedule.id ?? "",
-          changedAt: item.lastReschedule.changedAt ?? "",
-          reason: item.lastReschedule.reason ?? "",
-          fromDate: item.lastReschedule.fromDate ?? "",
-          toDate: item.lastReschedule.toDate ?? "",
-        }
-      : null,
-  };
-}
-
-function buildConflictFeedbackMessage(payload: SaveProgrammingResponse | null, fallback: string) {
-  if (payload?.error !== "conflict") {
-    return payload?.message ?? fallback;
-  }
-
-  const updatedBy = payload.updatedBy?.trim();
-  const updatedAt = payload.currentUpdatedAt ? formatDisplayDateTime(payload.currentUpdatedAt) : "";
-  const changedFields = Array.isArray(payload.changedFields) && payload.changedFields.length
-    ? ` Campos em conflito: ${payload.changedFields.join(", ")}.`
-    : "";
-
-  return `${payload.message ?? fallback}${updatedBy || updatedAt ? ` Alterada por ${updatedBy ?? "outro usuario"}${updatedAt ? ` em ${updatedAt}` : ""}.` : ""}${changedFields}`;
-}
-
-function findActivityOption(value: string, options: ActivityCatalogItem[]) {
-  const normalizedValue = value.trim().toLowerCase();
-  if (!normalizedValue) {
-    return null;
-  }
-
-  return (
-    options.find((activity) => {
-      return (
-        activity.code.toLowerCase() === normalizedValue ||
-        activityOptionLabel(activity).toLowerCase() === normalizedValue
-      );
-    }) ?? null
-  );
-}
-
-function buildIncludedAtLabel(
-  documentKey: DocumentKey,
-  document: DocumentEntry,
-  previousSchedule?: ScheduleItem,
-) {
-  if (!document.number.trim()) {
-    return "";
-  }
-
-  const previousNumber = previousSchedule?.documents[documentKey].number.trim() ?? "";
-  if (previousNumber && previousNumber !== document.number.trim()) {
-    return "Atualizada ao salvar";
-  }
-
-  if (document.includedAt) {
-    return formatDisplayDate(document.includedAt);
-  }
-
-  return "Automatica ao salvar";
 }
 
 export function ProgrammingPageView() {
