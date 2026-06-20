@@ -433,7 +433,7 @@ async function fetchPeopleSnapshots(supabase: SupabaseClient, tenantId: string, 
 async function fetchCompositionById(supabase: SupabaseClient, tenantId: string, compositionId: string) {
   const { data, error } = await supabase
     .from("team_compositions")
-    .select("*")
+    .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", tenantId)
     .eq("id", compositionId)
     .maybeSingle<CompositionRow>();
@@ -519,7 +519,7 @@ export async function GET(request: NextRequest) {
           .returns<CoverageTeamRow[]>(),
         supabase
           .from("team_compositions")
-          .select("*")
+          .select("team_id, work_status")
           .eq("tenant_id", appUser.tenant_id)
           .eq("composition_date", coverageDate)
           .eq("is_active", true)
@@ -637,12 +637,11 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const fetchCompositionPage = async (skipWorkStatusFilter = false) => {
-      let query = supabase
-        .from("team_compositions")
-        .select("*", { count: "exact" })
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("is_active", true);
+    let query = supabase
+      .from("team_compositions")
+      .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by", { count: "exact" })
+      .eq("tenant_id", appUser.tenant_id)
+      .eq("is_active", true);
 
       if (startDate) {
         query = query.gte("composition_date", startDate);

@@ -313,7 +313,7 @@ async function loadTransfers(params: {
     .gte("entry_date", params.startDate)
     .lte("entry_date", params.endDate)
     .order("entry_date", { ascending: true })
-    .limit(50000)
+    .limit(5000)
     .returns<TransferRow[]>();
 
   if (error) throw new Error("Falha ao carregar movimentacoes do dashboard.");

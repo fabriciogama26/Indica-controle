@@ -240,7 +240,7 @@ async function loadProjectTransfers(context: AuthenticatedAppUserContext, projec
     .select("id, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at")
     .eq("tenant_id", context.appUser.tenant_id)
     .eq("project_id", projectId)
-    .limit(50000)
+    .limit(5000)
     .returns<TransferRow[]>();
 
   if (error) {
