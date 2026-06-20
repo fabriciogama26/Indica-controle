@@ -960,38 +960,10 @@
 - [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
 - [x] [Dashboard Equipes][Supervisor historico] Criar `team_supervisor_history` e ajustar `Supervisor no ciclo` para resolver supervisor por data da ordem e dias efetivos de vinculo na meta.
 - [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.
-- [x] Corrigir `FULL_RPC_NOT_AVAILABLE` no cadastro em lote da Programacao causado pelo truncamento do nome da RPC decimal da migration 228 no limite de 63 caracteres do PostgreSQL, publicando nome curto pela migration 235, mantendo compatibilidade transacional durante o deploy e ajustando o diagnostico de funcao ausente.
-- [x] Atualizar automaticamente a coluna `Composicao equipe` da Medicao ao retornar para a tela, receber uma composicao salva em outra aba ou completar o intervalo de 60 segundos, mantendo refresh manual e requisicoes sem cache.
-- [x] Fazer novas programacoes herdarem o ultimo `Estado Trabalho` nao nulo da mesma obra e tenant, ignorando programacoes canceladas, validando o catalogo ativo e mantendo `PARCIAL` como fallback.
-- [x] Ajustar `Copiar programacao` para criar destinos herdando o ultimo `Estado Trabalho` valido da obra, mantendo copia transacional via RPC e EXECUTE restrito ao `service_role`.
-- [x] Permitir `Adiar` Programacao sem nova data, marcando apenas a linha como `ADIADA`, e manter a criacao de `REPROGRAMADA` quando a nova data for informada.
-- [x] Adicionar escopo ao `Copiar programacao` para copiar somente a equipe selecionada ou todas as equipes do mesmo `Projeto + Data execucao + ETAPA`, com prevalidacao de etapa e agenda por equipe.
-- [x] Evoluir `Copiar programacao` para selecionar equipes por linha de destino, permitindo copiar para equipes da programacao original ou novas equipes ativas, com validacao de tenant, etapa e agenda.
-- [x] Remover a protecao visual que associava `Tipo de SGD = SGD TeT` apenas a equipes LV na Programacao Simples, mantendo a selecao baseada em todas as equipes ativas do tenant.
-- [x] Remover a coluna `Periodo` da `Lista de Programacoes` e exibir `Registrado por` com o autor do cadastro da programacao.
-- [x] Ajustar a `Extracao ENEL` antiga para consolidar uma linha por `SOB + Data Execucao`, agregando `Estrutura` e listando encarregados separados por ` / `.
-- [x] Criar a tela `Mapa de Programacao` para indicar obras ativas que nunca foram programadas considerando o historico geral do projeto, e equipes ativas sem programacao no periodo filtrado, com endpoint protegido por `mapa-programacao/read`, menu, permissao e migration `244_create_programming_map_page.sql`.
-- [x] Evoluir o `Mapa de Programacao` para consolidar uma obra por ultima programacao, usando `Estado Trabalho` como referencia dos cards, tratando `ADIADA` como `CANCELADA`, permitindo periodo opcional para obras e abrindo modal com programacoes/etapas por situacao.
-- [x] Refinar o `Mapa de Programacao` para usar o ultimo `Estado Trabalho` valido da obra, impedindo que `CANCELADA`/`ADIADA` posterior sem apontamento reabra obra ja concluida, manter cards de carteira fora do filtro de periodo e exibir `Obras prioritarias`/`Nunca programadas` em tabelas paginadas com modal de detalhe.
-- [x] Ajustar o modal de detalhe do `Mapa de Programacao` para exibir `ID: {uuid}` da obra no topo, sem descricao no cabecalho.
-- [x] Ajustar o modal dos cards do `Mapa de Programacao` para exibir obras em tabela paginada, abrindo o detalhe em card ao clicar na linha.
-- [x] Corrigir a `Extracao ENEL` para exportar estrutura `CESTO` em vez de `CETO`, mantendo compatibilidade de leitura com equipes cadastradas como cesto/ceto.
-- [x] Ajustar o `Dash operacional e faturamento` para somar todos os cortes `FECHADA` de `Medicao Asbuilt` por projeto e abrir modal com o detalhamento por faixa calculada a partir de `Servicos considerados ate`.
-- [x] Adicionar icone de olho nos cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento`, abrindo modal com `Projeto`, `Centro de servico` e `Data execucao` da `Medicao` por categoria.
-- [x] Evoluir o modal do olho dos cards de `Indicadores operacionais medidos` para abas `Medicao` e `As Built`, exibindo `Medicao` por `Data execucao` e `As Built` por `Faixa + Servicos considerados ate`.
-- [x] Ajustar os cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento` para exibir quantidades sem casas decimais.
-- [x] Evoluir os cards de `Indicadores operacionais medidos` do `Dash operacional e faturamento` para exibir quantidade e valor total por origem (`Medicao`, `M. As built`, `ASBUILT` e `Faturado`) no card e no modal de detalhe, incluindo total financeiro por projeto/faixa.
-- [x] Adicionar cards operacionais de `Poda` e `Arrasto` no `Dash operacional e faturamento`, usando as categorias cadastradas `PODA` e `ARRASTO`.
-- [x] Adicionar filtro `Servicos considerados ate` da `Medicao Asbuilt` no `Dash operacional e faturamento`, aplicando o corte aos indicadores que usam As Built e aos detalhamentos por faixa/projeto.
-- [x] Refinar os cards operacionais do `Dash operacional e faturamento` para alinhar os quatro blocos de origem em grade 2x2, exibir `M. As built`, somar `PODA`/`ARRASTO` tambem por prefixo de categoria e manter os cards-resumo do modal lado a lado.
-- [x] Trocar `Servicos considerados ate` para select de datas cadastradas de Medicao Asbuilt e incluir o mesmo filtro dentro do bloco `Indicadores operacionais medidos`.
-- [x] Ajustar `Servicos considerados ate` no `Dash operacional e faturamento` para trabalhar por faixa incremental entre o corte anterior + 1 dia e o corte selecionado, usando somente o corte selecionado em `As Built` e a faixa em `M. As built`.
-- [x] Segmentar as barras de `M. As built` e `As Built` por corte no `Grafico operacional` quando `Servicos considerados ate` estiver em `Todos`.
-- [x] Adicionar o select `Servicos considerados ate` dentro do modal `Detalhamento operacional por origem`, recarregando os detalhes da categoria sem fechar o modal.
-- [x] Adicionar filtro `Taxa` no modal `Detalhamento operacional por origem`, usando `manual_rate` da ordem na Medicao e `rate` no Asbuilt/Faturamento, com coluna `Taxa` nas tabelas do modal.
-- [x] Corrigir erro `Falha ao somar valores por projeto` no `Dash operacional e faturamento`, somando `Projetos por valor` a partir dos itens carregados em blocos.
-- [x] Corrigir erro `Falha ao somar valores do grafico` e restaurar `Indicadores operacionais medidos`, somando grafico e tickets a partir dos itens carregados em blocos.
-- [x] Corrigir erro `Falha ao carregar itens da Medicao` no `Dash operacional e faturamento`, adicionando fallback de leitura dos campos base da Medicao e calculando o valor por `Pontos x Quantidade x Taxa x Valor unitario` quando `total_value` nao puder ser lido.
-- [x] Corrigir erro `Falha ao carregar itens da Medicao: TypeError: fetch failed` no `Dash operacional e faturamento`, reduzindo blocos de filtros `.in(...)` para evitar requisicoes grandes demais ao Supabase/PostgREST.
-- [x] Tornar clicaveis as linhas da tabela do `Grafico operacional` no `Dash operacional e faturamento`, abrindo listagem dos projetos que compoem cada indicador (`Total medido`, `Medido com AS Built`, `As Built`, `Faturado`) com valor por projeto e quantidade de ordens.
-- [x] Garantir que toda tela nova cadastrada em `app_pages` nasca inativa para usuarios nao administrativos, com `default_user_access = false`, backfill de permissoes ausentes para usuarios legados, triggers de matriz inicial, guards respeitando o fallback e `Mapa de Programacao` fora do acesso padrao legado.
+
+- [x] Fortalecer AGENTS.md com protocolo obrigatorio de uso da pasta verificacao, mapa de quando ler cada arquivo, regras de performance e trafego (banco, auth, API, front-end) e checklist completo por tela com 4 dimensoes (integridade, seguranca, performance, documentacao).
+- [x] Expandir verificacao/06_performance.md com criterios objetivos por camada (banco, API, front-end), exemplos antes/depois, como confirmar com EXPLAIN ANALYZE e checklist de PR.
+- [x] Criar verificacao/11_front_ui.md com regras exclusivas de front-end: debounce, dependencias de useEffect, filtro padrao de periodo, autenticacao centralizada e limite de linhas no PageView.
+- [x] Criar verificacao/12_trafego_egress.md com limites de resposta por tipo de endpoint, quando cachear e nao cachear, log de resposta e prevencao de sobreposicao de dados.
+- [x] Criar pasta verificacao/crc/ com template reutilizavel e CRCs dos modulos criticos: auth (4-5 queries por request, singleton ausente, cache ausente), programacao (15-20 queries por GET, sobreposicao de dados, arquivo de 4519 linhas) e dashboard_medicao (limit 10000 sem filtro de data, query duplicada de teams).
+- [x] Adicionar secao de performance e trafego ao estrutura_saas_multitenant.md com regras de banco, cliente singleton, auth, limites de resposta por tipo, cache e checklist de validacao expandido.

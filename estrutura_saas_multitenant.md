@@ -931,6 +931,142 @@ saas-app/
 
 ---
 
+## Performance e tráfego — princípios para SaaS multi-tenant
+
+Performance num SaaS multi-tenant não é só velocidade. É custo, segurança e previsibilidade de crescimento.
+
+### Regras de banco de dados
+
+```
+NÃO FAZER:
+  - select("*") em qualquer query de produção
+  - .limit() acima de 1.000 sem paginação real ou justificativa
+  - Filtrar dados no JavaScript após buscar a lista inteira
+  - SELECT antes de INSERT para checar unicidade sem constraint no banco
+  - Cálculos de agregação (soma, percentual, contagem) no JavaScript quando SQL resolve
+
+FAZER:
+  - Listar apenas as colunas que serão usadas
+  - Paginar com range() ou cursor
+  - Aplicar todos os filtros no banco (WHERE, não .filter())
+  - Usar UNIQUE constraint ou exclusion constraint para unicidade
+  - Usar RPC SQL para dashboards que precisam de agregação
+  - Criar índices compostos nas colunas usadas juntas em WHERE frequente
+```
+
+### Índices obrigatórios por padrão de uso
+
+Toda tabela de negócio do tenant deve ter no mínimo:
+```sql
+-- Filtro base de todo tenant:
+CREATE INDEX ON tabela(tenant_id);
+
+-- Se filtrada por status/ativo:
+CREATE INDEX ON tabela(tenant_id, status);
+CREATE INDEX ON tabela(tenant_id, ativo);
+
+-- Se filtrada por data (operacional):
+CREATE INDEX ON tabela(tenant_id, data_coluna DESC);
+
+-- Se consultada por FK frequente:
+CREATE INDEX ON tabela(tenant_id, foreign_key_id);
+```
+
+### Regras de cliente Supabase no servidor
+
+```typescript
+// ❌ Errado: novo cliente a cada request
+function getClient() {
+  return createClient(url, key);
+}
+
+// ✅ Certo: singleton por processo
+let _client: SupabaseClient | null = null;
+function getClient() {
+  if (_client) return _client;
+  _client = createClient(url, key, { auth: { persistSession: false } });
+  return _client;
+}
+```
+
+### Regras de auth e sessão
+
+```
+NÃO FAZER:
+  - Disparar getUser() / getSession() em componentes individuais
+  - Criar novo cliente Supabase a cada request de API
+  - Fazer 4+ queries de auth sem cache a cada request
+
+FAZER:
+  - Centralizar sessão em um único contexto (AuthContext)
+  - Usar cache em memória por token com TTL de 30-60s para auth no servidor
+  - Validar tenant no servidor, nunca confiar no tenant vindo do body
+```
+
+### Limites de tamanho de resposta
+
+| Tipo de endpoint | Limite recomendado |
+|---|---|
+| Listagem CRUD | 50-200 registros com paginação |
+| Listagem operacional | 200-500 com filtro de período obrigatório |
+| Dashboard / resumo | Sem registros brutos — apenas totais calculados no banco |
+| Autocomplete | 20-40 resultados |
+| Exportação | Stream ou background job, nunca JSON inline |
+
+### Quando usar e quando não usar cache
+
+```
+Pode cachear (dados de catálogo, raramente mudam):
+  - Tipos de equipe, cargos, atividades, catálogos de configuração
+  - Dados de configuração do tenant
+  - Opções de autocomplete que vêm de tabela estável
+  → Cache de 2-10 minutos com invalidação por tag do tenant
+
+NÃO cachear (dados operacionais, mudam por ação do usuário):
+  - Programação do dia
+  - Saldo de estoque
+  - Status de medição
+  - Permissões do usuário
+  - Sessão e tokens
+```
+
+### Sobreposição de dados — prevenção obrigatória
+
+```
+Risco: dois usuários simultaneamente executando a mesma operação
+Consequência: registros duplicados, dados inconsistentes, perda de operação
+
+FAZER:
+  - Usar UNIQUE constraint ou EXCLUSION constraint no banco
+  - Usar advisory lock para operações críticas de exclusividade
+  - Gravar todos os campos obrigatórios na mesma RPC/transação
+  - Retornar 409 Conflict com: currentRecord, currentUpdatedAt, updatedBy, changedFields
+  - Exigir expectedUpdatedAt em todo PUT/PATCH de tela multi-usuário
+  - Usar idempotency key em operações retentáveis (importação, lote)
+```
+
+---
+
+## Checklist de validação da estrutura (atualizado 2026-06)
+
+- Existe separação entre frontend, backend e jobs?
+- Existe pasta específica para domínio e casos de uso?
+- Existe camada clara de acesso a dados?
+- Existe pasta para autenticação, tenant e permissão?
+- Toda query está preparada para tenant?
+- Logs, cache e filas carregam tenant?
+- Os módulos seguem um padrão repetível?
+- Os nomes dos arquivos estão previsíveis?
+- Existe documentação interna da arquitetura?
+- Há índices nas colunas de filtro frequente?
+- Dashboards retornam resumo em vez de dados brutos?
+- Existe constraint no banco para unicidade crítica?
+- O cliente Supabase usa singleton no servidor?
+- Auth tem cache por token no servidor?
+- Respostas de lista têm limite definido e paginação?
+
+---
+
 ## Fechamento
 
 Essa estrutura não é a única possível, mas é uma base forte para um SaaS multi-tenant profissional.
