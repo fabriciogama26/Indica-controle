@@ -214,7 +214,7 @@ export async function postponeProgramming(params: {
   accessToken: string;
   id: string;
   reason: string;
-  newDate: string;
+  newDate?: string;
   expectedUpdatedAt: string;
 }) {
   const response = await fetch("/api/programacao", {
@@ -227,7 +227,7 @@ export async function postponeProgramming(params: {
       id: params.id,
       action: "ADIAR",
       reason: params.reason,
-      newDate: params.newDate,
+      ...(params.newDate ? { newDate: params.newDate } : {}),
       expectedUpdatedAt: params.expectedUpdatedAt,
     }),
   });

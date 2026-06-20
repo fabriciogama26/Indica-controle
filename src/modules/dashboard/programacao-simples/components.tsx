@@ -65,6 +65,7 @@ type CopyToDatesDraftRow = {
   id: string;
   date: string;
   etapaNumber: string;
+  teamIds: string[];
 };
 
 type DeadlinePanelSummary = {
@@ -1321,15 +1322,13 @@ export function ProgrammingPostponeModal(props: {
 
         <div className={styles.modalBody}>
           <p>
-            Informe o motivo e a nova data da programacao. A programacao atual sera marcada como ADIADA e um novo
-            registro sera criado para a nova data com status REPROGRAMADA. A nova data deve ser posterior a data
-            atual da programacao.
+            Informe o motivo do adiamento. Se preencher nova data, a programacao atual sera marcada como ADIADA e um
+            novo registro sera criado com status REPROGRAMADA. Se deixar em branco, a programacao sera apenas marcada
+            como ADIADA.
           </p>
 
           <label className={styles.field}>
-            <span>
-              Nova data da programacao <span className="requiredMark">*</span>
-            </span>
+            <span>Nova data da programacao</span>
             <input
               type="date"
               value={date}
@@ -1389,6 +1388,7 @@ export function ProgrammingCopyToDatesModal(props: {
   target: ScheduleItem | null;
   projectCode: string;
   rows: CopyToDatesDraftRow[];
+  teamOptions: TeamItem[];
   minDate: string;
   isSubmitting: boolean;
   onClose: () => void;
@@ -1396,11 +1396,15 @@ export function ProgrammingCopyToDatesModal(props: {
   onAddRow: () => void;
   onRemoveRow: (rowId: string) => void;
   onRowChange: (rowId: string, field: "date" | "etapaNumber", value: string) => void;
+  onTeamToggle: (rowId: string, teamId: string) => void;
+  onSelectAllTeams: (rowId: string) => void;
+  onClearTeams: (rowId: string) => void;
 }) {
   const {
     target,
     projectCode,
     rows,
+    teamOptions,
     minDate,
     isSubmitting,
     onClose,
@@ -1408,6 +1412,9 @@ export function ProgrammingCopyToDatesModal(props: {
     onAddRow,
     onRemoveRow,
     onRowChange,
+    onTeamToggle,
+    onSelectAllTeams,
+    onClearTeams,
   } = props;
 
   if (!target) {
@@ -1419,7 +1426,7 @@ export function ProgrammingCopyToDatesModal(props: {
       <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <header className={styles.modalHeader}>
           <div className={styles.modalTitleBlock}>
-            <h4>Copiar para datas</h4>
+            <h4>Copiar programação</h4>
             <p className={styles.modalSubtitle}>
               {projectCode} | {formatDate(target.date)} | ETAPA {target.etapaNumber ?? "-"}
             </p>
@@ -1431,8 +1438,8 @@ export function ProgrammingCopyToDatesModal(props: {
 
         <div className={styles.modalBody}>
           <p>
-            Informe as datas de destino e a ETAPA de cada copia. As ETAPAs devem ser maiores que a etapa atual e nao
-            podem repetir valores ja existentes para este projeto/equipe.
+            Informe as datas de destino, a ETAPA e as equipes de cada copia. As ETAPAs devem ser maiores que a etapa
+            atual.
           </p>
 
           <div className={styles.copyDatesList}>
@@ -1471,6 +1478,37 @@ export function ProgrammingCopyToDatesModal(props: {
                 >
                   Remover
                 </button>
+                <div className={styles.copyTeamPicker}>
+                  <div className={styles.copyTeamPickerHeader}>
+                    <span>
+                      Equipes <span className="requiredMark">*</span>
+                    </span>
+                    <div>
+                      <button type="button" className={styles.inlineButton} onClick={() => onSelectAllTeams(row.id)} disabled={isSubmitting}>
+                        Todas
+                      </button>
+                      <button type="button" className={styles.inlineButton} onClick={() => onClearTeams(row.id)} disabled={isSubmitting}>
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                  <div className={styles.copyTeamList}>
+                    {teamOptions.map((team) => (
+                      <label key={team.id} className={styles.copyTeamOption}>
+                        <input
+                          type="checkbox"
+                          checked={row.teamIds.includes(team.id)}
+                          onChange={() => onTeamToggle(row.id, team.id)}
+                          disabled={isSubmitting}
+                        />
+                        <span>
+                          <strong>{team.name}</strong>
+                          <small>{team.foremanName || "Sem encarregado"}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -1480,7 +1518,7 @@ export function ProgrammingCopyToDatesModal(props: {
               Adicionar data
             </button>
             <button type="button" className={styles.secondaryButton} onClick={onConfirm} disabled={isSubmitting}>
-              {isSubmitting ? "Copiando..." : "Validar copia"}
+              {isSubmitting ? "Copiando..." : "Copiar programação"}
             </button>
             <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
               Voltar

@@ -85,7 +85,7 @@
 
 .chartFilterGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 320px));
+  grid-template-columns: repeat(3, minmax(220px, 320px));
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
@@ -251,20 +251,27 @@
 
 .operationalIndicatorGrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
   gap: 12px;
 }
 
 .operationalIndicator {
-  min-height: 132px;
+  min-height: 190px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 10px;
   border: 1px solid #d9e1ef;
   border-radius: 8px;
   background: #f8fbff;
   padding: 12px 14px;
+}
+
+.operationalIndicatorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .operationalIndicatorTitle {
@@ -276,30 +283,41 @@
 
 .operationalIndicatorValues {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .operationalIndicatorMetric {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
   border-radius: 6px;
   background: #ffffff;
-  padding: 7px 6px;
+  padding: 8px;
 }
 
 .operationalIndicatorMetric span {
   color: #60708f;
   font-size: 9px;
+  line-height: 1.2;
   font-weight: 800;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .operationalIndicatorMetric strong {
   color: #002b7f;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 900;
+}
+
+.operationalIndicatorMetric small {
+  color: #42557d;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .operationalIndicatorEmpty {
@@ -330,6 +348,19 @@
   flex-direction: column;
   align-items: center;
   gap: 10px;
+}
+
+.barButton {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
 }
 
 .barLabel {
@@ -396,6 +427,30 @@
   border-radius: 6px 6px 0 0;
   background: #7b879c;
   transition: height 0.2s ease;
+}
+
+.barFillSegmented {
+  width: 100%;
+  min-height: 4px;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  border-radius: 6px 6px 0 0;
+  transition: height 0.2s ease;
+}
+
+.barSegmentPrimary,
+.barSegmentSecondary {
+  width: 100%;
+  min-height: 4px;
+}
+
+.barSegmentPrimary {
+  background: #1f4ea3;
+}
+
+.barSegmentSecondary {
+  background: #1f9a8a;
 }
 
 .chartInsightGrid {
@@ -497,6 +552,21 @@
   background: #f8fbff;
 }
 
+.tableRowButton {
+  border: 0;
+  background: transparent;
+  color: #002b7f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-align: left;
+}
+
+.tableRowButton:hover {
+  text-decoration: underline;
+}
+
 .metric {
   min-height: 78px;
   display: flex;
@@ -596,6 +666,25 @@
   color: #14532d;
 }
 
+.iconButton {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8d4ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f4ea3;
+  cursor: pointer;
+  padding: 0;
+}
+
+.iconButton svg {
+  width: 16px;
+  height: 16px;
+}
+
 .paginationBar {
   display: flex;
   align-items: center;
@@ -630,6 +719,166 @@
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 22, 47, 0.45);
+  padding: 18px;
+}
+
+.modalCard {
+  width: min(980px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(16, 35, 77, 0.3);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(23, 52, 122, 0.12);
+  padding: 14px 16px;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  color: #17347a;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.modalSubtitle {
+  margin: 4px 0 0;
+  color: #63708d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modalCloseButton {
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17347a;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.modalBody {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.modalFilterGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(140px, 180px) max-content;
+  gap: 12px;
+  align-items: end;
+}
+
+.modalTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modalTab,
+.modalTabActive {
+  min-height: 34px;
+  border-radius: 8px;
+  font-weight: 800;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.modalTab {
+  border: 1px solid #c8d4ea;
+  background: #ffffff;
+  color: #1f4ea3;
+}
+
+.modalTabActive {
+  border: 0;
+  background: #1f4ea3;
+  color: #ffffff;
+}
+
+.modalSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.modalSummaryCard {
+  min-height: 74px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #d9e1ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px 14px;
+}
+
+.modalSummaryCard span {
+  color: #42557d;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.modalSummaryCard strong {
+  color: #002b7f;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.modalTable {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.modalTable th {
+  border-bottom: 1px solid #d9e1ef;
+  background: #eef2f8;
+  color: #002b7f;
+  text-align: left;
+  font-weight: 800;
+  padding: 10px;
+  white-space: nowrap;
+}
+
+.modalTable td {
+  border-bottom: 1px solid #e2e8f3;
+  color: #001f5b;
+  padding: 10px;
+  vertical-align: top;
+}
+
+.modalTable tbody tr:nth-child(even) {
+  background: #f8fbff;
+}
+
+.modalTable tfoot td {
+  border-top: 2px solid #c8d4ea;
+  border-bottom: 0;
+  background: #eef2f8;
+  color: #002b7f;
+  font-weight: 900;
 }
 
 .emptyRow {
@@ -708,6 +957,10 @@
   .operationalTicketGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .operationalIndicatorValues {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -726,9 +979,11 @@
   .filterGrid,
   .chartFilterGrid,
   .projectValueFilterGrid,
+  .modalFilterGrid,
   .summaryGrid,
   .valueCardGrid,
   .chartInsightGrid,
+  .modalSummaryGrid,
   .operationalTicketGrid,
   .operationalIndicatorGrid {
     grid-template-columns: 1fr;

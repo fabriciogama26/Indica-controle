@@ -6,6 +6,10 @@ type PagePermissionRow = {
   can_access: boolean;
 };
 
+type PageDefaultAccessRow = {
+  default_user_access: boolean | null;
+};
+
 export type PageActionAuthorization =
   | {
       allowed: true;
@@ -96,6 +100,21 @@ export async function requirePageAction({
           source: "user",
         }
       : denyPageAction(normalizedPageKey, action);
+  }
+
+  const pageDefaultAccess = await context.supabase
+    .from("app_pages")
+    .select("default_user_access")
+    .eq("page_key", normalizedPageKey)
+    .eq("ativo", true)
+    .maybeSingle<PageDefaultAccessRow>();
+
+  if (pageDefaultAccess.error) {
+    return failPagePermissionLookup(normalizedPageKey, action);
+  }
+
+  if (pageDefaultAccess.data?.default_user_access !== true) {
+    return denyPageAction(normalizedPageKey, action);
   }
 
   if (!context.appUser.role_id) {

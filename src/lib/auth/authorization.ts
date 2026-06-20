@@ -10,6 +10,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/locacao", pageKey: "locacao" },
   { prefix: "/programacao-simples", pageKey: "programacao-simples" },
   { prefix: "/programacao-visualizacao", pageKey: "programacao-visualizacao" },
+  { prefix: "/mapa-programacao", pageKey: "mapa-programacao" },
   { prefix: "/programacao", pageKey: "programacao-simples" },
   { prefix: "/composicao-equipe", pageKey: "composicao-equipe" },
   { prefix: "/controle-apr", pageKey: "controle-apr" },

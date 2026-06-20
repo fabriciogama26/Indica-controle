@@ -561,3 +561,61 @@ Atualizacao 2026-06 - Separacao entre estoque fisico e Operacoes de Equipe
 - Validacao:
   - `npm.cmd run lint -- src/app/api/stock-transfers/route.ts`
   - `npm.cmd run build`
+
+Atualizacao 2026-06 - Estorno individual e em lote
+---------------------------------------------------
+Visao geral
+- Ao clicar em uma linha original da Movimentacao de Estoque, o modal carrega todos os materiais vinculados.
+- O usuario pode estornar somente o material selecionado ou todos os itens ainda ativos.
+- O estorno em lote e atomico: se saldo, Serial/LP ou qualquer outra validacao falhar, nenhum item do lote e alterado.
+
+Arquitetura
+- Movimentacao manual com varios materiais: o agrupamento usa o proprio `stock_transfer_id`.
+- Cadastro em massa CSV: linhas bem-sucedidas do mesmo contexto recebem `stock_transfers.operation_batch_id`.
+- A importacao continua parcial e retorna status por linha; falhas nao removem linhas anteriores salvas com sucesso.
+- Importacoes historicas recebem backfill conservador pela migration `239`: somente transferencias de item unico, criadas no mesmo segundo, pelo mesmo ator e com operacao, centros, projeto, data e finalidade coincidentes.
+- Registros isolados, ambiguos, de Operacoes de Equipe ou criados como estorno permanecem sem agrupamento.
+- A migration `240` corrige o recorte temporal da `239`: como cada linha do CSV executa uma RPC sequencial, cerca de cinco registros podiam cair no mesmo segundo e formar lotes artificiais de cinco.
+- Blocos consecutivos do mesmo contexto sao unidos quando o intervalo entre registros e de ate 2 segundos; UUIDs aleatorios das importacoes novas nao sao alterados.
+
+Cancelamento e saldo
+- `GET /api/stock-transfers/reversal` retorna materiais, status e vinculos de estorno do lote no tenant autenticado.
+- `POST /api/stock-transfers/reversal` aceita `mode = ITEM` ou `mode = BATCH`.
+- `reverse_stock_transfer_operation_batch_v1` bloqueia concorrencia, ignora itens ja estornados e reverte todos os ativos em uma subtransacao.
+- Movimentacoes vinculadas a `stock_transfer_team_operations` continuam obrigatoriamente no fluxo de Operacoes de Equipe.
+- Cada item estornado continua gerando movimentacao inversa, vinculo em `stock_transfer_item_reversals` e auditoria em `material_history`.
+
+Boas praticas
+- A rota exige `requirePageAction` com pagina `entrada` para leitura do lote e execucao do estorno.
+- Todas as consultas e RPCs filtram `tenant_id`.
+- As novas RPCs possuem `SECURITY DEFINER`, `search_path` fixo e `EXECUTE` somente para `service_role`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+- `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `openReversalModal`: carrega todos os materiais da movimentacao/lote.
+  - `handleConfirmReversal`: preserva o estorno individual do item selecionado.
+  - `handleConfirmBatchReversal`: solicita o estorno atomico dos itens ativos.
+  - `activeReversalBatchItems` e `selectedReversalBatchItem`: controlam status e habilitacao das acoes.
+- `src/modules/dashboard/entrada/StockTransfersPageView.module.css`
+  - estilos da linha clicavel, tabela de materiais, status e botao de estorno em lote.
+- `src/app/api/stock-transfers/reversal/route.ts`
+  - `GET`: resolve o agrupamento e monta os status dos materiais.
+  - `POST`: autoriza e encaminha estorno individual ou em lote.
+- `src/app/api/stock-transfers/import/route.ts`
+  - gera `operationBatchId` por contexto operacional para as linhas validas.
+- `src/lib/server/stockTransfers.ts`
+  - `saveStockTransferViaRpc`: usa a wrapper de importacao quando existe lote.
+  - `reverseStockTransferViaRpc`: chama a RPC individual, integral legada ou em lote.
+- `supabase/migrations/238_add_stock_transfer_batch_reversal.sql`
+  - coluna/indice `operation_batch_id`.
+  - RPCs `save_stock_transfer_import_entry_v1` e `reverse_stock_transfer_operation_batch_v1`.
+- `supabase/migrations/239_backfill_stock_transfer_import_batches.sql`
+  - preenche `operation_batch_id` para importacoes historicas com assinatura temporal e operacional conservadora.
+- `supabase/migrations/240_merge_split_stock_transfer_import_batches.sql`
+  - reconhece os UUIDs deterministicos da migration `239` e une os blocos consecutivos da mesma importacao.
+
+Comportamento antes/depois
+- Antes: o modal mostrava somente o item selecionado e permitia apenas estorno individual.
+- Depois: o modal mostra o conjunto completo e oferece as duas acoes, preservando itens ja estornados e a auditoria individual.
+- Correcao complementar: registros importados antes da migration `238` passam a compor o lote quando satisfazem integralmente os criterios da migration `239`.
+- Correcao dos lotes de cinco: a migration `240` substitui o limite pratico de um segundo por ilhas de execucao continua, mantendo separacao quando o intervalo ultrapassa 2 segundos.

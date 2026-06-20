@@ -398,6 +398,8 @@ Servicos e integracoes externas
 - RPC `save_team_stock_operation_record`
 - RPC `reverse_team_stock_operation_record_v2`
 - RPC `reverse_team_stock_operation_item_record_v1`
+- RPC `reverse_team_stock_operation_batch_v1`
+- RPC `reverse_team_stock_operation_batch_v2`
 
 Ajuda contextual
 - Arquivos alterados/criados:
@@ -498,3 +500,116 @@ Mapa da atualizacao 2026-06
 - Constantes tecnicas tocadas: `pg_temp.tmp_retired_serial_transfer_items` e `pg_temp.tmp_stock_transfer_items`.
 - Servico relacionado: RPC `save_team_stock_operation_batch_full`.
 - Impacto multi-tenant: nenhuma mudanca de autorizacao ou RLS; a RPC continua validando e movimentando somente dados do `p_tenant_id`.
+
+Atualizacao 2026-06 - Estorno em lote por requisicao
+-----------------------------------------------------
+- A linha da lista passa a abrir o modal de estorno agrupado pela requisicao: `transferId` no cadastro manual e `operation_batch_id` no cadastro em massa.
+- O modal lista todos os materiais da requisicao com:
+  - codigo e descricao;
+  - quantidade;
+  - Serial e LP;
+  - status `Ativo` ou `Estornado`.
+- O fluxo preserva duas acoes:
+  - `Estornar material selecionado`: mantem o estorno individual existente.
+  - `Estornar lote`: estorna todos os itens ainda ativos da requisicao.
+- Lotes parcialmente estornados podem ser concluidos pelo botao de lote; os itens ja estornados sao exibidos e ignorados.
+- O estorno em lote e atomico:
+  - bloqueia a transferencia e os itens originais durante a operacao;
+  - reutiliza as validacoes de saldo, Serial, LP, motivo e data do estorno individual;
+  - se qualquer item falhar, todos os estornos executados na mesma chamada sao desfeitos.
+- A API passa a exigir `requirePageAction` para `saida/read` no carregamento e `saida/reverse` na gravacao.
+- A RPC valida `p_actor_user_id` ativo no mesmo tenant e possui EXECUTE somente para `service_role`.
+- Nao ha backfill: a migration adiciona somente uma RPC e usa os vinculos existentes em `stock_transfer_item_reversals`.
+
+Mapa da atualizacao 2026-06 - Estorno em lote
+----------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - Responsavel por: abrir o lote ao clicar na linha, carregar os materiais, manter o estorno individual e executar o estorno em lote.
+  - Funcoes tocadas: `openReversalModal`, `closeReversalModal`, `handleConfirmReversal`, `handleConfirmBatchReversal`.
+- Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
+  - Responsavel por: `GET` dos itens/status do lote e `POST` dos modos `ITEM` e `BATCH`, sempre restritos ao tenant autenticado.
+  - Funcoes tocadas: `resolveReversalContext`, `GET`, `POST`.
+- Caminho: `src/lib/server/teamStockOperations.ts`
+  - Responsavel por: selecionar a RPC individual, integral legada ou em lote e mapear o resultado por item.
+  - Funcoes tocadas: `reverseTeamStockOperationViaRpc`, `mapTeamOperationErrorMessage`.
+- Caminho: `supabase/migrations/236_add_team_stock_operation_batch_reversal.sql`
+  - Responsavel por: criar `reverse_team_stock_operation_batch_v1` com lock, rollback integral, validacao de ator/tenant e retorno dos itens estornados.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/saida/types.ts`
+  - Responsavel por: contratos `TeamOperationBatchReversalItem` e `TeamOperationBatchReversalResponse`.
+- Caminho: `src/modules/dashboard/saida/TeamStockOperationsPageView.module.css`
+  - Responsavel por: linha clicavel, tabela do lote, chips de status e botao de estorno em lote.
+
+Funcoes utilitarias relacionadas
+- `requirePageAction`: valida `saida/read` e `saida/reverse`.
+- `reverse_team_stock_operation_item_record_v1`: executa e audita cada item dentro da transacao do lote.
+
+Servicos e integracoes externas
+- Next.js Route Handler `GET/POST /api/team-stock-operations/reversal`.
+- Supabase Postgres via RPC `reverse_team_stock_operation_batch_v1`.
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.module.css`
+  - `src/modules/dashboard/saida/types.ts`
+  - `src/app/api/team-stock-operations/reversal/route.ts`
+  - `src/lib/server/teamStockOperations.ts`
+  - `supabase/migrations/236_add_team_stock_operation_batch_reversal.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: o modal mostrava somente o item selecionado e permitia apenas estorno individual.
+  - Depois: o modal mostra toda a requisicao e permite escolher entre estorno individual e estorno atomico dos itens ativos.
+  - Antes: a RPC integral legada bloqueava qualquer transferencia com estorno parcial.
+  - Depois: a nova RPC conclui somente os itens restantes sem duplicar os que ja foram estornados.
+
+Atualizacao 2026-06 - Correcao do agrupamento do cadastro em massa
+------------------------------------------------------------------
+- Causa:
+  - O cadastro manual com varios materiais grava um unico `stock_transfers.id`.
+  - O cadastro em massa grava uma transferencia por linha do CSV, embora todas sejam salvas na mesma transacao.
+  - O primeiro estorno em lote consultava somente o `transferId` selecionado e, por isso, encontrava apenas um material importado.
+- Correcao:
+  - `stock_transfer_team_operations.operation_batch_id` passa a identificar as linhas do mesmo contexto de requisicao dentro do arquivo.
+  - Novos imports geram um UUID por contexto funcional:
+    - operacao;
+    - centro principal;
+    - equipe;
+    - projeto;
+    - data;
+    - tipo;
+    - observacao.
+  - O backfill agrupa registros existentes somente quando possuem o mesmo timestamp transacional, usuario e contexto operacional.
+  - O modal consulta todos os `transferId` do `operation_batch_id`.
+  - Operacoes manuais continuam usando o proprio `transferId`.
+  - A RPC `reverse_team_stock_operation_batch_v2` bloqueia e estorna atomicamente os itens ativos de todas as transferencias do grupo.
+- Arquivos alterados/criados:
+  - `supabase/migrations/237_group_team_stock_imports_for_batch_reversal.sql`
+  - `src/lib/server/teamStockOperations.ts`
+  - `src/app/api/team-stock-operations/reversal/route.ts`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/modules/dashboard/saida/types.ts`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes e contratos tocados:
+  - `saveTeamStockOperationBatchViaRpc`
+  - `reverseTeamStockOperationViaRpc`
+  - `GET /api/team-stock-operations/reversal`
+  - `handleConfirmBatchReversal`
+  - `save_team_stock_operation_batch_full`
+  - `reverse_team_stock_operation_batch_v2`
+  - `TeamOperationBatchReversalResponse`
+- Impacto multi-tenant:
+  - `operation_batch_id` sempre e consultado junto de `tenant_id`.
+  - O backfill nao agrupa linhas entre tenants.
+  - A RPC continua validando ator ativo e acesso ao tenant.
+- Comportamento antes/depois:
+  - Antes: import com tres materiais criava tres transferencias e o modal mostrava somente uma.
+  - Depois: as tres transferencias compartilham `operation_batch_id` e aparecem juntas no modal.
