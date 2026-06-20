@@ -637,11 +637,12 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase
-      .from("team_compositions")
-      .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by", { count: "exact" })
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("is_active", true);
+    const fetchCompositionPage = (skipWorkStatusFilter = false) => {
+      let query = supabase
+        .from("team_compositions")
+        .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by", { count: "exact" })
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("is_active", true);
 
       if (startDate) {
         query = query.gte("composition_date", startDate);
