@@ -950,3 +950,10 @@
 - [x] [Dashboard Equipes][Etapa 4] Mover os blocos de equipes, encarregados e supervisores para a nova tela e simplificar o Dashboard Medicao.
 - [x] [Dashboard Equipes][Etapa 5] Refazer ranking, bullet e gap por MK/equipe e implementar modal com contribuicao dos encarregados, projetos, ordens, dias e exportacao CSV.
 - [ ] [Dashboard Equipes][Etapa 6] Validar soma por MK, isolamento multi-tenant, permissao server-side, lint, build e atualizar documentacao final.
+
+- [x] Fortalecer AGENTS.md com protocolo obrigatorio de uso da pasta verificacao, mapa de quando ler cada arquivo, regras de performance e trafego (banco, auth, API, front-end) e checklist completo por tela com 4 dimensoes (integridade, seguranca, performance, documentacao).
+- [x] Expandir verificacao/06_performance.md com criterios objetivos por camada (banco, API, front-end), exemplos antes/depois, como confirmar com EXPLAIN ANALYZE e checklist de PR.
+- [x] Criar verificacao/11_front_ui.md com regras exclusivas de front-end: debounce, dependencias de useEffect, filtro padrao de periodo, autenticacao centralizada e limite de linhas no PageView.
+- [x] Criar verificacao/12_trafego_egress.md com limites de resposta por tipo de endpoint, quando cachear e nao cachear, log de resposta e prevencao de sobreposicao de dados.
+- [x] Criar pasta verificacao/crc/ com template reutilizavel e CRCs dos modulos criticos: auth (4-5 queries por request, singleton ausente, cache ausente), programacao (15-20 queries por GET, sobreposicao de dados, arquivo de 4519 linhas) e dashboard_medicao (limit 10000 sem filtro de data, query duplicada de teams).
+- [x] Adicionar secao de performance e trafego ao estrutura_saas_multitenant.md com regras de banco, cliente singleton, auth, limites de resposta por tipo, cache e checklist de validacao expandido.
