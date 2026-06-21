@@ -428,6 +428,39 @@ Atualizacao 2026-06-20 - Adiamento por Projeto + Data
   - A RPC de grupo filtra por `tenant_id`, `project_id` e `execution_date`.
   - EXECUTE permanece restrito ao `service_role`.
 
+Atualizacao 2026-06-21 - Cancelamento por Projeto + Data
+---------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/hooks.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `supabase/migrations/248_cancel_programming_by_project_date.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `PATCH /api/programacao`
+  - `cancelProgrammingViaRpc`
+  - `cancelProgrammingGroupViaRpc`
+  - `cancel_project_programming_group`
+  - `ProgrammingCancelModal`
+  - `useCancelModal`
+- Comportamento antes/depois:
+  - Antes: `Cancelar` alterava apenas a linha/equipe clicada.
+  - Depois: o usuario escolhe no modal entre cancelar somente a equipe clicada ou todas as equipes ativas da mesma obra no mesmo dia.
+  - O escopo individual segue como padrao para preservar compatibilidade.
+- Multi-tenant:
+  - A API continua resolvendo tenant e usuario pela sessao.
+  - A RPC de grupo filtra por `tenant_id`, `project_id` e `execution_date`.
+  - A RPC usa `set_project_programming_status` dentro da mesma transacao, preservando historico e rollback total.
+  - EXECUTE permanece restrito ao `service_role`.
+
 Atualizacao 2026-06-21 - Estado Trabalho no COPY_TO_DATES selecionado
 ----------------------------------------------------------------------
 - Arquivos alterados:

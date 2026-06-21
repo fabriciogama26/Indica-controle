@@ -292,6 +292,7 @@ export type CancelProgrammingPayload = {
   action?: string;
   reason?: string;
   newDate?: string;
+  scope?: "individual" | "group";
   expectedUpdatedAt?: string;
   workCompletionStatus?: string;
 };
@@ -426,10 +427,16 @@ export type CancelProgrammingRpcResult = {
   status?: number;
   reason?: string;
   message?: string;
+  detail?: string;
   programming_id?: string;
   project_code?: string;
   updated_at?: string;
   programming_status?: "ADIADA" | "CANCELADA";
+};
+
+export type CancelProgrammingGroupRpcResult = CancelProgrammingRpcResult & {
+  affected_count?: number;
+  cancelled_programming_ids?: string[];
 };
 
 export type PostponeProgrammingRpcResult = {

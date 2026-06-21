@@ -188,6 +188,7 @@ export async function cancelProgramming(params: {
   accessToken: string;
   id: string;
   reason: string;
+  scope?: "individual" | "group";
   expectedUpdatedAt: string;
 }) {
   const response = await fetch("/api/programacao", {
@@ -200,6 +201,7 @@ export async function cancelProgramming(params: {
       id: params.id,
       action: "CANCELAR",
       reason: params.reason,
+      scope: params.scope ?? "individual",
       expectedUpdatedAt: params.expectedUpdatedAt,
     }),
   });

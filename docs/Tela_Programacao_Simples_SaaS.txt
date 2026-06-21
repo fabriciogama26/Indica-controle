@@ -1815,6 +1815,43 @@ Atualizacao 2026-06-20 - Adiamento por Projeto + Data
   - `expectedUpdatedAt` continua obrigatorio para a linha clicada.
   - EXECUTE da RPC de grupo fica revogado para `PUBLIC`, `anon` e `authenticated`; somente `service_role` executa apos autorizacao server-side `programacao-simples/update`.
 
+Atualizacao 2026-06-21 - Cancelamento por Projeto + Data
+---------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/hooks.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `supabase/migrations/248_cancel_programming_by_project_date.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingCancelModal`: adiciona seletor de escopo `individual` ou `group`.
+  - `useCancelModal`: controla `cancelScope` e envia o escopo ao cancelar.
+  - `cancelProgramming`: inclui `scope` no payload do PATCH.
+  - `PATCH /api/programacao`: escolhe entre `cancelProgrammingViaRpc` e `cancelProgrammingGroupViaRpc`.
+  - `cancelProgrammingGroupViaRpc`: wrapper server-side para `cancel_project_programming_group`.
+  - `cancel_project_programming_group`: RPC transacional por `tenant_id + project_id + execution_date`.
+- Comportamento antes/depois:
+  - Antes: cancelar sempre alterava somente a linha clicada.
+  - Depois: o modal permite cancelar somente a equipe clicada ou todas as equipes ativas da mesma obra no mesmo dia.
+  - O comportamento padrao continua individual quando o escopo nao e informado.
+  - Em escopo `group`, a RPC chama `set_project_programming_status` para cada linha ativa do grupo dentro da mesma transacao e faz rollback total se qualquer item falhar.
+- Integridade, concorrencia e auditoria:
+  - `expectedUpdatedAt` continua obrigatorio e e validado na linha clicada.
+  - Historico funcional permanece dentro de `set_project_programming_status`.
+  - Falha de refresh visual continua sendo tratada como aviso pos-commit.
+- Multi-tenant:
+  - A RPC recebe `p_tenant_id` resolvido pela API autenticada.
+  - O grupo e restrito a `tenant_id`, `project_id`, `execution_date` e status ativo.
+  - EXECUTE da RPC fica bloqueado para `anon/authenticated` e liberado somente para `service_role`.
+
 Atualizacao 2026-06-21 - Estado Trabalho na copia com selecao de equipes
 -------------------------------------------------------------------------
 - Arquivos alterados:

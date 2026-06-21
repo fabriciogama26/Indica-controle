@@ -3,6 +3,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import type {
   BatchCreateProgrammingPayload,
   BatchProgrammingRpcResult,
+  CancelProgrammingGroupRpcResult,
   CancelProgrammingRpcResult,
   PostponeProgrammingGroupRpcResult,
   PostponeProgrammingRpcResult,
@@ -603,6 +604,74 @@ export async function cancelProgrammingViaRpc(params: {
     updatedAt: normalizeText(result.updated_at),
     programmingStatus: result.programming_status ?? params.action,
     message: result.message ?? (params.action === "ADIADA" ? "Programacao adiada com sucesso." : "Programacao cancelada com sucesso."),
+  } as const;
+}
+
+export async function cancelProgrammingGroupViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  reason: string;
+  expectedUpdatedAt?: string | null;
+}) {
+  const rpcName = "cancel_project_programming_group";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    const isMissingRpc = isMissingRpcFunctionError(error.message, rpcName);
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "CANCEL_GROUP_RPC_NOT_AVAILABLE",
+        message:
+          "Seu ambiente ainda nao suporta cancelamento por Projeto + Data. Aplique a migration 248 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      reason: "CANCEL_GROUP_RPC_FAILED",
+      message: error.message
+        ? `Falha ao cancelar programacoes por Projeto + Data via RPC: ${error.message}`
+        : "Falha ao cancelar programacoes por Projeto + Data via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as CancelProgrammingGroupRpcResult;
+  if (result.success !== true || !result.programming_id) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao cancelar programacoes por Projeto + Data.",
+      reason: result.reason ?? null,
+      detail: result.detail ?? null,
+      programmingId: result.programming_id ?? null,
+    } as const;
+  }
+
+  const cancelledProgrammingIds = Array.isArray(result.cancelled_programming_ids)
+    ? result.cancelled_programming_ids.map((item) => normalizeText(item)).filter(Boolean)
+    : [];
+
+  return {
+    ok: true,
+    programmingId: result.programming_id,
+    projectCode: normalizeText(result.project_code),
+    updatedAt: normalizeText(result.updated_at),
+    programmingStatus: result.programming_status ?? "CANCELADA",
+    affectedCount: Number(result.affected_count ?? cancelledProgrammingIds.length),
+    cancelledProgrammingIds,
+    message: result.message ?? "Programacoes canceladas com sucesso.",
   } as const;
 }
 

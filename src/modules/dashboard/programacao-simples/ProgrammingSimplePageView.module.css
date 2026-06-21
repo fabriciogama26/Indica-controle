@@ -181,6 +181,12 @@
   gap: 8px;
 }
 
+fieldset.field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
 .field span {
   color: #17347a;
   font-weight: 700;

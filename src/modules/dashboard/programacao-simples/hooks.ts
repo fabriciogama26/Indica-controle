@@ -471,6 +471,7 @@ export function useCancelModal(params: {
   const [cancelTarget, setCancelTarget] = useState<ScheduleItem | null>(null);
   const [cancelReasonCode, setCancelReasonCode] = useState("");
   const [cancelReasonNotes, setCancelReasonNotes] = useState("");
+  const [cancelScope, setCancelScope] = useState<"individual" | "group">("individual");
   const [isCancelling, setIsCancelling] = useState(false);
 
   const canSubmitCancellation = isReasonSelectionValid(reasonOptions, cancelReasonCode, cancelReasonNotes) && !isCancelling;
@@ -492,6 +493,7 @@ export function useCancelModal(params: {
     setCancelTarget(schedule);
     setCancelReasonCode("");
     setCancelReasonNotes("");
+    setCancelScope("individual");
     setFeedback(null);
   }
 
@@ -499,6 +501,7 @@ export function useCancelModal(params: {
     setCancelTarget(null);
     setCancelReasonCode("");
     setCancelReasonNotes("");
+    setCancelScope("individual");
   }
 
   async function confirmCancellation() {
@@ -514,6 +517,7 @@ export function useCancelModal(params: {
         accessToken,
         id: cancelTarget.id,
         reason: selectedReasonText,
+        scope: cancelScope,
         expectedUpdatedAt: cancelTarget.updatedAt,
       });
 
@@ -535,6 +539,7 @@ export function useCancelModal(params: {
           projectId: cancelTarget.projectId,
           teamId: cancelTarget.teamId,
           status: cancelTarget.status,
+          scope: cancelScope,
           expectedUpdatedAt: cancelTarget.updatedAt,
           responseMessage: message,
           responseError: data.error ?? null,
@@ -558,6 +563,7 @@ export function useCancelModal(params: {
           programmingId: cancelTarget.id,
           projectId: cancelTarget.projectId,
           teamId: cancelTarget.teamId,
+          scope: cancelScope,
         });
         if (!data.warning) {
           setFeedback({
@@ -574,6 +580,7 @@ export function useCancelModal(params: {
         projectId: cancelTarget.projectId,
         teamId: cancelTarget.teamId,
         status: cancelTarget.status,
+        scope: cancelScope,
         expectedUpdatedAt: cancelTarget.updatedAt,
       });
     } finally {
@@ -587,6 +594,8 @@ export function useCancelModal(params: {
     setCancelReasonCode,
     cancelReasonNotes,
     setCancelReasonNotes,
+    cancelScope,
+    setCancelScope,
     isCancelling,
     canSubmitCancellation,
     openCancelModal,

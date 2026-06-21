@@ -1,6 +1,7 @@
 - [x] Estruturar o frontend do SaaS em `SaaS (Web)/` com Next.js 16, React 19, TypeScript e App Router.
 - [x] Ajustar o `Adiar` da Programacao Simples para operar por `Projeto + Data`: criado `postpone_project_programming_group`, `PATCH /api/programacao` passa a adiar todas as equipes ativas do mesmo projeto/data em uma unica transacao, com rollback total se qualquer linha falhar.
 - [x] Corrigir `COPY_TO_DATES` da Programacao Simples com selecao de equipes para herdar o ultimo `Estado Trabalho` valido do projeto, usando `PARCIAL` como fallback quando nao houver historico valido.
+- [x] Adicionar cancelamento por escopo na Programacao Simples: modal permite cancelar somente a equipe clicada ou todas as equipes ativas do mesmo Projeto + Data via RPC transacional `cancel_project_programming_group`.
 - [x] Implementar login web com `login_name`, suporte a modo local (`/api/auth/local-login`) e modo remoto (`auth-login-web`).
 - [x] Implementar persistencia/hidratacao de sessao no frontend com `AuthContext` e Supabase Auth.
 - [x] Reforcar o fluxo de `login_audit` para registrar entrada e saida do SaaS web como eventos imutaveis em duas linhas.
