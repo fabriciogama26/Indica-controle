@@ -22,10 +22,6 @@ import {
   ProgrammingWeeklyCalendarPanel,
 } from "./components";
 import {
-  cancelProgramming,
-  copyProgrammingToDates,
-  fetchProgrammingHistory,
-  postponeProgramming,
   saveProgramming,
   saveProgrammingWorkCompletionStatus,
   validateProgrammingStageConflict,
@@ -37,7 +33,6 @@ import {
   DEADLINE_WINDOW_MAX_DAYS,
   DEADLINE_WINDOW_SHORT_DAYS,
   DOCUMENT_KEYS,
-  HISTORY_PAGE_SIZE,
   PAGE_SIZE,
   VALIDATION_FIELD_LABELS,
 } from "./constants";
@@ -47,7 +42,15 @@ import {
   buildEnelNovoWorkbookData,
   buildProgrammingCsvContent,
 } from "./exports";
-import { useProgrammingActivityCatalog, useProgrammingBoardData, useProgrammingEtapaSuggestion } from "./hooks";
+import {
+  useCancelModal,
+  useCopyToDatesModal,
+  useHistoryModal,
+  usePostponeModal,
+  useProgrammingActivityCatalog,
+  useProgrammingBoardData,
+  useProgrammingEtapaSuggestion,
+} from "./hooks";
 import {
   addDays,
   calculateDateDiffInDays,
@@ -65,7 +68,6 @@ import {
   isDateInRange,
   isInactiveProgrammingStatus,
   isWorkCompleted,
-  normalizeHistoryItemsForDisplay,
   normalizeSgdNumberForExport,
   normalizeWorkCompletionCode,
   parseNonNegativeDecimal,
@@ -87,7 +89,6 @@ import {
   getDocumentRequestedAfterApprovedLabel,
   isInvalidTimeRange,
   isNegativeNumericText,
-  isReasonSelectionValid,
 } from "./validators";
 import type {
   PeriodMode,
@@ -102,7 +103,6 @@ import type {
   DocumentEntry,
   ScheduleItem,
   StageValidationTeamSummary,
-  ProgrammingHistoryItem,
   AlertModalState,
   SaveProgrammingResponse,
   FormState,
@@ -111,14 +111,6 @@ import type {
   DeadlineViewMode,
   ProgrammingSimplePageViewMode,
 } from "./types";
-
-type CopyToDatesDraftRow = {
-  id: string;
-  date: string;
-  etapaNumber: string;
-  teamIds: string[];
-};
-
 
 function resolveDeadlineWindowDays(viewMode: DeadlineViewMode) {
   if (viewMode === "90") {
@@ -154,16 +146,6 @@ function formatDeadlineRangeLabel(daysDiff: number) {
   }
 
   return "61 a 90 dias";
-}
-
-function createCopyToDatesDraftRow(etapaNumber = "", teamIds: string[] = []): CopyToDatesDraftRow {
-  const randomSuffix = Math.random().toString(36).slice(2);
-  return {
-    id: `copy-date-${Date.now()}-${randomSuffix}`,
-    date: "",
-    etapaNumber,
-    teamIds,
-  };
 }
 
 export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: ProgrammingSimplePageViewMode }) {
@@ -220,26 +202,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [editChangeReasonCode, setEditChangeReasonCode] = useState("");
   const [editChangeReasonNotes, setEditChangeReasonNotes] = useState("");
   const [detailsTarget, setDetailsTarget] = useState<ScheduleItem | null>(null);
-  const [historyTarget, setHistoryTarget] = useState<ScheduleItem | null>(null);
-  const [historyItems, setHistoryItems] = useState<ProgrammingHistoryItem[]>([]);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [deadlineViewMode, setDeadlineViewMode] = useState<DeadlineViewMode>("15");
   const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
   const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
   const [isExportingDeadlineModal, setIsExportingDeadlineModal] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState<ScheduleItem | null>(null);
-  const [cancelReasonCode, setCancelReasonCode] = useState("");
-  const [cancelReasonNotes, setCancelReasonNotes] = useState("");
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [postponeTarget, setPostponeTarget] = useState<ScheduleItem | null>(null);
-  const [postponeReasonCode, setPostponeReasonCode] = useState("");
-  const [postponeReasonNotes, setPostponeReasonNotes] = useState("");
-  const [postponeDate, setPostponeDate] = useState("");
-  const [isPostponing, setIsPostponing] = useState(false);
-  const [copyToDatesTarget, setCopyToDatesTarget] = useState<ScheduleItem | null>(null);
-  const [copyToDatesRows, setCopyToDatesRows] = useState<CopyToDatesDraftRow[]>([]);
-  const [isCopyingToDates, setIsCopyingToDates] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
   const [isSavingWorkCompletionStatusFromModal, setIsSavingWorkCompletionStatusFromModal] = useState(false);
@@ -288,7 +254,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     () => (editingScheduleId ? schedules.find((item) => item.id === editingScheduleId) ?? null : null),
     [editingScheduleId, schedules],
   );
-  const canSubmitCancellation = isReasonSelectionValid(reasonOptions, cancelReasonCode, cancelReasonNotes) && !isCancelling;
   const safeFormLogContext = () => ({
     mode: isEditing ? "edit" : "batch_create",
     projectId: form.projectId || null,
@@ -344,6 +309,92 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setReasonOptions,
     setSchedules,
     setFeedback,
+    onError: logError,
+  });
+
+  const {
+    historyTarget,
+    historyItems,
+    setHistoryTarget,
+    pagedHistoryItems,
+    historyPage,
+    setHistoryPage,
+    totalHistoryPages,
+    isLoadingHistory,
+    openHistory,
+  } = useHistoryModal({ accessToken, setFeedback, onError: logError });
+
+  const {
+    cancelTarget,
+    cancelReasonCode,
+    setCancelReasonCode,
+    cancelReasonNotes,
+    setCancelReasonNotes,
+    isCancelling,
+    canSubmitCancellation,
+    openCancelModal,
+    closeCancelModal,
+    confirmCancellation,
+  } = useCancelModal({
+    accessToken,
+    reasonOptions,
+    editingScheduleId,
+    onCancelEditMode: cancelEditMode,
+    openAlertModal,
+    openProjectCompletedAlertModal,
+    fetchBoardSnapshot,
+    applyBoardSnapshot,
+    setFeedback,
+    onError: logError,
+  });
+
+  const {
+    postponeTarget,
+    postponeReasonCode,
+    setPostponeReasonCode,
+    postponeReasonNotes,
+    setPostponeReasonNotes,
+    postponeDate,
+    setPostponeDate,
+    isPostponing,
+    openPostponeModal,
+    closePostponeModal,
+    confirmPostpone,
+  } = usePostponeModal({
+    accessToken,
+    reasonOptions,
+    editingScheduleId,
+    onCancelEditMode: cancelEditMode,
+    openAlertModal,
+    openProjectCompletedAlertModal,
+    fetchBoardSnapshot,
+    applyBoardSnapshot,
+    setFeedback,
+    onError: logError,
+  });
+
+  const {
+    copyToDatesTarget,
+    copyToDatesRows,
+    isCopyingToDates,
+    openCopyToDatesModal,
+    closeCopyToDatesModal,
+    updateCopyToDatesRow,
+    toggleCopyToDatesTeam,
+    selectAllCopyToDatesTeams,
+    clearCopyToDatesTeams,
+    addCopyToDatesRow,
+    removeCopyToDatesRow,
+    confirmCopyToDates,
+  } = useCopyToDatesModal({
+    accessToken,
+    teams,
+    schedules,
+    openAlertModal,
+    setFeedback,
+    setStageConflictModal,
+    fetchBoardSnapshot,
+    applyBoardSnapshot,
     onError: logError,
   });
 
@@ -411,11 +462,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const start = (page - 1) * PAGE_SIZE;
     return filteredSchedules.slice(start, start + PAGE_SIZE);
   }, [filteredSchedules, page]);
-  const totalHistoryPages = Math.max(1, Math.ceil(historyItems.length / HISTORY_PAGE_SIZE));
-  const pagedHistoryItems = useMemo(() => {
-    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
-    return historyItems.slice(start, start + HISTORY_PAGE_SIZE);
-  }, [historyItems, historyPage]);
   const calendarTeams = useMemo(() => {
     const selectedTeams = activeFilters.teamId
       ? teams.filter((team) => team.id === activeFilters.teamId)
@@ -1107,565 +1153,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       });
     } finally {
       setIsSavingWorkCompletionStatusFromModal(false);
-    }
-  }
-
-  function openCancelModal(schedule: ScheduleItem) {
-    if (!isActiveProgrammingStatus(getDisplayProgrammingStatus(schedule))) {
-      setFeedback({
-        type: "error",
-        message: "Somente programacoes ativas podem ser canceladas.",
-      });
-      return;
-    }
-
-    if (!reasonOptions.length) {
-      setFeedback({
-        type: "error",
-        message: "Catalogo de motivos indisponivel. Aplique a migration 135 para usar cancelamento por select.",
-      });
-      return;
-    }
-
-    setCancelTarget(schedule);
-    setCancelReasonCode("");
-    setCancelReasonNotes("");
-    setFeedback(null);
-  }
-
-  function openPostponeModal(schedule: ScheduleItem) {
-    if (!isActiveProgrammingStatus(getDisplayProgrammingStatus(schedule))) {
-      setFeedback({
-        type: "error",
-        message: "Somente programacoes ativas podem ser adiadas.",
-      });
-      return;
-    }
-
-    if (!reasonOptions.length) {
-      setFeedback({
-        type: "error",
-        message: "Catalogo de motivos indisponivel. Aplique a migration 135 para usar adiamento por select.",
-      });
-      return;
-    }
-
-    setPostponeTarget(schedule);
-    setPostponeReasonCode("");
-    setPostponeReasonNotes("");
-    setPostponeDate("");
-    setFeedback(null);
-  }
-
-  function closeCancelModal() {
-    setCancelTarget(null);
-    setCancelReasonCode("");
-    setCancelReasonNotes("");
-  }
-
-  function closePostponeModal() {
-    if (isPostponing) {
-      return;
-    }
-
-    setPostponeTarget(null);
-    setPostponeReasonCode("");
-    setPostponeReasonNotes("");
-    setPostponeDate("");
-  }
-
-  function openCopyToDatesModal(schedule: ScheduleItem) {
-    const displayStatus = getDisplayProgrammingStatus(schedule);
-    if (!isActiveProgrammingStatus(displayStatus)) {
-      openAlertModal("Copia indisponivel", "Somente programacoes ativas podem ser copiadas para outras datas.");
-      return;
-    }
-
-    if (schedule.etapaUnica || schedule.etapaFinal) {
-      openAlertModal(
-        "Copia bloqueada",
-        "Programacoes marcadas como ETAPA UNICA ou ETAPA FINAL nao podem ser copiadas para outras datas.",
-      );
-      return;
-    }
-
-    if (!schedule.etapaNumber || schedule.etapaNumber < 1) {
-      openAlertModal(
-        "ETAPA obrigatoria",
-        "A programacao de origem precisa ter uma ETAPA numerica para permitir copia incrementada.",
-      );
-      return;
-    }
-
-    const defaultTeamIds = resolveCopyToDatesDefaultTeamIds(schedule);
-    setCopyToDatesTarget(schedule);
-    setCopyToDatesRows([createCopyToDatesDraftRow(String(schedule.etapaNumber + 1), defaultTeamIds)]);
-    setFeedback(null);
-  }
-
-  function resolveCopyToDatesDefaultTeamIds(schedule: ScheduleItem) {
-    const groupTeamIds = schedules
-      .filter((item) =>
-        item.projectId === schedule.projectId
-        && item.date === schedule.date
-        && item.etapaNumber === schedule.etapaNumber
-        && !item.etapaUnica
-        && !item.etapaFinal
-        && isActiveProgrammingStatus(getDisplayProgrammingStatus(item)),
-      )
-      .map((item) => item.teamId)
-      .filter(Boolean);
-
-    const uniqueTeamIds = Array.from(new Set(groupTeamIds));
-    return uniqueTeamIds.length ? uniqueTeamIds : [schedule.teamId].filter(Boolean);
-  }
-
-  function closeCopyToDatesModal() {
-    if (isCopyingToDates) {
-      return;
-    }
-
-    setCopyToDatesTarget(null);
-    setCopyToDatesRows([]);
-  }
-
-  function updateCopyToDatesRow(rowId: string, field: "date" | "etapaNumber", value: string) {
-    setCopyToDatesRows((current) =>
-      current.map((row) =>
-        row.id === rowId
-          ? {
-              ...row,
-              [field]: field === "etapaNumber" ? value.replace(/\D/g, "") : value,
-            }
-          : row,
-      ),
-    );
-  }
-
-  function toggleCopyToDatesTeam(rowId: string, teamId: string) {
-    setCopyToDatesRows((current) =>
-      current.map((row) => {
-        if (row.id !== rowId) return row;
-        const nextTeamIds = row.teamIds.includes(teamId)
-          ? row.teamIds.filter((item) => item !== teamId)
-          : [...row.teamIds, teamId];
-
-        return {
-          ...row,
-          teamIds: nextTeamIds,
-        };
-      }),
-    );
-  }
-
-  function selectAllCopyToDatesTeams(rowId: string) {
-    setCopyToDatesRows((current) =>
-      current.map((row) => row.id === rowId ? { ...row, teamIds: teams.map((team) => team.id) } : row),
-    );
-  }
-
-  function clearCopyToDatesTeams(rowId: string) {
-    setCopyToDatesRows((current) =>
-      current.map((row) => row.id === rowId ? { ...row, teamIds: [] } : row),
-    );
-  }
-
-  function addCopyToDatesRow() {
-    setCopyToDatesRows((current) => {
-      const currentEtapas = current
-        .map((row) => Number(row.etapaNumber))
-        .filter((value) => Number.isInteger(value) && value > 0);
-      const baseEtapa = copyToDatesTarget?.etapaNumber ?? 0;
-      const nextEtapa = Math.max(baseEtapa, ...currentEtapas) + 1;
-      const previousTeamIds = current[current.length - 1]?.teamIds ?? (copyToDatesTarget ? resolveCopyToDatesDefaultTeamIds(copyToDatesTarget) : []);
-      return [...current, createCopyToDatesDraftRow(String(nextEtapa), previousTeamIds)];
-    });
-  }
-
-  function removeCopyToDatesRow(rowId: string) {
-    setCopyToDatesRows((current) => current.length > 1 ? current.filter((row) => row.id !== rowId) : current);
-  }
-
-  async function openHistory(schedule: ScheduleItem) {
-    if (!accessToken) {
-      setFeedback({ type: "error", message: "Sessao invalida para consultar historico." });
-      return;
-    }
-
-    setHistoryTarget(schedule);
-    setHistoryItems([]);
-    setHistoryPage(1);
-    setIsLoadingHistory(true);
-
-    try {
-      const data = await fetchProgrammingHistory({
-        accessToken,
-        programmingId: schedule.id,
-      });
-
-      const normalizedHistory = normalizeHistoryItemsForDisplay(data.history ?? []);
-
-      setHistoryItems(normalizedHistory);
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Falha ao carregar historico da programacao.",
-      });
-      await logError("Falha ao carregar historico da programacao.", error, {
-        operation: "load_history",
-        programmingId: schedule.id,
-        projectId: schedule.projectId,
-        teamId: schedule.teamId,
-        status: schedule.status,
-      });
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  }
-
-  async function confirmCancellation() {
-    if (!accessToken || !cancelTarget) {
-      return;
-    }
-
-    const selectedReasonText = buildReasonText(reasonOptions, cancelReasonCode, cancelReasonNotes);
-    if (!selectedReasonText) {
-      return;
-    }
-
-    setIsCancelling(true);
-
-    try {
-      const { ok, data } = await cancelProgramming({
-        accessToken,
-        id: cancelTarget.id,
-        reason: selectedReasonText,
-        expectedUpdatedAt: cancelTarget.updatedAt,
-      });
-
-      if (!ok) {
-        const message = buildConflictFeedbackMessage(data, "Falha ao cancelar programacao.");
-        setFeedback({ type: "error", message });
-        if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
-          openProjectCompletedAlertModal({
-            title: "Projeto concluido exige reabertura",
-            payload: data,
-          });
-        } else {
-          openAlertModal(
-            data.error === "conflict" ? "Conflito ao validar cancelamento" : "Falha ao validar cancelamento",
-            message,
-            buildConflictAlertDetails(data),
-          );
-        }
-        await logError("Falha ao cancelar programacao.", undefined, {
-          operation: "cancel_programming",
-          programmingId: cancelTarget.id,
-          projectId: cancelTarget.projectId,
-          teamId: cancelTarget.teamId,
-          status: cancelTarget.status,
-          expectedUpdatedAt: cancelTarget.updatedAt,
-          responseMessage: message,
-          responseError: data.error ?? null,
-        });
-        return;
-      }
-
-      if (editingScheduleId === cancelTarget.id) {
-        cancelEditMode();
-      }
-
-      closeCancelModal();
-      setFeedback({
-        type: "success",
-        message: data.message ?? "Programacao cancelada com sucesso.",
-      });
-      try {
-        const boardData = await fetchBoardSnapshot();
-        if (boardData) {
-          applyBoardSnapshot(boardData);
-        }
-      } catch (refreshError) {
-        await logError("Programacao cancelada, mas houve falha ao atualizar a visualizacao.", refreshError, {
-          operation: "refresh_after_cancel",
-          programmingId: cancelTarget.id,
-          projectId: cancelTarget.projectId,
-          teamId: cancelTarget.teamId,
-        });
-        if (!data.warning) {
-          setFeedback({
-            type: "success",
-            message: `${data.message ?? "Programacao cancelada com sucesso."} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
-          });
-        }
-      }
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: "Falha ao cancelar programacao.",
-      });
-      await logError("Falha ao cancelar programacao.", error, {
-        operation: "cancel_programming",
-        programmingId: cancelTarget.id,
-        projectId: cancelTarget.projectId,
-        teamId: cancelTarget.teamId,
-        status: cancelTarget.status,
-        expectedUpdatedAt: cancelTarget.updatedAt,
-      });
-    } finally {
-      setIsCancelling(false);
-    }
-  }
-
-  async function confirmPostpone() {
-    if (!accessToken || !postponeTarget) {
-      openAlertModal("Falha ao validar adiamento", "Sessao invalida para validar o adiamento.");
-      return;
-    }
-
-    if (postponeDate && postponeDate <= postponeTarget.date) {
-      openAlertModal(
-        "Conflito na nova data",
-        "A nova data da programacao precisa ser posterior a data atual.",
-        [`Data atual da programacao: ${formatDate(postponeTarget.date)}.`],
-      );
-      return;
-    }
-
-    const selectedReasonText = buildReasonText(reasonOptions, postponeReasonCode, postponeReasonNotes);
-    if (!selectedReasonText) {
-      openAlertModal(
-        "Motivo do adiamento incompleto",
-        "Selecione o motivo do adiamento. Quando o motivo exigir observacao, preencha o campo complementar.",
-      );
-      return;
-    }
-
-    setIsPostponing(true);
-    setAlertModal(null);
-
-    try {
-      const { ok, data } = await postponeProgramming({
-        accessToken,
-        id: postponeTarget.id,
-        reason: selectedReasonText,
-        newDate: postponeDate || undefined,
-        expectedUpdatedAt: postponeTarget.updatedAt,
-      });
-
-      if (!ok) {
-        const message = buildConflictFeedbackMessage(data, "Falha ao adiar programacao.");
-        setFeedback({
-          type: "error",
-          message,
-        });
-        if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
-          openProjectCompletedAlertModal({
-            title: "Projeto concluido exige reabertura",
-            payload: data,
-          });
-        } else {
-          openAlertModal(
-            data.error === "conflict" ? "Conflito ao validar adiamento" : "Falha ao validar adiamento",
-            message,
-            buildConflictAlertDetails(data),
-          );
-        }
-        await logError("Falha ao adiar programacao.", undefined, {
-          operation: "postpone_programming",
-          programmingId: postponeTarget.id,
-          projectId: postponeTarget.projectId,
-          teamId: postponeTarget.teamId,
-          status: postponeTarget.status,
-          expectedUpdatedAt: postponeTarget.updatedAt,
-          newDate: postponeDate || null,
-          responseMessage: message,
-          responseError: data.error ?? null,
-        });
-        return;
-      }
-
-      if (editingScheduleId === postponeTarget.id) {
-        cancelEditMode();
-      }
-
-      closePostponeModal();
-      setFeedback({
-        type: "success",
-        message: data.message ?? "Programacao adiada com sucesso.",
-      });
-      try {
-        const boardData = await fetchBoardSnapshot();
-        if (boardData) {
-          applyBoardSnapshot(boardData);
-        }
-      } catch (refreshError) {
-        await logError("Programacao adiada, mas houve falha ao atualizar a visualizacao.", refreshError, {
-          operation: "refresh_after_postpone",
-          programmingId: postponeTarget.id,
-          projectId: postponeTarget.projectId,
-          teamId: postponeTarget.teamId,
-          newDate: postponeDate || null,
-        });
-        if (!data.warning) {
-          setFeedback({
-            type: "success",
-            message: `${data.message ?? "Programacao adiada com sucesso."} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
-          });
-        }
-      }
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: "Falha ao adiar programacao.",
-      });
-      openAlertModal("Falha ao validar adiamento", "Falha ao adiar programacao.");
-      await logError("Falha ao adiar programacao.", error, {
-        operation: "postpone_programming",
-        programmingId: postponeTarget.id,
-        projectId: postponeTarget.projectId,
-        teamId: postponeTarget.teamId,
-        status: postponeTarget.status,
-        expectedUpdatedAt: postponeTarget.updatedAt,
-        newDate: postponeDate || null,
-      });
-    } finally {
-      setIsPostponing(false);
-    }
-  }
-
-  async function confirmCopyToDates() {
-    if (!accessToken || !copyToDatesTarget) {
-      openAlertModal("Falha ao validar copia", "Sessao invalida para copiar a programacao.");
-      return;
-    }
-
-    const sourceEtapaNumber = copyToDatesTarget.etapaNumber ?? 0;
-    const normalizedTargets = copyToDatesRows.map((row) => ({
-      date: row.date,
-      etapaNumber: Number(row.etapaNumber),
-      teamIds: Array.from(new Set(row.teamIds.filter(Boolean))),
-    }));
-    const invalidRows = normalizedTargets.filter((row) =>
-      !row.date || !Number.isInteger(row.etapaNumber) || row.etapaNumber <= 0 || !row.teamIds.length,
-    );
-    if (invalidRows.length) {
-      openAlertModal(
-        "Revise as datas da copia",
-        "Informe Data destino, ETAPA numerica e ao menos uma equipe em todas as linhas.",
-      );
-      return;
-    }
-
-    const repeatedDates = normalizedTargets
-      .map((row) => row.date)
-      .filter((date, index, dates) => dates.indexOf(date) !== index);
-    if (repeatedDates.length) {
-      openAlertModal("Datas duplicadas", "Cada data destino deve aparecer apenas uma vez no modal.");
-      return;
-    }
-
-    if (normalizedTargets.some((row) => row.date === copyToDatesTarget.date)) {
-      openAlertModal(
-        "Data original bloqueada",
-        "A data original da programacao nao pode ser selecionada como destino da copia.",
-      );
-      return;
-    }
-
-    const repeatedEtapas = normalizedTargets
-      .map((row) => row.etapaNumber)
-      .filter((etapa, index, etapas) => etapas.indexOf(etapa) !== index);
-    if (repeatedEtapas.length) {
-      openAlertModal("ETAPAs duplicadas", "Cada data destino deve receber uma ETAPA diferente.");
-      return;
-    }
-
-    if (normalizedTargets.some((row) => row.etapaNumber <= sourceEtapaNumber)) {
-      openAlertModal(
-        "ETAPA invalida",
-        `As ETAPAs de destino devem ser maiores que a etapa atual (${sourceEtapaNumber}).`,
-      );
-      return;
-    }
-
-    setIsCopyingToDates(true);
-    setAlertModal(null);
-    setFeedback(null);
-
-    try {
-      const { ok, data } = await copyProgrammingToDates({
-        accessToken,
-        sourceProgrammingId: copyToDatesTarget.id,
-        expectedUpdatedAt: copyToDatesTarget.updatedAt,
-        targets: normalizedTargets,
-      });
-
-      if (!ok) {
-        const message = data.message ?? "Falha ao copiar programacao para as datas selecionadas.";
-        setFeedback({ type: "error", message });
-        if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
-          setStageConflictModal({
-            enteredEtapaNumber: Number(data.enteredEtapaNumber ?? 0),
-            highestStage: Number(data.highestStage ?? 0),
-            teams: data.teams,
-          });
-        }
-        openAlertModal(
-          "Falha ao validar copia",
-          message,
-          data.detail ? [data.detail] : undefined,
-        );
-        await logError("Falha ao copiar programacao para datas.", undefined, {
-          operation: "copy_programming_to_dates",
-          programmingId: copyToDatesTarget.id,
-          projectId: copyToDatesTarget.projectId,
-          teamId: copyToDatesTarget.teamId,
-          sourceDate: copyToDatesTarget.date,
-          targetDates: normalizedTargets.map((item) => item.date),
-          targetTeamIds: normalizedTargets.flatMap((item) => item.teamIds),
-          responseMessage: message,
-          responseReason: data.reason ?? null,
-        });
-        return;
-      }
-
-      setCopyToDatesTarget(null);
-      setCopyToDatesRows([]);
-      setFeedback({
-        type: "success",
-        message: data.message ?? "Programacao copiada com sucesso.",
-      });
-
-      try {
-        const boardData = await fetchBoardSnapshot();
-        if (boardData) {
-          applyBoardSnapshot(boardData);
-        }
-      } catch (refreshError) {
-        await logError("Programacao copiada, mas houve falha ao atualizar a visualizacao.", refreshError, {
-          operation: "refresh_after_copy_to_dates",
-          programmingId: copyToDatesTarget.id,
-          targetDates: normalizedTargets.map((item) => item.date),
-          targetTeamIds: normalizedTargets.flatMap((item) => item.teamIds),
-        });
-        setFeedback({
-          type: "success",
-          message: `${data.message ?? "Programacao copiada com sucesso."} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
-        });
-      }
-    } catch (error) {
-      setFeedback({ type: "error", message: "Falha ao copiar programacao para as datas selecionadas." });
-      openAlertModal("Falha ao validar copia", "Falha ao copiar programacao para as datas selecionadas.");
-      await logError("Falha ao copiar programacao para datas.", error, {
-        operation: "copy_programming_to_dates",
-        programmingId: copyToDatesTarget.id,
-        projectId: copyToDatesTarget.projectId,
-        teamId: copyToDatesTarget.teamId,
-        targetTeamIds: normalizedTargets.flatMap((item) => item.teamIds),
-      });
-    } finally {
-      setIsCopyingToDates(false);
     }
   }
 

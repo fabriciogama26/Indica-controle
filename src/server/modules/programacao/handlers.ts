@@ -520,6 +520,23 @@ export async function copyProgrammingToDates(request: NextRequest) {
     }
   }
 
+  const initialWorkCompletionStatus = await resolveInitialProjectWorkCompletionStatus({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId: source.project_id,
+  });
+
+  if (!initialWorkCompletionStatus.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: "WORK_COMPLETION_STATUS_REQUIRED",
+        message: initialWorkCompletionStatus.message,
+      } satisfies CopyProgrammingToDatesResponse,
+      { status: initialWorkCompletionStatus.status },
+    );
+  }
+
   let copiedCount = 0;
   const activityCache = new Map<string, Array<{ catalogId: string; quantity: number }>>();
 
@@ -586,7 +603,7 @@ export async function copyProgrammingToDates(request: NextRequest) {
         etapaNumber: target.etapaNumber,
         etapaUnica: false,
         etapaFinal: false,
-        workCompletionStatus: null,
+        workCompletionStatus: initialWorkCompletionStatus.workCompletionStatus,
         affectedCustomers: Number(model.affected_customers ?? 0),
         sgdTypeId: model.sgd_type_id,
         electricalEqCatalogId: model.electrical_eq_catalog_id,
