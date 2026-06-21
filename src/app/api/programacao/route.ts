@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { withIdempotency } from "@/lib/server/idempotency";
 import { type PageAction } from "@/lib/server/pageAuthorization";
 import {
   BOARD_PROJECT_SELECT_LEGACY,
@@ -498,7 +499,19 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(body),
     });
 
-    return saveProgrammingBatch(clonedRequest);
+    // Auth is cached (45s TTL) so this second call has no extra DB cost.
+    const preAuth = await resolveAuthenticatedAppUser(request, {
+      invalidSessionMessage: "Sessao invalida para registrar programacao em lote.",
+      inactiveMessage: "Usuario inativo.",
+    });
+    const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+
+    return withIdempotency(
+      request,
+      tenantId,
+      "/api/programacao:BATCH_CREATE",
+      () => saveProgrammingBatch(clonedRequest),
+    );
   }
 
   const clonedRequest = new NextRequest(request.url, {
