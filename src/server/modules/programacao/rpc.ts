@@ -4,6 +4,7 @@ import type {
   BatchCreateProgrammingPayload,
   BatchProgrammingRpcResult,
   CancelProgrammingRpcResult,
+  PostponeProgrammingGroupRpcResult,
   PostponeProgrammingRpcResult,
   ProgrammingEqCatalogRow,
   ProgrammingSgdTypeRow,
@@ -666,5 +667,78 @@ export async function postponeProgrammingViaRpc(params: {
     projectCode: normalizeText(result.project_code),
     updatedAt: normalizeText(result.updated_at),
     message: result.message ?? "Programacao adiada com sucesso.",
+  } as const;
+}
+
+export async function postponeProgrammingGroupViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  newExecutionDate?: string | null;
+  reason: string;
+  expectedUpdatedAt?: string | null;
+}) {
+  const rpcName = "postpone_project_programming_group";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_new_execution_date: params.newExecutionDate ?? null,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    const isMissingRpc = isMissingRpcFunctionError(error.message, rpcName);
+
+    if (isMissingRpc) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "POSTPONE_GROUP_RPC_NOT_AVAILABLE",
+        message:
+          "Seu ambiente ainda nao suporta adiamento por Projeto + Data. Aplique a migration 246 e tente novamente.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      reason: "POSTPONE_GROUP_RPC_FAILED",
+      message: error.message
+        ? `Falha ao adiar programacoes por Projeto + Data via RPC: ${error.message}`
+        : "Falha ao adiar programacoes por Projeto + Data via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as PostponeProgrammingGroupRpcResult;
+  if (result.success !== true || !result.programming_id) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao adiar programacoes por Projeto + Data.",
+      reason: result.reason ?? null,
+      detail: result.detail ?? null,
+      programmingId: result.programming_id ?? null,
+    } as const;
+  }
+
+  const updatedProgrammingIds = Array.isArray(result.updated_programming_ids)
+    ? result.updated_programming_ids.map((item) => normalizeText(item)).filter(Boolean)
+    : [];
+  const newProgrammingIds = Array.isArray(result.new_programming_ids)
+    ? result.new_programming_ids.map((item) => normalizeText(item)).filter(Boolean)
+    : [];
+
+  return {
+    ok: true,
+    programmingId: result.programming_id,
+    projectCode: normalizeText(result.project_code),
+    updatedAt: normalizeText(result.updated_at),
+    affectedCount: Number(result.affected_count ?? updatedProgrammingIds.length),
+    updatedProgrammingIds,
+    newProgrammingIds,
+    message: result.message ?? "Programacoes adiadas com sucesso.",
   } as const;
 }

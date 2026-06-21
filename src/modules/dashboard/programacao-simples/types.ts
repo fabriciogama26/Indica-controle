@@ -187,8 +187,13 @@ export type BatchCreateResponse = {
 export type SaveProgrammingResponse = {
   success?: boolean;
   id?: string;
+  newId?: string | null;
+  affectedCount?: number;
+  updatedIds?: string[];
+  newIds?: string[];
   updatedAt?: string;
   schedule?: ScheduleItem | null;
+  newSchedule?: ScheduleItem | null;
   warning?: string;
   error?: "conflict";
   reason?: string | null;

@@ -54,7 +54,7 @@ import {
 } from "@/server/modules/programacao/catalogs";
 import {
   cancelProgrammingViaRpc,
-  postponeProgrammingViaRpc,
+  postponeProgrammingGroupViaRpc,
 } from "@/server/modules/programacao/rpc";
 import {
   fetchNextProgrammingStage,
@@ -575,53 +575,14 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (action === "ADIADA") {
-    if (!newDate) {
-      const statusResult = await cancelProgrammingViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        programmingId,
-        action,
-        reason,
-        expectedUpdatedAt,
-      });
-
-      if (!statusResult.ok) {
-        return NextResponse.json(
-          { message: statusResult.message, reason: "reason" in statusResult ? statusResult.reason ?? null : null },
-          { status: statusResult.status },
-        );
-      }
-
-      let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
-      let warning: string | null = null;
-
-      try {
-        updatedSchedule = await fetchProgrammingResponseItem(
-          resolution.supabase,
-          resolution.appUser.tenant_id,
-          statusResult.programmingId,
-        );
-      } catch {
-        warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
-      }
-
-      return NextResponse.json({
-        success: true,
-        schedule: updatedSchedule,
-        warning,
-        message: warning ? `${statusResult.message} ${warning}` : statusResult.message,
-      });
-    }
-
-    if (newDate <= currentProgramming.execution_date) {
+    if (newDate && newDate <= currentProgramming.execution_date) {
       return NextResponse.json(
         { message: "Informe uma nova data posterior a data atual da programacao." },
         { status: 400 },
       );
     }
 
-    const postponeResult = await postponeProgrammingViaRpc({
+    const postponeResult = await postponeProgrammingGroupViaRpc({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
       actorUserId: resolution.appUser.id,
@@ -633,10 +594,13 @@ export async function PATCH(request: NextRequest) {
 
     if (!postponeResult.ok) {
       if (postponeResult.reason === "PROGRAMMING_CONFLICT") {
+        const conflictProgrammingId = "programmingId" in postponeResult && postponeResult.programmingId
+          ? postponeResult.programmingId
+          : programmingId;
         const conflictPayload = await fetchProgrammingConflictPayload({
           supabase: resolution.supabase,
           tenantId: resolution.appUser.tenant_id,
-          programmingId,
+          programmingId: conflictProgrammingId,
           requested: {
             executionDate: newDate,
             teamId: currentProgramming.team_id,
@@ -665,14 +629,17 @@ export async function PATCH(request: NextRequest) {
     let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
     let newSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
     let warning: string | null = null;
+    const firstNewProgrammingId = postponeResult.newProgrammingIds[0] ?? null;
 
     try {
       [updatedSchedule, newSchedule] = await Promise.all([
         fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, programmingId),
-        fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, postponeResult.newProgrammingId),
+        firstNewProgrammingId
+          ? fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, firstNewProgrammingId)
+          : Promise.resolve(null),
       ]);
 
-      if (!updatedSchedule || !newSchedule) {
+      if (!updatedSchedule || (newDate && !newSchedule)) {
         warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
       }
     } catch {
@@ -682,7 +649,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       success: true,
       id: programmingId,
-      newId: postponeResult.newProgrammingId,
+      newId: firstNewProgrammingId,
+      affectedCount: postponeResult.affectedCount,
+      updatedIds: postponeResult.updatedProgrammingIds,
+      newIds: postponeResult.newProgrammingIds,
       updatedAt: postponeResult.updatedAt,
       schedule: updatedSchedule,
       newSchedule,
