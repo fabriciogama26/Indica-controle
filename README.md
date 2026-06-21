@@ -50,7 +50,12 @@ npm run dev
 ```bash
 npm run dev:turbopack
 ```
-5. Abrir `http://localhost:3000`.
+5. Se precisar validar o link remoto do Supabase CLI nesta maquina:
+```bash
+npm run db:link
+npm run db:status
+```
+6. Abrir `http://localhost:3000`.
 
 ---
 
@@ -507,6 +512,9 @@ npm run build
 - `Nao foi possivel comunicar com o servidor.` ou timeout de 30 segundos na Programacao:
   - Causa: perda de internet, indisponibilidade da API/Supabase ou demora excessiva da requisicao.
   - Solucao: verificar a conexao e consultar a lista antes de repetir o cadastro, pois o banco pode ter concluido a transacao mesmo quando a resposta nao chegou ao navegador.
+- `npm run db:status` informa que a CLI nao esta linkada apos `npm run db:link`:
+  - Causa: versoes recentes do Supabase CLI armazenam o link em `supabase/.temp/project-ref`; scripts antigos validavam apenas `.supabase/state.toml`.
+  - Solucao: rodar `npm run db:link` e depois `npm run db:status`; o status valida o projeto remoto via `supabase projects list`, sem depender da stack Docker local.
 - `A ETAPA informada ja existe ou esta abaixo do historico encontrado...`:
   - Causa: o usuario tentou salvar uma programacao com `ETAPA` igual ou menor do que etapas ja registradas para o mesmo projeto/equipe.
   - Solucao: fechar o modal de confronto/alerta, corrigir o campo `ETAPA` no formulario e salvar novamente com uma etapa coerente com o historico.

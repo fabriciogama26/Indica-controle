@@ -7,7 +7,12 @@
     "dev:turbopack": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:link": "npx supabase link --project-ref lcusxnhhrjosxqgiphgp",
+    "db:check-link": "powershell -ExecutionPolicy Bypass -File scripts/supabase-check-link.ps1",
+    "db:status": "npm run db:check-link && npx supabase projects list",
+    "db:migration-list": "npm run db:check-link && npx supabase migration list --linked",
+    "db:lint": "npm run db:check-link && npx supabase db lint --linked"
   },
   "engines": {
     "node": ">=20.9.0"
