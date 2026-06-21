@@ -80,6 +80,7 @@ Cadastro
 - Regra de adiamento:
   - Programacoes existentes podem ser adiadas com motivo obrigatorio.
   - O botao de validacao so fica habilitado quando o motivo tiver no minimo 10 caracteres.
+  - O escopo do adiamento e `Projeto + Data`: todas as equipes ativas programadas no mesmo projeto e na mesma data sao adiadas juntas.
   - O adiamento nao cancela a etapa; ele retira a programacao da grade ativa e preserva a etapa como pendente de nova data operacional.
   - O adiamento fica persistido com status proprio e continua contando para historico da obra.
 - Regra de reprogramacao:
@@ -96,7 +97,8 @@ Cadastro
 - Regra de copia:
   - A copia e uma acao manual e independente do salvamento da programacao.
   - O modal de copia trabalha sempre com a linha inteira da equipe no periodo visivel.
-  - `Adiamento` e `Cancelamento` nao sao propagados automaticamente para outras equipes.
+  - `Cancelamento` nao e propagado automaticamente para outras equipes.
+  - `Adiamento` e propagado pelo backend para todas as programacoes ativas do mesmo `Projeto + Data`.
   - Antes de copiar, o backend valida conflito de horario, equipe de destino inativa, copia para a mesma equipe e incompatibilidade de base.
   - A copia em lote agora acontece por RPC transacional; se qualquer item falhar, o lote inteiro e revertido.
   - As tabelas `project_programming_copy_batches` e `project_programming_copy_batch_items` continuam sendo a base oficial do rastreamento da copia; nao foi necessario criar outra tabela para esta mudanca.
@@ -331,7 +333,7 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
   - Responsavel por: `createVisibleDates`, `formatBoardDate`, `formatPeriodLabel`, `calculateExpectedMinutes`, `getScheduleTone`, `workloadBarClassName`, `workloadPrimaryLabel`, `normalizeSchedule` e `buildIncludedAtLabel`.
 - Caminho: `src/app/api/programacao/route.ts`
-  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`, `cancelProgrammingViaRpc` e `postponeProgrammingViaRpc`.
+  - Responsavel por: `fetchProjects`, `fetchTeams`, `fetchProgrammingRows`, `fetchProgrammingWeekSummary`, `fetchProjectSupportDefaults`, `saveProgrammingFullViaRpc`, `saveProgrammingBatchFullViaRpc`, `cancelProgrammingViaRpc`, `postponeProgrammingViaRpc` e `postponeProgrammingGroupViaRpc`.
 
 Servicos e integracoes externas
 - `project_with_labels`: backlog real de projetos ativos.
@@ -400,3 +402,28 @@ Atualizacao 2026-05-19
   - Depois: a tela exibe todas as equipes ativas do tenant para programar qualquer projeto, independente do centro de servico.
   - Antes: a RPC `save_project_programming` bloqueava salvar quando a base da equipe era diferente da base da obra.
   - Depois: as RPCs de salvar e copiar programacao permitem usar equipe ativa de qualquer centro, mantendo as validacoes de tenant, equipe ativa, conflito de horario, concorrencia e demais regras da Programacao.
+
+Atualizacao 2026-06-20 - Adiamento por Projeto + Data
+------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `supabase/migrations/246_postpone_programming_by_project_date.sql`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `PATCH /api/programacao`
+  - `postponeProgrammingGroupViaRpc`
+  - `postpone_project_programming_group`
+- Comportamento antes/depois:
+  - Antes: `Adiar` alterava apenas a linha/equipe clicada.
+  - Depois: `Adiar` altera todas as programacoes ativas do mesmo projeto e da mesma data.
+  - Com nova data, a RPC cria um novo registro `REPROGRAMADA` para cada equipe afetada.
+- Multi-tenant:
+  - A API continua resolvendo tenant e usuario pela sessao.
+  - A RPC de grupo filtra por `tenant_id`, `project_id` e `execution_date`.
+  - EXECUTE permanece restrito ao `service_role`.

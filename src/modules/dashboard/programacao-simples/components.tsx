@@ -1322,9 +1322,9 @@ export function ProgrammingPostponeModal(props: {
 
         <div className={styles.modalBody}>
           <p>
-            Informe o motivo do adiamento. Se preencher nova data, a programacao atual sera marcada como ADIADA e um
-            novo registro sera criado com status REPROGRAMADA. Se deixar em branco, a programacao sera apenas marcada
-            como ADIADA.
+            Informe o motivo do adiamento. A acao sera aplicada a todas as programacoes ativas do mesmo projeto e
+            data. Se preencher nova data, os registros atuais serao marcados como ADIADA e novos registros serao
+            criados com status REPROGRAMADA. Se deixar em branco, os registros serao apenas marcados como ADIADA.
           </p>
 
           <label className={styles.field}>

@@ -616,3 +616,9 @@ Observacao
 - Ajusta permissoes automaticas do `mapa-programacao` para preservar admin/master liberados e usuarios comuns bloqueados quando a linha foi criada por migration.
 - Preenche permissoes ausentes para usuarios legados conforme `default_user_access`, evitando que uma unica tela nova bloqueada transforme a sessao em matriz parcial.
 - Cria triggers para preencher `app_user_page_permissions` ao cadastrar novas telas ou novos usuarios, sem sobrescrever configuracoes existentes.
+
+246_postpone_programming_by_project_date.sql
+- Cria `postpone_project_programming_group` para adiar atomicamente todas as programacoes ativas do mesmo Projeto + Data.
+- Sem nova data, marca todas as linhas do grupo como `ADIADA`; com nova data, cria uma linha `REPROGRAMADA` para cada equipe afetada.
+- Reutiliza as RPCs individuais de status/adiamento dentro da mesma transacao e reverte o grupo inteiro quando qualquer item falha.
+- Mantem `expectedUpdatedAt` na linha clicada, escopo por `tenant_id` e EXECUTE somente para `service_role`.

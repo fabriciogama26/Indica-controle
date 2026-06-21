@@ -444,6 +444,12 @@ export type PostponeProgrammingRpcResult = {
   updated_at?: string;
 };
 
+export type PostponeProgrammingGroupRpcResult = PostponeProgrammingRpcResult & {
+  affected_count?: number;
+  updated_programming_ids?: string[];
+  new_programming_ids?: string[];
+};
+
 export type ProgrammingTimeConflictLookupRow = {
   id: string;
   team_id: string;

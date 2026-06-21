@@ -28,6 +28,10 @@ Arquitetura
 - Migration de adiamento com nova data:
   - `supabase/migrations/088_create_postpone_project_programming_rpc.sql`
   - RPC: `postpone_project_programming`
+- Migration de adiamento por Projeto + Data:
+  - `supabase/migrations/246_postpone_programming_by_project_date.sql`
+  - RPC: `postpone_project_programming_group`
+  - Objetivo: adiar em uma unica transacao todas as programacoes ativas do mesmo projeto e data.
 - Migration de desligamento/documentos:
   - `supabase/migrations/089_add_programming_outage_and_documents_compat.sql`
   - Campos em `project_programming`: `outage_start_time`, `outage_end_time`
@@ -319,7 +323,8 @@ Boas praticas
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
   - O backend impede salvar a mesma obra para a mesma equipe na mesma data quando ainda existir programacao ativa para esse conjunto.
   - Quando houver `TEAM_TIME_CONFLICT`, a API enriquece a mensagem de erro com `Equipe` e `Encarregado` para facilitar identificacao no modal de alerta.
-  - O adiamento permite nova data opcional: com data, cria registro `REPROGRAMADA`; sem data, apenas marca a programacao como `ADIADA`.
+  - O adiamento permite nova data opcional e opera por `Projeto + Data`: todas as programacoes ativas do mesmo projeto e da mesma data sao adiadas na mesma transacao.
+  - Com data, cria registros `REPROGRAMADA` para todas as equipes afetadas; sem data, apenas marca os registros como `ADIADA`.
   - O frontend abre modal de alerta para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`, antes de depender apenas do feedback no topo.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
   - API exige RPC transacional full para evitar gravacao parcial entre campos base/estruturais/ENEL/documentos.
@@ -339,10 +344,11 @@ Cancelamento e saldo
 - Cancelamento agora esta disponivel na propria lista da tela simples, com modal de motivo obrigatorio (minimo de 10 caracteres), no mesmo padrao de Projetos.
 - Adiamento:
   - Modal proprio com `Motivo do adiamento` obrigatorio e `Nova data da programacao` opcional.
-  - Sem nova data: a programacao atual vira `ADIADA` sem criar registro futuro.
-  - Com nova data: a programacao atual vira `ADIADA` e um novo registro `REPROGRAMADA` e criado na nova data.
+  - Escopo: todas as programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao` da linha clicada.
+  - Sem nova data: todas as linhas do grupo viram `ADIADA` sem criar registro futuro.
+  - Com nova data: todas as linhas do grupo viram `ADIADA` e novos registros `REPROGRAMADA` sao criados na nova data, preservando uma linha por equipe.
   - Quando a nova data e informada, ela deve ser posterior a data atual da programacao.
-  - Sem nova data, o fluxo usa `set_project_programming_status`; com nova data, usa `postpone_project_programming`.
+  - O fluxo usa `postpone_project_programming_group`, que chama as RPCs individuais dentro da mesma transacao e faz rollback do grupo inteiro se qualquer equipe falhar.
 - O cancelamento reutiliza `PATCH /api/programacao` e a RPC `set_project_programming_status`.
 - O cadastro em lote gera registros `PROGRAMADA`, seguindo as mesmas regras de status da Programacao.
 - O historico exibido no modal usa somente `project_programming_history`.
@@ -474,7 +480,7 @@ Funcoes utilitarias relacionadas
 - `setProgrammingEnelFieldsViaRpc`, `setProgrammingOutageWindowViaRpc`, `setProgrammingDocumentDatesViaRpc`, `resolveProgrammingSgdType`.
 - `setProgrammingExecutionResultViaRpc`.
 - `setProgrammingServiceDescriptionViaRpc`.
-- `confirmPostpone`, `postponeProgrammingViaRpc`.
+- `confirmPostpone`, `postponeProgrammingViaRpc`, `postponeProgrammingGroupViaRpc`.
 - `getDisplayProgrammingStatus`, `useExportCooldown`.
 
 Servicos e integracoes externas
@@ -486,6 +492,7 @@ Servicos e integracoes externas
 - `set_project_programming_outage_window` (RPC nova para janela de desligamento).
 - `set_project_programming_document_dates` (RPC nova para Data Aprovada/Data Pedido).
 - `append_project_programming_history_record` (RPC de historico operacional dedicado).
+- `postpone_project_programming_group` (RPC de adiamento por Projeto + Data).
 
 Ajuda contextual
 ----------------
@@ -1779,6 +1786,34 @@ Atualizacao 2026-06-18 - Adiamento opcional e copia por equipes
   - API continua resolvendo tenant e usuario pela sessao.
   - Validacoes de copia usam `tenant_id`, `project_id`, `team_id`, `execution_date` e `etapa_number`.
   - A copia por equipe usa a RPC transacional de salvamento da Programacao, executada server-side com `service_role`.
+
+Atualizacao 2026-06-20 - Adiamento por Projeto + Data
+------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/programacao/route.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `supabase/migrations/246_postpone_programming_by_project_date.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `postponeProgrammingGroupViaRpc`: novo wrapper server-side para a RPC de grupo.
+  - `PATCH /api/programacao`: passa a usar `postpone_project_programming_group` quando `action = ADIAR`.
+  - `ProgrammingPostponeModal`: texto ajustado para informar que o escopo do adiamento e `Projeto + Data`.
+  - `postpone_project_programming_group`: nova RPC transacional para adiar todas as linhas ativas do mesmo projeto/data.
+- Comportamento antes/depois:
+  - Antes: clicar em `Adiar` alterava somente a linha/equipe clicada.
+  - Depois: clicar em `Adiar` altera todas as programacoes ativas do mesmo projeto e da mesma data.
+  - Antes: com nova data, apenas uma linha `REPROGRAMADA` era criada.
+  - Depois: com nova data, uma nova linha `REPROGRAMADA` e criada para cada equipe afetada.
+  - Depois: se qualquer equipe do grupo falhar por conflito, validacao ou RPC indisponivel, o grupo inteiro faz rollback.
+- Multi-tenant:
+  - O tenant e o ator continuam resolvidos pela sessao autenticada na API.
+  - A RPC filtra `project_programming` por `tenant_id`, `project_id` e `execution_date`.
+  - `expectedUpdatedAt` continua obrigatorio para a linha clicada.
+  - EXECUTE da RPC de grupo fica revogado para `PUBLIC`, `anon` e `authenticated`; somente `service_role` executa apos autorizacao server-side `programacao-simples/update`.
 
 Atualizacao 2026-06-18 - Copiar programacao com selecao de equipes por data
 ----------------------------------------------------------------------------
