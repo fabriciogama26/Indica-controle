@@ -4,6 +4,22 @@ export type PageAction = "read" | "create" | "update" | "cancel" | "reverse" | "
 
 type PagePermissionRow = {
   can_access: boolean;
+  can_create: boolean;
+  can_update: boolean;
+  can_cancel: boolean;
+  can_reverse: boolean;
+  can_import: boolean;
+  can_export: boolean;
+};
+
+const ACTION_COLUMN: Record<PageAction, keyof PagePermissionRow> = {
+  read:    "can_access",
+  create:  "can_create",
+  update:  "can_update",
+  cancel:  "can_cancel",
+  reverse: "can_reverse",
+  import:  "can_import",
+  export:  "can_export",
 };
 
 type PageDefaultAccessRow = {
@@ -81,7 +97,7 @@ export async function requirePageAction({
 
   const userPermission = await context.supabase
     .from("app_user_page_permissions")
-    .select("can_access")
+    .select("can_access, can_create, can_update, can_cancel, can_reverse, can_import, can_export")
     .eq("tenant_id", context.appUser.tenant_id)
     .eq("user_id", context.appUser.id)
     .eq("page_key", normalizedPageKey)
@@ -92,7 +108,9 @@ export async function requirePageAction({
   }
 
   if (userPermission.data) {
-    return userPermission.data.can_access
+    const column = ACTION_COLUMN[action];
+    const granted = userPermission.data.can_access && userPermission.data[column];
+    return granted
       ? {
           allowed: true,
           pageKey: normalizedPageKey,

@@ -11,23 +11,27 @@ type AppUserContext = {
 
 type PermissionRow = {
   can_access: boolean
-  can_select: boolean
-  can_insert: boolean
+  can_create: boolean
   can_update: boolean
+  can_cancel: boolean
+  can_reverse: boolean
+  can_import: boolean
+  can_export: boolean
 }
 
 export type PageAuthResult =
   | { allowed: true }
   | { allowed: false; status: 403 | 500; message: string }
 
-// Maps Edge Function action strings to app_user_page_permissions columns.
-// 'import' maps to can_insert (same as user_has_page_action).
+// Maps action strings to app_user_page_permissions columns.
 const ACTION_COLUMN: Record<string, keyof PermissionRow> = {
-  access: 'can_access',
-  select: 'can_select',
-  insert: 'can_insert',
-  import: 'can_insert',
-  update: 'can_update',
+  read:    'can_access',
+  create:  'can_create',
+  update:  'can_update',
+  cancel:  'can_cancel',
+  reverse: 'can_reverse',
+  import:  'can_import',
+  export:  'can_export',
 }
 
 // deno-lint-ignore no-explicit-any
@@ -62,7 +66,7 @@ export async function requirePageAccess(
   // User-specific permission row — checks access AND the specific action column.
   const { data: userPerm, error: userPermError } = await supabase
     .from('app_user_page_permissions')
-    .select('can_access, can_select, can_insert, can_update')
+    .select('can_access, can_create, can_update, can_cancel, can_reverse, can_import, can_export')
     .eq('tenant_id', appUser.tenant_id)
     .eq('user_id', appUser.id)
     .eq('page_key', pageKey)
