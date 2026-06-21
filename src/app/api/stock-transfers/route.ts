@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { parsePositiveInteger } from "@/lib/server/apiHelpers";
 import { isSerialTrackedMaterial, normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 import {
   normalizeDateInput,
@@ -187,15 +188,6 @@ async function loadRowsInChunks<T>(
   }
 
   return { data: rows, error: null };
-}
-
-function parsePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number(value ?? "");
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return parsed;
 }
 
 function normalizeCodeFilter(value: string | null) {
