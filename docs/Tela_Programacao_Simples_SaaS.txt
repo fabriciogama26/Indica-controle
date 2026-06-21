@@ -1864,10 +1864,33 @@ Atualizacao 2026-06-21 - Estado Trabalho na copia com selecao de equipes
 - Comportamento antes/depois:
   - Antes: o caminho atual de `COPY_TO_DATES` com selecao de equipes enviava `workCompletionStatus: null` para as novas programacoes.
   - Depois: as novas programacoes copiadas herdam o ultimo `Estado Trabalho` valido do projeto; se nao houver historico valido, usam `PARCIAL` quando ativo no catalogo do tenant.
-  - Observacao: o schema ja possui `copied_from_programming_id`, `copy_batch_id` e tabelas de lote de copia, mas o caminho atual com selecao de equipes ainda nao preenche o rastreio estruturado; a rastreabilidade permanece no historico ate uma RPC transacional dedicada ser criada.
+  - Depois: o caminho atual tambem preenche `project_programming.copied_from_programming_id` com a programacao modelo usada em cada equipe, permitindo rastreio direto origem -> copia sem depender apenas do historico.
+  - Observacao: o schema ja possui `copy_batch_id` e tabelas de lote de copia. O lote completo segue pendente neste caminho com selecao de equipes porque exige transformar o loop de copia em RPC unica de lote atomico.
 - Multi-tenant:
   - A consulta de heranca exige `tenant_id + project_id`.
   - O estado herdado e validado no catalogo ativo do tenant antes de chamar a RPC full.
+
+Atualizacao 2026-06-21 - Vínculo estruturado origem -> copia no COPY_TO_DATES
+------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `supabase/migrations/249_save_copy_source_in_programming_full_rpc.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `copyProgrammingToDates`: passa `copiedFromProgrammingId` ao salvar cada destino.
+  - `saveProgrammingFullViaRpc`: envia `p_copied_from_programming_id` somente quando o fluxo de copia informa origem.
+  - `save_project_programming_full_decimal_with_electrical_and_eq`: grava `copied_from_programming_id` dentro da transacao do INSERT.
+- Comportamento antes/depois:
+  - Antes: o caminho com selecao de equipes registrava origem apenas em `historyMetadata`.
+  - Depois: cada programacao copiada grava `project_programming.copied_from_programming_id` apontando para a programacao de origem usada como modelo.
+  - Nao foi criada `copy_source_id`, pois `copied_from_programming_id` ja existe desde a migration 074 e possui FK composta por tenant desde a migration 231.
+- Multi-tenant:
+  - A RPC valida a origem por `tenant_id`.
+  - A FK composta `pp_copied_from_tenant_fk` impede vinculo cruzado entre tenants.
 
 Atualizacao 2026-06-18 - Copiar programacao com selecao de equipes por data
 ----------------------------------------------------------------------------

@@ -476,3 +476,25 @@ Atualizacao 2026-06-21 - Estado Trabalho no COPY_TO_DATES selecionado
   - Depois: as novas programacoes herdam o ultimo `Estado Trabalho` valido do projeto, com fallback para `PARCIAL` quando nao houver historico valido.
 - Multi-tenant:
   - A heranca consulta apenas registros do `tenant_id` autenticado e valida o codigo no catalogo do mesmo tenant.
+
+Atualizacao 2026-06-21 - Vínculo estruturado origem -> copia no COPY_TO_DATES
+------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `supabase/migrations/249_save_copy_source_in_programming_full_rpc.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `copyProgrammingToDates`
+  - `saveProgrammingFullViaRpc`
+  - `save_project_programming_full_decimal_with_electrical_and_eq`
+- Comportamento antes/depois:
+  - Antes: o caminho atual de copia com selecao de equipes dependia do historico para rastrear origem.
+  - Depois: cada destino recebe `project_programming.copied_from_programming_id` com o ID da programacao modelo.
+  - Nao foi criada `copy_source_id`, pois a coluna equivalente `copied_from_programming_id` ja existe e evita duplicidade de contrato.
+- Multi-tenant:
+  - A origem e validada por `tenant_id` dentro da RPC.
+  - A FK composta existente impede referencia cruzada entre tenants.

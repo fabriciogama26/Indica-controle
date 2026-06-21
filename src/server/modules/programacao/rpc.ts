@@ -51,6 +51,8 @@ export async function saveProgrammingFullViaRpc(params: {
   historyActionOverride?: string | null;
   historyReason?: string | null;
   historyMetadata?: Record<string, unknown> | null;
+  copiedFromProgrammingId?: string | null;
+  copyBatchId?: string | null;
 }) {
   const rpcName = "save_project_programming_full_decimal_with_electrical_and_eq";
   const rpcPayload = {
@@ -92,6 +94,10 @@ export async function saveProgrammingFullViaRpc(params: {
     p_electrical_eq_catalog_id: params.electricalEqCatalogId ?? null,
     p_etapa_unica: params.etapaUnica,
     p_etapa_final: params.etapaFinal,
+    ...(params.copiedFromProgrammingId
+      ? { p_copied_from_programming_id: params.copiedFromProgrammingId }
+      : {}),
+    ...(params.copyBatchId ? { p_copy_batch_id: params.copyBatchId } : {}),
   };
 
   const { data, error } = await params.supabase.rpc(rpcName, rpcPayload);
@@ -102,7 +108,9 @@ export async function saveProgrammingFullViaRpc(params: {
         ok: false,
         status: 409,
         reason: "FULL_RPC_NOT_AVAILABLE",
-        message: "RPC transacional decimal da Programacao indisponivel no ambiente atual. Aplique a migration 228.",
+        message: params.copiedFromProgrammingId || params.copyBatchId
+          ? "RPC transacional decimal da Programacao ainda nao suporta rastreio estruturado de copia. Aplique a migration 249."
+          : "RPC transacional decimal da Programacao indisponivel no ambiente atual. Aplique a migration 228.",
       } as const;
     }
 
