@@ -32,6 +32,6 @@
   ],
   "exclude": [
     "node_modules",
-    "supabase/edge_functions"
+    "supabase/functions"
   ]
 }
