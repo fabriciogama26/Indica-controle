@@ -1815,6 +1815,23 @@ Atualizacao 2026-06-20 - Adiamento por Projeto + Data
   - `expectedUpdatedAt` continua obrigatorio para a linha clicada.
   - EXECUTE da RPC de grupo fica revogado para `PUBLIC`, `anon` e `authenticated`; somente `service_role` executa apos autorizacao server-side `programacao-simples/update`.
 
+Atualizacao 2026-06-21 - Estado Trabalho na copia com selecao de equipes
+-------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/programacao/handlers.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `copyProgrammingToDates`: passa a chamar `resolveInitialProjectWorkCompletionStatus` antes de salvar as copias por `Data destino + ETAPA + Equipes`.
+  - `resolveInitialProjectWorkCompletionStatus`: reutilizada no caminho de copia com selecao de equipes para herdar o ultimo Estado Trabalho valido do projeto.
+- Comportamento antes/depois:
+  - Antes: o caminho atual de `COPY_TO_DATES` com selecao de equipes enviava `workCompletionStatus: null` para as novas programacoes.
+  - Depois: as novas programacoes copiadas herdam o ultimo `Estado Trabalho` valido do projeto; se nao houver historico valido, usam `PARCIAL` quando ativo no catalogo do tenant.
+  - Observacao: o schema ja possui `copied_from_programming_id`, `copy_batch_id` e tabelas de lote de copia, mas o caminho atual com selecao de equipes ainda nao preenche o rastreio estruturado; a rastreabilidade permanece no historico ate uma RPC transacional dedicada ser criada.
+- Multi-tenant:
+  - A consulta de heranca exige `tenant_id + project_id`.
+  - O estado herdado e validado no catalogo ativo do tenant antes de chamar a RPC full.
+
 Atualizacao 2026-06-18 - Copiar programacao com selecao de equipes por data
 ----------------------------------------------------------------------------
 - Arquivos alterados:

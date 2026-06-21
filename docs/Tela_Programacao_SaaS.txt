@@ -427,3 +427,19 @@ Atualizacao 2026-06-20 - Adiamento por Projeto + Data
   - A API continua resolvendo tenant e usuario pela sessao.
   - A RPC de grupo filtra por `tenant_id`, `project_id` e `execution_date`.
   - EXECUTE permanece restrito ao `service_role`.
+
+Atualizacao 2026-06-21 - Estado Trabalho no COPY_TO_DATES selecionado
+----------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/programacao/handlers.ts`
+  - `docs/Tela_Programacao_SaaS.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `copyProgrammingToDates`
+  - `resolveInitialProjectWorkCompletionStatus`
+- Comportamento antes/depois:
+  - Antes: o caminho atual de copia para datas com selecao de equipes salvava as novas programacoes com `Estado Trabalho` vazio.
+  - Depois: as novas programacoes herdam o ultimo `Estado Trabalho` valido do projeto, com fallback para `PARCIAL` quando nao houver historico valido.
+- Multi-tenant:
+  - A heranca consulta apenas registros do `tenant_id` autenticado e valida o codigo no catalogo do mesmo tenant.
