@@ -14,7 +14,10 @@
     "db:migration-list": "npm run db:check-link && npx supabase migration list --linked",
     "db:lint": "npm run db:check-link && npx supabase db lint --linked",
     "db:security-check": "powershell -ExecutionPolicy Bypass -File scripts/check-security-definer.ps1",
-    "db:security-check-live": "npm run db:check-link && npx supabase db query --file scripts/check-security-definer-live.sql --linked"
+    "db:security-check-live": "npm run db:check-link && npx supabase db query --file scripts/check-security-definer-live.sql --linked",
+    "fn:deploy": "npm run db:check-link && npx supabase functions deploy --project-ref lcusxnhhrjosxqgiphgp",
+    "fn:deploy:forecast": "npm run db:check-link && npx supabase functions deploy import_project_forecast --project-ref lcusxnhhrjosxqgiphgp",
+    "fn:deploy:activity-forecast": "npm run db:check-link && npx supabase functions deploy import_project_activity_forecast --project-ref lcusxnhhrjosxqgiphgp"
   },
   "engines": {
     "node": ">=20.9.0"
