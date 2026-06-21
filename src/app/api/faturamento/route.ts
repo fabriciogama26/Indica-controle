@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { normalizeText } from "@/lib/server/apiHelpers";
 
 type BillingStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type BillingKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
@@ -130,10 +131,6 @@ type SetBillingStatusRpcResult = {
   billing_status?: BillingStatus;
   currentUpdatedAt?: string;
 };
-
-function normalizeText(value: unknown) {
-  return String(value ?? "").trim();
-}
 
 function normalizeUuid(value: unknown) {
   const normalized = normalizeText(value);

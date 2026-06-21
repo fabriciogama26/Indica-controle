@@ -7,6 +7,17 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
+import {
+  addChange,
+  buildNameMap,
+  buildUserDisplayMap,
+  buildUserLoginNameMap,
+  formatComparableValue,
+  normalizeHistoryChanges,
+  normalizeText,
+  parsePagination,
+  parsePositiveInteger,
+} from "@/lib/server/apiHelpers";
 
 type TeamRow = {
   id: string;
@@ -140,19 +151,6 @@ type DbErrorShape = {
 
 const FOREMAN_JOB_TITLE_FILTER = "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%";
 const SUPERVISOR_JOB_TITLE_FILTER = "code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
-
-function parsePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number(value ?? "");
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return parsed;
-}
-
-function normalizeText(value: unknown) {
-  return String(value ?? "").trim();
-}
 
 function normalizePlate(value: unknown) {
   return normalizeText(value).toUpperCase();
@@ -290,79 +288,12 @@ function mapTeamDbError(error: unknown, fallbackMessage: string) {
   } as const;
 }
 
-function formatComparableValue(value: unknown) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value.toFixed(2) : null;
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "true" : "false";
-  }
-
-  const normalized = String(value).trim();
-  return normalized || null;
-}
-
-function addChange(
-  changes: Record<string, HistoryChange>,
-  field: string,
-  previousValue: unknown,
-  nextValue: unknown,
-) {
-  const from = formatComparableValue(previousValue);
-  const to = formatComparableValue(nextValue);
-
-  if (from === to) {
-    return;
-  }
-
-  changes[field] = { from, to };
-}
-
-function normalizeHistoryChanges(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {} as Record<string, HistoryChange>;
-  }
-
-  const result: Record<string, HistoryChange> = {};
-  for (const [field, rawChange] of Object.entries(value as Record<string, unknown>)) {
-    if (!rawChange || typeof rawChange !== "object" || Array.isArray(rawChange)) {
-      continue;
-    }
-
-    const from = formatComparableValue((rawChange as { from?: unknown }).from);
-    const to = formatComparableValue((rawChange as { to?: unknown }).to);
-    result[field] = { from, to };
-  }
-
-  return result;
-}
-
-function buildUserDisplayMap(users: AppUserRow[]) {
-  return new Map(
-    users.map((user) => [
-      user.id,
-      String(user.display ?? user.login_name ?? "").trim() || "Nao identificado",
-    ]),
-  );
-}
-
-function buildUserLoginNameMap(users: AppUserRow[]) {
-  return new Map(
-    users.map((user) => [user.id, String(user.login_name ?? "").trim() || "Nao identificado"]),
-  );
-}
-
 function buildForemanMap(people: PersonRow[]) {
   return new Map(people.map((person) => [person.id, String(person.nome ?? "").trim() || "Nao identificado"]));
 }
 
 function buildTeamTypeMap(teamTypes: TeamTypeRow[]) {
-  return new Map(teamTypes.map((teamType) => [teamType.id, String(teamType.name ?? "").trim() || "Nao identificado"]));
+  return buildNameMap(teamTypes);
 }
 
 async function fetchForemanJobTitleIds(supabase: SupabaseClient, tenantId: string) {
@@ -1108,10 +1039,7 @@ export async function GET(request: NextRequest) {
     const teamTypeId = normalizeText(params.get("teamTypeId"));
     const foremanId = normalizeText(params.get("foremanId"));
     const supervisorId = normalizeText(params.get("supervisorId"));
-    const page = parsePositiveInteger(params.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInteger(params.get("pageSize"), 20), 100);
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const { page, pageSize, from, to } = parsePagination(params);
 
     let query = supabase
       .from("teams")
