@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
   normalizeDateInput,
@@ -42,8 +42,13 @@ type MaterialLookupRow = {
   id: string;
   is_transformer: boolean;
   serial_tracking_type?: string | null;
+  allow_pending_serial_identification?: boolean | null;
   is_active: boolean;
 };
+
+function isWholeQuantity(value: number) {
+  return Number.isInteger(value) && value > 0;
+}
 
 function toIsoDate(value: Date) {
   const year = value.getFullYear();
@@ -126,7 +131,7 @@ export async function POST(request: NextRequest) {
     const materialResult = materialIds.length
       ? await supabase
           .from("materials")
-          .select("id, is_transformer, serial_tracking_type, is_active")
+          .select("id, is_transformer, serial_tracking_type, allow_pending_serial_identification, is_active")
           .eq("tenant_id", appUser.tenant_id)
           .in("id", materialIds)
           .returns<MaterialLookupRow[]>()
@@ -141,6 +146,7 @@ export async function POST(request: NextRequest) {
       {
         isTransformer: Boolean(row.is_transformer),
         serialTrackingType: normalizeSerialTrackingType(row.serial_tracking_type ?? (row.is_transformer ? "TRAFO" : "NONE")),
+        allowPendingSerialIdentification: Boolean(row.allow_pending_serial_identification),
         isActive: Boolean(row.is_active),
       },
     ]));
@@ -186,26 +192,46 @@ export async function POST(request: NextRequest) {
 
       const invalidTransformerItem = items.find((item) => {
         const material = materialMap.get(item.materialId);
-        if (!isSerialTrackedMaterial(material?.serialTrackingType)) {
+        const serialTrackingType = material?.serialTrackingType ?? "NONE";
+        const hasSerial = Boolean(normalizeText(item.serialNumber));
+        const allowsPendingSerial = allowsPendingSerialIdentification(
+          serialTrackingType,
+          material?.allowPendingSerialIdentification,
+        ) && (movementType === "ENTRY" || movementType === "TRANSFER");
+
+        if (!isSerialTrackedMaterial(serialTrackingType)) {
           return false;
         }
-        return item.quantity !== 1 || !normalizeText(item.serialNumber) || (requiresLotCode(material?.serialTrackingType) && !normalizeText(item.lotCode));
+
+        return (hasSerial && item.quantity !== 1)
+          || (!hasSerial && !allowsPendingSerial)
+          || (!hasSerial && allowsPendingSerial && !isWholeQuantity(item.quantity))
+          || (requiresLotCode(serialTrackingType) && !normalizeText(item.lotCode));
       });
 
       if (invalidTransformerItem) {
         const material = materialMap.get(invalidTransformerItem.materialId);
+        const materialAllowsPendingSerial = allowsPendingSerialIdentification(
+          material?.serialTrackingType,
+          material?.allowPendingSerialIdentification,
+        ) && (movementType === "ENTRY" || movementType === "TRANSFER");
+        const invalidItemHasSerial = Boolean(normalizeText(invalidTransformerItem.serialNumber));
         errorCount += 1;
         results.push({
           rowNumber,
           success: false,
-          message: invalidTransformerItem.quantity !== 1
+          message: invalidTransformerItem.quantity !== 1 && invalidItemHasSerial
             ? `Material ${serialTrackingLabel(material?.serialTrackingType)} permite somente quantidade 1 por movimentacao.`
             : requiresLotCode(material?.serialTrackingType)
               ? "Serial e LP sao obrigatorios para material TRAFO."
+              : !invalidItemHasSerial && materialAllowsPendingSerial
+                ? `Material ${serialTrackingLabel(material?.serialTrackingType)} pendente de serial deve usar quantidade inteira.`
               : `Serial e obrigatorio para material ${serialTrackingLabel(material?.serialTrackingType)}.`,
-          reason: invalidTransformerItem.quantity !== 1
-            ? "TRANSFORMER_QUANTITY_MUST_BE_ONE"
-            : "TRANSFORMER_SERIAL_OR_LOT_REQUIRED",
+          reason: invalidTransformerItem.quantity !== 1 && invalidItemHasSerial
+            ? "SERIAL_TRACKED_QUANTITY_MUST_BE_ONE"
+            : !invalidItemHasSerial && materialAllowsPendingSerial
+              ? "PENDING_SERIAL_QUANTITY_MUST_BE_INTEGER"
+              : "SERIAL_TRACKED_SERIAL_OR_LOT_REQUIRED",
         });
         continue;
       }
@@ -235,7 +261,7 @@ export async function POST(request: NextRequest) {
       const duplicateTransformerItem = items.find((item) => {
         const material = materialMap.get(item.materialId);
         const serialTrackingType = material?.serialTrackingType ?? "NONE";
-        if (!isSerialTrackedMaterial(serialTrackingType)) {
+        if (!isSerialTrackedMaterial(serialTrackingType) || !normalizeText(item.serialNumber)) {
           return false;
         }
 

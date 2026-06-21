@@ -17,6 +17,12 @@ export function requiresLotCode(value: unknown) {
   return normalizeSerialTrackingType(value) === "TRAFO";
 }
 
+export function allowsPendingSerialIdentification(value: unknown, allowPendingSerialIdentification: unknown) {
+  return isSerialTrackedMaterial(value)
+    && !requiresLotCode(value)
+    && allowPendingSerialIdentification === true;
+}
+
 export function serialTrackingLabel(value: unknown) {
   const normalized = normalizeSerialTrackingType(value);
   if (normalized === "TRAFO") return "TRAFO";

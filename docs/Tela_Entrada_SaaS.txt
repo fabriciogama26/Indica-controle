@@ -55,9 +55,12 @@ Cadastro
     - `TRANSFER`: `OWN -> OWN`
   - `from_stock_center_id` e `to_stock_center_id` devem ser diferentes.
   - `quantity` deve ser maior que zero (`quantity > 0`).
-  - Quando `materials.serial_tracking_type <> NONE`, `quantity` deve ser exatamente `1`.
+  - Quando `materials.serial_tracking_type <> NONE` e existe `serial_number`, `quantity` deve ser exatamente `1`.
   - `entry_date` nao pode ser futura.
-  - Quando `materials.serial_tracking_type <> NONE`, `serial_number` e obrigatorio; `lot_code` tambem e obrigatorio somente para `TRAFO`.
+  - `TRAFO` sempre exige `serial_number` e `lot_code` (`Serial + LP`) em qualquer movimentacao.
+  - `RELIGADOR` e `CHAVE` podem entrar ou ser transferidos sem `serial_number` somente quando `materials.allow_pending_serial_identification = true`.
+  - Quando a pendencia de serial e permitida e o serial nao foi informado, a quantidade deve ser inteira e positiva.
+  - `EXIT` normal nao aceita pendencia de serial; material rastreavel sem serial continua bloqueado.
   - A combinacao `material_id + serial_number + lot_code` de TRAFO nao pode ficar duplicada em centros `OWN`.
   - Para `EXIT` e `TRANSFER` de TRAFO, o backend valida a unidade pelo conjunto `material_id + serial_number + lot_code` no centro de origem usando `trafo_instances`.
   - Para `ENTRY` de TRAFO, o backend bloqueia nova entrada da mesma unidade quando ela ja estiver registrada em algum centro `OWN`.
@@ -65,7 +68,8 @@ Cadastro
   - Campo `LP` fica habilitado somente para TRAFO.
   - Em `Entrada`, Serial/LP pode ser novo e nao deve aparecer como unidade ja ativa no estoque.
   - Em `Saida` e `Transferencia`, Serial/LP deve existir no centro `DE` real da movimentacao.
-  - Campo `Quantidade` fica travado em `1` quando o material selecionado for rastreavel por serial.
+  - Campo `Quantidade` fica travado em `1` quando o material selecionado for TRAFO, quando houver serial digitado ou quando a regra do material nao permitir pendencia.
+  - O saldo pendente de identificacao de serial e registrado em `stock_serial_pending_balances` por `tenant_id`, material, centro, projeto e tipo.
   - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
   - Material precisa estar ativo no tenant.
   - Projeto precisa estar ativo no tenant quando informado.
@@ -619,3 +623,54 @@ Comportamento antes/depois
 - Depois: o modal mostra o conjunto completo e oferece as duas acoes, preservando itens ja estornados e a auditoria individual.
 - Correcao complementar: registros importados antes da migration `238` passam a compor o lote quando satisfazem integralmente os criterios da migration `239`.
 - Correcao dos lotes de cinco: a migration `240` substitui o limite pratico de um segundo por ilhas de execucao continua, mantendo separacao quando o intervalo ultrapassa 2 segundos.
+
+Atualizacao 2026-06 - Estoque seriado pendente de identificacao
+----------------------------------------------------------------
+Visao geral
+- A Movimentacao de Estoque passa a aceitar entrada e transferencia fisica de material rastreavel sem serial somente quando o material nao exige LP e esta configurado com `allow_pending_serial_identification = true`.
+- `TRAFO` permanece fora da flexibilizacao: `Serial + LP` continuam obrigatorios em Entrada, Saida e Transferencia.
+- A Saida externa comum continua exigindo serial identificado; excecao sem identificacao nao foi criada nesta entrega.
+
+Cadastro
+- Para `RELIGADOR` e `CHAVE` com pendencia permitida:
+  - `ENTRY` sem serial gera saldo fisico pendente em `stock_serial_pending_balances`;
+  - `TRANSFER` sem serial movimenta quantidade pendente entre centros proprios;
+  - quantidade pendente deve ser inteira e positiva;
+  - quando o serial e informado, a movimentacao volta a ser unitaria.
+- Para materiais com `allow_pending_serial_identification = false`, o comportamento anterior permanece: serial obrigatorio.
+- Para `TRAFO`, `allow_pending_serial_identification` deve permanecer falso por constraint e a LP continua obrigatoria.
+
+Arquitetura
+- `materials.allow_pending_serial_identification` deixa o contrato pronto para futura tela de Cadastro Base.
+- `stock_serial_pending_balances` guarda saldo pendente por tenant, material, centro, projeto e tipo (`NOVO`/`SUCATA`), com FKs compostas por `tenant_id`.
+- `identify_pending_serial_tracked_unit` foi criada como RPC transacional de identificacao futura: consome uma pendencia e cria/vincula a unidade em `trafo_instances` com LP tecnica `-` para materiais sem LP.
+- `normalize_serial_tracked_stock_transfer_item` normaliza RELIGADOR/CHAVE sem serial para pendencia e rejeita quando a flag nao permite.
+- `apply_serial_tracked_stock_transfer_item` ajusta o saldo pendente na mesma transacao da movimentacao.
+
+Comportamento antes/depois
+- Antes: qualquer material com `serial_tracking_type <> NONE` exigia serial no cadastro manual, CSV e API.
+- Depois: somente material rastreavel sem LP e com flag interna ativa pode entrar/transferir sem serial; `TRAFO` e `EXIT` normal continuam exigindo serial identificado.
+- Antes: a quantidade de material rastreavel ficava sempre travada em `1`.
+- Depois: a quantidade so fica travada em `1` quando a unidade esta identificada, quando e `TRAFO` ou quando a regra do material nao permite pendencia.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+- `src/lib/materialSerialTracking.ts`
+  - `allowsPendingSerialIdentification`: centraliza a regra de pendencia permitida somente para material rastreavel sem LP.
+- `src/lib/server/materialCatalog.ts`
+  - `fetchActiveOperationalMaterials`: carrega `allow_pending_serial_identification` com fallback para bancos ainda sem a coluna.
+  - `toOperationalMaterialOption`: expõe `allowPendingSerialIdentification` para telas operacionais.
+- `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `canCreatePendingSerialEntry`: permite pendencia somente em `ENTRY` e `TRANSFER`.
+  - `validateManualForm`, `handleAddFormItem`, `handleSubmit`: mantem `TRAFO` com Serial/LP e aceita pendencia apenas quando a flag permite.
+  - Importacao CSV: aceita linha pendente quando a regra permite e bloqueia duplicidade apenas para unidades com serial.
+- `src/app/api/stock-transfers/route.ts`
+  - `POST`: valida no servidor serial obrigatorio, TRAFO com LP, quantidade unitaria quando serializada e quantidade inteira para pendencia.
+- `src/app/api/stock-transfers/import/route.ts`
+  - `POST`: aplica a mesma regra para cadastro em massa.
+- `src/lib/server/stockTransfers.ts`
+  - `mapSerialTrackedDatabaseError`: traduz erros de pendencia de serial.
+- `supabase/migrations/247_allow_pending_serial_identification.sql`
+  - adiciona a flag em `materials`;
+  - cria `stock_serial_pending_balances` com FKs compostas de material, centro e projeto por tenant;
+  - cria `adjust_stock_serial_pending_balance` e `identify_pending_serial_tracked_unit`;
+  - atualiza triggers/RPCs de movimentacao e reforca Operacoes de Equipe com serial obrigatorio.

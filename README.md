@@ -133,7 +133,7 @@ vercel --prod
   - `(dashboard)/cargo/page.tsx`: rota da tela de Cargo com cadastro, filtros, listagem, detalhes, historico, troca de status e manutencao dos tipos por cargo/niveis consumidos por Pessoas.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
-  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa e estorno individual ou atomico em lote.
+  - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, pendencia de identificacao para materiais rastreaveis sem LP quando permitido e estorno individual ou atomico em lote.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por projeto/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, filtros por periodo/projeto/equipe/situacao, detalhes, historico e CSV.
   - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
@@ -183,7 +183,7 @@ vercel --prod
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com filtro por `UMB`, validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a rastreio por serial e `Preco` opcional (default `0.00`).
   - `api/materials/meta/route.ts`: carrega as UMBs distintas cadastradas nos materiais do tenant e informa a existencia de registros sem UMB para o select de filtro.
   - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos, materiais ativos e catalogo de motivos padrao de estorno para a tela de movimentacao.
-  - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
+  - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, valida pendencia de serial somente para Entrada/Transferencia de material rastreavel sem LP com flag ativa, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em modo parcial por linha e registra `operation_batch_id` para agrupar os sucessos do mesmo contexto operacional.
   - `api/stock-transfers/reversal/route.ts`: carrega os materiais da movimentacao/lote e executa estorno individual ou atomico de todos os itens ainda ativos, com autorizacao server-side da pagina `entrada`.
   - `api/estornos/route.ts`: consulta estornos ja registrados por item e integrais legados, agregando Movimentacao de Estoque e Operacoes de Equipe sem executar nova reversao.
@@ -261,7 +261,7 @@ vercel --prod
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros incluindo `UMB`, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
 - `src/modules/dashboard/entrada/`
-  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), finalidade (`Movimentacao normal` ou `Correcao de saldo` com motivo obrigatorio), lista local de materiais, cadastro em massa CSV, filtros, lista paginada e modal que mostra todos os materiais vinculados e permite estorno individual ou atomico em lote.
+  - `StockTransfersPageView.tsx`: tela unica de Movimentacao de Estoque com seletor de operacao (`Entrada`, `Saida`, `Transferencia`), finalidade (`Movimentacao normal` ou `Correcao de saldo` com motivo obrigatorio), lista local de materiais, cadastro em massa CSV, pendencia de serial para material rastreavel sem LP quando a regra permite, filtros, lista paginada e modal que mostra todos os materiais vinculados e permite estorno individual ou atomico em lote.
   - `StockTransfersPageView.module.css`: estilos da tela de Movimentacao de Estoque.
 - `src/modules/dashboard/saida/`
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
@@ -400,6 +400,7 @@ vercel --prod
 - `supabase/migrations/238_add_stock_transfer_batch_reversal.sql`: adiciona agrupamento das importacoes de Movimentacao de Estoque e RPC para estornar atomicamente todos os itens ainda ativos do lote.
 - `supabase/migrations/239_backfill_stock_transfer_import_batches.sql`: identifica importacoes historicas pelo mesmo segundo, ator e contexto operacional, preenchendo `operation_batch_id` apenas em grupos conservadores de item unico.
 - `supabase/migrations/240_merge_split_stock_transfer_import_batches.sql`: une os blocos históricos que a migration 239 separou por segundo, usando continuidade de ate 2 segundos sem alterar lotes novos.
+- `supabase/migrations/247_allow_pending_serial_identification.sql`: adiciona pendencia de identificacao de serial para Entrada/Transferencia de materiais rastreaveis sem LP quando permitido, mantendo `TRAFO` com `Serial + LP` obrigatorios e Operacoes de Equipe com serial obrigatorio.
 
 ---
 
