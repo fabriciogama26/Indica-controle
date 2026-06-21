@@ -12,7 +12,9 @@
     "db:check-link": "powershell -ExecutionPolicy Bypass -File scripts/supabase-check-link.ps1",
     "db:status": "npm run db:check-link && npx supabase projects list",
     "db:migration-list": "npm run db:check-link && npx supabase migration list --linked",
-    "db:lint": "npm run db:check-link && npx supabase db lint --linked"
+    "db:lint": "npm run db:check-link && npx supabase db lint --linked",
+    "db:security-check": "powershell -ExecutionPolicy Bypass -File scripts/check-security-definer.ps1",
+    "db:security-check-live": "npm run db:check-link && npx supabase db query --file scripts/check-security-definer-live.sql --linked"
   },
   "engines": {
     "node": ">=20.9.0"
