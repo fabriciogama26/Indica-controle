@@ -1535,10 +1535,12 @@ export function ProgrammingCancelModal(props: {
   reasonOptions: ProgrammingReasonOptionItem[];
   reasonCode: string;
   reasonNotes: string;
+  scope: "individual" | "group";
   canSubmit: boolean;
   isSubmitting: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  onScopeChange: (value: "individual" | "group") => void;
   onReasonCodeChange: (value: string) => void;
   onReasonNotesChange: (value: string) => void;
 }) {
@@ -1547,10 +1549,12 @@ export function ProgrammingCancelModal(props: {
     reasonOptions,
     reasonCode,
     reasonNotes,
+    scope,
     canSubmit,
     isSubmitting,
     onClose,
     onConfirm,
+    onScopeChange,
     onReasonCodeChange,
     onReasonNotesChange,
   } = props;
@@ -1572,6 +1576,34 @@ export function ProgrammingCancelModal(props: {
           <p>
             Selecione o motivo do cancelamento. Quando o motivo exigir observacao, preencha o campo complementar.
           </p>
+
+          <fieldset className={styles.field}>
+            <span>Cancelar apenas esta equipe ou todas as equipes desta obra neste dia?</span>
+            <div className={styles.inlineCheckboxGroup}>
+              <label className={styles.inlineCheckbox}>
+                <input
+                  type="radio"
+                  name="cancel-scope"
+                  value="individual"
+                  checked={scope === "individual"}
+                  onChange={() => onScopeChange("individual")}
+                  disabled={isSubmitting}
+                />
+                Apenas esta equipe
+              </label>
+              <label className={styles.inlineCheckbox}>
+                <input
+                  type="radio"
+                  name="cancel-scope"
+                  value="group"
+                  checked={scope === "group"}
+                  onChange={() => onScopeChange("group")}
+                  disabled={isSubmitting}
+                />
+                Todas as equipes da obra neste dia
+              </label>
+            </div>
+          </fieldset>
 
           <label className={styles.field}>
             <span>

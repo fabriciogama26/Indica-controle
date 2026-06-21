@@ -53,6 +53,7 @@ import {
   type CatalogCacheEntry,
 } from "@/server/modules/programacao/catalogs";
 import {
+  cancelProgrammingGroupViaRpc,
   cancelProgrammingViaRpc,
   postponeProgrammingGroupViaRpc,
 } from "@/server/modules/programacao/rpc";
@@ -538,6 +539,7 @@ export async function PATCH(request: NextRequest) {
   const action = normalizeText(payload?.action).toUpperCase() === "ADIAR" ? "ADIADA" : "CANCELADA";
   const reason = normalizeNullableText(payload?.reason);
   const newDate = normalizeIsoDate(payload?.newDate);
+  const scope = normalizeText(payload?.scope).toLowerCase() === "group" ? "group" : "individual";
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
 
   if (!programmingId || !reason) {
@@ -661,22 +663,34 @@ export async function PATCH(request: NextRequest) {
     });
   }
 
-  const cancelResult = await cancelProgrammingViaRpc({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    actorUserId: resolution.appUser.id,
-    programmingId,
-    action,
-    reason,
-    expectedUpdatedAt,
-  });
+  const cancelResult = scope === "group"
+    ? await cancelProgrammingGroupViaRpc({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId,
+        reason,
+        expectedUpdatedAt,
+      })
+    : await cancelProgrammingViaRpc({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        actorUserId: resolution.appUser.id,
+        programmingId,
+        action,
+        reason,
+        expectedUpdatedAt,
+      });
 
   if (!cancelResult.ok) {
     if (cancelResult.reason === "PROGRAMMING_CONFLICT") {
+      const conflictProgrammingId = "programmingId" in cancelResult && cancelResult.programmingId
+        ? cancelResult.programmingId
+        : programmingId;
       const conflictPayload = await fetchProgrammingConflictPayload({
         supabase: resolution.supabase,
         tenantId: resolution.appUser.tenant_id,
-        programmingId,
+        programmingId: conflictProgrammingId,
         requested: {
           executionDate: currentProgramming.execution_date,
           teamId: currentProgramming.team_id,
@@ -693,7 +707,11 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { message: cancelResult.message, reason: cancelResult.reason ?? null },
+      {
+        message: cancelResult.message,
+        reason: cancelResult.reason ?? null,
+        detail: "detail" in cancelResult ? (cancelResult.detail ?? null) : null,
+      },
       { status: cancelResult.status },
     );
   }
@@ -717,6 +735,8 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({
     success: true,
     id: programmingId,
+    affectedCount: "affectedCount" in cancelResult ? cancelResult.affectedCount : undefined,
+    updatedIds: "cancelledProgrammingIds" in cancelResult ? cancelResult.cancelledProgrammingIds : undefined,
     updatedAt: cancelResult.updatedAt,
     schedule: updatedSchedule,
     warning,

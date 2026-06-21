@@ -330,6 +330,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setCancelReasonCode,
     cancelReasonNotes,
     setCancelReasonNotes,
+    cancelScope,
+    setCancelScope,
     isCancelling,
     canSubmitCancellation,
     openCancelModal,
@@ -2318,10 +2320,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         reasonOptions={reasonOptions}
         reasonCode={cancelReasonCode}
         reasonNotes={cancelReasonNotes}
+        scope={cancelScope}
         canSubmit={canSubmitCancellation}
         isSubmitting={isCancelling}
         onClose={closeCancelModal}
         onConfirm={() => void confirmCancellation()}
+        onScopeChange={setCancelScope}
         onReasonCodeChange={setCancelReasonCode}
         onReasonNotesChange={setCancelReasonNotes}
       />

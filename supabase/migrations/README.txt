@@ -630,3 +630,8 @@ Observacao
 - Atualiza as funcoes de movimentacao para Entrada/Transferencia sem serial ajustarem a pendencia na mesma transacao.
 - Cria `identify_pending_serial_tracked_unit` para consumir uma pendencia e registrar a unidade identificada.
 - Reforca `save_team_stock_operation_record` para manter Requisicao/Devolucao/Retorno de Campo com serial obrigatorio.
+
+248_cancel_programming_by_project_date.sql
+- Cria `cancel_project_programming_group` para cancelar atomicamente todas as programacoes ativas do mesmo Projeto + Data.
+- Reutiliza `set_project_programming_status` dentro da mesma transacao, preservando historico, `expectedUpdatedAt` na linha clicada e rollback total do grupo em falha.
+- Mantem escopo por `tenant_id`, bloqueia execucao por `anon/authenticated` e concede EXECUTE somente a `service_role`.
