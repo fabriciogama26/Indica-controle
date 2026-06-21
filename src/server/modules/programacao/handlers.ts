@@ -611,6 +611,7 @@ export async function copyProgrammingToDates(request: NextRequest) {
         activities,
         historyActionOverride: "COPY",
         historyReason: "Copia de programacao para outras datas.",
+        copiedFromProgrammingId: model.id,
         historyMetadata: {
           source: "programacao-api",
           action: "COPY_TO_DATES",

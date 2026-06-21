@@ -635,3 +635,8 @@ Observacao
 - Cria `cancel_project_programming_group` para cancelar atomicamente todas as programacoes ativas do mesmo Projeto + Data.
 - Reutiliza `set_project_programming_status` dentro da mesma transacao, preservando historico, `expectedUpdatedAt` na linha clicada e rollback total do grupo em falha.
 - Mantem escopo por `tenant_id`, bloqueia execucao por `anon/authenticated` e concede EXECUTE somente a `service_role`.
+
+249_save_copy_source_in_programming_full_rpc.sql
+- Recria `save_project_programming_full_decimal_with_electrical_and_eq` com parametros opcionais `p_copied_from_programming_id` e `p_copy_batch_id`.
+- Permite que copias criadas por `COPY_TO_DATES` gravem o vinculo direto origem -> copia dentro da mesma transacao do INSERT.
+- Valida origem/lote por `tenant_id` e mantem EXECUTE somente para `service_role`.
