@@ -57,6 +57,7 @@ Cadastro
   - `quantity` deve ser maior que zero.
   - Quando `materials.serial_tracking_type <> NONE`, `quantity` deve ser exatamente `1`.
   - Quando `materials.serial_tracking_type <> NONE`, `serialNumber` e obrigatorio; `lotCode` tambem e obrigatorio somente para `TRAFO`.
+  - Saldo pendente de identificacao de serial nao pode ser requisitado por equipe; antes da requisicao, a unidade precisa ser identificada no estoque de origem.
   - Em `REQUISITION`, Serial/LP deve existir no centro de estoque principal selecionado.
   - Em `RETURN`, Serial/LP deve existir no centro proprio atual da equipe selecionada.
   - `entryDate` nao pode ser futura.
@@ -613,3 +614,28 @@ Atualizacao 2026-06 - Correcao do agrupamento do cadastro em massa
 - Comportamento antes/depois:
   - Antes: import com tres materiais criava tres transferencias e o modal mostrava somente uma.
   - Depois: as tres transferencias compartilham `operation_batch_id` e aparecem juntas no modal.
+
+Atualizacao 2026-06 - Regra de serial em Operacoes de Equipe
+------------------------------------------------------------
+Visao geral
+- Operacoes de Equipe continuam exigindo unidade identificada para todo material rastreavel por serial.
+- A pendencia criada na Movimentacao de Estoque representa estoque fisico sem serial identificado e nao pode sair para equipe.
+
+Cadastro
+- `REQUISITION`, `RETURN` e `FIELD_RETURN` rejeitam item rastreavel sem `serialNumber`.
+- `TRAFO` continua exigindo `Serial + LP`.
+- `RELIGADOR` e `CHAVE` tambem exigem serial quando usados em Operacoes de Equipe, mesmo que o material aceite pendencia na Entrada/Transferencia fisica.
+
+Arquitetura
+- A migration `247_allow_pending_serial_identification.sql` reforca `save_team_stock_operation_record` para rejeitar item rastreavel sem serial antes da gravacao.
+- A tela e as APIs existentes seguem usando `trafo_instances` para listar e validar apenas unidades identificadas no centro de origem real.
+
+Comportamento antes/depois
+- Antes: a regra funcional ja exigia serial para material rastreavel na tela.
+- Depois: a regra fica tambem protegida no banco contra chamadas diretas da RPC com item sem serial.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+- `supabase/migrations/247_allow_pending_serial_identification.sql`
+  - `save_team_stock_operation_record`: prevalidacao de `p_items` para bloquear material rastreavel sem serial.
+- `docs/Tela_Saida_SaaS.txt`
+  - documenta que pendencia de serial nao e requisitavel por equipe.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { parsePositiveInteger } from "@/lib/server/apiHelpers";
-import { isSerialTrackedMaterial, normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
+import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -26,6 +26,7 @@ type MaterialRow = {
   descricao: string;
   is_transformer?: boolean | null;
   serial_tracking_type?: string | null;
+  allow_pending_serial_identification?: boolean | null;
 };
 
 type StockTransferHeaderRow = {
@@ -383,6 +384,10 @@ function buildTransferItems(payload: TransferPayload) {
       lotCode: normalizeText(payload.lotCode) || null,
     },
   ];
+}
+
+function isWholeQuantity(value: number) {
+  return Number.isInteger(value) && value > 0;
 }
 
 async function loadTransferList(request: NextRequest) {
@@ -1054,6 +1059,64 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    const materialIds = Array.from(new Set(items.map((item) => item.materialId).filter(Boolean)));
+    const materialsResult = materialIds.length
+      ? await supabase
+          .from("materials")
+          .select("id, codigo, is_transformer, serial_tracking_type, allow_pending_serial_identification")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", materialIds)
+          .returns<MaterialRow[]>()
+      : { data: [], error: null };
+
+    if (materialsResult.error) {
+      return NextResponse.json({ message: "Falha ao validar materiais da movimentacao de estoque." }, { status: 500 });
+    }
+
+    const materialMap = new Map((materialsResult.data ?? []).map((row) => [row.id, row]));
+    for (const item of items) {
+      const material = materialMap.get(item.materialId);
+      const serialTrackingType = normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE"));
+      const hasSerial = Boolean(normalizeText(item.serialNumber));
+
+      if (!isSerialTrackedMaterial(serialTrackingType)) {
+        continue;
+      }
+
+      if (hasSerial && item.quantity !== 1) {
+        return NextResponse.json(
+          { message: `Material ${serialTrackingLabel(serialTrackingType)} permite somente quantidade 1 por movimentacao.` },
+          { status: 400 },
+        );
+      }
+
+      if (requiresLotCode(serialTrackingType) && !normalizeText(item.lotCode)) {
+        return NextResponse.json(
+          { message: "Serial e LP sao obrigatorios para material TRAFO." },
+          { status: 400 },
+        );
+      }
+
+      const canCreatePendingSerial = allowsPendingSerialIdentification(
+        serialTrackingType,
+        material?.allow_pending_serial_identification,
+      ) && (movementType === "ENTRY" || movementType === "TRANSFER");
+
+      if (!hasSerial && !canCreatePendingSerial) {
+        return NextResponse.json(
+          { message: `Serial e obrigatorio para material ${serialTrackingLabel(serialTrackingType)}.` },
+          { status: 400 },
+        );
+      }
+
+      if (!hasSerial && canCreatePendingSerial && !isWholeQuantity(item.quantity)) {
+        return NextResponse.json(
+          { message: `Material ${serialTrackingLabel(serialTrackingType)} pendente de serial deve usar quantidade inteira.` },
+          { status: 400 },
+        );
+      }
     }
 
     const saveResult = await saveStockTransferViaRpc(supabase, {

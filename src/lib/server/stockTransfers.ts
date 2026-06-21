@@ -145,6 +145,15 @@ function mapSerialTrackedDatabaseError(message: unknown) {
   if (normalized.includes("SERIAL_TRACKED_UNIT_NOT_IN_FROM_CENTER")) {
     return "A unidade por serial informada nao esta disponivel no centro DE informado.";
   }
+  if (normalized.includes("PENDING_SERIAL_QUANTITY_MUST_BE_INTEGER")) {
+    return "Material pendente de serial deve usar quantidade inteira.";
+  }
+  if (normalized.includes("PENDING_SERIAL_INSUFFICIENT_BALANCE")) {
+    return "Quantidade pendente de identificacao de serial insuficiente no centro DE informado.";
+  }
+  if (normalized.includes("PENDING_SERIAL_NOT_ALLOWED")) {
+    return "Este material exige serial na entrada e nao aceita pendencia de identificacao.";
+  }
   return "";
 }
 

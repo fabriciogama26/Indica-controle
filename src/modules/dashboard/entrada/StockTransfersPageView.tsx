@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
-import { isSerialTrackedMaterial, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { allowsPendingSerialIdentification, isSerialTrackedMaterial, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./StockTransfersPageView.module.css";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 
@@ -29,6 +29,7 @@ type MaterialOption = {
   materialType: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification?: boolean;
 };
 
 type ReversalReasonOption = {
@@ -50,8 +51,8 @@ type SerialOption = {
   materialId: string;
   materialCode: string;
   serialTrackingType: SerialTrackingType;
-  serialNumber: string;
-  lotCode: string;
+  serialNumber: string | null;
+  lotCode: string | null;
   currentStockCenterId: string | null;
   updatedAt: string | null;
 };
@@ -187,6 +188,7 @@ type TransferFormItem = {
   entryType: "SUCATA" | "NOVO";
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification?: boolean;
 };
 
 type FormState = {
@@ -432,6 +434,16 @@ function isTransformerQuantityValid(quantity: number | null) {
   return quantity === 1;
 }
 
+function isWholeQuantity(quantity: number | null) {
+  if (quantity === null) return false;
+  return Number.isInteger(quantity) && quantity > 0;
+}
+
+function canCreatePendingSerialEntry(material: Pick<MaterialOption, "serialTrackingType" | "allowPendingSerialIdentification"> | null | undefined, movementType: FormState["movementType"]) {
+  return allowsPendingSerialIdentification(material?.serialTrackingType, material?.allowPendingSerialIdentification)
+    && (movementType === "ENTRY" || movementType === "TRANSFER");
+}
+
 function parsePositiveNumber(value: string) {
   const normalized = normalizeText(value).replace(/\s+/g, "");
   if (!/^\d+(?:[,.]\d{1,3})?$/.test(normalized)) return null;
@@ -628,8 +640,14 @@ export function StockTransfersPageView() {
   );
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
-  const requiresSerialFields = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
+  const selectedMaterialAllowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
+  const hasSerialDraft = Boolean(normalizeText(form.serialNumber));
+  const serialFieldAvailable = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
+  const requiresSerialFields = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType)
+    && (!selectedMaterialAllowsPendingSerial || hasSerialDraft);
   const requiresLotFields = requiresLotCode(selectedMaterial?.serialTrackingType);
+  const locksQuantityAsUnit = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType)
+    && (!selectedMaterialAllowsPendingSerial || hasSerialDraft || requiresLotFields);
   const isTransformerMovementMode = Boolean(transformerMovementMode);
   const isDirectPurchaseProjectOptional = form.movementType === "ENTRY" && form.directPurchase;
   const formEntryDateLabel = movementDateLabel(form.movementType);
@@ -917,7 +935,7 @@ export function StockTransfersPageView() {
   useEffect(() => {
     if (
       !session?.accessToken
-      || !requiresSerialFields
+      || !serialFieldAvailable
       || form.movementType === "ENTRY"
       || !form.fromStockCenterId
       || !form.materialId
@@ -996,7 +1014,7 @@ export function StockTransfersPageView() {
     form.movementType,
     form.serialNumber,
     logError,
-    requiresSerialFields,
+    serialFieldAvailable,
     session?.accessToken,
   ]);
 
@@ -1041,7 +1059,10 @@ export function StockTransfersPageView() {
       materialId: matchedMaterial?.id ?? "",
       description: matchedMaterial?.description ?? "",
       entryType: normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
-      quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType) ? "1" : current.quantity,
+      quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType)
+        && !canCreatePendingSerialEntry(matchedMaterial, current.movementType)
+        ? "1"
+        : current.quantity,
       serialNumber: "",
       lotCode: "",
     }));
@@ -1123,7 +1144,8 @@ export function StockTransfersPageView() {
     setForm((current) => ({
       ...current,
       serialNumber: value,
-      lotCode: requiresLotFields && current.movementType !== "ENTRY" ? nextLotCode : current.lotCode,
+      lotCode: requiresLotFields && current.movementType !== "ENTRY" ? (nextLotCode ?? "") : current.lotCode,
+      quantity: isSerialTrackedMaterial(selectedMaterial?.serialTrackingType) && normalizeText(value) ? "1" : current.quantity,
     }));
   }
 
@@ -1188,11 +1210,19 @@ export function StockTransfersPageView() {
       return "Quantidade deve ser maior que zero.";
     }
 
-    if (requiresSerialFields) {
+    const allowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
+    const hasSerial = Boolean(normalizeText(form.serialNumber));
+
+    if (isSerialTrackedMaterial(selectedMaterial?.serialTrackingType)) {
       if (!isTransformerQuantityValid(quantity)) {
-        return `Material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)} permite somente quantidade 1 por movimentacao.`;
+        if (!allowsPendingSerial || hasSerial) {
+          return `Material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)} permite somente quantidade 1 por movimentacao.`;
+        }
+        if (!isWholeQuantity(quantity)) {
+          return `Material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)} pendente de serial deve usar quantidade inteira.`;
+        }
       }
-      if (!normalizeText(form.serialNumber)) {
+      if (!allowsPendingSerial && !hasSerial) {
         return `Serial e obrigatorio para material ${serialTrackingLabel(selectedMaterial?.serialTrackingType)}.`;
       }
       if (requiresLotFields && !normalizeText(form.lotCode)) {
@@ -1234,13 +1264,21 @@ export function StockTransfersPageView() {
       return;
     }
 
+    const allowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
+    const hasSerial = Boolean(normalizeText(form.serialNumber));
+
     if (isSerialTrackedMaterial(selectedMaterial.serialTrackingType)) {
-      if (!isTransformerQuantityValid(quantity)) {
+      if (!isTransformerQuantityValid(quantity) && (!allowsPendingSerial || hasSerial)) {
         showError(`Material ${serialTrackingLabel(selectedMaterial.serialTrackingType)} ${selectedMaterial.materialCode}: quantidade deve ser exatamente 1.`);
         return;
       }
 
-      if (!normalizeText(form.serialNumber)) {
+      if (allowsPendingSerial && !hasSerial && !isWholeQuantity(quantity)) {
+        showError(`Material ${serialTrackingLabel(selectedMaterial.serialTrackingType)} ${selectedMaterial.materialCode}: quantidade pendente de serial deve ser inteira.`);
+        return;
+      }
+
+      if (!allowsPendingSerial && !hasSerial) {
         showError(`Material ${serialTrackingLabel(selectedMaterial.serialTrackingType)} ${selectedMaterial.materialCode}: Serial e obrigatorio.`);
         return;
       }
@@ -1251,7 +1289,7 @@ export function StockTransfersPageView() {
       }
     }
 
-    if (isSerialTrackedMaterial(selectedMaterial.serialTrackingType) && form.movementType !== "ENTRY") {
+    if (isSerialTrackedMaterial(selectedMaterial.serialTrackingType) && form.movementType !== "ENTRY" && hasSerial) {
       const sourceAvailability = await ensureSourceStockAvailability({
         rowId: createRowId(),
         materialId: selectedMaterial.id,
@@ -1320,10 +1358,11 @@ export function StockTransfersPageView() {
           description: selectedMaterial.description,
           quantity,
           serialNumber: normalizedSerial,
-          lotCode: normalizedLot,
+          lotCode: normalizedLot || (requiresLotCode(selectedMaterial.serialTrackingType) ? "" : "-"),
           entryType: normalizedEntryType,
           isTransformer: isSerialTrackedMaterial(selectedMaterial.serialTrackingType),
           serialTrackingType: selectedMaterial.serialTrackingType,
+          allowPendingSerialIdentification: selectedMaterial.allowPendingSerialIdentification,
         },
       ],
     }));
@@ -1344,6 +1383,10 @@ export function StockTransfersPageView() {
 
     if (form.movementType === "ENTRY") {
       if (!item.isTransformer) {
+        return { ok: true } as const;
+      }
+
+      if (canCreatePendingSerialEntry(item, form.movementType) && !normalizeText(item.serialNumber)) {
         return { ok: true } as const;
       }
 
@@ -1402,6 +1445,10 @@ export function StockTransfersPageView() {
     const fromCenterName = fromCenter?.name ?? "centro de origem";
 
     if (item.isTransformer) {
+      if (canCreatePendingSerialEntry(item, form.movementType) && !normalizeText(item.serialNumber)) {
+        return { ok: true } as const;
+      }
+
       const searchParams = new URLSearchParams();
       searchParams.set("movementType", form.movementType);
       searchParams.set("fromStockCenterId", form.fromStockCenterId);
@@ -1581,12 +1628,20 @@ export function StockTransfersPageView() {
         }
 
         if (item.isTransformer) {
-          if (!isTransformerQuantityValid(item.quantity)) {
+          const itemAllowsPendingSerial = canCreatePendingSerialEntry(item, form.movementType);
+          const itemHasSerial = Boolean(normalizeText(item.serialNumber));
+
+          if (!isTransformerQuantityValid(item.quantity) && (!itemAllowsPendingSerial || itemHasSerial)) {
             showError(`Material rastreavel ${item.materialCode}: quantidade deve ser exatamente 1.`);
             return;
           }
 
-          if (!normalizeText(item.serialNumber)) {
+          if (itemAllowsPendingSerial && !itemHasSerial && !isWholeQuantity(item.quantity)) {
+            showError(`Material rastreavel ${item.materialCode}: quantidade pendente de serial deve ser inteira.`);
+            return;
+          }
+
+          if (!itemAllowsPendingSerial && !itemHasSerial) {
             showError(`Material rastreavel ${item.materialCode}: Serial e obrigatorio.`);
             return;
           }
@@ -1631,7 +1686,7 @@ export function StockTransfersPageView() {
             materialId: item.materialId,
             quantity: item.quantity,
             serialNumber: normalizeText(item.serialNumber) || null,
-        lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
+            lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
           })),
         }),
       });
@@ -2257,7 +2312,9 @@ export function StockTransfersPageView() {
           return;
         }
 
-        if (isSerialTrackedMaterial(material.serialTrackingType) && !serialNumber) {
+        const allowPendingSerialInImport = canCreatePendingSerialEntry(material, movementType);
+
+        if (isSerialTrackedMaterial(material.serialTrackingType) && !serialNumber && !allowPendingSerialInImport) {
           importIssues.push({ rowNumber, column: "serial", value: serialNumberRaw, error: `Serial e obrigatorio para material ${serialTrackingLabel(material.serialTrackingType)}.` });
           return;
         }
@@ -2267,12 +2324,17 @@ export function StockTransfersPageView() {
           return;
         }
 
-        if (isSerialTrackedMaterial(material.serialTrackingType) && quantity !== 1) {
+        if (isSerialTrackedMaterial(material.serialTrackingType) && serialNumber && quantity !== 1) {
           importIssues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: `Material ${serialTrackingLabel(material.serialTrackingType)} permite somente quantidade 1 por movimentacao.` });
           return;
         }
 
-        if (isSerialTrackedMaterial(material.serialTrackingType)) {
+        if (isSerialTrackedMaterial(material.serialTrackingType) && !serialNumber && !isWholeQuantity(quantity)) {
+          importIssues.push({ rowNumber, column: "quantidade", value: quantityRaw, error: `Material ${serialTrackingLabel(material.serialTrackingType)} pendente de serial deve usar quantidade inteira.` });
+          return;
+        }
+
+        if (isSerialTrackedMaterial(material.serialTrackingType) && serialNumber) {
           const transformerUnitKey = `${material.id}::${serialNumber ?? ""}::${requiresLotCode(material.serialTrackingType) ? lotCode ?? "" : "-"}`;
           const firstSeenRow = seenTransformerUnits.get(transformerUnitKey);
           if (firstSeenRow) {
@@ -2579,11 +2641,11 @@ export function StockTransfersPageView() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  pattern={requiresSerialFields ? "1" : "[0-9]+([,.][0-9]{1,3})?"}
+                  pattern={locksQuantityAsUnit ? "1" : "[0-9]+([,.][0-9]{1,3})?"}
                   value={form.quantity}
-                  onChange={(event) => updateFormField("quantity", requiresSerialFields ? "1" : event.target.value)}
+                  onChange={(event) => updateFormField("quantity", locksQuantityAsUnit ? "1" : event.target.value)}
                   disabled={isSubmitting || isTransformerMovementMode}
-                  readOnly={requiresSerialFields || isTransformerMovementMode}
+                  readOnly={locksQuantityAsUnit || isTransformerMovementMode}
                 />
               </label>
 
@@ -2609,13 +2671,15 @@ export function StockTransfersPageView() {
                   type="text"
                   value={form.serialNumber}
                   onChange={(event) => handleSerialNumberChange(event.target.value)}
-                  list={requiresSerialFields && form.movementType !== "ENTRY" ? "entrada-serial-list" : undefined}
-                  disabled={isSubmitting || !requiresSerialFields || isTransformerMovementMode}
+                  list={serialFieldAvailable && form.movementType !== "ENTRY" ? "entrada-serial-list" : undefined}
+                  disabled={isSubmitting || !serialFieldAvailable || isTransformerMovementMode}
                   placeholder={
                     requiresSerialFields
                       ? form.movementType === "ENTRY"
                         ? "Informe o serial novo"
                         : "Digite para selecionar do centro DE"
+                      : selectedMaterialAllowsPendingSerial
+                        ? "Opcional; vazio gera pendencia"
                       : "Disponivel apenas para material rastreavel"
                   }
                 />
@@ -3475,14 +3539,14 @@ export function StockTransfersPageView() {
       </datalist>
       <datalist id="entrada-serial-list">
         {serialOptions.map((option) => (
-          <option key={option.id} value={option.serialNumber}>
+          <option key={option.id} value={option.serialNumber ?? ""}>
             {requiresLotCode(option.serialTrackingType) ? `LP ${option.lotCode}` : option.materialCode}
           </option>
         ))}
       </datalist>
       <datalist id="entrada-lp-list">
         {serialLotOptions.map((option) => (
-          <option key={option.id} value={option.lotCode}>
+          <option key={option.id} value={option.lotCode ?? ""}>
             Serial {option.serialNumber}
           </option>
         ))}

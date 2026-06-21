@@ -622,3 +622,11 @@ Observacao
 - Sem nova data, marca todas as linhas do grupo como `ADIADA`; com nova data, cria uma linha `REPROGRAMADA` para cada equipe afetada.
 - Reutiliza as RPCs individuais de status/adiamento dentro da mesma transacao e reverte o grupo inteiro quando qualquer item falha.
 - Mantem `expectedUpdatedAt` na linha clicada, escopo por `tenant_id` e EXECUTE somente para `service_role`.
+
+247_allow_pending_serial_identification.sql
+- Adiciona `materials.allow_pending_serial_identification` para preparar a regra configuravel futura de Cadastro Base.
+- Permite pendencia de identificacao somente para materiais rastreaveis sem LP (`RELIGADOR`/`CHAVE`) quando a flag estiver ativa; `TRAFO` continua exigindo `Serial + LP`.
+- Cria `stock_serial_pending_balances` para saldo pendente por tenant, material, centro, projeto e tipo, com FKs compostas por tenant.
+- Atualiza as funcoes de movimentacao para Entrada/Transferencia sem serial ajustarem a pendencia na mesma transacao.
+- Cria `identify_pending_serial_tracked_unit` para consumir uma pendencia e registrar a unidade identificada.
+- Reforca `save_team_stock_operation_record` para manter Requisicao/Devolucao/Retorno de Campo com serial obrigatorio.

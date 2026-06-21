@@ -9,6 +9,7 @@ export type OperationalMaterialRow = {
   tipo: string;
   is_transformer?: boolean | null;
   serial_tracking_type?: SerialTrackingType | string | null;
+  allow_pending_serial_identification?: boolean | null;
 };
 
 export type OperationalMaterialOption = {
@@ -18,6 +19,7 @@ export type OperationalMaterialOption = {
   materialType: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification: boolean;
 };
 
 const MATERIAL_PAGE_SIZE = 1000;
@@ -28,7 +30,10 @@ function isMissingSerialTrackingColumnError(error: { code?: string | null; messa
   }
 
   const normalized = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
-  return normalized.includes("serial_tracking_type") || error.code === "42703" || error.code === "PGRST204";
+  return normalized.includes("serial_tracking_type")
+    || normalized.includes("allow_pending_serial_identification")
+    || error.code === "42703"
+    || error.code === "PGRST204";
 }
 
 async function fetchMaterialPages(
@@ -69,7 +74,7 @@ export async function fetchActiveOperationalMaterials(supabase: SupabaseClient, 
   const fullResult = await fetchMaterialPages(
     supabase,
     tenantId,
-    "id, codigo, descricao, tipo, is_transformer, serial_tracking_type",
+    "id, codigo, descricao, tipo, is_transformer, serial_tracking_type, allow_pending_serial_identification",
   );
 
   if (!fullResult.error) {
@@ -78,6 +83,20 @@ export async function fetchActiveOperationalMaterials(supabase: SupabaseClient, 
 
   if (!isMissingSerialTrackingColumnError(fullResult.error)) {
     return fullResult;
+  }
+
+  const serialTrackingResult = await fetchMaterialPages(
+    supabase,
+    tenantId,
+    "id, codigo, descricao, tipo, is_transformer, serial_tracking_type",
+  );
+
+  if (!serialTrackingResult.error) {
+    return serialTrackingResult;
+  }
+
+  if (!isMissingSerialTrackingColumnError(serialTrackingResult.error)) {
+    return serialTrackingResult;
   }
 
   return fetchMaterialPages(
@@ -99,5 +118,6 @@ export function toOperationalMaterialOption(row: OperationalMaterialRow): Operat
     materialType: String(row.tipo ?? "").trim().toUpperCase(),
     isTransformer: isSerialTrackedMaterial(serialTrackingType),
     serialTrackingType,
+    allowPendingSerialIdentification: Boolean(row.allow_pending_serial_identification),
   };
 }
