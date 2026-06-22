@@ -4,6 +4,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
 import type {
+  AddTeamToProgrammingPayload,
+  AddTeamToProgrammingResponse,
   BatchCreateProgrammingPayload,
   BatchCreateProgrammingResponse,
   CancelProgrammingPayload,
@@ -651,6 +653,319 @@ export async function copyProgrammingToDates(request: NextRequest) {
     sourceCount: allTargetTeamIds.length,
     message: `Programacao copiada para ${allTargetTeamIds.length} equipe(s), totalizando ${copiedCount} registro(s).`,
   } satisfies CopyProgrammingToDatesResponse);
+}
+
+export async function addTeamToProgramming(request: NextRequest) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para adicionar equipe a programacao.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizeProgrammingAction(resolution, "create");
+  if (authorizationError) return authorizationError;
+
+  const payload = (await request.json().catch(() => null)) as AddTeamToProgrammingPayload | null;
+  const sourceProgrammingId = normalizeText(payload?.sourceProgrammingId);
+  const targetTeamId = normalizeText(payload?.targetTeamId);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+
+  if (!sourceProgrammingId || !targetTeamId) {
+    return NextResponse.json(
+      { success: false, message: "Informe a programacao modelo e a equipe que sera adicionada." } satisfies AddTeamToProgrammingResponse,
+      { status: 400 },
+    );
+  }
+
+  if (!expectedUpdatedAt) {
+    return NextResponse.json(
+      { success: false, message: "Atualize a lista antes de adicionar equipe a programacao." } satisfies AddTeamToProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  const source = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, sourceProgrammingId);
+  if (!source) {
+    return NextResponse.json(
+      { success: false, message: "Programacao modelo nao encontrada." } satisfies AddTeamToProgrammingResponse,
+      { status: 404 },
+    );
+  }
+
+  if (source.updated_at !== expectedUpdatedAt) {
+    return NextResponse.json(
+      { success: false, message: "Esta programacao foi alterada por outro usuario. Recarregue a lista antes de adicionar equipe." } satisfies AddTeamToProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  if (!["PROGRAMADA", "REPROGRAMADA"].includes(source.status)) {
+    return NextResponse.json(
+      { success: false, message: "Somente programacoes ativas podem receber nova equipe." } satisfies AddTeamToProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  const completedProjectContext = await resolveProjectCompletedProgrammingContext({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId: source.project_id,
+  });
+
+  if (completedProjectContext) {
+    return NextResponse.json(
+      buildProjectCompletedConflictResponse({
+        message:
+          "Este projeto esta com Estado Trabalho CONCLUIDO. Antes de adicionar equipe, altere o Estado Trabalho para diferente de CONCLUIDO.",
+        context: completedProjectContext,
+      }),
+      { status: 409 },
+    );
+  }
+
+  const { data: targetTeams, error: targetTeamError } = await resolution.supabase
+    .from("teams")
+    .select("id, name")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("ativo", true)
+    .eq("id", targetTeamId)
+    .returns<Array<{ id: string; name: string | null }>>();
+
+  if (targetTeamError) {
+    return NextResponse.json(
+      { success: false, message: "Falha ao validar a equipe selecionada." } satisfies AddTeamToProgrammingResponse,
+      { status: 500 },
+    );
+  }
+
+  const targetTeam = targetTeams?.[0] ?? null;
+  const targetTeamName = normalizeText(targetTeam?.name) || targetTeamId;
+  if (!targetTeam) {
+    return NextResponse.json(
+      { success: false, message: "A equipe selecionada esta inativa ou nao pertence ao tenant atual." } satisfies AddTeamToProgrammingResponse,
+      { status: 400 },
+    );
+  }
+
+  let duplicateQuery = resolution.supabase
+    .from("project_programming")
+    .select("id")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("project_id", source.project_id)
+    .eq("team_id", targetTeamId)
+    .eq("execution_date", source.execution_date)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .limit(1);
+
+  if (source.etapa_number) {
+    duplicateQuery = duplicateQuery
+      .eq("etapa_number", source.etapa_number)
+      .eq("etapa_unica", false)
+      .eq("etapa_final", false);
+  } else {
+    duplicateQuery = duplicateQuery
+      .is("etapa_number", null)
+      .eq("etapa_unica", Boolean(source.etapa_unica))
+      .eq("etapa_final", Boolean(source.etapa_final));
+  }
+
+  const { data: duplicateRows, error: duplicateError } = await duplicateQuery.returns<Array<{ id: string }>>();
+  if (duplicateError) {
+    return NextResponse.json(
+      { success: false, message: "Falha ao verificar se a equipe ja esta nesta programacao." } satisfies AddTeamToProgrammingResponse,
+      { status: 500 },
+    );
+  }
+
+  if (duplicateRows?.length) {
+    return NextResponse.json(
+      { success: false, reason: "TEAM_ALREADY_IN_PROGRAMMING", message: `A equipe ${targetTeamName} ja esta nesta programacao.` } satisfies AddTeamToProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  if (source.etapa_number) {
+    const stageConflicts = await fetchProgrammingStageValidation({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId: source.project_id,
+      teamIds: [targetTeamId],
+      enteredEtapaNumber: source.etapa_number,
+    });
+
+    if (stageConflicts.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: "ETAPA_CONFLICT",
+          enteredEtapaNumber: source.etapa_number,
+          hasConflict: true,
+          highestStage: stageConflicts.reduce((current, item) => Math.max(current, item.highestStage), 0),
+          teams: stageConflicts,
+          message: "A equipe selecionada possui ETAPA igual ou maior no historico deste projeto.",
+        } satisfies AddTeamToProgrammingResponse,
+        { status: 409 },
+      );
+    }
+  }
+
+  const { data: timeConflicts, error: timeConflictError } = await resolution.supabase
+    .from("project_programming")
+    .select("id, project_id, start_time, end_time")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("team_id", targetTeamId)
+    .eq("execution_date", source.execution_date)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .lt("start_time", source.end_time)
+    .gt("end_time", source.start_time)
+    .limit(1)
+    .returns<Array<{ id: string; project_id: string; start_time: string | null; end_time: string | null }>>();
+
+  if (timeConflictError) {
+    return NextResponse.json(
+      { success: false, message: "Falha ao validar conflitos de horario da equipe." } satisfies AddTeamToProgrammingResponse,
+      { status: 500 },
+    );
+  }
+
+  if (timeConflicts?.length) {
+    const detailedConflictMessage = await resolveTeamTimeConflictDetailedMessage({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      executionDate: source.execution_date,
+      startTime: source.start_time,
+      endTime: source.end_time,
+      teamIds: [targetTeamId],
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        reason: "TEAM_TIME_CONFLICT",
+        message: detailedConflictMessage ?? `A equipe ${targetTeamName} possui conflito de horario nesta data.`,
+      } satisfies AddTeamToProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  if (source.work_completion_status) {
+    const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      workCompletionStatus: source.work_completion_status,
+    });
+
+    if (!selectedWorkCompletionStatus) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: "WORK_COMPLETION_STATUS_INACTIVE",
+          message: "O Estado Trabalho da programacao modelo nao esta ativo no catalogo do tenant atual.",
+        } satisfies AddTeamToProgrammingResponse,
+        { status: 409 },
+      );
+    }
+  }
+
+  const activities = await fetchProgrammingActivitiesForSave({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    programmingId: source.id,
+  }) ?? [];
+
+  const documents: NonNullable<SaveProgrammingPayload["documents"]> = {
+    sgd: {
+      number: normalizeSgdNumber(source.sgd_number) ?? "",
+      approvedAt: source.sgd_included_at ?? "",
+      requestedAt: source.sgd_delivered_at ?? "",
+      includedAt: source.sgd_included_at ?? "",
+      deliveredAt: source.sgd_delivered_at ?? "",
+    },
+    pi: {
+      number: normalizeText(source.pi_number),
+      approvedAt: source.pi_included_at ?? "",
+      requestedAt: source.pi_delivered_at ?? "",
+      includedAt: source.pi_included_at ?? "",
+      deliveredAt: source.pi_delivered_at ?? "",
+    },
+    pep: {
+      number: normalizeText(source.pep_number),
+      approvedAt: source.pep_included_at ?? "",
+      requestedAt: source.pep_delivered_at ?? "",
+      includedAt: source.pep_included_at ?? "",
+      deliveredAt: source.pep_delivered_at ?? "",
+    },
+  };
+
+  const saveResult = await saveProgrammingFullViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    projectId: source.project_id,
+    teamId: targetTeamId,
+    executionDate: source.execution_date,
+    period: source.period,
+    startTime: source.start_time,
+    endTime: source.end_time,
+    expectedMinutes: Number(source.expected_minutes ?? 0),
+    outageStartTime: source.outage_start_time,
+    outageEndTime: source.outage_end_time,
+    feeder: source.feeder,
+    support: source.support,
+    supportItemId: source.support_item_id,
+    note: source.note,
+    electricalField: source.campo_eletrico,
+    serviceDescription: source.service_description,
+    posteQty: Number(source.poste_qty ?? 0),
+    estruturaQty: Number(source.estrutura_qty ?? 0),
+    trafoQty: Number(source.trafo_qty ?? 0),
+    redeQty: Number(source.rede_qty ?? 0),
+    etapaNumber: source.etapa_number,
+    etapaUnica: Boolean(source.etapa_unica),
+    etapaFinal: Boolean(source.etapa_final),
+    workCompletionStatus: source.work_completion_status,
+    affectedCustomers: Number(source.affected_customers ?? 0),
+    sgdTypeId: source.sgd_type_id,
+    electricalEqCatalogId: source.electrical_eq_catalog_id,
+    documents,
+    activities,
+    historyActionOverride: "CREATE",
+    historyReason: "Adicao de equipe em programacao existente.",
+    copiedFromProgrammingId: source.id,
+    historyMetadata: {
+      source: "programacao-api",
+      action: "ADD_TEAM",
+      sourceProgrammingId: source.id,
+      sourceTeamId: source.team_id,
+      targetTeamId,
+      sourceExecutionDate: source.execution_date,
+      sourceEtapaNumber: source.etapa_number,
+      sourceEtapaUnica: Boolean(source.etapa_unica),
+      sourceEtapaFinal: Boolean(source.etapa_final),
+    },
+  });
+
+  if (!saveResult.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: "reason" in saveResult ? saveResult.reason ?? null : null,
+        detail: "detail" in saveResult ? saveResult.detail ?? null : null,
+        message: saveResult.message ?? "Falha ao adicionar equipe a programacao.",
+      } satisfies AddTeamToProgrammingResponse,
+      { status: saveResult.status },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    id: saveResult.programmingId,
+    addedCount: 1,
+    message: `Equipe ${targetTeamName} adicionada a programacao.`,
+  } satisfies AddTeamToProgrammingResponse);
 }
 
 export async function saveProgrammingBatch(request: NextRequest) {

@@ -765,6 +765,9 @@ export function formatHistoryAction(action: string) {
   if (normalized === "RESCHEDULE") {
     return "Reprogramacao";
   }
+  if (normalized === "ADD_TEAM") {
+    return "Adicao de equipe";
+  }
   if (normalized === "CANCELADA") {
     return "Cancelamento";
   }

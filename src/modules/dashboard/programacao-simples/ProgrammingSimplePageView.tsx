@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 import styles from "./ProgrammingSimplePageView.module.css";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import {
+  ProgrammingAddTeamModal,
   ProgrammingAlertModal,
   ProgrammingCancelModal,
   ProgrammingCopyToDatesModal,
@@ -20,6 +21,7 @@ import {
   ProgrammingWeeklyCalendarPanel,
 } from "./components";
 import {
+  addTeamToProgramming,
   saveProgramming,
   saveProgrammingWorkCompletionStatus,
   validateProgrammingStageConflict,
@@ -152,6 +154,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [editChangeReasonCode, setEditChangeReasonCode] = useState("");
   const [editChangeReasonNotes, setEditChangeReasonNotes] = useState("");
   const [detailsTarget, setDetailsTarget] = useState<ScheduleItem | null>(null);
+  const [addTeamTarget, setAddTeamTarget] = useState<ScheduleItem | null>(null);
+  const [addTeamSelectedTeamId, setAddTeamSelectedTeamId] = useState("");
+  const [isAddingTeam, setIsAddingTeam] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
   const [isSavingWorkCompletionStatusFromModal, setIsSavingWorkCompletionStatusFromModal] = useState(false);
@@ -234,6 +239,41 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     () => new Map(workCompletionCatalog.map((item) => [item.code, item.label])),
     [workCompletionCatalog],
   );
+  const addTeamProjectCode = addTeamTarget
+    ? (projectMap.get(addTeamTarget.projectId)?.code ?? addTeamTarget.projectId)
+    : "";
+  const addTeamAvailableTeams = useMemo(() => {
+    if (!addTeamTarget) {
+      return [];
+    }
+
+    const existingTeamIds = new Set(
+      schedules
+        .filter((item) => {
+          const displayStatus = getDisplayProgrammingStatus(item);
+          if (!isActiveProgrammingStatus(displayStatus)) {
+            return false;
+          }
+
+          if (item.projectId !== addTeamTarget.projectId || item.date !== addTeamTarget.date) {
+            return false;
+          }
+
+          if (addTeamTarget.etapaNumber !== null) {
+            return item.etapaNumber === addTeamTarget.etapaNumber
+              && !item.etapaUnica
+              && !item.etapaFinal;
+          }
+
+          return item.etapaNumber === null
+            && item.etapaUnica === addTeamTarget.etapaUnica
+            && item.etapaFinal === addTeamTarget.etapaFinal;
+        })
+        .map((item) => item.teamId),
+    );
+
+    return teams.filter((team) => !existingTeamIds.has(team.id));
+  }, [addTeamTarget, schedules, teams]);
   const originalEditingTeamName = editingTeamId ? teamMap.get(editingTeamId)?.name ?? editingTeamId : "";
   const selectedEditingTeamId = isEditing ? form.teamIds[0] ?? "" : "";
   const selectedEditingTeamName = selectedEditingTeamId ? teamMap.get(selectedEditingTeamId)?.name ?? selectedEditingTeamId : "";
@@ -749,6 +789,145 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
     setFeedback(null);
+  }
+
+  function openAddTeamModal(schedule: ScheduleItem) {
+    const displayStatus = getDisplayProgrammingStatus(schedule);
+    if (!isActiveProgrammingStatus(displayStatus)) {
+      setFeedback({
+        type: "error",
+        message: "Somente programacoes ativas podem receber nova equipe.",
+      });
+      return;
+    }
+
+    const existingTeamIds = new Set(
+      schedules
+        .filter((item) => {
+          const itemStatus = getDisplayProgrammingStatus(item);
+          if (!isActiveProgrammingStatus(itemStatus)) {
+            return false;
+          }
+
+          if (item.projectId !== schedule.projectId || item.date !== schedule.date) {
+            return false;
+          }
+
+          if (schedule.etapaNumber !== null) {
+            return item.etapaNumber === schedule.etapaNumber && !item.etapaUnica && !item.etapaFinal;
+          }
+
+          return item.etapaNumber === null && item.etapaUnica === schedule.etapaUnica && item.etapaFinal === schedule.etapaFinal;
+        })
+        .map((item) => item.teamId),
+    );
+    const firstAvailableTeam = teams.find((team) => !existingTeamIds.has(team.id));
+
+    setAddTeamTarget(schedule);
+    setAddTeamSelectedTeamId(firstAvailableTeam?.id ?? "");
+    setFeedback(null);
+  }
+
+  function closeAddTeamModal() {
+    if (isAddingTeam) {
+      return;
+    }
+    setAddTeamTarget(null);
+    setAddTeamSelectedTeamId("");
+  }
+
+  async function confirmAddTeam() {
+    if (!addTeamTarget || !addTeamSelectedTeamId) {
+      setFeedback({ type: "error", message: "Selecione uma equipe para adicionar." });
+      return;
+    }
+
+    const initialAccessToken = await resolveLatestAccessToken();
+    if (!initialAccessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para adicionar equipe." });
+      return;
+    }
+
+    setIsAddingTeam(true);
+    setFeedback(null);
+
+    try {
+      const executeAddTeamRequest = (token: string) => addTeamToProgramming({
+        accessToken: token,
+        sourceProgrammingId: addTeamTarget.id,
+        targetTeamId: addTeamSelectedTeamId,
+        expectedUpdatedAt: addTeamTarget.updatedAt,
+      });
+
+      let addResult = await executeAddTeamRequest(initialAccessToken);
+      if (addResult.status === 401) {
+        const refreshedAccessToken = await resolveLatestAccessToken();
+        if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
+          addResult = await executeAddTeamRequest(refreshedAccessToken);
+        }
+      }
+
+      const { data } = addResult;
+      if (!addResult.ok || !data.success) {
+        const message = buildConflictFeedbackMessage(data, "Falha ao adicionar equipe.");
+        setFeedback({ type: "error", message });
+        if (data.hasConflict && data.teams?.length) {
+          setStageConflictModal({
+            enteredEtapaNumber: data.enteredEtapaNumber ?? addTeamTarget.etapaNumber ?? 0,
+            highestStage: data.highestStage ?? 0,
+            teams: data.teams,
+          });
+        }
+        if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
+          openProjectCompletedAlertModal({
+            title: "Projeto concluido",
+            payload: data,
+          });
+        } else {
+          openAlertModal("Falha ao adicionar equipe", message);
+        }
+        await logError("Falha ao adicionar equipe a programacao.", undefined, {
+          operation: "add_team_to_programming",
+          sourceProgrammingId: addTeamTarget.id,
+          targetTeamId: addTeamSelectedTeamId,
+          responseStatus: addResult.status,
+          responseMessage: message,
+          responseReason: data.reason ?? null,
+        });
+        return;
+      }
+
+      const successMessage = data.message ?? "Equipe adicionada a programacao.";
+      setFeedback({ type: "success", message: successMessage });
+      setAddTeamTarget(null);
+      setAddTeamSelectedTeamId("");
+
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) {
+          applyBoardSnapshot(boardData);
+        }
+      } catch (refreshError) {
+        await logError("Equipe adicionada, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          operation: "refresh_after_add_team_to_programming",
+          sourceProgrammingId: addTeamTarget.id,
+          targetTeamId: addTeamSelectedTeamId,
+        });
+        setFeedback({
+          type: "success",
+          message: `${successMessage} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+        });
+      }
+    } catch (error) {
+      setFeedback({ type: "error", message: "Falha ao adicionar equipe." });
+      await logError("Falha ao adicionar equipe a programacao.", error, {
+        operation: "add_team_to_programming",
+        sourceProgrammingId: addTeamTarget.id,
+        targetTeamId: addTeamSelectedTeamId,
+      });
+    } finally {
+      setIsAddingTeam(false);
+    }
   }
 
   function cancelEditMode() {
@@ -1879,6 +2058,31 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                               </button>
                               <button
                                 type="button"
+                                className={`${styles.actionButton} ${styles.actionCopy}`}
+                                onClick={() => openAddTeamModal(schedule)}
+                                title="Adicionar equipe"
+                                aria-label={`Adicionar equipe a programacao ${project?.code ?? schedule.id}`}
+                                disabled={!isActiveProgrammingStatus(displayStatus)}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path
+                                    d="M15.5 6.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <path
+                                    d="M4.5 20a7.5 7.5 0 0 1 15 0M18.5 8.5v5M16 11h5"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
                                 className={`${styles.actionButton} ${styles.actionPostpone}`}
                                 onClick={() => openPostponeModal(schedule)}
                                 title="Adiar"
@@ -2024,6 +2228,16 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         onTeamToggle={toggleCopyToDatesTeam}
         onSelectAllTeams={selectAllCopyToDatesTeams}
         onClearTeams={clearCopyToDatesTeams}
+      />
+      <ProgrammingAddTeamModal
+        target={addTeamTarget}
+        projectCode={addTeamProjectCode}
+        availableTeams={addTeamAvailableTeams}
+        selectedTeamId={addTeamSelectedTeamId}
+        isSubmitting={isAddingTeam}
+        onClose={closeAddTeamModal}
+        onConfirm={() => void confirmAddTeam()}
+        onTeamChange={setAddTeamSelectedTeamId}
       />
       <ProgrammingCancelModal
         target={cancelTarget}

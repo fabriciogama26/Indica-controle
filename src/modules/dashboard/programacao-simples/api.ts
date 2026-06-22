@@ -1,4 +1,5 @@
 import type {
+  AddTeamToProgrammingResponse,
   ActivityCatalogResponse,
   BatchCreateResponse,
   CopyProgrammingToDatesResponse,
@@ -293,6 +294,33 @@ export async function saveProgrammingWorkCompletionStatus(params: {
     status: response.status,
     ok: response.ok,
     data: await readJson<SaveProgrammingResponse>(response),
+  };
+}
+
+export async function addTeamToProgramming(params: {
+  accessToken: string;
+  sourceProgrammingId: string;
+  targetTeamId: string;
+  expectedUpdatedAt: string;
+}) {
+  const response = await fetch("/api/programacao", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(params.accessToken),
+    },
+    body: JSON.stringify({
+      action: "ADD_TEAM",
+      sourceProgrammingId: params.sourceProgrammingId,
+      targetTeamId: params.targetTeamId,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+    }),
+  });
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data: await readJson<AddTeamToProgrammingResponse>(response),
   };
 }
 
