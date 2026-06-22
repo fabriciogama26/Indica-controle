@@ -1517,7 +1517,7 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
     if (!anticipatedStagesResult.ok) {
       return NextResponse.json(
         {
-          message: `Programacao salva como CONCLUIDO, mas houve falha ao atualizar etapas futuras para ANTECIPADA. ${anticipatedStagesResult.message}`,
+          message: `Programacao salva como CONCLUIDO, mas houve falha ao atualizar etapas futuras para ANTECIPADO. ${anticipatedStagesResult.message}`,
           reason: anticipatedStagesResult.reason ?? null,
           detail: "detail" in anticipatedStagesResult ? anticipatedStagesResult.detail ?? null : null,
         },

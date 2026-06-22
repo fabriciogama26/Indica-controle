@@ -1,5 +1,5 @@
 -- 255_add_anticipated_work_completion_status.sql
--- Adiciona Estado Trabalho ANTECIPADA ao catalogo por tenant para conclusao antes da etapa final.
+-- Adiciona Estado Trabalho ANTECIPADO ao catalogo por tenant para conclusao antes da etapa final.
 
 insert into public.programming_work_completion_catalog (
   tenant_id,
@@ -10,8 +10,8 @@ insert into public.programming_work_completion_catalog (
 )
 select
   t.id,
-  'ANTECIPADA',
-  'ANTECIPADA',
+  'ANTECIPADO',
+  'ANTECIPADO',
   true,
   15
 from public.tenants t
@@ -21,6 +21,25 @@ set
   is_active = true,
   sort_order = excluded.sort_order,
   updated_at = now();
+
+update public.project_programming pp
+set
+  work_completion_status = 'ANTECIPADO',
+  updated_at = now()
+where public.normalize_programming_work_completion_code(pp.work_completion_status) = 'ANTECIPADA';
+
+update public.project_measurement_orders pmo
+set
+  programming_completion_status_snapshot = 'ANTECIPADO',
+  updated_at = now()
+where public.normalize_programming_work_completion_code(pmo.programming_completion_status_snapshot) = 'ANTECIPADA';
+
+update public.programming_work_completion_catalog c
+set
+  is_active = false,
+  sort_order = greatest(c.sort_order, 900),
+  updated_at = now()
+where c.code = 'ANTECIPADA';
 
 create or replace function public.mark_project_programming_future_stages_anticipated(
   p_tenant_id uuid,
@@ -59,7 +78,7 @@ begin
   into v_catalog_code
   from public.programming_work_completion_catalog c
   where c.tenant_id = p_tenant_id
-    and c.code = 'ANTECIPADA'
+    and c.code = 'ANTECIPADO'
     and c.is_active = true
   limit 1;
 
@@ -68,7 +87,7 @@ begin
       'success', false,
       'status', 409,
       'reason', 'ANTICIPATED_WORK_COMPLETION_STATUS_NOT_ACTIVE',
-      'message', 'Estado Trabalho ANTECIPADA nao esta ativo no catalogo do tenant atual.'
+      'message', 'Estado Trabalho ANTECIPADO nao esta ativo no catalogo do tenant atual.'
     );
   end if;
 
@@ -176,8 +195,8 @@ begin
     'affected_count', v_affected_count,
     'updated_programming_ids', v_updated_ids,
     'message', case
-      when v_affected_count = 0 then 'Nenhuma etapa futura ativa precisava ser marcada como ANTECIPADA.'
-      else 'Etapas futuras marcadas como ANTECIPADA.'
+      when v_affected_count = 0 then 'Nenhuma etapa futura ativa precisava ser marcada como ANTECIPADO.'
+      else 'Etapas futuras marcadas como ANTECIPADO.'
     end
   );
 exception
@@ -197,7 +216,7 @@ exception
       'success', false,
       'status', coalesce((v_structured_error ->> 'status')::integer, 500),
       'reason', coalesce(v_structured_error ->> 'reason', 'MARK_FUTURE_STAGES_ANTICIPATED_FAILED'),
-      'message', coalesce(v_structured_error ->> 'message', 'Falha ao marcar etapas futuras como ANTECIPADA.'),
+      'message', coalesce(v_structured_error ->> 'message', 'Falha ao marcar etapas futuras como ANTECIPADO.'),
       'detail', case
         when v_structured_error is null then sqlerrm
         else coalesce(v_structured_error ->> 'detail', v_structured_error ->> 'message')
