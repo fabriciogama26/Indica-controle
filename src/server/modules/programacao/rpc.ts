@@ -422,7 +422,7 @@ export async function markFutureProgrammingStagesAnticipatedViaRpc(params: {
         status: 409,
         reason: "ANTICIPATED_STAGES_RPC_NOT_AVAILABLE",
         message:
-          "Seu ambiente ainda nao suporta atualizacao de etapas futuras para ANTECIPADA. Aplique a migration 255.",
+          "Seu ambiente ainda nao suporta atualizacao de etapas futuras para ANTECIPADO. Aplique a migration 255.",
       } as const;
     }
 
@@ -431,8 +431,8 @@ export async function markFutureProgrammingStagesAnticipatedViaRpc(params: {
       status: 500,
       reason: "ANTICIPATED_STAGES_RPC_FAILED",
       message: error.message
-        ? `Falha ao atualizar etapas futuras para ANTECIPADA: ${error.message}`
-        : "Falha ao atualizar etapas futuras para ANTECIPADA.",
+        ? `Falha ao atualizar etapas futuras para ANTECIPADO: ${error.message}`
+        : "Falha ao atualizar etapas futuras para ANTECIPADO.",
     } as const;
   }
 
@@ -452,7 +452,7 @@ export async function markFutureProgrammingStagesAnticipatedViaRpc(params: {
       status: Number(result.status ?? 400),
       reason: result.reason ?? null,
       detail: result.detail ?? null,
-      message: result.message ?? "Falha ao atualizar etapas futuras para ANTECIPADA.",
+      message: result.message ?? "Falha ao atualizar etapas futuras para ANTECIPADO.",
     } as const;
   }
 
@@ -462,7 +462,7 @@ export async function markFutureProgrammingStagesAnticipatedViaRpc(params: {
     updatedProgrammingIds: Array.isArray(result.updated_programming_ids)
       ? result.updated_programming_ids.map((item) => normalizeText(item)).filter(Boolean)
       : [],
-    message: result.message ?? "Etapas futuras atualizadas como ANTECIPADA.",
+    message: result.message ?? "Etapas futuras atualizadas como ANTECIPADO.",
   } as const;
 }
 
