@@ -292,7 +292,7 @@ Filtros, auto-complete e listagem
     - `NÚMERO SGD` = numero do `SGD` normalizado com separador ` / `.
     - `Nº EQ (RE, CO,CF, CC ou TR)` = `Nº EQ - Numero + codigo do Nº EQ` (ex.: `12345678#FACA`).
     - `Período` no export novo = `MANHÃ` (`07:00` a `12:00`), `TARDE` (inicio `>= 13:00`) ou `INTEGRAL`.
-    - `STATUS` no export novo = prioridade para `Estado Trabalho` (`CONCLUÍDO`/`PARCIAL`); sem `Estado Trabalho`, usa status operacional (`PROGRAMADO`, `REPROGRAMADA`, `ADIADO`, `CANCELADO`).
+    - `STATUS` no export novo = somente status operacional (`PROGRAMADO`, `REPROGRAMADA`, `ADIADO`, `CANCELADO`); `Estado Trabalho` nao preenche esta coluna.
     - `Descrição do serviço` prioriza o valor da Programacao e, se vazio, usa o valor de Projetos.
   - Paginacao local com `Anterior/Proxima`.
 - Calendario semanal de visualizacao (somente na rota `/programacao-visualizacao`):
@@ -1891,6 +1891,22 @@ Atualizacao 2026-06-21 - Vínculo estruturado origem -> copia no COPY_TO_DATES
 - Multi-tenant:
   - A RPC valida a origem por `tenant_id`.
   - A FK composta `pp_copied_from_tenant_fk` impede vinculo cruzado entre tenants.
+
+Atualizacao 2026-06-22 - STATUS da Extracao ENEL NOVO sem Estado Trabalho
+----------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `resolveEnelNovoStatus`: passa a montar a coluna `STATUS` somente pelo status operacional da programacao.
+- Comportamento antes/depois:
+  - Antes: a coluna `STATUS` da `Extracao ENEL NOVO` priorizava `Estado Trabalho`, permitindo saidas como `CONCLUIDO` e `PARCIAL`.
+  - Depois: a coluna `STATUS` da `Extracao ENEL NOVO` exibe somente `PROGRAMADO`, `REPROGRAMADA`, `ADIADO` ou `CANCELADO`.
+  - Depois: `Estado Trabalho` permanece fora da coluna `STATUS`; `INFO STATUS` continua sendo calculado por etapa.
+- Multi-tenant:
+  - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
+  - A exportacao continua usando somente dados ja carregados por `/api/programacao`, filtrados por `tenant_id` no backend.
 
 Atualizacao 2026-06-18 - Copiar programacao com selecao de equipes por data
 ----------------------------------------------------------------------------

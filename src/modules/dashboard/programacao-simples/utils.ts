@@ -344,16 +344,6 @@ export function extractTextBeforeDash(value: string | null | undefined) {
 }
 
 export function resolveEnelNovoStatus(schedule: ScheduleItem) {
-  const normalizedWorkCompletionStatus = normalizeWorkCompletionCode(schedule.workCompletionStatus);
-
-  if (normalizedWorkCompletionStatus === "CONCLUIDO") {
-    return "CONCLUÍDO";
-  }
-
-  if (normalizedWorkCompletionStatus === "PARCIAL") {
-    return "PARCIAL";
-  }
-
   const displayStatus = getDisplayProgrammingStatus(schedule);
   switch (displayStatus) {
     case "ADIADA":
