@@ -2,6 +2,7 @@
 - [x] Criar SQL read-only de auditoria para Estado Trabalho em branco na Programacao, com resumo por tenant/status/projeto, detalhe com causa provavel e sugestao de preenchimento sem alterar dados.
 - [x] Padronizar Estado Trabalho antecipado como `ANTECIPADO`, migrando referencias antigas de `ANTECIPADA`, desativando o catalogo legado e mantendo auditoria para localizar duplicidades visuais.
 - [x] Adicionar regra de Estado Trabalho `ANTECIPADO` na Programacao Simples: ao salvar uma etapa como `CONCLUIDO`, a propria etapa permanece `CONCLUIDO` e as etapas ativas posteriores do mesmo projeto (`etapa_number` maior) sao atualizadas para `ANTECIPADO` via RPC com historico.
+- [x] Criar acao `Adicionar equipe` na Programacao Simples para incluir nova equipe em uma programacao ativa existente, copiando a linha modelo sem substituir a equipe original.
 - [x] Ajustar o `Adiar` da Programacao Simples para operar por `Projeto + Data`: criado `postpone_project_programming_group`, `PATCH /api/programacao` passa a adiar todas as equipes ativas do mesmo projeto/data em uma unica transacao, com rollback total se qualquer linha falhar.
 - [x] Corrigir `COPY_TO_DATES` da Programacao Simples com selecao de equipes para herdar o ultimo `Estado Trabalho` valido do projeto, usando `PARCIAL` como fallback quando nao houver historico valido.
 - [x] Adicionar cancelamento por escopo na Programacao Simples: modal permite cancelar somente a equipe clicada ou todas as equipes ativas do mesmo Projeto + Data via RPC transacional `cancel_project_programming_group`.

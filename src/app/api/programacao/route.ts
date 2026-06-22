@@ -90,6 +90,7 @@ import {
   startOfWeekMonday,
 } from "@/server/modules/programacao/normalizers";
 import {
+  addTeamToProgramming,
   authorizeProgrammingAction,
   copyProgramming,
   copyProgrammingToDates,
@@ -490,6 +491,16 @@ export async function POST(request: NextRequest) {
     });
 
     return copyProgrammingToDates(clonedRequest);
+  }
+
+  if (normalizedAction === "ADD_TEAM") {
+    const clonedRequest = new NextRequest(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(body),
+    });
+
+    return addTeamToProgramming(clonedRequest);
   }
 
   if (normalizedAction === "BATCH_CREATE") {

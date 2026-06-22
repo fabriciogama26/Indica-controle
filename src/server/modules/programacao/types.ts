@@ -248,6 +248,13 @@ export type CopyProgrammingToDatesPayload = {
   }>;
 };
 
+export type AddTeamToProgrammingPayload = {
+  action?: "ADD_TEAM";
+  sourceProgrammingId?: string;
+  targetTeamId?: string;
+  expectedUpdatedAt?: string;
+};
+
 export type BatchCreateProgrammingPayload = {
   action?: "BATCH_CREATE";
   projectId?: string;
@@ -341,6 +348,19 @@ export type CopyProgrammingToDatesResponse = {
   copyBatchId?: string | null;
   copyBatchIds?: string[];
   sourceCount?: number;
+  message?: string;
+  reason?: string | null;
+  detail?: string | null;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: ProgrammingStageValidationTeamSummary[];
+};
+
+export type AddTeamToProgrammingResponse = {
+  success?: boolean;
+  id?: string;
+  addedCount?: number;
   message?: string;
   reason?: string | null;
   detail?: string | null;

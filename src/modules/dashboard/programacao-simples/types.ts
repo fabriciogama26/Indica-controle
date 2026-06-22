@@ -239,6 +239,19 @@ export type CopyProgrammingToDatesResponse = {
   teams?: StageValidationTeamSummary[];
 };
 
+export type AddTeamToProgrammingResponse = {
+  success?: boolean;
+  id?: string;
+  addedCount?: number;
+  message?: string;
+  reason?: string | null;
+  detail?: string | null;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: StageValidationTeamSummary[];
+};
+
 export type HistoryChange = {
   from: string | null;
   to: string | null;

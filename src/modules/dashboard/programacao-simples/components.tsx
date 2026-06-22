@@ -1530,6 +1530,100 @@ export function ProgrammingCopyToDatesModal(props: {
   );
 }
 
+export function ProgrammingAddTeamModal(props: {
+  target: ScheduleItem | null;
+  projectCode: string;
+  availableTeams: TeamItem[];
+  selectedTeamId: string;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onTeamChange: (teamId: string) => void;
+}) {
+  const {
+    target,
+    projectCode,
+    availableTeams,
+    selectedTeamId,
+    isSubmitting,
+    onClose,
+    onConfirm,
+    onTeamChange,
+  } = props;
+
+  if (!target) {
+    return null;
+  }
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <div className={styles.modalTitleBlock}>
+            <h4>Adicionar equipe</h4>
+            <p className={styles.modalSubtitle}>
+              {projectCode} | {formatDate(target.date)} | ETAPA {target.etapaNumber ?? "-"}
+            </p>
+          </div>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>
+            Fechar
+          </button>
+        </header>
+
+        <div className={styles.modalBody}>
+          <p>
+            A nova equipe recebera os mesmos dados da programacao selecionada.
+          </p>
+
+          <div className={styles.copyTeamPicker}>
+            <div className={styles.copyTeamPickerHeader}>
+              <span>
+                Equipe <span className="requiredMark">*</span>
+              </span>
+            </div>
+            <div className={styles.copyTeamList}>
+              {availableTeams.length ? (
+                availableTeams.map((team) => (
+                  <label key={team.id} className={styles.copyTeamOption}>
+                    <input
+                      type="radio"
+                      name="add-team-to-programming"
+                      checked={selectedTeamId === team.id}
+                      onChange={() => onTeamChange(team.id)}
+                      disabled={isSubmitting}
+                    />
+                    <span>
+                      <strong>{team.name}</strong>
+                      <small>{team.foremanName || "Sem encarregado"}</small>
+                      <small>{team.serviceCenterName || "-"}</small>
+                    </span>
+                  </label>
+                ))
+              ) : (
+                <p className={styles.emptyHint}>Nenhuma equipe ativa disponivel para adicionar neste grupo.</p>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onConfirm}
+              disabled={isSubmitting || !selectedTeamId || !availableTeams.length}
+            >
+              {isSubmitting ? "Adicionando..." : "Adicionar equipe"}
+            </button>
+            <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>
+  );
+}
+
 export function ProgrammingCancelModal(props: {
   target: ScheduleItem | null;
   reasonOptions: ProgrammingReasonOptionItem[];
