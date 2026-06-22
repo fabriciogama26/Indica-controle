@@ -665,3 +665,9 @@ Observacao
 - Cadastra `apuracao-fator-minimo` em `app_pages` com `default_user_access = false`.
 - Preenche permissoes ausentes liberando somente perfis administrativos por padrao.
 - Adiciona indice em `project_measurement_order_items` por `tenant_id`, `service_activity_id`, `is_active` e `measurement_order_id` para apoiar a simulacao filtrada por codigo de servico.
+
+255_add_anticipated_work_completion_status.sql
+- Adiciona `ANTECIPADA` ao catalogo `programming_work_completion_catalog` de todos os tenants.
+- Cria `mark_project_programming_future_stages_anticipated` para marcar etapas ativas posteriores do mesmo projeto como `ANTECIPADA` quando uma etapa atual for salva como `CONCLUIDO`.
+- Registra historico operacional para cada linha alterada, preservando escopo por `tenant_id + project_id + etapa_number`.
+- Mantem EXECUTE restrito a `service_role`.

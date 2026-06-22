@@ -1884,6 +1884,30 @@ Atualizacao 2026-06-21 - Vínculo estruturado origem -> copia no COPY_TO_DATES
   - A RPC valida a origem por `tenant_id`.
   - A FK composta `pp_copied_from_tenant_fk` impede vinculo cruzado entre tenants.
 
+Atualizacao 2026-06-22 - Estado Trabalho ANTECIPADA
+----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `supabase/migrations/255_add_anticipated_work_completion_status.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `markFutureProgrammingStagesAnticipatedViaRpc`: novo wrapper server-side para marcar etapas posteriores como `ANTECIPADA`.
+  - `mark_project_programming_future_stages_anticipated`: nova RPC que localiza etapas ativas do mesmo projeto com `etapa_number` maior que a etapa concluida, atualiza `Estado Trabalho` e registra historico.
+  - `saveProgramming`: apos salvar uma edicao com `Estado Trabalho = CONCLUIDO`, chama a RPC de antecipacao das etapas posteriores.
+  - Catalogo `programming_work_completion_catalog`: recebe o codigo `ANTECIPADA` por tenant.
+- Comportamento antes/depois:
+  - Antes: marcar `CONCLUIDO` em uma etapa intermediaria fazia o projeto inteiro entrar na trava de concluido, bloqueando programacoes, adiamentos, cancelamentos e edicoes normais.
+  - Depois: se o usuario salvar a etapa 5 como `CONCLUIDO`, a etapa 5 permanece `CONCLUIDO` e etapas ativas posteriores do mesmo projeto, por exemplo 6 e 7, passam para `ANTECIPADA`.
+  - Depois: a atualizacao automatica afeta somente etapas com `etapa_number` maior, status `PROGRAMADA`/`REPROGRAMADA` e mesmo tenant/projeto.
+- Multi-tenant:
+  - A RPC recebe `tenant_id` resolvido pela API autenticada.
+  - O codigo `ANTECIPADA` e validado no catalogo ativo do tenant antes da atualizacao.
+  - A migration nao cria policy nem permissao de `DELETE`; EXECUTE da RPC fica restrito a `service_role`.
+
 Atualizacao 2026-06-22 - Prazos das Obras movido para Mapa de Programacao
 -----------------------------------------------------------------------------
 - Arquivos alterados:
