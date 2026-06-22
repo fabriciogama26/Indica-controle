@@ -400,6 +400,72 @@ export async function resolveProgrammingEqCatalog(params: {
   return data;
 }
 
+export async function markFutureProgrammingStagesAnticipatedViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  sourceProgrammingId: string;
+  sourceEtapaNumber: number;
+}) {
+  const rpcName = "mark_project_programming_future_stages_anticipated";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_source_programming_id: params.sourceProgrammingId,
+    p_source_etapa_number: params.sourceEtapaNumber,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "ANTICIPATED_STAGES_RPC_NOT_AVAILABLE",
+        message:
+          "Seu ambiente ainda nao suporta atualizacao de etapas futuras para ANTECIPADA. Aplique a migration 255.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      reason: "ANTICIPATED_STAGES_RPC_FAILED",
+      message: error.message
+        ? `Falha ao atualizar etapas futuras para ANTECIPADA: ${error.message}`
+        : "Falha ao atualizar etapas futuras para ANTECIPADA.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as {
+    success?: boolean;
+    status?: number;
+    message?: string;
+    reason?: string | null;
+    detail?: string | null;
+    affected_count?: number;
+    updated_programming_ids?: string[];
+  };
+
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      reason: result.reason ?? null,
+      detail: result.detail ?? null,
+      message: result.message ?? "Falha ao atualizar etapas futuras para ANTECIPADA.",
+    } as const;
+  }
+
+  return {
+    ok: true,
+    affectedCount: Number(result.affected_count ?? 0),
+    updatedProgrammingIds: Array.isArray(result.updated_programming_ids)
+      ? result.updated_programming_ids.map((item) => normalizeText(item)).filter(Boolean)
+      : [],
+    message: result.message ?? "Etapas futuras atualizadas como ANTECIPADA.",
+  } as const;
+}
+
 // Legacy compatibility helper kept for staged rollback support in partially migrated environments.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function setProgrammingEnelFieldsViaRpc(params: {

@@ -1,4 +1,5 @@
 - [x] Estruturar o frontend do SaaS em `SaaS (Web)/` com Next.js 16, React 19, TypeScript e App Router.
+- [x] Adicionar regra de Estado Trabalho `ANTECIPADA` na Programacao Simples: ao salvar uma etapa como `CONCLUIDO`, a propria etapa permanece `CONCLUIDO` e as etapas ativas posteriores do mesmo projeto (`etapa_number` maior) sao atualizadas para `ANTECIPADA` via RPC com historico.
 - [x] Ajustar o `Adiar` da Programacao Simples para operar por `Projeto + Data`: criado `postpone_project_programming_group`, `PATCH /api/programacao` passa a adiar todas as equipes ativas do mesmo projeto/data em uma unica transacao, com rollback total se qualquer linha falhar.
 - [x] Corrigir `COPY_TO_DATES` da Programacao Simples com selecao de equipes para herdar o ultimo `Estado Trabalho` valido do projeto, usando `PARCIAL` como fallback quando nao houver historico valido.
 - [x] Adicionar cancelamento por escopo na Programacao Simples: modal permite cancelar somente a equipe clicada ou todas as equipes ativas do mesmo Projeto + Data via RPC transacional `cancel_project_programming_group`.

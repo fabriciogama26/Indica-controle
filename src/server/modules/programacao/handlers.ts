@@ -21,6 +21,7 @@ import type {
   WorkCompletionStatusRpcResult,
 } from "./types";
 import {
+  markFutureProgrammingStagesAnticipatedViaRpc,
   resolveInitialProjectWorkCompletionStatus,
   resolveProgrammingEqCatalog,
   resolveProgrammingSgdType,
@@ -1503,6 +1504,27 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
   } as const;
 
   const persistedProgrammingId = saveResult.programmingId;
+
+  if (method === "PUT" && isCompletedWorkStatus(normalizedWorkCompletionStatus) && etapaNumber !== null) {
+    const anticipatedStagesResult = await markFutureProgrammingStagesAnticipatedViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      sourceProgrammingId: persistedProgrammingId,
+      sourceEtapaNumber: etapaNumber,
+    });
+
+    if (!anticipatedStagesResult.ok) {
+      return NextResponse.json(
+        {
+          message: `Programacao salva como CONCLUIDO, mas houve falha ao atualizar etapas futuras para ANTECIPADA. ${anticipatedStagesResult.message}`,
+          reason: anticipatedStagesResult.reason ?? null,
+          detail: "detail" in anticipatedStagesResult ? anticipatedStagesResult.detail ?? null : null,
+        },
+        { status: anticipatedStagesResult.status },
+      );
+    }
+  }
 
   if (method === "PUT" && !electricalField) {
     const { error: clearElectricalFieldError } = await resolution.supabase
