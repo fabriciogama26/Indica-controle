@@ -5,6 +5,29 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { downloadCsvFile } from "@/lib/utils/csv";
+import {
+  ProgrammingDeadlineModal,
+  ProgrammingDeadlinePanel,
+} from "@/modules/dashboard/programacao-simples/components";
+import {
+  DEADLINE_CAROUSEL_PAGE_SIZE,
+  DEADLINE_WINDOW_EXTENDED_DAYS,
+  DEADLINE_WINDOW_LONG_DAYS,
+  DEADLINE_WINDOW_MAX_DAYS,
+  DEADLINE_WINDOW_SHORT_DAYS,
+} from "@/modules/dashboard/programacao-simples/constants";
+import { buildDeadlineCsvContent } from "@/modules/dashboard/programacao-simples/exports";
+import {
+  formatDeadlineStatusLabel,
+  resolveDeadlineStatus,
+  resolveDeadlineVisualVariant,
+} from "@/modules/dashboard/programacao-simples/utils";
+import type {
+  DeadlineStatus,
+  DeadlineViewMode,
+} from "@/modules/dashboard/programacao-simples/types";
 import styles from "./MapProgrammingPageView.module.css";
 
 type ProjectSituationKey =
@@ -116,6 +139,15 @@ function addDays(date: string, amount: number) {
   return toIsoDate(value);
 }
 
+function diffInDays(targetDate: string, baseDate: string) {
+  const target = Date.parse(`${targetDate}T00:00:00.000Z`);
+  const base = Date.parse(`${baseDate}T00:00:00.000Z`);
+  if (!Number.isFinite(target) || !Number.isFinite(base)) {
+    return null;
+  }
+  return Math.round((target - base) / 86_400_000);
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return "-";
@@ -138,6 +170,21 @@ function formatDaysSince(value: number | null) {
   if (value === 0) return "hoje";
   if (value === 1) return "ha 1 dia";
   return `ha ${value} dias`;
+}
+
+function resolveDeadlineWindowDays(viewMode: DeadlineViewMode) {
+  if (viewMode === "90") return DEADLINE_WINDOW_MAX_DAYS;
+  if (viewMode === "60") return DEADLINE_WINDOW_EXTENDED_DAYS;
+  if (viewMode === "30") return DEADLINE_WINDOW_LONG_DAYS;
+  return DEADLINE_WINDOW_SHORT_DAYS;
+}
+
+function formatDeadlineRangeLabel(daysDiff: number) {
+  if (daysDiff < 0) return "Vencida";
+  if (daysDiff <= DEADLINE_WINDOW_SHORT_DAYS) return "Ate 15 dias";
+  if (daysDiff <= DEADLINE_WINDOW_LONG_DAYS) return "16 a 30 dias";
+  if (daysDiff <= DEADLINE_WINDOW_EXTENDED_DAYS) return "31 a 60 dias";
+  return "61 a 90 dias";
 }
 
 function getPriorityLabel(value: PriorityLevel) {
@@ -203,8 +250,13 @@ export function MapProgrammingPageView() {
   const [selectedCardPage, setSelectedCardPage] = useState(1);
   const [priorityPage, setPriorityPage] = useState(1);
   const [neverProgrammedPage, setNeverProgrammedPage] = useState(1);
+  const [deadlineViewMode, setDeadlineViewMode] = useState<DeadlineViewMode>("15");
+  const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
+  const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
+  const [isExportingDeadlineModal, setIsExportingDeadlineModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const deadlineModalExportCooldown = useExportCooldown();
 
   const accessToken = session?.accessToken ?? "";
 
@@ -305,12 +357,120 @@ export function MapProgrammingPageView() {
     () => filterProjects(data?.neverProgrammedProjects ?? []),
     [data, filterProjects],
   );
+  const portfolioProjects = useMemo(
+    () => statusCards.find((card) => card.key === "PORTFOLIO")?.projects ?? [],
+    [statusCards],
+  );
+  const deadlineWindowDays = useMemo(
+    () => resolveDeadlineWindowDays(deadlineViewMode),
+    [deadlineViewMode],
+  );
+  const deadlineProjects = useMemo(() => {
+    return filterProjects(portfolioProjects)
+      .map((project) => {
+        const executionDeadline = project.executionDeadline.trim();
+        if (project.completed || !executionDeadline || !/^\d{4}-\d{2}-\d{2}$/.test(executionDeadline)) {
+          return null;
+        }
+
+        const daysDiff = diffInDays(executionDeadline, today);
+        if (daysDiff === null) {
+          return null;
+        }
+
+        return {
+          id: project.id,
+          sob: project.sob,
+          serviceCenter: project.serviceCenter || "Sem base",
+          priority: project.priority || "Sem prioridade",
+          workType: project.serviceType || "Sem tipo",
+          executionDeadline,
+          latestProgrammingDate: project.latestDate,
+          reason: project.reason,
+          workCompletionStatus: project.latestWorkCompletionLabel === "Nao informado"
+            ? ""
+            : project.latestWorkCompletionLabel,
+          daysDiff,
+        };
+      })
+      .filter((item): item is {
+        id: string;
+        sob: string;
+        serviceCenter: string;
+        priority: string;
+        workType: string;
+        executionDeadline: string;
+        latestProgrammingDate: string;
+        reason: string;
+        workCompletionStatus: string;
+        daysDiff: number;
+      } => Boolean(item));
+  }, [filterProjects, portfolioProjects, today]);
+  const deadlineSummary = useMemo(() => {
+    const overdue = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "OVERDUE").length;
+    const dueToday = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "TODAY").length;
+    const dueSoon = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "SOON").length;
+    const normal = deadlineProjects.filter((item) => resolveDeadlineStatus(item.daysDiff, deadlineWindowDays) === "NORMAL").length;
+
+    return { overdue, dueToday, dueSoon, normal };
+  }, [deadlineProjects, deadlineWindowDays]);
+  const deadlineSobCards = useMemo(() => {
+    const priorityByStatus: Record<DeadlineStatus, number> = {
+      TODAY: 0,
+      SOON: 1,
+      OVERDUE: 2,
+      NORMAL: 3,
+    };
+
+    return deadlineProjects
+      .filter((item) => item.daysDiff <= deadlineWindowDays)
+      .map((item) => {
+        const deadlineStatus = resolveDeadlineStatus(item.daysDiff, deadlineWindowDays);
+        return {
+          ...item,
+          deadlineStatus,
+          visualVariant: resolveDeadlineVisualVariant(item.daysDiff, deadlineWindowDays),
+          statusLabel: formatDeadlineStatusLabel(item.daysDiff, deadlineWindowDays),
+          rangeLabel: formatDeadlineRangeLabel(item.daysDiff),
+        };
+      })
+      .sort((left, right) => {
+        const priorityDiff = priorityByStatus[left.deadlineStatus] - priorityByStatus[right.deadlineStatus];
+        if (priorityDiff !== 0) return priorityDiff;
+        if (left.daysDiff === right.daysDiff) return left.sob.localeCompare(right.sob);
+        if (left.deadlineStatus === "OVERDUE") return right.daysDiff - left.daysDiff;
+        return left.daysDiff - right.daysDiff;
+      });
+  }, [deadlineProjects, deadlineWindowDays]);
+  const deadlineSobPages = useMemo(() => {
+    const pages: Array<typeof deadlineSobCards> = [];
+    for (let start = 0; start < deadlineSobCards.length; start += DEADLINE_CAROUSEL_PAGE_SIZE) {
+      pages.push(deadlineSobCards.slice(start, start + DEADLINE_CAROUSEL_PAGE_SIZE));
+    }
+    return pages;
+  }, [deadlineSobCards]);
+  const totalDeadlineCarouselPages = Math.max(1, deadlineSobPages.length);
+  const deadlineWindowHeading = `SOB com vencimento ate ${deadlineWindowDays} dias`;
 
   useEffect(() => {
     setPriorityPage(1);
     setNeverProgrammedPage(1);
     setSelectedCardPage(1);
   }, [activeFilters.projectSearch, activeFilters.serviceCenter]);
+
+  useEffect(() => {
+    setDeadlineCarouselPage(0);
+  }, [activeFilters.projectSearch, activeFilters.serviceCenter, deadlineViewMode]);
+
+  useEffect(() => {
+    setDeadlineCarouselPage((current) => {
+      if (!deadlineSobPages.length) return 0;
+      const lastPage = deadlineSobPages.length - 1;
+      if (current > lastPage) return lastPage;
+      if (current < 0) return 0;
+      return current;
+    });
+  }, [deadlineSobPages]);
 
   const filteredTeams = useMemo(() => {
     const search = normalizeSearch(activeFilters.teamSearch);
@@ -361,6 +521,39 @@ export function MapProgrammingPageView() {
     };
     setDraftFilters(nextFilters);
     setActiveFilters(nextFilters);
+  }
+
+  async function handleExportDeadlineModalCsv() {
+    if (!deadlineSobCards.length) {
+      setFeedback({ type: "error", message: "Nenhum prazo encontrado para exportar na janela selecionada." });
+      return;
+    }
+
+    if (!deadlineModalExportCooldown.tryStart()) {
+      setFeedback({
+        type: "error",
+        message: `Aguarde ${deadlineModalExportCooldown.getRemainingSeconds()}s antes de exportar novamente.`,
+      });
+      return;
+    }
+
+    setIsExportingDeadlineModal(true);
+    try {
+      const csv = buildDeadlineCsvContent({
+        items: deadlineSobCards,
+        deadlineWindowDays,
+      });
+      downloadCsvFile(csv, `prazos_obras_${deadlineWindowDays}dias_${today}.csv`);
+    } catch (error) {
+      setFeedback({ type: "error", message: "Falha ao exportar prazos das obras." });
+      await logError("Falha ao exportar prazos das obras.", error, {
+        operation: "export_deadline_csv",
+        deadlineWindowDays,
+        itemCount: deadlineSobCards.length,
+      });
+    } finally {
+      setIsExportingDeadlineModal(false);
+    }
   }
 
   function exportProjects(card: StatusCard, projects: MapProject[]) {
@@ -521,6 +714,22 @@ export function MapProgrammingPageView() {
         </article>
       </div>
 
+      <ProgrammingDeadlinePanel
+        summary={deadlineSummary}
+        windowHeading={deadlineWindowHeading}
+        viewMode={deadlineViewMode}
+        windowDays={deadlineWindowDays}
+        pages={deadlineSobPages}
+        carouselPage={deadlineCarouselPage}
+        totalPages={totalDeadlineCarouselPages}
+        onViewModeChange={setDeadlineViewMode}
+        onOpenModal={() => setIsDeadlineModalOpen(true)}
+        onPreviousPage={() => setDeadlineCarouselPage((current) => Math.max(0, current - 1))}
+        onNextPage={() =>
+          setDeadlineCarouselPage((current) => Math.min(totalDeadlineCarouselPages - 1, current + 1))
+        }
+      />
+
       <div className={styles.summaryGrid}>
         {statusCards.map((card) => {
           const visibleCount = filterProjects(card.projects).length;
@@ -600,6 +809,15 @@ export function MapProgrammingPageView() {
           onProjectClick={setSelectedProject}
         />
       </article>
+
+      <ProgrammingDeadlineModal
+        isOpen={isDeadlineModalOpen}
+        items={deadlineSobCards}
+        windowDays={deadlineWindowDays}
+        isExporting={isExportingDeadlineModal}
+        onClose={() => setIsDeadlineModalOpen(false)}
+        onExport={() => void handleExportDeadlineModalCsv()}
+      />
 
       {selectedCard ? (
         <div className={styles.modalBackdrop} role="presentation" onClick={() => setSelectedCardKey(null)}>
