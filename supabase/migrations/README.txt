@@ -640,3 +640,28 @@ Observacao
 - Recria `save_project_programming_full_decimal_with_electrical_and_eq` com parametros opcionais `p_copied_from_programming_id` e `p_copy_batch_id`.
 - Permite que copias criadas por `COPY_TO_DATES` gravem o vinculo direto origem -> copia dentro da mesma transacao do INSERT.
 - Valida origem/lote por `tenant_id` e mantem EXECUTE somente para `service_role`.
+
+250_revoke_trigger_functions_from_public.sql
+- Revoga EXECUTE publico das funcoes SECURITY DEFINER criadas pela migration 245.
+- Ajusta `search_path` para `public, pg_temp`.
+- Garante que funcoes de permissao automatica continuem restritas ao fluxo interno.
+
+251_restrict_rpc_execute_to_service_role.sql
+- Revoga EXECUTE de `anon` e `authenticated` em RPCs SECURITY DEFINER expostas apos as migrations 212-247.
+- Mantem uso pelo backend via `service_role`.
+- Reduz superficie de execucao direta pelo client autenticado.
+
+252_create_idempotency_requests.sql
+- Cria tabela `idempotency_requests` para cache de respostas de operacoes criticas com chave de idempotencia.
+- Mantem acesso exclusivo via `service_role`, com RLS sem policies publicas.
+- Adiciona indice por `expires_at` para limpeza periodica.
+
+253_granular_page_permissions.sql
+- Evolui permissoes por pagina para acoes granulares (`create`, `update`, `cancel`, `reverse`, `import`, `export`).
+- Faz backfill das novas colunas a partir de `can_access`.
+- Recria `user_has_page_action` com mapeamento real de acao para coluna.
+
+254_create_minimum_factor_analysis_page.sql
+- Cadastra `apuracao-fator-minimo` em `app_pages` com `default_user_access = false`.
+- Preenche permissoes ausentes liberando somente perfis administrativos por padrao.
+- Adiciona indice em `project_measurement_order_items` por `tenant_id`, `service_activity_id`, `is_active` e `measurement_order_id` para apoiar a simulacao filtrada por codigo de servico.

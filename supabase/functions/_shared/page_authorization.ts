@@ -34,11 +34,18 @@ const ACTION_COLUMN: Record<string, keyof PermissionRow> = {
   export:  'can_export',
 }
 
-// deno-lint-ignore no-explicit-any
-type AnySupabase = any
+type SupabaseQueryBuilder = {
+  select(columns: string): SupabaseQueryBuilder
+  eq(column: string, value: string): SupabaseQueryBuilder
+  maybeSingle(): Promise<{ data: unknown; error: unknown }>
+}
+
+type SupabaseLike = {
+  from(table: string): SupabaseQueryBuilder
+}
 
 export async function requirePageAccess(
-  supabase: AnySupabase,
+  supabase: SupabaseLike,
   appUser: AppUserContext,
   pageKey: string,
   action: string,
@@ -90,7 +97,7 @@ export async function requirePageAccess(
 
 // Verifies that the tenant is active. Call after resolving appUser.
 export async function requireActiveTenant(
-  supabase: AnySupabase,
+  supabase: SupabaseLike,
   tenantId: string,
 ): Promise<{ active: true } | { active: false; status: 403 | 500; message: string }> {
   const { data: tenant, error } = await supabase
