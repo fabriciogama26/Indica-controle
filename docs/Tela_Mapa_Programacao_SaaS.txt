@@ -7,6 +7,7 @@ Visao geral
 - A tela classifica os cards pelo ultimo Estado Trabalho valido da obra.
 - A tela indica obras nunca programadas, obras sem Estado Trabalho, obras pendentes/parciais e obras com ultima programacao cancelada ou adiada.
 - A tela indica equipes ativas sem programacao quando o periodo e informado.
+- A tela exibe o bloco `Prazos das Obras`, consolidado por SOB e data limite.
 - Rota: `/mapa-programacao`.
 - Page key: `mapa-programacao`.
 - Acao server-side: `read`.
@@ -72,12 +73,23 @@ Filtros, auto-complete e listagem
   - o detalhe exibe SOB, projeto, ultima data, equipe, encarregado, Estado Trabalho, quantidade de programacoes, quantidade de etapas, ultima etapa, dias desde a ultima programacao e motivo/observacao quando existir.
   - no detalhe aberto pela tabela, o titulo usa `ID: {uuid}` da obra.
 - Secoes:
+  - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
   - Equipes sem programacao
 - Exportacao:
+  - CSV dos prazos das obras na janela selecionada.
   - CSV das obras do card aberto.
   - CSV de equipes sem programacao quando houver periodo.
+- Prazos das Obras:
+  - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
+  - Respeita os filtros locais de `Centro de servico` e busca de obra/projeto/status.
+  - Ignora obras concluidas.
+  - Considera somente obras com `Data limite` valida.
+  - Exibe resumo por `Vence hoje`, `Vence em breve`, `Vencida` e `No prazo`.
+  - Permite alternar janelas de `15 dias`, `30 dias`, `60 dias` e `90 dias`.
+  - O carrossel mostra cards por SOB, com `Data limite` e `Status do prazo`.
+  - O modal `Ver todos` exibe `SOB`, `Centro de servico`, `Prioridade`, `Tipo de obra`, `Data limite`, `Data Programacao`, `Motivo`, `Estado Trabalho`, `Status do prazo`, `Dias para vencimento` e `Faixa`.
 
 Boas praticas
 -------------
@@ -122,9 +134,13 @@ Atualizacao 2026-06
 - Cards de carteira passaram a ignorar o filtro de periodo; o periodo afeta somente equipes sem programacao.
 - Programacao `CANCELADA`/`ADIADA` posterior sem Estado Trabalho deixou de reabrir obra cujo ultimo Estado Trabalho valido e concluido.
 - Modal de detalhe por linha passou a exibir `ID: {uuid}` da obra no topo.
+- Bloco `Prazos das Obras` foi movido da tela `Programacao Simples` para o `Mapa de Programacao`.
+- `Prazos das Obras` no Mapa usa a carteira consolidada, respeita filtros locais de centro/busca, exclui obras concluidas e mantem modal/exportacao CSV.
 - Comportamento antes/depois:
   - Antes: a tela mostrava principalmente obras nunca programadas e equipes sem agenda.
   - Depois: a tela mostra carteira valida, concluidas, nao concluidas, parciais, pendentes, canceladas/adiadas, sem Estado Trabalho e nunca programadas.
+  - Antes: o bloco `Prazos das Obras` ficava acima do cadastro da Programacao Simples.
+  - Depois: o bloco `Prazos das Obras` fica no Mapa de Programacao, junto da visao de carteira.
   - Antes: a avaliacao de obras dependia de listas extensas.
   - Depois: a visualizacao principal usa cards e modal.
   - Antes: o periodo era obrigatorio na carga inicial.
@@ -142,7 +158,7 @@ Funcoes principais
 - Caminho: `src/app/api/mapa-programacao/route.ts`
   - Responsavel por: autenticar, autorizar, consultar carteira/programacoes/equipes e montar o payload consolidado por obra.
 - Caminho: `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
-  - Responsavel por: renderizar filtros, cards, modal de obras, obras prioritarias, equipes sem programacao, exportacoes e mensagens da tela.
+  - Responsavel por: renderizar filtros, cards, painel de prazos, modal de prazos, modal de obras, obras prioritarias, equipes sem programacao, exportacoes e mensagens da tela.
 - Caminho: `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
   - Responsavel por: estilos dos cards, modal, prioridades, filtros e listas.
 - Caminho: `src/components/layout/AppShell.tsx`
@@ -159,6 +175,10 @@ Constantes e configuracoes
   - Define status ativos de agenda (`PROGRAMADA`, `REPROGRAMADA`).
 - `INTERRUPTED_PROGRAMMING_STATUSES`
   - Define status interrompidos no mapa (`CANCELADA`, `ADIADA`).
+- `DEADLINE_CAROUSEL_PAGE_SIZE`
+  - Define quantidade de cards SOB por pagina no carrossel de prazos.
+- `DEADLINE_WINDOW_SHORT_DAYS`, `DEADLINE_WINDOW_LONG_DAYS`, `DEADLINE_WINDOW_EXTENDED_DAYS`, `DEADLINE_WINDOW_MAX_DAYS`
+  - Definem as janelas de prazo de 15, 30, 60 e 90 dias.
 
 Funcoes utilitarias relacionadas
 - `fetchProjects`
@@ -183,6 +203,16 @@ Funcoes utilitarias relacionadas
   - Aplica filtros locais de busca/centro sobre cards, tabelas e modal.
 - `exportCsv`
   - Gera CSV local das obras do card e das equipes.
+- `resolveDeadlineWindowDays`
+  - Resolve a janela ativa do painel `Prazos das Obras`.
+- `formatDeadlineRangeLabel`
+  - Classifica cada prazo em vencida, ate 15 dias, 16 a 30 dias, 31 a 60 dias ou 61 a 90 dias.
+- `deadlineProjects`, `deadlineSummary`, `deadlineSobCards`, `deadlineSobPages`
+  - Montam os dados do painel de prazos a partir da carteira filtrada.
+- `handleExportDeadlineModalCsv`
+  - Exporta os prazos da janela selecionada em CSV.
+- `ProgrammingDeadlinePanel` e `ProgrammingDeadlineModal`
+  - Componentes reaproveitados da Programacao Simples para renderizar o painel e o modal de prazos no Mapa.
 
 Servicos e integracoes externas
 - Supabase Postgres via client server-side autenticado.
