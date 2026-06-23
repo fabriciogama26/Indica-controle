@@ -194,6 +194,11 @@
   background: #fbf7ff;
 }
 
+.stageReviewCard {
+  border-color: #c4b5fd;
+  background: #fdfaff;
+}
+
 .contentGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.75fr);
