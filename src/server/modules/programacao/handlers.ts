@@ -1497,6 +1497,13 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
     return NextResponse.json({ message: "Programacao nao encontrada." }, { status: 404 });
   }
 
+  if (method === "PUT" && currentProgramming && (currentProgramming.status === "CANCELADA" || currentProgramming.status === "ADIADA")) {
+    return NextResponse.json(
+      { message: "Nao e possivel editar uma programacao cancelada ou adiada. Crie uma nova programacao." },
+      { status: 409 },
+    );
+  }
+
   if (method === "PUT" && programmingId && !hasActivitiesPayload) {
     const currentActivities = await fetchProgrammingActivitiesForSave({
       supabase: resolution.supabase,
@@ -1858,6 +1865,32 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
     }
   }
 
+  if (
+    method === "PUT"
+    && isCompletedWorkStatus(currentProgramming?.work_completion_status ?? null)
+    && !isCompletedWorkStatus(normalizedWorkCompletionStatus)
+    && etapaNumber !== null
+  ) {
+    const { error: revertAnticipatedError } = await resolution.supabase
+      .from("project_programming")
+      .update({ work_completion_status: null, updated_by: resolution.appUser.id })
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("project_id", projectId)
+      .gt("etapa_number", etapaNumber)
+      .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+      .eq("work_completion_status", "ANTECIPADA");
+
+    if (revertAnticipatedError) {
+      return NextResponse.json(
+        {
+          message: `Programacao salva, mas houve falha ao reverter etapas ANTECIPADA. ${revertAnticipatedError.message}`,
+          reason: "ANTICIPATED_REVERT_FAILED",
+        },
+        { status: 500 },
+      );
+    }
+  }
+
   if (method === "PUT" && !electricalField) {
     const { error: clearElectricalFieldError } = await resolution.supabase
       .from("project_programming")
@@ -1932,6 +1965,12 @@ export async function saveProgrammingWorkCompletionStatus(request: NextRequest, 
     );
   }
 
+  const programmingBeforeReopen = await fetchProgrammingById(
+    resolution.supabase,
+    resolution.appUser.tenant_id,
+    programmingId,
+  );
+
   const rpcName = "save_project_programming_work_completion_status_full";
   const { data, error } = await resolution.supabase.rpc(rpcName, {
     p_tenant_id: resolution.appUser.tenant_id,
@@ -1989,6 +2028,31 @@ export async function saveProgrammingWorkCompletionStatus(request: NextRequest, 
       },
       { status },
     );
+  }
+
+  if (
+    programmingBeforeReopen
+    && isCompletedWorkStatus(programmingBeforeReopen.work_completion_status)
+    && programmingBeforeReopen.etapa_number !== null
+  ) {
+    const { error: revertAnticipatedError } = await resolution.supabase
+      .from("project_programming")
+      .update({ work_completion_status: null, updated_by: resolution.appUser.id })
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("project_id", programmingBeforeReopen.project_id)
+      .gt("etapa_number", programmingBeforeReopen.etapa_number)
+      .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+      .eq("work_completion_status", "ANTECIPADA");
+
+    if (revertAnticipatedError) {
+      return NextResponse.json(
+        {
+          message: `Estado Trabalho salvo, mas houve falha ao reverter etapas ANTECIPADA. ${revertAnticipatedError.message}`,
+          reason: "ANTICIPATED_REVERT_FAILED",
+        },
+        { status: 500 },
+      );
+    }
   }
 
   const schedule = await fetchProgrammingResponseItem(
