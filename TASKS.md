@@ -1,4 +1,7 @@
 - [x] Estruturar o frontend do SaaS em `SaaS (Web)/` com Next.js 16, React 19, TypeScript e App Router.
+- [x] Ampliar auditoria read-only de `Estado Trabalho` da Programacao para cobrir catalogo, brancos ativos, divergencia por Projeto + Data, copia/adicao/reprogramacao, etapa obrigatoria, regra `CONCLUIDO -> ANTECIPADO`, resumo agrupado por status/sugestao, brancos sem sugestao automatica e programacoes com projeto nao encontrado.
+- [x] Criar migration de backfill automatico para preencher `Estado Trabalho` em branco da Programacao com sugestao segura da auditoria, mantendo casos operacionais fora da correcao automatica.
+- [x] Criar migration complementar para preencher `Estado Trabalho` em branco de Programacoes `ADIADA` e `CANCELADA`, mantendo o status operacional original e registrando historico.
 - [x] Criar SQL read-only de auditoria para Estado Trabalho em branco na Programacao, com resumo por tenant/status/projeto, detalhe com causa provavel e sugestao de preenchimento sem alterar dados.
 - [x] Padronizar Estado Trabalho antecipado como `ANTECIPADO`, migrando referencias antigas de `ANTECIPADA`, desativando o catalogo legado e mantendo auditoria para localizar duplicidades visuais.
 - [x] Adicionar regra de Estado Trabalho `ANTECIPADO` na Programacao Simples: ao salvar uma etapa como `CONCLUIDO`, a propria etapa permanece `CONCLUIDO` e as etapas ativas posteriores do mesmo projeto (`etapa_number` maior) sao atualizadas para `ANTECIPADO` via RPC com historico.
@@ -612,6 +615,7 @@
 - [x] Corrigir edicao da Meta para recalcular Dias trabalhados do ciclo selecionado no backend antes de salvar.
 
 - [x] Renomear Dias trabalhados da Meta para Media Dias trabalhados mantendo calculo por media de dias com medicao por equipe.
+- [ ] Corrigir tela Meta para permitir gerar/salvar ciclo novo sem depender de medicao existente, e tratar ciclo ja cadastrado como edicao automatica quando selecionado no formulario.
 - [ ] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para fixar `search_path` das funcoes reportadas pelo linter (`function_search_path_mutable`).
 - [ ] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para revogar `EXECUTE` do role `anon` nas RPCs `SECURITY DEFINER`, preservando somente chamadas autenticadas/service-role justificadas.
 - [ ] Tratamento de seguranca Supabase (2026-05-07): classificar RPCs `SECURITY DEFINER` acessiveis por `authenticated` entre uso intencional do app e uso exclusivo de `service_role`, ajustando grants sem quebrar rotas atuais.
@@ -1004,4 +1008,5 @@
 - [x] Criar a tela `Apuracao de Fator Minimo` em `Operacao`, com endpoint protegido por `apuracao-fator-minimo/read`, filtros por periodo/status/tipo e selecao multipla de projeto/equipe/codigo de servico, simulacao server-side consolidada por equipe + data somente pelo botao `Simular`, detalhe sob demanda, paginacao do resultado e exportacao CSV.
 - [x] Corrigir `STATUS` da `Extracao ENEL NOVO` para usar somente status operacional da Programacao (`PROGRAMADO`, `REPROGRAMADA`, `ADIADO`, `CANCELADO`), sem preencher `PARCIAL`/`CONCLUIDO` de `Estado Trabalho`.
 - [x] Mover o bloco `Prazos das Obras` da tela `Programacao Simples` para `Mapa de Programacao`, mantendo janelas, carrossel, modal e exportacao CSV a partir da carteira consolidada.
+- [x] Marcar no `Mapa de Programacao` obras com etapa cancelada/adiada e etapa ativa posterior como `Revisao de etapas`, preservando a numeracao historica da etapa interrompida e destacando card, tabela e detalhe.
 - [ ] [Apuracao de Fator Minimo][Extracao oficial] Modelar confirmacao da apuracao com snapshot imutavel de filtros, usuario, data/hora, regra aplicada, itens considerados e resultado por equipe/data.

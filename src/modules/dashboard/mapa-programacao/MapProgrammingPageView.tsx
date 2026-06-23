@@ -34,6 +34,7 @@ type ProjectSituationKey =
   | "PORTFOLIO"
   | "CONCLUDED"
   | "TO_REPROGRAM"
+  | "REVIEW_STAGES"
   | "PENDING"
   | "PARTIAL_PLANNED"
   | "PARTIAL"
@@ -67,6 +68,11 @@ type MapProject = {
   reason: string;
   daysSinceLatest: number | null;
   priorityLevel: PriorityLevel;
+  stageReviewRequired: boolean;
+  stageReviewStageLabel: string;
+  stageReviewNextStageLabel: string;
+  stageReviewStatus: string;
+  stageReviewDate: string;
   hasFutureActiveProgramming: boolean;
   completed: boolean;
   interrupted: boolean;
@@ -105,6 +111,7 @@ type MapProgrammingResponse = {
     actionRequiredProjectCount: number;
     concludedProjectCount: number;
     toReprogramProjectCount: number;
+    stageReviewProjectCount: number;
     neverProgrammedProjectCount: number;
     interruptedProjectCount: number;
     withoutStatusProjectCount: number;
@@ -202,6 +209,7 @@ function getPriorityClassName(value: PriorityLevel) {
 }
 
 function getCardClassName(key: ProjectSituationKey) {
+  if (key === "REVIEW_STAGES") return styles.summaryReview;
   if (key === "TO_REPROGRAM" || key === "INTERRUPTED" || key === "WITHOUT_STATUS") return styles.summaryDanger;
   if (key === "PENDING" || key === "PARTIAL" || key === "PARTIAL_PLANNED" || key === "BENEFIT_REACHED") return styles.summaryWarning;
   if (key === "CONCLUDED") return styles.summarySuccess;
@@ -580,6 +588,7 @@ export function MapProgrammingPageView() {
         "Etapas",
         "Dias desde ultima",
         "Motivo",
+        "Revisao de etapas",
       ],
       projects.map((project) => [
         project.sob,
@@ -597,6 +606,9 @@ export function MapProgrammingPageView() {
         project.stageCount,
         project.daysSinceLatest,
         project.reason,
+        project.stageReviewRequired
+          ? `${project.stageReviewStageLabel} ${project.stageReviewStatus} -> ${project.stageReviewNextStageLabel}`
+          : "",
       ]),
     );
   }
@@ -707,6 +719,10 @@ export function MapProgrammingPageView() {
         <article className={styles.overviewCard}>
           <span>Para reprogramar</span>
           <strong>{summary?.toReprogramProjectCount ?? 0}</strong>
+        </article>
+        <article className={styles.overviewCard}>
+          <span>Revisao de etapas</span>
+          <strong>{summary?.stageReviewProjectCount ?? 0}</strong>
         </article>
         <article className={styles.overviewCard}>
           <span>Equipes sem programacao</span>
@@ -901,17 +917,24 @@ function ProjectTable({
               <th>Encarregado</th>
               <th>Prog.</th>
               <th>Etapas</th>
+              <th>Revisao</th>
               <th>Dias</th>
             </tr>
           </thead>
           <tbody>
             {pageProjects.map((project) => (
-              <tr key={project.id} onClick={() => onProjectClick(project)} tabIndex={0} onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onProjectClick(project);
-                }
-              }}>
+              <tr
+                key={project.id}
+                className={project.stageReviewRequired ? styles.stageReviewRow : undefined}
+                onClick={() => onProjectClick(project)}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onProjectClick(project);
+                  }
+                }}
+              >
                 <td><strong>{project.sob}</strong></td>
                 <td>{formatDate(project.latestDate)}</td>
                 <td>{project.latestProgrammingStatus}</td>
@@ -920,6 +943,11 @@ function ProjectTable({
                 <td>{project.latestForemanName}</td>
                 <td>{project.programmingCount}</td>
                 <td>{project.stageCount}</td>
+                <td>
+                  {project.stageReviewRequired
+                    ? `${project.stageReviewStageLabel} -> ${project.stageReviewNextStageLabel}`
+                    : "-"}
+                </td>
                 <td>{formatDaysSince(project.daysSinceLatest)}</td>
               </tr>
             ))}
@@ -961,6 +989,14 @@ function ProjectMiniCard({ project, expanded = false }: { project: MapProject; e
         <span>Programacoes <strong>{project.programmingCount}</strong></span>
         <span>Etapas <strong>{project.stageCount}</strong></span>
         <span>Ultima etapa <strong>{project.latestStageLabel}</strong></span>
+        {project.stageReviewRequired ? (
+          <span className={styles.stageReviewMeta}>
+            Revisao etapas
+            <strong>
+              {`${project.stageReviewStageLabel} ${project.stageReviewStatus} -> ${project.stageReviewNextStageLabel}`}
+            </strong>
+          </span>
+        ) : null}
         <span>Dias desde ultima <strong>{formatDaysSince(project.daysSinceLatest)}</strong></span>
       </div>
       {expanded && project.reason ? (

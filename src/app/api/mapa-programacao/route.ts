@@ -12,6 +12,7 @@ type ProjectSituationKey =
   | "PORTFOLIO"
   | "CONCLUDED"
   | "TO_REPROGRAM"
+  | "REVIEW_STAGES"
   | "PENDING"
   | "PARTIAL_PLANNED"
   | "PARTIAL"
@@ -187,6 +188,39 @@ function resolveStageLabel(row: ProgrammingRow | null) {
   if (row.etapa_unica) return "Etapa unica";
   const stageNumber = Number(row.etapa_number ?? 0);
   return Number.isInteger(stageNumber) && stageNumber > 0 ? `${stageNumber} etapa` : "Sem etapa";
+}
+
+function resolveStageReviewIssue(rows: ProgrammingRow[]) {
+  const activeRowsWithStage = rows
+    .filter((row) => isActiveProgrammingStatus(row.status))
+    .filter((row) => {
+      const stageNumber = Number(row.etapa_number ?? 0);
+      return Number.isInteger(stageNumber) && stageNumber > 0;
+    });
+
+  for (const interruptedRow of rows.filter((row) => isInterruptedStatus(row.status))) {
+    const interruptedStageNumber = Number(interruptedRow.etapa_number ?? 0);
+    if (!Number.isInteger(interruptedStageNumber) || interruptedStageNumber < 1) continue;
+
+    const nextActiveStage = activeRowsWithStage
+      .filter((row) => Number(row.etapa_number ?? 0) > interruptedStageNumber)
+      .sort((left, right) => {
+        const stageDiff = Number(left.etapa_number ?? 0) - Number(right.etapa_number ?? 0);
+        return stageDiff || compareProgrammingRows(left, right);
+      })
+      .at(0);
+
+    if (!nextActiveStage) continue;
+
+    return {
+      interruptedStageLabel: resolveStageLabel(interruptedRow),
+      nextActiveStageLabel: resolveStageLabel(nextActiveStage),
+      interruptedStatus: normalizeToken(interruptedRow.status),
+      interruptedDate: normalizeIsoDate(interruptedRow.execution_date) ?? "",
+    };
+  }
+
+  return null;
 }
 
 function resolvePriorityLevel(params: {
@@ -450,6 +484,8 @@ export async function GET(request: NextRequest) {
         const latestProgrammingStatus = normalizeToken(latest?.status) || "SEM_PROGRAMACAO";
         const latestTeam = latest?.team_id ? teamMap.get(latest.team_id) : null;
         const stageKeys = new Set(projectRows.map(resolveStageKey).filter(Boolean));
+        const stageReviewIssue = resolveStageReviewIssue(projectRows);
+        const stageReviewRequired = Boolean(stageReviewIssue);
         const hasFutureActiveProgramming = projectRows.some((row) => {
           const executionDate = normalizeIsoDate(row.execution_date);
           return Boolean(executionDate && executionDate >= today && isActiveProgrammingStatus(row.status));
@@ -459,7 +495,7 @@ export async function GET(request: NextRequest) {
           ? (isInterruptedStatus(latest.status) || isInterruptedStatus(workCompletionStatus)) && !completed
           : false;
         const withoutStatus = Boolean(latest && !workCompletionStatus && (!latestDate || (daysSinceLatest !== null && daysSinceLatest > 0)));
-        const actionRequired = !completed && (!hasFutureActiveProgramming || interrupted || withoutStatus);
+        const actionRequired = stageReviewRequired || (!completed && (!hasFutureActiveProgramming || interrupted || withoutStatus));
 
         return {
           id: project.id,
@@ -483,9 +519,16 @@ export async function GET(request: NextRequest) {
           stageCount: stageKeys.size,
           reason: normalizeText(latest?.cancellation_reason) || normalizeText(latest?.note),
           daysSinceLatest,
-          priorityLevel: latest
-            ? resolvePriorityLevel({ latestDate, daysSinceLatest, workCompletionStatus })
-            : "ATTENTION" satisfies PriorityLevel,
+          priorityLevel: stageReviewRequired
+            ? ("INCONSISTENCY" satisfies PriorityLevel)
+            : latest
+              ? resolvePriorityLevel({ latestDate, daysSinceLatest, workCompletionStatus })
+              : ("ATTENTION" satisfies PriorityLevel),
+          stageReviewRequired,
+          stageReviewStageLabel: stageReviewIssue?.interruptedStageLabel ?? "",
+          stageReviewNextStageLabel: stageReviewIssue?.nextActiveStageLabel ?? "",
+          stageReviewStatus: stageReviewIssue?.interruptedStatus ?? "",
+          stageReviewDate: stageReviewIssue?.interruptedDate ?? "",
           hasFutureActiveProgramming,
           completed,
           interrupted,
@@ -513,7 +556,8 @@ export async function GET(request: NextRequest) {
     const statusCards = [
       buildCard("PORTFOLIO", "Carteira valida", "Obras ativas sem teste, retiradas ou emergenciais.", consolidatedProjects),
       buildCard("CONCLUDED", "Concluidas", "Ultimo Estado Trabalho valido concluido.", consolidatedProjects.filter((project) => project.completed)),
-      buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired)),
+      buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired && !project.stageReviewRequired)),
+      buildCard("REVIEW_STAGES", "Revisao de etapas", "Etapa cancelada ou adiada com etapa futura ativa.", consolidatedProjects.filter((project) => project.stageReviewRequired)),
       buildCard("PENDING", "Pendentes", "Ultimo Estado Trabalho valido com pendencia.", consolidatedProjects.filter((project) => isPendingWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("PARTIAL_PLANNED", "Parcial planejada", "Ultimo Estado Trabalho valido parcial planejado.", consolidatedProjects.filter((project) => isPartialPlannedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("PARTIAL", "Parciais", "Ultimo Estado Trabalho valido parcial.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
@@ -547,7 +591,8 @@ export async function GET(request: NextRequest) {
         portfolioProjectCount: consolidatedProjects.length,
         actionRequiredProjectCount: consolidatedProjects.filter((project) => project.actionRequired || project.neverProgrammed).length,
         concludedProjectCount: consolidatedProjects.filter((project) => project.completed).length,
-        toReprogramProjectCount: consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired).length,
+        toReprogramProjectCount: consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired && !project.stageReviewRequired).length,
+        stageReviewProjectCount: consolidatedProjects.filter((project) => project.stageReviewRequired).length,
         neverProgrammedProjectCount: consolidatedProjects.filter((project) => project.neverProgrammed).length,
         interruptedProjectCount: consolidatedProjects.filter((project) => project.interrupted && !project.hasFutureActiveProgramming).length,
         withoutStatusProjectCount: consolidatedProjects.filter((project) => project.withoutStatus).length,
