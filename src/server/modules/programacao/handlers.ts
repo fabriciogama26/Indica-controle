@@ -1971,6 +1971,16 @@ export async function saveProgrammingWorkCompletionStatus(request: NextRequest, 
     programmingId,
   );
 
+  if (
+    programmingBeforeReopen
+    && (programmingBeforeReopen.status === "CANCELADA" || programmingBeforeReopen.status === "ADIADA")
+  ) {
+    return NextResponse.json(
+      { message: "Nao e possivel alterar o Estado Trabalho de uma programacao cancelada ou adiada." },
+      { status: 409 },
+    );
+  }
+
   const rpcName = "save_project_programming_work_completion_status_full";
   const { data, error } = await resolution.supabase.rpc(rpcName, {
     p_tenant_id: resolution.appUser.tenant_id,
