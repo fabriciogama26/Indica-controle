@@ -58,6 +58,7 @@ Filtros, auto-complete e listagem
   - Carteira valida
   - Concluidas
   - Para reprogramar
+  - Revisao de etapas
   - Pendentes
   - Parcial planejada
   - Parciais
@@ -69,8 +70,8 @@ Filtros, auto-complete e listagem
   - aberto ao clicar em um card.
   - mostra obras daquela situacao em tabela paginada.
   - ao clicar em uma linha, abre o detalhe da obra em formato de card.
-  - a tabela exibe SOB, ultima data, status, Estado Trabalho, equipe, encarregado, quantidade de programacoes, quantidade de etapas e dias desde a ultima programacao.
-  - o detalhe exibe SOB, projeto, ultima data, equipe, encarregado, Estado Trabalho, quantidade de programacoes, quantidade de etapas, ultima etapa, dias desde a ultima programacao e motivo/observacao quando existir.
+  - a tabela exibe SOB, ultima data, status, Estado Trabalho, equipe, encarregado, quantidade de programacoes, quantidade de etapas, revisao de etapas e dias desde a ultima programacao.
+  - o detalhe exibe SOB, projeto, ultima data, equipe, encarregado, Estado Trabalho, quantidade de programacoes, quantidade de etapas, ultima etapa, revisao de etapas, dias desde a ultima programacao e motivo/observacao quando existir.
   - no detalhe aberto pela tabela, o titulo usa `ID: {uuid}` da obra.
 - Secoes:
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
@@ -104,6 +105,8 @@ Boas praticas
 - A obra tambem nao e reaberta por uma programacao `CANCELADA` ou `ADIADA` posterior sem Estado Trabalho quando o ultimo Estado Trabalho valido anterior ja era concluido.
 - `Estado Trabalho` concluido segue a regra tecnica: `CONCLUIDO`, `COMPLETO` ou codigo iniciado por `CONCLUIDO`.
 - `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
+- Etapa `CANCELADA` ou `ADIADA` preserva o numero historico da etapa; se houver etapa ativa posterior no mesmo projeto, a obra entra em `Revisao de etapas`.
+- `Revisao de etapas` nao renumera etapas e nao altera dados; apenas sinaliza que as etapas futuras dependem de revisao operacional.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
 - `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
 - A quantidade de programacoes conta linhas/registros de `project_programming`.
@@ -136,6 +139,9 @@ Atualizacao 2026-06
 - Modal de detalhe por linha passou a exibir `ID: {uuid}` da obra no topo.
 - Bloco `Prazos das Obras` foi movido da tela `Programacao Simples` para o `Mapa de Programacao`.
 - `Prazos das Obras` no Mapa usa a carteira consolidada, respeita filtros locais de centro/busca, exclui obras concluidas e mantem modal/exportacao CSV.
+- Card `Revisao de etapas` criado para localizar obra com etapa cancelada/adiada e etapa ativa posterior.
+- Tabelas e cards de detalhe passaram a destacar a revisao de etapas, exibindo a etapa interrompida e a proxima etapa ativa posterior.
+- Etapas historicas canceladas/adiadas nao sao renumeradas; a tela apenas marca as etapas futuras como dependentes de revisao.
 - Comportamento antes/depois:
   - Antes: a tela mostrava principalmente obras nunca programadas e equipes sem agenda.
   - Depois: a tela mostra carteira valida, concluidas, nao concluidas, parciais, pendentes, canceladas/adiadas, sem Estado Trabalho e nunca programadas.
@@ -145,6 +151,8 @@ Atualizacao 2026-06
   - Depois: a visualizacao principal usa cards e modal.
   - Antes: o periodo era obrigatorio na carga inicial.
   - Depois: periodo e opcional para obras e obrigatorio somente para analisar equipes sem programacao.
+  - Antes: uma etapa intermediaria cancelada/adiada com etapa posterior ativa podia ficar misturada em `Para reprogramar`.
+  - Depois: a obra aparece em `Revisao de etapas`, com destaque visual na tabela e no card.
 - Impacto multi-tenant:
   - Todas as leituras usam o `tenant_id` autenticado.
   - A mudanca nao altera RLS, grants ou schema.
@@ -197,8 +205,10 @@ Funcoes utilitarias relacionadas
   - Resolve se o Estado Trabalho e conclusivo.
 - `resolvePriorityLevel`
   - Classifica a prioridade visual por dias desde a ultima programacao e ausencia de Estado Trabalho.
+- `resolveStageReviewIssue`
+  - Identifica etapa `CANCELADA` ou `ADIADA` com etapa ativa posterior no mesmo projeto, preservando a numeracao historica e retornando dados para o card `Revisao de etapas`.
 - `ProjectTable`
-  - Renderiza tabelas paginadas de obras prioritarias e nunca programadas.
+  - Renderiza tabelas paginadas de obras prioritarias, nunca programadas e cards abertos, com destaque para revisao de etapas.
 - `filterProjects`
   - Aplica filtros locais de busca/centro sobre cards, tabelas e modal.
 - `exportCsv`

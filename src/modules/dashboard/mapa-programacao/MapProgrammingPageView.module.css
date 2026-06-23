@@ -126,7 +126,7 @@
 
 .overviewGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
   gap: 12px;
 }
 
@@ -187,6 +187,11 @@
 
 .summaryDanger {
   border-left: 4px solid #df5b57;
+}
+
+.summaryReview {
+  border-left: 4px solid #7c3aed;
+  background: #fbf7ff;
 }
 
 .contentGrid {
@@ -287,6 +292,16 @@
   overflow-wrap: anywhere;
 }
 
+.projectMetaGrid .stageReviewMeta {
+  border-color: #c4b5fd;
+  background: #fbf7ff;
+  color: #6b21a8;
+}
+
+.projectMetaGrid .stageReviewMeta strong {
+  color: #4c1d95;
+}
+
 .reasonText {
   margin: 10px 0 0;
   border-left: 3px solid #f59f2a;
@@ -329,7 +344,7 @@
 
 .compactTable {
   width: 100%;
-  min-width: 980px;
+  min-width: 1080px;
   border-collapse: collapse;
   font-size: 0.82rem;
 }
@@ -357,6 +372,15 @@
 .compactTable tbody tr:focus {
   background: #f8fbff;
   outline: none;
+}
+
+.compactTable tbody tr.stageReviewRow {
+  background: #fbf7ff;
+}
+
+.compactTable tbody tr.stageReviewRow:hover,
+.compactTable tbody tr.stageReviewRow:focus {
+  background: #f3e8ff;
 }
 
 .paginationBar {

@@ -1982,6 +1982,28 @@ Atualizacao 2026-06-22 - STATUS da Extracao ENEL NOVO sem Estado Trabalho
   - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
   - A exportacao continua usando somente dados ja carregados por `/api/programacao`, filtrados por `tenant_id` no backend.
 
+Atualizacao 2026-06-23 - Backfill de Estado Trabalho em branco
+---------------------------------------------------------------
+- Arquivos alterados:
+  - `scripts/audit-programming-work-completion-status-readonly.sql`
+  - `supabase/migrations/256_backfill_programming_work_completion_status.sql`
+  - `supabase/migrations/257_backfill_inactive_programming_work_completion_status.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Nao houve alteracao de frontend, API ou hook.
+  - A migration usa `normalize_programming_work_completion_code` e o catalogo ativo `programming_work_completion_catalog`.
+  - O historico operacional e gravado em `project_programming_history`.
+- Comportamento antes/depois:
+  - Antes: programacoes ativas podiam permanecer com `Estado Trabalho` em branco por dados legados.
+  - Depois: a migration preenche apenas registros ativos em branco com sugestao automatica validada pela auditoria.
+  - Depois: casos operacionais, como `SEM_ETAPA_OU_FLAG` ou projeto nao encontrado, ficam fora do backfill automatico.
+  - Depois: a migration complementar preenche programacoes `ADIADA` e `CANCELADA` em branco quando ha sugestao segura, sem alterar o status operacional.
+- Multi-tenant:
+  - Todas as leituras e escritas usam `tenant_id`.
+  - O valor aplicado precisa existir ativo no catalogo do mesmo tenant.
+  - A migration nao altera RLS, grants, policies ou schema.
+
 Atualizacao 2026-06-18 - Copiar programacao com selecao de equipes por data
 ----------------------------------------------------------------------------
 - Arquivos alterados:
