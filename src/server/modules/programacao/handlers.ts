@@ -240,14 +240,36 @@ export async function copyProgramming(request: NextRequest) {
   const endDate = normalizeIsoDate(payload?.endDate);
   const targetTeamIds = Array.from(
     new Set((Array.isArray(payload?.targetTeamIds) ? payload?.targetTeamIds : []).map((item) => normalizeText(item)).filter(Boolean)),
-  );
+  ).filter((id) => id !== sourceTeamId);
 
   if (!sourceTeamId || !targetTeamIds.length) {
-    return NextResponse.json({ message: "Informe a equipe de origem e ao menos uma equipe de destino." }, { status: 400 });
+    return NextResponse.json({ message: "Informe ao menos uma equipe de destino diferente da equipe de origem." }, { status: 400 });
   }
 
   if (!startDate || !endDate) {
     return NextResponse.json({ message: "Informe o periodo visivel para copiar a linha da equipe." }, { status: 400 });
+  }
+
+  const { data: concluídoInPeriod } = await resolution.supabase
+    .from("project_programming")
+    .select("project_id")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("team_id", sourceTeamId)
+    .gte("execution_date", startDate)
+    .lte("execution_date", endDate)
+    .neq("status", "CANCELADA")
+    .eq("work_completion_status", "CONCLUIDO")
+    .limit(1);
+
+  if (concluídoInPeriod && concluídoInPeriod.length > 0) {
+    return NextResponse.json(
+      {
+        message:
+          "O periodo selecionado contem projetos com Estado Trabalho CONCLUIDO. Altere o Estado Trabalho para diferente de CONCLUIDO antes de copiar a linha.",
+        reason: "COPY_PERIOD_HAS_CONCLUIDO",
+      },
+      { status: 409 },
+    );
   }
 
   const { data, error } = await resolution.supabase.rpc("copy_team_programming_period", {
@@ -1715,6 +1737,10 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
     return NextResponse.json({ message: "Selecione um motivo de reprogramacao." }, { status: 400 });
   }
 
+  if (isPotentialReschedule && changeReason && changeReason.trim().length < 10) {
+    return NextResponse.json({ message: "O motivo de reprogramacao deve ter ao menos 10 caracteres." }, { status: 400 });
+  }
+
   const fullSaveResult = await saveProgrammingFullViaRpc({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
@@ -1970,6 +1996,16 @@ export async function saveProgrammingWorkCompletionStatus(request: NextRequest, 
     resolution.appUser.tenant_id,
     programmingId,
   );
+
+  if (
+    programmingBeforeReopen
+    && (programmingBeforeReopen.status === "CANCELADA" || programmingBeforeReopen.status === "ADIADA")
+  ) {
+    return NextResponse.json(
+      { message: "Nao e possivel alterar o Estado Trabalho de uma programacao cancelada ou adiada." },
+      { status: 409 },
+    );
+  }
 
   const rpcName = "save_project_programming_work_completion_status_full";
   const { data, error } = await resolution.supabase.rpc(rpcName, {
