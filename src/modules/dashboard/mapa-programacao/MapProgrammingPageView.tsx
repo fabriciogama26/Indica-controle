@@ -35,6 +35,7 @@ type ProjectSituationKey =
   | "CONCLUDED"
   | "TO_REPROGRAM"
   | "REVIEW_STAGES"
+  | "INTERRUPTED_COMPLETED"
   | "PENDING"
   | "PARTIAL_PLANNED"
   | "PARTIAL"
@@ -73,6 +74,11 @@ type MapProject = {
   stageReviewNextStageLabel: string;
   stageReviewStatus: string;
   stageReviewDate: string;
+  interruptedCompletedRequired: boolean;
+  interruptedCompletedStageLabel: string;
+  interruptedCompletedStatus: string;
+  interruptedCompletedWorkCompletionStatus: string;
+  interruptedCompletedDate: string;
   hasFutureActiveProgramming: boolean;
   completed: boolean;
   interrupted: boolean;
@@ -112,6 +118,7 @@ type MapProgrammingResponse = {
     concludedProjectCount: number;
     toReprogramProjectCount: number;
     stageReviewProjectCount: number;
+    interruptedCompletedProjectCount: number;
     neverProgrammedProjectCount: number;
     interruptedProjectCount: number;
     withoutStatusProjectCount: number;
@@ -210,7 +217,7 @@ function getPriorityClassName(value: PriorityLevel) {
 
 function getCardClassName(key: ProjectSituationKey) {
   if (key === "REVIEW_STAGES") return styles.summaryReview;
-  if (key === "TO_REPROGRAM" || key === "INTERRUPTED" || key === "WITHOUT_STATUS") return styles.summaryDanger;
+  if (key === "TO_REPROGRAM" || key === "INTERRUPTED" || key === "INTERRUPTED_COMPLETED" || key === "WITHOUT_STATUS") return styles.summaryDanger;
   if (key === "PENDING" || key === "PARTIAL" || key === "PARTIAL_PLANNED" || key === "BENEFIT_REACHED") return styles.summaryWarning;
   if (key === "CONCLUDED") return styles.summarySuccess;
   return styles.summaryNeutral;
@@ -258,6 +265,7 @@ export function MapProgrammingPageView() {
   const [selectedCardPage, setSelectedCardPage] = useState(1);
   const [priorityPage, setPriorityPage] = useState(1);
   const [stageReviewPage, setStageReviewPage] = useState(1);
+  const [interruptedCompletedPage, setInterruptedCompletedPage] = useState(1);
   const [neverProgrammedPage, setNeverProgrammedPage] = useState(1);
   const [deadlineViewMode, setDeadlineViewMode] = useState<DeadlineViewMode>("15");
   const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
@@ -303,6 +311,7 @@ export function MapProgrammingPageView() {
       setSelectedCardPage(1);
       setPriorityPage(1);
       setStageReviewPage(1);
+      setInterruptedCompletedPage(1);
       setNeverProgrammedPage(1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar Mapa de Programacao.";
@@ -338,6 +347,7 @@ export function MapProgrammingPageView() {
 
   const selectedCard = statusCards.find((card) => card.key === selectedCardKey) ?? null;
   const stageReviewCard = statusCards.find((card) => card.key === "REVIEW_STAGES") ?? null;
+  const interruptedCompletedCard = statusCards.find((card) => card.key === "INTERRUPTED_COMPLETED") ?? null;
 
   const filterProjects = useCallback((projects: MapProject[]) => {
     const search = normalizeSearch(activeFilters.projectSearch);
@@ -367,6 +377,10 @@ export function MapProgrammingPageView() {
   const filteredStageReviewProjects = useMemo(
     () => filterProjects(stageReviewCard?.projects ?? []),
     [filterProjects, stageReviewCard],
+  );
+  const filteredInterruptedCompletedProjects = useMemo(
+    () => filterProjects(interruptedCompletedCard?.projects ?? []),
+    [filterProjects, interruptedCompletedCard],
   );
   const filteredNeverProgrammedProjects = useMemo(
     () => filterProjects(data?.neverProgrammedProjects ?? []),
@@ -470,6 +484,7 @@ export function MapProgrammingPageView() {
   useEffect(() => {
     setPriorityPage(1);
     setStageReviewPage(1);
+    setInterruptedCompletedPage(1);
     setNeverProgrammedPage(1);
     setSelectedCardPage(1);
   }, [activeFilters.projectSearch, activeFilters.serviceCenter]);
@@ -597,6 +612,7 @@ export function MapProgrammingPageView() {
         "Dias desde ultima",
         "Motivo",
         "Revisao de etapas",
+        "Divergencia",
       ],
       projects.map((project) => [
         project.sob,
@@ -616,6 +632,9 @@ export function MapProgrammingPageView() {
         project.reason,
         project.stageReviewRequired
           ? `${project.stageReviewStageLabel} ${project.stageReviewStatus} -> ${project.stageReviewNextStageLabel}`
+          : "",
+        project.interruptedCompletedRequired
+          ? `${project.interruptedCompletedStatus} + ${project.interruptedCompletedWorkCompletionStatus}`
           : "",
       ]),
     );
@@ -733,6 +752,10 @@ export function MapProgrammingPageView() {
           <strong>{summary?.stageReviewProjectCount ?? 0}</strong>
         </article>
         <article className={styles.overviewCard}>
+          <span>Interrompidas concluidas</span>
+          <strong>{summary?.interruptedCompletedProjectCount ?? 0}</strong>
+        </article>
+        <article className={styles.overviewCard}>
           <span>Equipes sem programacao</span>
           <strong>{summary?.teamsWithoutProgrammingCount ?? 0}</strong>
         </article>
@@ -796,6 +819,32 @@ export function MapProgrammingPageView() {
           emptyMessage="Nenhuma revisao de etapas para os filtros atuais."
           onProjectClick={setSelectedProject}
           showStageReviewColumn
+        />
+      </article>
+
+      <article className={`${styles.card} ${styles.interruptedCompletedCard}`}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h3>Interrompidas com Estado concluido</h3>
+            <span>Programacoes canceladas ou adiadas que ainda constam com Estado Trabalho concluido.</span>
+          </div>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => {
+              if (interruptedCompletedCard) exportProjects(interruptedCompletedCard, filteredInterruptedCompletedProjects);
+            }}
+            disabled={!filteredInterruptedCompletedProjects.length}
+          >
+            Exportar CSV
+          </button>
+        </div>
+        <ProjectTable
+          projects={filteredInterruptedCompletedProjects}
+          page={interruptedCompletedPage}
+          onPageChange={setInterruptedCompletedPage}
+          emptyMessage="Nenhuma programacao interrompida com Estado Trabalho concluido para os filtros atuais."
+          onProjectClick={setSelectedProject}
         />
       </article>
 
@@ -963,7 +1012,13 @@ function ProjectTable({
             {pageProjects.map((project) => (
               <tr
                 key={project.id}
-                className={project.stageReviewRequired ? styles.stageReviewRow : undefined}
+                className={
+                  project.interruptedCompletedRequired
+                    ? styles.interruptedCompletedRow
+                    : project.stageReviewRequired
+                      ? styles.stageReviewRow
+                      : undefined
+                }
                 onClick={() => onProjectClick(project)}
                 tabIndex={0}
                 onKeyDown={(event) => {
@@ -1034,6 +1089,14 @@ function ProjectMiniCard({ project, expanded = false }: { project: MapProject; e
             Revisao etapas
             <strong>
               {`${project.stageReviewStageLabel} ${project.stageReviewStatus} -> ${project.stageReviewNextStageLabel}`}
+            </strong>
+          </span>
+        ) : null}
+        {project.interruptedCompletedRequired ? (
+          <span className={styles.interruptedCompletedMeta}>
+            Status x Estado
+            <strong>
+              {`${project.interruptedCompletedStageLabel} ${project.interruptedCompletedStatus} + ${project.interruptedCompletedWorkCompletionStatus}`}
             </strong>
           </span>
         ) : null}

@@ -59,6 +59,7 @@ Filtros, auto-complete e listagem
   - Concluidas
   - Para reprogramar
   - Revisao de etapas
+  - Interrompidas concluidas
   - Pendentes
   - Parcial planejada
   - Parciais
@@ -76,6 +77,7 @@ Filtros, auto-complete e listagem
 - Secoes:
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
   - Revisao de etapas em tabela propria, destacando obras com etapa cancelada/adiada e etapa ativa posterior.
+  - Interrompidas com Estado concluido em tabela propria, destacando divergencia entre status operacional e Estado Trabalho.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
   - Equipes sem programacao
@@ -83,6 +85,7 @@ Filtros, auto-complete e listagem
   - CSV dos prazos das obras na janela selecionada.
   - CSV das obras do card aberto.
   - CSV da tabela dedicada de `Revisao de etapas`.
+  - CSV da tabela dedicada de `Interrompidas com Estado concluido`.
   - CSV de equipes sem programacao quando houver periodo.
 - Prazos das Obras:
   - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
@@ -109,6 +112,8 @@ Boas praticas
 - `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
 - Etapa `CANCELADA` ou `ADIADA` preserva o numero historico da etapa; se houver etapa ativa posterior no mesmo projeto, a obra entra em `Revisao de etapas`.
 - `Revisao de etapas` nao renumera etapas e nao altera dados; apenas sinaliza que as etapas futuras dependem de revisao operacional.
+- Programacao `ADIADA` ou `CANCELADA` com `Estado Trabalho = CONCLUIDO` e tratada como divergencia operacional e aparece em `Interrompidas com Estado concluido`.
+- Obras com divergencia `ADIADA/CANCELADA + CONCLUIDO` nao entram como concluidas no Mapa ate revisao operacional.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
 - `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
 - A quantidade de programacoes conta linhas/registros de `project_programming`.
@@ -146,6 +151,7 @@ Atualizacao 2026-06
 - Etapas historicas canceladas/adiadas nao sao renumeradas; a tela apenas marca as etapas futuras como dependentes de revisao.
 - `Revisao de etapas` passou a ter uma tabela dedicada na tela principal, com exportacao CSV e destaque visual.
 - A coluna `Revisao` ficou restrita a tabela dedicada e ao modal do card `Revisao de etapas`, evitando misturar esse alerta nas demais tabelas.
+- Card e tabela `Interrompidas com Estado concluido` criados para expor casos legados ou divergentes em que status operacional e Estado Trabalho entram em conflito.
 - Comportamento antes/depois:
   - Antes: a tela mostrava principalmente obras nunca programadas e equipes sem agenda.
   - Depois: a tela mostra carteira valida, concluidas, nao concluidas, parciais, pendentes, canceladas/adiadas, sem Estado Trabalho e nunca programadas.
@@ -159,6 +165,8 @@ Atualizacao 2026-06
   - Depois: a obra aparece em `Revisao de etapas`, com destaque visual na tabela e no card.
   - Antes: a revisao aparecia apenas como coluna dentro de tabelas gerais.
   - Depois: a revisao possui tabela propria para analise operacional.
+  - Antes: `ADIADA`/`CANCELADA` com Estado Trabalho `CONCLUIDO` podia aparecer como concluida.
+  - Depois: o caso aparece como inconsistencia em tabela dedicada.
 - Impacto multi-tenant:
   - Todas as leituras usam o `tenant_id` autenticado.
   - A mudanca nao altera RLS, grants ou schema.
@@ -213,6 +221,8 @@ Funcoes utilitarias relacionadas
   - Classifica a prioridade visual por dias desde a ultima programacao e ausencia de Estado Trabalho.
 - `resolveStageReviewIssue`
   - Identifica etapa `CANCELADA` ou `ADIADA` com etapa ativa posterior no mesmo projeto, preservando a numeracao historica e retornando dados para o card `Revisao de etapas`.
+- `resolveInterruptedCompletedIssue`
+  - Identifica programacao `ADIADA` ou `CANCELADA` com Estado Trabalho conclusivo e retorna dados para o card `Interrompidas concluidas`.
 - `ProjectTable`
   - Renderiza tabelas paginadas de obras prioritarias, nunca programadas e cards abertos, com coluna opcional de revisao de etapas.
 - `filterProjects`

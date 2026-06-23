@@ -1010,4 +1010,5 @@
 - [x] Mover o bloco `Prazos das Obras` da tela `Programacao Simples` para `Mapa de Programacao`, mantendo janelas, carrossel, modal e exportacao CSV a partir da carteira consolidada.
 - [x] Marcar no `Mapa de Programacao` obras com etapa cancelada/adiada e etapa ativa posterior como `Revisao de etapas`, preservando a numeracao historica da etapa interrompida e destacando card, tabela e detalhe.
 - [x] Criar tabela dedicada de `Revisao de etapas` no `Mapa de Programacao`, com exportacao CSV e coluna de revisao isolada das tabelas gerais.
+- [x] Bloquear novas divergencias `ADIADA/CANCELADA + CONCLUIDO` em Programacao com trigger no banco, ajustar backfill de inativas para nao herdar `CONCLUIDO`, ampliar auditoria read-only e destacar o alerta no Mapa de Programacao.
 - [ ] [Apuracao de Fator Minimo][Extracao oficial] Modelar confirmacao da apuracao com snapshot imutavel de filtros, usuario, data/hora, regra aplicada, itens considerados e resultado por equipe/data.

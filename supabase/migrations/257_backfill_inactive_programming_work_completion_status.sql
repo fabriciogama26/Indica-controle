@@ -7,6 +7,7 @@
 -- - Somente registros vinculados a projeto existente no mesmo tenant.
 -- - Mantem status operacional original; altera apenas Estado Trabalho.
 -- - Usa apenas sugestoes presentes no catalogo ativo do tenant.
+-- - Nao herda CONCLUIDO para ADIADA/CANCELADA; esses casos ficam para revisao operacional.
 
 with blank_rows as (
   select pp.*
@@ -31,7 +32,11 @@ diagnostic as (
   left join lateral (
     select
       max(public.normalize_programming_work_completion_code(pp_same.work_completion_status))
-        filter (where nullif(btrim(coalesce(pp_same.work_completion_status, '')), '') is not null) as any_same_day_status
+        filter (
+          where nullif(btrim(coalesce(pp_same.work_completion_status, '')), '') is not null
+            and public.normalize_programming_work_completion_code(pp_same.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+            and public.normalize_programming_work_completion_code(pp_same.work_completion_status) not like 'CONCLUIDO%'
+        ) as any_same_day_status
     from public.project_programming pp_same
     where pp_same.tenant_id = br.tenant_id
       and pp_same.project_id = br.project_id
@@ -44,6 +49,8 @@ diagnostic as (
     where pp_source.tenant_id = br.tenant_id
       and pp_source.id = br.copied_from_programming_id
       and nullif(btrim(coalesce(pp_source.work_completion_status, '')), '') is not null
+      and public.normalize_programming_work_completion_code(pp_source.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+      and public.normalize_programming_work_completion_code(pp_source.work_completion_status) not like 'CONCLUIDO%'
     limit 1
   ) source_programming on true
   left join lateral (
@@ -56,6 +63,8 @@ diagnostic as (
       and ph.programming_id = br.id
       and ph.related_programming_id is not null
       and nullif(btrim(coalesce(pp_related.work_completion_status, '')), '') is not null
+      and public.normalize_programming_work_completion_code(pp_related.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+      and public.normalize_programming_work_completion_code(pp_related.work_completion_status) not like 'CONCLUIDO%'
     order by ph.created_at desc
     limit 1
   ) history_related on true
@@ -71,6 +80,8 @@ diagnostic as (
       and pp_prev.id <> br.id
       and pp_prev.status <> 'CANCELADA'
       and nullif(btrim(coalesce(pp_prev.work_completion_status, '')), '') is not null
+      and public.normalize_programming_work_completion_code(pp_prev.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+      and public.normalize_programming_work_completion_code(pp_prev.work_completion_status) not like 'CONCLUIDO%'
       and (
         pp_prev.execution_date < br.execution_date
         or (pp_prev.execution_date = br.execution_date and pp_prev.updated_at < br.updated_at)
@@ -161,6 +172,8 @@ validated as (
    and catalog.is_active = true
   where candidates.backfill_rule is not null
     and candidates.suggested_work_completion_status is not null
+    and candidates.suggested_work_completion_status not in ('CONCLUIDO', 'COMPLETO')
+    and candidates.suggested_work_completion_status not like 'CONCLUIDO%'
 ),
 updated as (
   update public.project_programming pp
