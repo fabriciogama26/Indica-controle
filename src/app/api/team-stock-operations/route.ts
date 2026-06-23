@@ -3,6 +3,7 @@ import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 
 import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { requirePageAction } from "@/lib/server/pageAuthorization";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -503,6 +504,11 @@ async function loadTeamOperationList(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const pageAuth = await requirePageAction({ context: resolution, pageKey: "saida", action: "read" });
+  if (!pageAuth.allowed) {
+    return NextResponse.json({ message: pageAuth.error.message }, { status: pageAuth.error.status });
+  }
+
   const { supabase, appUser } = resolution;
   const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
   const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
@@ -887,6 +893,11 @@ async function loadTeamOperationHistory(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const pageAuth = await requirePageAction({ context: resolution, pageKey: "saida", action: "read" });
+  if (!pageAuth.allowed) {
+    return NextResponse.json({ message: pageAuth.error.message }, { status: pageAuth.error.status });
+  }
+
   const { supabase, appUser } = resolution;
   const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
   const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
@@ -1063,6 +1074,11 @@ export async function POST(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const pageAuth = await requirePageAction({ context: resolution, pageKey: "saida", action: "create" });
+    if (!pageAuth.allowed) {
+      return NextResponse.json({ message: pageAuth.error.message }, { status: pageAuth.error.status });
     }
 
     const payload = (await request.json().catch(() => ({}))) as TransferPayload;

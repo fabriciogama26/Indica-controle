@@ -653,6 +653,18 @@ Comportamento antes/depois
 - Antes: a quantidade de material rastreavel ficava sempre travada em `1`.
 - Depois: a quantidade so fica travada em `1` quando a unidade esta identificada, quando e `TRAFO` ou quando a regra do material nao permite pendencia.
 
+Atualizacao 2026-06 (correcao de brechas de permissao de pagina)
+-----------------------------------------------------------------
+- Adicionado `requirePageAction` com action `"read"` nas funcoes `loadTransferList` e `loadTransferEditHistory` em
+  `src/app/api/stock-transfers/route.ts`. Antes: qualquer usuario autenticado podia listar/consultar historico de
+  movimentacoes de estoque independente do campo `can_read` no perfil de permissoes da pagina `entrada`.
+- Adicionado `requirePageAction` com action `"create"` no handler `POST` de `src/app/api/stock-transfers/route.ts`.
+  Antes: qualquer usuario autenticado podia criar movimentacoes de estoque ignorando o campo `can_create` no perfil.
+- Importado `requirePageAction` de `@/lib/server/pageAuthorization` nos dois arquivos de rota.
+- Todas as outras rotas de `entrada` ja possuiam protecao adequada:
+  - `PUT` sempre retorna 409 (edicao direta bloqueada por design).
+  - `stock-transfers/reversal/route.ts` ja usava `requirePageAction` com `"reverse"` desde o commit de Estornos.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 - `src/lib/materialSerialTracking.ts`
   - `allowsPendingSerialIdentification`: centraliza a regra de pendencia permitida somente para material rastreavel sem LP.
