@@ -570,12 +570,12 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ message: "Informe a programacao e o motivo da alteracao." }, { status: 400 });
   }
 
-  if (!expectedUpdatedAt) {
-    return NextResponse.json({ message: "Atualize a grade antes de alterar o status da programacao." }, { status: 409 });
+  if (reason.trim().length < 10) {
+    return NextResponse.json({ message: "O motivo deve ter ao menos 10 caracteres." }, { status: 400 });
   }
 
-  if (!reason) {
-    return NextResponse.json({ message: "Selecione um motivo para continuar." }, { status: 400 });
+  if (!expectedUpdatedAt) {
+    return NextResponse.json({ message: "Atualize a grade antes de alterar o status da programacao." }, { status: 409 });
   }
 
   const currentProgramming = await fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, programmingId);

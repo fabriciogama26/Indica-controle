@@ -338,6 +338,23 @@ export async function copyProgrammingToDates(request: NextRequest) {
     );
   }
 
+  const completedProjectContext = await resolveProjectCompletedProgrammingContext({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId: source.project_id,
+  });
+
+  if (completedProjectContext) {
+    return NextResponse.json(
+      buildProjectCompletedConflictResponse({
+        message:
+          "Este projeto esta com Estado Trabalho CONCLUIDO. Antes de copiar para outras datas, edite uma programacao e altere o Estado Trabalho para diferente de CONCLUIDO.",
+        context: completedProjectContext,
+      }),
+      { status: 409 },
+    );
+  }
+
   const { data: groupIds, error: groupError } = await resolution.supabase
     .from("project_programming")
     .select("id")

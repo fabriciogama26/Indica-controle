@@ -477,6 +477,24 @@ Atualizacao 2026-06-21 - Estado Trabalho no COPY_TO_DATES selecionado
 - Multi-tenant:
   - A heranca consulta apenas registros do `tenant_id` autenticado e valida o codigo no catalogo do mesmo tenant.
 
+Atualizacao 2026-06 (correcao de brechas de regra de negocio)
+--------------------------------------------------------------
+- Adicionada verificacao de projeto CONCLUIDO em `copyProgrammingToDates` (`handlers.ts`).
+  Antes: um projeto com Estado Trabalho CONCLUIDO podia receber novas programacoes via
+  COPY_TO_DATES, contornando o bloqueio aplicado em `saveProgramming`, `saveProgrammingBatch`
+  e `addTeamToProgramming`. As copias eram criadas com `work_completion_status = CONCLUIDO`
+  sem acionar `markFutureProgrammingStagesAnticipatedViaRpc`.
+  Depois: `resolveProjectCompletedProgrammingContext` e chamada imediatamente apos as
+  validacoes de status e etapa. Se o projeto estiver CONCLUIDO, a API retorna 409 com
+  o mesmo payload de conflito usado pelos demais fluxos de criacao.
+- Adicionada validacao de tamanho minimo do motivo em `PATCH /api/programacao` (`route.ts`).
+  Antes: o servidor aceitava qualquer string truthy como motivo de cancelamento/adiamento
+  (ex: "x", "ok"), enquanto o frontend exigia ao menos 10 caracteres.
+  Depois: o servidor valida `reason.trim().length >= 10` antes de prosseguir, alinhando
+  a regra de auditoria entre frontend e backend.
+- Removida checagem duplicada de `!reason` que existia apos a validacao de `expectedUpdatedAt`
+  (o valor ja era garantido truthy pelo check anterior).
+
 Atualizacao 2026-06-21 - Vínculo estruturado origem -> copia no COPY_TO_DATES
 ------------------------------------------------------------------------------
 - Arquivos alterados/criados:
