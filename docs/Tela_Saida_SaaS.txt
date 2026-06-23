@@ -639,3 +639,17 @@ Mapa de Codigo (funcoes, hooks e constantes)
   - `save_team_stock_operation_record`: prevalidacao de `p_items` para bloquear material rastreavel sem serial.
 - `docs/Tela_Saida_SaaS.txt`
   - documenta que pendencia de serial nao e requisitavel por equipe.
+
+Atualizacao 2026-06 (correcao de brechas de permissao de pagina)
+-----------------------------------------------------------------
+- Adicionado `requirePageAction` com action `"read"` nas funcoes `loadTeamOperationList` e `loadTeamOperationHistory`
+  em `src/app/api/team-stock-operations/route.ts`. Antes: qualquer usuario autenticado podia listar/consultar
+  historico de operacoes de equipe ignorando o campo `can_read` no perfil de permissoes da pagina `saida`.
+- Adicionado `requirePageAction` com action `"create"` no handler `POST` de
+  `src/app/api/team-stock-operations/route.ts`. Antes: qualquer usuario autenticado podia criar operacoes de equipe
+  ignorando o campo `can_create` no perfil.
+- Importado `requirePageAction` de `@/lib/server/pageAuthorization` no arquivo de rota.
+- Todas as outras rotas de `saida` ja possuiam protecao adequada:
+  - `PUT` sempre retorna 409 (edicao direta bloqueada por design).
+  - `team-stock-operations/reversal/route.ts` ja usava `requirePageAction` com `"reverse"` e `"read"` desde o
+    commit de Estornos.

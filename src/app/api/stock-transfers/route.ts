@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { parsePositiveInteger } from "@/lib/server/apiHelpers";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import {
@@ -400,6 +401,11 @@ async function loadTransferList(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const pageAuth = await requirePageAction({ context: resolution, pageKey: "entrada", action: "read" });
+  if (!pageAuth.allowed) {
+    return NextResponse.json({ message: pageAuth.error.message }, { status: pageAuth.error.status });
+  }
+
   const { supabase, appUser } = resolution;
 
   const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
@@ -788,6 +794,11 @@ async function loadTransferEditHistory(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const pageAuth = await requirePageAction({ context: resolution, pageKey: "entrada", action: "read" });
+  if (!pageAuth.allowed) {
+    return NextResponse.json({ message: pageAuth.error.message }, { status: pageAuth.error.status });
+  }
+
   const { supabase, appUser } = resolution;
 
   const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
@@ -973,6 +984,11 @@ export async function POST(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const pageAuth = await requirePageAction({ context: resolution, pageKey: "entrada", action: "create" });
+    if (!pageAuth.allowed) {
+      return NextResponse.json({ message: pageAuth.error.message }, { status: pageAuth.error.status });
     }
 
     const payload = (await request.json().catch(() => ({}))) as TransferPayload;
