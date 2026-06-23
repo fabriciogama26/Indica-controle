@@ -141,7 +141,7 @@ export async function requirePageAction({
 
   const rolePermission = await context.supabase
     .from("role_page_permissions")
-    .select("can_access")
+    .select("can_access, can_create, can_update, can_cancel, can_reverse, can_import, can_export")
     .eq("tenant_id", context.appUser.tenant_id)
     .eq("role_id", context.appUser.role_id)
     .eq("page_key", normalizedPageKey)
@@ -151,14 +151,18 @@ export async function requirePageAction({
     return failPagePermissionLookup(normalizedPageKey, action);
   }
 
-  if (!rolePermission.data?.can_access) {
+  if (!rolePermission.data) {
     return denyPageAction(normalizedPageKey, action);
   }
 
-  return {
-    allowed: true,
-    pageKey: normalizedPageKey,
-    action,
-    source: "role",
-  };
+  const roleColumn = ACTION_COLUMN[action];
+  const roleGranted = rolePermission.data.can_access && rolePermission.data[roleColumn];
+  return roleGranted
+    ? {
+        allowed: true,
+        pageKey: normalizedPageKey,
+        action,
+        source: "role",
+      }
+    : denyPageAction(normalizedPageKey, action);
 }

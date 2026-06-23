@@ -7,6 +7,7 @@ import {
   normalizeText,
   reverseStockTransferViaRpc,
 } from "@/lib/server/stockTransfers";
+import { BLOCKED_REVERSAL_REASON_CODES } from "@/lib/business/reversalRules";
 
 type ReversalPayload = {
   transferId?: unknown;
@@ -46,8 +47,6 @@ type FullReversalRow = {
   original_stock_transfer_id: string;
   reversal_stock_transfer_id: string;
 };
-
-const BLOCKED_REVERSAL_REASON_CODES = new Set(["OPERATION_CANCELED", "OTHER"]);
 
 function appendReversalGuidance(reason: string, message: string) {
   if (reason !== "INSUFFICIENT_STOCK") {

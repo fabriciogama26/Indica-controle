@@ -4,6 +4,7 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
 import { reverseTeamStockOperationViaRpc } from "@/lib/server/teamStockOperations";
+import { BLOCKED_REVERSAL_REASON_CODES } from "@/lib/business/reversalRules";
 
 type ReversalPayload = {
   transferId?: unknown;
@@ -13,8 +14,6 @@ type ReversalPayload = {
   reversalDate?: unknown;
   mode?: unknown;
 };
-
-const BLOCKED_REVERSAL_REASON_CODES = new Set(["OPERATION_CANCELED", "OTHER"]);
 
 type TransferItemRow = {
   id: string;

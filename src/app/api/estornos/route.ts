@@ -217,6 +217,8 @@ async function resolveReversalsContext(request: NextRequest) {
   return resolution;
 }
 
+const REVERSAL_QUERY_LIMIT = 5000;
+
 async function loadItemReversals(context: AuthenticatedAppUserContext, startDate: string | null, endDate: string | null) {
   let query = context.supabase
     .from("stock_transfer_item_reversals")
@@ -225,7 +227,7 @@ async function loadItemReversals(context: AuthenticatedAppUserContext, startDate
     )
     .eq("tenant_id", context.appUser.tenant_id)
     .order("created_at", { ascending: false })
-    .limit(2000);
+    .limit(REVERSAL_QUERY_LIMIT);
 
   if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
   if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);
@@ -243,7 +245,7 @@ async function loadFullReversals(context: AuthenticatedAppUserContext, startDate
     )
     .eq("tenant_id", context.appUser.tenant_id)
     .order("created_at", { ascending: false })
-    .limit(2000);
+    .limit(REVERSAL_QUERY_LIMIT);
 
   if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
   if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);
@@ -522,7 +524,7 @@ export async function GET(request: NextRequest) {
   }
 
   const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
+  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), REVERSAL_QUERY_LIMIT * 2);
   const reversalStartDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalStartDate"));
   const reversalEndDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalEndDate"));
 
@@ -531,6 +533,8 @@ export async function GET(request: NextRequest) {
       loadItemReversals(context, reversalStartDate, reversalEndDate),
       loadFullReversals(context, reversalStartDate, reversalEndDate),
     ]);
+
+    const isTruncated = itemReversals.length >= REVERSAL_QUERY_LIMIT || fullReversals.length >= REVERSAL_QUERY_LIMIT;
 
     const transferIds = uniqueValues([
       ...itemReversals.flatMap((row) => [row.original_stock_transfer_id, row.reversal_stock_transfer_id]),
@@ -543,6 +547,7 @@ export async function GET(request: NextRequest) {
         summary: buildSummary([]),
         pagination: { page, pageSize, total: 0 },
         filters: { users: [], reasons: [] },
+        isTruncated: false,
       });
     }
 
@@ -658,6 +663,7 @@ export async function GET(request: NextRequest) {
         users,
         reasons,
       },
+      isTruncated,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao carregar Estornos.";
