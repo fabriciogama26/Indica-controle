@@ -1238,6 +1238,7 @@ group by tenant_id, primary_rule_status, suggested_work_completion_status
 order by tenant_id, recommended_action, total_registros desc, primary_rule_status, suggested_work_completion_status;
 
 -- 14) Programacoes inativas com Estado Trabalho em branco e sugestao de backfill.
+-- Observacao: ADIADA/CANCELADA nao devem herdar CONCLUIDO; esses casos entram na auditoria 15.
 with blank_rows as (
   select
     pp.*,
@@ -1262,7 +1263,11 @@ diagnostic as (
   left join lateral (
     select
       max(public.normalize_programming_work_completion_code(pp_same.work_completion_status))
-        filter (where nullif(btrim(coalesce(pp_same.work_completion_status, '')), '') is not null) as any_same_day_status
+        filter (
+          where nullif(btrim(coalesce(pp_same.work_completion_status, '')), '') is not null
+            and public.normalize_programming_work_completion_code(pp_same.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+            and public.normalize_programming_work_completion_code(pp_same.work_completion_status) not like 'CONCLUIDO%'
+        ) as any_same_day_status
     from public.project_programming pp_same
     where pp_same.tenant_id = br.tenant_id
       and pp_same.project_id = br.project_id
@@ -1275,6 +1280,8 @@ diagnostic as (
     where pp_source.tenant_id = br.tenant_id
       and pp_source.id = br.copied_from_programming_id
       and nullif(btrim(coalesce(pp_source.work_completion_status, '')), '') is not null
+      and public.normalize_programming_work_completion_code(pp_source.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+      and public.normalize_programming_work_completion_code(pp_source.work_completion_status) not like 'CONCLUIDO%'
     limit 1
   ) source_programming on true
   left join lateral (
@@ -1287,6 +1294,8 @@ diagnostic as (
       and ph.programming_id = br.id
       and ph.related_programming_id is not null
       and nullif(btrim(coalesce(pp_related.work_completion_status, '')), '') is not null
+      and public.normalize_programming_work_completion_code(pp_related.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+      and public.normalize_programming_work_completion_code(pp_related.work_completion_status) not like 'CONCLUIDO%'
     order by ph.created_at desc
     limit 1
   ) history_related on true
@@ -1302,6 +1311,8 @@ diagnostic as (
       and pp_prev.id <> br.id
       and pp_prev.status <> 'CANCELADA'
       and nullif(btrim(coalesce(pp_prev.work_completion_status, '')), '') is not null
+      and public.normalize_programming_work_completion_code(pp_prev.work_completion_status) not in ('CONCLUIDO', 'COMPLETO')
+      and public.normalize_programming_work_completion_code(pp_prev.work_completion_status) not like 'CONCLUIDO%'
       and (
         pp_prev.execution_date < br.execution_date
         or (pp_prev.execution_date = br.execution_date and pp_prev.updated_at < br.updated_at)
@@ -1374,3 +1385,41 @@ select
 from classified
 group by tenant_id, status, primary_rule_status, suggested_work_completion_status
 order by tenant_id, recommended_action, total_registros desc, status, primary_rule_status;
+
+-- 15) Divergencia: programacoes ADIADA/CANCELADA com Estado Trabalho CONCLUIDO.
+select
+  pp.tenant_id,
+  coalesce(p.sob, '[PROJETO_NAO_ENCONTRADO]') as projeto,
+  pp.id as programming_id,
+  pp.project_id,
+  coalesce(t.name, pp.team_id::text) as equipe,
+  pp.team_id,
+  pp.execution_date,
+  pp.status,
+  pp.work_completion_status,
+  public.normalize_programming_work_completion_code(pp.work_completion_status) as normalized_work_completion_status,
+  pp.etapa_number,
+  pp.etapa_unica,
+  pp.etapa_final,
+  pp.cancellation_reason,
+  pp.updated_at,
+  case
+    when p.id is null then
+      'PROJETO_NAO_ENCONTRADO'
+    else
+      'INTERROMPIDA_COM_ESTADO_CONCLUIDO'
+  end as rule_status,
+  'REVISAO_OPERACIONAL_STATUS_X_ESTADO_TRABALHO' as recommended_action
+from public.project_programming pp
+left join public.project p
+  on p.tenant_id = pp.tenant_id
+ and p.id = pp.project_id
+left join public.teams t
+  on t.tenant_id = pp.tenant_id
+ and t.id = pp.team_id
+where pp.status in ('ADIADA', 'CANCELADA')
+  and (
+    public.normalize_programming_work_completion_code(pp.work_completion_status) in ('CONCLUIDO', 'COMPLETO')
+    or public.normalize_programming_work_completion_code(pp.work_completion_status) like 'CONCLUIDO%'
+  )
+order by pp.tenant_id, projeto, pp.execution_date desc, equipe, pp.id;

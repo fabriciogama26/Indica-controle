@@ -672,3 +672,18 @@ Observacao
 - Cria `mark_project_programming_future_stages_anticipated` para marcar etapas ativas posteriores do mesmo projeto como `ANTECIPADO` quando uma etapa atual for salva como `CONCLUIDO`.
 - Registra historico operacional para cada linha alterada, preservando escopo por `tenant_id + project_id + etapa_number`.
 - Mantem EXECUTE restrito a `service_role`.
+
+256_backfill_programming_work_completion_status.sql
+- Preenche `Estado Trabalho` em branco de programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`) usando sugestao automatica validada por catalogo ativo do tenant.
+- Mantem fora do backfill automatico casos operacionais como etapa sem numeracao/flag e projeto nao encontrado.
+- Registra historico em `project_programming_history` para cada linha atualizada.
+
+257_backfill_inactive_programming_work_completion_status.sql
+- Preenche `Estado Trabalho` em branco de programacoes inativas (`ADIADA`/`CANCELADA`) usando sugestoes nao conclusivas e catalogo ativo do tenant.
+- Nao herda `CONCLUIDO` para programacoes interrompidas; divergencias ficam para revisao operacional.
+- Mantem o status operacional original e registra historico em `project_programming_history`.
+
+258_guard_interrupted_programming_completed_work_status.sql
+- Cria trigger em `project_programming` para impedir novas divergencias `ADIADA/CANCELADA + CONCLUIDO`.
+- Bloqueia nova transicao para `ADIADA` ou `CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
+- Mantem dados legados intactos para revisao por auditoria, sem backfill destrutivo.

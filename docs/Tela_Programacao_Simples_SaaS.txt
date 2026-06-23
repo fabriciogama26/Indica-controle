@@ -138,6 +138,10 @@ Arquitetura
   - `supabase/migrations/097_move_programming_status_history_into_rpcs.sql`
   - RPCs: `set_project_programming_status`, `postpone_project_programming`
   - Objetivo: gravar historico funcional de `ADIADA/CANCELADA` dentro da mesma transacao do banco.
+- Migration de guarda de status interrompido x Estado Trabalho:
+  - `supabase/migrations/258_guard_interrupted_programming_completed_work_status.sql`
+  - Trigger: `zz_trg_project_programming_block_interrupted_completed`
+  - Objetivo: impedir que programacao `ADIADA` ou `CANCELADA` receba `Estado Trabalho = CONCLUIDO` e impedir nova transicao para `ADIADA`/`CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -186,6 +190,8 @@ Cadastro
   - Quando a obra ainda nao possui `Estado Trabalho` valido no historico, o backend preenche automaticamente `Estado Trabalho = PARCIAL`.
   - A acao `Adicionar equipe` cria uma nova programacao para a equipe selecionada usando uma programacao ativa existente como modelo, sem trocar a equipe da linha original.
   - `Adicionar equipe` bloqueia duplicidade no mesmo `Projeto + Data de execucao + ETAPA`, conflito de horario, equipe inativa/de outro tenant, etapa igual/maior no historico da equipe e projeto com `Estado Trabalho = CONCLUIDO`.
+  - `Adiar` e `Cancelar` bloqueiam projeto com `Estado Trabalho = CONCLUIDO`.
+  - A regra de bloqueio tambem existe no banco: programacao `ADIADA` ou `CANCELADA` nao pode ter `Estado Trabalho = CONCLUIDO`.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
   - Para equipes `LV-xx`, a replicacao de documentos tambem alcanca as programacoes ativas do mesmo projeto com `Data de execucao` em ate `+7 dias` da programacao de origem.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
@@ -1999,10 +2005,35 @@ Atualizacao 2026-06-23 - Backfill de Estado Trabalho em branco
   - Depois: a migration preenche apenas registros ativos em branco com sugestao automatica validada pela auditoria.
   - Depois: casos operacionais, como `SEM_ETAPA_OU_FLAG` ou projeto nao encontrado, ficam fora do backfill automatico.
   - Depois: a migration complementar preenche programacoes `ADIADA` e `CANCELADA` em branco quando ha sugestao segura, sem alterar o status operacional.
+  - Depois: programacoes `ADIADA` e `CANCELADA` nao herdam mais `CONCLUIDO` no backfill automatico; esses casos ficam para revisao operacional.
 - Multi-tenant:
   - Todas as leituras e escritas usam `tenant_id`.
   - O valor aplicado precisa existir ativo no catalogo do mesmo tenant.
   - A migration nao altera RLS, grants, policies ou schema.
+
+Atualizacao 2026-06-23 - Bloqueio de ADIADA/CANCELADA com Estado concluido
+----------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/258_guard_interrupted_programming_completed_work_status.sql`
+  - `supabase/migrations/257_backfill_inactive_programming_work_completion_status.sql`
+  - `scripts/audit-programming-work-completion-status-readonly.sql`
+  - `src/app/api/mapa-programacao/route.ts`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/triggers tocados:
+  - `enforce_interrupted_programming_completed_work_status`
+  - `zz_trg_project_programming_block_interrupted_completed`
+- Comportamento antes/depois:
+  - Antes: a API bloqueava adiar/cancelar projeto concluido, mas RPC/script service-role ainda podia criar divergencia.
+  - Depois: o banco bloqueia `ADIADA`/`CANCELADA + CONCLUIDO` e bloqueia nova transicao para `ADIADA`/`CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
+  - Antes: o backfill de inativas podia herdar `CONCLUIDO`.
+  - Depois: o backfill de inativas ignora sugestoes `CONCLUIDO` e usa somente sugestoes nao conclusivas.
+- Multi-tenant:
+  - Trigger e consultas usam `tenant_id` e `project_id`.
+  - A migration nao cria policy nem permissao para cliente autenticado.
+  - EXECUTE da funcao de trigger fica restrito a `service_role`.
 
 Atualizacao 2026-06-18 - Copiar programacao com selecao de equipes por data
 ----------------------------------------------------------------------------
