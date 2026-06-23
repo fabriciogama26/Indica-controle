@@ -126,6 +126,22 @@ Atualizacao 2026-06
 - Antes: o salvamento da tela `/permissoes` era bloqueado com `As telas estornos nao estao cadastradas em app_pages.`.
 - Depois: a matriz volta a reconhecer `estornos` sem sobrescrever liberacoes ou bloqueios ja persistidos.
 
+Atualizacao 2026-06 (correcao de brechas de regra de negocio)
+--------------------------------------------------------------
+- Corrigida brecha de permissao em `src/lib/server/pageAuthorization.ts`: permissao via role agora verifica
+  a coluna especifica da action (ex: `can_reverse`) alem de `can_access`, igualando o comportamento da
+  permissao individual de usuario. Antes: role com `can_reverse=false` ainda conseguia estornar.
+- Corrigida exportacao CSV truncada em 100 registros: o limite de `pageSize` no `GET /api/estornos` foi
+  elevado de 100 para `REVERSAL_QUERY_LIMIT * 2` (10000), permitindo que o cliente exporte todos os
+  registros do periodo filtrado.
+- Elevado limite de consulta no banco de 2000 para 5000 por tabela (`REVERSAL_QUERY_LIMIT`).
+  Antes: queries com `.limit(2000)` podiam truncar silenciosamente resultados em tenants de alto volume.
+- Adicionado campo `isTruncated` na resposta do `GET /api/estornos`. Quando verdadeiro, a UI exibe aviso
+  solicitando refinamento do filtro por data de estorno.
+- Centralizada constante `BLOCKED_REVERSAL_REASON_CODES` em `src/lib/business/reversalRules.ts`.
+  Removidas as declaracoes duplicadas de `stock-transfers/reversal/route.ts` e
+  `team-stock-operations/reversal/route.ts`. Importacao padronizada via alias `@/lib/business/reversalRules`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais

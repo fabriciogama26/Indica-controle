@@ -1,0 +1,4 @@
+export const BLOCKED_REVERSAL_REASON_CODES = new Set([
+  "OPERATION_CANCELED",
+  "OTHER",
+]);

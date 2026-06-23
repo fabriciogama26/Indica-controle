@@ -73,6 +73,7 @@ type ReversalsResponse = {
     users?: FilterOption[];
     reasons?: FilterOption[];
   };
+  isTruncated?: boolean;
 };
 
 type FilterState = {
@@ -175,6 +176,7 @@ export function ReversalsPageView() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [detailRow, setDetailRow] = useState<ReversalRow | null>(null);
 
@@ -208,6 +210,7 @@ export function ReversalsPageView() {
         setReasons(payload.filters?.reasons ?? []);
         setTotal(payload.pagination?.total ?? 0);
         setPage(payload.pagination?.page ?? nextPage);
+        setIsTruncated(Boolean(payload.isTruncated));
         setFeedback(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha ao carregar Estornos.";
@@ -340,6 +343,12 @@ export function ReversalsPageView() {
       {feedback ? (
         <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>
           {feedback.message}
+        </div>
+      ) : null}
+
+      {isTruncated ? (
+        <div className={styles.feedbackError}>
+          O volume de estornos no periodo excede o limite de consulta. Refine o filtro por data de estorno para garantir que todos os registros sejam exibidos.
         </div>
       ) : null}
 
