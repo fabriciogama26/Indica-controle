@@ -257,6 +257,7 @@ export function MapProgrammingPageView() {
   const [selectedProject, setSelectedProject] = useState<MapProject | null>(null);
   const [selectedCardPage, setSelectedCardPage] = useState(1);
   const [priorityPage, setPriorityPage] = useState(1);
+  const [stageReviewPage, setStageReviewPage] = useState(1);
   const [neverProgrammedPage, setNeverProgrammedPage] = useState(1);
   const [deadlineViewMode, setDeadlineViewMode] = useState<DeadlineViewMode>("15");
   const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
@@ -301,6 +302,7 @@ export function MapProgrammingPageView() {
       setSelectedProject(null);
       setSelectedCardPage(1);
       setPriorityPage(1);
+      setStageReviewPage(1);
       setNeverProgrammedPage(1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar Mapa de Programacao.";
@@ -335,6 +337,7 @@ export function MapProgrammingPageView() {
   }, [data, statusCards]);
 
   const selectedCard = statusCards.find((card) => card.key === selectedCardKey) ?? null;
+  const stageReviewCard = statusCards.find((card) => card.key === "REVIEW_STAGES") ?? null;
 
   const filterProjects = useCallback((projects: MapProject[]) => {
     const search = normalizeSearch(activeFilters.projectSearch);
@@ -360,6 +363,10 @@ export function MapProgrammingPageView() {
   const filteredPriorityProjects = useMemo(
     () => filterProjects(data?.priorityProjects ?? []),
     [data, filterProjects],
+  );
+  const filteredStageReviewProjects = useMemo(
+    () => filterProjects(stageReviewCard?.projects ?? []),
+    [filterProjects, stageReviewCard],
   );
   const filteredNeverProgrammedProjects = useMemo(
     () => filterProjects(data?.neverProgrammedProjects ?? []),
@@ -462,6 +469,7 @@ export function MapProgrammingPageView() {
 
   useEffect(() => {
     setPriorityPage(1);
+    setStageReviewPage(1);
     setNeverProgrammedPage(1);
     setSelectedCardPage(1);
   }, [activeFilters.projectSearch, activeFilters.serviceCenter]);
@@ -764,6 +772,33 @@ export function MapProgrammingPageView() {
         })}
       </div>
 
+      <article className={`${styles.card} ${styles.stageReviewCard}`}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h3>Revisao de etapas</h3>
+            <span>Etapas canceladas ou adiadas com etapa ativa posterior, sem renumerar o historico.</span>
+          </div>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => {
+              if (stageReviewCard) exportProjects(stageReviewCard, filteredStageReviewProjects);
+            }}
+            disabled={!filteredStageReviewProjects.length}
+          >
+            Exportar CSV
+          </button>
+        </div>
+        <ProjectTable
+          projects={filteredStageReviewProjects}
+          page={stageReviewPage}
+          onPageChange={setStageReviewPage}
+          emptyMessage="Nenhuma revisao de etapas para os filtros atuais."
+          onProjectClick={setSelectedProject}
+          showStageReviewColumn
+        />
+      </article>
+
       <div className={styles.contentGrid}>
         <article className={styles.card}>
           <div className={styles.cardHeader}>
@@ -858,6 +893,7 @@ export function MapProgrammingPageView() {
               onPageChange={setSelectedCardPage}
               emptyMessage="Nenhuma obra encontrada para os filtros atuais."
               onProjectClick={setSelectedProject}
+              showStageReviewColumn={selectedCard.key === "REVIEW_STAGES"}
             />
           </section>
         </div>
@@ -888,12 +924,14 @@ function ProjectTable({
   onPageChange,
   emptyMessage,
   onProjectClick,
+  showStageReviewColumn = false,
 }: {
   projects: MapProject[];
   page: number;
   onPageChange: (page: number) => void;
   emptyMessage: string;
   onProjectClick: (project: MapProject) => void;
+  showStageReviewColumn?: boolean;
 }) {
   const pageCount = Math.max(1, Math.ceil(projects.length / TABLE_PAGE_SIZE));
   const safePage = Math.min(Math.max(page, 1), pageCount);
@@ -917,7 +955,7 @@ function ProjectTable({
               <th>Encarregado</th>
               <th>Prog.</th>
               <th>Etapas</th>
-              <th>Revisao</th>
+              {showStageReviewColumn ? <th>Revisao</th> : null}
               <th>Dias</th>
             </tr>
           </thead>
@@ -943,11 +981,13 @@ function ProjectTable({
                 <td>{project.latestForemanName}</td>
                 <td>{project.programmingCount}</td>
                 <td>{project.stageCount}</td>
-                <td>
-                  {project.stageReviewRequired
-                    ? `${project.stageReviewStageLabel} -> ${project.stageReviewNextStageLabel}`
-                    : "-"}
-                </td>
+                {showStageReviewColumn ? (
+                  <td>
+                    {project.stageReviewRequired
+                      ? `${project.stageReviewStageLabel} -> ${project.stageReviewNextStageLabel}`
+                      : "-"}
+                  </td>
+                ) : null}
                 <td>{formatDaysSince(project.daysSinceLatest)}</td>
               </tr>
             ))}

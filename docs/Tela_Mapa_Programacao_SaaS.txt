@@ -75,12 +75,14 @@ Filtros, auto-complete e listagem
   - no detalhe aberto pela tabela, o titulo usa `ID: {uuid}` da obra.
 - Secoes:
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
+  - Revisao de etapas em tabela propria, destacando obras com etapa cancelada/adiada e etapa ativa posterior.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
   - Equipes sem programacao
 - Exportacao:
   - CSV dos prazos das obras na janela selecionada.
   - CSV das obras do card aberto.
+  - CSV da tabela dedicada de `Revisao de etapas`.
   - CSV de equipes sem programacao quando houver periodo.
 - Prazos das Obras:
   - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
@@ -142,6 +144,8 @@ Atualizacao 2026-06
 - Card `Revisao de etapas` criado para localizar obra com etapa cancelada/adiada e etapa ativa posterior.
 - Tabelas e cards de detalhe passaram a destacar a revisao de etapas, exibindo a etapa interrompida e a proxima etapa ativa posterior.
 - Etapas historicas canceladas/adiadas nao sao renumeradas; a tela apenas marca as etapas futuras como dependentes de revisao.
+- `Revisao de etapas` passou a ter uma tabela dedicada na tela principal, com exportacao CSV e destaque visual.
+- A coluna `Revisao` ficou restrita a tabela dedicada e ao modal do card `Revisao de etapas`, evitando misturar esse alerta nas demais tabelas.
 - Comportamento antes/depois:
   - Antes: a tela mostrava principalmente obras nunca programadas e equipes sem agenda.
   - Depois: a tela mostra carteira valida, concluidas, nao concluidas, parciais, pendentes, canceladas/adiadas, sem Estado Trabalho e nunca programadas.
@@ -153,6 +157,8 @@ Atualizacao 2026-06
   - Depois: periodo e opcional para obras e obrigatorio somente para analisar equipes sem programacao.
   - Antes: uma etapa intermediaria cancelada/adiada com etapa posterior ativa podia ficar misturada em `Para reprogramar`.
   - Depois: a obra aparece em `Revisao de etapas`, com destaque visual na tabela e no card.
+  - Antes: a revisao aparecia apenas como coluna dentro de tabelas gerais.
+  - Depois: a revisao possui tabela propria para analise operacional.
 - Impacto multi-tenant:
   - Todas as leituras usam o `tenant_id` autenticado.
   - A mudanca nao altera RLS, grants ou schema.
@@ -208,7 +214,7 @@ Funcoes utilitarias relacionadas
 - `resolveStageReviewIssue`
   - Identifica etapa `CANCELADA` ou `ADIADA` com etapa ativa posterior no mesmo projeto, preservando a numeracao historica e retornando dados para o card `Revisao de etapas`.
 - `ProjectTable`
-  - Renderiza tabelas paginadas de obras prioritarias, nunca programadas e cards abertos, com destaque para revisao de etapas.
+  - Renderiza tabelas paginadas de obras prioritarias, nunca programadas e cards abertos, com coluna opcional de revisao de etapas.
 - `filterProjects`
   - Aplica filtros locais de busca/centro sobre cards, tabelas e modal.
 - `exportCsv`
