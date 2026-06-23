@@ -139,7 +139,7 @@ Filtros, auto-complete e listagem
 
 Boas praticas
 -------------
-- Manter `programacao` como `pageKey` oficial no controle de permissao.
+- Manter `programacao-simples` como `pageKey` oficial no controle de permissao. Ambas as rotas `/programacao` e `/programacao-simples` apontam para o mesmo `pageKey = "programacao-simples"` em `authorization.ts` e em `handlers.ts` (`PROGRAMMING_PAGE_KEY`). Nao existe `pageKey = "programacao"` isolado.
 - Toda operacao continua restrita ao tenant autenticado via `resolveAuthenticatedAppUser`, `tenant_id` e RLS.
 - As migrations `067` e `068` formalizam a base multi-tenant da programacao, o vinculo de base da equipe e a RPC transacional de salvamento.
 - As migrations `071` e `072` movem o resumo semanal de carga para o banco e formalizam o catalogo proprio de apoio da Programacao com vinculacao ao catalogo da Locacao.
