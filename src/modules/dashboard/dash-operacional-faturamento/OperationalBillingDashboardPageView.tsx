@@ -313,6 +313,11 @@ const chartHelpByKey: Record<string, string> = {
 };
 
 
+function segmentColor(index: number, total: number): string {
+  const hue = Math.round((index / total) * 360);
+  return `hsl(${hue}, 65%, 45%)`;
+}
+
 const PROJECT_VALUE_PAGE_SIZE = 20;
 
 export function OperationalBillingDashboardPageView() {
@@ -1167,8 +1172,11 @@ export function OperationalBillingDashboardPageView() {
                         {segments.map((segment, segmentIndex) => (
                           <div
                             key={segment.key}
-                            className={segmentIndex % 2 === 0 ? styles.barSegmentPrimary : styles.barSegmentSecondary}
-                            style={{ height: `${Math.max(4, (segment.value / segmentTotal) * 100)}%` }}
+                            className={styles.barSegmentPrimary}
+                            style={{
+                              height: `${Math.max(4, (segment.value / segmentTotal) * 100)}%`,
+                              background: segmentColor(segmentIndex, segments.length),
+                            }}
                             title={`${segment.label}: ${formatCurrency(segment.value)}`}
                             aria-label={`${segment.label}: ${formatCurrency(segment.value)}`}
                           />
