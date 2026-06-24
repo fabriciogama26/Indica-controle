@@ -312,12 +312,6 @@ const chartHelpByKey: Record<string, string> = {
   billing: "Soma dos valores registrados no Faturamento dos projetos filtrados.",
 };
 
-const BAR_COLORS: Record<string, { primary: string; secondary: string }> = {
-  totalMeasurement: { primary: "#1f4ea3", secondary: "#6b9ee8" },
-  measurementAsbuilt: { primary: "#2563eb", secondary: "#93c5fd" },
-  asbuilt: { primary: "#0d9488", secondary: "#5eead4" },
-  billing: { primary: "#7c3aed", secondary: "#c4b5fd" },
-};
 
 const PROJECT_VALUE_PAGE_SIZE = 20;
 
@@ -1170,27 +1164,18 @@ export function OperationalBillingDashboardPageView() {
                   <div className={styles.barTrack}>
                     {hasSegmentedBar ? (
                       <div className={styles.barFillSegmented} style={{ height: `${height}%` }}>
-                        {segments.map((segment, segmentIndex) => {
-                          const colors = BAR_COLORS[item.key];
-                          return (
-                            <div
-                              key={segment.key}
-                              className={segmentIndex % 2 === 0 ? styles.barSegmentPrimary : styles.barSegmentSecondary}
-                              style={{
-                                height: `${Math.max(4, (segment.value / segmentTotal) * 100)}%`,
-                                background: segmentIndex % 2 === 0 ? colors?.primary : colors?.secondary,
-                              }}
-                              title={`${segment.label}: ${formatCurrency(segment.value)}`}
-                              aria-label={`${segment.label}: ${formatCurrency(segment.value)}`}
-                            />
-                          );
-                        })}
+                        {segments.map((segment, segmentIndex) => (
+                          <div
+                            key={segment.key}
+                            className={segmentIndex % 2 === 0 ? styles.barSegmentPrimary : styles.barSegmentSecondary}
+                            style={{ height: `${Math.max(4, (segment.value / segmentTotal) * 100)}%` }}
+                            title={`${segment.label}: ${formatCurrency(segment.value)}`}
+                            aria-label={`${segment.label}: ${formatCurrency(segment.value)}`}
+                          />
+                        ))}
                       </div>
                     ) : (
-                      <div
-                        className={item.value > 0 ? styles.barFill : styles.barFillEmpty}
-                        style={{ height: `${height}%`, ...(item.value > 0 && { background: BAR_COLORS[item.key]?.primary }) }}
-                      />
+                      <div className={item.value > 0 ? styles.barFill : styles.barFillEmpty} style={{ height: `${height}%` }} />
                     )}
                   </div>
                   <div className={styles.barLabel}>
