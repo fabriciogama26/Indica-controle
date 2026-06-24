@@ -88,6 +88,8 @@ type ChartProjectDetailRow = {
   serviceCenter: string;
   value: number;
   orderCount: number;
+  rate: number | null;
+  asbuiltFaixaEnd: string | null;
 };
 
 type AsbuiltBreakdownRow = {
@@ -1978,9 +1980,33 @@ export function OperationalBillingDashboardPageView() {
                 <h3>Projetos do indicador</h3>
                 <p className={styles.modalSubtitle}>{chartProjectDetailModal.label}</p>
               </div>
-              <button type="button" className={styles.modalCloseButton} onClick={closeChartProjectDetailModal}>
-                Fechar
-              </button>
+              <div className={styles.actions}>
+                {chartProjectDetailRows.length ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => downloadCsv(
+                      `projetos_indicador_${filenameToken(chartProjectDetailModal.label)}.csv`,
+                      [
+                        ["projeto", "centro_de_servico", "valor", "ordens", "taxa", "faixa_asbuilt"],
+                        ...chartProjectDetailRows.map((row) => [
+                          row.projectCode,
+                          row.serviceCenter,
+                          row.value,
+                          row.orderCount,
+                          row.rate ?? "",
+                          row.asbuiltFaixaEnd ?? "",
+                        ]),
+                      ],
+                    )}
+                  >
+                    Exportar CSV
+                  </button>
+                ) : null}
+                <button type="button" className={styles.modalCloseButton} onClick={closeChartProjectDetailModal}>
+                  Fechar
+                </button>
+              </div>
             </div>
 
             <div className={styles.modalBody}>
@@ -2003,6 +2029,8 @@ export function OperationalBillingDashboardPageView() {
                       <th>Centro de servico</th>
                       <th>Valor</th>
                       <th>Ordens</th>
+                      <th>Taxa</th>
+                      <th>Faixa As Built</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2013,11 +2041,13 @@ export function OperationalBillingDashboardPageView() {
                           <td>{row.serviceCenter}</td>
                           <td>{formatCurrency(row.value)}</td>
                           <td>{formatNumber(row.orderCount)}</td>
+                          <td>{row.rate !== null ? formatNumber(row.rate) : "—"}</td>
+                          <td>{row.asbuiltFaixaEnd ? formatDate(row.asbuiltFaixaEnd) : "—"}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} className={styles.emptyRow}>
+                        <td colSpan={6} className={styles.emptyRow}>
                           {isChartProjectDetailLoading ? "Carregando projetos..." : "Nenhum projeto encontrado para este indicador."}
                         </td>
                       </tr>
@@ -2029,6 +2059,7 @@ export function OperationalBillingDashboardPageView() {
                         <td colSpan={2}><strong>Total</strong></td>
                         <td>{formatCurrency(chartProjectDetailTotalValue)}</td>
                         <td>{formatNumber(chartProjectDetailRows.reduce((sum, row) => sum + row.orderCount, 0))}</td>
+                        <td colSpan={2} />
                       </tr>
                     </tfoot>
                   ) : null}

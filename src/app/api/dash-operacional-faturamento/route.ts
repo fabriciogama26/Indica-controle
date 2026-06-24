@@ -169,6 +169,8 @@ type ChartProjectDetailRow = {
   serviceCenter: string;
   value: number;
   orderCount: number;
+  rate: number | null;
+  asbuiltFaixaEnd: string | null;
 };
 
 type AsbuiltBreakdownRow = {
@@ -1913,6 +1915,19 @@ async function buildChartProjectDetailRows(params: {
     orderCountByProject.set(order.project_id, (orderCountByProject.get(order.project_id) ?? 0) + 1);
   }
 
+  const rateByProject = new Map<string, number | null>();
+  for (const order of measurementOrders) {
+    const rate = order.manual_rate !== null && order.manual_rate !== undefined ? Number(order.manual_rate) : null;
+    rateByProject.set(order.project_id, Number.isFinite(rate) ? (rate as number) : null);
+  }
+
+  const asbuiltFaixaEndByProject = new Map<string, string | null>();
+  for (const order of asbuiltOrders) {
+    if (order.service_coverage_end_date) {
+      asbuiltFaixaEndByProject.set(order.project_id, order.service_coverage_end_date);
+    }
+  }
+
   return Array.from(totals.entries())
     .map(([projectId, value]) => {
       const project = projectById.get(projectId);
@@ -1923,6 +1938,8 @@ async function buildChartProjectDetailRows(params: {
             serviceCenter: project.serviceCenter,
             value,
             orderCount: orderCountByProject.get(projectId) ?? 0,
+            rate: rateByProject.get(projectId) ?? null,
+            asbuiltFaixaEnd: asbuiltFaixaEndByProject.get(projectId) ?? null,
           }
         : null;
     })
