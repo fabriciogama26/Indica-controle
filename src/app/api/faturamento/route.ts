@@ -474,29 +474,48 @@ export async function GET(request: NextRequest) {
   const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
   const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
 
-  let query = resolution.supabase
+  // C1: count no banco com os mesmos filtros (evita buscar todos os registros em memoria)
+  let countQuery = resolution.supabase
+    .from("project_billing_orders")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", resolution.appUser.tenant_id);
+
+  if (projectId) countQuery = countQuery.eq("project_id", projectId);
+  if (statusFilter && statusFilter !== "TODOS") countQuery = countQuery.eq("status", statusFilter);
+  if (billingKindFilter === "COM_PRODUCAO" || billingKindFilter === "SEM_PRODUCAO") countQuery = countQuery.eq("billing_kind", billingKindFilter);
+  if (noProductionReasonIdFilter) countQuery = countQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
+
+  const { count: rawTotal, error: countError } = await countQuery;
+  if (countError) {
+    const hint = billingModuleMigrationHint(countError.message);
+    return NextResponse.json({ message: `Falha ao listar faturamentos.${hint}`.trim() }, { status: 500 });
+  }
+
+  const total = rawTotal ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+
+  // C1: busca apenas a pagina solicitada diretamente no banco
+  let dataQuery = resolution.supabase
     .from("project_billing_orders")
     .select("id, billing_number, project_id, billing_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", resolution.appUser.tenant_id)
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .range(startIndex, startIndex + pageSize - 1);
 
-  if (projectId) query = query.eq("project_id", projectId);
-  if (statusFilter && statusFilter !== "TODOS") query = query.eq("status", statusFilter);
-  if (billingKindFilter === "COM_PRODUCAO" || billingKindFilter === "SEM_PRODUCAO") query = query.eq("billing_kind", billingKindFilter);
-  if (noProductionReasonIdFilter) query = query.eq("no_production_reason_id", noProductionReasonIdFilter);
+  if (projectId) dataQuery = dataQuery.eq("project_id", projectId);
+  if (statusFilter && statusFilter !== "TODOS") dataQuery = dataQuery.eq("status", statusFilter);
+  if (billingKindFilter === "COM_PRODUCAO" || billingKindFilter === "SEM_PRODUCAO") dataQuery = dataQuery.eq("billing_kind", billingKindFilter);
+  if (noProductionReasonIdFilter) dataQuery = dataQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
 
-  const { data: orders, error } = await query.returns<BillingOrderRow[]>();
+  const { data: pagedBaseOrders, error } = await dataQuery.returns<BillingOrderRow[]>();
   if (error) {
     const hint = billingModuleMigrationHint(error.message);
     return NextResponse.json({ message: `Falha ao listar faturamentos.${hint}`.trim() }, { status: 500 });
   }
 
-  const total = (orders ?? []).length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const startIndex = (safePage - 1) * pageSize;
-  const pagedBaseOrders = (orders ?? []).slice(startIndex, startIndex + pageSize);
-  const pagedOrderIds = pagedBaseOrders.map((item) => item.id);
+  const pagedOrderIds = (pagedBaseOrders ?? []).map((item) => item.id);
 
   const { data: aggregateItems } = pagedOrderIds.length
     ? await resolution.supabase
@@ -508,7 +527,8 @@ export async function GET(request: NextRequest) {
         .returns<BillingAggregateItem[]>()
     : { data: [] as BillingAggregateItem[] };
 
-  const userIds = Array.from(new Set((orders ?? []).flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))));
+  // M1: userIds apenas dos registros da pagina atual
+  const userIds = Array.from(new Set((pagedBaseOrders ?? []).flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))));
   const userMap = await fetchAppUserMap({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
@@ -523,7 +543,7 @@ export async function GET(request: NextRequest) {
     aggregateMap.set(item.billing_order_id, current);
   }
 
-  const pagedOrders = pagedBaseOrders.map((item) => {
+  const pagedOrders = (pagedBaseOrders ?? []).map((item) => {
     const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0 };
     return {
       id: item.id,
@@ -663,6 +683,12 @@ async function saveBillingOrderBatchPartial(request: NextRequest) {
   const rowsInput = Array.isArray(payload?.rows) ? payload.rows : [];
   if (!rowsInput.length) {
     return NextResponse.json({ message: "Nenhuma linha valida enviada para importacao em massa." }, { status: 400 });
+  }
+
+  // C3: limite no route antes de chegar na RPC
+  const MAX_BATCH_ROWS = 500;
+  if (rowsInput.length > MAX_BATCH_ROWS) {
+    return NextResponse.json({ message: `Maximo de ${MAX_BATCH_ROWS} faturamentos por importacao em lote.` }, { status: 400 });
   }
 
   const rows = rowsInput.map((row, index) => ({

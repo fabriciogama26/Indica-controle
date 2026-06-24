@@ -614,7 +614,14 @@ export function BillingPageView() {
         throw new Error("Nenhum faturamento encontrado para exportar detalhamento.");
       }
 
-      const detailResults = await Promise.allSettled(exportOrders.map((order) => fetchDetail(order)));
+      // C4: processar em chunks de 50 para evitar flood de requests simultâneos
+      const EXPORT_CHUNK_SIZE = 50;
+      const detailResults: PromiseSettledResult<BillingDetail>[] = [];
+      for (let i = 0; i < exportOrders.length; i += EXPORT_CHUNK_SIZE) {
+        const chunk = exportOrders.slice(i, i + EXPORT_CHUNK_SIZE);
+        const chunkResults = await Promise.allSettled(chunk.map((order) => fetchDetail(order)));
+        detailResults.push(...chunkResults);
+      }
       const details = detailResults
         .filter((result): result is PromiseFulfilledResult<BillingDetail> => result.status === "fulfilled")
         .map((result) => result.value);
@@ -681,10 +688,13 @@ export function BillingPageView() {
   }
 
   function downloadMassTemplate() {
+    // A3: notas_pedido e coluna opcional — nao entra em IMPORT_TEMPLATE_HEADERS (obrigatorias)
+    const templateHeaders = [...IMPORT_TEMPLATE_HEADERS, "notas_pedido"] as string[];
     downloadCsv("modelo_faturamento.csv", [
-      [...IMPORT_TEMPLATE_HEADERS],
-      ["OBRA-001", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Atividade faturada"],
-      ["OBRA-002", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima"],
+      templateHeaders,
+      ["OBRA-001", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Obs do item", "Nota geral do pedido"],
+      ["OBRA-001", "COM_PRODUCAO", "", "ATV002", "5", "1", "Obs item 2", "Nota geral do pedido"],
+      ["OBRA-002", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima", ""],
     ]);
   }
 
@@ -704,6 +714,13 @@ export function BillingPageView() {
 
   async function importMassFile(file: File) {
     if (!file) return;
+
+    // M2: bloquear arquivo muito grande antes de ler em memoria
+    const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_IMPORT_FILE_SIZE) {
+      setMassImportIssues([{ linha: 0, coluna: "arquivo", valor: file.name, erro: "Arquivo muito grande. Maximo permitido: 5MB." }]);
+      return;
+    }
 
     setIsImporting(true);
     setMassImportIssues([]);
@@ -737,6 +754,8 @@ export function BillingPageView() {
         const quantityInput = readCsvField(row, headerMap, "quantidade");
         const rateInput = readCsvField(row, headerMap, "taxa");
         const observation = readCsvField(row, headerMap, "observacao");
+        // A3: notas_pedido e opcional — retorna "" se a coluna nao existir no CSV (compatibilidade retroativa)
+        const notasPedido = readCsvField(row, headerMap, "notas_pedido");
         const project = findProjectOption(projectInput);
         const billingKind = normalizeBillingKind(kindInput);
         const reason = billingKind === "SEM_PRODUCAO" ? findReasonOption(reasonInput) : null;
@@ -759,13 +778,14 @@ export function BillingPageView() {
           continue;
         }
 
-        const groupKey = [project.id, billingKind, reason?.id ?? "", observation].join("|");
+        // A3: groupKey usa notas_pedido para agrupar o pedido; observation e exclusivo de cada item
+        const groupKey = [project.id, billingKind, reason?.id ?? "", notasPedido].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
           billingKind,
           noProductionReasonId: reason?.id ?? "",
-          notes: observation,
+          notes: notasPedido,
           items: [],
         };
 
