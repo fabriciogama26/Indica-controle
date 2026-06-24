@@ -86,6 +86,14 @@ function buildRowId() {
     : `${Date.now()}-${Math.random()}`;
 }
 
+// Aceita DD/MM/AAAA ou DD-MM-AAAA e retorna YYYY-MM-DD (ISO) ou null se invalido
+function parseBrDate(value: string): string | null {
+  const match = /^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/.exec(value.trim());
+  if (!match) return null;
+  const iso = `${match[3]}-${match[2]}-${match[1]}`;
+  return isNaN(new Date(iso + "T00:00:00Z").getTime()) ? null : iso;
+}
+
 function calculateItemTotal(item: Pick<BillingFormItem, "voicePoint" | "quantity" | "rate" | "unitValue">) {
   const quantity = parsePositiveDecimal(item.quantity) ?? 0;
   const rate = parsePositiveDecimal(item.rate) ?? 0;
@@ -701,9 +709,9 @@ export function BillingPageView() {
     const templateHeaders = [...IMPORT_TEMPLATE_HEADERS, "notas_pedido"] as string[];
     downloadCsv("modelo_faturamento.csv", [
       templateHeaders,
-      ["OBRA-001", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Obs do item", "2025-01-31", "Nota geral do pedido"],
-      ["OBRA-001", "COM_PRODUCAO", "", "ATV002", "5", "1", "Obs item 2", "2025-01-31", "Nota geral do pedido"],
-      ["OBRA-002", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima", "2025-01-31", ""],
+      ["OBRA-001", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Obs do item", "31/01/2025", "Nota geral do pedido"],
+      ["OBRA-001", "COM_PRODUCAO", "", "ATV002", "5", "1", "Obs item 2", "31/01/2025", "Nota geral do pedido"],
+      ["OBRA-002", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima", "31/01/2025", ""],
     ]);
   }
 
@@ -763,7 +771,8 @@ export function BillingPageView() {
         const quantityInput = readCsvField(row, headerMap, "quantidade");
         const rateInput = readCsvField(row, headerMap, "taxa");
         const observation = readCsvField(row, headerMap, "observacao");
-        const ingressoDateInput = readCsvField(row, headerMap, "data_ingresso");
+        const ingressoDateRaw = readCsvField(row, headerMap, "data_ingresso");
+        const ingressoDateIso = parseBrDate(ingressoDateRaw);
         // notas_pedido e opcional — retorna "" se a coluna nao existir no CSV (compatibilidade retroativa)
         const notasPedido = readCsvField(row, headerMap, "notas_pedido");
         const project = findProjectOption(projectInput);
@@ -771,17 +780,16 @@ export function BillingPageView() {
         const reason = billingKind === "SEM_PRODUCAO" ? findReasonOption(reasonInput) : null;
         const quantity = parsePositiveDecimal(quantityInput);
         const rate = parsePositiveDecimal(rateInput);
-        const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(ingressoDateInput) && !isNaN(new Date(ingressoDateInput + "T00:00:00Z").getTime());
 
         if (!project) issues.push({ linha: rowNumber, coluna: "projeto", valor: projectInput, erro: "Projeto nao encontrado." });
-        if (!ingressoDateInput) issues.push({ linha: rowNumber, coluna: "data_ingresso", valor: ingressoDateInput, erro: "Data Ingresso obrigatoria." });
-        else if (!isValidDate) issues.push({ linha: rowNumber, coluna: "data_ingresso", valor: ingressoDateInput, erro: "Data Ingresso invalida. Use o formato AAAA-MM-DD." });
+        if (!ingressoDateRaw) issues.push({ linha: rowNumber, coluna: "data_ingresso", valor: ingressoDateRaw, erro: "Data Ingresso obrigatoria." });
+        else if (!ingressoDateIso) issues.push({ linha: rowNumber, coluna: "data_ingresso", valor: ingressoDateRaw, erro: "Data Ingresso invalida. Use o formato DD/MM/AAAA." });
         if (billingKind === "SEM_PRODUCAO" && !reason) issues.push({ linha: rowNumber, coluna: "motivo_sem_producao", valor: reasonInput, erro: "Motivo sem producao nao encontrado." });
         if (!activityInput) issues.push({ linha: rowNumber, coluna: "codigo_atividade", valor: activityInput, erro: "Atividade obrigatoria." });
         if (quantity === null) issues.push({ linha: rowNumber, coluna: "quantidade", valor: quantityInput, erro: "Quantidade invalida." });
         if (rate === null) issues.push({ linha: rowNumber, coluna: "taxa", valor: rateInput, erro: "Taxa invalida." });
 
-        if (!project || !isValidDate || (billingKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
+        if (!project || !ingressoDateIso || (billingKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
           continue;
         }
 
@@ -792,13 +800,13 @@ export function BillingPageView() {
         }
 
         // groupKey inclui data_ingresso para agrupar pedidos do mesmo projeto/tipo/data; observation e exclusivo de cada item
-        const groupKey = [project.id, billingKind, reason?.id ?? "", ingressoDateInput, notasPedido].join("|");
+        const groupKey = [project.id, billingKind, reason?.id ?? "", ingressoDateIso, notasPedido].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
           billingKind,
           noProductionReasonId: reason?.id ?? "",
-          ingressoDate: ingressoDateInput,
+          ingressoDate: ingressoDateIso,
           notes: notasPedido,
           items: [],
         };
