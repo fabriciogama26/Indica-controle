@@ -726,7 +726,7 @@ async function saveBillingOrderBatchPartial(request: NextRequest) {
 
   if (error) {
     const hint = billingModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao importar faturamento em lote.${hint}`.trim() }, { status: 500 });
+    return NextResponse.json({ message: `Falha ao importar faturamento em lote.${hint}`.trim(), _debug_error: error.message }, { status: 500 });
   }
 
   const result = (data ?? {}) as SaveBillingBatchRpcResult;
