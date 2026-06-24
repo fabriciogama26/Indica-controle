@@ -869,6 +869,7 @@
 - [x] Adicionar `Servicos considerados ate` na Medicao Asbuilt, com migration, obrigatoriedade em novos registros, suporte a edicao/lista/detalhes/exportacoes/importacao CSV e historico, preservando registros legados sem backfill automatico.
 - [x] Corrigir erro `42725` ao salvar Medicao Asbuilt apos a migration 218, renomeando a RPC antiga para helper interno e eliminando a ambiguidade de overload pela migration 219.
 - [x] Versionar Medicao Asbuilt por `Projeto + Servicos considerados ate`, permitindo snapshots acumulados em cortes diferentes e fazendo o Dash operacional considerar somente o ultimo snapshot `FECHADA` por projeto.
+- [ ] Evoluir a tela `Medicao Asbuilt` com nova visualizacao agrupada por projeto (linha por projeto exibindo ultimo Asbuilt, quantidade de fechamentos e valor acumulado; fechamentos expansiveis com itens internos) e alerta de duplicidade parecida ao salvar (mesmo projeto + codigos + quantidades + valores com data diferente — so alertar, nao bloquear).
 
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
 

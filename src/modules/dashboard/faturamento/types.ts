@@ -50,6 +50,7 @@ export type BillingFormState = {
   projectSearch: string;
   billingKind: BillingKind;
   noProductionReasonId: string;
+  ingressoDate: string;
   notes: string;
   activitySearch: string;
   quantity: string;
@@ -75,6 +76,7 @@ export type BillingListItem = {
   noProductionReasonId: string | null;
   noProductionReasonName: string;
   status: BillingStatus;
+  ingressoDate: string;
   notes: string;
   cancellationReason: string;
   canceledAt: string | null;

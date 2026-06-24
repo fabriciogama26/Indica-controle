@@ -70,6 +70,7 @@ type MassImportGroup = {
   projectId: string;
   billingKind: BillingKind;
   noProductionReasonId: string;
+  ingressoDate: string;
   notes: string;
   items: Array<{
     activityId: string;
@@ -390,6 +391,10 @@ export function BillingPageView() {
       setError("Selecione um projeto valido.");
       return;
     }
+    if (!form.ingressoDate) {
+      setError("Informe a Data Ingresso (data de competencia).");
+      return;
+    }
     if (form.billingKind === "SEM_PRODUCAO" && !form.noProductionReasonId) {
       setError("Selecione o motivo de sem producao.");
       return;
@@ -421,6 +426,7 @@ export function BillingPageView() {
           projectId: form.projectId,
           billingKind: form.billingKind,
           noProductionReasonId: form.billingKind === "SEM_PRODUCAO" ? form.noProductionReasonId : null,
+          ingressoDate: form.ingressoDate,
           notes: form.notes,
           expectedUpdatedAt: form.expectedUpdatedAt,
           items,
@@ -471,6 +477,7 @@ export function BillingPageView() {
         projectSearch: project?.code ?? detail.projectCode,
         billingKind: detail.billingKind,
         noProductionReasonId: detail.noProductionReasonId ?? "",
+        ingressoDate: detail.ingressoDate ?? "",
         notes: detail.notes,
         activitySearch: "",
         quantity: "",
@@ -572,10 +579,11 @@ export function BillingPageView() {
       if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar faturamentos.");
 
       downloadCsv("faturamento.csv", [
-        ["numero", "projeto", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
+        ["numero", "projeto", "data_ingresso", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
         ...(payload.orders ?? []).map((order) => [
           order.billingNumber,
           order.projectCode,
+          order.ingressoDate ?? "",
           billingKindLabel(order.billingKind),
           order.noProductionReasonName,
           billingStatusLabel(order.status),
@@ -652,6 +660,7 @@ export function BillingPageView() {
           rows.push([
             detail.billingNumber,
             detail.projectCode,
+            detail.ingressoDate ?? "",
             billingKindLabel(detail.billingKind),
             detail.noProductionReasonName || "-",
             billingStatusLabel(detail.status),
@@ -672,7 +681,7 @@ export function BillingPageView() {
       }
 
       downloadCsv(`faturamento_detalhamento_${toIsoDate(new Date())}.csv`, [
-        ["numero", "projeto", "tipo", "motivo_sem_producao", "status", "codigo_atividade", "descricao_atividade", "unidade", "status_atividade", "pontos", "quantidade", "taxa", "valor_unitario", "valor_item", "observacao_item", "observacao_faturamento", "atualizado_em"],
+        ["numero", "projeto", "data_ingresso", "tipo", "motivo_sem_producao", "status", "codigo_atividade", "descricao_atividade", "unidade", "status_atividade", "pontos", "quantidade", "taxa", "valor_unitario", "valor_item", "observacao_item", "observacao_faturamento", "atualizado_em"],
         ...rows,
       ]);
 
@@ -688,13 +697,13 @@ export function BillingPageView() {
   }
 
   function downloadMassTemplate() {
-    // A3: notas_pedido e coluna opcional — nao entra em IMPORT_TEMPLATE_HEADERS (obrigatorias)
+    // notas_pedido e coluna opcional — nao entra em IMPORT_TEMPLATE_HEADERS (obrigatorias)
     const templateHeaders = [...IMPORT_TEMPLATE_HEADERS, "notas_pedido"] as string[];
     downloadCsv("modelo_faturamento.csv", [
       templateHeaders,
-      ["OBRA-001", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Obs do item", "Nota geral do pedido"],
-      ["OBRA-001", "COM_PRODUCAO", "", "ATV002", "5", "1", "Obs item 2", "Nota geral do pedido"],
-      ["OBRA-002", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima", ""],
+      ["OBRA-001", "COM_PRODUCAO", "", "ATV001", "10", "1,5", "Obs do item", "2025-01-31", "Nota geral do pedido"],
+      ["OBRA-001", "COM_PRODUCAO", "", "ATV002", "5", "1", "Obs item 2", "2025-01-31", "Nota geral do pedido"],
+      ["OBRA-002", "SEM_PRODUCAO", "GARANTIA_FATURAMENTO_MINIMO", "ATV999", "1", "1", "Garantia minima", "2025-01-31", ""],
     ]);
   }
 
@@ -754,21 +763,25 @@ export function BillingPageView() {
         const quantityInput = readCsvField(row, headerMap, "quantidade");
         const rateInput = readCsvField(row, headerMap, "taxa");
         const observation = readCsvField(row, headerMap, "observacao");
-        // A3: notas_pedido e opcional — retorna "" se a coluna nao existir no CSV (compatibilidade retroativa)
+        const ingressoDateInput = readCsvField(row, headerMap, "data_ingresso");
+        // notas_pedido e opcional — retorna "" se a coluna nao existir no CSV (compatibilidade retroativa)
         const notasPedido = readCsvField(row, headerMap, "notas_pedido");
         const project = findProjectOption(projectInput);
         const billingKind = normalizeBillingKind(kindInput);
         const reason = billingKind === "SEM_PRODUCAO" ? findReasonOption(reasonInput) : null;
         const quantity = parsePositiveDecimal(quantityInput);
         const rate = parsePositiveDecimal(rateInput);
+        const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(ingressoDateInput) && !isNaN(new Date(ingressoDateInput + "T00:00:00Z").getTime());
 
         if (!project) issues.push({ linha: rowNumber, coluna: "projeto", valor: projectInput, erro: "Projeto nao encontrado." });
+        if (!ingressoDateInput) issues.push({ linha: rowNumber, coluna: "data_ingresso", valor: ingressoDateInput, erro: "Data Ingresso obrigatoria." });
+        else if (!isValidDate) issues.push({ linha: rowNumber, coluna: "data_ingresso", valor: ingressoDateInput, erro: "Data Ingresso invalida. Use o formato AAAA-MM-DD." });
         if (billingKind === "SEM_PRODUCAO" && !reason) issues.push({ linha: rowNumber, coluna: "motivo_sem_producao", valor: reasonInput, erro: "Motivo sem producao nao encontrado." });
         if (!activityInput) issues.push({ linha: rowNumber, coluna: "codigo_atividade", valor: activityInput, erro: "Atividade obrigatoria." });
         if (quantity === null) issues.push({ linha: rowNumber, coluna: "quantidade", valor: quantityInput, erro: "Quantidade invalida." });
         if (rate === null) issues.push({ linha: rowNumber, coluna: "taxa", valor: rateInput, erro: "Taxa invalida." });
 
-        if (!project || (billingKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
+        if (!project || !isValidDate || (billingKind === "SEM_PRODUCAO" && !reason) || !activityInput || quantity === null || rate === null) {
           continue;
         }
 
@@ -778,13 +791,14 @@ export function BillingPageView() {
           continue;
         }
 
-        // A3: groupKey usa notas_pedido para agrupar o pedido; observation e exclusivo de cada item
-        const groupKey = [project.id, billingKind, reason?.id ?? "", notasPedido].join("|");
+        // groupKey inclui data_ingresso para agrupar pedidos do mesmo projeto/tipo/data; observation e exclusivo de cada item
+        const groupKey = [project.id, billingKind, reason?.id ?? "", ingressoDateInput, notasPedido].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
           billingKind,
           noProductionReasonId: reason?.id ?? "",
+          ingressoDate: ingressoDateInput,
           notes: notasPedido,
           items: [],
         };
@@ -855,6 +869,10 @@ export function BillingPageView() {
           <label className={styles.field}>
             <span>Projeto</span>
             <input list="billing-projects" value={form.projectSearch} onChange={(event) => updateProjectFromInput(event.target.value)} />
+          </label>
+          <label className={styles.field}>
+            <span>Data Ingresso</span>
+            <input type="date" value={form.ingressoDate} onChange={(event) => setForm((current) => ({ ...current, ingressoDate: event.target.value }))} required />
           </label>
           <label className={styles.field}>
             <span>Tipo de faturamento</span>
@@ -1007,6 +1025,7 @@ export function BillingPageView() {
               <tr>
                 <th>Numero</th>
                 <th>Projeto</th>
+                <th>Data Ingresso</th>
                 <th>Tipo</th>
                 <th>Motivo</th>
                 <th>Itens</th>
@@ -1021,6 +1040,7 @@ export function BillingPageView() {
                 <tr key={order.id}>
                   <td>{order.billingNumber}</td>
                   <td>{order.projectCode}</td>
+                  <td>{order.ingressoDate || "-"}</td>
                   <td>{billingKindLabel(order.billingKind)}</td>
                   <td>{order.noProductionReasonName || "-"}</td>
                   <td>{order.itemCount}</td>
@@ -1038,7 +1058,7 @@ export function BillingPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={9} className={styles.emptyRow}>{isLoadingOrders ? "Carregando faturamentos..." : "Nenhum faturamento encontrado."}</td></tr>}
+              )) : <tr><td colSpan={10} className={styles.emptyRow}>{isLoadingOrders ? "Carregando faturamentos..." : "Nenhum faturamento encontrado."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1062,6 +1082,7 @@ export function BillingPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Numero:</strong> {detailOrder.billingNumber}</div>
                 <div><strong>Projeto:</strong> {detailOrder.projectCode}</div>
+                <div><strong>Data Ingresso:</strong> {detailOrder.ingressoDate || "-"}</div>
                 <div><strong>Status:</strong> {billingStatusLabel(detailOrder.status)}</div>
                 <div><strong>Tipo:</strong> {billingKindLabel(detailOrder.billingKind)}</div>
                 <div><strong>Motivo:</strong> {detailOrder.noProductionReasonName || "-"}</div>

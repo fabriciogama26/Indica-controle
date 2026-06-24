@@ -10,6 +10,7 @@ export const INITIAL_FORM: BillingFormState = {
   projectSearch: "",
   billingKind: "COM_PRODUCAO",
   noProductionReasonId: "",
+  ingressoDate: "",
   notes: "",
   activitySearch: "",
   quantity: "",
@@ -34,12 +35,14 @@ export const IMPORT_TEMPLATE_HEADERS = [
   "quantidade",
   "taxa",
   "observacao",
+  "data_ingresso",
 ] as const;
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
   billingKind: "Tipo de faturamento",
   noProductionReasonId: "Motivo sem producao",
+  ingressoDate: "Data Ingresso",
   notes: "Observacao",
   items: "Itens",
   itemCount: "Quantidade de itens",

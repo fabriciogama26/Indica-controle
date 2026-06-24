@@ -15,6 +15,7 @@ type BillingOrderRow = {
   no_production_reason_id: string | null;
   no_production_reason_name_snapshot: string | null;
   status: BillingStatus;
+  ingresso_date: string | null;
   notes: string | null;
   project_code_snapshot: string;
   is_active: boolean;
@@ -71,6 +72,7 @@ type SaveBillingPayload = {
   projectId?: string;
   billingKind?: string;
   noProductionReasonId?: string;
+  ingressoDate?: string;
   notes?: string;
   expectedUpdatedAt?: string;
   items?: Array<{
@@ -135,6 +137,13 @@ type SetBillingStatusRpcResult = {
 function normalizeUuid(value: unknown) {
   const normalized = normalizeText(value);
   return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
+}
+
+function normalizeIsoDate(value: unknown): string | null {
+  const text = normalizeText(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const date = new Date(text + "T00:00:00Z");
+  return isNaN(date.getTime()) ? null : text;
 }
 
 function normalizeBillingKind(value: unknown): BillingKind {
@@ -317,7 +326,7 @@ async function fetchBillingOrderDetail(params: {
 }) {
   const { data: order, error: orderError } = await params.supabase
     .from("project_billing_orders")
-    .select("id, billing_number, project_id, billing_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
+    .select("id, billing_number, project_id, billing_kind, no_production_reason_id, no_production_reason_name_snapshot, status, ingresso_date, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", params.tenantId)
     .eq("id", params.orderId)
     .maybeSingle<BillingOrderRow>();
@@ -383,6 +392,7 @@ async function fetchBillingOrderDetail(params: {
     noProductionReasonId: order.no_production_reason_id,
     noProductionReasonName: normalizeText(order.no_production_reason_name_snapshot),
     status: order.status,
+    ingressoDate: normalizeText(order.ingresso_date),
     notes: normalizeText(order.notes),
     cancellationReason: normalizeText(order.cancellation_reason),
     canceledAt: order.canceled_at,
@@ -499,7 +509,7 @@ export async function GET(request: NextRequest) {
   // C1: busca apenas a pagina solicitada diretamente no banco
   let dataQuery = resolution.supabase
     .from("project_billing_orders")
-    .select("id, billing_number, project_id, billing_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
+    .select("id, billing_number, project_id, billing_kind, no_production_reason_id, no_production_reason_name_snapshot, status, ingresso_date, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", resolution.appUser.tenant_id)
     .order("updated_at", { ascending: false })
     .range(startIndex, startIndex + pageSize - 1);
@@ -554,6 +564,7 @@ export async function GET(request: NextRequest) {
       noProductionReasonId: item.no_production_reason_id,
       noProductionReasonName: normalizeText(item.no_production_reason_name_snapshot),
       status: item.status,
+      ingressoDate: normalizeText(item.ingresso_date),
       notes: normalizeText(item.notes),
       cancellationReason: normalizeText(item.cancellation_reason),
       canceledAt: item.canceled_at,
@@ -587,6 +598,7 @@ async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
   const projectId = normalizeUuid(payload?.projectId);
   const billingKind = normalizeBillingKind(payload?.billingKind);
   const noProductionReasonId = normalizeUuid(payload?.noProductionReasonId);
+  const ingressoDate = normalizeIsoDate(payload?.ingressoDate);
   const notes = normalizeText(payload?.notes) || null;
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const invalidItemValues = hasInvalidBillingItemValues(payload?.items);
@@ -602,6 +614,10 @@ async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
 
   if (!projectId) {
     return NextResponse.json({ message: "Projeto e obrigatorio para cadastrar faturamento." }, { status: 400 });
+  }
+
+  if (!ingressoDate) {
+    return NextResponse.json({ message: "Data Ingresso e obrigatoria para o faturamento (formato AAAA-MM-DD)." }, { status: 400 });
   }
 
   if (billingKind === "SEM_PRODUCAO" && !noProductionReasonId) {
@@ -634,6 +650,7 @@ async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
     p_notes: notes,
     p_items: items,
     p_expected_updated_at: expectedUpdatedAt,
+    p_ingresso_date: ingressoDate,
   });
 
   if (error) {
@@ -696,6 +713,7 @@ async function saveBillingOrderBatchPartial(request: NextRequest) {
     projectId: normalizeUuid(row.projectId),
     billingKind: normalizeBillingKind(row.billingKind),
     noProductionReasonId: normalizeUuid(row.noProductionReasonId),
+    ingressoDate: normalizeIsoDate(row.ingressoDate) ?? null,
     notes: normalizeText(row.notes) || null,
     items: hasInvalidBillingItemValues(row.items) ? [] : normalizeBillingItems(row.items),
   }));
