@@ -123,17 +123,20 @@ export type BillingListResponse = {
     total: number;
   };
   message?: string;
+  dbError?: unknown;
 };
 
 export type BillingMetaResponse = {
   projects?: ProjectOption[];
   noProductionReasons?: NoProductionReasonOption[];
   message?: string;
+  dbError?: unknown;
 };
 
 export type BillingCatalogResponse = {
   items?: ActivityOption[];
   message?: string;
+  dbError?: unknown;
 };
 
 export type BillingImportIssue = {
@@ -155,4 +158,5 @@ export type BillingImportResult = {
     billingOrderId?: string | null;
   }>;
   message?: string;
+  dbError?: unknown;
 };

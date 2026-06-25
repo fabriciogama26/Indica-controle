@@ -1,3 +1,4 @@
+- [x] Corrigir cadastro individual e cadastro em massa de Faturamento para schema legado de producao em `project_billing_order_items`, adicionando colunas atuais via migration `263`, destravando `paid_value` legado via `263/264/265`, fallback de detalhe/edicao, registro detalhado de erros, texto do modal e docs da tela.
 - [x] Estruturar o frontend do SaaS em `SaaS (Web)/` com Next.js 16, React 19, TypeScript e App Router.
 - [x] Ampliar auditoria read-only de `Estado Trabalho` da Programacao para cobrir catalogo, brancos ativos, divergencia por Projeto + Data, copia/adicao/reprogramacao, etapa obrigatoria, regra `CONCLUIDO -> ANTECIPADO`, resumo agrupado por status/sugestao, brancos sem sugestao automatica e programacoes com projeto nao encontrado.
 - [x] Criar migration de backfill automatico para preencher `Estado Trabalho` em branco da Programacao com sugestao segura da auditoria, mantendo casos operacionais fora da correcao automatica.

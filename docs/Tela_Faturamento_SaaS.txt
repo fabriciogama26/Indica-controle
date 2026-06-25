@@ -126,8 +126,8 @@ Atalhos
   - `GET /api/faturamento/meta`
   - `GET /api/faturamento/activities/catalog`
 - Modelo cadastro em massa:
-  - `projeto;tipo_faturamento;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao`
-  - Valores obrigatorios: `projeto`, `tipo_faturamento`, `codigo_atividade`, `quantidade` e `taxa`.
+  - `projeto;tipo_faturamento;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao;data_ingresso`
+  - Valores obrigatorios: `projeto`, `tipo_faturamento`, `codigo_atividade`, `quantidade`, `taxa` e `data_ingresso`.
   - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
   - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
   - Modal no mesmo padrao da Medicao: baixar modelo, preencher planilha e enviar arquivo com acao explicita `Importar planilha`.
@@ -174,6 +174,33 @@ Atualizacao 2026-05
     - Detalhe e edicao passam a tratar ambientes ainda sem `activity_active_snapshot`, evitando que itens importados em massa aparecam como lista vazia quando o banco estiver defasado.
     - Migration `178_patch_billing_asbuilt_mass_import_items.sql` recompila as RPCs de save/lote parcial para preservar atividades do cadastro em massa em ambientes que ja tinham aplicado `176`.
 
+Atualizacao 2026-06
+-------------------
+- Arquivos alterados:
+  - `src/app/api/faturamento/route.ts`
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `src/modules/dashboard/faturamento/types.ts`
+  - `src/hooks/useErrorLogger.ts`
+  - `supabase/migrations/263_fix_voice_point_in_billing_items.sql`
+  - `supabase/migrations/264_fix_billing_paid_value_legacy_not_null.sql`
+  - `supabase/migrations/265_fix_billing_paid_value_legacy_check.sql`
+  - `docs/Tela_Faturamento_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - O banco de producao expunha schema legado em `project_billing_order_items`, com `paid_value` e sem `quantity`, `rate`, `unit_value`, `voice_point` e `total_value`.
+  - A RPC de cadastro tentava inserir colunas do contrato atual em uma tabela ainda defasada e falhava no cadastro individual e no cadastro em massa.
+  - A leitura de detalhe/edicao tentava selecionar colunas do contrato atual e podia falhar apos o cadastro.
+  - O texto do modal de cadastro em massa nao listava `data_ingresso` entre as colunas obrigatorias, embora o parser exigisse esse campo.
+- Depois:
+  - A migration `263_fix_voice_point_in_billing_items.sql` adiciona as colunas faltantes ao schema legado e preserva `paid_value` como base de backfill quando existir.
+  - Em schemas legados onde `paid_value` ainda e `NOT NULL`, a migration remove esse bloqueio e define default `0`, evitando falha de insert no cadastro individual e em massa.
+  - A migration `264_fix_billing_paid_value_legacy_not_null.sql` aplica o mesmo destravamento para ambientes onde a `263` ja tinha sido executada antes desse ajuste.
+  - A migration `265_fix_billing_paid_value_legacy_check.sql` remove a constraint legado `project_billing_order_items_paid_value_check` para ambientes onde a `264` ja tinha sido executada antes desse ajuste.
+  - A mesma migration recompila `save_project_billing_order` no contrato atual, cobrindo cadastro individual e cadastro em massa via RPC base.
+  - A API mantem fallback visual de `voice_point` via `service_activities.voice_point` para leitura defensiva de detalhe/edicao.
+  - Erros de Supabase retornados pela API passam a incluir `dbError` estruturado com operacao, codigo, mensagem, detalhes e hint; o logger da tela preserva esse payload no contexto do `log_error`.
+  - O modal de cadastro em massa informa `data_ingresso` no modelo e na lista de campos obrigatorios.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -195,6 +222,14 @@ Constantes e configuracoes
   - Responsavel por: tabelas `project_billing_orders`, `project_billing_order_items`, `project_billing_order_history`, RLS, RPCs e permissao da pagina `faturamento`.
 - Caminho: `supabase/migrations/178_patch_billing_asbuilt_mass_import_items.sql`
   - Responsavel por: patch incremental para coluna `activity_active_snapshot` e RPCs de save/lote parcial em bases ja migradas.
+- Caminho: `supabase/migrations/263_fix_voice_point_in_billing_items.sql`
+  - Responsavel por: alinhar schemas legados de `project_billing_order_items` ao contrato atual de quantidade, taxa, pontos, valor unitario e total calculado.
+- Caminho: `supabase/migrations/264_fix_billing_paid_value_legacy_not_null.sql`
+  - Responsavel por: remover o `NOT NULL` legado de `paid_value` quando a `263` ja foi aplicada anteriormente.
+- Caminho: `supabase/migrations/265_fix_billing_paid_value_legacy_check.sql`
+  - Responsavel por: remover a constraint legado de `paid_value` quando a `264` ja foi aplicada anteriormente.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar propriedades extras de objetos `Error`, incluindo payloads de API e `dbError`, no contexto salvo por `log_error`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/faturamento/utils.ts`
