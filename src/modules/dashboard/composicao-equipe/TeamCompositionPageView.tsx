@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -383,6 +384,7 @@ function scrollDashboardContentToTop() {
 
 export function TeamCompositionPageView() {
   const { session } = useAuth();
+  const router = useRouter();
   const logError = useErrorLogger("composicao-equipe");
   const exportCooldown = useExportCooldown();
   const today = useMemo(() => toIsoDate(new Date()), []);
@@ -951,6 +953,23 @@ export function TeamCompositionPageView() {
     setHistoryTotal(0);
   }
 
+  function openMeasurement(composition: CompositionItem) {
+    const projectId = composition.projectId ?? composition.projectIds?.[0] ?? "";
+    if (!projectId) {
+      setFeedback({ type: "error", message: "Composicao sem projeto nao permite iniciar medicao." });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      projectId,
+      teamId: composition.teamId,
+      executionDate: composition.compositionDate,
+      compositionId: composition.id,
+    });
+
+    router.push(`/medicao?${params.toString()}`);
+  }
+
   async function loadAllForExport() {
     const allItems: CompositionItem[] = [];
     let targetPage = 1;
@@ -1247,6 +1266,16 @@ export function TeamCompositionPageView() {
                       </button>
                       <button type="button" className={`${styles.actionButton} ${styles.actionHistory}`} onClick={() => void openHistory(composition)} title="Historico" aria-label="Historico">
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 12a8.25 8.25 0 1 0 2.25-5.69M3.75 4.75v4h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.actionButton} ${styles.actionMeasure}`}
+                        onClick={() => openMeasurement(composition)}
+                        disabled={!composition.projectId && !composition.projectIds?.[0]}
+                        title={composition.projectId || composition.projectIds?.[0] ? "Fazer medicao" : "Fazer medicao indisponivel sem projeto"}
+                        aria-label="Fazer medicao"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5.5h8M9.5 3.75h5a1.5 1.5 0 0 1 1.5 1.5V7H8V5.25a1.5 1.5 0 0 1 1.5-1.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M7 6.5H5.75A1.75 1.75 0 0 0 4 8.25v10A1.75 1.75 0 0 0 5.75 20h12.5A1.75 1.75 0 0 0 20 18.25v-10a1.75 1.75 0 0 0-1.75-1.75H17" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="m8 14 2.25 2.25L16 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                       </button>
                     </div>
                   </td>

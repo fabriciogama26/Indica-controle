@@ -110,6 +110,7 @@ Filtros, auto-complete e listagem
   - Detalhes
   - Editar
   - Historico
+  - Fazer medicao: abre `/medicao` com projeto principal/legado, equipe e data da composicao no cabecalho da ordem.
 
 Boas praticas
 -------------
@@ -244,6 +245,7 @@ Atualizacao 2026-06-25 - Multiplos projetos por composicao
   - `TeamCompositionPageView`
   - `addProject`
   - `removeProject`
+  - `openMeasurement`
   - `handleSubmit`
   - `startEdit`
   - `buildVisibleCsv`
@@ -264,6 +266,29 @@ Atualizacao 2026-06-25 - Multiplos projetos por composicao
   - `team_composition_projects` possui `tenant_id`, FKs compostas por tenant e RLS ON.
   - A RPC valida todos os projetos em `project_with_labels` com `tenant_id = p_tenant_id`.
   - `team_compositions.project_id` continua recebendo o primeiro projeto como referencia legada.
+
+Atualizacao 2026-06-25 - Acao Fazer medicao
+--------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `TeamCompositionPageView`
+  - `openMeasurement`
+  - `readMeasurementPrefillParams`
+  - `compositionPrefillAppliedRef`
+- Comportamento antes/depois:
+  - Antes: a lista de composicoes permitia detalhar, editar e consultar historico, mas nao iniciava a medicao a partir da composicao.
+  - Depois: a acao `Fazer medicao` abre `/medicao` com `projectId`, `teamId`, `executionDate` e `compositionId` na URL.
+  - Depois: composicoes sem projeto mantem a acao desabilitada, pois a Medicao exige projeto no cabecalho.
+- Impacto multi-tenant:
+  - A acao apenas transporta IDs pela URL.
+  - A tela de Medicao so aplica o preenchimento quando projeto e equipe existem nos metadados carregados pelas APIs autenticadas do tenant.
 
 Atualizacao 2026-06 - Auditoria de integridade
 -----------------------------------------------
