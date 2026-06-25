@@ -49,6 +49,15 @@ type ProjectRow = {
   service_center_text: string | null;
 };
 
+type CompositionProjectRow = {
+  id: string;
+  composition_id: string;
+  project_id: string;
+  project_code_snapshot: string;
+  project_service_center_snapshot: string | null;
+  sort_order: number;
+};
+
 type TeamRow = {
   id: string;
   name: string;
@@ -112,6 +121,7 @@ type CompositionPayload = {
   expectedUpdatedAt?: string | null;
   compositionDate?: string;
   projectId?: string;
+  projectIds?: unknown;
   teamId?: string;
   workStatus?: string;
   sector?: string;
@@ -177,6 +187,21 @@ function isMissingWorkStatusColumnError(error: unknown) {
 function normalizeUuid(value: unknown) {
   const normalized = normalizeText(value);
   return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
+}
+
+function normalizeUuidList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as string[];
+  }
+
+  const result: string[] = [];
+  for (const item of value) {
+    const uuid = normalizeUuid(item);
+    if (uuid) {
+      result.push(uuid);
+    }
+  }
+  return result;
 }
 
 function normalizeIsoDate(value: unknown) {
@@ -279,14 +304,41 @@ function buildUserMap(users: AppUserRow[]) {
   return new Map(users.map((user) => [user.id, user]));
 }
 
-function mapComposition(row: CompositionRow, members: MemberRow[], userMap: Map<string, AppUserRow>) {
+function normalizeCompositionProjects(row: CompositionRow, projects: CompositionProjectRow[]) {
+  if (projects.length) {
+    const orderedProjects = [...projects].sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0));
+    return orderedProjects.map((project) => ({
+      id: project.project_id,
+      code: project.project_code_snapshot,
+      serviceCenter: project.project_service_center_snapshot ?? "",
+    }));
+  }
+
+  return row.project_id
+    ? [{
+        id: row.project_id,
+        code: row.project_code_snapshot ?? "",
+        serviceCenter: row.project_service_center_snapshot ?? "",
+      }]
+    : [];
+}
+
+function mapComposition(
+  row: CompositionRow,
+  members: MemberRow[],
+  userMap: Map<string, AppUserRow>,
+  projects: CompositionProjectRow[] = [],
+) {
+  const compositionProjects = normalizeCompositionProjects(row, projects);
   return {
     id: row.id,
     compositionDate: row.composition_date,
-    projectId: row.project_id,
+    projectId: compositionProjects[0]?.id ?? row.project_id,
+    projectIds: compositionProjects.map((project) => project.id),
+    projects: compositionProjects,
     teamId: row.team_id,
-    projectCode: row.project_code_snapshot ?? "",
-    projectServiceCenter: row.project_service_center_snapshot ?? "",
+    projectCode: compositionProjects.map((project) => project.code).filter(Boolean).join(", ") || (row.project_code_snapshot ?? ""),
+    projectServiceCenter: compositionProjects.map((project) => project.serviceCenter).filter(Boolean).join(", ") || (row.project_service_center_snapshot ?? ""),
     teamName: row.team_name_snapshot,
     vehiclePlate: row.vehicle_plate_snapshot ?? "",
     foremanName: row.foreman_name_snapshot ?? "",
@@ -314,24 +366,36 @@ function mapComposition(row: CompositionRow, members: MemberRow[], userMap: Map<
   };
 }
 
-async function fetchProjectById(supabase: SupabaseClient, tenantId: string, projectId: string) {
+async function fetchProjectsByIds(supabase: SupabaseClient, tenantId: string, projectIds: string[]) {
+  const uniqueProjectIds = Array.from(new Set(projectIds));
+  if (!uniqueProjectIds.length) {
+    return [] as Array<{ id: string; code: string; serviceCenter: string }>;
+  }
+
   const { data, error } = await supabase
     .from("project_with_labels")
     .select("id, sob, service_center_text")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
-    .eq("id", projectId)
-    .maybeSingle<ProjectRow>();
+    .in("id", uniqueProjectIds)
+    .returns<ProjectRow[]>();
 
-  if (error || !data) {
+  if (error) {
     return null;
   }
 
-  return {
-    id: data.id,
-    code: normalizeText(data.sob),
-    serviceCenter: normalizeText(data.service_center_text),
-  };
+  const projectMap = new Map(
+    (data ?? []).map((project) => [
+      project.id,
+      {
+        id: project.id,
+        code: normalizeText(project.sob),
+        serviceCenter: normalizeText(project.service_center_text),
+      },
+    ]),
+  );
+
+  return uniqueProjectIds.map((projectId) => projectMap.get(projectId)).filter((project): project is NonNullable<typeof project> => Boolean(project));
 }
 
 async function fetchTeamById(supabase: SupabaseClient, tenantId: string, teamId: string) {
@@ -460,6 +524,35 @@ async function loadCompositionMembers(supabase: SupabaseClient, tenantId: string
 
   if (error) {
     return null;
+  }
+
+  return data ?? [];
+}
+
+function isMissingCompositionProjectsTableError(error: unknown) {
+  const rawMessage = error && typeof error === "object"
+    ? Object.values(error as Record<string, unknown>).map((value) => String(value ?? "")).join(" ")
+    : String(error ?? "");
+  const normalized = normalizeLookupKey(rawMessage);
+  return normalized.includes("TEAM_COMPOSITION_PROJECTS")
+    && (normalized.includes("RELATION") || normalized.includes("TABLE") || normalized.includes("SCHEMA CACHE") || normalized.includes("PGRST"));
+}
+
+async function loadCompositionProjects(supabase: SupabaseClient, tenantId: string, compositionIds: string[]) {
+  if (!compositionIds.length) {
+    return [] as CompositionProjectRow[];
+  }
+
+  const { data, error } = await supabase
+    .from("team_composition_projects")
+    .select("id, composition_id, project_id, project_code_snapshot, project_service_center_snapshot, sort_order")
+    .eq("tenant_id", tenantId)
+    .in("composition_id", compositionIds)
+    .order("sort_order", { ascending: true })
+    .returns<CompositionProjectRow[]>();
+
+  if (error) {
+    return isMissingCompositionProjectsTableError(error) ? [] : null;
   }
 
   return data ?? [];
@@ -616,6 +709,10 @@ export async function GET(request: NextRequest) {
       if (!members) {
         return NextResponse.json({ message: "Falha ao carregar integrantes da composicao." }, { status: 500 });
       }
+      const compositionProjects = await loadCompositionProjects(supabase, appUser.tenant_id, [detailId]);
+      if (!compositionProjects) {
+        return NextResponse.json({ message: "Falha ao carregar projetos da composicao." }, { status: 500 });
+      }
 
       const userIds = [composition.created_by, composition.updated_by].filter((item): item is string => Boolean(item));
       const { data: users } = userIds.length
@@ -623,7 +720,7 @@ export async function GET(request: NextRequest) {
         : { data: [] as AppUserRow[] };
 
       return NextResponse.json({
-        composition: mapComposition(composition, members, buildUserMap(users ?? [])),
+        composition: mapComposition(composition, members, buildUserMap(users ?? []), compositionProjects),
       });
     }
 
@@ -636,6 +733,23 @@ export async function GET(request: NextRequest) {
     const pageSize = parsePositiveInteger(params.get("pageSize"), 20, 100);
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
+
+    let projectCompositionIds: string[] | null = null;
+    if (projectId) {
+      const projectLinks = await supabase
+        .from("team_composition_projects")
+        .select("composition_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("project_id", projectId)
+        .limit(5000)
+        .returns<Array<{ composition_id: string }>>();
+
+      if (!projectLinks.error) {
+        projectCompositionIds = Array.from(new Set((projectLinks.data ?? []).map((item) => item.composition_id)));
+      } else if (!isMissingCompositionProjectsTableError(projectLinks.error)) {
+        return NextResponse.json({ message: "Falha ao filtrar projetos da composicao." }, { status: 500 });
+      }
+    }
 
     const fetchCompositionPage = (skipWorkStatusFilter = false) => {
       let query = supabase
@@ -650,7 +764,13 @@ export async function GET(request: NextRequest) {
       if (endDate) {
         query = query.lte("composition_date", endDate);
       }
-      if (projectId) {
+      if (projectId && projectCompositionIds) {
+        if (!projectCompositionIds.length) {
+          query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+        } else {
+          query = query.in("id", projectCompositionIds);
+        }
+      } else if (projectId) {
         query = query.eq("project_id", projectId);
       }
       if (teamId) {
@@ -690,6 +810,10 @@ export async function GET(request: NextRequest) {
     if (!members) {
       return NextResponse.json({ message: "Falha ao carregar integrantes das composicoes." }, { status: 500 });
     }
+    const compositionProjects = await loadCompositionProjects(supabase, appUser.tenant_id, compositionIds);
+    if (!compositionProjects) {
+      return NextResponse.json({ message: "Falha ao carregar projetos das composicoes." }, { status: 500 });
+    }
 
     const userIds = Array.from(
       new Set((data ?? []).flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))),
@@ -702,9 +826,15 @@ export async function GET(request: NextRequest) {
     for (const member of members) {
       memberMap.set(member.composition_id, [...(memberMap.get(member.composition_id) ?? []), member]);
     }
+    const projectMap = new Map<string, CompositionProjectRow[]>();
+    for (const project of compositionProjects) {
+      projectMap.set(project.composition_id, [...(projectMap.get(project.composition_id) ?? []), project]);
+    }
 
     return NextResponse.json({
-      compositions: (data ?? []).map((composition) => mapComposition(composition, memberMap.get(composition.id) ?? [], userMap)),
+      compositions: (data ?? []).map((composition) => (
+        mapComposition(composition, memberMap.get(composition.id) ?? [], userMap, projectMap.get(composition.id) ?? [])
+      )),
       pagination: {
         page,
         pageSize,
@@ -731,7 +861,9 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   const compositionId = normalizeUuid(body.id);
   const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
   const compositionDate = normalizeIsoDate(body.compositionDate);
-  const projectId = normalizeUuid(body.projectId);
+  const legacyProjectId = normalizeUuid(body.projectId);
+  const payloadProjectIds = normalizeUuidList(body.projectIds);
+  const projectIds = payloadProjectIds.length ? payloadProjectIds : (legacyProjectId ? [legacyProjectId] : []);
   const teamId = normalizeUuid(body.teamId);
   const workStatus = normalizeWorkStatus(body.workStatus);
   const sector = normalizeText(body.sector) || "OBRA";
@@ -749,7 +881,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
 
   const initialMissingFields = [
     !compositionDate ? "Data" : "",
-    workStatus === "WORKING" && !projectId ? "Projeto" : "",
+    workStatus === "WORKING" && !projectIds.length ? "Projeto" : "",
     !teamId ? "Equipe" : "",
     !workStatus ? "Situacao da equipe" : "",
     !sector ? "Setor" : "",
@@ -764,8 +896,12 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
-  if (!teamId || (workStatus === "WORKING" && !projectId)) {
+  if (!teamId || (workStatus === "WORKING" && !projectIds.length)) {
     return NextResponse.json({ message: "Projeto ou equipe invalida para salvar." }, { status: 400 });
+  }
+
+  if (projectIds.length !== new Set(projectIds).size) {
+    return NextResponse.json({ message: "O mesmo projeto nao pode aparecer duas vezes na composicao." }, { status: 400 });
   }
 
   const memberPersonIds = rawMembers.map((member) => normalizeUuid(member.personId)).filter((item): item is string => Boolean(item));
@@ -777,17 +913,24 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "A mesma pessoa nao pode aparecer duas vezes na composicao." }, { status: 400 });
   }
 
-  const [project, team, peopleMap] = await Promise.all([
-    workStatus === "NOT_WORKING" || !projectId
-      ? Promise.resolve(null)
-      : fetchProjectById(supabase, appUser.tenant_id, projectId),
+  const [selectedProjects, team, peopleMap] = await Promise.all([
+    workStatus === "NOT_WORKING"
+      ? Promise.resolve([] as Array<{ id: string; code: string; serviceCenter: string }>)
+      : fetchProjectsByIds(supabase, appUser.tenant_id, projectIds),
     fetchTeamById(supabase, appUser.tenant_id, teamId),
     fetchPeopleSnapshots(supabase, appUser.tenant_id, uniqueMemberPersonIds),
   ]);
 
-  if (workStatus === "WORKING" && !project) {
-    return NextResponse.json({ message: "Projeto invalido ou inativo para o tenant atual." }, { status: 422 });
+  if (!selectedProjects) {
+    return NextResponse.json({ message: "Falha ao validar projetos da composicao." }, { status: 500 });
   }
+  if (workStatus === "WORKING" && selectedProjects.length !== projectIds.length) {
+    return NextResponse.json({ message: "Um ou mais projetos sao invalidos ou inativos para o tenant atual." }, { status: 422 });
+  }
+  if (workStatus === "NOT_WORKING" && projectIds.length) {
+    return NextResponse.json({ message: "Projeto nao deve ser informado quando a equipe nao atuou." }, { status: 400 });
+  }
+  const primaryProject = selectedProjects[0] ?? null;
   if (!team) {
     return NextResponse.json({ message: "Equipe invalida ou inativa para o tenant atual." }, { status: 422 });
   }
@@ -875,7 +1018,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   const changes: Record<string, HistoryChange> = {};
   if (currentComposition) {
     addChange(changes, "compositionDate", currentComposition.composition_date, compositionDate);
-    addChange(changes, "projectCode", currentComposition.project_code_snapshot, project?.code ?? null);
+    addChange(changes, "projectCode", currentComposition.project_code_snapshot, selectedProjects.map((project) => project.code).join(", ") || null);
     addChange(changes, "teamName", currentComposition.team_name_snapshot, team.name);
     addChange(changes, "workStatus", currentComposition.work_status ?? "WORKING", workStatus);
     addChange(changes, "sector", currentComposition.sector, sector);
@@ -890,7 +1033,8 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     p_actor_user_id: appUser.id,
     p_composition_id: method === "PUT" ? compositionId : null,
     p_composition_date: compositionDate,
-    p_project_id: workStatus === "NOT_WORKING" ? null : projectId,
+    p_project_id: workStatus === "NOT_WORKING" ? null : primaryProject?.id ?? null,
+    p_project_ids: workStatus === "NOT_WORKING" ? [] : selectedProjects.map((project) => project.id),
     p_team_id: teamId,
     p_work_status: workStatus,
     p_sector: sector,
@@ -913,10 +1057,11 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
       || normalizedError.includes("schema cache")
       || normalizedError.includes("p_yard")
       || normalizedError.includes("p_work_status")
+      || normalizedError.includes("p_project_ids")
       || rpcError.code === "PGRST202";
     const detail = [rawMessage, rawDetails, rawHint].filter(Boolean).join(" ");
     const message = isMissingOrStaleRpc
-      ? "Falha ao salvar composicao de equipe. Aplique a migration 224_add_team_composition_work_status.sql e recarregue o cache do Supabase/PostgREST."
+      ? "Falha ao salvar composicao de equipe. Aplique a migration 266_allow_multiple_projects_team_composition.sql e recarregue o cache do Supabase/PostgREST."
       : `Falha ao salvar composicao de equipe.${detail ? ` Detalhe: ${detail}` : ""}`;
 
     return NextResponse.json(
@@ -954,27 +1099,28 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     tenantId: appUser.tenant_id,
     actorUserId: appUser.id,
     compositionId: persistedId,
-    entityCode: `${project?.code ?? "SEM PROJETO"} | ${team.name} | ${compositionDate}`,
+    entityCode: `${selectedProjects.map((project) => project.code).join(", ") || "SEM PROJETO"} | ${team.name} | ${compositionDate}`,
     reason: method === "POST" ? "Cadastro inicial da composicao." : "Atualizacao da composicao.",
     changes: method === "POST"
       ? {
         compositionDate: { from: null, to: compositionDate },
-        projectCode: { from: null, to: project?.code ?? null },
+        projectCode: { from: null, to: selectedProjects.map((project) => project.code).join(", ") || null },
         teamName: { from: null, to: team.name },
         workStatus: { from: null, to: workStatus },
         members: { from: null, to: `${memberRows.length} integrante(s)` },
       }
       : changes,
-    metadata: { memberCount: memberRows.length, workStatus },
+    metadata: { memberCount: memberRows.length, workStatus, projectIds: selectedProjects.map((project) => project.id) },
   });
 
   const detail = await fetchCompositionById(supabase, appUser.tenant_id, persistedId);
   const members = await loadCompositionMembers(supabase, appUser.tenant_id, [persistedId]);
+  const compositionProjects = await loadCompositionProjects(supabase, appUser.tenant_id, [persistedId]);
   return NextResponse.json({
     success: true,
     id: persistedId,
     updatedAt: saveResult.updated_at ?? null,
-    composition: detail && members ? mapComposition(detail, members, new Map()) : null,
+    composition: detail && members && compositionProjects ? mapComposition(detail, members, new Map(), compositionProjects) : null,
     message: saveResult.message ?? (method === "POST" ? "Composicao cadastrada com sucesso." : "Composicao atualizada com sucesso."),
   });
 }

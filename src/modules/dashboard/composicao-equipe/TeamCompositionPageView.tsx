@@ -54,6 +54,8 @@ type CompositionItem = {
   id: string;
   compositionDate: string;
   projectId: string | null;
+  projectIds?: string[];
+  projects?: ProjectOption[];
   teamId: string;
   projectCode: string;
   projectServiceCenter: string;
@@ -130,6 +132,7 @@ type FormState = {
   expectedUpdatedAt: string | null;
   compositionDate: string;
   projectCode: string;
+  projectIds: string[];
   teamId: string;
   workStatus: WorkStatus;
   sector: string;
@@ -175,6 +178,7 @@ function createInitialForm(today: string): FormState {
     expectedUpdatedAt: null,
     compositionDate: today,
     projectCode: "",
+    projectIds: [],
     teamId: "",
     workStatus: "WORKING",
     sector: "OBRA",
@@ -303,7 +307,7 @@ function getFormForemanPhone(team: TeamOption | null, members: CompositionMember
 function buildVisibleCsv(compositions: CompositionItem[]) {
   const header = [
     "Data",
-    "Projeto",
+    "Projetos",
     "Equipe",
     "Situacao",
     "Setor",
@@ -333,7 +337,7 @@ function buildVisibleCsv(compositions: CompositionItem[]) {
 function buildDetailedCsv(compositions: CompositionItem[]) {
   const header = [
     "Data",
-    "PROJETO",
+    "PROJETOS",
     "Situacao",
     "Setor",
     "Matrícula",
@@ -414,8 +418,13 @@ export function TeamCompositionPageView() {
     () => new Map(projects.map((project) => [normalizeLookupKey(project.code), project])),
     [projects],
   );
+  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
   const activeFilterProject = projectByCode.get(normalizeLookupKey(activeFilters.projectCode)) ?? null;
   const selectedTeam = teams.find((team) => team.id === form.teamId) ?? null;
+  const selectedFormProjects = useMemo(
+    () => form.projectIds.map((projectId) => projectById.get(projectId)).filter((project): project is ProjectOption => Boolean(project)),
+    [form.projectIds, projectById],
+  );
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
   const formForemanPhone = getFormForemanPhone(selectedTeam, form.members);
   const dailyCoverageByTeam = useMemo(
@@ -656,6 +665,7 @@ export function TeamCompositionPageView() {
         ...current,
         workStatus,
         projectCode: "",
+        projectIds: [],
         personSearch: "",
         members: foreman && selectedTeam
           ? [{
@@ -671,6 +681,41 @@ export function TeamCompositionPageView() {
       };
     });
     setFeedback(null);
+  }
+
+  function findProjectBySearch(value: string) {
+    const normalized = normalizeLookupKey(value);
+    if (!normalized) return null;
+    return projectByCode.get(normalized) ?? null;
+  }
+
+  function addProject() {
+    if (form.workStatus === "NOT_WORKING") {
+      setFeedback({ type: "error", message: "Equipe que nao atuou nao deve possuir projeto." });
+      return;
+    }
+    const project = findProjectBySearch(form.projectCode);
+    if (!project) {
+      setFeedback({ type: "error", message: "Selecione um Projeto valido para adicionar." });
+      return;
+    }
+    if (form.projectIds.includes(project.id)) {
+      setFeedback({ type: "error", message: "Este Projeto ja esta na composicao." });
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      projectCode: "",
+      projectIds: [...current.projectIds, project.id],
+    }));
+    setFeedback(null);
+  }
+
+  function removeProject(projectId: string) {
+    setForm((current) => ({
+      ...current,
+      projectIds: current.projectIds.filter((item) => item !== projectId),
+    }));
   }
 
   function findPersonBySearch(value: string) {
@@ -742,7 +787,12 @@ export function TeamCompositionPageView() {
       id: composition.id,
       expectedUpdatedAt: composition.updatedAt,
       compositionDate: composition.compositionDate,
-      projectCode: composition.projectCode,
+      projectCode: "",
+      projectIds: composition.projectIds?.length
+        ? composition.projectIds
+        : composition.projectId
+          ? [composition.projectId]
+          : [],
       teamId: composition.teamId,
       workStatus: composition.workStatus,
       sector: composition.sector,
@@ -762,12 +812,10 @@ export function TeamCompositionPageView() {
       setFeedback({ type: "error", message: "Sessao invalida para salvar composicao." });
       return;
     }
-    const project = form.workStatus === "NOT_WORKING"
-      ? null
-      : projectByCode.get(normalizeLookupKey(form.projectCode)) ?? null;
+    const selectedProjects = form.workStatus === "NOT_WORKING" ? [] : selectedFormProjects;
     const missingFields = [
       !form.compositionDate ? "Data" : "",
-      form.workStatus === "WORKING" && !project ? "Projeto valido" : "",
+      form.workStatus === "WORKING" && selectedProjects.length === 0 ? "Ao menos um Projeto valido" : "",
       !form.teamId || !selectedTeam ? "Equipe valida" : "",
       !normalizeText(form.sector) ? "Setor" : "",
       !form.startTime ? "Hora inicial" : "",
@@ -780,7 +828,7 @@ export function TeamCompositionPageView() {
       return;
     }
 
-    if ((form.workStatus === "WORKING" && !project) || !selectedTeam) {
+    if ((form.workStatus === "WORKING" && selectedProjects.length !== form.projectIds.length) || !selectedTeam) {
       setFeedback({ type: "error", message: "Projeto ou equipe invalida para salvar." });
       return;
     }
@@ -828,7 +876,8 @@ export function TeamCompositionPageView() {
           id: form.id,
           expectedUpdatedAt: form.expectedUpdatedAt,
           compositionDate: form.compositionDate,
-          projectId: project?.id ?? null,
+          projectId: selectedProjects[0]?.id ?? null,
+          projectIds: selectedProjects.map((project) => project.id),
           teamId: form.teamId,
           workStatus: form.workStatus,
           sector: form.sector,
@@ -1019,17 +1068,34 @@ export function TeamCompositionPageView() {
             <span>Data <span className="requiredMark">*</span></span>
             <input type="date" value={form.compositionDate} onChange={(event) => setForm((current) => ({ ...current, compositionDate: event.target.value }))} required />
           </label>
-          <label className={styles.field}>
-            <span>Projeto {form.workStatus === "WORKING" ? <span className="requiredMark">*</span> : null}</span>
-            <input
-              list="composicao-project-list"
-              value={form.projectCode}
-              onChange={(event) => setForm((current) => ({ ...current, projectCode: event.target.value }))}
-              placeholder={form.workStatus === "NOT_WORKING" ? "Nao exigido para equipe sem atuacao" : "Digite o SOB"}
-              disabled={form.workStatus === "NOT_WORKING"}
-              required={form.workStatus === "WORKING"}
-            />
-          </label>
+          <section className={styles.projectPanel}>
+            <div className={styles.projectAddGrid}>
+              <label className={styles.field}>
+                <span>Projeto {form.workStatus === "WORKING" ? <span className="requiredMark">*</span> : null}</span>
+                <input
+                  list="composicao-project-list"
+                  value={form.projectCode}
+                  onChange={(event) => setForm((current) => ({ ...current, projectCode: event.target.value }))}
+                  placeholder={form.workStatus === "NOT_WORKING" ? "Nao exigido para equipe sem atuacao" : "Digite o SOB"}
+                  disabled={form.workStatus === "NOT_WORKING"}
+                />
+              </label>
+              <div className={styles.memberActions}>
+                <button type="button" className={styles.secondaryButton} onClick={addProject} disabled={form.workStatus === "NOT_WORKING"}>Adicionar</button>
+              </div>
+            </div>
+            <div className={styles.selectedProjectList}>
+              {selectedFormProjects.length ? selectedFormProjects.map((project) => (
+                <div key={project.id} className={styles.selectedProjectItem}>
+                  <span>{project.code}</span>
+                  <small>{formatOptional(project.serviceCenter)}</small>
+                  <button type="button" className={styles.dangerButton} onClick={() => removeProject(project.id)} disabled={form.workStatus === "NOT_WORKING"}>Remover</button>
+                </div>
+              )) : (
+                <p className={styles.tableHint}>{form.workStatus === "NOT_WORKING" ? "Sem projeto para equipe sem atuacao." : "Nenhum projeto adicionado."}</p>
+              )}
+            </div>
+          </section>
           <label className={styles.field}>
             <span>Equipe <span className="requiredMark">*</span></span>
             <select value={form.teamId} onChange={(event) => applyTeam(event.target.value)} disabled={isLoadingMeta} required>
@@ -1156,7 +1222,7 @@ export function TeamCompositionPageView() {
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
-              <tr><th>Data</th><th>Projeto</th><th>Equipe</th><th>Situacao</th><th>Setor</th><th>Integrantes</th><th>Encarregado</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Acoes</th></tr>
+              <tr><th>Data</th><th>Projetos</th><th>Equipe</th><th>Situacao</th><th>Setor</th><th>Integrantes</th><th>Encarregado</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Acoes</th></tr>
             </thead>
             <tbody>
               {compositions.length ? compositions.map((composition) => (
@@ -1208,8 +1274,8 @@ export function TeamCompositionPageView() {
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
                 <div><strong>Data:</strong> {formatDate(detailComposition.compositionDate)}</div>
-                <div><strong>Projeto:</strong> {formatOptional(detailComposition.projectCode)}</div>
-                <div><strong>Centro de Servico:</strong> {formatOptional(detailComposition.projectServiceCenter)}</div>
+                <div><strong>Projetos:</strong> {formatOptional(detailComposition.projectCode)}</div>
+                <div><strong>Centros de Servico:</strong> {formatOptional(detailComposition.projectServiceCenter)}</div>
                 <div><strong>Equipe:</strong> {detailComposition.teamName}</div>
                 <div><strong>Situacao:</strong> {workStatusLabel(detailComposition.workStatus)}</div>
                 <div><strong>Encarregado:</strong> {formatOptional(detailComposition.foremanName)}</div>
