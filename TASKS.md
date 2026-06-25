@@ -1,3 +1,4 @@
+- [x] Exibir o nome do encarregado no modal `Detalhes da Programacao` da Programacao Simples/Visualizacao usando os dados de equipe ja carregados no payload.
 - [x] Permitir mais de um projeto por Composicao de Equipe, criando `team_composition_projects`, atualizando a RPC `save_team_composition_record`, API, formulario, listagem, detalhes, CSVs e documentacao da tela.
 - [x] Corrigir cadastro individual e cadastro em massa de Faturamento para schema legado de producao em `project_billing_order_items`, adicionando colunas atuais via migration `263`, destravando `paid_value` legado via `263/264/265`, fallback de detalhe/edicao, registro detalhado de erros, texto do modal e docs da tela.
 - [x] Estruturar o frontend do SaaS em `SaaS (Web)/` com Next.js 16, React 19, TypeScript e App Router.

@@ -1122,6 +1122,8 @@ export function ProgrammingDetailsModal(props: {
     return null;
   }
 
+  const teamInfo = resolveScheduleTeamInfo(target, teamMap);
+
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
       <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -1142,7 +1144,8 @@ export function ProgrammingDetailsModal(props: {
             <p><strong>Atualizado por:</strong> {formatAuditActor(target.updatedByName)}</p>
             <p><strong>Atualizado em:</strong> {formatDateTime(target.updatedAt)}</p>
             <p><strong>Projeto:</strong> {projectMap.get(target.projectId)?.code ?? target.projectId}</p>
-            <p><strong>Equipe:</strong> {resolveScheduleTeamInfo(target, teamMap).name}</p>
+            <p><strong>Equipe:</strong> {teamInfo.name}</p>
+            <p><strong>Encarregado:</strong> {teamInfo.foremanName || "Sem encarregado"}</p>
             <p><strong>Data execucao:</strong> {formatDate(target.date)}</p>
             <p><strong>Horario:</strong> {target.startTime} - {target.endTime}</p>
             <p><strong>Inicio de desligamento:</strong> {target.outageStartTime || "-"}</p>
