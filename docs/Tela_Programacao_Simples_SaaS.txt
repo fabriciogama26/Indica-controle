@@ -2109,3 +2109,19 @@ Atualizacao 2026-06-17 - Lista com Registrado por
 - Multi-tenant:
   - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
   - O autor continua sendo resolvido no backend pelo `created_by` da programacao dentro do tenant autenticado.
+
+Atualizacao 2026-06-25 - Encarregado no modal de detalhes
+----------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingDetailsModal`: passa a resolver a equipe em `teamInfo` e exibir o campo `Encarregado`.
+  - `resolveScheduleTeamInfo`: reutilizada como fonte do nome da equipe e do encarregado, incluindo fallback para programacoes de equipes fora da lista ativa.
+- Comportamento antes/depois:
+  - Antes: o modal `Detalhes da Programacao` exibia a equipe, mas nao mostrava o nome do encarregado.
+  - Depois: o modal exibe `Encarregado` logo abaixo de `Equipe`, com fallback `Sem encarregado`.
+- Multi-tenant:
+  - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
+  - O campo exibido usa somente dados ja retornados por `/api/programacao`, filtrados no backend pelo `tenant_id` do usuario autenticado.
