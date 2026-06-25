@@ -675,17 +675,52 @@ async function loadProgrammingMatchMap(params: {
   const startDate = executionDates[0];
   const endDate = executionDates[executionDates.length - 1];
 
-  const preferred = await fetchPagedSupabaseRows<ProgrammingMatchRow>((from, to) =>
-    params.supabase
-      .from("project_programming")
-      .select("id, project_id, team_id, execution_date, status, work_completion_status, updated_at")
-      .eq("tenant_id", params.tenantId)
-      .in("project_id", projectIds)
-      .gte("execution_date", startDate)
-      .lte("execution_date", endDate)
-      .range(from, to)
-      .returns<ProgrammingMatchRow[]>(),
-  );
+  const [preferred, canceledProgrammingRows, projectCompletionRows, projectCompletionHistoryRows] = await Promise.all([
+    fetchPagedSupabaseRows<ProgrammingMatchRow>((from, to) =>
+      params.supabase
+        .from("project_programming")
+        .select("id, project_id, team_id, execution_date, status, work_completion_status, updated_at")
+        .eq("tenant_id", params.tenantId)
+        .in("project_id", projectIds)
+        .gte("execution_date", startDate)
+        .lte("execution_date", endDate)
+        .range(from, to)
+        .returns<ProgrammingMatchRow[]>(),
+    ),
+    fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "id">>((from, to) =>
+      params.supabase
+        .from("project_programming")
+        .select("id")
+        .eq("tenant_id", params.tenantId)
+        .in("project_id", projectIds)
+        .eq("status", "CANCELADA")
+        .range(from, to)
+        .returns<Array<Pick<ProgrammingMatchRow, "id">>>(),
+    ),
+    fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>((from, to) =>
+      params.supabase
+        .from("project_programming")
+        .select("project_id, execution_date, work_completion_status, updated_at")
+        .eq("tenant_id", params.tenantId)
+        .in("project_id", projectIds)
+        .lte("execution_date", params.windowEndDate)
+        .neq("status", "CANCELADA")
+        .not("work_completion_status", "is", null)
+        .range(from, to)
+        .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
+    ),
+    fetchPagedSupabaseRows<ProgrammingWorkCompletionHistoryRow>((from, to) =>
+      params.supabase
+        .from("project_programming_history")
+        .select("id, programming_id, project_id, from_execution_date, to_execution_date, changes, created_at")
+        .eq("tenant_id", params.tenantId)
+        .in("project_id", projectIds)
+        .contains("changes", { workCompletionStatus: {} })
+        .order("created_at", { ascending: false })
+        .range(from, to)
+        .returns<ProgrammingWorkCompletionHistoryRow[]>(),
+    ),
+  ]);
 
   const fallback = preferred.error
     ? await fetchPagedSupabaseRows<Omit<ProgrammingMatchRow, "work_completion_status">>((from, to) =>
@@ -712,31 +747,7 @@ async function loadProgrammingMatchMap(params: {
     programmingStatusMap.set(row.id, row.status);
   }
 
-  const canceledProgrammingRows = await fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "id">>((from, to) =>
-    params.supabase
-      .from("project_programming")
-      .select("id")
-      .eq("tenant_id", params.tenantId)
-      .in("project_id", projectIds)
-      .eq("status", "CANCELADA")
-      .range(from, to)
-      .returns<Array<Pick<ProgrammingMatchRow, "id">>>(),
-  );
   const canceledProgrammingIds = new Set((canceledProgrammingRows.data ?? []).map((item) => item.id));
-
-  const projectCompletionRows = await fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>((from, to) =>
-    params.supabase
-      .from("project_programming")
-      .select("project_id, execution_date, work_completion_status, updated_at")
-      .eq("tenant_id", params.tenantId)
-      .in("project_id", projectIds)
-      .lte("execution_date", params.windowEndDate)
-      .neq("status", "CANCELADA")
-      .not("work_completion_status", "is", null)
-      .range(from, to)
-      .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
-  );
-
   const projectWorkCompletionTimeline = buildProjectWorkCompletionTimeline(projectCompletionRows.data ?? []);
 
   const projectDateWorkCompletionStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
@@ -759,18 +770,6 @@ async function loadProgrammingMatchMap(params: {
       });
     }
   }
-
-  const projectCompletionHistoryRows = await fetchPagedSupabaseRows<ProgrammingWorkCompletionHistoryRow>((from, to) =>
-    params.supabase
-      .from("project_programming_history")
-      .select("id, programming_id, project_id, from_execution_date, to_execution_date, changes, created_at")
-      .eq("tenant_id", params.tenantId)
-      .in("project_id", projectIds)
-      .contains("changes", { workCompletionStatus: {} })
-      .order("created_at", { ascending: false })
-      .range(from, to)
-      .returns<ProgrammingWorkCompletionHistoryRow[]>(),
-  );
 
   const projectDateWorkCompletionHistoryMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
   for (const row of projectCompletionHistoryRows.data ?? []) {
@@ -1443,38 +1442,26 @@ export async function GET(request: NextRequest) {
     if (statusFilter && statusFilter !== "TODOS") {
       query = query.eq("status", statusFilter);
     }
+    if (serviceTypeProjectIdSet && serviceTypeProjectIdSet.size > 0) {
+      query = query.in("project_id", Array.from(serviceTypeProjectIdSet));
+    }
+    if (measurementKindFilter === "COM_PRODUCAO" || measurementKindFilter === "SEM_PRODUCAO") {
+      query = query.eq("measurement_kind", measurementKindFilter);
+    }
+    if (noProductionReasonIdFilter) {
+      query = query.eq("no_production_reason_id", noProductionReasonIdFilter);
+    }
 
     return query.returns<MeasurementOrderRow[]>();
   });
-  const orders = serviceTypeProjectIdSet
-    ? ordersResult.data.filter((item) => serviceTypeProjectIdSet.has(item.project_id))
-    : ordersResult.data;
   const error = ordersResult.error;
   if (error) {
     const hint = measurementModuleMigrationHint(error.message);
     return NextResponse.json({ message: `Falha ao listar ordens de medicao.${hint}`.trim() }, { status: 500 });
   }
+  const orders = ordersResult.data;
 
-  let activityOrderIdSet: Set<string> | null = null;
-  if (activityId) {
-    const activityOrdersResult = await fetchPagedSupabaseRows<MeasurementOrderActivityFilterRow>((from, to) =>
-      resolution.supabase
-        .from("project_measurement_order_items")
-        .select("measurement_order_id")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("service_activity_id", activityId)
-        .eq("is_active", true)
-        .range(from, to)
-        .returns<MeasurementOrderActivityFilterRow[]>(),
-    );
-
-    if (activityOrdersResult.error) {
-      return NextResponse.json({ message: "Falha ao filtrar ordens por atividade." }, { status: 500 });
-    }
-
-    activityOrderIdSet = new Set(activityOrdersResult.data.map((item) => item.measurement_order_id));
-  }
-
+  const projectIds = Array.from(new Set(orders.map((item) => item.project_id)));
   const userIds = Array.from(
     new Set(
       orders
@@ -1482,36 +1469,65 @@ export async function GET(request: NextRequest) {
         .filter((item): item is string => Boolean(item)),
     ),
   );
-  const userMap = await fetchAppUserMap({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    ids: userIds,
-  });
 
-  const programmingMatchMap = await loadProgrammingMatchMap({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    windowEndDate: endDate,
-    orders,
-  });
-  const projectIsTestMap = await fetchProjectIsTestMap({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    projectIds: orders.map((item) => item.project_id),
-  });
-  const projectServiceCenterMap = await fetchProjectServiceCenterMap({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    projectIds: orders.map((item) => item.project_id),
-  });
-  const teamCompositionContexts = await fetchTeamCompositionContextSet({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    orders,
-  });
+  const [
+    activityOrdersResult,
+    userMap,
+    programmingMatchMap,
+    projectIsTestMap,
+    projectServiceCenterMap,
+    teamCompositionContexts,
+  ] = await Promise.all([
+    activityId
+      ? fetchPagedSupabaseRows<MeasurementOrderActivityFilterRow>((from, to) =>
+          resolution.supabase
+            .from("project_measurement_order_items")
+            .select("measurement_order_id")
+            .eq("tenant_id", resolution.appUser.tenant_id)
+            .eq("service_activity_id", activityId)
+            .eq("is_active", true)
+            .range(from, to)
+            .returns<MeasurementOrderActivityFilterRow[]>(),
+        )
+      : Promise.resolve({ data: [] as MeasurementOrderActivityFilterRow[], error: null }),
+    fetchAppUserMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      ids: userIds,
+    }),
+    loadProgrammingMatchMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      windowEndDate: endDate,
+      orders,
+    }),
+    fetchProjectIsTestMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectIds,
+    }),
+    fetchProjectServiceCenterMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectIds,
+    }),
+    fetchTeamCompositionContextSet({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      orders,
+    }),
+  ]);
+
+  if (activityId && activityOrdersResult.error) {
+    return NextResponse.json({ message: "Falha ao filtrar ordens por atividade." }, { status: 500 });
+  }
   if (teamCompositionContexts.error) {
     return NextResponse.json({ message: "Falha ao carregar composicoes de equipe das ordens de medicao." }, { status: 500 });
   }
+
+  const activityOrderIdSet: Set<string> | null = activityId
+    ? new Set(activityOrdersResult.data.map((item) => item.measurement_order_id))
+    : null;
 
   const baseOrders = orders.map((item) => {
       const programmingMatch = programmingMatchMap.get(item.id) ?? {
@@ -1588,13 +1604,7 @@ export async function GET(request: NextRequest) {
           : !item.programmingCompletionStatusChangedAfterMeasurement)
     : filteredByWorkCompletionStatus;
 
-  const filteredByMeasurementKind = (measurementKindFilter === "COM_PRODUCAO" || measurementKindFilter === "SEM_PRODUCAO")
-    ? filteredByCompletionAlert.filter((item) => item.measurementKind === measurementKindFilter)
-    : filteredByCompletionAlert;
-
-  const filteredByNoProductionReason = noProductionReasonIdFilter
-    ? filteredByMeasurementKind.filter((item) => item.noProductionReasonId === noProductionReasonIdFilter)
-    : filteredByMeasurementKind;
+  const filteredByNoProductionReason = filteredByCompletionAlert;
 
   const total = filteredByNoProductionReason.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
