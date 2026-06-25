@@ -255,6 +255,44 @@
   padding: 14px;
 }
 
+.projectPanel {
+  grid-column: span 2;
+  display: grid;
+  gap: 10px;
+}
+
+.projectAddGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+}
+
+.selectedProjectList {
+  display: grid;
+  gap: 8px;
+}
+
+.selectedProjectItem {
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #f8faff;
+  border-radius: 12px;
+  padding: 9px 10px;
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.selectedProjectItem span {
+  color: #17347a;
+  font-weight: 800;
+}
+
+.selectedProjectItem small {
+  color: #5b6a85;
+}
+
 .memberAddGrid {
   display: grid;
   gap: 12px;
@@ -555,11 +593,13 @@
   .formGrid,
   .filterGrid,
   .detailGrid,
+  .projectAddGrid,
   .memberAddGrid {
     grid-template-columns: 1fr;
   }
 
   .fieldWide,
+  .projectPanel,
   .detailWide {
     grid-column: span 1;
   }
@@ -585,6 +625,10 @@
 
   .coverageSummary span {
     flex: 1 1 140px;
+  }
+
+  .selectedProjectItem {
+    grid-template-columns: 1fr;
   }
 
   .actions,

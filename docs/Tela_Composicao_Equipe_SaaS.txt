@@ -2,7 +2,7 @@ Tela: Composicao de Equipe SaaS
 
 Visao geral
 -----------
-- Tela para registrar a composicao diaria de uma equipe por `Projeto + Equipe + Data`.
+- Tela para registrar a composicao diaria de uma equipe por `Projetos + Equipe + Data`.
 - O cadastro parte da equipe selecionada e permite adicionar pessoas do cadastro `Pessoas`.
 - A lista exibe uma linha por composicao, mantendo os integrantes dentro dos detalhes/edicao.
 - Acima do cadastro, o painel `Composicoes das Equipes` compara todas as equipes ativas do tenant com as composicoes da data selecionada.
@@ -33,15 +33,20 @@ Cadastro
 --------
 - Campos obrigatorios:
   - Data
-  - Projeto, somente quando `Situacao da equipe = Atuando`
+  - Ao menos um Projeto, somente quando `Situacao da equipe = Atuando`
   - Equipe
   - Situacao da equipe (`Atuando` ou `Nao atuou`)
   - Setor
   - Hora inicial
   - Ao menos uma pessoa
 - Campos opcionais:
-  - Projeto, quando `Situacao da equipe = Nao atuou`
   - Observacoes
+- Selecao de projetos:
+  - O usuario digita um SOB valido e clica em `Adicionar`.
+  - A composicao pode manter mais de um projeto.
+  - O mesmo projeto nao pode ser adicionado duas vezes.
+  - O primeiro projeto selecionado e mantido em `team_compositions.project_id` como referencia legada.
+  - Todos os projetos ficam normalizados em `team_composition_projects`.
 - Ao selecionar uma equipe:
   - A lista de selecao exibe a equipe no formato `Equipe / Encarregado`, quando o encarregado esta identificado.
   - A tela exibe placa e encarregado.
@@ -58,13 +63,14 @@ Cadastro
   - Bloqueia composicao com mais de um integrante cuja funcao/cargo contenha `ENCARREGADO`.
   - Permite marcar `Presente = Sim/Nao` por integrante.
   - Quando `Situacao da equipe = Nao atuou`, a tela mantem somente o encarregado vinculado a equipe, marca `Presente = Nao` e bloqueia inclusao, remocao ou alteracao de presenca.
-  - Quando `Situacao da equipe = Nao atuou`, o campo Projeto e limpo, desabilitado e nao e enviado para persistencia.
+  - Quando `Situacao da equipe = Nao atuou`, a lista de Projetos e limpa, o campo fica desabilitado e nenhum projeto e enviado para persistencia.
 - Validacao de salvamento:
   - A tela mostra todos os campos obrigatorios pendentes em uma unica mensagem.
-  - Campos verificados: Data, Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
+  - Campos verificados: Data, ao menos um Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
   - A API e a RPC `save_team_composition_record` repetem as mesmas regras de campos obrigatorios, duplicidade de matricula e limite de um encarregado.
 - Persistencia:
-  - Salva snapshots de projeto, equipe, Centro de Servico da equipe em `Patio`, placa, encarregado, pessoa, matricula, CPF, telefone do encarregado e funcao.
+  - Salva snapshots agregados dos projetos na composicao e snapshots individuais por projeto em `team_composition_projects`.
+  - Salva snapshots de equipe, Centro de Servico da equipe em `Patio`, placa, encarregado, pessoa, matricula, CPF, telefone do encarregado e funcao.
   - Mantem o registro historico da composicao mesmo que Pessoas ou Equipes mudem depois.
 
 Filtros, auto-complete e listagem
@@ -85,12 +91,12 @@ Filtros, auto-complete e listagem
 - Filtros:
   - Data inicial
   - Data final
-  - Projeto (input + datalist por SOB)
+  - Projeto (input + datalist por SOB; filtra composicoes que contenham o projeto)
   - Equipe (opcoes no formato `Equipe / Encarregado`, quando o encarregado esta identificado)
   - Situacao da equipe (`Todas`, `Atuando` ou `Nao atuou`)
 - Listagem:
   - Data
-  - Projeto
+  - Projetos
   - Equipe
   - Situacao
   - Setor
@@ -108,9 +114,9 @@ Filtros, auto-complete e listagem
 Boas praticas
 -------------
 - Toda leitura/escrita usa `tenant_id` do usuario autenticado.
-- `team_compositions` e `team_composition_members` possuem RLS por `user_can_access_tenant`.
+- `team_compositions`, `team_composition_projects` e `team_composition_members` possuem RLS por `user_can_access_tenant`.
 - O frontend valida projeto por SOB exato antes de filtrar ou salvar.
-- A API revalida projeto ativo, equipe ativa e pessoas ativas do tenant antes de salvar.
+- A API revalida todos os projetos ativos, equipe ativa e pessoas ativas do tenant antes de salvar.
 - Alteracoes relevantes registram entrada em `app_entity_history` com `module_key = composicao-equipe`.
 
 Atalhos
@@ -210,15 +216,54 @@ Mapa de Codigo (funcoes, hooks e constantes)
 - Funcoes utilitarias relacionadas:
   - `formatCpf`
   - `teamOptionLabel`
+  - `addProject`
+  - `removeProject`
   - `buildVisibleCsv`
   - `buildDetailedCsv`
   - `fetchPeopleSnapshots`
+  - `fetchProjectsByIds`
+  - `loadCompositionProjects`
   - `mapComposition`
 - Servicos e integracoes externas:
   - Supabase Admin via `resolveAuthenticatedAppUser`
-  - Tabelas `project`, `project_with_labels`, `teams`, `people`, `job_titles`
+  - Tabelas `project`, `project_with_labels`, `team_composition_projects`, `teams`, `people`, `job_titles`
 - Ajuda contextual:
   - Nao ha componente de ajuda contextual especifico nesta entrega.
+
+Atualizacao 2026-06-25 - Multiplos projetos por composicao
+----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/266_allow_multiple_projects_team_composition.sql`
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `TeamCompositionPageView`
+  - `addProject`
+  - `removeProject`
+  - `handleSubmit`
+  - `startEdit`
+  - `buildVisibleCsv`
+  - `buildDetailedCsv`
+  - `mapComposition`
+  - `loadCompositionProjects`
+  - `fetchProjectsByIds`
+  - `saveComposition`
+  - RPC `save_team_composition_record`
+- Comportamento antes/depois:
+  - Antes: a composicao aceitava somente um projeto por cadastro.
+  - Depois: o cadastro permite adicionar varios projetos por SOB na mesma composicao.
+  - Antes: a listagem e os CSVs exibiam um unico projeto.
+  - Depois: listagem, detalhes, historico e CSVs exibem os projetos agregados.
+  - Antes: o filtro de Projeto consultava `team_compositions.project_id`.
+  - Depois: o filtro consulta `team_composition_projects` e retorna composicoes que contenham o projeto informado.
+- Impacto multi-tenant:
+  - `team_composition_projects` possui `tenant_id`, FKs compostas por tenant e RLS ON.
+  - A RPC valida todos os projetos em `project_with_labels` com `tenant_id = p_tenant_id`.
+  - `team_compositions.project_id` continua recebendo o primeiro projeto como referencia legada.
 
 Atualizacao 2026-06 - Auditoria de integridade
 -----------------------------------------------

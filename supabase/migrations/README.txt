@@ -99,6 +99,7 @@ Ordem de aplicacao
 206. 206_add_stock_transfer_operation_purpose.sql
 210. 210_harden_function_search_path_and_rpc_execute.sql
 211. 211_block_duplicate_asbuilt_measurement_project.sql
+266. 266_allow_multiple_projects_team_composition.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -454,6 +455,9 @@ Resumo por arquivo
 
 211_block_duplicate_asbuilt_measurement_project.sql
 - Bloqueia Medicao Asbuilt para projeto ja lancado no mesmo tenant, reforcando a RPC `save_project_asbuilt_measurement_order` e o trigger de `project_asbuilt_measurement_orders` com trava por projeto.
+
+266_allow_multiple_projects_team_composition.sql
+- Cria `team_composition_projects`, faz backfill do projeto legado da Composicao de Equipe e atualiza `save_team_composition_record` para receber multiplos projetos.
 
 212_measurement_minimum_billing_guarantee.sql
 - Adiciona calculo backend da garantia de faturamento minimo na Medicao sem producao, salvando `minimum_billing_amount` e snapshots/vinculos de tipo de equipe, meta de pontos e valor do ponto por grupo sem criar itens artificiais.
