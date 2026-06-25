@@ -700,6 +700,11 @@
 - [x] Colorir os circulos da dispersao do `Dashboard Estoque` por faixa de quantidade, com legenda no grafico usando faixas `<= 50`, `51-100`, `101-200` e intervalos de 200 em 200.
 - [x] Ajustar filtros do `Dashboard Estoque` para consultar somente pelo botao `Filtrar` e alterar `Evolucao de movimentacoes` para contar linhas mensais por tipo, sem somar UMB diferentes.
 - [x] Adicionar modo `Quantidade` na `Curva ABC do estoque`, mantendo alternancia com o modo `Valor` no `Dashboard Estoque`.
+- [x] Adicionar cards por UMB dentro da `Dispersao de materiais` do `Dashboard Estoque`, alternando a quantidade movimentada conforme `Requisicao` ou `Devolucao`.
+- [x] Corrigir carregamento dos itens de movimentacao do `Dashboard Estoque`, separando leitura de `stock_transfer_items` e `materials` para evitar falha no carregamento da tela.
+- [x] Reduzir lotes de filtros `.in(...)` do `Dashboard Estoque` para movimentacoes/estornos e registrar log tecnico quando `stock_transfer_items` falhar.
+- [x] Agrupar os cards de saldo por UMB do `Dashboard Estoque` em um bloco visual `Estoque`.
+- [x] Adicionar exportacao Excel (CSV) da tabela gerada na `Dispersao de materiais`, respeitando a operacao ativa `Requisicao` ou `Devolucao`.
 
 - [x] Corrigir Status execucao da Medicao para usar o ultimo Estado Trabalho por `Data + Projeto`, considerando Programacao do mesmo projeto com data menor ou igual a data da Medicao e desempate por `updated_at`.
 - [x] Corrigir graficos do Dashboard Medicao para consolidar `Concluidos`, `Parciais` e `Pendencias` pelo Estado Trabalho vigente em `Data + Projeto`, sem aplicar estados futuros em ciclos passados.

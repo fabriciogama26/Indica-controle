@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import styles from "./StockDashboardPageView.module.css";
 
 type Option = {
@@ -88,6 +89,14 @@ type ScatterPoint = {
   currentBalance: number;
 };
 
+type ScatterUnitSummary = {
+  operationKind: "REQUISITION" | "RETURN";
+  unit: string;
+  quantity: number;
+  materialCount: number;
+  operationCount: number;
+};
+
 type DashboardResponse = {
   message?: string;
   filters?: {
@@ -113,6 +122,7 @@ type DashboardResponse = {
   abcRows?: AbcRow[];
   abcQuantityRows?: AbcRow[];
   movementEvolution?: EvolutionRow[];
+  scatterSummaryByUnit?: ScatterUnitSummary[];
   scatter?: ScatterPoint[];
 };
 
@@ -181,6 +191,10 @@ function formatCurrency(value: number) {
 
 function formatPercent(value: number) {
   return `${formatDecimal(value)}%`;
+}
+
+function formatExportDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function maxValue(values: number[]) {
@@ -528,6 +542,21 @@ function ScatterChart({
   );
 }
 
+function ScatterUnitStrip({ rows }: { rows: ScatterUnitSummary[] }) {
+  if (!rows.length) return null;
+
+  return (
+    <div className={`${styles.unitStrip} ${styles.scatterUnitStrip}`}>
+      {rows.map((item) => (
+        <div key={`${item.operationKind}-${item.unit}`} className={styles.unitPill}>
+          <span>{item.unit}</span>
+          <strong>{formatDecimal(item.quantity)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function StockDashboardPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("dash_estoque");
@@ -557,6 +586,7 @@ export function StockDashboardPageView() {
   const [abcRows, setAbcRows] = useState<AbcRow[]>([]);
   const [abcQuantityRows, setAbcQuantityRows] = useState<AbcRow[]>([]);
   const [movementEvolution, setMovementEvolution] = useState<EvolutionRow[]>([]);
+  const [scatterSummaryByUnit, setScatterSummaryByUnit] = useState<ScatterUnitSummary[]>([]);
   const [scatter, setScatter] = useState<ScatterPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -597,6 +627,7 @@ export function StockDashboardPageView() {
       setAbcRows(payload.abcRows ?? []);
       setAbcQuantityRows(payload.abcQuantityRows ?? []);
       setMovementEvolution(payload.movementEvolution ?? []);
+      setScatterSummaryByUnit(payload.scatterSummaryByUnit ?? []);
       setScatter(payload.scatter ?? []);
       setFeedback({ type: "success", message: "Dashboard Estoque atualizado." });
     } catch (error) {
@@ -621,9 +652,57 @@ export function StockDashboardPageView() {
     [scatter, scatterOperation, selectedScatterMaterialId],
   );
 
+  const activeScatterRows = useMemo(
+    () => scatter.filter((row) => row.operationKind === scatterOperation),
+    [scatter, scatterOperation],
+  );
+
+  const activeScatterUnitSummary = useMemo(
+    () => {
+      const operationRows = scatterSummaryByUnit.filter((row) => row.operationKind === scatterOperation);
+      const operationByUnit = new Map(operationRows.map((row) => [row.unit, row]));
+      const displayUnits = Array.from(
+        new Set([
+          ...summaryByUnit.map((row) => row.unit),
+          ...operationRows.map((row) => row.unit),
+        ]),
+      );
+
+      return displayUnits.map(
+        (unit) =>
+          operationByUnit.get(unit) ?? {
+            operationKind: scatterOperation,
+            unit,
+            quantity: 0,
+            materialCount: 0,
+            operationCount: 0,
+          },
+      );
+    },
+    [scatterOperation, scatterSummaryByUnit, summaryByUnit],
+  );
+
   const handleScatterOperationChange = (nextOperation: ScatterOperation) => {
     setScatterOperation(nextOperation);
     setSelectedScatterMaterialId(null);
+  };
+
+  const exportScatterRows = () => {
+    const csv = buildCsvContent(
+      ["Operacao", "Material", "Descricao", "UMB", "Quantidade", "Operacoes", "Projetos", "Saldo atual"],
+      activeScatterRows.map((row) => [
+        operationLabels[row.operationKind],
+        row.materialCode,
+        row.description,
+        row.unit,
+        formatDecimal(row.quantity),
+        row.operationCount,
+        row.projectCount,
+        formatDecimal(row.currentBalance),
+      ]),
+    );
+
+    downloadCsvFile(csv, `dispersao_materiais_${scatterOperation.toLowerCase()}_${formatExportDate()}.csv`);
   };
 
   useEffect(() => {
@@ -721,14 +800,22 @@ export function StockDashboardPageView() {
         <div className={styles.metric}><span>Valor estimado</span><strong>{formatCurrency(summary?.totalEstimatedValue ?? 0)}</strong></div>
       </div>
 
-      <div className={styles.unitStrip}>
-        {summaryByUnit.map((item) => (
-          <div key={item.unit} className={styles.unitPill}>
-            <span>{item.unit}</span>
-            <strong>{formatDecimal(item.balanceQuantity)}</strong>
+      <article className={styles.card}>
+        <div className={styles.cardHeaderCompact}>
+          <div>
+            <h2 className={styles.cardTitle}>Estoque</h2>
+            <p className={styles.cardSubtitle}>Saldo atual consolidado por UMB.</p>
           </div>
-        ))}
-      </div>
+        </div>
+        <div className={styles.unitStrip}>
+          {summaryByUnit.map((item) => (
+            <div key={item.unit} className={styles.unitPill}>
+              <span>{item.unit}</span>
+              <strong>{formatDecimal(item.balanceQuantity)}</strong>
+            </div>
+          ))}
+        </div>
+      </article>
 
       <article className={styles.card}>
         <div className={styles.cardHeader}>
@@ -772,8 +859,12 @@ export function StockDashboardPageView() {
             <button type="button" className={styles.expandButton} onClick={() => setIsScatterExpanded(true)}>
               Expandir
             </button>
+            <button type="button" className={styles.expandButton} onClick={exportScatterRows} disabled={!activeScatterRows.length}>
+              Exportar Excel
+            </button>
           </div>
         </div>
+        <ScatterUnitStrip rows={activeScatterUnitSummary} />
         <ScatterChart
           rows={scatter}
           operation={scatterOperation}
@@ -905,9 +996,13 @@ export function StockDashboardPageView() {
                 <button type="button" className={styles.closeButton} onClick={() => setIsScatterExpanded(false)} aria-label="Fechar dispersao ampliada">
                   x
                 </button>
+                <button type="button" className={styles.expandButton} onClick={exportScatterRows} disabled={!activeScatterRows.length}>
+                  Exportar Excel
+                </button>
               </div>
             </div>
             <div className={styles.modalBody}>
+              <ScatterUnitStrip rows={activeScatterUnitSummary} />
               <ScatterChart
                 rows={scatter}
                 operation={scatterOperation}
