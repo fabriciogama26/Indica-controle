@@ -113,6 +113,16 @@ type MovementAggregate = {
   projectCode: string | null;
 };
 
+type ScatterUnitSummary = {
+  operationKind: "REQUISITION" | "RETURN";
+  unit: string;
+  quantity: number;
+  materialIds: Set<string>;
+  operationIds: Set<string>;
+};
+
+const DASH_IN_FILTER_CHUNK_SIZE = 100;
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -323,26 +333,60 @@ async function loadTransfers(params: {
 async function loadTransferItems(params: {
   context: AuthenticatedAppUserContext;
   transferIds: string[];
-  materialCode: string;
-  materialType: string;
 }) {
-  const rows: Array<TransferItemRow & { materials?: MaterialRow | MaterialRow[] | null }> = [];
-  for (const ids of chunk(params.transferIds, 500)) {
-    let query = params.context.supabase
+  const rows: TransferItemRow[] = [];
+  for (const ids of chunk(params.transferIds, DASH_IN_FILTER_CHUNK_SIZE)) {
+    const { data, error } = await params.context.supabase
       .from("stock_transfer_items")
-      .select("id, stock_transfer_id, material_id, quantity, materials!inner(id, codigo, descricao, umb, tipo, unit_price, is_active)")
+      .select("id, stock_transfer_id, material_id, quantity")
       .eq("tenant_id", params.context.appUser.tenant_id)
-      .eq("materials.is_active", true)
-      .in("stock_transfer_id", ids);
+      .in("stock_transfer_id", ids)
+      .returns<TransferItemRow[]>();
 
-    if (params.materialCode) query = query.ilike("materials.codigo", `%${params.materialCode}%`);
-    if (params.materialType) query = query.eq("materials.tipo", params.materialType);
-
-    const { data, error } = await query.returns<Array<TransferItemRow & { materials?: MaterialRow | MaterialRow[] | null }>>();
-    if (error) throw new Error("Falha ao carregar itens das movimentacoes do dashboard.");
+    if (error) {
+      console.error("[dash-estoque] Falha ao carregar stock_transfer_items", {
+        tenantId: params.context.appUser.tenant_id,
+        transferCount: params.transferIds.length,
+        chunkSize: ids.length,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw new Error("Falha ao carregar itens das movimentacoes do dashboard.");
+    }
     rows.push(...(data ?? []));
   }
   return rows;
+}
+
+async function loadMovementMaterials(params: {
+  context: AuthenticatedAppUserContext;
+  materialIds: string[];
+  materialCode: string;
+  materialType: string;
+}) {
+  const result = new Map<string, MaterialRow>();
+  const materialIds = Array.from(new Set(params.materialIds.filter(Boolean)));
+
+  for (const ids of chunk(materialIds, 500)) {
+    let query = params.context.supabase
+      .from("materials")
+      .select("id, codigo, descricao, umb, tipo, unit_price, is_active")
+      .eq("tenant_id", params.context.appUser.tenant_id)
+      .eq("is_active", true)
+      .in("id", ids);
+
+    if (params.materialCode) query = query.ilike("codigo", `%${params.materialCode}%`);
+    if (params.materialType) query = query.eq("tipo", params.materialType);
+
+    const { data, error } = await query.returns<MaterialRow[]>();
+    if (error) throw new Error("Falha ao carregar materiais das movimentacoes do dashboard.");
+
+    for (const row of data ?? []) result.set(row.id, row);
+  }
+
+  return result;
 }
 
 async function loadTeamOperations(params: {
@@ -350,7 +394,7 @@ async function loadTeamOperations(params: {
   transferIds: string[];
 }) {
   const rows: TeamOperationRow[] = [];
-  for (const ids of chunk(params.transferIds, 500)) {
+  for (const ids of chunk(params.transferIds, DASH_IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await params.context.supabase
       .from("stock_transfer_team_operations")
       .select("transfer_id, team_id, operation_kind, team_name_snapshot, foreman_name_snapshot")
@@ -420,7 +464,7 @@ async function loadReversalSets(params: {
   const reversedItemIds = new Set<string>();
   const reversalItemIds = new Set<string>();
 
-  for (const ids of chunk(params.transferIds, 500)) {
+  for (const ids of chunk(params.transferIds, DASH_IN_FILTER_CHUNK_SIZE)) {
     const [fromOriginal, fromReversal] = await Promise.all([
       params.context.supabase
         .from("stock_transfer_reversals")
@@ -446,7 +490,7 @@ async function loadReversalSets(params: {
     }
   }
 
-  for (const ids of chunk(params.itemIds, 500)) {
+  for (const ids of chunk(params.itemIds, DASH_IN_FILTER_CHUNK_SIZE)) {
     const [fromOriginal, fromReversal] = await Promise.all([
       params.context.supabase
         .from("stock_transfer_item_reversals")
@@ -711,6 +755,43 @@ function buildScatterRows(movements: MovementAggregate[], balanceByMaterial: Map
     .slice(0, 80);
 }
 
+function buildScatterUnitSummary(movements: MovementAggregate[]) {
+  const map = new Map<string, ScatterUnitSummary>();
+
+  for (const movement of movements) {
+    if (movement.operationKind !== "REQUISITION" && movement.operationKind !== "RETURN") continue;
+
+    const unit = movement.unit || "SEM UMB";
+    const key = `${movement.operationKind}:${unit}`;
+    const current = map.get(key) ?? {
+      operationKind: movement.operationKind,
+      unit,
+      quantity: 0,
+      materialIds: new Set<string>(),
+      operationIds: new Set<string>(),
+    };
+
+    current.quantity += movement.quantity;
+    current.materialIds.add(movement.materialId);
+    current.operationIds.add(movement.transferId);
+    map.set(key, current);
+  }
+
+  return Array.from(map.values())
+    .map((row) => ({
+      operationKind: row.operationKind,
+      unit: row.unit,
+      quantity: row.quantity,
+      materialCount: row.materialIds.size,
+      operationCount: row.operationIds.size,
+    }))
+    .sort(
+      (left, right) =>
+        left.operationKind.localeCompare(right.operationKind) ||
+        left.unit.localeCompare(right.unit, "pt-BR"),
+    );
+}
+
 export async function GET(request: NextRequest) {
   const context = await resolveDashContext(request);
   if ("error" in context) {
@@ -753,11 +834,12 @@ export async function GET(request: NextRequest) {
     });
     const transferIds = relevantTransfers.map((transfer) => transfer.id);
     const transferMap = new Map(relevantTransfers.map((transfer) => [transfer.id, transfer]));
-    const items = transferIds.length ? await loadTransferItems({ context, transferIds, materialCode, materialType }) : [];
-    const [teamOperations, projects, reversals] = await Promise.all([
+    const items = transferIds.length ? await loadTransferItems({ context, transferIds }) : [];
+    const [teamOperations, projects, reversals, movementMaterials] = await Promise.all([
       transferIds.length ? loadTeamOperations({ context, transferIds }) : Promise.resolve([]),
       loadProjects({ context, projectIds: relevantTransfers.map((transfer) => transfer.project_id ?? "").filter(Boolean) }),
       loadReversalSets({ context, transferIds, itemIds: items.map((item) => item.id) }),
+      loadMovementMaterials({ context, materialIds: items.map((item) => item.material_id), materialCode, materialType }),
     ]);
     const teamIds = Array.from(new Set(teamOperations.map((operation) => operation.team_id).filter(Boolean)));
     const teams = await loadTeams({ context, teamIds });
@@ -770,7 +852,7 @@ export async function GET(request: NextRequest) {
       if (reversals.reversedTransferIds.has(transfer.id) || reversals.reversalTransferIds.has(transfer.id)) continue;
       if (reversals.reversedItemIds.has(item.id) || reversals.reversalItemIds.has(item.id)) continue;
 
-      const material = unwrapRelation(item.materials ?? null);
+      const material = movementMaterials.get(item.material_id) ?? null;
       if (!material) continue;
       const teamOperation = teamOperationByTransfer.get(transfer.id) ?? null;
       if (teamId && teamOperation?.team_id !== teamId) continue;
@@ -879,6 +961,7 @@ export async function GET(request: NextRequest) {
       abcRows: buildAbcRows(materials),
       abcQuantityRows: buildAbcRows(materials, "quantity"),
       movementEvolution: buildEvolutionRows(movements, startDate, endDate),
+      scatterSummaryByUnit: buildScatterUnitSummary(movements),
       scatter: buildScatterRows(movements, balanceByMaterial),
     });
   } catch (error) {

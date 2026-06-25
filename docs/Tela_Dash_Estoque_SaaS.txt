@@ -40,7 +40,9 @@ Filtros, auto-complete e listagem
   - `Dispersao de materiais`
     - Botao `Requisicao`
     - Botao `Devolucao`
+    - Botao `Exportar Excel`
     - Botao `Expandir`
+    - Cards por UMB da dispersao, alternando quantidade movimentada conforme `Requisicao` ou `Devolucao`
     - Alternancia de escala entre `Raiz` e `Linear`
     - Lista lateral completa com rolagem para selecionar material
     - Lista lateral exibe `Material`, `UMB`, `Quantidade`, `Operacoes` e `Projetos`
@@ -70,7 +72,8 @@ Filtros, auto-complete e listagem
   - Criticos
   - Zerados
   - Valor estimado
-  - Resumo por UMB
+  - Bloco `Estoque` com resumo por UMB
+  - Resumo por UMB da dispersao selecionada (`Requisicao`/`Devolucao`)
 
 Boas praticas
 -------------
@@ -112,12 +115,20 @@ Atualizacao 2026-06
   - A lista lateral nao mostrava a UMB.
   - O modal ampliado exibia controle de zoom.
   - A evolucao e o total tratavam cada item de material como uma operacao.
+  - A dispersao nao exibia cards por UMB para separar as quantidades movimentadas em `Requisicao` e `Devolucao`.
+  - O resumo por UMB do estoque ficava solto, sem bloco visual identificado.
+  - A tabela da dispersao nao tinha exportacao direta.
 - Depois:
   - A legenda fica em uma faixa acima do grafico.
   - A lista lateral exibe a UMB de cada material.
   - O controle e a regra de zoom foram removidos.
   - Evolucao e total contam cada transferencia uma unica vez; Requisicao, Devolucao e Retorno de campo seguem a classificacao de `stock_transfer_team_operations`.
   - A dispersao conta operacoes distintas por transferencia para cada material.
+  - A dispersao exibe cards por UMB com quantidade movimentada, alternando conforme o botao ativo `Requisicao` ou `Devolucao`.
+  - A leitura dos itens de movimentacao passa a buscar `stock_transfer_items` e `materials` separadamente, evitando falha de relacionamento no carregamento do dashboard.
+  - As leituras por listas de movimentacoes passam a usar lotes menores em filtros `.in(...)` e registram log tecnico quando `stock_transfer_items` falhar.
+  - O resumo por UMB do estoque passa a ficar dentro do bloco `Estoque`.
+  - A dispersao passa a exportar a tabela da operacao ativa em CSV compativel com Excel.
 - Impacto multi-tenant:
   - Sem mudanca de schema, migration ou politica RLS.
   - As consultas permanecem filtradas pelo `tenant_id` autenticado.
@@ -178,6 +189,7 @@ Constantes e configuracoes
     - `operationLabels`
     - `ScatterScale`
     - `evolutionKeys`
+    - `DASH_IN_FILTER_CHUNK_SIZE`
     - periodo inicial do ano corrente
 - Caminho: `supabase/migrations/186_create_stock_dashboard_page.sql`
   - Responsavel por: inserir/atualizar `app_pages`, `role_page_permissions` e `app_user_page_permissions` para `dash-estoque`.
@@ -191,6 +203,7 @@ Funcoes utilitarias relacionadas
     - `loadBalances`
     - `loadTransfers`
     - `loadTransferItems`
+    - `loadMovementMaterials`
     - `loadTeamOperations`
     - `loadProjects`
     - `loadTeams`
@@ -200,6 +213,7 @@ Funcoes utilitarias relacionadas
     - `buildIdleBuckets`
     - `buildAbcRows`
     - `buildEvolutionRows`
+    - `buildScatterUnitSummary`
     - `buildScatterRows`
 - Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
   - Responsavel por:
@@ -209,6 +223,9 @@ Funcoes utilitarias relacionadas
     - `abcMode`
     - `EvolutionChart`
     - `ScatterChart`
+    - `ScatterUnitStrip`
+    - `exportScatterRows`
+    - `formatExportDate`
     - `scaleScatterValue`
     - `scatterOffset`
     - `scatterQuantityPalette`
