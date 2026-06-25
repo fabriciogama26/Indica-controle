@@ -16,6 +16,9 @@ function normalizeError(error: unknown) {
       message: error.message,
       stacktrace: error.stack ?? "",
       name: error.name,
+      details: Object.fromEntries(
+        Object.entries(error as unknown as Record<string, unknown>).filter(([key]) => key !== "stack"),
+      ),
     };
   }
 
@@ -24,6 +27,16 @@ function normalizeError(error: unknown) {
       message: error,
       stacktrace: "",
       name: "Error",
+      details: null,
+    };
+  }
+
+  if (error && typeof error === "object") {
+    return {
+      message: "Erro sem mensagem",
+      stacktrace: "",
+      name: "Error",
+      details: error,
     };
   }
 
@@ -31,6 +44,7 @@ function normalizeError(error: unknown) {
     message: "",
     stacktrace: "",
     name: "Error",
+    details: null,
   };
 }
 
@@ -61,6 +75,7 @@ export function useErrorLogger(screen: string) {
         message: message || normalizedError.message || "Erro sem mensagem",
         stacktrace: normalizedError.stacktrace,
         errorName: normalizedError.name,
+        errorDetails: normalizedError.details,
         context,
       }),
     }).catch(() => null);

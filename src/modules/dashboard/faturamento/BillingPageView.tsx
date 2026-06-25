@@ -47,17 +47,20 @@ import styles from "./BillingPageView.module.css";
 type HistoryResponse = {
   history?: BillingHistoryEntry[];
   message?: string;
+  dbError?: unknown;
 };
 
 type DetailResponse = {
   order?: BillingDetail;
   message?: string;
+  dbError?: unknown;
 };
 
 type SaveResponse = {
   success?: boolean;
   order?: BillingDetail;
   message?: string;
+  dbError?: unknown;
 };
 
 type StatusModalState = {
@@ -104,6 +107,13 @@ function formatHistoryValue(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function createApiError(payload: { message?: string; dbError?: unknown }, fallback: string) {
+  return Object.assign(new Error(payload.message ?? fallback), {
+    payload,
+    dbError: payload.dbError ?? null,
+  });
 }
 
 export function BillingPageView() {
@@ -223,7 +233,7 @@ export function BillingPageView() {
       const response = await fetch("/api/faturamento/meta", { headers: authHeaders });
       const payload = (await response.json().catch(() => ({}))) as BillingMetaResponse;
       if (!response.ok) {
-        throw new Error(payload.message ?? "Falha ao carregar metadados.");
+        throw createApiError(payload, "Falha ao carregar metadados.");
       }
       setProjects(payload.projects ?? []);
       setNoProductionReasons(payload.noProductionReasons ?? []);
@@ -251,7 +261,7 @@ export function BillingPageView() {
       const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
       const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
       if (!response.ok) {
-        throw new Error(payload.message ?? "Falha ao carregar faturamentos.");
+        throw createApiError(payload, "Falha ao carregar faturamentos.");
       }
       setOrders(payload.orders ?? []);
       setPagination({
@@ -442,7 +452,7 @@ export function BillingPageView() {
       });
       const payload = (await response.json().catch(() => ({}))) as SaveResponse;
       if (!response.ok) {
-        throw new Error(payload.message ?? "Falha ao salvar faturamento.");
+        throw createApiError(payload, "Falha ao salvar faturamento.");
       }
 
       setSuccess(payload.message ?? "Faturamento salvo com sucesso.");
@@ -460,7 +470,7 @@ export function BillingPageView() {
     const response = await fetch(`/api/faturamento?orderId=${encodeURIComponent(order.id)}`, { headers: authHeaders });
     const payload = (await response.json().catch(() => ({}))) as DetailResponse;
     if (!response.ok || !payload.order) {
-      throw new Error(payload.message ?? "Falha ao carregar detalhes do faturamento.");
+      throw createApiError(payload, "Falha ao carregar detalhes do faturamento.");
     }
     return payload.order;
   }
@@ -517,7 +527,7 @@ export function BillingPageView() {
       const response = await fetch(`/api/faturamento?historyOrderId=${encodeURIComponent(order.id)}`, { headers: authHeaders });
       const payload = (await response.json().catch(() => ({}))) as HistoryResponse;
       if (!response.ok) {
-        throw new Error(payload.message ?? "Falha ao carregar historico.");
+        throw createApiError(payload, "Falha ao carregar historico.");
       }
       setHistoryOrder(order);
       setHistoryEntries(payload.history ?? []);
@@ -544,7 +554,7 @@ export function BillingPageView() {
       });
       const payload = (await response.json().catch(() => ({}))) as SaveResponse;
       if (!response.ok) {
-        throw new Error(payload.message ?? "Falha ao alterar status.");
+        throw createApiError(payload, "Falha ao alterar status.");
       }
       setSuccess(payload.message ?? "Status atualizado com sucesso.");
       setStatusModal(null);
@@ -584,7 +594,7 @@ export function BillingPageView() {
       if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
       const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
       const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
-      if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar faturamentos.");
+      if (!response.ok) throw createApiError(payload, "Falha ao exportar faturamentos.");
 
       downloadCsv("faturamento.csv", [
         ["numero", "projeto", "data_ingresso", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
@@ -623,7 +633,7 @@ export function BillingPageView() {
       if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
       const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
       const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
-      if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar detalhamento.");
+      if (!response.ok) throw createApiError(payload, "Falha ao exportar detalhamento.");
 
       const exportOrders = payload.orders ?? [];
       if (!exportOrders.length) {
@@ -836,7 +846,7 @@ export function BillingPageView() {
       });
       const payload = (await response.json().catch(() => ({}))) as BillingImportResult;
       if (!response.ok) {
-        throw new Error(payload.message ?? "Falha ao importar faturamento.");
+        throw createApiError(payload, "Falha ao importar faturamento.");
       }
 
       const apiIssues = (payload.results ?? [])
@@ -1180,7 +1190,7 @@ export function BillingPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas do modelo: projeto, tipo_faturamento, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao. Obrigatorias: projeto, tipo_faturamento, codigo_atividade, quantidade e taxa. Motivo e obrigatorio somente em Sem producao.</p>
+                    <p>Colunas do modelo: projeto, tipo_faturamento, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao, data_ingresso. Obrigatorias: projeto, tipo_faturamento, codigo_atividade, quantidade, taxa e data_ingresso. Motivo e obrigatorio somente em Sem producao.</p>
                   </div>
                 </div>
               </section>

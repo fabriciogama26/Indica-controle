@@ -34,7 +34,7 @@ type BillingOrderItemRow = {
   activity_code: string;
   activity_description: string;
   activity_unit: string;
-  voice_point: number | string;
+  voice_point?: number | string | null;
   quantity: number | string;
   rate: number | string;
   unit_value: number | string;
@@ -64,6 +64,11 @@ type AppUserRow = {
   id: string;
   display: string | null;
   login_name: string | null;
+};
+
+type ActivityVoicePointRow = {
+  id: string;
+  voice_point: number | string | null;
 };
 
 type SaveBillingPayload = {
@@ -245,6 +250,34 @@ function billingModuleMigrationHint(message: string | undefined) {
   return "";
 }
 
+function serializeDbError(error: unknown, operation: string) {
+  const source = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  return {
+    operation,
+    code: normalizeText(source.code),
+    message: normalizeText(source.message) || normalizeText(error),
+    details: source.details ?? null,
+    hint: source.hint ?? null,
+    name: normalizeText(source.name),
+  };
+}
+
+function dbErrorResponse(params: {
+  error: unknown;
+  operation: string;
+  message: string;
+}) {
+  const dbError = serializeDbError(params.error, params.operation);
+  const hint = billingModuleMigrationHint(dbError.message);
+  return NextResponse.json(
+    {
+      message: `${params.message}${hint}`.trim(),
+      dbError,
+    },
+    { status: 500 },
+  );
+}
+
 async function ensureBillingPageAccess(resolution: AuthenticatedAppUserContext) {
   if (resolution.role.isAdmin) {
     return true;
@@ -319,6 +352,26 @@ async function fetchAppUserMap(params: {
   return new Map((data ?? []).map((item) => [item.id, item]));
 }
 
+async function fetchActivityVoicePointMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  activityIds: string[];
+}) {
+  const activityIds = Array.from(new Set(params.activityIds.filter(Boolean)));
+  if (!activityIds.length) {
+    return new Map<string, number>();
+  }
+
+  const { data } = await params.supabase
+    .from("service_activities")
+    .select("id, voice_point")
+    .eq("tenant_id", params.tenantId)
+    .in("id", activityIds)
+    .returns<ActivityVoicePointRow[]>();
+
+  return new Map((data ?? []).map((item) => [item.id, Number(item.voice_point ?? 1)]));
+}
+
 async function fetchBillingOrderDetail(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -344,10 +397,13 @@ async function fetchBillingOrderDetail(params: {
     .order("activity_code", { ascending: true })
     .returns<BillingOrderItemRow[]>();
 
-  if (itemsError && String(itemsError.message ?? "").includes("activity_active_snapshot")) {
+  if (itemsError && (
+    String(itemsError.message ?? "").includes("activity_active_snapshot")
+    || String(itemsError.message ?? "").includes("voice_point")
+  )) {
     const fallback = await params.supabase
       .from("project_billing_order_items")
-      .select("id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, voice_point, quantity, rate, unit_value, total_value, observation, is_active, updated_at")
+      .select("id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, quantity, rate, unit_value, total_value, observation, is_active, updated_at")
       .eq("tenant_id", params.tenantId)
       .eq("billing_order_id", params.orderId)
       .eq("is_active", true)
@@ -360,6 +416,12 @@ async function fetchBillingOrderDetail(params: {
   if (itemsError) {
     return null;
   }
+
+  const voicePointMap = await fetchActivityVoicePointMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    activityIds: (items ?? []).map((item) => item.service_activity_id),
+  });
 
   const userIds = [order.created_by, order.updated_by].filter((item): item is string => Boolean(item));
   const userMap = await fetchAppUserMap({
@@ -374,7 +436,7 @@ async function fetchBillingOrderDetail(params: {
     code: normalizeText(item.activity_code),
     description: normalizeText(item.activity_description),
     unit: normalizeText(item.activity_unit),
-    voicePoint: Number(item.voice_point ?? 0),
+    voicePoint: Number(item.voice_point ?? voicePointMap.get(item.service_activity_id) ?? 1),
     unitValue: Number(item.unit_value ?? 0),
     activityIsActive: item.activity_active_snapshot !== false,
     quantity: Number(item.quantity ?? 0),
@@ -497,8 +559,11 @@ export async function GET(request: NextRequest) {
 
   const { count: rawTotal, error: countError } = await countQuery;
   if (countError) {
-    const hint = billingModuleMigrationHint(countError.message);
-    return NextResponse.json({ message: `Falha ao listar faturamentos.${hint}`.trim() }, { status: 500 });
+    return dbErrorResponse({
+      error: countError,
+      operation: "faturamento.list.count",
+      message: "Falha ao listar faturamentos.",
+    });
   }
 
   const total = rawTotal ?? 0;
@@ -521,8 +586,11 @@ export async function GET(request: NextRequest) {
 
   const { data: pagedBaseOrders, error } = await dataQuery.returns<BillingOrderRow[]>();
   if (error) {
-    const hint = billingModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao listar faturamentos.${hint}`.trim() }, { status: 500 });
+    return dbErrorResponse({
+      error,
+      operation: "faturamento.list.data",
+      message: "Falha ao listar faturamentos.",
+    });
   }
 
   const pagedOrderIds = (pagedBaseOrders ?? []).map((item) => item.id);
@@ -654,8 +722,11 @@ async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
   });
 
   if (error) {
-    const hint = billingModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao salvar faturamento.${hint}`.trim() }, { status: 500 });
+    return dbErrorResponse({
+      error,
+      operation: method === "PUT" ? "faturamento.save.update" : "faturamento.save.create",
+      message: "Falha ao salvar faturamento.",
+    });
   }
 
   const result = (data ?? {}) as SaveBillingRpcResult;
@@ -725,8 +796,11 @@ async function saveBillingOrderBatchPartial(request: NextRequest) {
   });
 
   if (error) {
-    const hint = billingModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao importar faturamento em lote.${hint}`.trim(), _debug_error: error.message }, { status: 500 });
+    return dbErrorResponse({
+      error,
+      operation: "faturamento.batch_import",
+      message: "Falha ao importar faturamento em lote.",
+    });
   }
 
   const result = (data ?? {}) as SaveBillingBatchRpcResult;
@@ -796,8 +870,11 @@ export async function PATCH(request: NextRequest) {
   });
 
   if (error) {
-    const hint = billingModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao alterar status do faturamento.${hint}`.trim() }, { status: 500 });
+    return dbErrorResponse({
+      error,
+      operation: "faturamento.status",
+      message: "Falha ao alterar status do faturamento.",
+    });
   }
 
   const result = (data ?? {}) as SetBillingStatusRpcResult;

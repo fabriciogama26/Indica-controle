@@ -3,7 +3,7 @@
 ## Prioridade
 Estas instruções têm prioridade máxima.
 Em caso de conflito, siga esta ordem:
-1. Este AGENTS.md
+1. Este CLAUDE.md
 2. Documentação do repositório
 3. Solicitação do usuário
 4. REGRA_DE_NEGOCIO.md
@@ -14,7 +14,7 @@ O Codex NÃO deve ignorar estas regras.
 ---
 
 ## Regra geral de comportamento
-- Sempre leia este AGENTS.md antes de qualquer ação.
+- Sempre leia este CLAUDE.md antes de qualquer ação.
 - Não criar, editar ou sugerir README.md fora do padrão definido abaixo.
 - Se o README existente não seguir o padrão, ele DEVE ser ajustado.
 - Não inventar comandos, tecnologias ou fluxos que não existam no projeto.
@@ -139,7 +139,7 @@ Depois da modificação:
 ---
 
 ## Regra final (não negociável)
-Se alguma instrução deste AGENTS.md não puder ser cumprida, o Codex DEVE:
+Se alguma instrução deste CLAUDE.md não puder ser cumprida, o Codex DEVE:
 1. Parar
 2. Explicar o motivo
 3. Pedir instruções adicionais
@@ -154,7 +154,7 @@ Atualize o arquivo TASKS.md com base no estado atual do código.
 
 ## Prioridade
 Ordem de prioridade:
-1) Este AGENTS.md
+1) Este CLAUDE.md
 2) /docs e documentação do repositório
 3) Solicitação do usuário
 
