@@ -359,7 +359,7 @@
 }
 
 .actionsCell {
-  min-width: 160px;
+  min-width: 210px;
 }
 
 .tableActions {
@@ -398,9 +398,14 @@
 
 .actionView,
 .actionEdit,
-.actionHistory {
+.actionHistory,
+.actionMeasure {
   color: #2a86bd;
   background: #dce8f5;
+}
+
+.actionMeasure {
+  color: #1f8d45;
 }
 
 .actionCancel {

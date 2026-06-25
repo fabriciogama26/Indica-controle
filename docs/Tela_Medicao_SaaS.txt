@@ -46,6 +46,7 @@ Cadastro
 --------
 - Origem obrigatoria:
   - `Projeto + Equipe + Data de execucao`
+  - A tela aceita pre-preenchimento do cabecalho via `/medicao?projectId=<id>&teamId=<id>&executionDate=<YYYY-MM-DD>&compositionId=<id>`, aplicado somente quando projeto e equipe existem nos metadados autenticados do tenant.
 - Campos principais:
   - Projeto (padrao `input + datalist`, igual ao filtro)
   - Equipe
@@ -194,6 +195,8 @@ Cancelamento e saldo
 Atalhos
 -------
 - Rota ativa: `/medicao`
+- Pre-preenchimento por Composicao de Equipe:
+  - `/medicao?projectId=<id>&teamId=<id>&executionDate=<YYYY-MM-DD>&compositionId=<id>`
 - Endpoints:
   - `GET /api/medicao` (lista, detalhe, historico)
   - `POST /api/medicao` (criar ordem)
@@ -205,6 +208,30 @@ Atalhos
 - Modelo cadastro em massa:
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
+
+Atualizacao 2026-06-25 (Cabecalho pela Composicao)
+--------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `readMeasurementPrefillParams`
+  - `isIsoDate`
+  - `compositionPrefillAppliedRef`
+  - Efeito de carregamento de fontes da Medicao
+  - Efeito de sincronizacao do cabecalho da Medicao
+- Comportamento antes/depois:
+  - Antes: para medir a partir de uma composicao, o usuario precisava abrir Medicao e selecionar manualmente Projeto, Equipe e Data.
+  - Depois: o botao `Fazer medicao` da Composicao abre a Medicao e preenche Projeto, Equipe, Data execucao e Data da medicao quando os IDs pertencem aos metadados carregados do tenant.
+  - Depois: a data da URL tambem participa do intervalo usado para carregar Programacao/metadados de origem, evitando perder composicoes fora do periodo inicial da lista.
+- Impacto multi-tenant:
+  - Nao houve alteracao de schema, RLS ou API.
+  - O frontend so aplica os parametros depois da carga autenticada de projetos/equipes do tenant; o salvamento continua validado por `/api/medicao` e pela RPC existente.
 
 Atualizacao 2026-03
 -------------------

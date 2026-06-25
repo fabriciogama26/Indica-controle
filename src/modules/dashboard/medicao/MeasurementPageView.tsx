@@ -384,6 +384,13 @@ type FormState = {
   items: MeasurementRow[];
 };
 
+type MeasurementPrefillParams = {
+  projectId: string;
+  teamId: string;
+  executionDate: string;
+  compositionId: string;
+};
+
 function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
   params.set("startDate", filters.startDate);
@@ -408,6 +415,26 @@ function toIsoDate(value: Date) {
   const m = String(value.getMonth() + 1).padStart(2, "0");
   const d = String(value.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function readMeasurementPrefillParams(): MeasurementPrefillParams | null {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get("projectId")?.trim() ?? "";
+  const teamId = params.get("teamId")?.trim() ?? "";
+  const executionDate = params.get("executionDate")?.trim() ?? "";
+  const compositionId = params.get("compositionId")?.trim() ?? "";
+
+  if (!projectId || !teamId || !isIsoDate(executionDate)) {
+    return null;
+  }
+
+  return { projectId, teamId, executionDate, compositionId };
 }
 
 function yearRange(today: string) {
@@ -936,6 +963,7 @@ export function MeasurementPageView() {
   const [isLoadingMinimumBillingPreview, setIsLoadingMinimumBillingPreview] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const hasManualRateUserOverrideRef = useRef(false);
+  const compositionPrefillAppliedRef = useRef<string | null>(null);
   const refreshRequestedRef = useRef(false);
   const refreshHadErrorRef = useRef(false);
   const deferredActivitySearch = useDeferredValue(form.activitySearch);
@@ -1138,8 +1166,10 @@ export function MeasurementPageView() {
     async function loadSources() {
       setIsLoadingSources(true);
       try {
-        const sourceStartDate = form.executionDate && form.executionDate < activeFilters.startDate ? form.executionDate : activeFilters.startDate;
-        const sourceEndDate = form.executionDate && form.executionDate > activeFilters.endDate ? form.executionDate : activeFilters.endDate;
+        const prefill = form.id ? null : readMeasurementPrefillParams();
+        const executionDateForSources = prefill?.executionDate || form.executionDate;
+        const sourceStartDate = executionDateForSources && executionDateForSources < activeFilters.startDate ? executionDateForSources : activeFilters.startDate;
+        const sourceEndDate = executionDateForSources && executionDateForSources > activeFilters.endDate ? executionDateForSources : activeFilters.endDate;
         const response = await fetch(`/api/programacao?startDate=${sourceStartDate}&endDate=${sourceEndDate}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
@@ -1166,7 +1196,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters.endDate, activeFilters.startDate, form.executionDate, refreshTick]);
+  }, [accessToken, activeFilters.endDate, activeFilters.startDate, form.executionDate, form.id, refreshTick]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -1464,6 +1494,34 @@ export function MeasurementPageView() {
       setFormProjectSearch(projectCode);
     }
   }, [form.projectId, formProjectSearch, projectMap]);
+
+  useEffect(() => {
+    const prefill = readMeasurementPrefillParams();
+    if (!prefill) return;
+
+    const prefillKey = `${prefill.compositionId}|${prefill.projectId}|${prefill.teamId}|${prefill.executionDate}`;
+    if (compositionPrefillAppliedRef.current === prefillKey) return;
+    if (!projectMap.has(prefill.projectId) || !teamMap.has(prefill.teamId)) return;
+
+    compositionPrefillAppliedRef.current = prefillKey;
+    hasManualRateUserOverrideRef.current = false;
+    setRateSuggestionSource(null);
+    setFormProjectSearch(projectMap.get(prefill.projectId)?.code ?? "");
+    setForm((current) => {
+      if (current.id) return current;
+      return {
+        ...current,
+        projectId: prefill.projectId,
+        teamId: prefill.teamId,
+        executionDate: prefill.executionDate,
+        measurementDate: prefill.executionDate,
+        programmingId: "",
+        items: [],
+      };
+    });
+    setFeedback({ type: "success", message: "Cabecalho da medicao preenchido pela composicao de equipe." });
+    scrollDashboardContentToTop();
+  }, [projectMap, teamMap]);
 
   useEffect(() => {
     if (!accessToken || form.id || form.measurementKind === "SEM_PRODUCAO" || !form.projectId) {
