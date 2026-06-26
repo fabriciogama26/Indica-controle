@@ -1197,7 +1197,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       !form.sgdTypeId ? "sgdTypeId" : null,
       !electricalEqNumber ? "electricalField" : null,
       !form.electricalEqCatalogId ? "electricalEqCatalogId" : null,
-      !isEditing && !form.etapaUnica && !form.etapaFinal && !form.etapaNumber.trim() ? "etapaNumber" : null,
+      !form.etapaUnica && !form.etapaFinal && !form.etapaNumber.trim() ? "etapaNumber" : null,
     ].filter((field): field is string => Boolean(field));
 
     if (missingRequiredFields.length) {
@@ -1291,6 +1291,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         ["posteQty", "estruturaQty", "trafoQty", "redeQty", "affectedCustomers"],
         "POSTE, ESTRUTURA, TRAFO e Nº Clientes Afetados devem ser numeros inteiros maiores ou iguais a zero. REDE aceita decimal com virgula ou ponto.",
       );
+      return;
+    }
+
+    if (!form.etapaUnica && !form.etapaFinal && etapaNumberInput === null) {
+      flagInvalidFields(["etapaNumber"], "ETAPA e obrigatoria.");
       return;
     }
 

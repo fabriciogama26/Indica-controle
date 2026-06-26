@@ -1593,6 +1593,13 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
         : parsedEtapaNumber
     );
 
+  if (!etapaUnica && !etapaFinal && etapaNumber === null) {
+    return NextResponse.json(
+      { message: "O campo ETAPA e obrigatorio para programar ou reprogramar." },
+      { status: 400 },
+    );
+  }
+
   const shouldValidateStageConflict = !etapaUnica
     && !etapaFinal
     && etapaNumber !== null

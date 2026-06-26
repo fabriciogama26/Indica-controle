@@ -32,6 +32,11 @@ Arquitetura
   - `supabase/migrations/246_postpone_programming_by_project_date.sql`
   - RPC: `postpone_project_programming_group`
   - Objetivo: adiar em uma unica transacao todas as programacoes ativas do mesmo projeto e data.
+- Migration de guarda obrigatoria de ETAPA ativa:
+  - `supabase/migrations/269_guard_programming_stage_on_active_records.sql`
+  - RPC: `postpone_project_programming`
+  - Constraint: `project_programming_active_stage_required_check`
+  - Objetivo: preservar `ETAPA UNICA`/`ETAPA FINAL` no adiamento, corrigir registros ativos antigos sem etapa e bloquear novas programacoes ativas sem ETAPA numerica ou flag especial.
 - Migration de desligamento/documentos:
   - `supabase/migrations/089_add_programming_outage_and_documents_compat.sql`
   - Campos em `project_programming`: `outage_start_time`, `outage_end_time`
@@ -2175,3 +2180,27 @@ Atualizacao 2026-06-26 - Sincronizacao de campos operacionais por Projeto + Data
   - Escopo sempre filtrado por `tenant_id`, `project_id`, `execution_date` e status ativo.
   - A nova RPC e a wrapper full mantem `EXECUTE` restrito a `service_role`.
   - Nao altera RLS, grants de tabelas nem policies.
+
+Atualizacao 2026-06-26 - ETAPA obrigatoria em programacoes ativas
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/server/modules/programacao/handlers.ts`
+  - `supabase/migrations/269_guard_programming_stage_on_active_records.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `handleSubmit`: passa a bloquear edicao/reprogramacao sem `ETAPA` quando `ETAPA UNICA` e `ETAPA FINAL` estiverem desmarcadas.
+  - `saveProgramming`: passa a rejeitar `POST`/`PUT` quando o resultado final da etapa for nulo sem flag especial.
+  - `postpone_project_programming`: passa a preservar `etapa_unica` e `etapa_final` na nova programacao criada pelo adiamento.
+  - `project_programming_active_stage_required_check`: nova constraint para impedir linhas `PROGRAMADA`/`REPROGRAMADA` sem etapa numerica ou flag especial.
+- Comportamento antes/depois:
+  - Antes: uma programacao antiga com `etapa_number = null` podia ser editada/reprogramada e continuar ativa sem `ETAPA`.
+  - Antes: o adiamento copiava `etapa_number`, mas nao copiava `etapa_unica` e `etapa_final`, permitindo que uma origem `ETAPA FINAL` gerasse uma nova linha ativa sem etapa valida.
+  - Depois: a tela e a API bloqueiam salvar programacao ativa sem `ETAPA` numerica, exceto quando `ETAPA UNICA` ou `ETAPA FINAL` estiver marcada.
+  - Depois: o adiamento preserva as flags especiais da origem na nova programacao.
+  - Depois: a migration corrige registros ativos antigos sem etapa: primeiro restaura flags especiais a partir da origem do adiamento; depois preenche ETAPA numerica sequencial para os ativos restantes.
+- Multi-tenant:
+  - Backfill e RPC mantem escopo por `tenant_id`.
+  - O historico operacional e registrado em `project_programming_history` para cada linha corrigida.
+  - A constraint e global da tabela, mas valida somente registros com status `PROGRAMADA` ou `REPROGRAMADA`.
