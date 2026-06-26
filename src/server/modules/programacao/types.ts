@@ -217,6 +217,7 @@ export type SaveProgrammingPayload = {
   electricalEqCatalogId?: string;
   changeReason?: string;
   expectedUpdatedAt?: string;
+  activitiesLoaded?: boolean;
   documents?: {
     sgd?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };
     pi?: { number?: string; approvedAt?: string; requestedAt?: string; includedAt?: string; deliveredAt?: string };

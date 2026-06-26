@@ -80,16 +80,26 @@ export async function fetchProgrammingActivities(
     };
   }
 
-  const { data, error } = await supabase
-    .from("project_programming_activities")
-    .select("id, programming_id, service_activity_id, activity_code, activity_description, activity_unit, quantity, is_active")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .in("programming_id", programmingIds)
-    .order("activity_code", { ascending: true })
-    .returns<ProgrammingActivityRow[]>();
+  const CHUNK_SIZE = 100;
+  const chunks: string[][] = [];
+  for (let i = 0; i < programmingIds.length; i += CHUNK_SIZE) {
+    chunks.push(programmingIds.slice(i, i + CHUNK_SIZE));
+  }
 
-  if (error) {
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("project_programming_activities")
+        .select("id, programming_id, service_activity_id, activity_code, activity_description, activity_unit, quantity, is_active")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .in("programming_id", chunk)
+        .order("activity_code", { ascending: true })
+        .returns<ProgrammingActivityRow[]>(),
+    ),
+  );
+
+  if (results.some((r) => !!r.error)) {
     return {
       activityMap: new Map<string, ProgrammingActivityRow[]>(),
       hasError: true,
@@ -97,10 +107,12 @@ export async function fetchProgrammingActivities(
   }
 
   const activityMap = new Map<string, ProgrammingActivityRow[]>();
-  for (const item of data ?? []) {
-    const current = activityMap.get(item.programming_id) ?? [];
-    current.push(item);
-    activityMap.set(item.programming_id, current);
+  for (const result of results) {
+    for (const item of result.data ?? []) {
+      const current = activityMap.get(item.programming_id) ?? [];
+      current.push(item);
+      activityMap.set(item.programming_id, current);
+    }
   }
 
   return {

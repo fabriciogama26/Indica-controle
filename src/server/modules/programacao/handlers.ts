@@ -1458,6 +1458,7 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
   const electricalEqCatalogId = normalizeNullableText(payload?.electricalEqCatalogId);
   const changeReason = normalizeNullableText(payload?.changeReason);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
+  const activitiesLoaded = payload?.activitiesLoaded;
   const hasActivitiesPayload = Array.isArray(payload?.activities);
   const activitiesInput = hasActivitiesPayload ? payload?.activities ?? [] : [];
   let activities = activitiesInput
@@ -1470,6 +1471,17 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
 
   if (method === "PUT" && !programmingId) {
     return NextResponse.json({ message: "Programacao invalida para edicao." }, { status: 400 });
+  }
+
+  if (method === "PUT" && activitiesLoaded === false) {
+    return NextResponse.json(
+      {
+        message:
+          "Atividades da Programacao nao foram carregadas. Recarregue a tela antes de editar para evitar perda de dados.",
+        reason: "PROGRAMMING_ACTIVITIES_NOT_LOADED",
+      },
+      { status: 409 },
+    );
   }
 
   if (!projectId || !teamId || !executionDate || !period || !startTime || !endTime || !expectedMinutes) {

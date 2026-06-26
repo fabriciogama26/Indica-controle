@@ -57,6 +57,7 @@ import {
   cancelProgrammingGroupViaRpc,
   cancelProgrammingViaRpc,
   postponeProgrammingGroupViaRpc,
+  postponeProgrammingViaRpc,
 } from "@/server/modules/programacao/rpc";
 import {
   fetchNextProgrammingStage,
@@ -608,15 +609,32 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const postponeResult = await postponeProgrammingGroupViaRpc({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      actorUserId: resolution.appUser.id,
-      programmingId,
-      newExecutionDate: newDate,
-      reason,
-      expectedUpdatedAt,
-    });
+    if (scope === "individual" && !newDate) {
+      return NextResponse.json(
+        { message: "Para adiar apenas esta equipe e necessario informar a nova data da programacao." },
+        { status: 400 },
+      );
+    }
+
+    const postponeResult = scope === "individual"
+      ? await postponeProgrammingViaRpc({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          actorUserId: resolution.appUser.id,
+          programmingId,
+          newExecutionDate: newDate ?? "",
+          reason,
+          expectedUpdatedAt,
+        })
+      : await postponeProgrammingGroupViaRpc({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          actorUserId: resolution.appUser.id,
+          programmingId,
+          newExecutionDate: newDate,
+          reason,
+          expectedUpdatedAt,
+        });
 
     if (!postponeResult.ok) {
       if (postponeResult.reason === "PROGRAMMING_CONFLICT") {
@@ -655,7 +673,9 @@ export async function PATCH(request: NextRequest) {
     let updatedSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
     let newSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>> = null;
     let warning: string | null = null;
-    const firstNewProgrammingId = postponeResult.newProgrammingIds[0] ?? null;
+    const firstNewProgrammingId = "newProgrammingIds" in postponeResult
+      ? (postponeResult.newProgrammingIds[0] ?? null)
+      : ("newProgrammingId" in postponeResult ? postponeResult.newProgrammingId : null);
 
     try {
       [updatedSchedule, newSchedule] = await Promise.all([
@@ -672,13 +692,19 @@ export async function PATCH(request: NextRequest) {
       warning = "Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.";
     }
 
+    const affectedCount = "affectedCount" in postponeResult ? postponeResult.affectedCount : 1;
+    const updatedIds = "updatedProgrammingIds" in postponeResult ? postponeResult.updatedProgrammingIds : [programmingId];
+    const newIds = "newProgrammingIds" in postponeResult
+      ? postponeResult.newProgrammingIds
+      : firstNewProgrammingId ? [firstNewProgrammingId] : [];
+
     return NextResponse.json({
       success: true,
       id: programmingId,
       newId: firstNewProgrammingId,
-      affectedCount: postponeResult.affectedCount,
-      updatedIds: postponeResult.updatedProgrammingIds,
-      newIds: postponeResult.newProgrammingIds,
+      affectedCount,
+      updatedIds,
+      newIds,
       updatedAt: postponeResult.updatedAt,
       schedule: updatedSchedule,
       newSchedule,

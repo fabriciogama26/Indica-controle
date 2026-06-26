@@ -370,6 +370,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setPostponeReasonNotes,
     postponeDate,
     setPostponeDate,
+    postponeScope,
+    setPostponeScope,
     isPostponing,
     openPostponeModal,
     closePostponeModal,
@@ -755,6 +757,11 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       openAlertModal(
         "Edicao bloqueada por seguranca",
         "As atividades da programacao nao foram carregadas. Recarregue a tela para evitar sobrescrever dados.",
+        undefined,
+        {
+          primaryAction: "reload",
+          primaryActionLabel: "Recarregar programacao",
+        },
       );
       return;
     }
@@ -1162,6 +1169,23 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       return;
     }
 
+    if (isEditing && currentEditingSchedule?.activitiesLoaded === false) {
+      showSubmitFeedback(
+        "error",
+        "Atividades da Programacao nao foram carregadas. Recarregue a tela antes de editar para evitar perda de dados.",
+      );
+      openAlertModal(
+        "Edicao bloqueada por seguranca",
+        "As atividades da programacao nao foram carregadas. Recarregue a tela para evitar sobrescrever dados.",
+        undefined,
+        {
+          primaryAction: "reload",
+          primaryActionLabel: "Recarregar programacao",
+        },
+      );
+      return;
+    }
+
     const electricalEqNumber = form.electricalField.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
     const missingRequiredFields = [
       !form.projectId ? "projectId" : null,
@@ -1411,6 +1435,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         affectedCustomers,
         sgdTypeId: form.sgdTypeId || undefined,
         electricalEqCatalogId: form.electricalEqCatalogId || undefined,
+        activitiesLoaded: isEditing ? currentEditingSchedule?.activitiesLoaded !== false : undefined,
         documents: DOCUMENT_KEYS.reduce(
           (accumulator, item) => {
             const normalizedNumber = item.key === "sgd"
@@ -2238,10 +2263,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         reasonNotes={postponeReasonNotes}
         date={postponeDate}
         minDate={postponeTarget ? addDays(postponeTarget.date, 1) : today}
+        scope={postponeScope}
         isSubmitting={isPostponing}
         onClose={closePostponeModal}
         onConfirm={() => void confirmPostpone()}
         onDateChange={setPostponeDate}
+        onScopeChange={setPostponeScope}
         onReasonCodeChange={setPostponeReasonCode}
         onReasonNotesChange={setPostponeReasonNotes}
       />
@@ -2298,6 +2325,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         isSavingWorkCompletionStatus={isSavingWorkCompletionStatusFromModal}
         onWorkCompletionStatusChange={(value) => updateFormField("workCompletionStatus", value)}
         onSaveWorkCompletionStatus={() => void saveWorkCompletionStatusFromAlertModal()}
+        onPrimaryAction={() => {
+          if (alertModal?.primaryAction === "reload") {
+            closeAlertModal();
+            void loadBoardData();
+          }
+        }}
+        isPrimaryActionDisabled={alertModal?.primaryAction === "reload" && isLoadingList}
         onClose={closeAlertModal}
       />
       <ProgrammingStageConflictModal modal={stageConflictModal} onClose={() => setStageConflictModal(null)} />

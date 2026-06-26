@@ -637,6 +637,7 @@ export function usePostponeModal(params: {
   const [postponeReasonCode, setPostponeReasonCode] = useState("");
   const [postponeReasonNotes, setPostponeReasonNotes] = useState("");
   const [postponeDate, setPostponeDate] = useState("");
+  const [postponeScope, setPostponeScope] = useState<"individual" | "group">("group");
   const [isPostponing, setIsPostponing] = useState(false);
 
   function openPostponeModal(schedule: ScheduleItem) {
@@ -666,11 +667,20 @@ export function usePostponeModal(params: {
     setPostponeReasonCode("");
     setPostponeReasonNotes("");
     setPostponeDate("");
+    setPostponeScope("group");
   }
 
   async function confirmPostpone() {
     if (!accessToken || !postponeTarget) {
       openAlertModal("Falha ao validar adiamento", "Sessao invalida para validar o adiamento.");
+      return;
+    }
+
+    if (postponeScope === "individual" && !postponeDate) {
+      openAlertModal(
+        "Data obrigatoria",
+        "Para adiar apenas esta equipe e necessario informar a nova data da programacao.",
+      );
       return;
     }
 
@@ -701,6 +711,7 @@ export function usePostponeModal(params: {
         id: postponeTarget.id,
         reason: selectedReasonText,
         newDate: postponeDate || undefined,
+        scope: postponeScope,
         expectedUpdatedAt: postponeTarget.updatedAt,
       });
 
@@ -780,6 +791,8 @@ export function usePostponeModal(params: {
     setPostponeReasonNotes,
     postponeDate,
     setPostponeDate,
+    postponeScope,
+    setPostponeScope,
     isPostponing,
     openPostponeModal,
     closePostponeModal,

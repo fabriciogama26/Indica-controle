@@ -1288,10 +1288,12 @@ export function ProgrammingPostponeModal(props: {
   reasonNotes: string;
   date: string;
   minDate: string;
+  scope: "individual" | "group";
   isSubmitting: boolean;
   onClose: () => void;
   onConfirm: () => void;
   onDateChange: (value: string) => void;
+  onScopeChange: (value: "individual" | "group") => void;
   onReasonCodeChange: (value: string) => void;
   onReasonNotesChange: (value: string) => void;
 }) {
@@ -1302,10 +1304,12 @@ export function ProgrammingPostponeModal(props: {
     reasonNotes,
     date,
     minDate,
+    scope,
     isSubmitting,
     onClose,
     onConfirm,
     onDateChange,
+    onScopeChange,
     onReasonCodeChange,
     onReasonNotesChange,
   } = props;
@@ -1325,13 +1329,41 @@ export function ProgrammingPostponeModal(props: {
 
         <div className={styles.modalBody}>
           <p>
-            Informe o motivo do adiamento. A acao sera aplicada a todas as programacoes ativas do mesmo projeto e
-            data. Se preencher nova data, os registros atuais serao marcados como ADIADA e novos registros serao
-            criados com status REPROGRAMADA. Se deixar em branco, os registros serao apenas marcados como ADIADA.
+            Informe o motivo do adiamento. Se preencher nova data, os registros serao marcados como ADIADA e novos
+            registros serao criados com status REPROGRAMADA. Se deixar em branco, os registros serao marcados apenas
+            como ADIADA.
           </p>
 
+          <fieldset className={styles.field}>
+            <span>Adiar apenas esta equipe ou todas as equipes desta obra neste dia?</span>
+            <div className={styles.inlineCheckboxGroup}>
+              <label className={styles.inlineCheckbox}>
+                <input
+                  type="radio"
+                  name="postpone-scope"
+                  value="group"
+                  checked={scope === "group"}
+                  onChange={() => onScopeChange("group")}
+                  disabled={isSubmitting}
+                />
+                Todas as equipes da obra neste dia
+              </label>
+              <label className={styles.inlineCheckbox}>
+                <input
+                  type="radio"
+                  name="postpone-scope"
+                  value="individual"
+                  checked={scope === "individual"}
+                  onChange={() => onScopeChange("individual")}
+                  disabled={isSubmitting}
+                />
+                Apenas esta equipe (exige nova data)
+              </label>
+            </div>
+          </fieldset>
+
           <label className={styles.field}>
-            <span>Nova data da programacao</span>
+            <span>Nova data da programacao{scope === "individual" ? <span className="requiredMark"> *</span> : null}</span>
             <input
               type="date"
               value={date}
@@ -1754,6 +1786,8 @@ export function ProgrammingAlertModal(props: {
   isSavingWorkCompletionStatus: boolean;
   onWorkCompletionStatusChange: (value: string) => void;
   onSaveWorkCompletionStatus: () => void;
+  onPrimaryAction?: () => void;
+  isPrimaryActionDisabled?: boolean;
   onClose: () => void;
 }) {
   const {
@@ -1764,6 +1798,8 @@ export function ProgrammingAlertModal(props: {
     isSavingWorkCompletionStatus,
     onWorkCompletionStatusChange,
     onSaveWorkCompletionStatus,
+    onPrimaryAction,
+    isPrimaryActionDisabled,
     onClose,
   } = props;
   if (!modal) {
@@ -1839,6 +1875,19 @@ export function ProgrammingAlertModal(props: {
                   <li key={detail}>{detail}</li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {modal.primaryActionLabel ? (
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={onPrimaryAction}
+                disabled={isPrimaryActionDisabled}
+              >
+                {modal.primaryActionLabel}
+              </button>
             </div>
           ) : null}
         </div>
