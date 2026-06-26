@@ -1,3 +1,4 @@
+- [x] Proteger a edicao da Programacao contra perda de atividades quando o snapshot carregar incompleto, com bloqueio no frontend, botao de recarregar no modal e rejeicao defensiva no backend (`PROGRAMMING_ACTIVITIES_NOT_LOADED`).
 - [x] Adicionar acao `Fazer medicao` na Composicao de Equipe, abrindo a Medicao com cabecalho pre-preenchido por projeto, equipe e data da composicao.
 - [x] Exibir o nome do encarregado no modal `Detalhes da Programacao` da Programacao Simples/Visualizacao usando os dados de equipe ja carregados no payload.
 - [x] Permitir mais de um projeto por Composicao de Equipe, criando `team_composition_projects`, atualizando a RPC `save_team_composition_record`, API, formulario, listagem, detalhes, CSVs e documentacao da tela.

@@ -2125,3 +2125,33 @@ Atualizacao 2026-06-25 - Encarregado no modal de detalhes
 - Multi-tenant:
   - Nao houve alteracao de API, banco, schema, grants ou policies RLS.
   - O campo exibido usa somente dados ja retornados por `/api/programacao`, filtrados no backend pelo `tenant_id` do usuario autenticado.
+
+Atualizacao 2026-06-26 - Protecao contra atividades incompletas na edicao
+-------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `startEditSchedule`: mantem bloqueio de edicao quando `activitiesLoaded === false` e abre modal com acao de recarregar.
+  - `handleSubmit`: adiciona trava defensiva antes do envio quando a programacao em edicao esta com atividades incompletas.
+  - `ProgrammingAlertModal`: passa a suportar acao primaria para recarregar a programacao.
+  - `saveProgramming`: passa a rejeitar `PUT` marcado com `activitiesLoaded = false`.
+  - `SaveProgrammingPayload`: adiciona `activitiesLoaded` como flag defensiva do snapshot enviado pelo frontend.
+- Comportamento antes/depois:
+  - Antes: a tela ja bloqueava a abertura da edicao quando as atividades nao carregavam, mas o backend nao recebia uma flag explicita para rejeitar esse caso se um fluxo alternativo enviasse o `PUT`.
+  - Depois: a tela bloqueia abertura e salvamento, o modal oferece `Recarregar programacao`, o payload de edicao informa `activitiesLoaded`, e o backend retorna `409` com `PROGRAMMING_ACTIVITIES_NOT_LOADED` quando a edicao chegar marcada como incompleta.
+  - Depois: quando o payload de `PUT` vier sem `activities`, o backend continua preservando as atividades atuais carregando-as novamente antes de salvar.
+- Analise de propagacao por campo:
+  - `Tipo de SGD` (`sgd_type_id`): alteracao em edicao salva somente a linha/programacao enviada no `PUT`; nao ha trigger de sincronizacao para outras equipes.
+  - `ETAPA` (`etapa_number`, `etapa_unica`, `etapa_final`): alteracao em edicao salva somente a linha/programacao enviada no `PUT`, com validacao de conflito por equipe/projeto; nao ha cascata para equipes do mesmo dia.
+  - `Nº EQ - Tipo (RE, CO, CF, CC ou TR)` (`electrical_eq_catalog_id`): alteracao em edicao salva somente a linha/programacao enviada no `PUT`; nao ha trigger de sincronizacao para outras equipes.
+  - Excecoes existentes continuam fora desses campos: `Estado Trabalho` sincroniza equipes ativas do mesmo `Projeto + Data de execucao`, `CONCLUIDO` pode marcar etapas posteriores como `ANTECIPADO`, e `Adiar/Cancelar` podem operar por grupo quando o usuario escolhe esse escopo.
+- Multi-tenant:
+  - Nao houve alteracao de schema, grants ou policies RLS.
+  - A rejeicao defensiva ocorre depois da autenticacao/autorizacao da pagina e antes de qualquer escrita.
+  - O salvamento continua filtrado por `tenant_id` no backend/RPC.

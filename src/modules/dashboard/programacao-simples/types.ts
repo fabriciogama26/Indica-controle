@@ -277,6 +277,8 @@ export type AlertModalState = {
   message: string;
   details?: string[];
   reason?: string | null;
+  primaryAction?: "reload";
+  primaryActionLabel?: string;
   spotlightTitle?: string;
   spotlightMessage?: string;
   guidanceMessage?: string;
