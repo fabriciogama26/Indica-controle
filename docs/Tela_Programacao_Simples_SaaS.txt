@@ -2203,6 +2203,27 @@ Atualizacao 2026-06-26 - Blindagem do Estado Trabalho ANTECIPADO
   - As novas FKs e indices preservam rastreio por tenant.
   - EXECUTE das RPCs sensiveis permanece restrito a `service_role`.
 
+Atualizacao 2026-06-26 - Diagnostico de bloqueio da migration 272
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `scripts/audit-programming-anticipated-migration-272-blockers-readonly.sql`
+  - `supabase/migrations/272_harden_anticipated_work_completion_status.sql`
+  - `scripts/fix-programming-anticipated-migration-272-canceled-stage1.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Bloco de validacao inline da migration 272: passa a informar ate 10 registros invalidos com `id`, `tenant_id`, `project_id`, `sob`, `etapa`, `status` e `execution_date`.
+  - Script read-only de auditoria: classifica linhas `ANTECIPADO` antes da coluna `anticipated_by_programming_id` existir em `OK_BACKFILL_MIGRATION_272`, `ANTECIPADO_SEM_ETAPA_NUMERICA_VALIDA`, `CONCLUIDO_ANTERIOR_EXISTE_MAS_INATIVO`, `ETAPA_ANTERIOR_EXISTE_SEM_CONCLUIDO` ou `SEM_CONCLUIDO_ANTERIOR_VALIDO`.
+  - Script de saneamento: limpa `work_completion_status` e `work_completion_status_id` somente dos dois registros `CANCELADA`/`ETAPA 1`/`ANTECIPADO` informados pelo erro da migration e registra historico.
+- Comportamento antes/depois:
+  - Antes: quando existiam linhas `ANTECIPADO` sem origem `CONCLUIDO` valida, a migration falhava apenas com a quantidade de registros.
+  - Depois: a migration continua falhando para preservar integridade, mas mostra detalhes dos registros bloqueadores.
+  - Depois: o script read-only permite identificar quais registros exigem correcao operacional antes de reaplicar a migration 272, mesmo quando a coluna nova ainda nao existe porque a migration anterior sofreu rollback.
+  - Depois: registros cancelados em `ETAPA 1` nao sao vinculados a `CONCLUIDO` inexistente; o saneamento remove o Estado Trabalho invalido antes da blindagem.
+- Multi-tenant:
+  - O diagnostico cruza sempre por `tenant_id`, `project_id` e `etapa_number`.
+  - O script nao altera dados, grants, policies RLS ou schema.
+
 Atualizacao 2026-06-26 - Sincronizacao de campos operacionais por Projeto + Data
 --------------------------------------------------------------------------------
 - Arquivos alterados/criados:
