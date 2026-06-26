@@ -2167,6 +2167,42 @@ Atualizacao 2026-06-26 - Protecao contra atividades incompletas na edicao
   - A rejeicao defensiva ocorre depois da autenticacao/autorizacao da pagina e antes de qualquer escrita.
   - O salvamento continua filtrado por `tenant_id` no backend/RPC.
 
+Atualizacao 2026-06-26 - Blindagem do Estado Trabalho ANTECIPADO
+----------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/272_harden_anticipated_work_completion_status.sql`
+  - `src/app/api/programacao/route.ts`
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/server/modules/programacao/selects.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `src/server/modules/programacao/normalizers.ts`
+  - `src/server/modules/programacao/queries.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `mark_project_programming_future_stages_anticipated`: passa a preencher `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
+  - `mark_project_programming_stage_anticipated`: nova RPC para marcar copia/adicao de equipe como `ANTECIPADO` somente apos validar `CONCLUIDO` anterior.
+  - `enforce_project_programming_anticipated_work_status`: trigger de validacao para impedir `ANTECIPADO` sem ETAPA numerica, origem concluida anterior e rastreio.
+  - `restore_project_programming_anticipated_by_reopened_completion`: trigger que restaura apenas linhas antecipadas pela conclusao reaberta.
+  - `saveProgramming` e `saveProgrammingWorkCompletionStatus`: bloqueiam payload manual com `ANTECIPADO`.
+  - `copyProgrammingToDates` e `addTeamToProgramming`: quando a origem esta `ANTECIPADO`, salvam destino sem status e aplicam a RPC de antecipacao rastreada.
+  - `ProgrammingFormPanel` e `ProgrammingAlertModal`: removem `ANTECIPADO` dos seletores manuais.
+  - `ProgrammingDetailsModal`: exibe programacao causadora, data da antecipacao e Estado Trabalho anterior.
+- Comportamento antes/depois:
+  - Antes: `ANTECIPADO` ficava ativo no catalogo e podia aparecer no seletor de edicao; reabertura ainda limpava apenas o legado `ANTECIPADA`.
+  - Depois: `ANTECIPADO` nao pode ser escolhido manualmente, nao nasce em cadastro novo e nao entra por edicao livre.
+  - Depois: toda linha `ANTECIPADO` precisa ter ETAPA numerica e `CONCLUIDO` anterior valido no mesmo tenant/projeto.
+  - Depois: ao reabrir um `CONCLUIDO`, somente as linhas com `anticipated_by_programming_id` apontando para aquela programacao voltam ao `previous_work_completion_status`.
+  - Depois: linhas antecipadas por outro `CONCLUIDO` nao sao alteradas.
+- Multi-tenant:
+  - As validacoes usam `tenant_id`, `project_id` e `etapa_number`.
+  - As novas FKs e indices preservam rastreio por tenant.
+  - EXECUTE das RPCs sensiveis permanece restrito a `service_role`.
+
 Atualizacao 2026-06-26 - Sincronizacao de campos operacionais por Projeto + Data
 --------------------------------------------------------------------------------
 - Arquivos alterados/criados:

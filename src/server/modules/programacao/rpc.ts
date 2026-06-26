@@ -403,6 +403,70 @@ export async function markFutureProgrammingStagesAnticipatedViaRpc(params: {
   } as const;
 }
 
+export async function markProgrammingStageAnticipatedViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  targetProgrammingId: string;
+  sourceProgrammingId: string;
+}) {
+  const rpcName = "mark_project_programming_stage_anticipated";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_target_programming_id: params.targetProgrammingId,
+    p_source_programming_id: params.sourceProgrammingId,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "ANTICIPATED_STAGE_RPC_NOT_AVAILABLE",
+        message:
+          "Seu ambiente ainda nao suporta rastreio de ANTECIPADO em copia. Aplique a migration 272.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      reason: "ANTICIPATED_STAGE_RPC_FAILED",
+      message: error.message
+        ? `Falha ao marcar programacao como ANTECIPADO: ${error.message}`
+        : "Falha ao marcar programacao como ANTECIPADO.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as {
+    success?: boolean;
+    status?: number;
+    message?: string;
+    reason?: string | null;
+    detail?: string | null;
+    programming_id?: string;
+    updated_at?: string;
+  };
+
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      reason: result.reason ?? null,
+      detail: result.detail ?? null,
+      message: result.message ?? "Falha ao marcar programacao como ANTECIPADO.",
+    } as const;
+  }
+
+  return {
+    ok: true,
+    programmingId: normalizeText(result.programming_id),
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Programacao marcada como ANTECIPADO.",
+  } as const;
+}
+
 // Legacy compatibility helper kept for staged rollback support in partially migrated environments.
 export async function setProgrammingEnelFieldsViaRpc(params: {
   supabase: SupabaseClient;

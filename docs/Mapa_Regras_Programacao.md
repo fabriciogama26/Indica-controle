@@ -24,7 +24,7 @@ Regras centrais:
 - `ETAPA UNICA` e `ETAPA FINAL` sao exclusivas entre si.
 - `Estado Trabalho = CONCLUIDO` bloqueia novas programacoes, copias, inclusao de equipe, adiamento e cancelamento ate reabrir o projeto por uma edicao/acao permitida.
 - Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser marcadas como `ANTECIPADO`.
-- Ao retirar `CONCLUIDO`, etapas futuras marcadas como `ANTECIPADA` legada sao limpas.
+- Ao retirar `CONCLUIDO`, somente as programacoes `ANTECIPADO` causadas por aquela conclusao voltam ao `previous_work_completion_status`.
 - Adiamento com nova data transforma a origem em `ADIADA` e cria nova linha `REPROGRAMADA`.
 - Cancelamento transforma a linha, ou grupo escolhido, em `CANCELADA`.
 - Copia para outras datas exige origem com ETAPA numerica e destino com ETAPA maior.
@@ -237,19 +237,25 @@ Quando uma edicao salva `work_completion_status = CONCLUIDO` e a programacao tem
 1. Programacao editada fica `CONCLUIDO`.
 2. Backend chama `mark_project_programming_future_stages_anticipated`.
 3. Etapas futuras ativas do mesmo projeto, com `etapa_number` maior, podem receber `ANTECIPADO`.
-4. Historico operacional e registrado.
+4. Cada linha antecipada grava `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
+5. Historico operacional e registrado.
+
+Restricoes de `ANTECIPADO`:
+- Nao aparece no seletor manual de Estado Trabalho.
+- Nao pode ser enviado por cadastro novo ou edicao livre.
+- Exige `ETAPA` numerica.
+- Exige `CONCLUIDO` anterior valido no mesmo tenant/projeto, com `etapa_number` menor.
+- Copia/adicao de equipe que parte de uma linha `ANTECIPADO` salva a nova linha sem Estado Trabalho e so marca `ANTECIPADO` via RPC se encontrar novamente o `CONCLUIDO` anterior que justifica o estado.
 
 ### Reabrir CONCLUIDO
 
 Quando o usuario troca uma programacao de `CONCLUIDO` para outro Estado Trabalho:
 1. API valida que o novo status nao e concluido.
 2. Salva via RPC transacional de Estado Trabalho.
-3. Limpa etapas futuras legadas com `work_completion_status = ANTECIPADA`.
-4. Atualiza visualizacao da linha.
-
-Observacao:
-- O codigo atual usa `ANTECIPADO` como padrao normalizado.
-- Ha limpeza de valor legado `ANTECIPADA` em alguns fluxos.
+3. Trigger de banco localiza linhas com `anticipated_by_programming_id` igual a programacao reaberta.
+4. Cada linha afetada volta para `previous_work_completion_status` e limpa `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
+5. Linhas antecipadas por outro `CONCLUIDO` nao sao alteradas.
+6. Atualiza visualizacao da linha.
 
 ### Interrompidas e CONCLUIDO
 
@@ -664,7 +670,7 @@ RLS:
 | Editar sem mudar data/equipe/hora/periodo | Linha ativa | Atualiza linha; sincroniza campos operacionais por Projeto + Data | Linha `ADIADA/CANCELADA`, snapshot de atividades incompleto, concorrencia |
 | Reprogramar por edicao | Mudou projeto/equipe/data/hora/periodo | Salva alteracao com motivo | Motivo ausente, projeto `CONCLUIDO`, conflito horario/etapa |
 | Salvar `CONCLUIDO` | Edicao com etapa numerica | Marca etapa e antecipa etapas futuras | Falha RPC antecipado, catalogo invalido |
-| Reabrir `CONCLUIDO` | Trocar para status diferente | Salva status e limpa legado `ANTECIPADA` | Tentar salvar outro `CONCLUIDO`, linha cancelada/adiada |
+| Reabrir `CONCLUIDO` | Trocar para status diferente | Salva status e restaura somente `ANTECIPADO` vinculado por `anticipated_by_programming_id` | Tentar salvar outro `CONCLUIDO`, linha cancelada/adiada |
 | Adiar sem data | Linha ativa | Origem vira `ADIADA` | Projeto `CONCLUIDO`, motivo ausente, concorrencia |
 | Adiar com data | Linha ativa e data futura | Origem `ADIADA`, nova linha `REPROGRAMADA` | Data igual/anterior, projeto `CONCLUIDO`, conflito |
 | Cancelar | Linha ativa | Linha/grupo vira `CANCELADA` | Projeto `CONCLUIDO`, motivo ausente, concorrencia |
@@ -768,7 +774,8 @@ Edicao/reprogramacao:
 
 Estado Trabalho:
 - Salvar `CONCLUIDO` em etapa numerica e verificar etapas futuras `ANTECIPADO`.
-- Trocar `CONCLUIDO` para outro status e verificar limpeza de `ANTECIPADA` legada.
+- Conferir em uma linha `ANTECIPADO` os campos `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
+- Trocar `CONCLUIDO` para outro status e verificar restauracao somente das linhas antecipadas por aquela conclusao.
 - Tentar adiar/cancelar/copiar/adicionar equipe em projeto `CONCLUIDO`: deve bloquear.
 
 Adiamento:

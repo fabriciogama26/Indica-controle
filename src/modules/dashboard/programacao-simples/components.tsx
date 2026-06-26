@@ -449,11 +449,13 @@ export function ProgrammingFormPanel({
               onChange={(event) => onFormFieldChange("workCompletionStatus", event.target.value as WorkCompletionStatus | "")}
             >
               <option value="">Selecione</option>
-              {workCompletionCatalog.map((item) => (
-                <option key={item.code} value={item.code}>
-                  {item.label}
-                </option>
-              ))}
+              {workCompletionCatalog
+                .filter((item) => item.code !== "ANTECIPADO")
+                .map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
             </select>
           </label>
         ) : null}
@@ -1158,6 +1160,13 @@ export function ProgrammingDetailsModal(props: {
             <p><strong>ETAPA ÚNICA:</strong> {target.etapaUnica ? "Sim" : "Nao"}</p>
             <p><strong>ETAPA FINAL:</strong> {target.etapaFinal ? "Sim" : "Nao"}</p>
             <p><strong>Estado Trabalho:</strong> {target.workCompletionStatus || "-"}</p>
+            {target.workCompletionStatus === "ANTECIPADO" ? (
+              <>
+                <p><strong>Antecipado por programacao:</strong> {target.anticipatedByProgrammingId || "-"}</p>
+                <p><strong>Antecipado em:</strong> {target.anticipatedAt ? formatDateTime(target.anticipatedAt) : "-"}</p>
+                <p><strong>Estado anterior:</strong> {target.previousWorkCompletionStatus || "-"}</p>
+              </>
+            ) : null}
             <p><strong>Nº Clientes Afetados:</strong> {target.affectedCustomers}</p>
             <p><strong>Tipo de SGD:</strong> {target.sgdTypeDescription || "-"}</p>
             <p><strong>Numero SGD:</strong> {normalizeSgdNumberForExport(target.documents?.sgd?.number) || "-"}</p>
@@ -1841,7 +1850,7 @@ export function ProgrammingAlertModal(props: {
                 >
                   <option value="">Selecione</option>
                   {workCompletionCatalog
-                    .filter((item) => item.code !== "CONCLUIDO")
+                    .filter((item) => item.code !== "CONCLUIDO" && item.code !== "ANTECIPADO")
                     .map((item) => (
                       <option key={item.code} value={item.code}>
                         {item.label}

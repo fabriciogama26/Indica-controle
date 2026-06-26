@@ -127,6 +127,9 @@ export type ProgrammingRow = {
   etapa_unica: boolean | null;
   etapa_final: boolean | null;
   work_completion_status: string | null;
+  anticipated_by_programming_id: string | null;
+  anticipated_at: string | null;
+  previous_work_completion_status: string | null;
   affected_customers: number | null;
   sgd_type_id: string | null;
   electrical_eq_catalog_id: string | null;

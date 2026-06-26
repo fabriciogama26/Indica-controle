@@ -166,6 +166,10 @@ export function isCompletedWorkStatus(value: unknown) {
   return token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO");
 }
 
+export function isAnticipatedWorkStatus(value: unknown) {
+  return normalizeStatusToken(value) === "ANTECIPADO";
+}
+
 export function formatTime(value: string | null) {
   return normalizeText(value).slice(0, 5);
 }
@@ -248,6 +252,9 @@ export function normalizeProgrammingStructureFields<T extends Record<string, unk
     etapa_unica: Boolean(row.etapa_unica ?? false),
     etapa_final: Boolean((row as { etapa_final?: unknown }).etapa_final ?? false),
     work_completion_status: normalizeWorkCompletionStatus(row.work_completion_status),
+    anticipated_by_programming_id: normalizeNullableText(row.anticipated_by_programming_id),
+    anticipated_at: normalizeNullableText(row.anticipated_at),
+    previous_work_completion_status: normalizeWorkCompletionStatus(row.previous_work_completion_status),
     affected_customers: Number(row.affected_customers ?? 0),
     sgd_type_id: normalizeNullableText(row.sgd_type_id),
     electrical_eq_catalog_id: normalizeNullableText(row.electrical_eq_catalog_id),
