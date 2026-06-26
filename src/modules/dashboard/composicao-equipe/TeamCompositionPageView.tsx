@@ -412,6 +412,7 @@ export function TeamCompositionPageView() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isNavigatingToMedicao, setIsNavigatingToMedicao] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
@@ -967,6 +968,7 @@ export function TeamCompositionPageView() {
       compositionId: composition.id,
     });
 
+    setIsNavigatingToMedicao(true);
     router.push(`/medicao?${params.toString()}`);
   }
 
@@ -1362,6 +1364,15 @@ export function TeamCompositionPageView() {
 
       <datalist id="composicao-project-list">{projects.map((project) => <option key={project.id} value={project.code}>{project.serviceCenter}</option>)}</datalist>
       <datalist id="composicao-people-list">{people.map((person) => <option key={person.id} value={personOptionLabel(person)}>{person.jobTitleName}</option>)}</datalist>
+
+      {isNavigatingToMedicao ? (
+        <div className={styles.modalOverlay}>
+          <article className={styles.loadingCard} role="status" aria-live="polite">
+            <span className={styles.loadingSpinner} aria-hidden="true" />
+            <p className={styles.loadingText}>Aguarde, carregando medicao...</p>
+          </article>
+        </div>
+      ) : null}
     </section>
   );
 }
