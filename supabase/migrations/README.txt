@@ -100,6 +100,7 @@ Ordem de aplicacao
 210. 210_harden_function_search_path_and_rpc_execute.sql
 211. 211_block_duplicate_asbuilt_measurement_project.sql
 266. 266_allow_multiple_projects_team_composition.sql
+267. 267_sync_programming_operational_fields_by_project_date.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -691,3 +692,9 @@ Observacao
 - Cria trigger em `project_programming` para impedir novas divergencias `ADIADA/CANCELADA + CONCLUIDO`.
 - Bloqueia nova transicao para `ADIADA` ou `CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
 - Mantem dados legados intactos para revisao por auditoria, sem backfill destrutivo.
+
+267_sync_programming_operational_fields_by_project_date.sql
+- Cria `sync_project_programming_group_operational_fields` para sincronizar campos operacionais da Programacao entre equipes ativas do mesmo Projeto + Data.
+- Recria `save_project_programming_full_decimal_with_electrical_and_eq` para executar a sincronizacao dentro da mesma transacao do salvamento individual.
+- Sincroniza Alimentador, Nº EQ, Tipo de SGD, clientes afetados, janela de desligamento, Apoio e quantidades (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`).
+- Registra historico operacional por linha afetada e mantem EXECUTE restrito a `service_role`.

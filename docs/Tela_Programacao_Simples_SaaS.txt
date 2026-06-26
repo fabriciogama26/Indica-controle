@@ -2147,11 +2147,31 @@ Atualizacao 2026-06-26 - Protecao contra atividades incompletas na edicao
   - Depois: a tela bloqueia abertura e salvamento, o modal oferece `Recarregar programacao`, o payload de edicao informa `activitiesLoaded`, e o backend retorna `409` com `PROGRAMMING_ACTIVITIES_NOT_LOADED` quando a edicao chegar marcada como incompleta.
   - Depois: quando o payload de `PUT` vier sem `activities`, o backend continua preservando as atividades atuais carregando-as novamente antes de salvar.
 - Analise de propagacao por campo:
-  - `Tipo de SGD` (`sgd_type_id`): alteracao em edicao salva somente a linha/programacao enviada no `PUT`; nao ha trigger de sincronizacao para outras equipes.
+  - `Tipo de SGD` (`sgd_type_id`): a partir da migration `267`, alteracao em edicao sincroniza as demais equipes ativas do mesmo `Projeto + Data de execucao`.
   - `ETAPA` (`etapa_number`, `etapa_unica`, `etapa_final`): alteracao em edicao salva somente a linha/programacao enviada no `PUT`, com validacao de conflito por equipe/projeto; nao ha cascata para equipes do mesmo dia.
-  - `Nº EQ - Tipo (RE, CO, CF, CC ou TR)` (`electrical_eq_catalog_id`): alteracao em edicao salva somente a linha/programacao enviada no `PUT`; nao ha trigger de sincronizacao para outras equipes.
+  - `Nº EQ - Tipo (RE, CO, CF, CC ou TR)` (`electrical_eq_catalog_id`): a partir da migration `267`, alteracao em edicao sincroniza as demais equipes ativas do mesmo `Projeto + Data de execucao`.
   - Excecoes existentes continuam fora desses campos: `Estado Trabalho` sincroniza equipes ativas do mesmo `Projeto + Data de execucao`, `CONCLUIDO` pode marcar etapas posteriores como `ANTECIPADO`, e `Adiar/Cancelar` podem operar por grupo quando o usuario escolhe esse escopo.
 - Multi-tenant:
   - Nao houve alteracao de schema, grants ou policies RLS.
   - A rejeicao defensiva ocorre depois da autenticacao/autorizacao da pagina e antes de qualquer escrita.
   - O salvamento continua filtrado por `tenant_id` no backend/RPC.
+
+Atualizacao 2026-06-26 - Sincronizacao de campos operacionais por Projeto + Data
+--------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/267_sync_programming_operational_fields_by_project_date.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `sync_project_programming_group_operational_fields`: nova RPC security definer que replica campos operacionais da linha origem para programacoes ativas do mesmo `tenant_id + project_id + execution_date`.
+  - `save_project_programming_full_decimal_with_electrical_and_eq`: wrapper full recriado para chamar a sincronizacao operacional dentro da mesma transacao do `PUT`.
+- Comportamento antes/depois:
+  - Antes: ao editar uma linha, os campos operacionais abaixo eram salvos somente na programacao editada.
+  - Depois: ao editar uma programacao ativa, os mesmos valores sao aplicados automaticamente nas demais equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
+  - Campos sincronizados: `Alimentador`, `Nº EQ - Numero`, `Nº EQ - Tipo`, `Tipo de SGD`, `Nº Clientes Afetados`, `Inicio de desligamento`, `Termino de desligamento`, `Apoio`, `POSTE`, `ESTRUTURA`, `TRAFO` e `REDE`.
+  - A sincronizacao registra historico operacional em `project_programming_history` para cada linha afetada, com `related_programming_id` apontando para a programacao origem.
+  - `ETAPA`, equipe, data, horario, status operacional e atividades continuam fora da sincronizacao automatica.
+- Multi-tenant:
+  - Escopo sempre filtrado por `tenant_id`, `project_id`, `execution_date` e status ativo.
+  - A nova RPC e a wrapper full mantem `EXECUTE` restrito a `service_role`.
+  - Nao altera RLS, grants de tabelas nem policies.
