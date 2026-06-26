@@ -81,6 +81,7 @@ where pp.tenant_id = anticipated.tenant_id
 do $$
 declare
   v_invalid_count integer;
+  v_invalid_details text;
 begin
   select count(*)
   into v_invalid_count
@@ -89,7 +90,41 @@ begin
     and pp.anticipated_by_programming_id is null;
 
   if v_invalid_count > 0 then
-    raise exception 'Existem % programacoes ANTECIPADO sem CONCLUIDO anterior valido para preencher anticipated_by_programming_id. Corrija os dados antes de aplicar a migration 272.', v_invalid_count;
+    select string_agg(
+      format(
+        'id=%s tenant_id=%s project_id=%s sob=%s etapa=%s status=%s execution_date=%s',
+        invalid.id,
+        invalid.tenant_id,
+        invalid.project_id,
+        invalid.projeto,
+        coalesce(invalid.etapa_number::text, 'null'),
+        coalesce(invalid.status, 'null'),
+        coalesce(invalid.execution_date::text, 'null')
+      ),
+      '; '
+      order by invalid.tenant_id, invalid.projeto, invalid.etapa_number nulls last, invalid.id
+    )
+    into v_invalid_details
+    from (
+      select
+        pp.id,
+        pp.tenant_id,
+        pp.project_id,
+        coalesce(p.sob, '[PROJETO_NAO_ENCONTRADO]') as projeto,
+        pp.etapa_number,
+        pp.status,
+        pp.execution_date
+      from public.project_programming pp
+      left join public.project p
+        on p.tenant_id = pp.tenant_id
+       and p.id = pp.project_id
+      where public.normalize_programming_work_completion_code(pp.work_completion_status) = 'ANTECIPADO'
+        and pp.anticipated_by_programming_id is null
+      order by pp.tenant_id, projeto, pp.etapa_number nulls last, pp.id
+      limit 10
+    ) invalid;
+
+    raise exception 'Existem % programacoes ANTECIPADO sem CONCLUIDO anterior valido para preencher anticipated_by_programming_id. Corrija os dados antes de aplicar a migration 272. Detalhes: %', v_invalid_count, coalesce(v_invalid_details, '[sem detalhes]');
   end if;
 end;
 $$;

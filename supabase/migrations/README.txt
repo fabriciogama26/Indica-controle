@@ -722,3 +722,4 @@ Observacao
 - Recria a RPC de antecipacao para preservar Estado Trabalho anterior e origem causadora.
 - Cria RPC para copia/adicao de equipe marcar `ANTECIPADO` somente apos nova validacao do `CONCLUIDO` anterior.
 - Ao reabrir um `CONCLUIDO`, trigger restaura apenas as linhas `ANTECIPADO` causadas por aquela programacao.
+- Quando dados legados bloqueiam o backfill, informa exemplos de registros invalidos para apoiar a correcao operacional.
