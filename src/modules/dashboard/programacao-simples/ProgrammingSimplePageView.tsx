@@ -242,6 +242,33 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const addTeamProjectCode = addTeamTarget
     ? (projectMap.get(addTeamTarget.projectId)?.code ?? addTeamTarget.projectId)
     : "";
+
+  // IDs de programações onde todas as equipes do tenant já estão na mesma etapa/data/projeto
+  const fullGroupScheduleIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const schedule of schedules) {
+      const displayStatus = getDisplayProgrammingStatus(schedule);
+      if (!isActiveProgrammingStatus(displayStatus)) continue;
+      const groupTeamIds = new Set(
+        schedules
+          .filter((item) => {
+            const s = getDisplayProgrammingStatus(item);
+            if (!isActiveProgrammingStatus(s)) return false;
+            if (item.projectId !== schedule.projectId || item.date !== schedule.date) return false;
+            if (schedule.etapaNumber !== null) {
+              return item.etapaNumber === schedule.etapaNumber && !item.etapaUnica && !item.etapaFinal;
+            }
+            return item.etapaNumber === null && item.etapaUnica === schedule.etapaUnica && item.etapaFinal === schedule.etapaFinal;
+          })
+          .map((item) => item.teamId)
+          .filter(Boolean),
+      );
+      if (groupTeamIds.size >= teams.length) {
+        ids.add(schedule.id);
+      }
+    }
+    return ids;
+  }, [schedules, teams]);
   const addTeamAvailableTeams = useMemo(() => {
     if (!addTeamTarget) {
       return [];
@@ -2037,7 +2064,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                                 onClick={() => openCopyToDatesModal(schedule)}
                                 title="Copiar programação"
                                 aria-label={`Copiar programacao ${project?.code ?? schedule.id} para outras datas`}
-                                disabled={!isActiveProgrammingStatus(displayStatus)}
+                                disabled={
+                                  !isActiveProgrammingStatus(displayStatus)
+                                  || !!schedule.etapaUnica
+                                  || !!schedule.etapaFinal
+                                  || !schedule.etapaNumber
+                                }
                               >
                                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                   <path
@@ -2062,7 +2094,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                                 onClick={() => openAddTeamModal(schedule)}
                                 title="Adicionar equipe"
                                 aria-label={`Adicionar equipe a programacao ${project?.code ?? schedule.id}`}
-                                disabled={!isActiveProgrammingStatus(displayStatus)}
+                                disabled={!isActiveProgrammingStatus(displayStatus) || fullGroupScheduleIds.has(schedule.id)}
                               >
                                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                   <path
