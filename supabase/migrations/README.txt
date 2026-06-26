@@ -703,3 +703,22 @@ Observacao
 - Corrige ordens `SEM_PRODUCAO` nao canceladas que ficaram com `manual_rate = 1`.
 - Usa a ultima taxa `COM_PRODUCAO` nao cancelada do mesmo `tenant_id + project_id`.
 - Registra historico em `project_measurement_order_history` com metadata `migration-268`.
+
+269_guard_programming_stage_on_active_records.sql
+- Exige ETAPA numerica ou flag `ETAPA UNICA`/`ETAPA FINAL` em programacoes ativas.
+- Faz backfill seguro de ativas antigas sem ETAPA e preserva flags especiais em adiamento.
+
+270_defer_active_programming_stage_guard.sql
+- Troca a guarda imediata de ETAPA ativa por constraint trigger diferida.
+- Permite que RPCs transacionais criem a linha base e preencham ETAPA antes do commit.
+
+271_fix_deferred_programming_stage_guard_current_row.sql
+- Ajusta a trigger diferida para validar a linha final persistida.
+- Evita falso bloqueio quando a RPC full insere sem ETAPA e atualiza a etapa na mesma transacao.
+
+272_harden_anticipated_work_completion_status.sql
+- Adiciona `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status` em `project_programming`.
+- Bloqueia `ANTECIPADO` sem ETAPA numerica, sem origem `CONCLUIDO` anterior no mesmo tenant/projeto ou sem rastreio.
+- Recria a RPC de antecipacao para preservar Estado Trabalho anterior e origem causadora.
+- Cria RPC para copia/adicao de equipe marcar `ANTECIPADO` somente apos nova validacao do `CONCLUIDO` anterior.
+- Ao reabrir um `CONCLUIDO`, trigger restaura apenas as linhas `ANTECIPADO` causadas por aquela programacao.

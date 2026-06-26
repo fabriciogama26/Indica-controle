@@ -24,6 +24,7 @@ import type {
 } from "./types";
 import {
   markFutureProgrammingStagesAnticipatedViaRpc,
+  markProgrammingStageAnticipatedViaRpc,
   resolveProgrammingEqCatalog,
   resolveProgrammingSgdType,
   resolveProgrammingWorkCompletionStatus,
@@ -41,6 +42,7 @@ import {
   buildProjectCompletedConflictResponse,
   formatTime,
   getInvalidRequestedDateLabel,
+  isAnticipatedWorkStatus,
   isCompletedWorkStatus,
   isMissingRpcFunctionError,
   isNegativeNumericLikeText,
@@ -218,6 +220,37 @@ export async function resolveProjectCompletedProgrammingContext(params: {
     workCompletionStatus: normalizeText(concluded.work_completion_status),
     updatedAt: normalizeText(concluded.updated_at),
   } satisfies ProjectConcludedProgrammingContext;
+}
+
+async function resolveAnticipatedSourceProgrammingId(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+  etapaNumber: number | null;
+}) {
+  if (params.etapaNumber === null || params.etapaNumber < 1) {
+    return null;
+  }
+
+  const { data, error } = await params.supabase
+    .from("project_programming")
+    .select("id, etapa_number, updated_at")
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .eq("work_completion_status", "CONCLUIDO")
+    .not("etapa_number", "is", null)
+    .lt("etapa_number", params.etapaNumber)
+    .order("etapa_number", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .returns<Array<{ id: string; etapa_number: number | null; updated_at: string | null }>>();
+
+  if (error || !Array.isArray(data) || !data.length) {
+    return null;
+  }
+
+  return normalizeText(data[0].id) || null;
 }
 
 export async function copyProgramming(request: NextRequest) {
@@ -599,6 +632,27 @@ export async function copyProgrammingToDates(request: NextRequest) {
   for (const target of targets) {
     for (const teamId of target.teamIds) {
       const model = sourceRowsByTeam.get(teamId) ?? source;
+      const modelIsAnticipated = isAnticipatedWorkStatus(model.work_completion_status);
+      const anticipatedSourceProgrammingId = modelIsAnticipated
+        ? await resolveAnticipatedSourceProgrammingId({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          projectId: source.project_id,
+          etapaNumber: target.etapaNumber,
+        })
+        : null;
+
+      if (modelIsAnticipated && !anticipatedSourceProgrammingId) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "ANTICIPATED_SOURCE_NOT_FOUND",
+            message: "Nao existe CONCLUIDO anterior valido para copiar uma programacao ANTECIPADO nesta ETAPA.",
+          } satisfies CopyProgrammingToDatesResponse,
+          { status: 409 },
+        );
+      }
+
       let activities = activityCache.get(model.id);
       if (!activities) {
         activities = await fetchProgrammingActivitiesForSave({
@@ -635,7 +689,7 @@ export async function copyProgrammingToDates(request: NextRequest) {
         etapaNumber: target.etapaNumber,
         etapaUnica: false,
         etapaFinal: false,
-        workCompletionStatus: model.work_completion_status,
+        workCompletionStatus: modelIsAnticipated ? null : model.work_completion_status,
         affectedCustomers: Number(model.affected_customers ?? 0),
         sgdTypeId: model.sgd_type_id,
         electricalEqCatalogId: model.electrical_eq_catalog_id,
@@ -676,6 +730,34 @@ export async function copyProgrammingToDates(request: NextRequest) {
           } satisfies CopyProgrammingToDatesResponse,
           { status: saveResult.status },
         );
+      }
+
+      if (modelIsAnticipated && anticipatedSourceProgrammingId) {
+        const anticipatedResult = await markProgrammingStageAnticipatedViaRpc({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          actorUserId: resolution.appUser.id,
+          targetProgrammingId: saveResult.programmingId,
+          sourceProgrammingId: anticipatedSourceProgrammingId,
+        });
+
+        if (!anticipatedResult.ok) {
+          await resolution.supabase
+            .from("project_programming")
+            .update({ status: "CANCELADA" })
+            .in("id", [...createdIds, saveResult.programmingId])
+            .eq("tenant_id", resolution.appUser.tenant_id);
+
+          return NextResponse.json(
+            {
+              success: false,
+              reason: anticipatedResult.reason ?? "ANTICIPATED_COPY_FAILED",
+              detail: "detail" in anticipatedResult ? anticipatedResult.detail ?? null : null,
+              message: anticipatedResult.message,
+            } satisfies CopyProgrammingToDatesResponse,
+            { status: anticipatedResult.status },
+          );
+        }
       }
 
       createdIds.push(saveResult.programmingId);
@@ -890,8 +972,28 @@ export async function addTeamToProgramming(request: NextRequest) {
   }
 
   const resolvedWorkCompletionStatus = source.work_completion_status;
+  const sourceIsAnticipated = isAnticipatedWorkStatus(resolvedWorkCompletionStatus);
+  const anticipatedSourceProgrammingId = sourceIsAnticipated
+    ? await resolveAnticipatedSourceProgrammingId({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId: source.project_id,
+      etapaNumber: source.etapa_number,
+    })
+    : null;
 
-  if (resolvedWorkCompletionStatus) {
+  if (sourceIsAnticipated && !anticipatedSourceProgrammingId) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: "ANTICIPATED_SOURCE_NOT_FOUND",
+        message: "Nao existe CONCLUIDO anterior valido para adicionar equipe a uma programacao ANTECIPADO.",
+      } satisfies AddTeamToProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  if (resolvedWorkCompletionStatus && !sourceIsAnticipated) {
     const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -966,7 +1068,7 @@ export async function addTeamToProgramming(request: NextRequest) {
     etapaNumber: source.etapa_number,
     etapaUnica: Boolean(source.etapa_unica),
     etapaFinal: Boolean(source.etapa_final),
-    workCompletionStatus: resolvedWorkCompletionStatus,
+    workCompletionStatus: sourceIsAnticipated ? null : resolvedWorkCompletionStatus,
     affectedCustomers: Number(source.affected_customers ?? 0),
     sgdTypeId: source.sgd_type_id,
     electricalEqCatalogId: source.electrical_eq_catalog_id,
@@ -998,6 +1100,33 @@ export async function addTeamToProgramming(request: NextRequest) {
       } satisfies AddTeamToProgrammingResponse,
       { status: saveResult.status },
     );
+  }
+
+  if (sourceIsAnticipated && anticipatedSourceProgrammingId) {
+    const anticipatedResult = await markProgrammingStageAnticipatedViaRpc({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      targetProgrammingId: saveResult.programmingId,
+      sourceProgrammingId: anticipatedSourceProgrammingId,
+    });
+
+    if (!anticipatedResult.ok) {
+      await resolution.supabase
+        .from("project_programming")
+        .update({ status: "CANCELADA" })
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("id", saveResult.programmingId);
+
+      return NextResponse.json(
+        {
+          success: false,
+          reason: anticipatedResult.reason ?? "ANTICIPATED_ADD_TEAM_FAILED",
+          message: anticipatedResult.message,
+        } satisfies AddTeamToProgrammingResponse,
+        { status: anticipatedResult.status },
+      );
+    }
   }
 
   return NextResponse.json({
@@ -1601,6 +1730,18 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
     );
   }
 
+  const isPreservingTrackedAnticipatedStatus = method === "PUT"
+    && isAnticipatedWorkStatus(workCompletionStatus)
+    && isAnticipatedWorkStatus(currentProgramming?.work_completion_status)
+    && Boolean(currentProgramming?.anticipated_by_programming_id);
+
+  if (isAnticipatedWorkStatus(workCompletionStatus) && !isPreservingTrackedAnticipatedStatus) {
+    return NextResponse.json(
+      { message: "Estado Trabalho ANTECIPADO e automatico e nao pode ser selecionado manualmente." },
+      { status: 400 },
+    );
+  }
+
   if (workCompletionStatus) {
     const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
       supabase: resolution.supabase,
@@ -1883,32 +2024,6 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
     }
   }
 
-  if (
-    method === "PUT"
-    && isCompletedWorkStatus(currentProgramming?.work_completion_status ?? null)
-    && !isCompletedWorkStatus(normalizedWorkCompletionStatus)
-    && etapaNumber !== null
-  ) {
-    const { error: revertAnticipatedError } = await resolution.supabase
-      .from("project_programming")
-      .update({ work_completion_status: null, updated_by: resolution.appUser.id })
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("project_id", projectId)
-      .gt("etapa_number", etapaNumber)
-      .in("status", ["PROGRAMADA", "REPROGRAMADA"])
-      .eq("work_completion_status", "ANTECIPADA");
-
-    if (revertAnticipatedError) {
-      return NextResponse.json(
-        {
-          message: `Programacao salva, mas houve falha ao reverter etapas ANTECIPADA. ${revertAnticipatedError.message}`,
-          reason: "ANTICIPATED_REVERT_FAILED",
-        },
-        { status: 500 },
-      );
-    }
-  }
-
   if (method === "PUT" && !electricalField) {
     const { error: clearElectricalFieldError } = await resolution.supabase
       .from("project_programming")
@@ -1979,6 +2094,13 @@ export async function saveProgrammingWorkCompletionStatus(request: NextRequest, 
   if (isCompletedWorkStatus(workCompletionStatus)) {
     return NextResponse.json(
       { message: "Selecione um Estado Trabalho diferente de CONCLUIDO." },
+      { status: 400 },
+    );
+  }
+
+  if (isAnticipatedWorkStatus(workCompletionStatus)) {
+    return NextResponse.json(
+      { message: "Estado Trabalho ANTECIPADO e automatico e nao pode ser selecionado manualmente." },
       { status: 400 },
     );
   }
@@ -2056,31 +2178,6 @@ export async function saveProgrammingWorkCompletionStatus(request: NextRequest, 
       },
       { status },
     );
-  }
-
-  if (
-    programmingBeforeReopen
-    && isCompletedWorkStatus(programmingBeforeReopen.work_completion_status)
-    && programmingBeforeReopen.etapa_number !== null
-  ) {
-    const { error: revertAnticipatedError } = await resolution.supabase
-      .from("project_programming")
-      .update({ work_completion_status: null, updated_by: resolution.appUser.id })
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .eq("project_id", programmingBeforeReopen.project_id)
-      .gt("etapa_number", programmingBeforeReopen.etapa_number)
-      .in("status", ["PROGRAMADA", "REPROGRAMADA"])
-      .eq("work_completion_status", "ANTECIPADA");
-
-    if (revertAnticipatedError) {
-      return NextResponse.json(
-        {
-          message: `Estado Trabalho salvo, mas houve falha ao reverter etapas ANTECIPADA. ${revertAnticipatedError.message}`,
-          reason: "ANTICIPATED_REVERT_FAILED",
-        },
-        { status: 500 },
-      );
-    }
   }
 
   const schedule = await fetchProgrammingResponseItem(

@@ -499,16 +499,14 @@ Atualizacao 2026-06 (correcao de brechas de regra de negocio)
   exclusivamente da RPC do banco para rejeitar edicao de registros CANCELADA/ADIADA.
   Depois: o handler retorna 409 imediatamente se `currentProgramming.status` for CANCELADA
   ou ADIADA, sem nunca chamar a RPC.
-- Adicionada reversao de etapas ANTECIPADA ao reabrir projeto CONCLUIDO (`handlers.ts`).
+- Atualizada a reversao de etapas `ANTECIPADO` ao reabrir projeto `CONCLUIDO`.
   Antes: quando o usuario editava uma programacao e alterava o Estado Trabalho de CONCLUIDO
   para outro valor (via PUT ou via SALVAR_ESTADO_TRABALHO), as etapas futuras que haviam
-  sido marcadas como ANTECIPADA permaneciam com esse status na grade, exibindo estado
+  sido marcadas como ANTECIPADO podiam permanecer com esse status na grade, exibindo estado
   inconsistente apos a reabertura.
-  Depois: ambos os fluxos de reabertura (PUT em `saveProgramming` e PATCH em
-  `saveProgrammingWorkCompletionStatus`) zeram o `work_completion_status` para NULL em
-  todos os registros com `work_completion_status = ANTECIPADA` e `etapa_number` maior
-  que a etapa sendo reaberta, dentro do mesmo projeto e tenant. Registros com status
-  CANCELADA ou ADIADA nao sao afetados (filtro `in("status", ["PROGRAMADA", "REPROGRAMADA"])`).
+  Depois: a migration 272 registra `previous_work_completion_status` e
+  `anticipated_by_programming_id`; ao reabrir, trigger de banco restaura somente as linhas
+  antecipadas por aquela conclusao e nao mexe em antecipacoes causadas por outro CONCLUIDO.
 
 Atualizacao 2026-06-21 - Vínculo estruturado origem -> copia no COPY_TO_DATES
 ------------------------------------------------------------------------------

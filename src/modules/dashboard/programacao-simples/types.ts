@@ -124,6 +124,9 @@ export type ScheduleItem = {
   etapaUnica: boolean;
   etapaFinal: boolean;
   workCompletionStatus: WorkCompletionStatus | null;
+  anticipatedByProgrammingId?: string | null;
+  anticipatedAt?: string | null;
+  previousWorkCompletionStatus?: WorkCompletionStatus | null;
   affectedCustomers: number;
   sgdTypeId: string | null;
   electricalEqCatalogId: string | null;
