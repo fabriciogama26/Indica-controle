@@ -12,7 +12,7 @@ import type {
   SaveProgrammingPayload,
   SaveProgrammingRpcResult,
 } from "./types";
-import { isMissingRpcFunctionError, normalizeText, normalizeWorkCompletionStatus } from "./normalizers";
+import { isMissingRpcFunctionError, normalizeText } from "./normalizers";
 
 export async function saveProgrammingFullViaRpc(params: {
   supabase: SupabaseClient;
@@ -317,69 +317,6 @@ export async function resolveProgrammingWorkCompletionStatus(params: {
   return data;
 }
 
-export async function resolveInitialProjectWorkCompletionStatus(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  projectId: string;
-}) {
-  const { data: previousProgrammingRows, error: previousProgrammingError } = await params.supabase
-    .from("project_programming")
-    .select("work_completion_status")
-    .eq("tenant_id", params.tenantId)
-    .eq("project_id", params.projectId)
-    .neq("status", "CANCELADA")
-    .not("work_completion_status", "is", null)
-    .order("execution_date", { ascending: false })
-    .order("updated_at", { ascending: false })
-    .limit(50)
-    .returns<Array<{ work_completion_status: string | null }>>();
-
-  if (previousProgrammingError) {
-    return {
-      ok: false,
-      status: 500,
-      workCompletionStatus: null,
-      message: previousProgrammingError.message
-        ? `Falha ao consultar o ultimo Estado Trabalho do projeto: ${previousProgrammingError.message}`
-        : "Falha ao consultar o ultimo Estado Trabalho do projeto.",
-    } as const;
-  }
-
-  for (const row of previousProgrammingRows ?? []) {
-    const previousStatus = normalizeWorkCompletionStatus(row.work_completion_status);
-    if (!previousStatus) {
-      continue;
-    }
-
-    const activeStatus = await resolveProgrammingWorkCompletionStatus({
-      supabase: params.supabase,
-      tenantId: params.tenantId,
-      workCompletionStatus: previousStatus,
-    });
-
-    if (activeStatus) {
-      return { ok: true, workCompletionStatus: activeStatus.code } as const;
-    }
-  }
-
-  const partialStatus = await resolveProgrammingWorkCompletionStatus({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    workCompletionStatus: "PARCIAL",
-  });
-
-  if (!partialStatus) {
-    return {
-      ok: false,
-      status: 409,
-      workCompletionStatus: null,
-      message: "Estado Trabalho PARCIAL nao esta ativo no catalogo do tenant atual.",
-    } as const;
-  }
-
-  return { ok: true, workCompletionStatus: "PARCIAL" } as const;
-}
-
 export async function resolveProgrammingEqCatalog(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -467,7 +404,6 @@ export async function markFutureProgrammingStagesAnticipatedViaRpc(params: {
 }
 
 // Legacy compatibility helper kept for staged rollback support in partially migrated environments.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function setProgrammingEnelFieldsViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -518,7 +454,6 @@ export async function setProgrammingEnelFieldsViaRpc(params: {
 }
 
 // Legacy compatibility helper kept for staged rollback support in partially migrated environments.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function setProgrammingExecutionResultViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -578,7 +513,6 @@ export async function setProgrammingExecutionResultViaRpc(params: {
 }
 
 // Legacy compatibility helper kept for staged rollback support in partially migrated environments.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function setProgrammingElectricalFieldViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;

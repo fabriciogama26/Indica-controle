@@ -24,7 +24,6 @@ import type {
 } from "./types";
 import {
   markFutureProgrammingStagesAnticipatedViaRpc,
-  resolveInitialProjectWorkCompletionStatus,
   resolveProgrammingEqCatalog,
   resolveProgrammingSgdType,
   resolveProgrammingWorkCompletionStatus,
@@ -569,23 +568,6 @@ export async function copyProgrammingToDates(request: NextRequest) {
     }
   }
 
-  const initialWorkCompletionStatus = await resolveInitialProjectWorkCompletionStatus({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    projectId: source.project_id,
-  });
-
-  if (!initialWorkCompletionStatus.ok) {
-    return NextResponse.json(
-      {
-        success: false,
-        reason: "WORK_COMPLETION_STATUS_REQUIRED",
-        message: initialWorkCompletionStatus.message,
-      } satisfies CopyProgrammingToDatesResponse,
-      { status: initialWorkCompletionStatus.status },
-    );
-  }
-
   let copiedCount = 0;
   const createdIds: string[] = [];
   const activityCache = new Map<string, Array<{ catalogId: string; quantity: number }>>();
@@ -653,7 +635,7 @@ export async function copyProgrammingToDates(request: NextRequest) {
         etapaNumber: target.etapaNumber,
         etapaUnica: false,
         etapaFinal: false,
-        workCompletionStatus: initialWorkCompletionStatus.workCompletionStatus,
+        workCompletionStatus: model.work_completion_status,
         affectedCustomers: Number(model.affected_customers ?? 0),
         sgdTypeId: model.sgd_type_id,
         electricalEqCatalogId: model.electrical_eq_catalog_id,
@@ -907,7 +889,7 @@ export async function addTeamToProgramming(request: NextRequest) {
     );
   }
 
-  let resolvedWorkCompletionStatus = source.work_completion_status;
+  const resolvedWorkCompletionStatus = source.work_completion_status;
 
   if (resolvedWorkCompletionStatus) {
     const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
@@ -925,16 +907,6 @@ export async function addTeamToProgramming(request: NextRequest) {
         } satisfies AddTeamToProgrammingResponse,
         { status: 409 },
       );
-    }
-  } else {
-    // Programacao modelo sem Estado Trabalho — herda o ultimo status ativo do projeto como fallback
-    const fallback = await resolveInitialProjectWorkCompletionStatus({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      projectId: source.project_id,
-    });
-    if (fallback.ok) {
-      resolvedWorkCompletionStatus = fallback.workCompletionStatus;
     }
   }
 
@@ -1288,19 +1260,6 @@ export async function saveProgrammingBatch(request: NextRequest) {
       );
     }
 
-    const initialWorkCompletionStatus = await resolveInitialProjectWorkCompletionStatus({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      projectId,
-    });
-
-    if (!initialWorkCompletionStatus.ok) {
-      return NextResponse.json(
-        { message: initialWorkCompletionStatus.message },
-        { status: initialWorkCompletionStatus.status },
-      );
-    }
-
     const fullBatchSaveResult = await saveProgrammingBatchFullViaRpc({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
@@ -1327,7 +1286,7 @@ export async function saveProgrammingBatch(request: NextRequest) {
       etapaNumber,
       etapaUnica,
       etapaFinal,
-      workCompletionStatus: initialWorkCompletionStatus.workCompletionStatus,
+      workCompletionStatus: null,
       affectedCustomers: affectedCustomers ?? 0,
       sgdTypeId,
       electricalEqCatalogId,
@@ -1750,25 +1709,10 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
     }
   }
 
-  const initialWorkCompletionStatus = method === "POST"
-    ? await resolveInitialProjectWorkCompletionStatus({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        projectId,
-      })
-    : { ok: true, workCompletionStatus: null } as const;
-
-  if (!initialWorkCompletionStatus.ok) {
-    return NextResponse.json(
-      { message: initialWorkCompletionStatus.message },
-      { status: initialWorkCompletionStatus.status },
-    );
-  }
-
   const normalizedWorkCompletionStatus =
     method === "PUT"
       ? workCompletionStatus
-      : initialWorkCompletionStatus.workCompletionStatus;
+      : null;
 
   const isPotentialReschedule = currentProgramming
     ? (
