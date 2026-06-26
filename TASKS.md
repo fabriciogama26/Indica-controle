@@ -1,3 +1,4 @@
+- [x] Sincronizar campos operacionais da Programacao ao editar uma linha, replicando Alimentador, Nº EQ, Tipo de SGD, clientes afetados, desligamento, Apoio e quantidades para equipes ativas do mesmo Projeto + Data via RPC transacional com historico.
 - [x] Proteger a edicao da Programacao contra perda de atividades quando o snapshot carregar incompleto, com bloqueio no frontend, botao de recarregar no modal e rejeicao defensiva no backend (`PROGRAMMING_ACTIVITIES_NOT_LOADED`).
 - [x] Adicionar acao `Fazer medicao` na Composicao de Equipe, abrindo a Medicao com cabecalho pre-preenchido por projeto, equipe e data da composicao.
 - [x] Exibir o nome do encarregado no modal `Detalhes da Programacao` da Programacao Simples/Visualizacao usando os dados de equipe ja carregados no payload.
@@ -1023,3 +1024,12 @@
 - [x] Criar tabela dedicada de `Revisao de etapas` no `Mapa de Programacao`, com exportacao CSV e coluna de revisao isolada das tabelas gerais.
 - [x] Bloquear novas divergencias `ADIADA/CANCELADA + CONCLUIDO` em Programacao com trigger no banco, ajustar backfill de inativas para nao herdar `CONCLUIDO`, ampliar auditoria read-only e destacar o alerta no Mapa de Programacao.
 - [ ] [Apuracao de Fator Minimo][Extracao oficial] Modelar confirmacao da apuracao com snapshot imutavel de filtros, usuario, data/hora, regra aplicada, itens considerados e resultado por equipe/data.
+
+- [x] Corrigir botao `Copiar programacao` na Programacao Simples para ficar desabilitado em programacoes `etapaUnica`, `etapaFinal` ou sem `etapaNumber`, evitando click habilitado que retornava alerta sem acao.
+- [x] Adicionar validacao backend em `copyProgrammingToDates` para rejeitar etapas de destino menores ou iguais a etapa atual da programacao de origem, com mensagem explicativa no retorno 400.
+- [x] Implementar rollback automatico em `copyProgrammingToDates`: ao falhar qualquer iteracao do loop de save, cancela via UPDATE os registros ja criados naquele lote, evitando grade com estado parcialmente salvo.
+- [x] Corrigir `addTeamToProgramming` para propagar `Estado Trabalho` via fallback: quando `source.work_completion_status` e null, chama `resolveInitialProjectWorkCompletionStatus` para buscar o ultimo status ativo do projeto antes de criar o novo registro.
+- [x] Adicionar useMemo `fullGroupScheduleIds` na Programacao Simples para pre-computar quais programacoes ja tem todas as equipes do tenant; botao `Adicionar equipe` fica desabilitado quando nao ha equipe disponivel para adicionar.
+- [x] Adicionar escopo individual/grupo no modal `Adiar` da Programacao Simples (mesmo padrao do `Cancelar`): radio "Todas as equipes da obra neste dia" (padrao) e "Apenas esta equipe" (exige nova data); roteamento no backend via `postponeProgrammingViaRpc` (individual) ou `postponeProgrammingGroupViaRpc` (grupo) em 5 camadas (route.ts, handlers.ts, api.ts, hooks.ts, components.tsx).
+- [x] Corrigir ReferenceError `postponeScope is not defined` na Programacao Simples adicionando `postponeScope` e `setPostponeScope` a desestruturacao do `usePostponeModal` no `ProgrammingSimplePageView.tsx`.
+- [x] Corrigir erro `Atividades da Programacao nao foram carregadas` ao chunkar a query `.in("programming_id", programmingIds)` em lotes de 100 em `fetchProgrammingActivities`, evitando falha por URL longa no PostgREST quando a grade tem muitas programacoes.
