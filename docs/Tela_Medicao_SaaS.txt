@@ -83,6 +83,7 @@ Cadastro
   - Cada item calcula `total_value` com base na formula da medicao.
   - A `Taxa` e unica por ordem de medicao; ao editar a taxa do cabecalho e salvar, o sistema reaplica a mesma taxa em todas as atividades da ordem e recalcula todos os itens.
   - No cadastro novo (`ordem sem id`), ao selecionar um projeto valido, a tela busca e sugere automaticamente a taxa da ultima medicao `COM_PRODUCAO` do mesmo projeto.
+  - A sugestao automatica de taxa tambem e aplicada quando `Tipo da medicao = Sem producao`; a ordem continua sem itens, mas o `manual_rate` salvo deixa de usar apenas a taxa tecnica `1`.
   - Quando nao existe historico de taxa para o projeto selecionado, o campo fica em preenchimento manual e a tela informa esse contexto ao usuario.
   - No modo de edicao, o botao `Cadastro em massa` nao aparece.
   - No modo de edicao, a grade exibe a coluna `Taxa aplicada` e o botao `Recalcular totais`, ambos baseados na taxa unica do cabecalho.
@@ -97,7 +98,7 @@ Cadastro
   - As falhas do import em massa sao reportadas por tipo de campo (ex.: `Projeto nao encontrado`, `Data invalida`, `Atividade nao encontrada`, `Quantidade invalida`) para facilitar a correcao da planilha.
   - A coluna `tipo_medicao` do CSV e obrigatoria.
   - A coluna `motivo_sem_producao` e obrigatoria quando `tipo_medicao = SEM_PRODUCAO`.
-  - A coluna `taxa` do CSV e obrigatoria apenas para `COM_PRODUCAO`; em `SEM_PRODUCAO` o sistema salva a ordem com taxa tecnica `1`.
+  - A coluna `taxa` do CSV e obrigatoria apenas para `COM_PRODUCAO`; em `SEM_PRODUCAO`, quando preenchida, a taxa e salva no `manual_rate`, e quando vazia o sistema usa fallback tecnico `1`.
   - Para atividade com unidade `MVA*hora`, o CSV aceita:
     - `mva + horas` (quantidade calculada automaticamente).
   - Para unidade `MVA*hora`, `quantidade` direta nao e aceita.
@@ -209,6 +210,30 @@ Atalhos
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
 
+Atualizacao 2026-06-26 (Taxa em Sem producao)
+---------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `supabase/migrations/268_backfill_no_production_measurement_rates.sql`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Efeito de sugestao de taxa em `MeasurementPageView.tsx`
+  - `handleMeasurementKindChange`
+  - `submitOrder`
+  - `rateSuggestionHint`
+- Comportamento antes/depois:
+  - Antes: ao selecionar `Sem producao`, o formulario forçava `manualRate = 1`, desabilitava a taxa e nao chamava `/api/medicao/rate-suggestion`.
+  - Depois: a tela busca a taxa sugerida por projeto tambem em `Sem producao`, permite revisar/editar a taxa e envia o valor para `/api/medicao`.
+  - Depois: o cadastro em massa passa a respeitar a taxa informada em linhas `SEM_PRODUCAO`, mantendo fallback `1` somente quando a coluna vier vazia.
+  - Antes: ordens antigas `SEM_PRODUCAO` podiam permanecer com `manual_rate = 1` mesmo quando o projeto tinha historico de taxa.
+  - Depois: a migration 268 corrige ordens `SEM_PRODUCAO` nao canceladas com taxa `1`, usando a ultima taxa `COM_PRODUCAO` nao cancelada do mesmo `tenant + projeto` e registrando historico da mudanca.
+- Impacto multi-tenant:
+  - A sugestao existente continua filtrada por `tenant_id` na API.
+  - O backfill usa somente ordens do mesmo `tenant_id` e mesmo `project_id`.
+  - Nao houve alteracao de RLS ou schema.
+
 Atualizacao 2026-06-25 (Cabecalho pela Composicao)
 --------------------------------------------------
 - Arquivos alterados:
@@ -310,7 +335,7 @@ Atualizacao 2026-03
   - Cadastro da Medicao ampliado com `Com producao` e `Sem producao` na mesma tela, com motivo obrigatorio para `Sem producao` vindo de tabela por tenant.
   - API `GET /api/medicao/meta` adicionada para carregar o catalogo de motivos de `Sem producao`.
   - Save da Medicao ajustado para aceitar ordem sem itens apenas quando `Tipo da medicao = Sem producao`.
-  - Cadastro em massa ampliado para aceitar linhas `SEM_PRODUCAO` com `motivo_sem_producao`, sem `voz/quantidade/taxa`.
+  - Cadastro em massa ampliado para aceitar linhas `SEM_PRODUCAO` com `motivo_sem_producao`, sem `voz/quantidade` e com `taxa` opcional.
   - Modal `Detalhes da Ordem` ajustado para priorizar `team_name_snapshot` e `foreman_name_snapshot`, mantendo fallback para dados atuais da equipe apenas quando snapshot estiver vazio.
   - Correcao de tipagem em `MeasurementPageView.tsx`: `OrderDetail` passou a declarar `teamName` e `foremanName`, alinhando o tipo com o payload da API e eliminando falha de build TypeScript.
 
@@ -345,6 +370,8 @@ Constantes e configuracoes
   - Responsavel por: criar catalogo de motivos de `Sem producao`, ampliar o cabecalho da Medicao com `measurement_kind/no_production_reason` e ajustar as RPCs do save manual e em lote.
 - Caminho: `supabase/migrations/127_add_mva_hour_composed_quantity_to_measurement_items.sql`
   - Responsavel por: adicionar `mva_quantity/worked_hours` em `project_measurement_order_items` e ajustar a RPC de save para calcular `quantity` por `MVA x Horas` quando informado.
+- Caminho: `supabase/migrations/268_backfill_no_production_measurement_rates.sql`
+  - Responsavel por: corrigir `manual_rate` de ordens `SEM_PRODUCAO` antigas com taxa tecnica `1`, usando a ultima taxa `COM_PRODUCAO` valida do mesmo tenant/projeto e gravando historico.
 - Caminho: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
   - Responsavel por: criar `team_foreman_history`, manter vigencia de encarregado por equipe e aplicar snapshot historico em `project_measurement_orders`.
 - Caminho: `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`

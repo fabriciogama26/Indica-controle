@@ -1063,7 +1063,7 @@ export function MeasurementPageView() {
       return sum + (voicePoint * quantity * manualRate * unitValue);
     }, 0);
   }, [form.items, form.manualRate, form.measurementKind, minimumBillingPreview?.amount]);
-  const shouldShowRateSuggestionHint = !form.id && form.measurementKind === "COM_PRODUCAO" && Boolean(form.projectId);
+  const shouldShowRateSuggestionHint = !form.id && Boolean(form.projectId);
   const isGeneratingExport = Boolean(exportProgress);
   const rateSuggestionHint = shouldShowRateSuggestionHint
     ? (
@@ -1524,7 +1524,7 @@ export function MeasurementPageView() {
   }, [projectMap, teamMap]);
 
   useEffect(() => {
-    if (!accessToken || form.id || form.measurementKind === "SEM_PRODUCAO" || !form.projectId) {
+    if (!accessToken || form.id || !form.projectId) {
       setIsLoadingRateSuggestion(false);
       setRateSuggestionSource(null);
       return;
@@ -1550,7 +1550,7 @@ export function MeasurementPageView() {
 
         if (hasManualRateUserOverrideRef.current) return;
         setForm((current) => {
-          if (current.id || current.projectId !== form.projectId || current.measurementKind === "SEM_PRODUCAO") {
+          if (current.id || current.projectId !== form.projectId) {
             return current;
           }
 
@@ -1577,7 +1577,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, form.id, form.measurementKind, form.projectId]);
+  }, [accessToken, form.id, form.projectId]);
 
   useEffect(() => {
     if (!filterDraft.projectId) return;
@@ -1599,7 +1599,6 @@ export function MeasurementPageView() {
       ...current,
       measurementKind: nextKind,
       noProductionReasonId: nextKind === "COM_PRODUCAO" ? "" : current.noProductionReasonId,
-      manualRate: nextKind === "SEM_PRODUCAO" ? "1" : current.manualRate,
       activitySearch: "",
       activityQuantity: "1",
       activityMvaQuantity: "",
@@ -1869,7 +1868,7 @@ export function MeasurementPageView() {
         const quantity = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(quantityRaw);
         const mvaQuantity = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(mvaQuantityRaw);
         const workedHours = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(workedHoursRaw);
-        const manualRate = measurementKind === "SEM_PRODUCAO" ? null : parsePositiveNumber(manualRateRaw);
+        const manualRate = parsePositiveNumber(manualRateRaw);
         const matchedNoProductionReason = measurementKind === "SEM_PRODUCAO"
           ? findNoProductionReasonOption(noProductionReasonRaw, noProductionReasons)
           : null;
@@ -1921,6 +1920,10 @@ export function MeasurementPageView() {
         if (row.measurementKind === "SEM_PRODUCAO") {
           if (!row.noProductionReasonId) {
             importIssues.push({ rowNumber: row.rowNumber, column: "motivo_sem_producao", value: row.noProductionReasonRaw, error: "Motivo de sem producao invalido ou nao encontrado." });
+            hasError = true;
+          }
+          if (row.manualRateRaw && !row.manualRate) {
+            importIssues.push({ rowNumber: row.rowNumber, column: "taxa", value: row.manualRateRaw, error: "Taxa invalida. Informe numero maior que zero ou deixe em branco." });
             hasError = true;
           }
         } else {
@@ -2093,7 +2096,7 @@ export function MeasurementPageView() {
         const projectId = selectedSchedule?.projectId ?? matchedProject.id;
         const teamId = selectedSchedule?.teamId ?? matchedTeam.id;
         const executionDate = selectedSchedule?.date ?? (row.executionDate as string);
-        const manualRate = row.measurementKind === "SEM_PRODUCAO" ? 1 : (row.manualRate as number);
+        const manualRate = row.measurementKind === "SEM_PRODUCAO" ? (row.manualRate ?? 1) : (row.manualRate as number);
 
         const groupingKey = `${projectId}|${teamId}|${executionDate}`;
         const group = grouped.get(groupingKey) ?? {
@@ -2462,6 +2465,11 @@ export function MeasurementPageView() {
       return;
     }
 
+    if (form.measurementKind === "SEM_PRODUCAO" && form.manualRate.trim() && !manualRate) {
+      setFeedback({ type: "error", message: "Taxa manual invalida. Informe numero maior que zero." });
+      return;
+    }
+
     if (form.measurementKind === "SEM_PRODUCAO" && !form.noProductionReasonId) {
       setFeedback({ type: "error", message: "Selecione o motivo de sem producao." });
       return;
@@ -2553,7 +2561,7 @@ export function MeasurementPageView() {
           measurementKind: form.measurementKind,
           noProductionReasonId: form.measurementKind === "SEM_PRODUCAO" ? form.noProductionReasonId || undefined : undefined,
           voicePoint: orderVoicePoint,
-          manualRate: form.measurementKind === "SEM_PRODUCAO" ? 1 : manualRate,
+          manualRate: manualRate ?? 1,
           notes: form.notes,
           expectedUpdatedAt: form.expectedUpdatedAt,
           items: form.measurementKind === "SEM_PRODUCAO" ? [] : items,
@@ -3148,7 +3156,6 @@ export function MeasurementPageView() {
                 min="0.01"
                 step="0.01"
                 value={form.manualRate}
-                disabled={form.measurementKind === "SEM_PRODUCAO"}
                 onChange={(event) => {
                   hasManualRateUserOverrideRef.current = true;
                   setRateSuggestionSource("MANUAL");

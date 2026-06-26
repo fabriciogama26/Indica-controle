@@ -698,3 +698,8 @@ Observacao
 - Recria `save_project_programming_full_decimal_with_electrical_and_eq` para executar a sincronizacao dentro da mesma transacao do salvamento individual.
 - Sincroniza Alimentador, Nº EQ, Tipo de SGD, clientes afetados, janela de desligamento, Apoio e quantidades (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`).
 - Registra historico operacional por linha afetada e mantem EXECUTE restrito a `service_role`.
+
+268_backfill_no_production_measurement_rates.sql
+- Corrige ordens `SEM_PRODUCAO` nao canceladas que ficaram com `manual_rate = 1`.
+- Usa a ultima taxa `COM_PRODUCAO` nao cancelada do mesmo `tenant_id + project_id`.
+- Registra historico em `project_measurement_order_history` com metadata `migration-268`.
