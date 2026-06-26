@@ -587,6 +587,7 @@ export async function copyProgrammingToDates(request: NextRequest) {
   }
 
   let copiedCount = 0;
+  const createdIds: string[] = [];
   const activityCache = new Map<string, Array<{ catalogId: string; quantity: number }>>();
 
   const buildDocuments = (row: ProgrammingRow): NonNullable<SaveProgrammingPayload["documents"]> => ({
@@ -676,6 +677,14 @@ export async function copyProgrammingToDates(request: NextRequest) {
       });
 
       if (!saveResult.ok) {
+        // Rollback: cancela registros já criados nesta operação para evitar estado parcial
+        if (createdIds.length > 0) {
+          await resolution.supabase
+            .from("project_programming")
+            .update({ status: "CANCELADA" })
+            .in("id", createdIds)
+            .eq("tenant_id", resolution.appUser.tenant_id);
+        }
         return NextResponse.json(
           {
             success: false,
@@ -687,6 +696,7 @@ export async function copyProgrammingToDates(request: NextRequest) {
         );
       }
 
+      createdIds.push(saveResult.programmingId);
       copiedCount += 1;
     }
   }
@@ -897,11 +907,13 @@ export async function addTeamToProgramming(request: NextRequest) {
     );
   }
 
-  if (source.work_completion_status) {
+  let resolvedWorkCompletionStatus = source.work_completion_status;
+
+  if (resolvedWorkCompletionStatus) {
     const selectedWorkCompletionStatus = await resolveProgrammingWorkCompletionStatus({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
-      workCompletionStatus: source.work_completion_status,
+      workCompletionStatus: resolvedWorkCompletionStatus,
     });
 
     if (!selectedWorkCompletionStatus) {
@@ -913,6 +925,16 @@ export async function addTeamToProgramming(request: NextRequest) {
         } satisfies AddTeamToProgrammingResponse,
         { status: 409 },
       );
+    }
+  } else {
+    // Programacao modelo sem Estado Trabalho — herda o ultimo status ativo do projeto como fallback
+    const fallback = await resolveInitialProjectWorkCompletionStatus({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId: source.project_id,
+    });
+    if (fallback.ok) {
+      resolvedWorkCompletionStatus = fallback.workCompletionStatus;
     }
   }
 
@@ -972,7 +994,7 @@ export async function addTeamToProgramming(request: NextRequest) {
     etapaNumber: source.etapa_number,
     etapaUnica: Boolean(source.etapa_unica),
     etapaFinal: Boolean(source.etapa_final),
-    workCompletionStatus: source.work_completion_status,
+    workCompletionStatus: resolvedWorkCompletionStatus,
     affectedCustomers: Number(source.affected_customers ?? 0),
     sgdTypeId: source.sgd_type_id,
     electricalEqCatalogId: source.electrical_eq_catalog_id,
