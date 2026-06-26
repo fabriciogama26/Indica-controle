@@ -35,8 +35,14 @@ Arquitetura
 - Migration de guarda obrigatoria de ETAPA ativa:
   - `supabase/migrations/269_guard_programming_stage_on_active_records.sql`
   - RPC: `postpone_project_programming`
-  - Constraint: `project_programming_active_stage_required_check`
+  - Constraint inicial: `project_programming_active_stage_required_check`
   - Objetivo: preservar `ETAPA UNICA`/`ETAPA FINAL` no adiamento, corrigir registros ativos antigos sem etapa e bloquear novas programacoes ativas sem ETAPA numerica ou flag especial.
+- Migration de guarda diferida de ETAPA ativa:
+  - `supabase/migrations/270_defer_active_programming_stage_guard.sql`
+  - `supabase/migrations/271_fix_deferred_programming_stage_guard_current_row.sql`
+  - Funcao: `enforce_project_programming_active_stage_required`
+  - Trigger: `zz_trg_project_programming_active_stage_required`
+  - Objetivo: substituir o CHECK imediato por constraint trigger diferida, permitindo que as RPCs full criem a linha e preencham ETAPA/flags dentro da mesma transacao; a funcao valida a linha final persistida no commit.
 - Migration de desligamento/documentos:
   - `supabase/migrations/089_add_programming_outage_and_documents_compat.sql`
   - Campos em `project_programming`: `outage_start_time`, `outage_end_time`
@@ -2204,3 +2210,26 @@ Atualizacao 2026-06-26 - ETAPA obrigatoria em programacoes ativas
   - Backfill e RPC mantem escopo por `tenant_id`.
   - O historico operacional e registrado em `project_programming_history` para cada linha corrigida.
   - A constraint e global da tabela, mas valida somente registros com status `PROGRAMADA` ou `REPROGRAMADA`.
+
+Atualizacao 2026-06-26 - Guarda diferida de ETAPA ativa
+--------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/270_defer_active_programming_stage_guard.sql`
+  - `supabase/migrations/271_fix_deferred_programming_stage_guard_current_row.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `enforce_project_programming_active_stage_required`: nova funcao de trigger que aplica a regra final de ETAPA ativa.
+  - `zz_trg_project_programming_active_stage_required`: constraint trigger `DEFERRABLE INITIALLY DEFERRED` em `project_programming`.
+  - `project_programming_active_stage_required_check`: nome logico preservado no erro `23514`, mas o CHECK imediato da migration 269 e removido.
+- Comportamento antes/depois:
+  - Antes: o CHECK imediato barrava a copia dentro da RPC full quando a linha base era criada antes de receber `etapa_number`, `etapa_unica` ou `etapa_final` na mesma transacao.
+  - Ajuste complementar: a migration 271 faz a funcao diferida consultar a linha atual em `project_programming`, porque `NEW` de um evento `INSERT` diferido ainda representa o estado enfileirado antes da atualizacao de ETAPA feita pela RPC full.
+  - Depois: a validacao ocorre no fim da transacao sobre o registro final; se ele estiver ativo sem ETAPA numerica ou flag especial, o banco continua rejeitando com `project_programming_active_stage_required_check`.
+  - Depois: o fluxo `Copiar programacao` volta a permitir destinos validos com ETAPA numerica informada.
+- Multi-tenant:
+  - A regra segue aplicada na tabela inteira, sem criar permissao nova de leitura/escrita.
+  - A funcao de trigger nao consulta dados de outros tenants e valida apenas os campos da propria linha.
+  - EXECUTE da funcao fica restrito a `service_role`; RLS, grants de tabela e escopo por `tenant_id` nao foram alterados.

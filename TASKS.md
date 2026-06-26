@@ -1035,3 +1035,6 @@
 - [x] Corrigir erro `Atividades da Programacao nao foram carregadas` ao chunkar a query `.in("programming_id", programmingIds)` em lotes de 100 em `fetchProgrammingActivities`, evitando falha por URL longa no PostgREST quando a grade tem muitas programacoes.
 - [x] Corrigir sugestao/gravação de taxa na Medicao `Sem producao`: tela passa a buscar a ultima taxa do projeto tambem nesse tipo, salva `manual_rate` sugerido/informado, cadastro em massa respeita taxa opcional em `SEM_PRODUCAO` e migration 268 faz backfill das ordens antigas com taxa tecnica `1`.
 - [x] Corrigir a Programacao para bloquear programar/reprogramar sem ETAPA valida, preservar `ETAPA UNICA`/`ETAPA FINAL` no adiamento, corrigir programacoes ativas antigas sem etapa e adicionar constraint `project_programming_active_stage_required_check`.
+- [x] Corrigir regressao da copia da Programacao causada pelo CHECK imediato de ETAPA ativa, substituindo por constraint trigger diferida na migration 270.
+- [x] Corrigir falso bloqueio restante da copia da Programacao na trigger diferida de ETAPA ativa, validando a linha final persistida pela migration 271.
+- [x] Criar `docs/Mapa_Regras_Programacao.md` com mapa consolidado das regras de negocio da Programacao por status, ETAPA, Estado Trabalho, adiamento, cancelamento, copia, adicao de equipe, sincronizacao e seguranca multi-tenant.

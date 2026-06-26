@@ -393,6 +393,8 @@ vercel --prod
 - `supabase/migrations/189_allow_cross_service_center_programming.sql`: libera a Programacao e a copia de programacao para usar equipes ativas de qualquer centro de servico, mantendo validacao por tenant e equipe ativa.
 - `supabase/migrations/217_copy_programming_to_multiple_dates.sql`: cria a RPC `copy_project_programming_to_dates` para copiar uma Programacao ativa para multiplas datas com ETAPA por destino, bloqueando `ETAPA UNICA`/`ETAPA FINAL` e mantendo validacao transacional por tenant.
 - `supabase/migrations/269_guard_programming_stage_on_active_records.sql`: recria `postpone_project_programming` preservando `ETAPA UNICA`/`ETAPA FINAL`, corrige programacoes ativas antigas sem etapa e adiciona a constraint `project_programming_active_stage_required_check`.
+- `supabase/migrations/270_defer_active_programming_stage_guard.sql`: remove o CHECK imediato de ETAPA ativa e cria constraint trigger diferida para validar `PROGRAMADA`/`REPROGRAMADA` no fim da transacao, mantendo a regra sem quebrar RPCs full.
+- `supabase/migrations/271_fix_deferred_programming_stage_guard_current_row.sql`: ajusta a trigger diferida de ETAPA ativa para consultar a linha final persistida, evitando falso bloqueio na copia quando a RPC full preenche ETAPA depois do insert.
 - `supabase/migrations/197_enforce_people_unique_matriculation.sql`: garante matricula unica por tenant em `Pessoas`, com indice unico normalizado, trigger e retorno especifico da RPC.
 - `supabase/migrations/198_add_people_cpf_optional.sql`: adiciona `CPF` opcional em `Pessoas`, com validacao de 11 digitos e persistencia pela RPC `save_person_record`.
 - `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`: torna `CPF` unico por tenant, adiciona trava `CPF + Matricula`, adiciona `Telefone` opcional e republica `save_person_record`.
@@ -530,6 +532,12 @@ npm run build
 - `O campo ETAPA e obrigatorio para programar ou reprogramar.`:
   - Causa: tentativa de salvar uma programacao `PROGRAMADA` ou `REPROGRAMADA` sem `ETAPA` numerica e sem marcar `ETAPA UNICA` ou `ETAPA FINAL`.
   - Solucao: informar uma ETAPA numerica maior que zero, ou marcar `ETAPA UNICA`/`ETAPA FINAL` quando a regra da obra exigir etapa especial.
+- `new row for relation "project_programming" violates check constraint "project_programming_active_stage_required_check"` ao copiar programacao:
+  - Causa: ambiente com a migration `269_guard_programming_stage_on_active_records.sql` aplicada, mas ainda sem a migration `270_defer_active_programming_stage_guard.sql`; o CHECK imediato barra a linha base antes da RPC full preencher a ETAPA no mesmo commit.
+  - Solucao: aplicar `270_defer_active_programming_stage_guard.sql` e `271_fix_deferred_programming_stage_guard_current_row.sql`, depois repetir a copia com ETAPA destino valida.
+- `Falha ao salvar programacao via RPC full: Programacao ativa exige ETAPA numerica, ETAPA UNICA ou ETAPA FINAL.` ao copiar programacao:
+  - Causa: ambiente ja com a trigger diferida da migration `270`, mas sem o ajuste da `271`; o trigger diferido ainda avalia o `NEW` do insert original, antes da RPC full atualizar ETAPA.
+  - Solucao: aplicar `271_fix_deferred_programming_stage_guard_current_row.sql` e repetir a copia.
 - Programacao adiada reaparece como `PROGRAMADA` em vez de `REPROGRAMADA`:
   - Causa: o banco ainda nao recebeu a migration que promove `REPROGRAMADA` a status fisico em `project_programming`.
   - Solucao: aplicar `101_create_project_programming_history.sql` e `102_use_programming_history_only_and_physical_rescheduled_status.sql`, recarregar a agenda e refazer a leitura da programacao.
