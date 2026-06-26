@@ -1038,3 +1038,4 @@
 - [x] Corrigir regressao da copia da Programacao causada pelo CHECK imediato de ETAPA ativa, substituindo por constraint trigger diferida na migration 270.
 - [x] Corrigir falso bloqueio restante da copia da Programacao na trigger diferida de ETAPA ativa, validando a linha final persistida pela migration 271.
 - [x] Criar `docs/Mapa_Regras_Programacao.md` com mapa consolidado das regras de negocio da Programacao por status, ETAPA, Estado Trabalho, adiamento, cancelamento, copia, adicao de equipe, sincronizacao e seguranca multi-tenant.
+- [x] Remover preenchimento automatico de `Estado Trabalho` na Programacao: cadastro novo salva sem status, copia/adicao replica somente valor da linha modelo quando existir, docs e mapa de regras atualizados.

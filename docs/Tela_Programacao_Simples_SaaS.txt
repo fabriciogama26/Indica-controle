@@ -197,8 +197,8 @@ Cadastro
   - Troca de equipe na edicao continua sendo tratada como reprogramacao e exige `Motivo da reprogramacao`.
   - Em edicao, quando `Estado Trabalho` for alterado, o sistema sincroniza o mesmo valor para outras equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
   - `Estado Trabalho` nao e propagado por posicao visual da lista nem por outros dias do mesmo projeto.
-  - No cadastro de uma nova programacao, o backend herda o ultimo `Estado Trabalho` nao nulo da mesma obra dentro do tenant, ignorando programacoes canceladas e validando se o codigo continua ativo no catalogo.
-  - Quando a obra ainda nao possui `Estado Trabalho` valido no historico, o backend preenche automaticamente `Estado Trabalho = PARCIAL`.
+  - No cadastro de uma nova programacao, o backend nao preenche `Estado Trabalho` automaticamente.
+  - Novas programacoes podem ser salvas com `Estado Trabalho` em branco; o preenchimento ocorre somente por edicao/acao explicita do usuario.
   - A acao `Adicionar equipe` cria uma nova programacao para a equipe selecionada usando uma programacao ativa existente como modelo, sem trocar a equipe da linha original.
   - `Adicionar equipe` bloqueia duplicidade no mesmo `Projeto + Data de execucao + ETAPA`, conflito de horario, equipe inativa/de outro tenant, etapa igual/maior no historico da equipe e projeto com `Estado Trabalho = CONCLUIDO`.
   - `Adiar` e `Cancelar` bloqueiam projeto com `Estado Trabalho = CONCLUIDO`.
@@ -248,7 +248,7 @@ Filtros, auto-complete e listagem
   - cria uma nova linha para a equipe escolhida com os mesmos dados da linha modelo
   - grava `copied_from_programming_id` apontando para a programacao modelo
   - registra historico operacional com metadata `ADD_TEAM`
-  - valida tenant, agenda da equipe, etapa, catalogo de `Estado Trabalho`, concorrencia por `updated_at` e trava de projeto `CONCLUIDO`
+  - valida tenant, agenda da equipe, etapa, catalogo de `Estado Trabalho` quando a linha modelo tiver valor preenchido, concorrencia por `updated_at` e trava de projeto `CONCLUIDO`
 - A acao `Copiar programacao`:
   - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
   - valida antes do modal se a origem nao e `ETAPA UNICA` nem `ETAPA FINAL`
@@ -258,7 +258,7 @@ Filtros, auto-complete e listagem
   - quando a equipe ja existe na programacao original, usa a propria linha dela como modelo; quando nao existe, usa a linha clicada como modelo
   - bloqueia data original, datas repetidas, ETAPAs repetidas e ETAPAs menores/iguais a ETAPA da origem
   - no backend, valida tenant, concorrencia por `updated_at`, etapa ja existente, conflito de horario e projeto concluido antes de salvar
-  - herda o ultimo `Estado Trabalho` valido da obra ao criar as programacoes destino
+  - copia `Estado Trabalho` somente da propria linha modelo; se a linha modelo estiver sem valor, a programacao destino tambem fica sem valor
 - `Edicao` e `Cancelar` ficam habilitados somente para registros `PROGRAMADA`.
 - `Adiar` (botao amarelo) fica habilitado somente para registros `PROGRAMADA`.
 - Registros `ADIADA`/`CANCELADA` aparecem destacados na lista.
@@ -2233,3 +2233,27 @@ Atualizacao 2026-06-26 - Guarda diferida de ETAPA ativa
   - A regra segue aplicada na tabela inteira, sem criar permissao nova de leitura/escrita.
   - A funcao de trigger nao consulta dados de outros tenants e valida apenas os campos da propria linha.
   - EXECUTE da funcao fica restrito a `service_role`; RLS, grants de tabela e escopo por `tenant_id` nao foram alterados.
+
+Atualizacao 2026-06-26 - Estado Trabalho sem preenchimento automatico
+---------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `saveProgrammingBatch`: passa a enviar `workCompletionStatus = null` em novos cadastros em lote.
+  - `saveProgramming`: passa a enviar `workCompletionStatus = null` em novos cadastros individuais.
+  - `copyProgrammingToDates`: passa a copiar o `Estado Trabalho` somente da linha modelo usada na copia.
+  - `addTeamToProgramming`: deixa de buscar fallback do projeto quando a programacao modelo esta sem `Estado Trabalho`.
+  - `resolveInitialProjectWorkCompletionStatus`: removida por representar a regra antiga de heranca/fallback automatico.
+- Comportamento antes/depois:
+  - Antes: o backend procurava o ultimo `Estado Trabalho` do projeto e, sem historico valido, preenchia `PARCIAL`.
+  - Antes: `Copiar programacao` e `Adicionar equipe` tambem podiam preencher estado por fallback do projeto quando a origem estava sem valor.
+  - Depois: novo cadastro fica com `Estado Trabalho` em branco ate uma edicao/acao explicita do usuario.
+  - Depois: copia/adicao mantem o valor da propria linha modelo; se ela estiver sem valor, a nova linha tambem fica sem valor.
+- Multi-tenant:
+  - Nenhuma query nova foi adicionada.
+  - A alteracao remove consultas de heranca por `tenant_id` e preserva o isolamento existente das chamadas de salvamento.
+  - RLS, migrations e grants nao foram alterados.

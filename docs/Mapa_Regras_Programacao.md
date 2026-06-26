@@ -206,14 +206,17 @@ Valores relevantes no fluxo atual:
 - `ANTECIPADO`
 - `NAO_INFORMADO` apenas como filtro visual, nao como status salvo.
 
-### Heranca no Cadastro/Copia/Adicao
+### Cadastro/Copia/Adicao
 
 Ao criar uma nova programacao:
-1. Backend procura o ultimo `work_completion_status` nao nulo do mesmo projeto no tenant.
-2. Ignora programacoes `CANCELADA`.
-3. Valida se o codigo ainda esta ativo no catalogo do tenant.
-4. Se houver status valido, herda esse status.
-5. Se nao houver historico valido, usa `PARCIAL` como fallback, desde que ativo no catalogo.
+1. Backend salva `work_completion_status = null`.
+2. Nao existe preenchimento automatico por ultimo status do projeto.
+3. Nao existe fallback automatico para `PARCIAL`.
+4. O preenchimento de `Estado Trabalho` ocorre apenas por edicao/acao explicita do usuario.
+
+Ao copiar ou adicionar equipe:
+1. Se a linha modelo possui `work_completion_status`, o backend valida o codigo no catalogo ativo do tenant e copia esse valor.
+2. Se a linha modelo nao possui `work_completion_status`, a nova linha tambem fica sem `Estado Trabalho`.
 
 ### Bloqueio por CONCLUIDO
 
@@ -404,7 +407,7 @@ Validacoes do backend:
 - Equipes ativas por tenant.
 - Conflito de etapa por projeto/equipe.
 - Conflito de agenda por equipe/data/horario.
-- Heranca de Estado Trabalho inicial.
+- Estado Trabalho copiado somente da propria linha modelo, quando preenchido.
 
 Efeitos:
 - Cria uma nova programacao para cada par `Data destino + Equipe`.
@@ -455,7 +458,7 @@ Validacoes:
 - Equipe alvo ainda nao existe no grupo.
 - Sem conflito de horario.
 - Sem conflito de etapa no historico da equipe.
-- Estado Trabalho da linha modelo precisa estar ativo no catalogo; se estiver vazio, herda fallback do projeto.
+- Estado Trabalho da linha modelo precisa estar ativo no catalogo quando estiver preenchido; se estiver vazio, a nova linha tambem fica sem Estado Trabalho.
 
 Efeitos:
 - Cria nova programacao para a equipe escolhida.
