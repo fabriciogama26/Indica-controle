@@ -434,6 +434,13 @@ export async function copyProgrammingToDates(request: NextRequest) {
     return NextResponse.json({ message: "Cada data destino deve receber uma ETAPA diferente." }, { status: 400 });
   }
 
+  if (targetEtapas.some((etapa) => etapa <= source.etapa_number!)) {
+    return NextResponse.json(
+      { message: `As ETAPAs de destino devem ser maiores que a etapa atual da programacao de origem (${source.etapa_number}).` },
+      { status: 400 },
+    );
+  }
+
   if (targetDates.includes(source.execution_date)) {
     return NextResponse.json(
       { message: "A data original da programacao nao pode ser selecionada como destino da copia." },
