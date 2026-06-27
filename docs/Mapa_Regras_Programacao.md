@@ -6,7 +6,7 @@ Escopo:
 - Tela `Programacao` atual: `/programacao-simples`.
 - Tela de consulta: `/programacao-visualizacao`, usando a mesma view em modo visualizacao.
 - API principal: `/api/programacao`.
-- Banco esperado com migrations ate `274_transactional_copy_programming_to_dates_selected_teams.sql`.
+- Banco esperado com migrations ate `275_harden_programming_stage_state_integrity.sql`.
 
 ---
 
@@ -23,11 +23,11 @@ Regras centrais:
   - ETAPA UNICA: mesmo `tenant_id + project_id + execution_date + etapa_unica`.
   - ETAPA FINAL: mesmo `tenant_id + project_id + execution_date + etapa_final`.
   - Sem etapa: grupo proprio por registro.
-- Toda programacao ativa deve ter:
-  - `etapa_number` numerico maior que zero, ou
-  - `etapa_unica = true`, ou
-  - `etapa_final = true`.
-- `ETAPA UNICA` e `ETAPA FINAL` sao exclusivas entre si.
+- Toda programacao ativa deve estar em exatamente um estado de ETAPA:
+  - `etapa_number > 0`, `etapa_unica = false`, `etapa_final = false`;
+  - `etapa_number = null`, `etapa_unica = true`, `etapa_final = false`;
+  - `etapa_number = null`, `etapa_unica = false`, `etapa_final = true`.
+- Combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag, `ETAPA UNICA + ETAPA FINAL` ou nenhuma ETAPA ativa sao bloqueadas no banco.
 - `Estado Trabalho = CONCLUIDO` bloqueia novas programacoes, copias, inclusao de equipe, adiamento e cancelamento ate reabrir o projeto por uma edicao/acao permitida.
 - Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser marcadas como `ANTECIPADO`.
 - Ao retirar `CONCLUIDO`, somente as programacoes `ANTECIPADO` causadas por aquela conclusao voltam ao `previous_work_completion_status`.
@@ -175,23 +175,36 @@ Efeitos:
 ### Guarda de Banco
 
 Constraint/trigger:
-- Nome logico do erro: `project_programming_active_stage_required_check`
+- Nome logico atual do erro: `project_programming_active_stage_valid_check`
 - Migration `269`: criou o CHECK imediato e fez backfill das programacoes ativas antigas sem etapa.
 - Migration `270`: substitui o CHECK imediato por constraint trigger diferida.
 - Migration `271`: ajusta a funcao diferida para validar a linha final persistida, nao o `NEW` antigo do evento enfileirado.
+- Migration `275`: endurece a validacao diferida para exigir exatamente uma classificacao valida de ETAPA.
 - Funcao: `enforce_project_programming_active_stage_required`
-- Trigger: `zz_trg_project_programming_active_stage_required`
+- Trigger atual: `project_programming_active_stage_valid_check`
 
 Regra:
 ```sql
 status not in ('PROGRAMADA', 'REPROGRAMADA')
-or etapa_number is not null
-or coalesce(etapa_unica, false) = true
-or coalesce(etapa_final, false) = true
+or (
+  etapa_number > 0
+  and coalesce(etapa_unica, false) = false
+  and coalesce(etapa_final, false) = false
+)
+or (
+  etapa_number is null
+  and coalesce(etapa_unica, false) = true
+  and coalesce(etapa_final, false) = false
+)
+or (
+  etapa_number is null
+  and coalesce(etapa_unica, false) = false
+  and coalesce(etapa_final, false) = true
+)
 ```
 
 Objetivo:
-- Impedir novas programacoes ativas sem ETAPA valida, inclusive por escrita direta ou RPC.
+- Impedir novas programacoes ativas sem ETAPA valida ou com combinacao invalida de ETAPA, inclusive por escrita direta ou RPC.
 - Validar a regra no fim da transacao para permitir que as RPCs full criem a linha base e preencham `etapa_number`, `etapa_unica` ou `etapa_final` antes do commit.
 
 ---
@@ -768,6 +781,10 @@ Banco e migrations relevantes:
   - Recria `copy_project_programming_to_dates` para aceitar `teamIds` por data destino.
   - Move a copia selecionada para uma unica transacao no banco.
   - Remove a compensacao antiga de criar linhas e cancelar depois em caso de falha parcial.
+- `275_harden_programming_stage_state_integrity.sql`
+  - Endurece a constraint trigger diferida de ETAPA ativa.
+  - Bloqueia qualquer escrita direta, RPC, importacao ou edicao que tente salvar programacao ativa fora dos tres estados validos de ETAPA.
+  - Executa auditoria bloqueante antes de aplicar a regra e mostra exemplos quando dados ativos ja estao invalidos.
 
 ---
 
@@ -778,7 +795,10 @@ Cadastro:
 - Criar programacao com `ETAPA UNICA`.
 - Criar programacao com `ETAPA FINAL`.
 - Tentar criar sem ETAPA e sem flags: deve bloquear.
-- Copiar programacao valida com ETAPA destino numerica: deve concluir sem erro `project_programming_active_stage_required_check`.
+- Tentar criar/editar como ETAPA 0 ou ETAPA negativa: deve bloquear.
+- Tentar salvar ETAPA numerica junto com `ETAPA UNICA` ou `ETAPA FINAL`: deve bloquear.
+- Tentar salvar `ETAPA UNICA` junto com `ETAPA FINAL`: deve bloquear.
+- Copiar programacao valida com ETAPA destino numerica: deve concluir sem erro `project_programming_active_stage_valid_check`.
 
 Edicao/reprogramacao:
 - Editar campos operacionais e verificar sincronizacao somente em outras equipes do mesmo `programming_group_id`.

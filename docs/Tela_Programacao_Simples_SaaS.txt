@@ -49,6 +49,11 @@ Arquitetura
   - Funcao: `enforce_project_programming_active_stage_required`
   - Trigger: `zz_trg_project_programming_active_stage_required`
   - Objetivo: substituir o CHECK imediato por constraint trigger diferida, permitindo que as RPCs full criem a linha e preencham ETAPA/flags dentro da mesma transacao; a funcao valida a linha final persistida no commit.
+- Migration de integridade estrita de ETAPA ativa:
+  - `supabase/migrations/275_harden_programming_stage_state_integrity.sql`
+  - Funcao: `enforce_project_programming_active_stage_required`
+  - Trigger: `project_programming_active_stage_valid_check`
+  - Objetivo: bloquear no banco qualquer programacao ativa fora de exatamente um estado valido de ETAPA: numerica maior que zero sem flags, ETAPA UNICA ou ETAPA FINAL.
 - Migration de desligamento/documentos:
   - `supabase/migrations/089_add_programming_outage_and_documents_compat.sql`
   - Campos em `project_programming`: `outage_start_time`, `outage_end_time`
@@ -2294,7 +2299,8 @@ Atualizacao 2026-06-26 - Guarda diferida de ETAPA ativa
 - Comportamento antes/depois:
   - Antes: o CHECK imediato barrava a copia dentro da RPC full quando a linha base era criada antes de receber `etapa_number`, `etapa_unica` ou `etapa_final` na mesma transacao.
   - Ajuste complementar: a migration 271 faz a funcao diferida consultar a linha atual em `project_programming`, porque `NEW` de um evento `INSERT` diferido ainda representa o estado enfileirado antes da atualizacao de ETAPA feita pela RPC full.
-  - Depois: a validacao ocorre no fim da transacao sobre o registro final; se ele estiver ativo sem ETAPA numerica ou flag especial, o banco continua rejeitando com `project_programming_active_stage_required_check`.
+  - Depois, ate a migration 274: a validacao ocorre no fim da transacao sobre o registro final; se ele estiver ativo sem ETAPA numerica ou flag especial, o banco continua rejeitando com `project_programming_active_stage_required_check`.
+  - Regra vigente a partir da migration 275: a validacao diferida passa a rejeitar tambem combinacoes invalidas de ETAPA com `project_programming_active_stage_valid_check`.
   - Depois: o fluxo `Copiar programacao` volta a permitir destinos validos com ETAPA numerica informada.
 - Multi-tenant:
   - A regra segue aplicada na tabela inteira, sem criar permissao nova de leitura/escrita.
@@ -2370,6 +2376,31 @@ Atualizacao 2026-06-27 - COPY_TO_DATES atomico
   - A RPC filtra origem, equipes, conflitos, historico e escrita por `tenant_id`.
   - `tenant_id` e `actor_user_id` continuam derivados da sessao na API.
   - EXECUTE da RPC fica restrito a `service_role`.
+
+Atualizacao 2026-06-27 - Integridade estrita de ETAPA ativa
+-----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/275_harden_programming_stage_state_integrity.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+  - `verificação/crc/programacao.md`
+- Funcoes/hooks/constantes tocadas:
+  - Banco: `enforce_project_programming_active_stage_required`.
+  - Trigger: `project_programming_active_stage_valid_check`.
+- Comportamento antes:
+  - A trigger diferida bloqueava programacao ativa sem ETAPA, mas ainda aceitava combinacoes invalidas como ETAPA 0, ETAPA negativa, ETAPA numerica com flag especial ou `ETAPA UNICA + ETAPA FINAL`.
+- Comportamento depois:
+  - Programacao ativa (`PROGRAMADA`/`REPROGRAMADA`) deve estar em exatamente um destes estados:
+    - `etapa_number > 0`, `etapa_unica = false`, `etapa_final = false`;
+    - `etapa_number = null`, `etapa_unica = true`, `etapa_final = false`;
+    - `etapa_number = null`, `etapa_unica = false`, `etapa_final = true`.
+  - A validacao ocorre no commit por constraint trigger diferida, cobrindo escrita direta, RPC, importacao e edicao sem quebrar RPCs full que preenchem ETAPA dentro da mesma transacao.
+- Como validar:
+  - Aplicar a migration 275 em base sem dados ativos invalidos.
+  - Testar INSERT/UPDATE direto tentando salvar `PROGRAMADA` com ETAPA 0, ETAPA negativa, ETAPA numerica + `etapa_final`, `etapa_unica + etapa_final` e todas as ETAPAs vazias; todos devem falhar com `project_programming_active_stage_valid_check`.
+  - Testar os tres estados validos e confirmar sucesso.
 
 Atualizacao 2026-06-26 - Estado Trabalho sem preenchimento automatico
 ---------------------------------------------------------------------
