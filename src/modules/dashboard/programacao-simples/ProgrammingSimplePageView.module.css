@@ -611,6 +611,10 @@ fieldset.field {
   background: #0f6a35;
 }
 
+.weekLegendAnticipated {
+  background: #4d7c8a;
+}
+
 .weekLegendCancelled {
   background: #c53d3d;
 }
@@ -717,6 +721,12 @@ fieldset.field {
   background: linear-gradient(180deg, #ffe9ad 0%, #f3d572 100%);
   color: #6d5206;
   border-color: rgba(145, 106, 7, 0.2);
+}
+
+.weekCardAnticipated {
+  background: linear-gradient(180deg, #9cc6d3 0%, #4d7c8a 100%);
+  color: #0e3440;
+  border-color: rgba(39, 91, 106, 0.24);
 }
 
 .weekCardCancelled {

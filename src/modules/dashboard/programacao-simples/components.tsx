@@ -701,7 +701,7 @@ function getScheduleCardClassName(status: ProgrammingStatus, workCompletionStatu
   }
 
   if (status === "ANTECIPADA") {
-    return styles.weekCardPostponed;
+    return styles.weekCardAnticipated;
   }
 
   return styles.weekCardPlanned;
@@ -912,6 +912,7 @@ export function ProgrammingWeeklyCalendarPanel(props: {
         <span className={`${styles.weekLegendItem} ${styles.weekLegendPlanned}`}>Programado</span>
         <span className={`${styles.weekLegendItem} ${styles.weekLegendRescheduled}`}>Reprogramado</span>
         <span className={`${styles.weekLegendItem} ${styles.weekLegendCompleted}`}>Concluido</span>
+        <span className={`${styles.weekLegendItem} ${styles.weekLegendAnticipated}`}>Antecipado</span>
         <span className={`${styles.weekLegendItem} ${styles.weekLegendPostponed}`}>Adiado</span>
         <span className={`${styles.weekLegendItem} ${styles.weekLegendCancelled}`}>Cancelado</span>
       </div>
@@ -1795,10 +1796,10 @@ export function ProgrammingCancelModal(props: {
 export function ProgrammingAlertModal(props: {
   modal: AlertModalState | null;
   workCompletionCatalog: WorkCompletionCatalogItem[];
-  selectedWorkCompletionStatus: string;
+  selectedWorkCompletionStatus: WorkCompletionStatus | "";
   canSaveWorkCompletionStatus: boolean;
   isSavingWorkCompletionStatus: boolean;
-  onWorkCompletionStatusChange: (value: string) => void;
+  onWorkCompletionStatusChange: (value: WorkCompletionStatus | "") => void;
   onSaveWorkCompletionStatus: () => void;
   onPrimaryAction?: () => void;
   isPrimaryActionDisabled?: boolean;
@@ -1851,7 +1852,7 @@ export function ProgrammingAlertModal(props: {
                 <span>Estado Trabalho (obrigatorio para continuar)</span>
                 <select
                   value={selectedWorkCompletionStatus}
-                  onChange={(event) => onWorkCompletionStatusChange(event.target.value)}
+                  onChange={(event) => onWorkCompletionStatusChange(event.target.value as WorkCompletionStatus | "")}
                 >
                   <option value="">Selecione</option>
                   {workCompletionCatalog
