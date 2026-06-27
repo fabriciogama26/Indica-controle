@@ -69,6 +69,10 @@ Arquitetura
   - `supabase/migrations/217_copy_programming_to_multiple_dates.sql`
   - RPC: `copy_project_programming_to_dates`
   - Objetivo: copiar uma Programacao ativa para multiplas datas, exigindo ETAPA individual por destino e mantendo a operacao transacional.
+- Migration de copia por datas/equipes 100% transacional:
+  - `supabase/migrations/274_transactional_copy_programming_to_dates_selected_teams.sql`
+  - RPC: `copy_project_programming_to_dates`
+  - Objetivo: copiar multiplas datas e equipes dentro de uma unica transacao, sem criar linhas e cancelar depois para compensar falhas parciais.
 - Migration corretiva da copia por datas:
   - `supabase/migrations/242_copy_programming_to_dates_inherit_work_status.sql`
   - Objetivo: fazer a copia por datas herdar o ultimo `Estado Trabalho` valido da obra no tenant, sem reabrir EXECUTE para clientes autenticados.
@@ -2341,6 +2345,31 @@ Atualizacao 2026-06-27 - Grupo operacional persistido
   - Os indices novos incluem `tenant_id + programming_group_id`.
   - EXECUTE das RPCs sensiveis continua restrito a `service_role`.
   - A migration nao libera escrita direta para `authenticated`.
+
+Atualizacao 2026-06-27 - COPY_TO_DATES atomico
+----------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/274_transactional_copy_programming_to_dates_selected_teams.sql`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `copy_project_programming_to_dates`: passa a aceitar `teamIds` por data destino e executar a copia completa em uma unica transacao.
+  - `copyProgrammingToDatesViaRpc`: novo wrapper server-side para chamar a RPC transacional.
+  - `copyProgrammingToDates`: remove o loop de save individual e deixa de cancelar registros ja criados para compensar falha.
+- Comportamento antes/depois:
+  - Antes: a API criava as copias em loop; se um item falhasse depois de outros terem sido criados, tentava cancelar os registros ja criados.
+  - Depois: a RPC valida os destinos e cria lote, programacoes, vinculos e historico dentro da mesma transacao.
+  - Depois: se uma unica equipe tiver conflito de horario, nenhuma linha nova e criada e nenhum lote parcial permanece.
+  - Depois: copia de origem `ANTECIPADO` tambem aplica o rastreio dentro da mesma transacao da copia.
+- Multi-tenant:
+  - A RPC filtra origem, equipes, conflitos, historico e escrita por `tenant_id`.
+  - `tenant_id` e `actor_user_id` continuam derivados da sessao na API.
+  - EXECUTE da RPC fica restrito a `service_role`.
 
 Atualizacao 2026-06-26 - Estado Trabalho sem preenchimento automatico
 ---------------------------------------------------------------------

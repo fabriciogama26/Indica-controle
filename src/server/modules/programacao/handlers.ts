@@ -23,6 +23,7 @@ import type {
   WorkCompletionStatusRpcResult,
 } from "./types";
 import {
+  copyProgrammingToDatesViaRpc,
   markFutureProgrammingStagesAnticipatedViaRpc,
   markProgrammingStageAnticipatedViaRpc,
   resolveProgrammingEqCatalog,
@@ -413,10 +414,7 @@ export async function copyProgrammingToDates(request: NextRequest) {
     .from("project_programming")
     .select("id")
     .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("project_id", source.project_id)
-    .eq("execution_date", source.execution_date)
-    .eq("etapa_number", source.etapa_number)
-    .eq("etapa_unica", false)
+    .eq("programming_group_id", source.programming_group_id)
     .in("status", ["PROGRAMADA", "REPROGRAMADA"])
     .returns<Array<{ id: string }>>();
 
@@ -601,177 +599,42 @@ export async function copyProgrammingToDates(request: NextRequest) {
     }
   }
 
-  let copiedCount = 0;
-  const createdIds: string[] = [];
-  const activityCache = new Map<string, Array<{ catalogId: string; quantity: number }>>();
-
-  const buildDocuments = (row: ProgrammingRow): NonNullable<SaveProgrammingPayload["documents"]> => ({
-    sgd: {
-      number: normalizeSgdNumber(row.sgd_number) ?? "",
-      approvedAt: row.sgd_included_at ?? "",
-      requestedAt: row.sgd_delivered_at ?? "",
-      includedAt: row.sgd_included_at ?? "",
-      deliveredAt: row.sgd_delivered_at ?? "",
-    },
-    pi: {
-      number: normalizeText(row.pi_number),
-      approvedAt: row.pi_included_at ?? "",
-      requestedAt: row.pi_delivered_at ?? "",
-      includedAt: row.pi_included_at ?? "",
-      deliveredAt: row.pi_delivered_at ?? "",
-    },
-    pep: {
-      number: normalizeText(row.pep_number),
-      approvedAt: row.pep_included_at ?? "",
-      requestedAt: row.pep_delivered_at ?? "",
-      includedAt: row.pep_included_at ?? "",
-      deliveredAt: row.pep_delivered_at ?? "",
-    },
+  const copyResult = await copyProgrammingToDatesViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    sourceProgrammingId,
+    expectedUpdatedAt,
+    targets: targets.map((target) => ({
+      date: target.date ?? "",
+      etapaNumber: target.etapaNumber ?? 0,
+      teamIds: target.teamIds,
+    })),
   });
 
-  for (const target of targets) {
-    for (const teamId of target.teamIds) {
-      const model = sourceRowsByTeam.get(teamId) ?? source;
-      const modelIsAnticipated = isAnticipatedWorkStatus(model.work_completion_status);
-      const anticipatedSourceProgrammingId = modelIsAnticipated
-        ? await resolveAnticipatedSourceProgrammingId({
-          supabase: resolution.supabase,
-          tenantId: resolution.appUser.tenant_id,
-          projectId: source.project_id,
-          etapaNumber: target.etapaNumber,
-        })
-        : null;
-
-      if (modelIsAnticipated && !anticipatedSourceProgrammingId) {
-        return NextResponse.json(
-          {
-            success: false,
-            reason: "ANTICIPATED_SOURCE_NOT_FOUND",
-            message: "Nao existe CONCLUIDO anterior valido para copiar uma programacao ANTECIPADO nesta ETAPA.",
-          } satisfies CopyProgrammingToDatesResponse,
-          { status: 409 },
-        );
-      }
-
-      let activities = activityCache.get(model.id);
-      if (!activities) {
-        activities = await fetchProgrammingActivitiesForSave({
-          supabase: resolution.supabase,
-          tenantId: resolution.appUser.tenant_id,
-          programmingId: model.id,
-        }) ?? [];
-        activityCache.set(model.id, activities);
-      }
-
-      const saveResult = await saveProgrammingFullViaRpc({
-        supabase: resolution.supabase,
-        tenantId: resolution.appUser.tenant_id,
-        actorUserId: resolution.appUser.id,
-        projectId: source.project_id,
-        teamId,
-        executionDate: target.date ?? "",
-        period: model.period,
-        startTime: model.start_time,
-        endTime: model.end_time,
-        expectedMinutes: Number(model.expected_minutes ?? 0),
-        outageStartTime: model.outage_start_time,
-        outageEndTime: model.outage_end_time,
-        feeder: model.feeder,
-        support: model.support,
-        supportItemId: model.support_item_id,
-        note: model.note,
-        electricalField: model.campo_eletrico,
-        serviceDescription: model.service_description,
-        posteQty: Number(model.poste_qty ?? 0),
-        estruturaQty: Number(model.estrutura_qty ?? 0),
-        trafoQty: Number(model.trafo_qty ?? 0),
-        redeQty: Number(model.rede_qty ?? 0),
-        etapaNumber: target.etapaNumber,
-        etapaUnica: false,
-        etapaFinal: false,
-        workCompletionStatus: modelIsAnticipated ? null : model.work_completion_status,
-        affectedCustomers: Number(model.affected_customers ?? 0),
-        sgdTypeId: model.sgd_type_id,
-        electricalEqCatalogId: model.electrical_eq_catalog_id,
-        documents: buildDocuments(model),
-        activities,
-        historyActionOverride: "COPY",
-        historyReason: "Copia de programacao para outras datas.",
-        copiedFromProgrammingId: model.id,
-        historyMetadata: {
-          source: "programacao-api",
-          action: "COPY_TO_DATES",
-          copyMode: "single_to_dates_selected_teams",
-          selectedFromProgrammingId: source.id,
-          sourceProgrammingId: model.id,
-          sourceTeamId: model.team_id,
-          targetTeamId: teamId,
-          sourceExecutionDate: model.execution_date,
-          targetExecutionDate: target.date,
-          targetEtapaNumber: target.etapaNumber,
-        },
-      });
-
-      if (!saveResult.ok) {
-        // Rollback: cancela registros já criados nesta operação para evitar estado parcial
-        if (createdIds.length > 0) {
-          await resolution.supabase
-            .from("project_programming")
-            .update({ status: "CANCELADA" })
-            .in("id", createdIds)
-            .eq("tenant_id", resolution.appUser.tenant_id);
-        }
-        return NextResponse.json(
-          {
-            success: false,
-            reason: "reason" in saveResult ? saveResult.reason ?? null : null,
-            detail: "detail" in saveResult ? saveResult.detail ?? null : null,
-            message: saveResult.message ?? "Falha ao copiar programacao para as datas selecionadas.",
-          } satisfies CopyProgrammingToDatesResponse,
-          { status: saveResult.status },
-        );
-      }
-
-      if (modelIsAnticipated && anticipatedSourceProgrammingId) {
-        const anticipatedResult = await markProgrammingStageAnticipatedViaRpc({
-          supabase: resolution.supabase,
-          tenantId: resolution.appUser.tenant_id,
-          actorUserId: resolution.appUser.id,
-          targetProgrammingId: saveResult.programmingId,
-          sourceProgrammingId: anticipatedSourceProgrammingId,
-        });
-
-        if (!anticipatedResult.ok) {
-          await resolution.supabase
-            .from("project_programming")
-            .update({ status: "CANCELADA" })
-            .in("id", [...createdIds, saveResult.programmingId])
-            .eq("tenant_id", resolution.appUser.tenant_id);
-
-          return NextResponse.json(
-            {
-              success: false,
-              reason: anticipatedResult.reason ?? "ANTICIPATED_COPY_FAILED",
-              detail: "detail" in anticipatedResult ? anticipatedResult.detail ?? null : null,
-              message: anticipatedResult.message,
-            } satisfies CopyProgrammingToDatesResponse,
-            { status: anticipatedResult.status },
-          );
-        }
-      }
-
-      createdIds.push(saveResult.programmingId);
-      copiedCount += 1;
-    }
+  if (!copyResult.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: copyResult.reason ?? null,
+        detail: "detail" in copyResult ? copyResult.detail ?? null : null,
+        message: copyResult.message,
+        enteredEtapaNumber: "enteredEtapaNumber" in copyResult ? copyResult.enteredEtapaNumber : undefined,
+        hasConflict: "hasConflict" in copyResult ? copyResult.hasConflict : undefined,
+        highestStage: "highestStage" in copyResult ? copyResult.highestStage : undefined,
+        teams: "teams" in copyResult ? copyResult.teams : undefined,
+      } satisfies CopyProgrammingToDatesResponse,
+      { status: copyResult.status },
+    );
   }
 
   return NextResponse.json({
     success: true,
-    copiedCount,
-    copyBatchId: null,
-    copyBatchIds: [],
-    sourceCount: allTargetTeamIds.length,
-    message: `Programacao copiada para ${allTargetTeamIds.length} equipe(s), totalizando ${copiedCount} registro(s).`,
+    copiedCount: copyResult.copiedCount,
+    copyBatchId: copyResult.copyBatchId,
+    copyBatchIds: copyResult.copyBatchId ? [copyResult.copyBatchId] : [],
+    sourceCount: copyResult.sourceCount || allTargetTeamIds.length,
+    message: copyResult.message,
   } satisfies CopyProgrammingToDatesResponse);
 }
 

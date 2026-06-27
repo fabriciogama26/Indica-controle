@@ -6,7 +6,7 @@ Escopo:
 - Tela `Programacao` atual: `/programacao-simples`.
 - Tela de consulta: `/programacao-visualizacao`, usando a mesma view em modo visualizacao.
 - API principal: `/api/programacao`.
-- Banco esperado com migrations ate `273_define_programming_group_id.sql`.
+- Banco esperado com migrations ate `274_transactional_copy_programming_to_dates_selected_teams.sql`.
 
 ---
 
@@ -432,7 +432,9 @@ Efeitos:
 - Historico registra `COPY_TO_DATES`.
 
 Rollback:
-- Se alguma iteracao falhar depois de criar registros, a API cancela os registros ja criados no lote para evitar estado parcialmente salvo.
+- A copia para multiplas datas/equipes usa uma unica RPC transacional.
+- Se qualquer destino/equipe falhar, nenhuma linha nova, vinculo de lote ou historico do lote permanece gravado.
+- E proibido criar registros e depois cancelar para tentar desfazer copia parcial.
 
 Fluxo:
 ```mermaid
@@ -440,10 +442,10 @@ flowchart TD
   A[Origem ativa com ETAPA numerica] --> B[Usuario informa datas, etapas e equipes]
   B --> C{Validacoes}
   C -->|Falha| D[Bloqueia e mostra erro]
-  C -->|Ok| E[Cria registros destino]
-  E --> F{Alguma criacao falhou?}
-  F -->|Sim| G[Cancela registros criados no lote]
-  F -->|Nao| H[Historico COPY_TO_DATES]
+  C -->|Ok| E[RPC transacional COPY_TO_DATES]
+  E --> F{Algum destino falhou?}
+  F -->|Sim| G[Rollback total]
+  F -->|Nao| H[Linhas + lote + historico]
 ```
 
 ---
@@ -762,6 +764,10 @@ Banco e migrations relevantes:
   - Cria `project_programming.programming_group_id`.
   - Faz backfill por `tenant_id + project_id + execution_date + ETAPA numerica`, `ETAPA UNICA`, `ETAPA FINAL` ou grupo proprio para historicos sem etapa.
   - Recria cancelamento, adiamento e sincronizacao operacional para filtrar por `programming_group_id`.
+- `274_transactional_copy_programming_to_dates_selected_teams.sql`
+  - Recria `copy_project_programming_to_dates` para aceitar `teamIds` por data destino.
+  - Move a copia selecionada para uma unica transacao no banco.
+  - Remove a compensacao antiga de criar linhas e cancelar depois em caso de falha parcial.
 
 ---
 
@@ -803,6 +809,7 @@ Copia:
 - Tentar copiar `ETAPA UNICA`/`ETAPA FINAL`: deve bloquear.
 - Tentar destino com ETAPA menor/igual: deve bloquear.
 - Tentar equipe com conflito de agenda: deve bloquear.
+- Em copia com varias datas/equipes, forcar conflito de horario em uma unica equipe e confirmar que nenhuma linha nova foi criada e nenhum lote parcial ficou salvo.
 
 Adicionar equipe:
 - Adicionar equipe ainda ausente do grupo.

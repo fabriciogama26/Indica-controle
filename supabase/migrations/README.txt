@@ -107,6 +107,7 @@ Ordem de aplicacao
 271. 271_fix_deferred_programming_stage_guard_current_row.sql
 272. 272_harden_anticipated_work_completion_status.sql
 273. 273_define_programming_group_id.sql
+274. 274_transactional_copy_programming_to_dates_selected_teams.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -739,3 +740,9 @@ Observacao
 - Cria trigger para atribuir/recalcular o grupo em inserts e mudancas de projeto/data/etapa.
 - Recria `cancel_project_programming_group`, `postpone_project_programming_group` e `sync_project_programming_group_operational_fields` para usar `programming_group_id`.
 - Mantem `EXECUTE` das RPCs sensiveis restrito a `service_role` e adiciona indices por `tenant_id + programming_group_id`.
+
+274_transactional_copy_programming_to_dates_selected_teams.sql
+- Recria `copy_project_programming_to_dates` para aceitar multiplas datas com `teamIds` por destino.
+- Executa validacao, lote, criacao das programacoes, vinculos de copia, historico e rastreio de `ANTECIPADO` em uma unica transacao.
+- Remove a estrategia de compensacao por UPDATE/CANCELADA quando uma iteracao falhava depois de criar linhas.
+- Mantem EXECUTE restrito a `service_role`.

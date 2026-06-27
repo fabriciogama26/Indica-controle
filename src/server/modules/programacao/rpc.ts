@@ -5,6 +5,7 @@ import type {
   BatchProgrammingRpcResult,
   CancelProgrammingGroupRpcResult,
   CancelProgrammingRpcResult,
+  CopyProgrammingToDatesRpcResult,
   PostponeProgrammingGroupRpcResult,
   PostponeProgrammingRpcResult,
   ProgrammingEqCatalogRow,
@@ -13,6 +14,74 @@ import type {
   SaveProgrammingRpcResult,
 } from "./types";
 import { isMissingRpcFunctionError, normalizeText } from "./normalizers";
+
+export async function copyProgrammingToDatesViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  sourceProgrammingId: string;
+  expectedUpdatedAt: string;
+  targets: Array<{ date: string; etapaNumber: number; teamIds: string[] }>;
+}) {
+  const rpcName = "copy_project_programming_to_dates";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_source_programming_id: params.sourceProgrammingId,
+    p_expected_updated_at: params.expectedUpdatedAt,
+    p_targets: params.targets.map((target) => ({
+      date: target.date,
+      etapaNumber: target.etapaNumber,
+      teamIds: target.teamIds,
+    })),
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "COPY_TO_DATES_RPC_NOT_AVAILABLE",
+        message: "Seu ambiente ainda nao suporta copia transacional para multiplas datas/equipes. Aplique a migration 274.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      reason: "COPY_TO_DATES_RPC_FAILED",
+      message: error.message
+        ? `Falha ao copiar programacao via RPC transacional: ${error.message}`
+        : "Falha ao copiar programacao via RPC transacional.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as CopyProgrammingToDatesRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      reason: result.reason ?? null,
+      detail: result.detail ?? null,
+      message: result.message ?? "Falha ao copiar programacao para as datas selecionadas.",
+      enteredEtapaNumber: result.enteredEtapaNumber,
+      hasConflict: result.hasConflict,
+      highestStage: result.highestStage,
+      teams: result.teams,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    copiedCount: Number(result.copied_count ?? 0),
+    copyBatchId: normalizeText(result.copy_batch_id) || null,
+    copiedProgrammingIds: Array.isArray(result.copied_programming_ids)
+      ? result.copied_programming_ids.map((item) => normalizeText(item)).filter(Boolean)
+      : [],
+    sourceCount: Number(result.source_count ?? 0),
+    message: result.message ?? "Programacao copiada com sucesso.",
+  } as const;
+}
 
 export async function saveProgrammingFullViaRpc(params: {
   supabase: SupabaseClient;

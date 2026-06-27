@@ -362,6 +362,22 @@ export type CopyProgrammingToDatesResponse = {
   teams?: ProgrammingStageValidationTeamSummary[];
 };
 
+export type CopyProgrammingToDatesRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string | null;
+  detail?: string | null;
+  message?: string;
+  copied_count?: number;
+  copy_batch_id?: string | null;
+  copied_programming_ids?: string[];
+  source_count?: number;
+  enteredEtapaNumber?: number;
+  hasConflict?: boolean;
+  highestStage?: number;
+  teams?: ProgrammingStageValidationTeamSummary[];
+};
+
 export type AddTeamToProgrammingResponse = {
   success?: boolean;
   id?: string;
