@@ -109,6 +109,7 @@ Ordem de aplicacao
 273. 273_define_programming_group_id.sql
 274. 274_transactional_copy_programming_to_dates_selected_teams.sql
 275. 275_harden_programming_stage_state_integrity.sql
+276. 276_fix_anticipated_reopen_copy_and_group_ownership.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -731,7 +732,7 @@ Observacao
 - Adiciona `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status` em `project_programming`.
 - Bloqueia `ANTECIPADO` sem ETAPA numerica, sem origem `CONCLUIDO` anterior no mesmo tenant/projeto ou sem rastreio.
 - Recria a RPC de antecipacao para preservar Estado Trabalho anterior e origem causadora.
-- Cria RPC para copia/adicao de equipe marcar `ANTECIPADO` somente apos nova validacao do `CONCLUIDO` anterior.
+- Cria RPC de protecao para copia/adicao de equipe marcar `ANTECIPADO` somente apos nova validacao do `CONCLUIDO` anterior; a migration 276 depois restringe o fluxo normal quando o projeto esta concluido.
 - Ao reabrir um `CONCLUIDO`, trigger restaura apenas as linhas `ANTECIPADO` causadas por aquela programacao.
 - Quando dados legados bloqueiam o backfill, informa exemplos de registros invalidos para apoiar a correcao operacional.
 
@@ -744,7 +745,7 @@ Observacao
 
 274_transactional_copy_programming_to_dates_selected_teams.sql
 - Recria `copy_project_programming_to_dates` para aceitar multiplas datas com `teamIds` por destino.
-- Executa validacao, lote, criacao das programacoes, vinculos de copia, historico e rastreio de `ANTECIPADO` em uma unica transacao.
+- Executa validacao, lote, criacao das programacoes, vinculos de copia, historico e rastreio de `ANTECIPADO` em uma unica transacao; a migration 276 depois remove a excecao de copia normal em projeto concluido.
 - Remove a estrategia de compensacao por UPDATE/CANCELADA quando uma iteracao falhava depois de criar linhas.
 - Mantem EXECUTE restrito a `service_role`.
 
@@ -753,3 +754,11 @@ Observacao
 - Programacao ativa deve ter `etapa_number > 0` sem flags, ou `ETAPA UNICA`, ou `ETAPA FINAL`.
 - Bloqueia combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag e `ETAPA UNICA + ETAPA FINAL`.
 - A migration para antes de alterar a trigger quando encontra dados ativos invalidos e mostra exemplos para saneamento.
+
+276_fix_anticipated_reopen_copy_and_group_ownership.sql
+- Garante no banco no maximo um `CONCLUIDO` ativo por `tenant_id + project_id`, alinhando `CONCLUIDO` como conclusao global do projeto.
+- Saneia duplicados legados de `CONCLUIDO` ativo antes do indice unico: mantem o registro mais recente por `updated_at`, `execution_date`, `etapa_number`, `created_at` e `id`, limpa o Estado Trabalho dos demais e registra historico.
+- Forca `SET CONSTRAINTS ALL IMMEDIATE` apos saneamentos que atualizam `project_programming`, evitando eventos de trigger diferidos pendentes antes do `CREATE INDEX`.
+- Encerra operacionalmente linhas `ANTECIPADO` com `status = ANTECIPADA` para liberar agenda da equipe, preservando `previous_operational_status` para restauracao.
+- Ajusta `copy_project_programming_to_dates` de forma idempotente para bloquear data destino anterior/igual a origem, sem depender de localizar textualmente a trava de projeto `CONCLUIDO` na funcao ja instalada.
+- Reforca `programming_group_id` como campo controlado pelo banco, preservando o grupo em tentativa de alteracao direta e recalculando apenas quando Projeto, Data ou ETAPA mudarem.

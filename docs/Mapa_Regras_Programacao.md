@@ -6,7 +6,7 @@ Escopo:
 - Tela `Programacao` atual: `/programacao-simples`.
 - Tela de consulta: `/programacao-visualizacao`, usando a mesma view em modo visualizacao.
 - API principal: `/api/programacao`.
-- Banco esperado com migrations ate `275_harden_programming_stage_state_integrity.sql`.
+- Banco esperado com migrations ate `276_fix_anticipated_reopen_copy_and_group_ownership.sql`.
 
 ---
 
@@ -17,20 +17,31 @@ A Programacao controla agendas operacionais por `tenant_id`, `project_id`, `team
 Regras centrais:
 - Uma programacao ativa tem status operacional `PROGRAMADA` ou `REPROGRAMADA`.
 - Uma programacao interrompida tem status `ADIADA` ou `CANCELADA`.
+- Uma programacao encerrada por conclusao antecipada do projeto tem status `ANTECIPADA`.
 - O grupo operacional e definido por `programming_group_id`.
 - `programming_group_id` representa:
   - ETAPA numerica: mesmo `tenant_id + project_id + execution_date + etapa_number`.
   - ETAPA UNICA: mesmo `tenant_id + project_id + execution_date + etapa_unica`.
   - ETAPA FINAL: mesmo `tenant_id + project_id + execution_date + etapa_final`.
   - Sem etapa: grupo proprio por registro.
+- `programming_group_id` e controlado pelo banco:
+  - nao e informado pelo cliente;
+  - nao pode ser alterado diretamente;
+  - e calculado/recalculado por trigger quando Projeto, Data ou ETAPA mudam;
+  - e preservado ao adicionar equipe no mesmo grupo;
+  - e recriado quando uma programacao e copiada ou adiada para outra data.
 - Toda programacao ativa deve estar em exatamente um estado de ETAPA:
   - `etapa_number > 0`, `etapa_unica = false`, `etapa_final = false`;
   - `etapa_number = null`, `etapa_unica = true`, `etapa_final = false`;
   - `etapa_number = null`, `etapa_unica = false`, `etapa_final = true`.
 - Combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag, `ETAPA UNICA + ETAPA FINAL` ou nenhuma ETAPA ativa sao bloqueadas no banco.
+- `Estado Trabalho = CONCLUIDO` representa conclusao do projeto inteiro, independentemente da equipe/linha que registrou a conclusao.
+- Um projeto pode ter no maximo uma programacao ativa com `Estado Trabalho = CONCLUIDO` por `tenant_id + project_id`.
 - `Estado Trabalho = CONCLUIDO` bloqueia novas programacoes, copias, inclusao de equipe, adiamento e cancelamento ate reabrir o projeto por uma edicao/acao permitida.
-- Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser marcadas como `ANTECIPADO`.
-- Ao retirar `CONCLUIDO`, somente as programacoes `ANTECIPADO` causadas por aquela conclusao voltam ao `previous_work_completion_status`.
+- Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser encerradas operacionalmente como `ANTECIPADA` com `Estado Trabalho = ANTECIPADO`.
+- `ANTECIPADA` nao conta como programacao ativa, nao bloqueia agenda da equipe e nao deve aparecer como servico pendente.
+- Ao retirar o unico `CONCLUIDO`, cada programacao `ANTECIPADO` vinculada a ele volta ao `previous_work_completion_status` e ao status operacional anterior.
+- Se a base ainda tiver dado legado inconsistente com outro `CONCLUIDO` anterior valido, a reabertura pode reatribuir o `anticipated_by_programming_id`; isso e tolerancia de saneamento, nao fluxo operacional normal.
 - Adiamento com nova data transforma a origem em `ADIADA` e cria nova linha `REPROGRAMADA`.
 - Cancelamento transforma a linha, ou grupo escolhido, em `CANCELADA`.
 - Copia para outras datas exige origem com ETAPA numerica e destino com ETAPA maior.
@@ -50,7 +61,7 @@ Campos de identidade:
 - `execution_date`: data de execucao.
 
 Status operacional:
-- `status`: `PROGRAMADA`, `REPROGRAMADA`, `ADIADA`, `CANCELADA`.
+- `status`: `PROGRAMADA`, `REPROGRAMADA`, `ADIADA`, `CANCELADA`, `ANTECIPADA`.
 - `is_active`: legado/apoio visual; a regra atual usa principalmente `status`.
 - `cancellation_reason`: motivo de cancelamento/adiamento.
 - `canceled_at`: data/hora da interrupcao.
@@ -64,6 +75,7 @@ Etapa:
 Estado Trabalho:
 - `work_completion_status`: estado operacional da obra na programacao.
 - Catalogo: `programming_work_completion_catalog`.
+- `previous_operational_status`: status operacional anterior de uma linha encerrada como `ANTECIPADA`, usado para restaurar a agenda quando o `CONCLUIDO` for reaberto.
 
 Rastreio:
 - `project_programming_history`: historico operacional oficial da Programacao.
@@ -85,6 +97,18 @@ Campos operacionais sincronizados por grupo operacional:
 - `trafo_qty`
 - `rede_qty`
 
+Regra pratica de `programming_group_id`:
+
+| Acao | Regra do grupo |
+| --- | --- |
+| Cadastro com varias equipes | Todas recebem o mesmo grupo quando compartilham Projeto + Data + classificacao de ETAPA |
+| Adicionar equipe | Recebe o grupo da linha modelo |
+| Copia para nova data/ETAPA | Cria novo grupo para cada combinacao Data + ETAPA |
+| Adiamento individual com nova data | Cria novo grupo na linha `REPROGRAMADA` |
+| Adiamento de grupo com nova data | Todas as novas linhas recebem o mesmo novo grupo quando compartilham Data + ETAPA |
+| Editar Projeto, Data ou ETAPA | Recalcula o grupo |
+| Cancelar ou adiar sem nova data | Mantem o grupo historico |
+
 ---
 
 ## Status Operacional
@@ -95,10 +119,11 @@ Campos operacionais sincronizados por grupo operacional:
 | `REPROGRAMADA` | Agenda ativa resultante de reprogramacao/adiamento/copia conforme fluxo | Editar, copiar, adicionar equipe, adiar, cancelar | Tambem conta como ativa. |
 | `ADIADA` | Agenda interrompida por adiamento | Detalhes/historico; sem edicao operacional | Guarda motivo/data de interrupcao. Pode ter nova linha `REPROGRAMADA` vinculada. |
 | `CANCELADA` | Agenda cancelada | Detalhes/historico; sem edicao operacional | Guarda motivo/data de cancelamento. |
+| `ANTECIPADA` | Agenda encerrada porque o projeto foi concluido antes da data futura | Detalhes/historico; sem edicao operacional | Libera a equipe e mantem rastreio em `work_completion_status = ANTECIPADO`. |
 
 Regra de atividade:
 - Ativas: `PROGRAMADA`, `REPROGRAMADA`.
-- Inativas/interrompidas: `ADIADA`, `CANCELADA`.
+- Inativas/interrompidas: `ADIADA`, `CANCELADA`, `ANTECIPADA`.
 
 ---
 
@@ -236,8 +261,14 @@ Ao criar uma nova programacao:
 Ao copiar ou adicionar equipe:
 1. Se a linha modelo possui `work_completion_status`, o backend valida o codigo no catalogo ativo do tenant e copia esse valor.
 2. Se a linha modelo nao possui `work_completion_status`, a nova linha tambem fica sem `Estado Trabalho`.
+3. Fluxo normal nao copia projeto ja `CONCLUIDO`; portanto origem `ANTECIPADA`/`ANTECIPADO` fica bloqueada pela conclusao global.
+4. A validacao transacional de `ANTECIPADO` permanece no banco apenas como protecao para dado legado, importacao administrativa ou correcao interna.
 
 ### Bloqueio por CONCLUIDO
+
+Decisao funcional:
+- `CONCLUIDO` e status de conclusao do projeto inteiro.
+- Uma unica programacao marcada como `CONCLUIDO` trava novas operacoes desse projeto ate reabertura explicita.
 
 Quando existe programacao do projeto com `Estado Trabalho = CONCLUIDO`:
 - Bloqueia novo cadastro.
@@ -264,7 +295,7 @@ Restricoes de `ANTECIPADO`:
 - Nao pode ser enviado por cadastro novo ou edicao livre.
 - Exige `ETAPA` numerica.
 - Exige `CONCLUIDO` anterior valido no mesmo tenant/projeto, com `etapa_number` menor.
-- Copia/adicao de equipe que parte de uma linha `ANTECIPADO` salva a nova linha sem Estado Trabalho e so marca `ANTECIPADO` via RPC se encontrar novamente o `CONCLUIDO` anterior que justifica o estado.
+- Copia/adicao de equipe que parte de uma linha `ANTECIPADO` deve preservar `ANTECIPADO` apenas quando encontrar novamente o `CONCLUIDO` anterior que justifica o estado, na mesma transacao.
 
 ### Reabrir CONCLUIDO
 
@@ -272,9 +303,11 @@ Quando o usuario troca uma programacao de `CONCLUIDO` para outro Estado Trabalho
 1. API valida que o novo status nao e concluido.
 2. Salva via RPC transacional de Estado Trabalho.
 3. Trigger de banco localiza linhas com `anticipated_by_programming_id` igual a programacao reaberta.
-4. Cada linha afetada volta para `previous_work_completion_status` e limpa `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
-5. Linhas antecipadas por outro `CONCLUIDO` nao sao alteradas.
-6. Atualiza visualizacao da linha.
+4. Para cada linha afetada, o banco procura outro `CONCLUIDO` anterior valido do mesmo tenant/projeto, com `etapa_number` menor.
+5. Se encontrar, a linha continua `ANTECIPADO` e `anticipated_by_programming_id` passa para a conclusao anterior mais proxima.
+6. Se nao encontrar, a linha volta para `previous_work_completion_status` e limpa `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
+7. Linhas antecipadas por outro `CONCLUIDO` nao sao alteradas.
+8. Atualiza visualizacao da linha.
 
 ### Interrompidas e CONCLUIDO
 
@@ -324,6 +357,10 @@ Disponibilidade:
 Escopos:
 - `group`: todas as equipes ativas do mesmo `programming_group_id`.
 - `individual`: apenas a equipe selecionada.
+
+Atomicidade:
+- Adiamento em grupo, com ou sem nova data, e uma unica operacao transacional.
+- Se qualquer linha do `programming_group_id` falhar por conflito, concorrencia ou validacao, nenhuma origem fica `ADIADA` e nenhuma linha `REPROGRAMADA` nova permanece criada.
 
 ### Adiamento sem nova data
 
@@ -381,6 +418,10 @@ Escopos:
 - `individual`: cancela apenas a equipe selecionada.
 - `group`: cancela todas as equipes ativas do mesmo `programming_group_id`.
 
+Atomicidade:
+- Cancelamento de grupo e uma unica operacao transacional.
+- Se qualquer linha do `programming_group_id` falhar por concorrencia ou validacao, nenhuma linha do grupo fica parcialmente `CANCELADA`.
+
 Efeitos:
 - `status = CANCELADA`.
 - `is_active = false` quando aplicavel.
@@ -413,11 +454,11 @@ Disponibilidade:
 - Bloqueado para `ETAPA UNICA`.
 - Bloqueado para `ETAPA FINAL`.
 - Bloqueado para origem sem `etapa_number`.
-- Bloqueado se projeto possui `Estado Trabalho = CONCLUIDO`.
+- Bloqueado se projeto possui `Estado Trabalho = CONCLUIDO`, sem excecao para origem `ANTECIPADO`.
 
 Regras do modal:
 - Cada linha exige Data destino, ETAPA e ao menos uma equipe.
-- Data destino nao pode ser a data original.
+- Data destino deve ser posterior a data original.
 - Datas destino nao podem repetir.
 - ETAPAs destino nao podem repetir.
 - ETAPA destino deve ser maior que ETAPA origem.
@@ -433,6 +474,7 @@ Validacoes do backend:
 - Conflito de etapa por projeto/equipe.
 - Conflito de agenda por equipe/data/horario.
 - Estado Trabalho copiado somente da propria linha modelo, quando preenchido.
+- Protecao interna: se algum fluxo administrativo/legado tentar gravar `ANTECIPADO`, o banco exige rastreio e `CONCLUIDO` anterior valido.
 
 Efeitos:
 - Cria uma nova programacao para cada par `Data destino + Equipe`.
@@ -502,6 +544,10 @@ Origem:
 
 Quando dispara:
 - Em edicao de uma programacao ativa via wrapper full.
+
+Atomicidade:
+- Sincronizacao operacional do grupo e parte da transacao de salvamento da linha origem.
+- Se qualquer linha do `programming_group_id` falhar ao sincronizar ou registrar historico, a edicao principal faz rollback e nenhuma linha fica parcialmente sincronizada.
 
 Escopo:
 - Mesmo `tenant_id`.
@@ -689,7 +735,7 @@ RLS:
 | Editar sem mudar data/equipe/hora/periodo | Linha ativa | Atualiza linha; sincroniza campos operacionais por grupo operacional | Linha `ADIADA/CANCELADA`, snapshot de atividades incompleto, concorrencia |
 | Reprogramar por edicao | Mudou projeto/equipe/data/hora/periodo | Salva alteracao com motivo | Motivo ausente, projeto `CONCLUIDO`, conflito horario/etapa |
 | Salvar `CONCLUIDO` | Edicao com etapa numerica | Marca etapa e antecipa etapas futuras | Falha RPC antecipado, catalogo invalido |
-| Reabrir `CONCLUIDO` | Trocar para status diferente | Salva status e restaura somente `ANTECIPADO` vinculado por `anticipated_by_programming_id` | Tentar salvar outro `CONCLUIDO`, linha cancelada/adiada |
+| Reabrir `CONCLUIDO` | Trocar para status diferente | Salva status e revalida `ANTECIPADO`: reatribui para outro `CONCLUIDO` anterior valido ou restaura o estado anterior | Tentar salvar outro `CONCLUIDO`, linha cancelada/adiada |
 | Adiar sem data | Linha ativa | Origem vira `ADIADA` | Projeto `CONCLUIDO`, motivo ausente, concorrencia |
 | Adiar com data | Linha ativa e data futura | Origem `ADIADA`, nova linha `REPROGRAMADA` | Data igual/anterior, projeto `CONCLUIDO`, conflito |
 | Cancelar | Linha ativa | Linha/grupo vira `CANCELADA` | Projeto `CONCLUIDO`, motivo ausente, concorrencia |
@@ -785,6 +831,16 @@ Banco e migrations relevantes:
   - Endurece a constraint trigger diferida de ETAPA ativa.
   - Bloqueia qualquer escrita direta, RPC, importacao ou edicao que tente salvar programacao ativa fora dos tres estados validos de ETAPA.
   - Executa auditoria bloqueante antes de aplicar a regra e mostra exemplos quando dados ativos ja estao invalidos.
+- `276_fix_anticipated_reopen_copy_and_group_ownership.sql`
+  - Garante no banco no maximo um `CONCLUIDO` ativo por `tenant_id + project_id`.
+  - Saneia duplicados legados de `CONCLUIDO` ativo antes de criar o indice unico, mantendo como canônico o registro mais recente por `updated_at`, `execution_date`, `etapa_number`, `created_at` e `id`.
+  - Limpa `work_completion_status`/`work_completion_status_id` dos duplicados nao canonicos e registra historico operacional.
+  - Forca constraints diferidas a executarem antes do `CREATE INDEX`, evitando erro de eventos de trigger pendentes.
+  - Encerra operacionalmente linhas `ANTECIPADO` como `ANTECIPADA`, liberando agenda da equipe.
+  - Revalida `ANTECIPADO` ao reabrir `CONCLUIDO`; reatribuicao para outro `CONCLUIDO` fica apenas como tolerancia a dado legado inconsistente.
+  - Bloqueia copia para data anterior ou igual a origem com patch idempotente da RPC, sem depender de localizar textualmente a trava de projeto `CONCLUIDO`.
+  - Remove a excecao que permitia copia normal de origem `ANTECIPADO` em projeto ja concluido.
+  - Impede alteracao direta de `programming_group_id` e recalcula somente quando Projeto, Data ou ETAPA mudam.
 
 ---
 
@@ -808,15 +864,26 @@ Edicao/reprogramacao:
 
 Estado Trabalho:
 - Salvar `CONCLUIDO` em etapa numerica e verificar etapas futuras `ANTECIPADO`.
-- Conferir em uma linha `ANTECIPADO` os campos `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
-- Trocar `CONCLUIDO` para outro status e verificar restauracao somente das linhas antecipadas por aquela conclusao.
+- Rodar a migration 276 em base com duplicados legados de `CONCLUIDO` e confirmar que apenas um registro ativo por projeto manteve `CONCLUIDO`.
+- Verificar no historico das linhas duplicadas saneadas a acao `DEDUPLICATE_ACTIVE_PROJECT_COMPLETED_WORK_STATUS`.
+- Conferir em uma linha `ANTECIPADO` os campos `status = ANTECIPADA`, `is_active = false`, `anticipated_by_programming_id`, `anticipated_at`, `previous_work_completion_status` e `previous_operational_status`.
+- Tentar salvar uma segunda programacao ativa do mesmo projeto como `CONCLUIDO`: deve bloquear por `tenant_id + project_id`.
+- Trocar o unico `CONCLUIDO` para outro status e verificar restauracao das linhas `ANTECIPADA` para `previous_work_completion_status` e `previous_operational_status`.
+- Confirmar que linha `ANTECIPADA` nao bloqueia conflito de horario da equipe na data futura.
 - Tentar adiar/cancelar/copiar/adicionar equipe em projeto `CONCLUIDO`: deve bloquear.
+
+Grupo:
+- Editar Data ou ETAPA e confirmar que `programming_group_id` foi recalculado.
+- Tentar alterar diretamente apenas `programming_group_id` e confirmar que o banco preserva o grupo original.
+- Adicionar equipe e confirmar que ela recebeu exatamente o mesmo `programming_group_id`.
+- Copiar para duas datas e confirmar que cada Data + ETAPA recebeu grupo proprio.
 
 Adiamento:
 - Adiar sem nova data: origem vira `ADIADA`.
 - Adiar com nova data: origem vira `ADIADA`, nova linha vira `REPROGRAMADA`.
 - Adiar origem `ETAPA FINAL`: nova linha preserva `etapa_final = true`.
 - Adiar grupo com mesmo projeto/data e ETAPAs diferentes: deve afetar somente o `programming_group_id` da linha clicada.
+- Forcar conflito em uma equipe durante adiamento em grupo e confirmar que nenhuma origem foi adiada e nenhuma nova linha foi criada.
 
 Cancelamento:
 - Cancelar individual.
@@ -828,7 +895,9 @@ Copia:
 - Copiar origem numerica para datas futuras com ETAPAs maiores.
 - Tentar copiar `ETAPA UNICA`/`ETAPA FINAL`: deve bloquear.
 - Tentar destino com ETAPA menor/igual: deve bloquear.
+- Tentar copiar para data anterior ou igual a origem: deve bloquear.
 - Tentar equipe com conflito de agenda: deve bloquear.
+- Tentar copiar linha `ANTECIPADA`/`ANTECIPADO` de projeto concluido: deve bloquear pelo `CONCLUIDO` global.
 - Em copia com varias datas/equipes, forcar conflito de horario em uma unica equipe e confirmar que nenhuma linha nova foi criada e nenhum lote parcial ficou salvo.
 
 Adicionar equipe:

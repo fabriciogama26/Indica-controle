@@ -38,6 +38,10 @@ Arquitetura
   - Campo em `project_programming`: `programming_group_id`
   - RPCs recriadas: `cancel_project_programming_group`, `postpone_project_programming_group`, `sync_project_programming_group_operational_fields`
   - Objetivo: fazer cancelamento, adiamento, sincronizacao operacional e adicao de equipe usarem exatamente o mesmo grupo operacional.
+- Migration de propriedade do grupo e revalidacao de ANTECIPADO:
+  - `supabase/migrations/276_fix_anticipated_reopen_copy_and_group_ownership.sql`
+  - Funcoes: `assign_project_programming_group_id`, `restore_project_programming_anticipated_by_reopened_completion`, `copy_project_programming_to_dates`
+  - Objetivo: impedir alteracao direta de `programming_group_id`, garantir apenas um `CONCLUIDO` ativo por projeto, encerrar `ANTECIPADO` como status operacional `ANTECIPADA` e bloquear copia para data anterior/igual.
 - Migration de guarda obrigatoria de ETAPA ativa:
   - `supabase/migrations/269_guard_programming_stage_on_active_records.sql`
   - RPC: `postpone_project_programming`
@@ -2200,18 +2204,19 @@ Atualizacao 2026-06-26 - Blindagem do Estado Trabalho ANTECIPADO
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
   - `mark_project_programming_future_stages_anticipated`: passa a preencher `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
-  - `mark_project_programming_stage_anticipated`: nova RPC para marcar copia/adicao de equipe como `ANTECIPADO` somente apos validar `CONCLUIDO` anterior.
+  - `mark_project_programming_stage_anticipated`: RPC de protecao interna para marcar dado legado/correcao como `ANTECIPADO` somente apos validar `CONCLUIDO` anterior.
   - `enforce_project_programming_anticipated_work_status`: trigger de validacao para impedir `ANTECIPADO` sem ETAPA numerica, origem concluida anterior e rastreio.
-  - `restore_project_programming_anticipated_by_reopened_completion`: trigger que restaura apenas linhas antecipadas pela conclusao reaberta.
+  - `restore_project_programming_anticipated_by_reopened_completion`: trigger que restaura ou reatribui linhas antecipadas pela conclusao reaberta.
   - `saveProgramming` e `saveProgrammingWorkCompletionStatus`: bloqueiam payload manual com `ANTECIPADO`.
-  - `copyProgrammingToDates` e `addTeamToProgramming`: quando a origem esta `ANTECIPADO`, salvam destino sem status e aplicam a RPC de antecipacao rastreada.
+  - `copyProgrammingToDates` e `addTeamToProgramming`: fluxo normal fica bloqueado quando o projeto esta `CONCLUIDO`; a validacao de `ANTECIPADO` permanece como protecao interna para dado legado/correcao.
   - `ProgrammingFormPanel` e `ProgrammingAlertModal`: removem `ANTECIPADO` dos seletores manuais.
   - `ProgrammingDetailsModal`: exibe programacao causadora, data da antecipacao e Estado Trabalho anterior.
 - Comportamento antes/depois:
   - Antes: `ANTECIPADO` ficava ativo no catalogo e podia aparecer no seletor de edicao; reabertura ainda limpava apenas o legado `ANTECIPADA`.
   - Depois: `ANTECIPADO` nao pode ser escolhido manualmente, nao nasce em cadastro novo e nao entra por edicao livre.
   - Depois: toda linha `ANTECIPADO` precisa ter ETAPA numerica e `CONCLUIDO` anterior valido no mesmo tenant/projeto.
-  - Depois: ao reabrir um `CONCLUIDO`, somente as linhas com `anticipated_by_programming_id` apontando para aquela programacao voltam ao `previous_work_completion_status`.
+  - Depois: ao reabrir um `CONCLUIDO`, linhas com `anticipated_by_programming_id` apontando para aquela programacao sao revalidadas; se houver outro `CONCLUIDO` anterior valido, continuam `ANTECIPADO` e passam a apontar para ele.
+  - Depois: sem outro `CONCLUIDO` anterior valido, voltam ao `previous_work_completion_status`.
   - Depois: linhas antecipadas por outro `CONCLUIDO` nao sao alteradas.
 - Multi-tenant:
   - As validacoes usam `tenant_id`, `project_id` e `etapa_number`.
@@ -2371,11 +2376,55 @@ Atualizacao 2026-06-27 - COPY_TO_DATES atomico
   - Antes: a API criava as copias em loop; se um item falhasse depois de outros terem sido criados, tentava cancelar os registros ja criados.
   - Depois: a RPC valida os destinos e cria lote, programacoes, vinculos e historico dentro da mesma transacao.
   - Depois: se uma unica equipe tiver conflito de horario, nenhuma linha nova e criada e nenhum lote parcial permanece.
-  - Depois: copia de origem `ANTECIPADO` tambem aplica o rastreio dentro da mesma transacao da copia.
+  - Depois: a RPC mantem protecao transacional de rastreio de `ANTECIPADO` para dado legado, mas a copia normal continua bloqueada quando o projeto possui `CONCLUIDO`.
 - Multi-tenant:
   - A RPC filtra origem, equipes, conflitos, historico e escrita por `tenant_id`.
   - `tenant_id` e `actor_user_id` continuam derivados da sessao na API.
   - EXECUTE da RPC fica restrito a `service_role`.
+
+Atualizacao 2026-06-27 - Revalidacao de ANTECIPADO, copia e grupo
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/276_fix_anticipated_reopen_copy_and_group_ownership.sql`
+  - `src/server/modules/programacao/handlers.ts`
+  - `supabase/migrations/README.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+  - `verificação/crc/programacao.md`
+- Funcoes/hooks/constantes tocadas:
+  - `enforce_project_programming_anticipated_work_status`: força `work_completion_status = ANTECIPADO` a encerrar a linha com `status = ANTECIPADA`, liberando agenda.
+  - `mark_project_programming_future_stages_anticipated`: marca etapas futuras como `ANTECIPADA` e registra `previous_operational_status`.
+  - `restore_project_programming_anticipated_by_reopened_completion`: ao reabrir `CONCLUIDO`, restaura linhas `ANTECIPADA`; reatribuicao para outro `CONCLUIDO` fica apenas como tolerancia a dado legado inconsistente.
+  - `copy_project_programming_to_dates`: bloqueia data destino anterior/igual com patch idempotente da RPC e nao libera copia normal quando o projeto ja possui `CONCLUIDO`.
+  - `assign_project_programming_group_id`: preserva o grupo contra alteracao direta e recalcula apenas quando Projeto, Data ou ETAPA mudam.
+  - `copyProgrammingToDates`: reforca no backend a regra de data destino posterior a origem antes da chamada RPC.
+- Comportamento antes:
+  - A documentacao permitia cenario normal com duas programacoes `CONCLUIDO` no mesmo projeto, conflitante com a conclusao global.
+  - `ANTECIPADO` podia continuar com status operacional `PROGRAMADA`/`REPROGRAMADA`, mantendo bloqueio de agenda.
+  - A copia de origem `ANTECIPADO` abria excecao no bloqueio de projeto `CONCLUIDO`.
+  - Data destino anterior a origem nao estava declarada como bloqueio obrigatorio.
+  - `programming_group_id` podia ser alterado diretamente se nenhum campo de derivacao mudasse.
+- Comportamento depois:
+  - O banco garante no maximo um `CONCLUIDO` ativo por `tenant_id + project_id`.
+  - Duplicados legados de `CONCLUIDO` ativo sao saneados na migration: fica o registro mais recente e os demais perdem `work_completion_status`/`work_completion_status_id` com historico.
+  - A migration executa `SET CONSTRAINTS ALL IMMEDIATE` apos os saneamentos para disparar triggers diferidos antes de criar o indice unico.
+  - Etapas futuras `ANTECIPADO` ficam com `status = ANTECIPADA`, `is_active = false` e nao bloqueiam agenda.
+  - Reabertura do unico `CONCLUIDO` restaura `previous_work_completion_status` e `previous_operational_status`.
+  - Reatribuicao de `ANTECIPADO` para outro `CONCLUIDO` fica documentada apenas como tolerancia a dado legado inconsistente.
+  - Copia normal de projeto `CONCLUIDO` e bloqueada sem excecao para origem `ANTECIPADO`.
+  - Copia para data anterior ou igual a origem e bloqueada no backend e na RPC.
+  - `programming_group_id` fica controlado pelo banco.
+- Decisao funcional:
+  - `CONCLUIDO` continua representando conclusao do projeto inteiro, nao apenas da equipe ou grupo.
+- Como validar:
+  - Tentar concluir duas programacoes ativas do mesmo projeto e confirmar bloqueio.
+  - Em base com duplicados legados, aplicar a migration 276 e confirmar que apenas um `CONCLUIDO` ativo por projeto permanece.
+  - Concluir ETAPA 1; confirmar que ETAPA futura fica `ANTECIPADA` e nao bloqueia agenda da equipe.
+  - Reabrir o unico `CONCLUIDO` e confirmar restauracao de `previous_work_completion_status` e `previous_operational_status`.
+  - Tentar copiar linha `ANTECIPADA`/`ANTECIPADO` de projeto concluido e confirmar bloqueio.
+  - Tentar copiar para data anterior ou igual a origem e confirmar bloqueio.
+  - Tentar alterar diretamente apenas `programming_group_id` e confirmar que o banco preserva o grupo original.
 
 Atualizacao 2026-06-27 - Integridade estrita de ETAPA ativa
 -----------------------------------------------------------

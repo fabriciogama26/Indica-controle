@@ -105,7 +105,7 @@ export type ProgrammingRow = {
   id: string;
   project_id: string;
   team_id: string;
-  status: "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
+  status: "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA";
   execution_date: string;
   programming_group_id: string;
   period: "INTEGRAL" | "PARCIAL";

@@ -700,6 +700,10 @@ function getScheduleCardClassName(status: ProgrammingStatus, workCompletionStatu
     return styles.weekCardCancelled;
   }
 
+  if (status === "ANTECIPADA") {
+    return styles.weekCardPostponed;
+  }
+
   return styles.weekCardPlanned;
 }
 
