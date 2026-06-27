@@ -243,12 +243,14 @@ Catalogo:
 - `programming_work_completion_catalog`
 
 Valores relevantes no fluxo atual:
-- `PARCIAL`
 - `PARCIAL_PLANEJADO`
 - `PARCIAL_NAO_PLANEJADO`
 - `CONCLUIDO`
 - `ANTECIPADO`
 - `NAO_INFORMADO` apenas como filtro visual, nao como status salvo.
+
+Valor legado:
+- `PARCIAL` nao e codigo ativo nem valor salvo. Payload ou dado legado com `PARCIAL` e normalizado para `PARCIAL_NAO_PLANEJADO`.
 
 ### Cadastro/Copia/Adicao
 
@@ -269,6 +271,9 @@ Ao copiar ou adicionar equipe:
 Decisao funcional:
 - `CONCLUIDO` e status de conclusao do projeto inteiro.
 - Uma unica programacao marcada como `CONCLUIDO` trava novas operacoes desse projeto ate reabertura explicita.
+- `CONCLUIDO` nao e propagado por sincronizacao operacional generica. Apenas a linha canonica recebe `CONCLUIDO`.
+- A linha canonica so pode receber `CONCLUIDO` se nao existir outra programacao ativa no mesmo `programming_group_id`.
+- A sincronizacao generica de Estado Trabalho usa `programming_group_id` e ignora estados finais (`CONCLUIDO` e `ANTECIPADO`).
 
 Quando existe programacao do projeto com `Estado Trabalho = CONCLUIDO`:
 - Bloqueia novo cadastro.
@@ -285,10 +290,11 @@ Mensagem esperada:
 
 Quando uma edicao salva `work_completion_status = CONCLUIDO` e a programacao tem `etapa_number`:
 1. Programacao editada fica `CONCLUIDO`.
-2. Backend chama `mark_project_programming_future_stages_anticipated`.
-3. Etapas futuras ativas do mesmo projeto, com `etapa_number` maior, podem receber `ANTECIPADO`.
-4. Cada linha antecipada grava `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
-5. Historico operacional e registrado.
+2. Banco bloqueia se houver outra linha ativa no mesmo `programming_group_id`.
+3. Backend chama `mark_project_programming_future_stages_anticipated`.
+4. Etapas futuras ativas do mesmo projeto, com `etapa_number` maior, podem receber `ANTECIPADO`.
+5. Cada linha antecipada grava `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
+6. Historico operacional e registrado.
 
 Restricoes de `ANTECIPADO`:
 - Nao aparece no seletor manual de Estado Trabalho.
@@ -841,6 +847,12 @@ Banco e migrations relevantes:
   - Bloqueia copia para data anterior ou igual a origem com patch idempotente da RPC, sem depender de localizar textualmente a trava de projeto `CONCLUIDO`.
   - Remove a excecao que permitia copia normal de origem `ANTECIPADO` em projeto ja concluido.
   - Impede alteracao direta de `programming_group_id` e recalcula somente quando Projeto, Data ou ETAPA mudam.
+- `277_normalize_partial_and_completed_work_status.sql`
+  - Normaliza `PARCIAL` legado para `PARCIAL_NAO_PLANEJADO` em texto e UUID.
+  - Mantem ativos apenas os codigos canonicos `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `CONCLUIDO` e `ANTECIPADO`.
+  - Recria o trigger de sincronismo de `work_completion_status`/`work_completion_status_id` para aceitar somente catalogo ativo.
+  - Recria a sincronizacao de Estado Trabalho para usar `programming_group_id` e nao propagar `CONCLUIDO`/`ANTECIPADO`.
+  - Bloqueia `CONCLUIDO` quando houver outra linha ativa no mesmo `programming_group_id`.
 
 ---
 
@@ -868,9 +880,12 @@ Estado Trabalho:
 - Verificar no historico das linhas duplicadas saneadas a acao `DEDUPLICATE_ACTIVE_PROJECT_COMPLETED_WORK_STATUS`.
 - Conferir em uma linha `ANTECIPADO` os campos `status = ANTECIPADA`, `is_active = false`, `anticipated_by_programming_id`, `anticipated_at`, `previous_work_completion_status` e `previous_operational_status`.
 - Tentar salvar uma segunda programacao ativa do mesmo projeto como `CONCLUIDO`: deve bloquear por `tenant_id + project_id`.
+- Tentar salvar `CONCLUIDO` em linha com outra equipe ativa no mesmo `programming_group_id`: deve bloquear.
 - Trocar o unico `CONCLUIDO` para outro status e verificar restauracao das linhas `ANTECIPADA` para `previous_work_completion_status` e `previous_operational_status`.
 - Confirmar que linha `ANTECIPADA` nao bloqueia conflito de horario da equipe na data futura.
 - Tentar adiar/cancelar/copiar/adicionar equipe em projeto `CONCLUIDO`: deve bloquear.
+- Rodar a migration 277 e confirmar que nao existe `PARCIAL` em `project_programming` nem item `PARCIAL` ativo no catalogo.
+- Confirmar que `PARCIAL` legado aparece visualmente como `Parcial nao planejado` no historico.
 
 Grupo:
 - Editar Data ou ETAPA e confirmar que `programming_group_id` foi recalculado.

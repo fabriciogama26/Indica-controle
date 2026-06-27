@@ -1,6 +1,6 @@
 ﻿export type PeriodMode = "integral" | "partial";
 export type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA";
-export type WorkCompletionStatus = string;
+export type WorkCompletionStatus = "PARCIAL_PLANEJADO" | "PARCIAL_NAO_PLANEJADO" | "CONCLUIDO" | "ANTECIPADO";
 export type DocumentKey = "sgd" | "pi" | "pep";
 
 export type ProjectItem = {

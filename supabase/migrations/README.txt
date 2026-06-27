@@ -110,6 +110,7 @@ Ordem de aplicacao
 274. 274_transactional_copy_programming_to_dates_selected_teams.sql
 275. 275_harden_programming_stage_state_integrity.sql
 276. 276_fix_anticipated_reopen_copy_and_group_ownership.sql
+277. 277_normalize_partial_and_completed_work_status.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -762,3 +763,11 @@ Observacao
 - Encerra operacionalmente linhas `ANTECIPADO` com `status = ANTECIPADA` para liberar agenda da equipe, preservando `previous_operational_status` para restauracao.
 - Ajusta `copy_project_programming_to_dates` de forma idempotente para bloquear data destino anterior/igual a origem, sem depender de localizar textualmente a trava de projeto `CONCLUIDO` na funcao ja instalada.
 - Reforca `programming_group_id` como campo controlado pelo banco, preservando o grupo em tentativa de alteracao direta e recalculando apenas quando Projeto, Data ou ETAPA mudarem.
+
+277_normalize_partial_and_completed_work_status.sql
+- Garante catalogo ativo canonico de Estado Trabalho: `CONCLUIDO`, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e `ANTECIPADO`.
+- Normaliza `PARCIAL`/`PARTIAL` legado para `PARCIAL_NAO_PLANEJADO` em `project_programming.work_completion_status` e `work_completion_status_id`.
+- Desativa o item de catalogo `PARCIAL` e recria o trigger de sincronismo texto/UUID para aceitar somente catalogo ativo.
+- Recria a sincronizacao generica de Estado Trabalho para usar `programming_group_id` e nao propagar `CONCLUIDO`/`ANTECIPADO`.
+- Registra historico tecnico `NORMALIZE_WORK_COMPLETION_STATUS` nas linhas ajustadas.
+- Bloqueia `CONCLUIDO` quando existir outra programacao ativa no mesmo `programming_group_id`, impedindo conclusao ambigua na mesma ETAPA/grupo.

@@ -2426,6 +2426,53 @@ Atualizacao 2026-06-27 - Revalidacao de ANTECIPADO, copia e grupo
   - Tentar copiar para data anterior ou igual a origem e confirmar bloqueio.
   - Tentar alterar diretamente apenas `programming_group_id` e confirmar que o banco preserva o grupo original.
 
+Atualizacao 2026-06-27 - Estado Trabalho canonico e CONCLUIDO por grupo
+-----------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/277_normalize_partial_and_completed_work_status.sql`
+  - `src/server/modules/programacao/normalizers.ts`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `supabase/migrations/README.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+  - `verificação/crc/programacao.md`
+- Funcoes/hooks/constantes tocadas:
+  - `normalize_programming_work_completion_code`: passa a normalizar `PARCIAL`/`PARTIAL` para `PARCIAL_NAO_PLANEJADO`.
+  - `sync_project_programming_work_completion_status_fields`: passa a sincronizar texto/UUID apenas com catalogo ativo canonico.
+  - `sync_programming_work_completion_status_by_project_date`: preserva o nome legado, mas passa a sincronizar por `programming_group_id` e ignora `CONCLUIDO`/`ANTECIPADO`.
+  - `enforce_completed_work_status_group_integrity`: bloqueia `CONCLUIDO` quando outra linha ativa existe no mesmo `programming_group_id`.
+  - `normalizeWorkCompletionStatus`: normaliza payload legado `PARCIAL` para `PARCIAL_NAO_PLANEJADO`.
+  - `resolveEnelNovoStatus`: exporta `ANTECIPADA` como `ANTECIPADA`.
+  - `normalizeWorkCompletionCode` e `formatWorkCompletionStatusLabel`: exibem `PARCIAL` legado como `Parcial nao planejado`.
+  - `getScheduleCardClassName`: usa classe propria para `ANTECIPADA`.
+- Comportamento antes:
+  - `PARCIAL` ainda podia existir como codigo tecnico ativo ou valor salvo.
+  - Historico e filtros podiam exibir `PARCIAL` como terceira opcao generica.
+  - `ANTECIPADA` no ENEL NOVO podia sair como `ANTECIPADO`.
+  - Calendario usava a mesma cor de `ADIADA` para `ANTECIPADA`.
+  - Trigger legado podia sincronizar Estado Trabalho por `Projeto + Data`, inclusive `CONCLUIDO`.
+  - Era possivel tentar salvar `CONCLUIDO` em linha de um grupo operacional que ainda possuia outra linha ativa.
+- Comportamento depois:
+  - Catalogo ativo canonico: `CONCLUIDO`, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `ANTECIPADO`.
+  - `PARCIAL` legado em texto/payload/banco vira `PARCIAL_NAO_PLANEJADO`.
+  - Item `PARCIAL` do catalogo fica inativo.
+  - Escrita direta, RPC ou importacao que tente usar UUID inativo de `PARCIAL` e bloqueada pelo trigger.
+  - `CONCLUIDO` nao e propagado por sincronizacao generica e nao salva se houver outra programacao ativa no mesmo `programming_group_id`.
+  - Sincronizacao generica de Estado Trabalho fica limitada ao `programming_group_id` e nao propaga `CONCLUIDO`/`ANTECIPADO`.
+  - `ANTECIPADA` tem status proprio na Extracao ENEL NOVO e cor propria no calendario semanal.
+- Como validar:
+  - Aplicar migration 277 e confirmar que `project_programming.work_completion_status` nao possui `PARCIAL`.
+  - Confirmar que `programming_work_completion_catalog` nao possui `PARCIAL` ativo.
+  - Tentar enviar `PARCIAL` pelo payload e confirmar persistencia como `PARCIAL_NAO_PLANEJADO`.
+  - Alterar `PARCIAL_PLANEJADO`/`PARCIAL_NAO_PLANEJADO` em uma linha e confirmar sincronizacao apenas dentro do mesmo `programming_group_id`.
+  - Tentar salvar `CONCLUIDO` em grupo com outra equipe ativa e confirmar bloqueio.
+  - Exportar ENEL NOVO com linha `ANTECIPADA` e confirmar valor `ANTECIPADA`.
+  - Ver calendario semanal e confirmar cor/legenda propria para `ANTECIPADA`.
+
 Atualizacao 2026-06-27 - Integridade estrita de ETAPA ativa
 -----------------------------------------------------------
 - Arquivos alterados/criados:

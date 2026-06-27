@@ -150,8 +150,24 @@ export function normalizeOptionalTime(value: unknown) {
 }
 
 export function normalizeWorkCompletionStatus(value: unknown) {
-  const normalized = normalizeText(value).toUpperCase();
-  return normalized || null;
+  const normalized = normalizeStatusToken(value).replace(/\s+/g, "_");
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === "PARCIAL" || normalized === "PARTIAL" || normalized === "PARCIAL_NAO_PROGRAMADO") {
+    return "PARCIAL_NAO_PLANEJADO";
+  }
+
+  if (normalized === "PARCIAL_PROGRAMADO") {
+    return "PARCIAL_PLANEJADO";
+  }
+
+  if (normalized === "ANTECIPADA") {
+    return "ANTECIPADO";
+  }
+
+  return normalized;
 }
 
 export function normalizeStatusToken(value: unknown) {

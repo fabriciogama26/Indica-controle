@@ -351,7 +351,7 @@ export function resolveEnelNovoStatus(schedule: ScheduleItem) {
     case "CANCELADA":
       return "CANCELADO";
     case "ANTECIPADA":
-      return "ANTECIPADO";
+      return "ANTECIPADA";
     case "REPROGRAMADA":
       return "REPROGRAMADA";
     case "PROGRAMADA":
@@ -383,7 +383,42 @@ export function normalizeWorkCompletionCode(value: unknown) {
     .toUpperCase()
     .replace(/\s+/g, "_");
 
-  return raw || "NAO_INFORMADO";
+  if (!raw) {
+    return "NAO_INFORMADO";
+  }
+
+  if (raw === "PARCIAL" || raw === "PARTIAL" || raw === "PARCIAL_NAO_PROGRAMADO") {
+    return "PARCIAL_NAO_PLANEJADO";
+  }
+
+  if (raw === "PARCIAL_PROGRAMADO") {
+    return "PARCIAL_PLANEJADO";
+  }
+
+  if (raw === "ANTECIPADA") {
+    return "ANTECIPADO";
+  }
+
+  return raw;
+}
+
+export function formatWorkCompletionStatusLabel(value: string | null | undefined) {
+  const normalized = normalizeWorkCompletionCode(value);
+  switch (normalized) {
+    case "PARCIAL_PLANEJADO":
+      return "Parcial planejado";
+    case "PARCIAL_NAO_PLANEJADO":
+      return "Parcial nao planejado";
+    case "CONCLUIDO":
+    case "COMPLETO":
+      return "Concluido";
+    case "ANTECIPADO":
+      return "Antecipado";
+    case "NAO_INFORMADO":
+      return "-";
+    default:
+      return value || "-";
+  }
 }
 
 export function resolveTeamStructureCode(team?: TeamItem | null) {
@@ -700,6 +735,10 @@ export function parseActivitiesSnapshot(value: string | null) {
 export function formatHistoryValue(field: string, value: string | null) {
   if (!value) {
     return "-";
+  }
+
+  if (field === "workCompletionStatus" || field === "previousWorkCompletionStatus") {
+    return formatWorkCompletionStatusLabel(value);
   }
 
   if (
