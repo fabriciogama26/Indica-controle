@@ -13,3 +13,7 @@
 - Usar schema de validação (Zod/Yup)
 - Garantir consistência entre camadas
 - Tratar datas corretamente (UTC)
+## Verificacao desta entrega - 2026-06-27
+- [x] Tipo frontend `WorkCompletionStatus` foi fechado nos codigos canonicos.
+- [x] Normalizadores backend/frontend convertem aliases legados para codigos canonicos.
+- [x] Docs e TASKS foram atualizados com a regra final.

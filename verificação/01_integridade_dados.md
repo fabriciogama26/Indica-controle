@@ -17,3 +17,7 @@
 - Implementar controle de concorrência (updated_at ou version)
 - Garantir consistência antes de salvar
 - Tratar inserções duplicadas (idempotência quando necessário)
+## Verificacao desta entrega - 2026-06-27
+- [x] Migration 277 usa backfill transacional para normalizar `PARCIAL` legado e falha se sobrarem linhas inconsistentes.
+- [x] Trigger novo bloqueia `CONCLUIDO` quando houver outra programacao ativa no mesmo `programming_group_id`.
+- [x] Nao aplicavel: exclusao fisica de dados.

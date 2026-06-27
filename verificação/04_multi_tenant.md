@@ -12,3 +12,7 @@
 - Garantir isolamento completo de dados
 - Incluir tenant_id em inserts
 - Testar vazamento entre contas
+## Verificacao desta entrega - 2026-06-27
+- [x] Backfill e catalogo filtram por `tenant_id`.
+- [x] Sincronizacao de Estado Trabalho filtra por `tenant_id` e `programming_group_id`.
+- [x] Bloqueio de `CONCLUIDO` verifica somente linhas do mesmo `tenant_id`.
