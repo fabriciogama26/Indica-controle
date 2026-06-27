@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "PowerShell(npx supabase --version 2>&1)",
-      "PowerShell(cd \"d:\\\\Fabricio\\\\Projetos SaaS\\\\Indica-controle\"; pwsh scripts/supabase-check-link.ps1; $LASTEXITCODE)"
+      "PowerShell(cd \"d:\\\\Fabricio\\\\Projetos SaaS\\\\Indica-controle\"; pwsh scripts/supabase-check-link.ps1; $LASTEXITCODE)",
+      "PowerShell(Get-ChildItem \"d:\\\\Fabricio\\\\Projetos SaaS\\\\Indica-controle\\\\supabase\\\\migrations\\\\\" | Where-Object {$_.Name -match \"contract\"} | Select-Object -ExpandProperty Name)",
+      "PowerShell(Get-ChildItem \"d:\\\\Fabricio\\\\Projetos SaaS\\\\Indica-controle\\\\supabase\\\\migrations\\\\\" | Where-Object {$_.Name -match \"^04[0-9]\"} | Select-Object -ExpandProperty Name | Sort-Object)"
     ]
   }
 }

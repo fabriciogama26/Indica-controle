@@ -12,3 +12,7 @@
 - Logar erro com contexto
 - Criar padrão de resposta de erro
 - Usar try/catch corretamente
+## Verificacao desta entrega - 2026-06-27
+- [x] Migration 277 falha com mensagens detalhadas quando encontra `PARCIAL` remanescente.
+- [x] Migration 277 falha com detalhes quando encontra `CONCLUIDO` com outra linha ativa no grupo.
+- [x] Trigger retorna SQLSTATE `23514` para violacao de grupo operacional.

@@ -250,3 +250,7 @@ Antes de abrir PR em qualquer tela ou API, responder:
 - [ ] Dashboard retorna resumo ou dados brutos? (preferir RPC/resumo)
 - [ ] Há queries que poderiam ser paralelas e estão sequenciais?
 - [ ] O Supabase client está sendo recriado a cada request?
+## Verificacao desta entrega - 2026-06-27
+- [x] Trigger de sincronizacao usa chave operacional `tenant_id + programming_group_id`.
+- [x] Backfill limita validacoes de detalhe a 20 registros em mensagens de erro.
+- [x] Nao aplicavel: endpoint de listagem ou dashboard novo.
