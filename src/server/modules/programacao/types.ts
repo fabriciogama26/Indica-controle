@@ -107,6 +107,7 @@ export type ProgrammingRow = {
   team_id: string;
   status: "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
   execution_date: string;
+  programming_group_id: string;
   period: "INTEGRAL" | "PARCIAL";
   start_time: string;
   end_time: string;

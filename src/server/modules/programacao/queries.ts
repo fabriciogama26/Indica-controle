@@ -565,6 +565,7 @@ export async function fetchProgrammingResponseItem(
     id: row.id,
     projectId: row.project_id,
     teamId: row.team_id,
+    programmingGroupId: normalizeText(row.programming_group_id),
     status: row.status,
     isReprogrammed: row.status === "REPROGRAMADA",
     date: row.execution_date,

@@ -6,7 +6,7 @@ Escopo:
 - Tela `Programacao` atual: `/programacao-simples`.
 - Tela de consulta: `/programacao-visualizacao`, usando a mesma view em modo visualizacao.
 - API principal: `/api/programacao`.
-- Banco esperado com migrations ate `271_fix_deferred_programming_stage_guard_current_row.sql`.
+- Banco esperado com migrations ate `273_define_programming_group_id.sql`.
 
 ---
 
@@ -17,6 +17,12 @@ A Programacao controla agendas operacionais por `tenant_id`, `project_id`, `team
 Regras centrais:
 - Uma programacao ativa tem status operacional `PROGRAMADA` ou `REPROGRAMADA`.
 - Uma programacao interrompida tem status `ADIADA` ou `CANCELADA`.
+- O grupo operacional e definido por `programming_group_id`.
+- `programming_group_id` representa:
+  - ETAPA numerica: mesmo `tenant_id + project_id + execution_date + etapa_number`.
+  - ETAPA UNICA: mesmo `tenant_id + project_id + execution_date + etapa_unica`.
+  - ETAPA FINAL: mesmo `tenant_id + project_id + execution_date + etapa_final`.
+  - Sem etapa: grupo proprio por registro.
 - Toda programacao ativa deve ter:
   - `etapa_number` numerico maior que zero, ou
   - `etapa_unica = true`, ou
@@ -64,7 +70,7 @@ Rastreio:
 - `copied_from_programming_id`: origem usada em copia/adicao de equipe.
 - `copy_batch_id`: lote de copia quando aplicavel.
 
-Campos operacionais sincronizados por Projeto + Data:
+Campos operacionais sincronizados por grupo operacional:
 - `feeder`
 - `campo_eletrico`
 - `electrical_eq_catalog_id`
@@ -303,7 +309,7 @@ Disponibilidade:
 - Exige catalogo de motivos disponivel.
 
 Escopos:
-- `group`: todas as equipes ativas do mesmo Projeto + Data.
+- `group`: todas as equipes ativas do mesmo `programming_group_id`.
 - `individual`: apenas a equipe selecionada.
 
 ### Adiamento sem nova data
@@ -360,7 +366,7 @@ Disponibilidade:
 
 Escopos:
 - `individual`: cancela apenas a equipe selecionada.
-- `group`: cancela todas as equipes ativas do mesmo Projeto + Data.
+- `group`: cancela todas as equipes ativas do mesmo `programming_group_id`.
 
 Efeitos:
 - `status = CANCELADA`.
@@ -375,7 +381,7 @@ Fluxo:
 flowchart TD
   A[Programacao ativa] --> B{Escopo}
   B -->|Individual| C[Somente linha selecionada]
-  B -->|Grupo| D[Ativas do mesmo Projeto + Data]
+  B -->|Grupo| D[Ativas do mesmo programming_group_id]
   C --> E[Status CANCELADA]
   D --> E
   E --> F[Historico + motivo]
@@ -453,9 +459,8 @@ Disponibilidade:
 - Bloqueado se projeto possui `Estado Trabalho = CONCLUIDO`.
 
 Regra de grupo:
-- Grupo base: mesmo `Projeto + Data de execucao + ETAPA`.
-- Para ETAPA numerica: compara `etapa_number`.
-- Para ETAPA especial: compara `etapa_unica`/`etapa_final`.
+- Grupo base: mesmo `programming_group_id`.
+- A migration 273 deriva e persiste o grupo por ETAPA numerica, ETAPA UNICA, ETAPA FINAL ou grupo proprio quando nao ha etapa.
 
 Validacoes:
 - Programacao modelo existe e esta ativa.
@@ -475,18 +480,17 @@ Efeitos:
 
 ---
 
-## Sincronizacao Automatica por Projeto + Data
+## Sincronizacao Automatica por Grupo Operacional
 
 Origem:
-- Migration `267_sync_programming_operational_fields_by_project_date.sql`.
+- Migration `267_sync_programming_operational_fields_by_project_date.sql`, substituida no escopo pela migration `273_define_programming_group_id.sql`.
 
 Quando dispara:
 - Em edicao de uma programacao ativa via wrapper full.
 
 Escopo:
 - Mesmo `tenant_id`.
-- Mesmo `project_id`.
-- Mesma `execution_date`.
+- Mesmo `programming_group_id`.
 - Status ativo: `PROGRAMADA` ou `REPROGRAMADA`.
 - Exclui a propria linha origem.
 
@@ -531,7 +535,7 @@ Documentos:
 Regras:
 - Data de pedido nao pode ser maior que data aprovada.
 - Documentos sao persistidos junto com a programacao.
-- Em alguns fluxos documentados, alteracoes de documentos podem replicar para equipes ativas do mesmo Projeto + Data; para equipes LV, tambem pode alcancar programacoes ativas do mesmo projeto em ate 7 dias, conforme migrations/documentacao anterior.
+- Em alguns fluxos documentados, alteracoes de documentos podem replicar para equipes ativas do mesmo Projeto + Data; para equipes LV, tambem pode alcancar programacoes ativas do mesmo projeto em ate 7 dias. Esta regra de documentos e historica e nao define o grupo operacional de cancelamento, adiamento, sincronizacao operacional ou adicao de equipe.
 
 Exportacoes:
 - CSV da lista filtrada.
@@ -667,7 +671,7 @@ RLS:
 | Evento | Condicao | Resultado | Bloqueios principais |
 | --- | --- | --- | --- |
 | Cadastrar | Campos obrigatorios validos | Cria uma linha por equipe | Projeto `CONCLUIDO`, ETAPA invalida, equipe invalida, conflito horario |
-| Editar sem mudar data/equipe/hora/periodo | Linha ativa | Atualiza linha; sincroniza campos operacionais por Projeto + Data | Linha `ADIADA/CANCELADA`, snapshot de atividades incompleto, concorrencia |
+| Editar sem mudar data/equipe/hora/periodo | Linha ativa | Atualiza linha; sincroniza campos operacionais por grupo operacional | Linha `ADIADA/CANCELADA`, snapshot de atividades incompleto, concorrencia |
 | Reprogramar por edicao | Mudou projeto/equipe/data/hora/periodo | Salva alteracao com motivo | Motivo ausente, projeto `CONCLUIDO`, conflito horario/etapa |
 | Salvar `CONCLUIDO` | Edicao com etapa numerica | Marca etapa e antecipa etapas futuras | Falha RPC antecipado, catalogo invalido |
 | Reabrir `CONCLUIDO` | Trocar para status diferente | Salva status e restaura somente `ANTECIPADO` vinculado por `anticipated_by_programming_id` | Tentar salvar outro `CONCLUIDO`, linha cancelada/adiada |
@@ -739,21 +743,25 @@ Banco e migrations relevantes:
 - `229_save_programming_work_completion_status_transactional.sql`
   - Salvamento transacional de Estado Trabalho.
 - `246_postpone_programming_by_project_date.sql`
-  - Adiamento por Projeto + Data.
+  - Adiamento por Projeto + Data, substituido pela regra de `programming_group_id` na migration 273.
 - `248_cancel_programming_by_project_date.sql`
-  - Cancelamento por Projeto + Data.
+  - Cancelamento por Projeto + Data, substituido pela regra de `programming_group_id` na migration 273.
 - `255_add_anticipated_work_completion_status.sql`
   - `ANTECIPADO`.
 - `258_guard_interrupted_programming_completed_work_status.sql`
   - Guarda contra interrompida concluida.
 - `267_sync_programming_operational_fields_by_project_date.sql`
-  - Sincronizacao de campos operacionais.
+  - Sincronizacao de campos operacionais por Projeto + Data, substituida pela regra de `programming_group_id` na migration 273.
 - `269_guard_programming_stage_on_active_records.sql`
   - Guarda de ETAPA obrigatoria e preservacao de flags especiais no adiamento.
 - `270_defer_active_programming_stage_guard.sql`
   - Troca o CHECK imediato de ETAPA ativa por constraint trigger diferida, mantendo a regra final sem quebrar RPCs full transacionais.
 - `271_fix_deferred_programming_stage_guard_current_row.sql`
   - Faz a trigger diferida consultar a linha final em `project_programming`, evitando falso bloqueio quando a RPC full insere sem ETAPA e atualiza ETAPA/flags antes do commit.
+- `273_define_programming_group_id.sql`
+  - Cria `project_programming.programming_group_id`.
+  - Faz backfill por `tenant_id + project_id + execution_date + ETAPA numerica`, `ETAPA UNICA`, `ETAPA FINAL` ou grupo proprio para historicos sem etapa.
+  - Recria cancelamento, adiamento e sincronizacao operacional para filtrar por `programming_group_id`.
 
 ---
 
@@ -767,7 +775,7 @@ Cadastro:
 - Copiar programacao valida com ETAPA destino numerica: deve concluir sem erro `project_programming_active_stage_required_check`.
 
 Edicao/reprogramacao:
-- Editar campos operacionais e verificar sincronizacao em outras equipes do mesmo Projeto + Data.
+- Editar campos operacionais e verificar sincronizacao somente em outras equipes do mesmo `programming_group_id`.
 - Reprogramar mudando data e confirmar exigencia de motivo.
 - Tentar editar `ADIADA` ou `CANCELADA`: deve bloquear.
 - Tentar salvar sem ETAPA e sem flags: deve bloquear.
@@ -782,10 +790,12 @@ Adiamento:
 - Adiar sem nova data: origem vira `ADIADA`.
 - Adiar com nova data: origem vira `ADIADA`, nova linha vira `REPROGRAMADA`.
 - Adiar origem `ETAPA FINAL`: nova linha preserva `etapa_final = true`.
+- Adiar grupo com mesmo projeto/data e ETAPAs diferentes: deve afetar somente o `programming_group_id` da linha clicada.
 
 Cancelamento:
 - Cancelar individual.
 - Cancelar grupo.
+- Cancelar grupo com mesmo projeto/data e ETAPAs diferentes: deve afetar somente o `programming_group_id` da linha clicada.
 - Verificar motivo, historico e concorrencia.
 
 Copia:
@@ -797,6 +807,7 @@ Copia:
 Adicionar equipe:
 - Adicionar equipe ainda ausente do grupo.
 - Tentar adicionar equipe ja presente: deve bloquear/desabilitar.
+- Confirmar que a duplicidade de equipe e validada dentro do mesmo `programming_group_id`, nao apenas por Projeto + Data.
 - Verificar `copied_from_programming_id`.
 
 ---

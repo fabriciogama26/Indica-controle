@@ -1146,6 +1146,7 @@ export function ProgrammingDetailsModal(props: {
             <p><strong>Atualizado por:</strong> {formatAuditActor(target.updatedByName)}</p>
             <p><strong>Atualizado em:</strong> {formatDateTime(target.updatedAt)}</p>
             <p><strong>Projeto:</strong> {projectMap.get(target.projectId)?.code ?? target.projectId}</p>
+            <p><strong>Grupo operacional:</strong> {target.programmingGroupId || "-"}</p>
             <p><strong>Equipe:</strong> {teamInfo.name}</p>
             <p><strong>Encarregado:</strong> {teamInfo.foremanName || "Sem encarregado"}</p>
             <p><strong>Data execucao:</strong> {formatDate(target.date)}</p>

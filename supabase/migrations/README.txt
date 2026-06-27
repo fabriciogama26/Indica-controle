@@ -101,6 +101,12 @@ Ordem de aplicacao
 211. 211_block_duplicate_asbuilt_measurement_project.sql
 266. 266_allow_multiple_projects_team_composition.sql
 267. 267_sync_programming_operational_fields_by_project_date.sql
+268. 268_backfill_no_production_measurement_rates.sql
+269. 269_guard_programming_stage_on_active_records.sql
+270. 270_defer_active_programming_stage_guard.sql
+271. 271_fix_deferred_programming_stage_guard_current_row.sql
+272. 272_harden_anticipated_work_completion_status.sql
+273. 273_define_programming_group_id.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -527,7 +533,7 @@ Observacao
 
 229_save_programming_work_completion_status_transactional.sql
 - Cria RPC transacional para salvar Estado Trabalho com lock, `expectedUpdatedAt`,
-  conflito estruturado, sincronizacoes por Projeto + Data e historico principal.
+  conflito estruturado, sincronizacoes operacionais por grupo persistido e historico principal.
 - Restringe EXECUTE ao `service_role`, sem criar ou alterar policies RLS e sem adicionar
   permissao `DELETE`.
 
@@ -624,6 +630,7 @@ Observacao
 
 246_postpone_programming_by_project_date.sql
 - Cria `postpone_project_programming_group` para adiar atomicamente todas as programacoes ativas do mesmo Projeto + Data.
+- Regra de escopo substituida pela migration 273: a RPC atual usa `programming_group_id`.
 - Sem nova data, marca todas as linhas do grupo como `ADIADA`; com nova data, cria uma linha `REPROGRAMADA` para cada equipe afetada.
 - Reutiliza as RPCs individuais de status/adiamento dentro da mesma transacao e reverte o grupo inteiro quando qualquer item falha.
 - Mantem `expectedUpdatedAt` na linha clicada, escopo por `tenant_id` e EXECUTE somente para `service_role`.
@@ -638,6 +645,7 @@ Observacao
 
 248_cancel_programming_by_project_date.sql
 - Cria `cancel_project_programming_group` para cancelar atomicamente todas as programacoes ativas do mesmo Projeto + Data.
+- Regra de escopo substituida pela migration 273: a RPC atual usa `programming_group_id`.
 - Reutiliza `set_project_programming_status` dentro da mesma transacao, preservando historico, `expectedUpdatedAt` na linha clicada e rollback total do grupo em falha.
 - Mantem escopo por `tenant_id`, bloqueia execucao por `anon/authenticated` e concede EXECUTE somente a `service_role`.
 
@@ -695,6 +703,7 @@ Observacao
 
 267_sync_programming_operational_fields_by_project_date.sql
 - Cria `sync_project_programming_group_operational_fields` para sincronizar campos operacionais da Programacao entre equipes ativas do mesmo Projeto + Data.
+- Regra de escopo substituida pela migration 273: a RPC atual usa `programming_group_id`.
 - Recria `save_project_programming_full_decimal_with_electrical_and_eq` para executar a sincronizacao dentro da mesma transacao do salvamento individual.
 - Sincroniza Alimentador, Nº EQ, Tipo de SGD, clientes afetados, janela de desligamento, Apoio e quantidades (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`).
 - Registra historico operacional por linha afetada e mantem EXECUTE restrito a `service_role`.
@@ -723,3 +732,10 @@ Observacao
 - Cria RPC para copia/adicao de equipe marcar `ANTECIPADO` somente apos nova validacao do `CONCLUIDO` anterior.
 - Ao reabrir um `CONCLUIDO`, trigger restaura apenas as linhas `ANTECIPADO` causadas por aquela programacao.
 - Quando dados legados bloqueiam o backfill, informa exemplos de registros invalidos para apoiar a correcao operacional.
+
+273_define_programming_group_id.sql
+- Adiciona `project_programming.programming_group_id` como fronteira persistida do grupo operacional.
+- Faz backfill por ETAPA numerica (`tenant_id + project_id + execution_date + etapa_number`), ETAPA UNICA, ETAPA FINAL e grupo proprio para registros historicos sem etapa.
+- Cria trigger para atribuir/recalcular o grupo em inserts e mudancas de projeto/data/etapa.
+- Recria `cancel_project_programming_group`, `postpone_project_programming_group` e `sync_project_programming_group_operational_fields` para usar `programming_group_id`.
+- Mantem `EXECUTE` das RPCs sensiveis restrito a `service_role` e adiciona indices por `tenant_id + programming_group_id`.

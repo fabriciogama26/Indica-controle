@@ -705,7 +705,7 @@ export async function cancelProgrammingGroupViaRpc(params: {
         status: 409,
         reason: "CANCEL_GROUP_RPC_NOT_AVAILABLE",
         message:
-          "Seu ambiente ainda nao suporta cancelamento por Projeto + Data. Aplique a migration 248 e tente novamente.",
+          "Seu ambiente ainda nao suporta cancelamento por grupo operacional. Aplique a migration 273 e tente novamente.",
       } as const;
     }
 
@@ -714,8 +714,8 @@ export async function cancelProgrammingGroupViaRpc(params: {
       status: 500,
       reason: "CANCEL_GROUP_RPC_FAILED",
       message: error.message
-        ? `Falha ao cancelar programacoes por Projeto + Data via RPC: ${error.message}`
-        : "Falha ao cancelar programacoes por Projeto + Data via RPC.",
+        ? `Falha ao cancelar programacoes por grupo operacional via RPC: ${error.message}`
+        : "Falha ao cancelar programacoes por grupo operacional via RPC.",
     } as const;
   }
 
@@ -724,7 +724,7 @@ export async function cancelProgrammingGroupViaRpc(params: {
     return {
       ok: false,
       status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao cancelar programacoes por Projeto + Data.",
+      message: result.message ?? "Falha ao cancelar programacoes por grupo operacional.",
       reason: result.reason ?? null,
       detail: result.detail ?? null,
       programmingId: result.programming_id ?? null,
@@ -839,7 +839,7 @@ export async function postponeProgrammingGroupViaRpc(params: {
         status: 409,
         reason: "POSTPONE_GROUP_RPC_NOT_AVAILABLE",
         message:
-          "Seu ambiente ainda nao suporta adiamento por Projeto + Data. Aplique a migration 246 e tente novamente.",
+          "Seu ambiente ainda nao suporta adiamento por grupo operacional. Aplique a migration 273 e tente novamente.",
       } as const;
     }
 
@@ -848,8 +848,8 @@ export async function postponeProgrammingGroupViaRpc(params: {
       status: 500,
       reason: "POSTPONE_GROUP_RPC_FAILED",
       message: error.message
-        ? `Falha ao adiar programacoes por Projeto + Data via RPC: ${error.message}`
-        : "Falha ao adiar programacoes por Projeto + Data via RPC.",
+        ? `Falha ao adiar programacoes por grupo operacional via RPC: ${error.message}`
+        : "Falha ao adiar programacoes por grupo operacional via RPC.",
     } as const;
   }
 
@@ -858,7 +858,7 @@ export async function postponeProgrammingGroupViaRpc(params: {
     return {
       ok: false,
       status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao adiar programacoes por Projeto + Data.",
+      message: result.message ?? "Falha ao adiar programacoes por grupo operacional.",
       reason: result.reason ?? null,
       detail: result.detail ?? null,
       programmingId: result.programming_id ?? null,
