@@ -850,11 +850,15 @@ export function useCopyToDatesModal(params: {
   function resolveCopyToDatesDefaultTeamIds(schedule: ScheduleItem) {
     const groupTeamIds = schedules
       .filter((item) =>
-        item.projectId === schedule.projectId
-        && item.date === schedule.date
-        && item.etapaNumber === schedule.etapaNumber
-        && !item.etapaUnica
-        && !item.etapaFinal
+        (
+          schedule.programmingGroupId
+            ? item.programmingGroupId === schedule.programmingGroupId
+            : item.projectId === schedule.projectId
+              && item.date === schedule.date
+              && item.etapaNumber === schedule.etapaNumber
+              && !item.etapaUnica
+              && !item.etapaFinal
+        )
         && isActiveProgrammingStatus(getDisplayProgrammingStatus(item)),
       )
       .map((item) => item.teamId)

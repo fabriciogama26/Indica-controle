@@ -82,6 +82,7 @@ export type ScheduleItem = {
   id: string;
   projectId: string;
   teamId: string;
+  programmingGroupId?: string;
   teamName?: string;
   teamServiceCenterName?: string;
   teamTypeName?: string;

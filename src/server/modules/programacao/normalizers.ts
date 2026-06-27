@@ -240,6 +240,7 @@ export function normalizeStringArray(value: unknown) {
 export function normalizeProgrammingStructureFields<T extends Record<string, unknown>>(row: T): ProgrammingRow {
   const normalized = {
     ...row,
+    programming_group_id: normalizeNullableText(row.programming_group_id),
     outage_start_time: normalizeNullableText(row.outage_start_time),
     outage_end_time: normalizeNullableText(row.outage_end_time),
     campo_eletrico: normalizeNullableText(row.campo_eletrico),

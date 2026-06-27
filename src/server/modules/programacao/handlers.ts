@@ -870,29 +870,28 @@ export async function addTeamToProgramming(request: NextRequest) {
     );
   }
 
-  let duplicateQuery = resolution.supabase
+  const sourceProgrammingGroupId = normalizeText(source.programming_group_id);
+  if (!sourceProgrammingGroupId) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: "PROGRAMMING_GROUP_NOT_AVAILABLE",
+        message: "Seu ambiente ainda nao possui grupo operacional persistido. Aplique a migration 273.",
+      } satisfies AddTeamToProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  const { data: duplicateRows, error: duplicateError } = await resolution.supabase
     .from("project_programming")
     .select("id")
     .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("project_id", source.project_id)
+    .eq("programming_group_id", sourceProgrammingGroupId)
     .eq("team_id", targetTeamId)
-    .eq("execution_date", source.execution_date)
     .in("status", ["PROGRAMADA", "REPROGRAMADA"])
-    .limit(1);
+    .limit(1)
+    .returns<Array<{ id: string }>>();
 
-  if (source.etapa_number) {
-    duplicateQuery = duplicateQuery
-      .eq("etapa_number", source.etapa_number)
-      .eq("etapa_unica", false)
-      .eq("etapa_final", false);
-  } else {
-    duplicateQuery = duplicateQuery
-      .is("etapa_number", null)
-      .eq("etapa_unica", Boolean(source.etapa_unica))
-      .eq("etapa_final", Boolean(source.etapa_final));
-  }
-
-  const { data: duplicateRows, error: duplicateError } = await duplicateQuery.returns<Array<{ id: string }>>();
   if (duplicateError) {
     return NextResponse.json(
       { success: false, message: "Falha ao verificar se a equipe ja esta nesta programacao." } satisfies AddTeamToProgrammingResponse,

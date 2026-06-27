@@ -373,6 +373,7 @@ export async function GET(request: NextRequest) {
           id: item.id,
           projectId: item.project_id,
           teamId: item.team_id,
+          programmingGroupId: normalizeText(item.programming_group_id),
           status: item.status,
           isReprogrammed: item.status === "REPROGRAMADA",
           date: item.execution_date,

@@ -254,6 +254,9 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           .filter((item) => {
             const s = getDisplayProgrammingStatus(item);
             if (!isActiveProgrammingStatus(s)) return false;
+            if (schedule.programmingGroupId) {
+              return item.programmingGroupId === schedule.programmingGroupId;
+            }
             if (item.projectId !== schedule.projectId || item.date !== schedule.date) return false;
             if (schedule.etapaNumber !== null) {
               return item.etapaNumber === schedule.etapaNumber && !item.etapaUnica && !item.etapaFinal;
@@ -280,6 +283,10 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           const displayStatus = getDisplayProgrammingStatus(item);
           if (!isActiveProgrammingStatus(displayStatus)) {
             return false;
+          }
+
+          if (addTeamTarget.programmingGroupId) {
+            return item.programmingGroupId === addTeamTarget.programmingGroupId;
           }
 
           if (item.projectId !== addTeamTarget.projectId || item.date !== addTeamTarget.date) {

@@ -31,7 +31,13 @@ Arquitetura
 - Migration de adiamento por Projeto + Data:
   - `supabase/migrations/246_postpone_programming_by_project_date.sql`
   - RPC: `postpone_project_programming_group`
-  - Objetivo: adiar em uma unica transacao todas as programacoes ativas do mesmo projeto e data.
+  - Objetivo original: adiar em uma unica transacao todas as programacoes ativas do mesmo projeto e data.
+  - Regra atual: escopo substituido por `programming_group_id` na migration `273_define_programming_group_id.sql`.
+- Migration de grupo operacional persistido:
+  - `supabase/migrations/273_define_programming_group_id.sql`
+  - Campo em `project_programming`: `programming_group_id`
+  - RPCs recriadas: `cancel_project_programming_group`, `postpone_project_programming_group`, `sync_project_programming_group_operational_fields`
+  - Objetivo: fazer cancelamento, adiamento, sincronizacao operacional e adicao de equipe usarem exatamente o mesmo grupo operacional.
 - Migration de guarda obrigatoria de ETAPA ativa:
   - `supabase/migrations/269_guard_programming_stage_on_active_records.sql`
   - RPC: `postpone_project_programming`
@@ -200,7 +206,7 @@ Cadastro
   - No cadastro de uma nova programacao, o backend nao preenche `Estado Trabalho` automaticamente.
   - Novas programacoes podem ser salvas com `Estado Trabalho` em branco; o preenchimento ocorre somente por edicao/acao explicita do usuario.
   - A acao `Adicionar equipe` cria uma nova programacao para a equipe selecionada usando uma programacao ativa existente como modelo, sem trocar a equipe da linha original.
-  - `Adicionar equipe` bloqueia duplicidade no mesmo `Projeto + Data de execucao + ETAPA`, conflito de horario, equipe inativa/de outro tenant, etapa igual/maior no historico da equipe e projeto com `Estado Trabalho = CONCLUIDO`.
+  - `Adicionar equipe` bloqueia duplicidade no mesmo `programming_group_id`, conflito de horario, equipe inativa/de outro tenant, etapa igual/maior no historico da equipe e projeto com `Estado Trabalho = CONCLUIDO`.
   - `Adiar` e `Cancelar` bloqueiam projeto com `Estado Trabalho = CONCLUIDO`.
   - A regra de bloqueio tambem existe no banco: programacao `ADIADA` ou `CANCELADA` nao pode ter `Estado Trabalho = CONCLUIDO`.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
@@ -244,7 +250,7 @@ Filtros, auto-complete e listagem
 - Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Copiar programacao`, `Adicionar equipe`, `Adiar` e `Cancelar`.
 - A acao `Adicionar equipe`:
   - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
-  - lista somente equipes ativas ainda nao presentes no grupo da linha modelo (`Projeto + Data de execucao + ETAPA`)
+  - lista somente equipes ativas ainda nao presentes no grupo operacional da linha modelo (`programming_group_id`)
   - cria uma nova linha para a equipe escolhida com os mesmos dados da linha modelo
   - grava `copied_from_programming_id` apontando para a programacao modelo
   - registra historico operacional com metadata `ADD_TEAM`
@@ -253,7 +259,7 @@ Filtros, auto-complete e listagem
   - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
   - valida antes do modal se a origem nao e `ETAPA UNICA` nem `ETAPA FINAL`
   - exige uma linha `Data destino + ETAPA + Equipes` para cada copia
-  - inicia cada linha com as equipes ativas da programacao original (`Projeto + Data execucao + ETAPA`) ja selecionadas
+  - inicia cada linha com as equipes ativas da programacao original (`programming_group_id`, com fallback legado por Projeto + Data + ETAPA enquanto o payload antigo nao tiver a coluna) ja selecionadas
   - permite selecionar/remover equipes por linha de destino, incluindo equipes ativas que nao estavam na programacao original
   - quando a equipe ja existe na programacao original, usa a propria linha dela como modelo; quando nao existe, usa a linha clicada como modelo
   - bloqueia data original, datas repetidas, ETAPAs repetidas e ETAPAs menores/iguais a ETAPA da origem
@@ -341,7 +347,7 @@ Boas praticas
   - Validacao de conflito horario e compatibilidade de base continua centralizada em `save_project_programming`.
   - O backend impede salvar a mesma obra para a mesma equipe na mesma data quando ainda existir programacao ativa para esse conjunto.
   - Quando houver `TEAM_TIME_CONFLICT`, a API enriquece a mensagem de erro com `Equipe` e `Encarregado` para facilitar identificacao no modal de alerta.
-  - O adiamento permite nova data opcional e opera por `Projeto + Data`: todas as programacoes ativas do mesmo projeto e da mesma data sao adiadas na mesma transacao.
+  - O adiamento permite nova data opcional e opera por `programming_group_id`: todas as programacoes ativas do mesmo grupo operacional sao adiadas na mesma transacao.
   - Com data, cria registros `REPROGRAMADA` para todas as equipes afetadas; sem data, apenas marca os registros como `ADIADA`.
   - O frontend abre modal de alerta para erros e conflitos ao validar `Adiamento`, ao `Cadastrar programacao` e ao `Salvar edicao`, antes de depender apenas do feedback no topo.
   - Em lote, nenhuma insercao parcial permanece se houver erro em uma equipe.
@@ -362,7 +368,7 @@ Cancelamento e saldo
 - Cancelamento agora esta disponivel na propria lista da tela simples, com modal de motivo obrigatorio (minimo de 10 caracteres), no mesmo padrao de Projetos.
 - Adiamento:
   - Modal proprio com `Motivo do adiamento` obrigatorio e `Nova data da programacao` opcional.
-  - Escopo: todas as programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao` da linha clicada.
+  - Escopo: todas as programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `programming_group_id` da linha clicada.
   - Sem nova data: todas as linhas do grupo viram `ADIADA` sem criar registro futuro.
   - Com nova data: todas as linhas do grupo viram `ADIADA` e novos registros `REPROGRAMADA` sao criados na nova data, preservando uma linha por equipe.
   - Quando a nova data e informada, ela deve ser posterior a data atual da programacao.
@@ -510,7 +516,7 @@ Servicos e integracoes externas
 - `set_project_programming_outage_window` (RPC nova para janela de desligamento).
 - `set_project_programming_document_dates` (RPC nova para Data Aprovada/Data Pedido).
 - `append_project_programming_history_record` (RPC de historico operacional dedicado).
-- `postpone_project_programming_group` (RPC de adiamento por Projeto + Data).
+- `postpone_project_programming_group` (RPC de adiamento por `programming_group_id`).
 
 Ajuda contextual
 ----------------
@@ -1819,17 +1825,17 @@ Atualizacao 2026-06-20 - Adiamento por Projeto + Data
 - Funcoes/hooks/constantes tocadas:
   - `postponeProgrammingGroupViaRpc`: novo wrapper server-side para a RPC de grupo.
   - `PATCH /api/programacao`: passa a usar `postpone_project_programming_group` quando `action = ADIAR`.
-  - `ProgrammingPostponeModal`: texto ajustado para informar que o escopo do adiamento e `Projeto + Data`.
-  - `postpone_project_programming_group`: nova RPC transacional para adiar todas as linhas ativas do mesmo projeto/data.
+  - `ProgrammingPostponeModal`: texto ajustado para informar o escopo do adiamento.
+  - `postpone_project_programming_group`: RPC transacional criada originalmente para projeto/data e substituida por `programming_group_id` na migration `273`.
 - Comportamento antes/depois:
   - Antes: clicar em `Adiar` alterava somente a linha/equipe clicada.
-  - Depois: clicar em `Adiar` altera todas as programacoes ativas do mesmo projeto e da mesma data.
+  - Depois da migration 273: clicar em `Adiar` altera todas as programacoes ativas do mesmo `programming_group_id`.
   - Antes: com nova data, apenas uma linha `REPROGRAMADA` era criada.
   - Depois: com nova data, uma nova linha `REPROGRAMADA` e criada para cada equipe afetada.
   - Depois: se qualquer equipe do grupo falhar por conflito, validacao ou RPC indisponivel, o grupo inteiro faz rollback.
 - Multi-tenant:
   - O tenant e o ator continuam resolvidos pela sessao autenticada na API.
-  - A RPC filtra `project_programming` por `tenant_id`, `project_id` e `execution_date`.
+  - A RPC atual filtra `project_programming` por `tenant_id` e `programming_group_id`.
   - `expectedUpdatedAt` continua obrigatorio para a linha clicada.
   - EXECUTE da RPC de grupo fica revogado para `PUBLIC`, `anon` e `authenticated`; somente `service_role` executa apos autorizacao server-side `programacao-simples/update`.
 
@@ -1855,10 +1861,10 @@ Atualizacao 2026-06-21 - Cancelamento por Projeto + Data
   - `cancelProgramming`: inclui `scope` no payload do PATCH.
   - `PATCH /api/programacao`: escolhe entre `cancelProgrammingViaRpc` e `cancelProgrammingGroupViaRpc`.
   - `cancelProgrammingGroupViaRpc`: wrapper server-side para `cancel_project_programming_group`.
-  - `cancel_project_programming_group`: RPC transacional por `tenant_id + project_id + execution_date`.
+  - `cancel_project_programming_group`: RPC transacional criada originalmente por `tenant_id + project_id + execution_date` e substituida por `programming_group_id` na migration `273`.
 - Comportamento antes/depois:
   - Antes: cancelar sempre alterava somente a linha clicada.
-  - Depois: o modal permite cancelar somente a equipe clicada ou todas as equipes ativas da mesma obra no mesmo dia.
+  - Depois da migration 273: o modal permite cancelar somente a equipe clicada ou todas as equipes ativas do mesmo `programming_group_id`.
   - O comportamento padrao continua individual quando o escopo nao e informado.
   - Em escopo `group`, a RPC chama `set_project_programming_status` para cada linha ativa do grupo dentro da mesma transacao e faz rollback total se qualquer item falhar.
 - Integridade, concorrencia e auditoria:
@@ -1867,7 +1873,7 @@ Atualizacao 2026-06-21 - Cancelamento por Projeto + Data
   - Falha de refresh visual continua sendo tratada como aviso pos-commit.
 - Multi-tenant:
   - A RPC recebe `p_tenant_id` resolvido pela API autenticada.
-  - O grupo e restrito a `tenant_id`, `project_id`, `execution_date` e status ativo.
+  - O grupo atual e restrito a `tenant_id`, `programming_group_id` e status ativo.
   - EXECUTE da RPC fica bloqueado para `anon/authenticated` e liberado somente para `service_role`.
 
 Atualizacao 2026-06-21 - Estado Trabalho na copia com selecao de equipes
@@ -2158,10 +2164,10 @@ Atualizacao 2026-06-26 - Protecao contra atividades incompletas na edicao
   - Depois: a tela bloqueia abertura e salvamento, o modal oferece `Recarregar programacao`, o payload de edicao informa `activitiesLoaded`, e o backend retorna `409` com `PROGRAMMING_ACTIVITIES_NOT_LOADED` quando a edicao chegar marcada como incompleta.
   - Depois: quando o payload de `PUT` vier sem `activities`, o backend continua preservando as atividades atuais carregando-as novamente antes de salvar.
 - Analise de propagacao por campo:
-  - `Tipo de SGD` (`sgd_type_id`): a partir da migration `267`, alteracao em edicao sincroniza as demais equipes ativas do mesmo `Projeto + Data de execucao`.
+  - `Tipo de SGD` (`sgd_type_id`): a partir da migration `273`, alteracao em edicao sincroniza as demais equipes ativas do mesmo `programming_group_id`.
   - `ETAPA` (`etapa_number`, `etapa_unica`, `etapa_final`): alteracao em edicao salva somente a linha/programacao enviada no `PUT`, com validacao de conflito por equipe/projeto; nao ha cascata para equipes do mesmo dia.
-  - `Nº EQ - Tipo (RE, CO, CF, CC ou TR)` (`electrical_eq_catalog_id`): a partir da migration `267`, alteracao em edicao sincroniza as demais equipes ativas do mesmo `Projeto + Data de execucao`.
-  - Excecoes existentes continuam fora desses campos: `Estado Trabalho` sincroniza equipes ativas do mesmo `Projeto + Data de execucao`, `CONCLUIDO` pode marcar etapas posteriores como `ANTECIPADO`, e `Adiar/Cancelar` podem operar por grupo quando o usuario escolhe esse escopo.
+  - `Nº EQ - Tipo (RE, CO, CF, CC ou TR)` (`electrical_eq_catalog_id`): a partir da migration `273`, alteracao em edicao sincroniza as demais equipes ativas do mesmo `programming_group_id`.
+  - Excecoes existentes continuam fora desses campos: `Estado Trabalho` sincroniza equipes ativas do mesmo `Projeto + Data de execucao`, `CONCLUIDO` pode marcar etapas posteriores como `ANTECIPADO`, e `Adiar/Cancelar` operam por `programming_group_id` quando o usuario escolhe esse escopo.
 - Multi-tenant:
   - Nao houve alteracao de schema, grants ou policies RLS.
   - A rejeicao defensiva ocorre depois da autenticacao/autorizacao da pagina e antes de qualquer escrita.
@@ -2231,16 +2237,16 @@ Atualizacao 2026-06-26 - Sincronizacao de campos operacionais por Projeto + Data
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
-  - `sync_project_programming_group_operational_fields`: nova RPC security definer que replica campos operacionais da linha origem para programacoes ativas do mesmo `tenant_id + project_id + execution_date`.
+  - `sync_project_programming_group_operational_fields`: RPC security definer criada originalmente para `tenant_id + project_id + execution_date` e substituida por `programming_group_id` na migration `273`.
   - `save_project_programming_full_decimal_with_electrical_and_eq`: wrapper full recriado para chamar a sincronizacao operacional dentro da mesma transacao do `PUT`.
 - Comportamento antes/depois:
   - Antes: ao editar uma linha, os campos operacionais abaixo eram salvos somente na programacao editada.
-  - Depois: ao editar uma programacao ativa, os mesmos valores sao aplicados automaticamente nas demais equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `Projeto + Data de execucao`.
+  - Depois da migration 273: ao editar uma programacao ativa, os mesmos valores sao aplicados automaticamente nas demais equipes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `programming_group_id`.
   - Campos sincronizados: `Alimentador`, `Nº EQ - Numero`, `Nº EQ - Tipo`, `Tipo de SGD`, `Nº Clientes Afetados`, `Inicio de desligamento`, `Termino de desligamento`, `Apoio`, `POSTE`, `ESTRUTURA`, `TRAFO` e `REDE`.
   - A sincronizacao registra historico operacional em `project_programming_history` para cada linha afetada, com `related_programming_id` apontando para a programacao origem.
   - `ETAPA`, equipe, data, horario, status operacional e atividades continuam fora da sincronizacao automatica.
 - Multi-tenant:
-  - Escopo sempre filtrado por `tenant_id`, `project_id`, `execution_date` e status ativo.
+  - Escopo atual filtrado por `tenant_id`, `programming_group_id` e status ativo.
   - A nova RPC e a wrapper full mantem `EXECUTE` restrito a `service_role`.
   - Nao altera RLS, grants de tabelas nem policies.
 
@@ -2290,6 +2296,51 @@ Atualizacao 2026-06-26 - Guarda diferida de ETAPA ativa
   - A regra segue aplicada na tabela inteira, sem criar permissao nova de leitura/escrita.
   - A funcao de trigger nao consulta dados de outros tenants e valida apenas os campos da propria linha.
   - EXECUTE da funcao fica restrito a `service_role`; RLS, grants de tabela e escopo por `tenant_id` nao foram alterados.
+
+Atualizacao 2026-06-27 - Grupo operacional persistido
+------------------------------------------------------
+- Arquivos alterados/criados:
+  - `scripts/audit-programming-operational-groups-readonly.sql`
+  - `supabase/migrations/273_define_programming_group_id.sql`
+  - `src/app/api/programacao/route.ts`
+  - `src/server/modules/programacao/selects.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `src/server/modules/programacao/normalizers.ts`
+  - `src/server/modules/programacao/queries.ts`
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/hooks.ts`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `verificação/crc/programacao.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `resolve_project_programming_group_id`: resolve o grupo operacional por tenant, projeto, data e classificacao de etapa.
+  - `assign_project_programming_group_id`: trigger que preenche/atualiza `programming_group_id` em inserts e mudancas de projeto/data/etapa.
+  - `cancel_project_programming_group`: passa a cancelar linhas ativas do mesmo `programming_group_id`.
+  - `postpone_project_programming_group`: passa a adiar linhas ativas do mesmo `programming_group_id`.
+  - `sync_project_programming_group_operational_fields`: passa a sincronizar campos operacionais apenas no mesmo `programming_group_id`.
+  - `addTeamToProgramming`: valida duplicidade de equipe por `programming_group_id`.
+  - `fullGroupScheduleIds`, `addTeamAvailableTeams` e `resolveCopyToDatesDefaultTeamIds`: usam `programmingGroupId` quando disponivel no payload.
+- Regra de grupo operacional:
+  - ETAPA numerica: mesmo `tenant_id + project_id + execution_date + etapa_number`.
+  - ETAPA UNICA: mesmo `tenant_id + project_id + execution_date + etapa_unica`.
+  - ETAPA FINAL: mesmo `tenant_id + project_id + execution_date + etapa_final`.
+  - Registro historico sem etapa: grupo proprio por registro.
+- Comportamento antes/depois:
+  - Antes: cancelamento, adiamento e sincronizacao operacional usavam `Projeto + Data`, enquanto adicionar equipe usava uma fronteira equivalente a `Projeto + Data + ETAPA`.
+  - Depois: cancelamento de grupo, adiamento de grupo, sincronizacao operacional e duplicidade em adicionar equipe usam a mesma fronteira persistida em `programming_group_id`.
+  - Depois: projetos com mesma data e ETAPAs diferentes passam a ter operacoes independentes.
+  - Depois: o modal de detalhes mostra o `programming_group_id` para diagnostico operacional.
+- Multi-tenant:
+  - Backfill, trigger e RPCs sempre usam `tenant_id`.
+  - Os indices novos incluem `tenant_id + programming_group_id`.
+  - EXECUTE das RPCs sensiveis continua restrito a `service_role`.
+  - A migration nao libera escrita direta para `authenticated`.
 
 Atualizacao 2026-06-26 - Estado Trabalho sem preenchimento automatico
 ---------------------------------------------------------------------

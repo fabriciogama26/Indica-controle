@@ -1,3 +1,4 @@
+- [x] Definir grupo operacional persistido da Programacao com `programming_group_id`: auditoria read-only de Projeto + Data com multiplas ETAPAs, migration 273 com backfill por ETAPA numerica/UNICA/FINAL/grupo proprio, cancelamento/adiamento/sincronizacao operacional por grupo e duplicidade de adicionar equipe dentro do mesmo grupo.
 - [x] Sincronizar campos operacionais da Programacao ao editar uma linha, replicando Alimentador, Nº EQ, Tipo de SGD, clientes afetados, desligamento, Apoio e quantidades para equipes ativas do mesmo Projeto + Data via RPC transacional com historico.
 - [x] Proteger a edicao da Programacao contra perda de atividades quando o snapshot carregar incompleto, com bloqueio no frontend, botao de recarregar no modal e rejeicao defensiva no backend (`PROGRAMMING_ACTIVITIES_NOT_LOADED`).
 - [x] Adicionar acao `Fazer medicao` na Composicao de Equipe, abrindo a Medicao com cabecalho pre-preenchido por projeto, equipe e data da composicao.
