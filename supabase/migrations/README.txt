@@ -108,6 +108,7 @@ Ordem de aplicacao
 272. 272_harden_anticipated_work_completion_status.sql
 273. 273_define_programming_group_id.sql
 274. 274_transactional_copy_programming_to_dates_selected_teams.sql
+275. 275_harden_programming_stage_state_integrity.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -746,3 +747,9 @@ Observacao
 - Executa validacao, lote, criacao das programacoes, vinculos de copia, historico e rastreio de `ANTECIPADO` em uma unica transacao.
 - Remove a estrategia de compensacao por UPDATE/CANCELADA quando uma iteracao falhava depois de criar linhas.
 - Mantem EXECUTE restrito a `service_role`.
+
+275_harden_programming_stage_state_integrity.sql
+- Endurece a trigger diferida de ETAPA ativa para permitir exatamente uma classificacao.
+- Programacao ativa deve ter `etapa_number > 0` sem flags, ou `ETAPA UNICA`, ou `ETAPA FINAL`.
+- Bloqueia combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag e `ETAPA UNICA + ETAPA FINAL`.
+- A migration para antes de alterar a trigger quando encontra dados ativos invalidos e mostra exemplos para saneamento.
