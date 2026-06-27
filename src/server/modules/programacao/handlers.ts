@@ -290,7 +290,7 @@ export async function copyProgramming(request: NextRequest) {
     .eq("team_id", sourceTeamId)
     .gte("execution_date", startDate)
     .lte("execution_date", endDate)
-    .neq("status", "CANCELADA")
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
     .eq("work_completion_status", "CONCLUIDO")
     .limit(1);
 
@@ -471,9 +471,9 @@ export async function copyProgrammingToDates(request: NextRequest) {
     );
   }
 
-  if (targetDates.includes(source.execution_date)) {
+  if (targetDates.some((date) => date <= source.execution_date)) {
     return NextResponse.json(
-      { message: "A data original da programacao nao pode ser selecionada como destino da copia." },
+      { message: "A data destino da copia deve ser posterior a data original da programacao." },
       { status: 400 },
     );
   }

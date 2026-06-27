@@ -1923,6 +1923,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               <option value="REPROGRAMADA">Reprogramada</option>
               <option value="ADIADA">Adiada</option>
               <option value="CANCELADA">Cancelada</option>
+              <option value="ANTECIPADA">Antecipada</option>
             </select>
           </label>
           <label className={styles.field}>

@@ -1,5 +1,5 @@
 ﻿export type PeriodMode = "integral" | "partial";
-export type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
+export type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA";
 export type WorkCompletionStatus = string;
 export type DocumentKey = "sgd" | "pi" | "pep";
 

@@ -350,6 +350,8 @@ export function resolveEnelNovoStatus(schedule: ScheduleItem) {
       return "ADIADO";
     case "CANCELADA":
       return "CANCELADO";
+    case "ANTECIPADA":
+      return "ANTECIPADO";
     case "REPROGRAMADA":
       return "REPROGRAMADA";
     case "PROGRAMADA":
@@ -774,6 +776,9 @@ export function formatHistoryAction(action: string) {
   if (normalized === "ADIADA") {
     return "Adiamento";
   }
+  if (normalized === "ANTECIPADA") {
+    return "Encerramento antecipado";
+  }
   return action || "-";
 }
 
@@ -783,7 +788,7 @@ export function isWorkCompleted(workCompletionStatus: ScheduleItem["workCompleti
 }
 
 export function isInactiveProgrammingStatus(status: ProgrammingStatus) {
-  return status === "ADIADA" || status === "CANCELADA";
+  return status === "ADIADA" || status === "CANCELADA" || status === "ANTECIPADA";
 }
 
 export function isActiveProgrammingStatus(status: ProgrammingStatus) {
