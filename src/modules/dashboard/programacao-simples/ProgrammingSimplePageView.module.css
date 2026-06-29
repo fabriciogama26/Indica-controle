@@ -905,6 +905,11 @@ fieldset.field {
   background: #dff4ef;
 }
 
+.actionReprogram {
+  color: #6b3fb0;
+  background: #efe3ff;
+}
+
 .actionCancel {
   color: #c62828;
   background: #dce8f5;

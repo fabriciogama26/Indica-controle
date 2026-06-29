@@ -1055,3 +1055,5 @@
 - [x] Adicionar auditoria read-only para diagnosticar bloqueadores da migration 272 e detalhar a mensagem de erro da migration com IDs/contexto dos registros invalidos.
 - [x] Compatibilizar a auditoria read-only da migration 272 com bases pre-migration, removendo dependencia da coluna `anticipated_by_programming_id` antes de ela existir.
 - [x] Criar script transacional de saneamento para limpar `Estado Trabalho = ANTECIPADO` invalido em programacoes `CANCELADA`/`ETAPA 1` que bloqueiam a migration 272.
+- [x] Criar botao/modal `Reprogramar` na Programacao Simples para escopo `Somente esta equipe`, alterando a mesma linha via `PUT /api/programacao`, exigindo nova data diferente, motivo por select, observacao em correcao retroativa, alerta confirmavel de sequencia de ETAPA e mantendo historico/concorrencia do save transacional existente.
+- [ ] [P1][Programacao] Implementar reprogramacao transacional em grupo por `programming_group_id`, movendo todas as equipes do grupo para a nova data com validacao previa de concorrencia/conflito para todas as linhas e rollback total antes de habilitar o escopo `Todas as equipes deste grupo` no modal `Reprogramar`.

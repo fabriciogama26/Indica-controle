@@ -871,6 +871,10 @@ Cadastro:
 Edicao/reprogramacao:
 - Editar campos operacionais e verificar sincronizacao somente em outras equipes do mesmo `programming_group_id`.
 - Reprogramar mudando data e confirmar exigencia de motivo.
+- Reprogramar pelo botao de linha com escopo `Somente esta equipe` e confirmar que a propria linha muda para `REPROGRAMADA`.
+- Tentar reprogramar pelo escopo `Todas as equipes deste grupo` e confirmar bloqueio ate existir RPC transacional propria.
+- Reprogramar para data passada e confirmar exigencia de observacao retroativa.
+- Reprogramar quebrando sequencia de ETAPAs e confirmar alerta com opcao de continuar.
 - Tentar editar `ADIADA` ou `CANCELADA`: deve bloquear.
 - Tentar salvar sem ETAPA e sem flags: deve bloquear.
 

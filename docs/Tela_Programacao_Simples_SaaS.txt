@@ -2521,3 +2521,41 @@ Atualizacao 2026-06-26 - Estado Trabalho sem preenchimento automatico
   - Nenhuma query nova foi adicionada.
   - A alteracao remove consultas de heranca por `tenant_id` e preserva o isolamento existente das chamadas de salvamento.
   - RLS, migrations e grants nao foram alterados.
+
+Atualizacao 2026-06-29 - Botao Reprogramar individual
+------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `openReprogramModal`: abre o modal proprio de reprogramacao para linhas ativas.
+  - `closeReprogramModal`: limpa estado local do modal.
+  - `buildStageSequenceWarning`: identifica quebra visual da sequencia de ETAPAs do projeto antes da gravacao.
+  - `confirmReprogram`: monta payload de edicao da propria linha e chama `PUT /api/programacao` via `saveProgramming`.
+  - `ProgrammingReprogramModal`: novo modal com escopo, nova data, motivo e observacao.
+  - `.actionReprogram`: estilo do novo botao de linha.
+- Comportamento antes:
+  - Nao existia botao proprio `Reprogramar`.
+  - Reprogramacao acontecia apenas pela edicao geral ou pelo `Adiar` com nova data, que cria nova linha.
+- Comportamento depois:
+  - A lista exibe botao `Reprogramar` para programacoes ativas.
+  - O modal permite reprogramar somente a equipe clicada alterando a mesma linha para `REPROGRAMADA` pelo fluxo transacional de edicao existente.
+  - A nova data e obrigatoria e nao pode ser igual a data atual.
+  - Motivo da reprogramacao e obrigatorio via `programming_reason_catalog`.
+  - Se a nova data ja passou, o modal exibe `Correcao retroativa` e exige observacao.
+  - Se a nova data quebrar a sequencia visual das ETAPAs do projeto, o frontend exibe confirmacao antes de salvar.
+  - O escopo `Todas as equipes deste grupo` aparece no modal, mas fica bloqueado ate existir RPC transacional propria para mover o grupo inteiro sem salvamento parcial.
+- Como validar:
+  - Abrir Programacao Simples e confirmar o botao `Reprogramar` nas linhas `PROGRAMADA`/`REPROGRAMADA`.
+  - Clicar em `Reprogramar`, selecionar `Somente esta equipe`, informar nova data diferente, motivo e confirmar.
+  - Confirmar que a mesma linha mudou de data e permanece ativa como `REPROGRAMADA`.
+  - Tentar nova data igual a atual e confirmar bloqueio.
+  - Tentar data passada e confirmar exigencia de observacao.
+  - Tentar escopo de grupo e confirmar que permanece bloqueado com mensagem explicativa.
+- Multi-tenant:
+  - A gravacao reutiliza `PUT /api/programacao`, `authorizeProgrammingAction` e RPC full existente, mantendo `tenant_id`, RLS e controle de concorrencia por `expectedUpdatedAt`.
+  - Nenhuma migration foi criada nesta etapa.

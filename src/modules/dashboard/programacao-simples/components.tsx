@@ -1296,6 +1296,185 @@ export function ProgrammingHistoryModal(props: {
   );
 }
 
+export function ProgrammingReprogramModal(props: {
+  target: ScheduleItem | null;
+  projectCode: string;
+  teamName: string;
+  reasonOptions: ProgrammingReasonOptionItem[];
+  reasonCode: string;
+  reasonNotes: string;
+  date: string;
+  today: string;
+  scope: "individual" | "group";
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onDateChange: (value: string) => void;
+  onScopeChange: (value: "individual" | "group") => void;
+  onReasonCodeChange: (value: string) => void;
+  onReasonNotesChange: (value: string) => void;
+}) {
+  const {
+    target,
+    projectCode,
+    teamName,
+    reasonOptions,
+    reasonCode,
+    reasonNotes,
+    date,
+    today,
+    scope,
+    isSubmitting,
+    onClose,
+    onConfirm,
+    onDateChange,
+    onScopeChange,
+    onReasonCodeChange,
+    onReasonNotesChange,
+  } = props;
+
+  if (!target) {
+    return null;
+  }
+
+  const selectedReason = resolveReasonOption(reasonOptions, reasonCode);
+  const isRetroactive = Boolean(date && date < today);
+  const shouldRequireNotes = Boolean(selectedReason?.requiresNotes || isRetroactive);
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <h4>Reprogramar Programacao</h4>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>
+            Fechar
+          </button>
+        </header>
+
+        <div className={styles.modalBody}>
+          <div className={styles.detailGrid}>
+            <div>
+              <span>Projeto</span>
+              <strong>{projectCode}</strong>
+            </div>
+            <div>
+              <span>Equipe</span>
+              <strong>{teamName}</strong>
+            </div>
+            <div>
+              <span>Data atual</span>
+              <strong>{formatDate(target.date)}</strong>
+            </div>
+            <div>
+              <span>ETAPA</span>
+              <strong>{target.etapaUnica ? "ETAPA UNICA" : target.etapaFinal ? "ETAPA FINAL" : target.etapaNumber ?? "-"}</strong>
+            </div>
+          </div>
+
+          <fieldset className={styles.field}>
+            <span>Escopo</span>
+            <div className={styles.inlineCheckboxGroup}>
+              <label className={styles.inlineCheckbox}>
+                <input
+                  type="radio"
+                  name="reprogram-scope"
+                  value="individual"
+                  checked={scope === "individual"}
+                  onChange={() => onScopeChange("individual")}
+                  disabled={isSubmitting}
+                />
+                Somente esta equipe
+              </label>
+              <label className={styles.inlineCheckbox}>
+                <input
+                  type="radio"
+                  name="reprogram-scope"
+                  value="group"
+                  checked={scope === "group"}
+                  onChange={() => onScopeChange("group")}
+                  disabled
+                />
+                Todas as equipes deste grupo
+              </label>
+            </div>
+            <small className={styles.helperText}>
+              Reprogramacao em grupo exige RPC transacional propria e permanecera bloqueada ate a regra de banco estar disponivel.
+            </small>
+          </fieldset>
+
+          <label className={styles.field}>
+            <span>
+              Nova data <span className="requiredMark">*</span>
+            </span>
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => onDateChange(event.target.value)}
+              disabled={isSubmitting}
+            />
+          </label>
+
+          {isRetroactive ? (
+            <div className={styles.warningCard}>
+              <p>
+                Tipo: <strong>Correcao retroativa</strong>
+              </p>
+              <p>Motivo e observacao sao obrigatorios para mover a programacao para uma data que ja passou.</p>
+            </div>
+          ) : null}
+
+          <label className={styles.field}>
+            <span>
+              Motivo da reprogramacao <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={reasonCode}
+              onChange={(event) => onReasonCodeChange(event.target.value)}
+              disabled={isSubmitting}
+            >
+              <option value="">Selecione</option>
+              {reasonOptions.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {shouldRequireNotes ? (
+            <label className={styles.field}>
+              <span>
+                Observacao <span className="requiredMark">*</span>
+              </span>
+              <textarea
+                value={reasonNotes}
+                onChange={(event) => onReasonNotesChange(event.target.value)}
+                rows={3}
+                placeholder="Descreva a observacao complementar."
+                disabled={isSubmitting}
+              />
+            </label>
+          ) : null}
+
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={onConfirm}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Reprogramando..." : "Reprogramar"}
+            </button>
+            <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>
+  );
+}
+
 export function ProgrammingPostponeModal(props: {
   target: ScheduleItem | null;
   reasonOptions: ProgrammingReasonOptionItem[];

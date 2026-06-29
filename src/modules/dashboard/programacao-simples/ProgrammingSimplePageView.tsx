@@ -17,6 +17,7 @@ import {
   ProgrammingFormPanel,
   ProgrammingHistoryModal,
   ProgrammingPostponeModal,
+  ProgrammingReprogramModal,
   ProgrammingStageConflictModal,
   ProgrammingWeeklyCalendarPanel,
 } from "./components";
@@ -154,6 +155,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [editChangeReasonCode, setEditChangeReasonCode] = useState("");
   const [editChangeReasonNotes, setEditChangeReasonNotes] = useState("");
   const [detailsTarget, setDetailsTarget] = useState<ScheduleItem | null>(null);
+  const [reprogramTarget, setReprogramTarget] = useState<ScheduleItem | null>(null);
+  const [reprogramDate, setReprogramDate] = useState("");
+  const [reprogramReasonCode, setReprogramReasonCode] = useState("");
+  const [reprogramReasonNotes, setReprogramReasonNotes] = useState("");
+  const [reprogramScope, setReprogramScope] = useState<"individual" | "group">("individual");
+  const [isReprogramming, setIsReprogramming] = useState(false);
   const [addTeamTarget, setAddTeamTarget] = useState<ScheduleItem | null>(null);
   const [addTeamSelectedTeamId, setAddTeamSelectedTeamId] = useState("");
   const [isAddingTeam, setIsAddingTeam] = useState(false);
@@ -241,6 +248,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   );
   const addTeamProjectCode = addTeamTarget
     ? (projectMap.get(addTeamTarget.projectId)?.code ?? addTeamTarget.projectId)
+    : "";
+  const reprogramProjectCode = reprogramTarget
+    ? (projectMap.get(reprogramTarget.projectId)?.code ?? reprogramTarget.projectId)
+    : "";
+  const reprogramTeamName = reprogramTarget
+    ? (teamMap.get(reprogramTarget.teamId)?.name ?? reprogramTarget.teamName ?? reprogramTarget.teamId)
     : "";
 
   // IDs de programações onde todas as equipes do tenant já estão na mesma etapa/data/projeto
@@ -830,6 +843,303 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
     setFeedback(null);
+  }
+
+  function openReprogramModal(schedule: ScheduleItem) {
+    if (!isActiveProgrammingStatus(getDisplayProgrammingStatus(schedule))) {
+      setFeedback({
+        type: "error",
+        message: "Somente programacoes ativas podem ser reprogramadas.",
+      });
+      return;
+    }
+
+    if (schedule.activitiesLoaded === false) {
+      setFeedback({
+        type: "error",
+        message: "Nao foi possivel carregar as atividades desta programacao. Recarregue a tela antes de reprogramar.",
+      });
+      openAlertModal(
+        "Reprogramacao bloqueada por seguranca",
+        "As atividades da programacao nao foram carregadas. Recarregue a tela para evitar sobrescrever dados.",
+        undefined,
+        {
+          primaryAction: "reload",
+          primaryActionLabel: "Recarregar programacao",
+        },
+      );
+      return;
+    }
+
+    if (!reasonOptions.length) {
+      setFeedback({
+        type: "error",
+        message: "Catalogo de motivos indisponivel. Aplique a migration 135 para reprogramar por select.",
+      });
+      return;
+    }
+
+    setReprogramTarget(schedule);
+    setReprogramDate("");
+    setReprogramReasonCode("");
+    setReprogramReasonNotes("");
+    setReprogramScope("individual");
+    setFeedback(null);
+  }
+
+  function closeReprogramModal() {
+    if (isReprogramming) return;
+    setReprogramTarget(null);
+    setReprogramDate("");
+    setReprogramReasonCode("");
+    setReprogramReasonNotes("");
+    setReprogramScope("individual");
+  }
+
+  function buildStageSequenceWarning(schedule: ScheduleItem, nextDate: string) {
+    if (schedule.etapaNumber === null || schedule.etapaUnica || schedule.etapaFinal) {
+      return null;
+    }
+
+    const activeProjectSchedules = schedules.filter((item) => (
+      item.id !== schedule.id
+      && item.projectId === schedule.projectId
+      && item.etapaNumber !== null
+      && isActiveProgrammingStatus(getDisplayProgrammingStatus(item))
+    ));
+    const previousStage = activeProjectSchedules
+      .filter((item) => Number(item.etapaNumber) < Number(schedule.etapaNumber) && item.date > nextDate)
+      .sort((left, right) => Number(right.etapaNumber) - Number(left.etapaNumber))[0] ?? null;
+    if (previousStage) {
+      return `A nova data ficara anterior a ETAPA ${previousStage.etapaNumber}.`;
+    }
+
+    const nextStage = activeProjectSchedules
+      .filter((item) => Number(item.etapaNumber) > Number(schedule.etapaNumber) && item.date < nextDate)
+      .sort((left, right) => Number(left.etapaNumber) - Number(right.etapaNumber))[0] ?? null;
+    if (nextStage) {
+      return `A nova data ficara posterior a ETAPA ${nextStage.etapaNumber}.`;
+    }
+
+    return null;
+  }
+
+  async function confirmReprogram() {
+    if (!reprogramTarget) return;
+
+    const initialAccessToken = await resolveLatestAccessToken();
+    if (!initialAccessToken) {
+      openAlertModal("Falha ao validar reprogramacao", "Sessao invalida para reprogramar.");
+      return;
+    }
+
+    if (reprogramScope === "group") {
+      openAlertModal(
+        "Reprogramacao em grupo indisponivel",
+        "A opcao de grupo exige RPC transacional propria para alterar todas as equipes ou nenhuma. Use Somente esta equipe nesta versao.",
+      );
+      return;
+    }
+
+    if (!reprogramDate) {
+      openAlertModal("Nova data obrigatoria", "Informe a nova data da programacao.");
+      return;
+    }
+
+    if (reprogramDate === reprogramTarget.date) {
+      openAlertModal(
+        "Nova data invalida",
+        "A nova data nao pode ser igual a data atual da programacao.",
+        [`Data atual: ${formatDate(reprogramTarget.date)}.`],
+      );
+      return;
+    }
+
+    if (reprogramDate < today && !reprogramReasonNotes.trim()) {
+      openAlertModal(
+        "Correcao retroativa exige observacao",
+        "A nova data ja passou. Informe uma observacao para registrar a justificativa da correcao retroativa.",
+      );
+      return;
+    }
+
+    const selectedReasonText = buildReasonText(reasonOptions, reprogramReasonCode, reprogramReasonNotes);
+    if (!selectedReasonText) {
+      openAlertModal(
+        "Motivo da reprogramacao incompleto",
+        "Selecione o motivo da reprogramacao. Quando o motivo exigir observacao, preencha o campo complementar.",
+      );
+      return;
+    }
+
+    const sequenceWarning = buildStageSequenceWarning(reprogramTarget, reprogramDate);
+    if (sequenceWarning && !window.confirm(`${sequenceWarning}\nDeseja continuar?`)) {
+      return;
+    }
+
+    const operationLogContext = {
+      operation: "reprogram_programming",
+      programmingId: reprogramTarget.id,
+      projectId: reprogramTarget.projectId,
+      teamId: reprogramTarget.teamId,
+      currentDate: reprogramTarget.date,
+      newDate: reprogramDate,
+      expectedUpdatedAt: reprogramTarget.updatedAt,
+      isRetroactive: reprogramDate < today,
+    };
+
+    setIsReprogramming(true);
+    setFeedback(null);
+
+    try {
+      const requestBody = JSON.stringify({
+        id: reprogramTarget.id,
+        projectId: reprogramTarget.projectId,
+        teamId: reprogramTarget.teamId,
+        date: reprogramDate,
+        period: reprogramTarget.period,
+        startTime: reprogramTarget.startTime,
+        endTime: reprogramTarget.endTime,
+        outageStartTime: reprogramTarget.outageStartTime || undefined,
+        outageEndTime: reprogramTarget.outageEndTime || undefined,
+        expectedMinutes: reprogramTarget.expectedMinutes || calculateExpectedMinutes(
+          reprogramTarget.startTime,
+          reprogramTarget.endTime,
+          reprogramTarget.period,
+        ),
+        feeder: reprogramTarget.feeder ?? "",
+        support: reprogramTarget.supportItemId ? undefined : (reprogramTarget.support || undefined),
+        supportItemId: reprogramTarget.supportItemId || undefined,
+        note: reprogramTarget.note ?? "",
+        electricalField: (reprogramTarget.electricalField ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").trim(),
+        serviceDescription: reprogramTarget.serviceDescription ?? "",
+        posteQty: reprogramTarget.posteQty ?? 0,
+        estruturaQty: reprogramTarget.estruturaQty ?? 0,
+        trafoQty: reprogramTarget.trafoQty ?? 0,
+        redeQty: reprogramTarget.redeQty ?? 0,
+        etapaNumber: reprogramTarget.etapaNumber ?? undefined,
+        etapaUnica: reprogramTarget.etapaUnica,
+        etapaFinal: reprogramTarget.etapaFinal,
+        workCompletionStatus: reprogramTarget.workCompletionStatus ?? undefined,
+        affectedCustomers: reprogramTarget.affectedCustomers ?? 0,
+        sgdTypeId: reprogramTarget.sgdTypeId || undefined,
+        electricalEqCatalogId: reprogramTarget.electricalEqCatalogId || undefined,
+        activitiesLoaded: reprogramTarget.activitiesLoaded !== false,
+        documents: DOCUMENT_KEYS.reduce(
+          (accumulator, item) => {
+            const currentDocument = reprogramTarget.documents[item.key];
+            const normalizedNumber = item.key === "sgd"
+              ? normalizeSgdNumberForExport(currentDocument?.number ?? "")
+              : (currentDocument?.number ?? "").trim();
+            accumulator[item.key] = {
+              number: normalizedNumber,
+              approvedAt: currentDocument?.approvedAt || currentDocument?.includedAt || undefined,
+              requestedAt: currentDocument?.requestedAt || currentDocument?.deliveredAt || undefined,
+            };
+            return accumulator;
+          },
+          {} as Record<DocumentKey, { number: string; approvedAt?: string; requestedAt?: string }>,
+        ),
+        activities: (reprogramTarget.activities ?? [])
+          .filter((item) => item.quantity > 0)
+          .map((item) => ({ catalogId: item.catalogId, quantity: item.quantity })),
+        expectedUpdatedAt: reprogramTarget.updatedAt,
+        changeReason: selectedReasonText,
+      });
+
+      const executeSaveRequest = (token: string) => saveProgramming({
+        accessToken: token,
+        isEditing: true,
+        requestBody,
+      });
+
+      let saveResult = await executeSaveRequest(initialAccessToken);
+      if (saveResult.status === 401) {
+        const refreshedAccessToken = await resolveLatestAccessToken();
+        if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
+          saveResult = await executeSaveRequest(refreshedAccessToken);
+        }
+      }
+
+      const { data } = saveResult;
+      if (!saveResult.ok || !data.id) {
+        const responseMessage = buildConflictFeedbackMessage(data, "Falha ao reprogramar programacao.");
+        setFeedback({ type: "error", message: responseMessage });
+        if (data.hasConflict && Array.isArray(data.teams) && data.teams.length) {
+          setStageConflictModal({
+            enteredEtapaNumber: Number(data.enteredEtapaNumber ?? reprogramTarget.etapaNumber ?? 0),
+            highestStage: Number(data.highestStage ?? 0),
+            teams: data.teams,
+          });
+        } else if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
+          openProjectCompletedAlertModal({
+            title: "Projeto concluido exige reabertura",
+            payload: data,
+          });
+        } else {
+          openAlertModal(
+            data.error === "conflict" ? "Conflito ao reprogramar" : "Falha ao reprogramar",
+            responseMessage,
+            buildConflictAlertDetails(data),
+          );
+        }
+        await logError("Falha ao reprogramar programacao.", undefined, {
+          ...operationLogContext,
+          responseStatus: saveResult.status,
+          responseMessage,
+          responseError: data.error ?? null,
+          responseReason: data.reason ?? null,
+          responseDetail: data.detail ?? null,
+        });
+        return;
+      }
+
+      const hiddenByFiltersWarning = buildSavedOutsideFiltersMessage({
+        date: data.schedule?.date ?? reprogramDate,
+        status: data.schedule?.status ?? "REPROGRAMADA",
+        projectId: data.schedule?.projectId ?? reprogramTarget.projectId,
+        teamIds: [data.schedule?.teamId ?? reprogramTarget.teamId],
+        workCompletionStatus: data.schedule?.workCompletionStatus ?? reprogramTarget.workCompletionStatus,
+        sgdTypeId: data.schedule?.sgdTypeId ?? reprogramTarget.sgdTypeId,
+        activeFilters,
+        projectMap,
+        teamMap,
+        workCompletionCatalog,
+        sgdTypes,
+      });
+      const successMessage = data.message ?? "Programacao reprogramada com sucesso.";
+      setReprogramTarget(null);
+      setReprogramDate("");
+      setReprogramReasonCode("");
+      setReprogramReasonNotes("");
+      setReprogramScope("individual");
+      setFeedback({
+        type: "success",
+        message: hiddenByFiltersWarning ? `${successMessage} ${hiddenByFiltersWarning}` : successMessage,
+      });
+
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) applyBoardSnapshot(boardData);
+      } catch (refreshError) {
+        await logError("Programacao reprogramada, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          ...operationLogContext,
+          savedScheduleId: data.id ?? data.schedule?.id ?? null,
+        });
+        if (!data.warning) {
+          setFeedback({
+            type: "success",
+            message: `${successMessage}${hiddenByFiltersWarning ? ` ${hiddenByFiltersWarning}` : ""} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+          });
+        }
+      }
+    } catch (error) {
+      setFeedback({ type: "error", message: "Falha ao reprogramar programacao." });
+      openAlertModal("Falha ao reprogramar", "Falha ao reprogramar programacao.");
+      await logError("Falha ao reprogramar programacao.", error, operationLogContext);
+    } finally {
+      setIsReprogramming(false);
+    }
   }
 
   function openAddTeamModal(schedule: ScheduleItem) {
@@ -2153,6 +2463,31 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                               </button>
                               <button
                                 type="button"
+                                className={`${styles.actionButton} ${styles.actionReprogram}`}
+                                onClick={() => openReprogramModal(schedule)}
+                                title="Reprogramar"
+                                aria-label={`Reprogramar programacao ${project?.code ?? schedule.id}`}
+                                disabled={!isActiveProgrammingStatus(displayStatus)}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path
+                                    d="M7 7.5h10M7 12h6M7 16.5h4"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                  />
+                                  <path
+                                    d="M17.5 14.5v4h-4M13.5 18.5l5-5"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <rect x="4" y="4" width="16" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
                                 className={`${styles.actionButton} ${styles.actionPostpone}`}
                                 onClick={() => openPostponeModal(schedule)}
                                 title="Adiar"
@@ -2268,6 +2603,24 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         }}
         onPreviousPage={() => setHistoryPage((current) => Math.max(1, current - 1))}
         onNextPage={() => setHistoryPage((current) => Math.min(totalHistoryPages, current + 1))}
+      />
+      <ProgrammingReprogramModal
+        target={reprogramTarget}
+        projectCode={reprogramProjectCode}
+        teamName={reprogramTeamName}
+        reasonOptions={reasonOptions}
+        reasonCode={reprogramReasonCode}
+        reasonNotes={reprogramReasonNotes}
+        date={reprogramDate}
+        today={today}
+        scope={reprogramScope}
+        isSubmitting={isReprogramming}
+        onClose={closeReprogramModal}
+        onConfirm={() => void confirmReprogram()}
+        onDateChange={setReprogramDate}
+        onScopeChange={setReprogramScope}
+        onReasonCodeChange={setReprogramReasonCode}
+        onReasonNotesChange={setReprogramReasonNotes}
       />
       <ProgrammingPostponeModal
         target={postponeTarget}
