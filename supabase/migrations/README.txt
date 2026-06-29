@@ -771,3 +771,10 @@ Observacao
 - Recria a sincronizacao generica de Estado Trabalho para usar `programming_group_id` e nao propagar `CONCLUIDO`/`ANTECIPADO`.
 - Registra historico tecnico `NORMALIZE_WORK_COMPLETION_STATUS` nas linhas ajustadas.
 - Bloqueia `CONCLUIDO` quando existir outra programacao ativa no mesmo `programming_group_id`, impedindo conclusao ambigua na mesma ETAPA/grupo.
+
+279_harden_completed_group_integrity_transition.sql
+- Recria `sync_project_programming_work_completion_status_fields` para respeitar update explicito por texto, inclusive limpeza para `NULL`, sem restaurar UUID antigo.
+- Remove o trigger legado `trg_project_programming_sync_work_completion_status_fields` quando existir e mantem apenas `trg_project_programming_sync_work_completion_status`.
+- Recria `enforce_completed_work_status_group_integrity` para comparar o Estado Trabalho canonico anterior e novo usando texto e UUID (`work_completion_status_id`).
+- Mantem o bloqueio ao inserir/reativar/transicionar para `CONCLUIDO` quando houver outra linha ativa no mesmo `programming_group_id`.
+- Evita falso bloqueio em edicoes operacionais comuns quando a linha ja estava tecnicamente `CONCLUIDO` no mesmo grupo, inclusive em dados com texto nulo e UUID apontando para `CONCLUIDO`.

@@ -2601,3 +2601,35 @@ Atualizacao 2026-06-29 - Organizacao do cabecalho de reprogramacao
 - Multi-tenant:
   - Alteracao apenas visual no frontend.
   - Nenhuma query, RPC, RLS ou migration foi alterada.
+
+Atualizacao 2026-06-29 - Guarda de CONCLUIDO por transicao canonica
+--------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/279_harden_completed_group_integrity_transition.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Banco: `sync_project_programming_work_completion_status_fields`.
+  - Banco: `enforce_completed_work_status_group_integrity`.
+- Comportamento antes:
+  - A trigger bloqueava qualquer `NEW.work_completion_status = CONCLUIDO` quando havia outra linha ativa no mesmo `programming_group_id`.
+  - Edicoes operacionais, como ajustar KM/quantidades, podiam falhar se a linha ja tivesse `CONCLUIDO` tecnico em texto ou UUID, mesmo sem o usuario tentar concluir novamente.
+  - Dados divergentes (`work_completion_status` nulo e `work_completion_status_id` apontando para `CONCLUIDO`) podiam ser sincronizados durante o update e disparar falso bloqueio.
+  - O trigger legado `trg_project_programming_sync_work_completion_status_fields` podia permanecer instalado junto com o trigger novo em ambientes que passaram pelas migrations antigas.
+- Comportamento depois:
+  - A trigger de sincronismo volta a respeitar update explicito por texto, inclusive limpeza para `NULL`, sem restaurar UUID antigo.
+  - A migration remove o trigger legado de sincronismo quando existir e mantem apenas o trigger canonico atual.
+  - A trigger resolve o Estado Trabalho canonico anterior e novo usando texto e UUID.
+  - O bloqueio de grupo continua valendo para insert, reativacao ou transicao efetiva para `CONCLUIDO`.
+  - Edicao comum de uma linha que ja era canonicamente `CONCLUIDO` no mesmo grupo nao e bloqueada pela regra de transicao.
+- Como validar:
+  - Em uma programacao com `work_completion_status_id` tecnico de `CONCLUIDO`, editar somente KM/quantidades e confirmar que a gravacao nao cai em `Estado Trabalho CONCLUIDO nao pode ser salvo...`.
+  - Limpar Estado Trabalho no formulario e confirmar que `work_completion_status` e `work_completion_status_id` ficam nulos.
+  - Tentar mudar uma linha ativa de outro Estado Trabalho para `CONCLUIDO` enquanto houver outra linha ativa no mesmo `programming_group_id` e confirmar bloqueio.
+  - Tentar inserir/reativar linha ativa ja `CONCLUIDO` em grupo com outra linha ativa e confirmar bloqueio.
+- Multi-tenant:
+  - A validacao segue limitada por `tenant_id` e `programming_group_id`.
+  - A consulta ao catalogo usa `tenant_id + work_completion_status_id`.
+  - RLS nao foi alterado.

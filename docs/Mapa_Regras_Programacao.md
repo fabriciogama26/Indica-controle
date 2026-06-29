@@ -37,6 +37,7 @@ Regras centrais:
 - Combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag, `ETAPA UNICA + ETAPA FINAL` ou nenhuma ETAPA ativa sao bloqueadas no banco.
 - `Estado Trabalho = CONCLUIDO` representa conclusao do projeto inteiro, independentemente da equipe/linha que registrou a conclusao.
 - Um projeto pode ter no maximo uma programacao ativa com `Estado Trabalho = CONCLUIDO` por `tenant_id + project_id`.
+- A guarda de grupo para `CONCLUIDO` deve agir somente quando a linha entra efetivamente em `CONCLUIDO` de forma canonica (texto ou UUID), ou quando uma linha `CONCLUIDO` passa a ficar ativa/em novo grupo. Edicoes operacionais comuns de uma linha que ja era `CONCLUIDO` no mesmo grupo nao devem ser bloqueadas.
 - `Estado Trabalho = CONCLUIDO` bloqueia novas programacoes, copias, inclusao de equipe, adiamento e cancelamento ate reabrir o projeto por uma edicao/acao permitida.
 - Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser encerradas operacionalmente como `ANTECIPADA` com `Estado Trabalho = ANTECIPADO`.
 - `ANTECIPADA` nao conta como programacao ativa, nao bloqueia agenda da equipe e nao deve aparecer como servico pendente.
@@ -851,8 +852,9 @@ Banco e migrations relevantes:
   - Normaliza `PARCIAL` legado para `PARCIAL_NAO_PLANEJADO` em texto e UUID.
   - Mantem ativos apenas os codigos canonicos `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `CONCLUIDO` e `ANTECIPADO`.
   - Recria o trigger de sincronismo de `work_completion_status`/`work_completion_status_id` para aceitar somente catalogo ativo.
-  - Recria a sincronizacao de Estado Trabalho para usar `programming_group_id` e nao propagar `CONCLUIDO`/`ANTECIPADO`.
-  - Bloqueia `CONCLUIDO` quando houver outra linha ativa no mesmo `programming_group_id`.
+- Recria a sincronizacao de Estado Trabalho para usar `programming_group_id` e nao propagar `CONCLUIDO`/`ANTECIPADO`.
+- Bloqueia `CONCLUIDO` quando houver outra linha ativa no mesmo `programming_group_id`.
+- A migration 279 ajusta o sincronismo texto/UUID para respeitar limpeza explicita do texto, remove trigger legado duplicado quando existir e ajusta a guarda para comparar o estado canonico anterior e novo usando texto e UUID, evitando falso bloqueio em edicoes comuns quando a linha ja era tecnicamente `CONCLUIDO`.
 
 ---
 
@@ -885,6 +887,9 @@ Estado Trabalho:
 - Conferir em uma linha `ANTECIPADO` os campos `status = ANTECIPADA`, `is_active = false`, `anticipated_by_programming_id`, `anticipated_at`, `previous_work_completion_status` e `previous_operational_status`.
 - Tentar salvar uma segunda programacao ativa do mesmo projeto como `CONCLUIDO`: deve bloquear por `tenant_id + project_id`.
 - Tentar salvar `CONCLUIDO` em linha com outra equipe ativa no mesmo `programming_group_id`: deve bloquear.
+- Editar KM/quantidades/documentos de uma linha que ja era canonicamente `CONCLUIDO` no mesmo `programming_group_id`: nao deve bloquear pela guarda de transicao para `CONCLUIDO`.
+- Simular divergencia tecnica com `work_completion_status` nulo e `work_completion_status_id` apontando para `CONCLUIDO`; editar campo operacional e confirmar que a trigger nao trata a sincronizacao como nova conclusao.
+- Limpar explicitamente Estado Trabalho e confirmar que texto e UUID ficam nulos, sem restaurar o UUID anterior.
 - Trocar o unico `CONCLUIDO` para outro status e verificar restauracao das linhas `ANTECIPADA` para `previous_work_completion_status` e `previous_operational_status`.
 - Confirmar que linha `ANTECIPADA` nao bloqueia conflito de horario da equipe na data futura.
 - Tentar adiar/cancelar/copiar/adicionar equipe em projeto `CONCLUIDO`: deve bloquear.
