@@ -1340,34 +1340,42 @@ export function ProgrammingReprogramModal(props: {
   const selectedReason = resolveReasonOption(reasonOptions, reasonCode);
   const isRetroactive = Boolean(date && date < today);
   const shouldRequireNotes = Boolean(selectedReason?.requiresNotes || isRetroactive);
+  const sourceStageLabel = target.etapaUnica
+    ? "ETAPA UNICA"
+    : target.etapaFinal
+      ? "ETAPA FINAL"
+      : `ETAPA ${target.etapaNumber ?? "-"}`;
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
       <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <header className={styles.modalHeader}>
-          <h4>Reprogramar Programacao</h4>
+          <div className={styles.modalTitleBlock}>
+            <h4>Reprogramar Programacao</h4>
+            <p className={styles.modalSubtitle}>Origem da reprogramacao</p>
+          </div>
           <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>
             Fechar
           </button>
         </header>
 
         <div className={styles.modalBody}>
-          <div className={styles.detailGrid}>
-            <div>
+          <div className={styles.modalMetaGrid}>
+            <div className={styles.modalMetaItem}>
               <span>Projeto</span>
               <strong>{projectCode}</strong>
             </div>
-            <div>
+            <div className={styles.modalMetaItem}>
               <span>Equipe</span>
               <strong>{teamName}</strong>
             </div>
-            <div>
+            <div className={styles.modalMetaItem}>
               <span>Data atual</span>
               <strong>{formatDate(target.date)}</strong>
             </div>
-            <div>
+            <div className={styles.modalMetaItem}>
               <span>ETAPA</span>
-              <strong>{target.etapaUnica ? "ETAPA UNICA" : target.etapaFinal ? "ETAPA FINAL" : target.etapaNumber ?? "-"}</strong>
+              <strong>{sourceStageLabel}</strong>
             </div>
           </div>
 
@@ -1650,15 +1658,20 @@ export function ProgrammingCopyToDatesModal(props: {
     return null;
   }
 
+  const sourceTeamName = target.teamName || target.teamId;
+  const sourceStageLabel = target.etapaUnica
+    ? "ETAPA UNICA"
+    : target.etapaFinal
+      ? "ETAPA FINAL"
+      : `ETAPA ${target.etapaNumber ?? "-"}`;
+
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
       <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <header className={styles.modalHeader}>
           <div className={styles.modalTitleBlock}>
             <h4>Copiar programação</h4>
-            <p className={styles.modalSubtitle}>
-              {projectCode} | {formatDate(target.date)} | ETAPA {target.etapaNumber ?? "-"}
-            </p>
+            <p className={styles.modalSubtitle}>Origem da copia</p>
           </div>
           <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>
             Fechar
@@ -1666,6 +1679,25 @@ export function ProgrammingCopyToDatesModal(props: {
         </header>
 
         <div className={styles.modalBody}>
+          <div className={styles.modalMetaGrid}>
+            <div className={styles.modalMetaItem}>
+              <span>Projeto</span>
+              <strong>{projectCode}</strong>
+            </div>
+            <div className={styles.modalMetaItem}>
+              <span>Equipe</span>
+              <strong>{sourceTeamName}</strong>
+            </div>
+            <div className={styles.modalMetaItem}>
+              <span>Data atual</span>
+              <strong>{formatDate(target.date)}</strong>
+            </div>
+            <div className={styles.modalMetaItem}>
+              <span>ETAPA</span>
+              <strong>{sourceStageLabel}</strong>
+            </div>
+          </div>
+
           <p>
             Informe as datas de destino, a ETAPA e as equipes de cada copia. As ETAPAs devem ser maiores que a etapa
             atual.

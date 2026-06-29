@@ -2559,3 +2559,45 @@ Atualizacao 2026-06-29 - Botao Reprogramar individual
 - Multi-tenant:
   - A gravacao reutiliza `PUT /api/programacao`, `authorizeProgrammingAction` e RPC full existente, mantendo `tenant_id`, RLS e controle de concorrencia por `expectedUpdatedAt`.
   - Nenhuma migration foi criada nesta etapa.
+
+Atualizacao 2026-06-29 - Organizacao do cabecalho de copia
+-----------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingCopyToDatesModal`: substitui a linha compacta de origem por grade com `Projeto`, `Equipe`, `Data atual` e `ETAPA`.
+  - `.modalMetaGrid` e `.modalMetaItem`: novos estilos para os dados de origem no topo do modal.
+- Comportamento antes:
+  - O modal `Copiar programacao` exibia origem em uma linha compacta (`Projeto | Data | ETAPA`), com leitura ruim para valores longos.
+- Comportamento depois:
+  - O modal exibe os dados de origem em blocos organizados e responsivos.
+  - A equipe da programacao original passa a aparecer no resumo do modal.
+- Como validar:
+  - Abrir `Copiar programacao` em uma linha ativa.
+  - Confirmar que o topo do modal mostra `Projeto`, `Equipe`, `Data atual` e `ETAPA` separados.
+  - Testar em tela menor e confirmar que os blocos quebram sem sobrepor texto.
+- Multi-tenant:
+  - Alteracao apenas visual no frontend.
+  - Nenhuma query, RPC, RLS ou migration foi alterada.
+
+Atualizacao 2026-06-29 - Organizacao do cabecalho de reprogramacao
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProgrammingReprogramModal`: passa a usar o mesmo resumo visual em blocos do modal `Copiar programacao`.
+- Comportamento antes:
+  - O modal `Reprogramar Programacao` mostrava `Projeto`, `Equipe`, `Data atual` e `ETAPA` em uma grade generica, menos destacada.
+- Comportamento depois:
+  - O modal exibe `Origem da reprogramacao` com blocos organizados e responsivos para `Projeto`, `Equipe`, `Data atual` e `ETAPA`.
+- Como validar:
+  - Abrir `Reprogramar` em uma linha ativa.
+  - Confirmar que o topo do modal segue o mesmo padrao visual do modal `Copiar programacao`.
+- Multi-tenant:
+  - Alteracao apenas visual no frontend.
+  - Nenhuma query, RPC, RLS ou migration foi alterada.

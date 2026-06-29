@@ -973,6 +973,36 @@ fieldset.field {
   font-size: 0.84rem;
 }
 
+.modalMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.modalMetaItem {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(23, 52, 122, 0.14);
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 10px 12px;
+}
+
+.modalMetaItem span {
+  color: #5b6a85;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.modalMetaItem strong {
+  color: #17347a;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .modalBody {
   display: grid;
   gap: 14px;
@@ -1243,6 +1273,10 @@ fieldset.field {
 }
 
 @media (max-width: 980px) {
+  .modalMetaGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .activityComposer {
     grid-template-columns: 1fr;
   }
@@ -1318,6 +1352,10 @@ fieldset.field {
   }
 
   .detailsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modalMetaGrid {
     grid-template-columns: 1fr;
   }
 
