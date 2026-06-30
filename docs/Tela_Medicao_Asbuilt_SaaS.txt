@@ -281,3 +281,27 @@ Ajuda contextual
   - `save_project_asbuilt_measurement_order_batch_partial`
   - `enforce_active_project_for_asbuilt_measurement_order`
   - `enforce_asbuilt_service_coverage_end_date`
+
+Atualizacao 2026-06-30 — P4: paginacao real no banco e limit no historico
+--------------------------------------------------------------------------
+- O que mudou:
+  - GET de listagem: substituida query sem range (que carregava todos os registros em memoria)
+    por `count:"exact"` + `.range()` com paginacao real no banco.
+  - Duas queries paralelas: `pagedQuery` (pagina com count) + `allIdsQuery` (apenas `id` de
+    todos os registros que batem os filtros, para calcular o summary global).
+  - Aggregate items buscados via `chunk(allOrderIds, 500)` para todos os IDs (summary + display
+    da pagina em um unico passo). User map construido apenas para IDs da pagina atual.
+  - `loadHistory`: adicionado `.limit(50)` para evitar scan ilimitado no historico.
+- Arquivos alterados:
+  - `src/app/api/medicao-asbuilt/route.ts`
+- Funcoes/hooks/constantes tocadas:
+  - GET handler (linhas 606+): `pagedQuery` + `allIdsQuery` (novas), `ASBUILT_ORDER_SELECT`
+    (constante local), loop de aggregate via chunk, `pageUserIds` (scope reduzido a pagina).
+  - `loadHistory`: `.limit(50)` adicionado.
+- Comportamento antes/depois:
+  - Antes: todos os pedidos asbuilt carregados em memoria, paginacao no Node, aggregate items
+    para todos, user map para todos.
+  - Depois: apenas a pagina solicitada trafega com dados completos; IDs totais buscados de forma
+    leve; summary global mantido; user map limitado a pagina.
+- Multi-tenant:
+  - RLS inalterada. Ambas as queries incluem `.eq("tenant_id", ...)`.

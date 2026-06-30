@@ -543,6 +543,7 @@ async function loadHistory(params: {
     .eq("tenant_id", params.tenantId)
     .eq("asbuilt_measurement_order_id", params.orderId)
     .order("created_at", { ascending: false })
+    .limit(50)
     .returns<AsbuiltMeasurementHistoryRow[]>();
 
   if (error) {
@@ -609,53 +610,83 @@ export async function GET(request: NextRequest) {
   const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
   const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
   const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
+  const startIndex = (page - 1) * pageSize;
 
-  let query = resolution.supabase
+  const ASBUILT_ORDER_SELECT = "id, asbuilt_number, project_id, service_coverage_end_date, asbuilt_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by";
+
+  let pagedQuery = resolution.supabase
     .from("project_asbuilt_measurement_orders")
-    .select("id, asbuilt_number, project_id, service_coverage_end_date, asbuilt_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
+    .select(ASBUILT_ORDER_SELECT, { count: "exact" })
     .eq("tenant_id", resolution.appUser.tenant_id)
     .order("updated_at", { ascending: false });
 
-  if (projectId) query = query.eq("project_id", projectId);
-  if (statusFilter && statusFilter !== "TODOS") query = query.eq("status", statusFilter);
-  if (asbuiltMeasurementKindFilter === "COM_PRODUCAO" || asbuiltMeasurementKindFilter === "SEM_PRODUCAO") query = query.eq("asbuilt_kind", asbuiltMeasurementKindFilter);
-  if (noProductionReasonIdFilter) query = query.eq("no_production_reason_id", noProductionReasonIdFilter);
+  let allIdsQuery = resolution.supabase
+    .from("project_asbuilt_measurement_orders")
+    .select("id")
+    .eq("tenant_id", resolution.appUser.tenant_id);
 
-  const { data: orders, error } = await query.returns<AsbuiltMeasurementOrderRow[]>();
-  if (error) {
-    const hint = asbuiltMeasurementModuleMigrationHint(error.message, error.code);
-    return NextResponse.json({ message: `Falha ao listar medicoes asbuilt.${hint}`.trim() }, { status: 500 });
+  if (projectId) {
+    pagedQuery = pagedQuery.eq("project_id", projectId);
+    allIdsQuery = allIdsQuery.eq("project_id", projectId);
+  }
+  if (statusFilter && statusFilter !== "TODOS") {
+    pagedQuery = pagedQuery.eq("status", statusFilter);
+    allIdsQuery = allIdsQuery.eq("status", statusFilter);
+  }
+  if (asbuiltMeasurementKindFilter === "COM_PRODUCAO" || asbuiltMeasurementKindFilter === "SEM_PRODUCAO") {
+    pagedQuery = pagedQuery.eq("asbuilt_kind", asbuiltMeasurementKindFilter);
+    allIdsQuery = allIdsQuery.eq("asbuilt_kind", asbuiltMeasurementKindFilter);
+  }
+  if (noProductionReasonIdFilter) {
+    pagedQuery = pagedQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
+    allIdsQuery = allIdsQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
   }
 
-  const total = (orders ?? []).length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const startIndex = (safePage - 1) * pageSize;
-  const pagedBaseOrders = (orders ?? []).slice(startIndex, startIndex + pageSize);
-  const allOrderIds = (orders ?? []).map((item) => item.id);
+  const [{ data: pagedBaseOrders, count: pagedCount, error: pagedError }, { data: allIdsData, error: allIdsError }] = await Promise.all([
+    pagedQuery.range(startIndex, startIndex + pageSize - 1).returns<AsbuiltMeasurementOrderRow[]>(),
+    allIdsQuery.returns<{ id: string }[]>(),
+  ]);
 
-  const { data: aggregateItems, error: aggregateError } = allOrderIds.length
-    ? await resolution.supabase
-      .from("project_asbuilt_measurement_order_items")
-        .select("asbuilt_measurement_order_id, total_value")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("is_active", true)
-        .in("asbuilt_measurement_order_id", allOrderIds)
-        .returns<AsbuiltMeasurementAggregateItem[]>()
-    : { data: [] as AsbuiltMeasurementAggregateItem[], error: null };
-
-  if (aggregateError) {
+  if (pagedError) {
+    const hint = asbuiltMeasurementModuleMigrationHint(pagedError.message, pagedError.code);
+    return NextResponse.json({ message: `Falha ao listar medicoes asbuilt.${hint}`.trim() }, { status: 500 });
+  }
+  if (allIdsError) {
     return NextResponse.json({ message: "Falha ao calcular totais das medicoes asbuilt." }, { status: 500 });
   }
 
-  const userIds = Array.from(new Set((orders ?? []).flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))));
+  const total = pagedCount ?? 0;
+  const pageOrders = pagedBaseOrders ?? [];
+  const allOrderIds = (allIdsData ?? []).map((item) => item.id);
+
+  // Aggregate items for all matching orders (summary) and page orders (display) — one pass
+  let allAggregateItems: AsbuiltMeasurementAggregateItem[] = [];
+  for (const chunkIds of chunk(allOrderIds, 500)) {
+    const { data: chunkData, error: chunkError } = await resolution.supabase
+      .from("project_asbuilt_measurement_order_items")
+      .select("asbuilt_measurement_order_id, total_value")
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("is_active", true)
+      .in("asbuilt_measurement_order_id", chunkIds)
+      .returns<AsbuiltMeasurementAggregateItem[]>();
+
+    if (chunkError) {
+      return NextResponse.json({ message: "Falha ao calcular totais das medicoes asbuilt." }, { status: 500 });
+    }
+    allAggregateItems = allAggregateItems.concat(chunkData ?? []);
+  }
+
+  // User map only for the current page
+  const pageUserIds = Array.from(new Set(
+    pageOrders.flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item)),
+  ));
   const userMap = await fetchAppUserMap({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
-    ids: userIds,
+    ids: pageUserIds,
   });
 
-  const aggregateMap = buildAsbuiltMeasurementAggregateMap(aggregateItems);
+  const aggregateMap = buildAsbuiltMeasurementAggregateMap(allAggregateItems);
   const summary = Array.from(aggregateMap.values()).reduce(
     (current, item) => ({
       totalAmount: current.totalAmount + item.totalAmount,
@@ -664,7 +695,7 @@ export async function GET(request: NextRequest) {
     { totalAmount: 0, itemCount: 0 },
   );
 
-  const pagedOrders = pagedBaseOrders.map((item) => {
+  const pagedOrders = pageOrders.map((item) => {
     const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0 };
     return {
       id: item.id,
@@ -692,7 +723,7 @@ export async function GET(request: NextRequest) {
     orders: pagedOrders,
     summary,
     pagination: {
-      page: safePage,
+      page,
       pageSize,
       total,
     },
