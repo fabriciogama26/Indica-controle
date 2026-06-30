@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
@@ -1403,16 +1403,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Atividade invalida." }, { status: 400 });
   }
 
-  const hasMemoryFilter =
-    Boolean(activityId) ||
-    programmingMatchFilter === "PROGRAMADA" ||
-    programmingMatchFilter === "NAO_PROGRAMADA" ||
-    Boolean(workCompletionStatusFilter && workCompletionStatusFilter !== "TODOS") ||
-    completionAlertFilter === "SIM" ||
-    completionAlertFilter === "NAO";
-
-  const isSimplePaginationMode = !hasMemoryFilter;
-
   let serviceTypeProjectIdSet: Set<string> | null = null;
   if (serviceTypeId) {
     const serviceTypeProjectsResult = await fetchPagedSupabaseRows<ProjectServiceTypeProjectRow>((from, to) =>
@@ -1432,8 +1422,31 @@ export async function GET(request: NextRequest) {
     serviceTypeProjectIdSet = new Set(serviceTypeProjectsResult.data.map((item) => item.id));
   }
 
-  if (isSimplePaginationMode) {
-    const startIndex = ((page ?? 1) - 1) * (pageSize ?? 20);
+  let activityOrderIdSet: Set<string> | null = null;
+  if (activityId) {
+    const activityOrdersResult = await fetchPagedSupabaseRows<MeasurementOrderActivityFilterRow>((from, to) =>
+      resolution.supabase
+        .from("project_measurement_order_items")
+        .select("measurement_order_id")
+        .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("service_activity_id", activityId)
+        .eq("is_active", true)
+        .range(from, to)
+        .returns<MeasurementOrderActivityFilterRow[]>(),
+    );
+
+    if (activityOrdersResult.error) {
+      return NextResponse.json({ message: "Falha ao filtrar ordens por atividade." }, { status: 500 });
+    }
+
+    activityOrderIdSet = new Set(activityOrdersResult.data.map((item) => item.measurement_order_id));
+
+    if (activityOrderIdSet.size === 0) {
+      return NextResponse.json({ orders: [], pagination: { page, pageSize, total: 0 } });
+    }
+  }
+
+  const startIndex = ((page ?? 1) - 1) * (pageSize ?? 20);
 
     let pagedQuery = resolution.supabase
       .from("project_measurement_orders")
@@ -1455,6 +1468,9 @@ export async function GET(request: NextRequest) {
     }
     if (noProductionReasonIdFilter) {
       pagedQuery = pagedQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
+    }
+    if (activityOrderIdSet && activityOrderIdSet.size > 0) {
+      pagedQuery = pagedQuery.in("id", Array.from(activityOrderIdSet));
     }
 
     const { data: pagedData, count: pagedCount, error: pagedError } = await pagedQuery
@@ -1569,7 +1585,24 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const simplePagedBaseOrders = simpleBaseOrders.filter((item) => !item.projectIsTest);
+    const simpleNonTestOrders = simpleBaseOrders.filter((item) => !item.projectIsTest);
+
+    const simpleFilteredByProgramming = (programmingMatchFilter === "PROGRAMADA" || programmingMatchFilter === "NAO_PROGRAMADA")
+      ? simpleNonTestOrders.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
+      : simpleNonTestOrders;
+
+    const simpleFilteredByWorkCompletion = workCompletionStatusFilter === "NAO_INFORMADO"
+      ? simpleFilteredByProgramming.filter((item) => !item.programmingCompletionStatus)
+      : (workCompletionStatusFilter && workCompletionStatusFilter !== "TODOS"
+          ? simpleFilteredByProgramming.filter((item) => item.programmingCompletionStatus === workCompletionStatusFilter)
+          : simpleFilteredByProgramming);
+
+    const simplePagedBaseOrders = (completionAlertFilter === "SIM" || completionAlertFilter === "NAO")
+      ? simpleFilteredByWorkCompletion.filter((item) =>
+          completionAlertFilter === "SIM"
+            ? item.programmingCompletionStatusChangedAfterMeasurement
+            : !item.programmingCompletionStatusChangedAfterMeasurement)
+      : simpleFilteredByWorkCompletion;
 
     const simpleTeamTypeResolutionMaps = await fetchTeamTypeResolutionMaps({
       supabase: resolution.supabase,
@@ -1667,289 +1700,6 @@ export async function GET(request: NextRequest) {
         total: simpleTotal,
       },
     });
-  }
-
-  const ordersResult = await fetchPagedSupabaseRows<MeasurementOrderRow>((from, to) => {
-    let query = resolution.supabase
-      .from("project_measurement_orders")
-      .select(MEASUREMENT_ORDER_SELECT)
-      .eq("tenant_id", resolution.appUser.tenant_id)
-      .gte("execution_date", startDate)
-      .lte("execution_date", endDate)
-      .order("execution_date", { ascending: false })
-      .order("updated_at", { ascending: false })
-      .range(from, to);
-
-    if (projectId) {
-      query = query.eq("project_id", projectId);
-    }
-    if (teamId) {
-      query = query.eq("team_id", teamId);
-    }
-    if (statusFilter && statusFilter !== "TODOS") {
-      query = query.eq("status", statusFilter);
-    }
-    if (serviceTypeProjectIdSet && serviceTypeProjectIdSet.size > 0) {
-      query = query.in("project_id", Array.from(serviceTypeProjectIdSet));
-    }
-    if (measurementKindFilter === "COM_PRODUCAO" || measurementKindFilter === "SEM_PRODUCAO") {
-      query = query.eq("measurement_kind", measurementKindFilter);
-    }
-    if (noProductionReasonIdFilter) {
-      query = query.eq("no_production_reason_id", noProductionReasonIdFilter);
-    }
-
-    return query.returns<MeasurementOrderRow[]>();
-  });
-  const error = ordersResult.error;
-  if (error) {
-    const hint = measurementModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao listar ordens de medicao.${hint}`.trim() }, { status: 500 });
-  }
-  const orders = ordersResult.data;
-
-  const projectIds = Array.from(new Set(orders.map((item) => item.project_id)));
-  const userIds = Array.from(
-    new Set(
-      orders
-        .flatMap((item) => [item.created_by, item.updated_by])
-        .filter((item): item is string => Boolean(item)),
-    ),
-  );
-
-  const [
-    activityOrdersResult,
-    userMap,
-    programmingMatchMap,
-    projectIsTestMap,
-    projectServiceCenterMap,
-    teamCompositionContexts,
-  ] = await Promise.all([
-    activityId
-      ? fetchPagedSupabaseRows<MeasurementOrderActivityFilterRow>((from, to) =>
-          resolution.supabase
-            .from("project_measurement_order_items")
-            .select("measurement_order_id")
-            .eq("tenant_id", resolution.appUser.tenant_id)
-            .eq("service_activity_id", activityId)
-            .eq("is_active", true)
-            .range(from, to)
-            .returns<MeasurementOrderActivityFilterRow[]>(),
-        )
-      : Promise.resolve({ data: [] as MeasurementOrderActivityFilterRow[], error: null }),
-    fetchAppUserMap({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      ids: userIds,
-    }),
-    loadProgrammingMatchMap({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      windowEndDate: endDate,
-      orders,
-    }),
-    fetchProjectIsTestMap({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      projectIds,
-    }),
-    fetchProjectServiceCenterMap({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      projectIds,
-    }),
-    fetchTeamCompositionContextSet({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      orders,
-    }),
-  ]);
-
-  if (activityId && activityOrdersResult.error) {
-    return NextResponse.json({ message: "Falha ao filtrar ordens por atividade." }, { status: 500 });
-  }
-  if (teamCompositionContexts.error) {
-    return NextResponse.json({ message: "Falha ao carregar composicoes de equipe das ordens de medicao." }, { status: 500 });
-  }
-
-  const activityOrderIdSet: Set<string> | null = activityId
-    ? new Set(activityOrdersResult.data.map((item) => item.measurement_order_id))
-    : null;
-
-  const baseOrders = orders.map((item) => {
-      const programmingMatch = programmingMatchMap.get(item.id) ?? {
-        status: "NAO_PROGRAMADA" as ProgrammingMatchStatus,
-        programmingId: null,
-        completionStatus: null,
-        completionStatusChangedAfterMeasurement: false,
-      };
-      return {
-        id: item.id,
-        orderNumber: normalizeText(item.order_number),
-        programmingId: item.programming_id,
-        projectId: item.project_id,
-        teamId: item.team_id,
-        executionDate: item.execution_date,
-        measurementDate: item.measurement_date,
-        voicePoint: Number(item.voice_point ?? 0),
-        manualRate: Number(item.manual_rate ?? 0),
-        measurementKind: normalizeMeasurementKind(item.measurement_kind),
-        noProductionReasonId: item.no_production_reason_id,
-        noProductionReasonName: normalizeText(item.no_production_reason_name_snapshot),
-        status: item.status,
-        notes: normalizeText(item.notes),
-        projectCode: normalizeText(item.project_code_snapshot),
-        projectServiceCenter: projectServiceCenterMap.get(item.project_id) ?? "Sem base",
-        teamName: normalizeText(item.team_name_snapshot),
-        foremanName: normalizeText(item.foreman_name_snapshot),
-        cancellationReason: normalizeText(item.cancellation_reason),
-        canceledAt: item.canceled_at,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-        createdByName: resolveAppUserName(userMap.get(item.created_by ?? "")),
-        updatedByName: resolveAppUserName(userMap.get(item.updated_by ?? "")),
-        projectIsTest: Boolean(projectIsTestMap.get(item.project_id)),
-        hasTeamComposition: teamCompositionContexts.data.has(buildProgrammingMatchKey(item.project_id, item.team_id, item.execution_date)),
-        programmingMatchStatus: programmingMatch.status,
-        matchedProgrammingId: programmingMatch.programmingId,
-        programmingCompletionStatus: programmingMatch.completionStatus,
-        programmingCompletionStatusChangedAfterMeasurement: programmingMatch.completionStatusChangedAfterMeasurement,
-        minimumBillingAmount: Number(item.minimum_billing_amount ?? 0),
-        minimumBillingTeamTypeId: item.minimum_billing_team_type_id,
-        minimumBillingTeamTypeName: normalizeText(item.minimum_billing_team_type_name_snapshot),
-        minimumBillingScoreTargetId: item.minimum_billing_score_target_id,
-        minimumBillingTargetPoints: Number(item.minimum_billing_target_points ?? 0),
-        minimumBillingUnitValueSourceActivityId: item.minimum_billing_unit_value_source_activity_id,
-        minimumBillingUnitValueGroup: normalizeText(item.minimum_billing_unit_value_group_snapshot),
-        minimumBillingUnitValue: Number(item.minimum_billing_unit_value ?? 0),
-        minimumBillingCalculatedAt: item.minimum_billing_calculated_at,
-      };
-    });
-
-  const filteredByActivity = activityOrderIdSet
-    ? baseOrders.filter((item) => activityOrderIdSet.has(item.id))
-    : baseOrders;
-
-  const filteredByProjectType = filteredByActivity.filter((item) => !item.projectIsTest);
-
-  const filteredByProgrammingMatch = (programmingMatchFilter === "PROGRAMADA" || programmingMatchFilter === "NAO_PROGRAMADA")
-    ? filteredByProjectType.filter((item) => item.programmingMatchStatus === programmingMatchFilter)
-    : filteredByProjectType;
-
-  const filteredByWorkCompletionStatus = workCompletionStatusFilter === "NAO_INFORMADO"
-    ? filteredByProgrammingMatch.filter((item) => !item.programmingCompletionStatus)
-    : (
-      workCompletionStatusFilter && workCompletionStatusFilter !== "TODOS"
-        ? filteredByProgrammingMatch.filter((item) => item.programmingCompletionStatus === workCompletionStatusFilter)
-        : filteredByProgrammingMatch
-    );
-
-  const filteredByCompletionAlert = (completionAlertFilter === "SIM" || completionAlertFilter === "NAO")
-    ? filteredByWorkCompletionStatus.filter((item) =>
-        completionAlertFilter === "SIM"
-          ? item.programmingCompletionStatusChangedAfterMeasurement
-          : !item.programmingCompletionStatusChangedAfterMeasurement)
-    : filteredByWorkCompletionStatus;
-
-  const filteredByNoProductionReason = filteredByCompletionAlert;
-
-  const total = filteredByNoProductionReason.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const startIndex = (safePage - 1) * pageSize;
-  const pagedBaseOrders = filteredByNoProductionReason.slice(startIndex, startIndex + pageSize);
-  const pagedOrderIds = pagedBaseOrders.map((item) => item.id);
-
-  const teamTypeResolutionMaps = await fetchTeamTypeResolutionMaps({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    orders: pagedBaseOrders,
-  });
-  const orderTeamTypeMap = new Map<string, { teamTypeId: string | null; teamTypeName: string; typeLabel: string }>();
-  for (const item of pagedBaseOrders) {
-    const resolvedTeamType = resolveOrderTeamType({
-      teamId: item.teamId,
-      executionDate: item.executionDate,
-      teamTypeByTeam: teamTypeResolutionMaps.teamTypeByTeam,
-      teamTypeNameById: teamTypeResolutionMaps.teamTypeNameById,
-      historyByTeam: teamTypeResolutionMaps.historyByTeam,
-    });
-    orderTeamTypeMap.set(item.id, {
-      ...resolvedTeamType,
-      typeLabel: measurementScoreTypeLabel(resolvedTeamType.teamTypeName),
-    });
-  }
-  const scoreTeamTypeIds = Array.from(
-    new Set(Array.from(orderTeamTypeMap.values()).map((item) => item.teamTypeId).filter((item): item is string => Boolean(item))),
-  );
-  const [pointTargetMap, financialTargets] = await Promise.all([
-    fetchPointTargetMap({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      teamTypeIds: scoreTeamTypeIds,
-    }),
-    fetchFinancialTargetMap({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      orders: pagedBaseOrders,
-      teamTypeIds: scoreTeamTypeIds,
-    }),
-  ]);
-
-  const aggregateItemsResult = pagedOrderIds.length
-    ? await fetchPagedSupabaseRows<MeasurementOrderAggregateItem>((from, to) =>
-        resolution.supabase
-          .from("project_measurement_order_items")
-          .select("measurement_order_id, total_value, quantity, voice_point")
-          .eq("tenant_id", resolution.appUser.tenant_id)
-          .eq("is_active", true)
-          .in("measurement_order_id", pagedOrderIds)
-          .range(from, to)
-          .returns<MeasurementOrderAggregateItem[]>(),
-      )
-    : { data: [] as MeasurementOrderAggregateItem[], error: null };
-  if (aggregateItemsResult.error) {
-    return NextResponse.json({ message: "Falha ao consolidar totais das ordens de medicao." }, { status: 500 });
-  }
-
-  const aggregateMap = new Map<string, { totalAmount: number; itemCount: number; scorePoints: number }>();
-  for (const item of aggregateItemsResult.data ?? []) {
-    const current = aggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0, scorePoints: 0 };
-    current.totalAmount += Number(item.total_value ?? 0);
-    current.itemCount += 1;
-    current.scorePoints += Number(item.voice_point ?? 0) * Number(item.quantity ?? 0);
-    aggregateMap.set(item.measurement_order_id, current);
-  }
-
-  const pagedOrders = pagedBaseOrders.map((item) => {
-    const aggregate = aggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0, scorePoints: 0 };
-    const teamType = orderTeamTypeMap.get(item.id) ?? { teamTypeId: null, teamTypeName: "", typeLabel: "Nao identificado" };
-    const cycleStart = buildMeasurementCycleStart(item.executionDate);
-    const financialTarget = teamType.teamTypeId
-      ? financialTargets.cycleTargetMap.get(`${cycleStart}:${teamType.teamTypeId}`)
-        ?? financialTargets.fallbackTargetMap.get(teamType.teamTypeId)
-        ?? 0
-      : 0;
-    return {
-      ...item,
-      totalAmount: Number(aggregate.totalAmount ?? 0) + Number(item.minimumBillingAmount ?? 0),
-      itemCount: Number(aggregate.itemCount ?? 0),
-      scorePoints: Number(aggregate.scorePoints ?? 0) + Number(item.minimumBillingTargetPoints ?? 0),
-      teamTypeId: teamType.teamTypeId,
-      teamTypeName: teamType.typeLabel,
-      pointTarget: teamType.teamTypeId ? pointTargetMap.get(teamType.teamTypeId) ?? 0 : 0,
-      financialTarget,
-    };
-  });
-
-  return NextResponse.json({
-    orders: pagedOrders,
-    pagination: {
-      page: safePage,
-      pageSize,
-      total,
-    },
-  });
 }
 
 async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT") {
