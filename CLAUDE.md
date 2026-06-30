@@ -194,6 +194,33 @@ E só então finalizar.
 
 ---
 
+## Padrão de Performance — Backend (obrigatório)
+Toda tela ou endpoint novo que liste, pagine ou agregue dados DEVE seguir este padrão antes de ser considerado pronto. Referência detalhada com exemplos de código: `docs/arquitetura/padrao-performance-backend.md`.
+
+### Listas operacionais
+- Paginação real no banco via `count + range` (ou RPC equivalente). Proibido buscar todos os registros para paginar/filtrar em memória no Node.
+- Filtros nativos (coluna indexada: data, status, tenant_id, projeto, equipe, id) vão direto ao banco.
+- Filtros derivados (sem coluna própria, calculados em runtime) viram pós-filtro aplicado SOMENTE nos itens da página atual retornada pelo banco — nunca sobre o dataset completo. Quando isso tornar o total exibido aproximado, documentar o trade-off no TXT da tela.
+
+### Históricos
+- Toda query de histórico/auditoria DEVE ter `.limit(N)`. Padrão: 50 para histórico de ações exibido em modal/tela; até 500 para listas de cruzamento de IDs internas (uso interno, não exibidas diretamente).
+
+### Catálogos e dados estáticos
+- Dados que mudam pouco (catálogos, projetos, equipes, tipos) usam cache em memória com TTL (padrão 5 min) e endpoint próprio (`/meta` ou equivalente), separado da listagem/operação que muda a cada request.
+- O frontend carrega catálogo e lista/agendamento em paralelo (duas chamadas simultâneas via `Promise.all`), nunca em série.
+
+### Queries independentes
+- Toda query sem dependência do resultado de outra DEVE rodar em `Promise.all`. Proibido encadear `await` sequencial quando não há dependência real entre os dados buscados.
+
+### Dashboards e apurações
+- Nunca tratar como lista comum carregada por inteiro no Node. Usar RPC de agregação, rollup ou view materializada no banco.
+
+### Antes de criar uma tela/endpoint novo
+1. Verificar se já existe padrão equivalente implementado (Medição, Medição As Built, Programação) e reaproveitar a mesma arquitetura — não reinventar.
+2. Se a tela tiver lista operacional + catálogo estático, separar em dois endpoints desde o início (não tratar como otimização posterior).
+
+---
+
 ## Padrão OBRIGATÓRIO de README.md
 Quando criar/editar README.md, seguir exatamente esta ordem:
 
