@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -36,6 +36,7 @@ export function useDashboardTeams() {
   const [supervisorRowsByWeek, setSupervisorRowsByWeek] = useState<Record<string, DashboardSupervisorRow[]>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const suppressNextAutoLoadRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -59,8 +60,11 @@ export function useDashboardTeams() {
       setTeamForemanRowsByWeek(data.teamForemenByWeek ?? {});
       setSupervisorRows(data.supervisorsProduction ?? []);
       setSupervisorRowsByWeek(data.supervisorsProductionByWeek ?? {});
-      setFilters((current) => current.cycleStart ? current : { ...current, cycleStart: nextCycleStart });
-      setDraftFilters((current) => current.cycleStart ? current : { ...current, cycleStart: nextCycleStart });
+      if (nextCycleStart && !filters.cycleStart) {
+        suppressNextAutoLoadRef.current = true;
+        setFilters((current) => current.cycleStart ? current : { ...current, cycleStart: nextCycleStart });
+        setDraftFilters((current) => current.cycleStart ? current : { ...current, cycleStart: nextCycleStart });
+      }
       setErrorMessage("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar Dashboard Equipes.";
@@ -74,6 +78,10 @@ export function useDashboardTeams() {
   }, [filters, logError, session?.accessToken]);
 
   useEffect(() => {
+    if (suppressNextAutoLoadRef.current) {
+      suppressNextAutoLoadRef.current = false;
+      return;
+    }
     void load();
   }, [load]);
 

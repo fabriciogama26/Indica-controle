@@ -565,38 +565,6 @@ export function OperationalBillingDashboardPageView() {
     [chartProjectDetailRows],
   );
 
-  const loadMetadata = useCallback(async () => {
-    if (!session?.accessToken) return;
-
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/dash-operacional-faturamento", {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${session.accessToken}` },
-      });
-      const payload = (await response.json().catch(() => ({}))) as DashboardResponse;
-
-      if (!response.ok) {
-        throw new Error(payload.message ?? "Falha ao carregar filtros do Dash operacional e faturamento.");
-      }
-
-      setProjects(payload.filters?.projects ?? []);
-      setServiceCenters(payload.filters?.serviceCenters ?? []);
-      setAsbuiltCoverageDates(payload.filters?.asbuiltCoverageDates ?? []);
-      setRows([]);
-      setCategoryColumns([]);
-      setCategorySummaryRows([]);
-      setChartItems([]);
-      setSummary(null);
-      setFeedback(null);
-    } catch (error) {
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar filtros do Dash operacional e faturamento." });
-      await logError("Falha ao carregar filtros do Dash operacional e faturamento", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [logError, session?.accessToken]);
-
   const loadProjectValues = useCallback(async () => {
     if (!session?.accessToken) return;
 
@@ -881,10 +849,6 @@ export function OperationalBillingDashboardPageView() {
     setChartProjectDetailRows([]);
     setIsChartProjectDetailLoading(false);
   }
-
-  useEffect(() => {
-    void loadMetadata();
-  }, [loadMetadata]);
 
   useEffect(() => {
     void loadProjectValues();
