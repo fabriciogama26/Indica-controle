@@ -653,3 +653,22 @@ Atualizacao 2026-06 (correcao de brechas de permissao de pagina)
   - `PUT` sempre retorna 409 (edicao direta bloqueada por design).
   - `team-stock-operations/reversal/route.ts` ja usava `requirePageAction` com `"reverse"` e `"read"` desde o
     commit de Estornos.
+
+Atualizacao 2026-06-30 (Performance: filtros no banco e limite no historico)
+-----------------------------------------------------------------------------
+- Arquivo alterado: `src/app/api/team-stock-operations/route.ts`
+- O que mudou em `loadTeamOperationList`:
+  - `loadTeamOperationRows` ganhou parametro `operationKindFilter`: quando informado, aplica `.eq("operation_kind", ...)` no schema novo; schema legado nao aplica o filtro mas o in-memory guard continua ativo para derivar o tipo via `resolveOperationKind`.
+  - Pré-resolucao de `materialCode` agora ocorre em paralelo com `loadTeamOperationRows`: query em `materials WHERE codigo ILIKE '%...%'` retorna os IDs antes de carregar transfers; se nenhum material bater, retorna vazio imediatamente sem tocar `stock_transfers` ou `stock_transfer_items`.
+  - `stock_transfers` migrado de query direta `.in("id", transferIds)` para `loadRowsInChunks` (chunks de 100), com `projectId` e `entryType` agora aplicados no banco em vez de em memoria.
+  - `stock_transfer_items` migrado para `loadRowsInChunks` com filtro adicional `.in("material_id", materialIdFilter)` quando `materialCode` esta ativo.
+  - Filtros in-memory para `operationKind`, `projectId`, `entryType` e `materialCode` mantidos como guards de seguranca (corretos para schema legado; redundantes mas inofensivos para schema novo).
+  - `reversalStatus` continua filtrado em memoria (depende de dados de reversoes carregados para os items da pagina).
+- O que mudou em `loadTeamOperationHistory`:
+  - As 3 queries paralelas em `material_history` (tabela append-only) receberam `.limit(200)`: evita varredura irrestrita para um `transferId` especifico que na pratica tem poucas dezenas de entradas de historico.
+- Como validar:
+  - Abrir `/saida` sem filtros e verificar que a lista carrega.
+  - Filtrar por `Equipe`, `Operacao`, `Material`, `Tipo` e verificar resultados corretos.
+  - Abrir historico de uma operacao e verificar que o modal exibe as entradas de historico.
+  - DevTools: `GET /api/team-stock-operations` deve retornar `pagination.total` correto.
+- Multi-tenant: sem impacto em RLS; todos os filtros incluem `tenant_id`.

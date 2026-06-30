@@ -1,0 +1,117 @@
+-- supabase-log-explorer-monitoring.txt
+-- Consultas para colar no Supabase Dashboard > Logs > Logs Explorer > Query.
+--
+-- Importante:
+-- - Nao rode este arquivo no SQL Editor do Supabase.
+-- - Nao rode este arquivo via npx supabase db query.
+-- - Este arquivo usa SQL do Logs Explorer/BigQuery, nao SQL do Postgres.
+-- - Rode cada bloco separadamente no Logs Explorer.
+-- - Ajuste a janela de tempo trocando "interval 24 hour" quando necessario.
+-- - Os campos seguem os logs oficiais do Supabase: edge_logs para API/PostgREST
+--   e function_edge_logs para invocacoes de Edge Functions.
+
+-- 03_api_postgrest_total_routes_errors_latency
+-- Total de requests por rota/metodo/status, com tempo medio e maior tempo.
+select
+  request.path as path,
+  request.method as method,
+  response.status_code as status_code,
+  count(request.path) as requests,
+  avg(response.origin_time) as avg_response_time_ms,
+  max(response.origin_time) as max_response_time_ms
+from edge_logs
+cross join unnest(metadata) as metadata
+cross join unnest(metadata.request) as request
+cross join unnest(metadata.response) as response
+where timestamp > timestamp_sub(current_timestamp(), interval 24 hour)
+  and regexp_contains(request.path, '^/rest/v1/')
+group by path, method, status_code
+order by requests desc
+limit 200;
+
+-- 03_api_postgrest_errors_4xx_5xx
+-- Erros de API/PostgREST por rota/metodo/status.
+select
+  request.path as path,
+  request.method as method,
+  response.status_code as status_code,
+  count(request.path) as errors,
+  avg(response.origin_time) as avg_response_time_ms,
+  max(response.origin_time) as max_response_time_ms
+from edge_logs
+cross join unnest(metadata) as metadata
+cross join unnest(metadata.request) as request
+cross join unnest(metadata.response) as response
+where timestamp > timestamp_sub(current_timestamp(), interval 24 hour)
+  and regexp_contains(request.path, '^/rest/v1/')
+  and response.status_code >= 400
+group by path, method, status_code
+order by errors desc
+limit 200;
+
+-- 03_api_postgrest_slow_requests_detail
+-- Requests mais lentos para comparar com picos de I/O.
+select
+  datetime(timestamp) as timestamp,
+  request.method as method,
+  request.path as path,
+  request.search as search,
+  response.status_code as status_code,
+  response.origin_time as response_time_ms,
+  event_message as event_message
+from edge_logs
+cross join unnest(metadata) as metadata
+cross join unnest(metadata.request) as request
+cross join unnest(metadata.response) as response
+where timestamp > timestamp_sub(current_timestamp(), interval 24 hour)
+  and regexp_contains(request.path, '^/rest/v1/')
+order by response_time_ms desc
+limit 200;
+
+-- 09_edge_functions_invocations_errors_latency
+-- Invocacoes, erros, status code e duracao media por Edge Function.
+select
+  request.path as function_path,
+  request.method as method,
+  response.status_code as status_code,
+  count(request.path) as invocations,
+  avg(response.origin_time) as avg_execution_time_ms,
+  max(response.origin_time) as max_execution_time_ms
+from function_edge_logs
+cross join unnest(metadata) as metadata
+cross join unnest(metadata.request) as request
+cross join unnest(metadata.response) as response
+where timestamp > timestamp_sub(current_timestamp(), interval 24 hour)
+group by function_path, method, status_code
+order by invocations desc
+limit 200;
+
+-- 09_edge_functions_errors_detail
+-- Detalhe de chamadas com erro em Edge Functions.
+select
+  datetime(timestamp) as timestamp,
+  request.method as method,
+  request.path as function_path,
+  request.search as search,
+  response.status_code as status_code,
+  response.origin_time as execution_time_ms,
+  event_message as event_message
+from function_edge_logs
+cross join unnest(metadata) as metadata
+cross join unnest(metadata.request) as request
+cross join unnest(metadata.response) as response
+where timestamp > timestamp_sub(current_timestamp(), interval 24 hour)
+  and response.status_code >= 400
+order by timestamp desc
+limit 200;
+
+-- 09_edge_functions_runtime_logs
+-- Logs internos emitidos por console.log/console.warn/console.error nas Edge Functions.
+select
+  datetime(timestamp) as timestamp,
+  event_message as event_message,
+  metadata as metadata
+from function_logs
+where timestamp > timestamp_sub(current_timestamp(), interval 24 hour)
+order by timestamp desc
+limit 200;

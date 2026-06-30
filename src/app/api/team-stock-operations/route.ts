@@ -233,6 +233,7 @@ async function loadTeamOperationRows(
   supabase: SupabaseClient,
   tenantId: string,
   teamIdFilter: string,
+  operationKindFilter?: TeamOperationKind | null,
 ) {
   let fullQuery = supabase
     .from("stock_transfer_team_operations")
@@ -241,6 +242,9 @@ async function loadTeamOperationRows(
 
   if (teamIdFilter) {
     fullQuery = fullQuery.eq("team_id", teamIdFilter);
+  }
+  if (operationKindFilter) {
+    fullQuery = fullQuery.eq("operation_kind", operationKindFilter);
   }
 
   const fullResult = await fullQuery.returns<TeamOperationMapRow[]>();
@@ -524,45 +528,56 @@ async function loadTeamOperationList(request: NextRequest) {
       : normalizeEntryType(request.nextUrl.searchParams.get("entryType"));
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
 
-  const { data: teamOperationRows, error: teamOperationError } = await loadTeamOperationRows(
-    supabase,
-    appUser.tenant_id,
-    teamIdFilter,
-  );
+  const [teamOperationsResult, matchingMaterialsResult] = await Promise.all([
+    loadTeamOperationRows(supabase, appUser.tenant_id, teamIdFilter, operationKindFilter),
+    materialCodeFilter
+      ? supabase
+          .from("materials")
+          .select("id")
+          .eq("tenant_id", appUser.tenant_id)
+          .ilike("codigo", `%${materialCodeFilter}%`)
+          .returns<{ id: string }[]>()
+      : Promise.resolve({ data: null as { id: string }[] | null, error: null }),
+  ]);
 
-  if (teamOperationError) {
-    logTeamOperationLoadError("team-operations", teamOperationError, { tenantId: appUser.tenant_id, teamIdFilter });
+  if (teamOperationsResult.error) {
+    logTeamOperationLoadError("team-operations", teamOperationsResult.error, { tenantId: appUser.tenant_id, teamIdFilter });
     return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
   }
 
+  const teamOperationRows = teamOperationsResult.data;
   if (!teamOperationRows?.length) {
-    return NextResponse.json({
-      history: [],
-      pagination: { page, pageSize, total: 0 },
-    });
+    return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
+  }
+
+  const materialIdFilter: string[] | null = materialCodeFilter
+    ? (matchingMaterialsResult.data ?? []).map((r) => r.id)
+    : null;
+
+  if (materialIdFilter !== null && materialIdFilter.length === 0) {
+    return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
   const transferIds = teamOperationRows.map((row) => row.transfer_id);
   const teamIds = Array.from(new Set(teamOperationRows.map((row) => row.team_id).filter(Boolean)));
 
-  let transfersQuery = supabase
-    .from("stock_transfers")
-    .select(
-      "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by",
-    )
-    .eq("tenant_id", appUser.tenant_id)
-    .in("id", transferIds)
-    .order("updated_at", { ascending: false })
-    .order("created_at", { ascending: false });
-
-  if (startDate) {
-    transfersQuery = transfersQuery.gte("entry_date", startDate);
-  }
-  if (endDate) {
-    transfersQuery = transfersQuery.lte("entry_date", endDate);
-  }
-
-  const { data: transferHeaders, error: transfersError } = await transfersQuery.returns<TransferHeaderRow[]>();
+  const { data: transferHeaders, error: transfersError } = await loadRowsInChunks<TransferHeaderRow>(
+    transferIds,
+    (chunk) => {
+      let q = supabase
+        .from("stock_transfers")
+        .select(
+          "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by",
+        )
+        .eq("tenant_id", appUser.tenant_id)
+        .in("id", chunk);
+      if (startDate) q = q.gte("entry_date", startDate);
+      if (endDate) q = q.lte("entry_date", endDate);
+      if (projectIdFilter) q = q.eq("project_id", projectIdFilter);
+      if (entryTypeFilter) q = q.eq("entry_type", entryTypeFilter);
+      return q.returns<TransferHeaderRow[]>();
+    },
+  );
   if (transfersError) {
     logTeamOperationLoadError("stock-transfers", transfersError, {
       tenantId: appUser.tenant_id,
@@ -578,13 +593,19 @@ async function loadTeamOperationList(request: NextRequest) {
     });
   }
 
-  const currentTransferIds = transferHeaders.map((row) => row.id);
-  const { data: itemRows, error: itemsError } = await supabase
-    .from("stock_transfer_items")
-    .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
-    .eq("tenant_id", appUser.tenant_id)
-    .in("stock_transfer_id", currentTransferIds)
-    .returns<TransferItemRow[]>();
+  const currentTransferIds = (transferHeaders ?? []).map((row) => row.id);
+  const { data: itemRows, error: itemsError } = await loadRowsInChunks<TransferItemRow>(
+    currentTransferIds,
+    (chunk) => {
+      let q = supabase
+        .from("stock_transfer_items")
+        .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("stock_transfer_id", chunk);
+      if (materialIdFilter) q = q.in("material_id", materialIdFilter);
+      return q.returns<TransferItemRow[]>();
+    },
+  );
 
   if (itemsError) {
     logTeamOperationLoadError("stock-transfer-items", itemsError, {
@@ -945,9 +966,9 @@ async function loadTeamOperationHistory(request: NextRequest) {
       .eq("change_type", "UPDATE");
 
   const [stockHistoryResult, reversalByOriginalResult, reversalByReversalResult] = await Promise.all([
-    baseHistoryQuery().contains("changes", { _context: "STOCK_TRANSFER", stockTransferId: transferId }).returns<MaterialHistoryRow[]>(),
-    baseHistoryQuery().contains("changes", { _context: "STOCK_TRANSFER_REVERSAL", originalStockTransferId: transferId }).returns<MaterialHistoryRow[]>(),
-    baseHistoryQuery().contains("changes", { _context: "STOCK_TRANSFER_REVERSAL", reversalStockTransferId: transferId }).returns<MaterialHistoryRow[]>(),
+    baseHistoryQuery().contains("changes", { _context: "STOCK_TRANSFER", stockTransferId: transferId }).limit(200).returns<MaterialHistoryRow[]>(),
+    baseHistoryQuery().contains("changes", { _context: "STOCK_TRANSFER_REVERSAL", originalStockTransferId: transferId }).limit(200).returns<MaterialHistoryRow[]>(),
+    baseHistoryQuery().contains("changes", { _context: "STOCK_TRANSFER_REVERSAL", reversalStockTransferId: transferId }).limit(200).returns<MaterialHistoryRow[]>(),
   ]);
 
   if (stockHistoryResult.error || reversalByOriginalResult.error || reversalByReversalResult.error) {

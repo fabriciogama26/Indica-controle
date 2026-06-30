@@ -193,10 +193,10 @@ vercel --prod
   - `api/stock-transfers/reversal/route.ts`: carrega os materiais da movimentacao/lote e executa estorno individual ou atomico de todos os itens ainda ativos, com autorizacao server-side da pagina `entrada`.
   - `api/estornos/route.ts`: consulta estornos ja registrados por item e integrais legados, agregando Movimentacao de Estoque e Operacoes de Equipe sem executar nova reversao.
   - `api/team-stock-operations/meta/route.ts`: carrega centros proprios principais disponiveis (excluindo centros vinculados a equipes), equipes ativas com centro proprio e encarregado atual, projetos, materiais, origem tecnica `CAMPO / INSTALADO` e motivos de estorno da tela `Operacoes de Equipe`.
-  - `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`.
+  - `api/team-stock-operations/route.ts`: cria requisicoes, devolucoes e retornos de campo por equipe, lista operacoes com historico funcional, preserva snapshot do encarregado e reutiliza o ledger de `stock_transfers`; filtros de `operationKind`, `projectId`, `entryType` e `materialCode` aplicados no banco antes de carregar transfers/items; `stock_transfers` e `stock_transfer_items` migrados para `loadRowsInChunks`; historico limitado a 200 entradas por query em `material_history`.
   - `api/team-stock-operations/import/route.ts`: importa operacoes de equipe em lote (CSV), com pre-validacao sequencial de saldo/TRAFO, rollback total do lote e retorno de erros por linha/coluna.
   - `api/team-stock-operations/reversal/route.ts`: carrega os materiais pelo `operation_batch_id` do cadastro em massa, com fallback para o `transferId` das operacoes manuais, e executa estorno individual ou em lote com autorizacao server-side da pagina `saida`.
-- `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros, paginacao server-side, exclui centros de equipe da tela de Estoque Atual, recompõe materiais historicos com saldo `0` nos centros fisicos quando necessario e mantem historico enriquecido com `Equipe`/`Encarregado`, incluindo filtro por operacao/origem para localizar `Retorno de campo` via `CAMPO / INSTALADO`.
+- `api/stock-balance/route.ts`: lista o saldo atual por centro/material com filtros e paginacao real no banco (`count:"exact"` + `.range()`); por padrao usa caminho rapido sem hidratar materiais historicos zerados; recomposicao de saldo `0` via `stock_transfers` ativada apenas quando `includeHistoricalZeros=1` (opt-in); historico por material/centro via `?mode=history` agora busca items do material primeiro (limit 2000) e cruza com transfers do centro, evitando varredura irrestrita; historico enriquecido com `Equipe`/`Encarregado` e filtro por operacao/origem.
   - `api/team-stock-balance/route.ts`: consulta saldo dos centros vinculados a equipes em blocos paginados, valida permissao propria e retorna metadados, lista paginada e historico por equipe/material.
   - `api/stock-balance/meta/route.ts`: carrega os centros `OWN` fisicos/principais usados no filtro da tela de Estoque Atual.
   - `api/trafo-positions/route.ts`: lista a posicao unitaria atual de cada material rastreavel por serial a partir de `trafo_instances`, aplica filtros diretos e derivados, mantem o centro fisico de referencia na leitura principal, expõe historico por unidade com `Requisicao`, `Devolucao`, `Retorno de campo` e `RET`, e libera movimentacao fisica de unidade RET sem voltar a disponibilizar saldo.
@@ -278,10 +278,10 @@ vercel --prod
   - `ReversalsPageView.tsx`: tela read-only de Estornos com filtros, cards de resumo, lista paginada, detalhes e exportacao CSV dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
   - `ReversalsPageView.module.css`: estilos da tela Estornos.
 - `src/modules/dashboard/estoque/`
-  - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual.
+  - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual, incluindo `includeHistoricalZeros: false` como padrao.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
   - `utils.ts`: formatadores, serializacao de filtros e exportacao CSV.
-  - `CurrentStockPageView.tsx`: tela de Estoque Atual com `Filtros + Lista`, exportacao CSV, resumo da pagina e consulta read-only por centro/material, mantendo materiais historicos dos centros fisicos visiveis com saldo `0`.
+  - `CurrentStockPageView.tsx`: tela de Estoque Atual com `Filtros + Lista`, exportacao CSV, resumo por UMB e consulta read-only por centro/material; novo filtro `Incluir historico zerado` (opt-in, padrao `Nao`) para exibir materiais com saldo `0` que passaram pelo centro.
   - `CurrentStockPageView.module.css`: estilos da tela de Estoque Atual.
 - `src/modules/dashboard/estoque-equipes/`
   - `types.ts`: contratos de filtros, metadados, saldo, resumo e historico por equipe/material.
@@ -366,7 +366,7 @@ vercel --prod
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Controle_APR.txt`: documentacao da tela Controle de APR, regras de duplicidade, conferencia, filtros, seguranca multi-tenant e mapa de codigo.
-  - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada, historico com correcao de saldo e exportacao CSV.
+  - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada, historico com correcao de saldo, exportacao CSV e atualizacao 2026-06-30 de performance (paginacao real no banco e historico zerado opt-in).
   - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de SERIAL com consulta em `trafo_instances`, atalho de movimentacao e fluxo `RET`.
   - `Tela_Cargo_SaaS.txt`: tela de cargos com cadastro, filtros, historico, status e manutencao de tipos/niveis.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
