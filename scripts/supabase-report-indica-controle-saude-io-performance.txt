@@ -1,0 +1,279 @@
+Relatorio: Indica Controle — Saúde, I/O e Performance
+
+Objetivo:
+- Identificar tabela, tela, rota, payload ou fluxo que esteja pesando no banco.
+- Criar 6 blocos iniciais no Supabase Reports.
+- Colar cada bloco separadamente em Add block.
+
+Importante:
+- Blocos com fonte "Database/Postgres" rodam no SQL Editor/Database do Supabase Reports.
+- O bloco "API Requests + erros" deve usar a fonte de logs/edge_logs do Reports.
+- Nao cole este arquivo inteiro em um unico bloco.
+
+================================================================================
+BLOCO 1 — Disk I/O
+Fonte: Database/Postgres
+Tipo sugerido: Table
+================================================================================
+
+select
+  s.schemaname as schema_name,
+  s.relname as table_name,
+  case
+    when s.relname ~* '(programming|programacao)' then 'Programacao'
+    when s.relname ~* '(measurement|medicao)' then 'Medicao'
+    when s.relname ~* '(billing|faturamento)' then 'Faturamento'
+    when s.relname ~* '(stock|transfer|material|trafo)' then 'Almoxarifado/Estoque'
+    when s.relname ~* '(activity|ativ)' then 'Atividades'
+    when s.relname ~* '(history|audit|log)' then 'Historico/Auditoria'
+    when s.relname ~* '(import|sync)' then 'Importacao/Sincronismo'
+    else 'Outro'
+  end as fluxo_suspeito,
+  pg_size_pretty(pg_total_relation_size(s.relid)) as total_size,
+  s.heap_blks_read as table_disk_reads,
+  s.heap_blks_hit as table_cache_hits,
+  round((100.0 * s.heap_blks_hit / nullif(s.heap_blks_hit + s.heap_blks_read, 0))::numeric, 2) as table_cache_hit_pct,
+  s.idx_blks_read as index_disk_reads,
+  s.idx_blks_hit as index_cache_hits,
+  round((100.0 * s.idx_blks_hit / nullif(s.idx_blks_hit + s.idx_blks_read, 0))::numeric, 2) as index_cache_hit_pct,
+  (s.heap_blks_read + s.idx_blks_read + s.toast_blks_read + s.tidx_blks_read) as total_disk_reads,
+  (s.heap_blks_hit + s.idx_blks_hit + s.toast_blks_hit + s.tidx_blks_hit) as total_cache_hits
+from pg_statio_user_tables s
+order by total_disk_reads desc, pg_total_relation_size(s.relid) desc
+limit 30;
+
+================================================================================
+BLOCO 2 — CPU
+Fonte: Database/Postgres
+Tipo sugerido: Table
+================================================================================
+
+select
+  a.state,
+  coalesce(a.wait_event_type, '[sem_wait]') as wait_event_type,
+  coalesce(a.wait_event, '[sem_wait]') as wait_event,
+  count(*) as connections,
+  count(*) filter (where a.query_start is not null and now() - a.query_start > interval '30 seconds') as running_over_30s,
+  count(*) filter (where a.query_start is not null and now() - a.query_start > interval '5 minutes') as running_over_5min,
+  max(now() - a.query_start) filter (where a.query_start is not null) as longest_running_query,
+  left(
+    regexp_replace(
+      max(a.query) filter (where a.query_start is not null),
+      '\s+',
+      ' ',
+      'g'
+    ),
+    500
+  ) as query_sample
+from pg_stat_activity a
+where a.datname = current_database()
+  and a.pid <> pg_backend_pid()
+group by a.state, a.wait_event_type, a.wait_event
+order by running_over_5min desc, running_over_30s desc, connections desc;
+
+================================================================================
+BLOCO 3 — API Requests + erros
+Fonte: Logs/edge_logs no Supabase Reports
+Tipo sugerido: Table
+================================================================================
+
+select
+  request.path as path,
+  request.method as method,
+  response.status_code as status_code,
+  count(request.path) as requests,
+  countif(response.status_code >= 400 and response.status_code < 500) as errors_4xx,
+  countif(response.status_code >= 500) as errors_5xx,
+  avg(response.origin_time) as avg_response_time_ms,
+  max(response.origin_time) as max_response_time_ms
+from edge_logs
+cross join unnest(metadata) as metadata
+cross join unnest(metadata.request) as request
+cross join unnest(metadata.response) as response
+where timestamp > timestamp_sub(current_timestamp(), interval 24 hour)
+  and (
+    regexp_contains(request.path, '^/rest/v1/')
+    or regexp_contains(request.path, '^/functions/v1/')
+    or regexp_contains(request.path, '^/auth/v1/')
+  )
+group by path, method, status_code
+order by errors_5xx desc, errors_4xx desc, requests desc, max_response_time_ms desc
+limit 100;
+
+================================================================================
+BLOCO 4 — Top 20 queries por tempo total
+Fonte: Database/Postgres
+Tipo sugerido: Table
+================================================================================
+
+drop table if exists pg_temp.report_top_queries_total_time;
+
+create temp table report_top_queries_total_time (
+  query text,
+  observacao text,
+  executions bigint,
+  total_time_ms numeric,
+  avg_time_ms numeric,
+  max_time_ms numeric,
+  avg_rows_returned numeric,
+  shared_blks_read bigint,
+  shared_blks_hit bigint,
+  temp_blks_read bigint,
+  temp_blks_written bigint
+) on commit drop;
+
+do $$
+declare
+  v_pg_stat_statements regclass;
+begin
+  v_pg_stat_statements := coalesce(
+    to_regclass('public.pg_stat_statements'),
+    to_regclass('extensions.pg_stat_statements'),
+    to_regclass('pg_stat_statements')
+  );
+
+  if v_pg_stat_statements is null then
+    insert into pg_temp.report_top_queries_total_time (
+      query,
+      observacao
+    )
+    values (
+      'pg_stat_statements indisponivel',
+      'Habilite a extensao pg_stat_statements no Supabase para listar top queries por tempo total.'
+    );
+  else
+    execute format($query$
+      insert into pg_temp.report_top_queries_total_time (
+        query,
+        observacao,
+        executions,
+        total_time_ms,
+        avg_time_ms,
+        max_time_ms,
+        avg_rows_returned,
+        shared_blks_read,
+        shared_blks_hit,
+        temp_blks_read,
+        temp_blks_written
+      )
+      select
+        left(regexp_replace(s.query, '\s+', ' ', 'g'), 900) as query,
+        null::text as observacao,
+        s.calls as executions,
+        round(s.total_exec_time::numeric, 2) as total_time_ms,
+        round(s.mean_exec_time::numeric, 2) as avg_time_ms,
+        round(s.max_exec_time::numeric, 2) as max_time_ms,
+        round((s.rows::numeric / nullif(s.calls, 0)), 2) as avg_rows_returned,
+        s.shared_blks_read,
+        s.shared_blks_hit,
+        s.temp_blks_read,
+        s.temp_blks_written
+      from %s s
+      order by s.total_exec_time desc
+      limit 20
+    $query$, v_pg_stat_statements);
+  end if;
+exception
+  when others then
+    truncate table pg_temp.report_top_queries_total_time;
+
+    insert into pg_temp.report_top_queries_total_time (
+      query,
+      observacao
+    )
+    values (
+      'pg_stat_statements indisponivel',
+      'Nao foi possivel ler pg_stat_statements: ' || SQLERRM
+    );
+end;
+$$;
+
+select *
+from pg_temp.report_top_queries_total_time;
+
+================================================================================
+BLOCO 5 — Cache hit rate
+Fonte: Database/Postgres
+Tipo sugerido: Table
+================================================================================
+
+select
+  'database' as level,
+  d.datname as object_name,
+  pg_size_pretty(pg_database_size(d.datname)) as total_size,
+  d.blks_read as disk_reads,
+  d.blks_hit as cache_hits,
+  round((100.0 * d.blks_hit / nullif(d.blks_hit + d.blks_read, 0))::numeric, 2) as cache_hit_pct,
+  d.stats_reset
+from pg_stat_database d
+where d.datname = current_database()
+
+union all
+
+select
+  'table' as level,
+  s.schemaname || '.' || s.relname as object_name,
+  pg_size_pretty(pg_total_relation_size(s.relid)) as total_size,
+  s.heap_blks_read + s.idx_blks_read as disk_reads,
+  s.heap_blks_hit + s.idx_blks_hit as cache_hits,
+  round(
+    (
+      100.0 * (s.heap_blks_hit + s.idx_blks_hit)
+      / nullif(s.heap_blks_hit + s.idx_blks_hit + s.heap_blks_read + s.idx_blks_read, 0)
+    )::numeric,
+    2
+  ) as cache_hit_pct,
+  null::timestamptz as stats_reset
+from pg_statio_user_tables s
+where (s.heap_blks_read + s.idx_blks_read + s.heap_blks_hit + s.idx_blks_hit) > 0
+order by cache_hit_pct nulls first, disk_reads desc
+limit 50;
+
+================================================================================
+BLOCO 6 — Tabelas e índices maiores
+Fonte: Database/Postgres
+Tipo sugerido: Table
+================================================================================
+
+with db_size as (
+  select pg_database_size(current_database())::numeric as bytes
+),
+table_sizes as (
+  select
+    n.nspname as schema_name,
+    c.relname as table_name,
+    c.oid as table_oid,
+    pg_total_relation_size(c.oid) as total_bytes,
+    pg_relation_size(c.oid) as table_bytes,
+    pg_indexes_size(c.oid) as index_bytes
+  from pg_class c
+  join pg_namespace n
+    on n.oid = c.relnamespace
+  where c.relkind in ('r', 'p')
+    and n.nspname not in ('pg_catalog', 'information_schema')
+)
+select
+  t.schema_name,
+  t.table_name,
+  case
+    when t.table_name ~* '(programming|programacao)' then 'Programacao'
+    when t.table_name ~* '(measurement|medicao)' then 'Medicao'
+    when t.table_name ~* '(billing|faturamento)' then 'Faturamento'
+    when t.table_name ~* '(stock|transfer|material|trafo)' then 'Almoxarifado/Estoque'
+    when t.table_name ~* '(activity|ativ)' then 'Atividades'
+    when t.table_name ~* '(history|audit|log)' then 'Historico/Auditoria'
+    when t.table_name ~* '(import|sync)' then 'Importacao/Sincronismo'
+    else 'Outro'
+  end as fluxo_suspeito,
+  pg_size_pretty(t.total_bytes) as total_size,
+  pg_size_pretty(t.table_bytes) as table_size,
+  pg_size_pretty(t.index_bytes) as indexes_size,
+  coalesce(st.n_live_tup, 0) as estimated_rows,
+  coalesce(st.n_dead_tup, 0) as estimated_dead_rows,
+  round((100.0 * t.total_bytes::numeric / nullif(d.bytes, 0)), 2) as database_pct
+from table_sizes t
+cross join db_size d
+left join pg_stat_user_tables st
+  on st.relid = t.table_oid
+order by t.total_bytes desc
+limit 50;
