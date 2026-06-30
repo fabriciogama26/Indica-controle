@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
@@ -190,6 +191,100 @@ async function loadRowsInChunks<T>(
   }
 
   return { data: rows, error: null };
+}
+
+type PageInfo = {
+  hasOlder: boolean;
+  hasNewer: boolean;
+  oldestCursor: { entryDate: string; id: string } | null;
+  newestCursor: { entryDate: string; id: string } | null;
+};
+
+function emptyPageInfo(): PageInfo {
+  return { hasOlder: false, hasNewer: false, oldestCursor: null, newestCursor: null };
+}
+
+function normalizeLoadDirection(value: unknown): "initial" | "older" | "newer" {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "older" || v === "newer") return v;
+  return "initial";
+}
+
+async function preloadMaterialTransferIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  materialCode: string,
+): Promise<string[]> {
+  const { data: materials } = await supabase
+    .from("materials")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .ilike("codigo", `%${materialCode}%`)
+    .limit(100)
+    .returns<{ id: string }[]>();
+
+  if (!materials?.length) return [];
+
+  const materialIds = materials.map((m: { id: string }) => m.id);
+  const result = await loadRowsInChunks<{ stock_transfer_id: string }>(
+    materialIds,
+    (chunk) => supabase
+      .from("stock_transfer_items")
+      .select("stock_transfer_id")
+      .eq("tenant_id", tenantId)
+      .in("material_id", chunk)
+      .limit(5000)
+      .returns<{ stock_transfer_id: string }[]>(),
+  );
+
+  return Array.from(new Set((result.data ?? []).map((r) => r.stock_transfer_id))).slice(0, 200);
+}
+
+async function preloadProjectIdsForCode(
+  supabase: SupabaseClient,
+  tenantId: string,
+  projectCode: string,
+): Promise<string[]> {
+  const { data } = await supabase
+    .from("project")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .ilike("sob", `%${projectCode}%`)
+    .limit(200)
+    .returns<{ id: string }[]>();
+
+  return (data ?? []).map((p: { id: string }) => p.id);
+}
+
+async function preloadTransferReversalSets(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<{ originalIds: Set<string>; reversalIds: Set<string> }> {
+  const { data } = await supabase
+    .from("stock_transfer_reversals")
+    .select("original_stock_transfer_id, reversal_stock_transfer_id")
+    .eq("tenant_id", tenantId)
+    .limit(10000)
+    .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>();
+
+  return {
+    originalIds: new Set((data ?? []).map((r) => r.original_stock_transfer_id)),
+    reversalIds: new Set((data ?? []).map((r) => r.reversal_stock_transfer_id)),
+  };
+}
+
+async function preloadTeamOpTransferIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("stock_transfer_team_operations")
+    .select("transfer_id")
+    .eq("tenant_id", tenantId)
+    .limit(10000)
+    .returns<{ transfer_id: string }[]>();
+
+  return new Set((data ?? []).map((r) => r.transfer_id));
 }
 
 function normalizeCodeFilter(value: string | null) {
@@ -408,8 +503,10 @@ async function loadTransferList(request: NextRequest) {
 
   const { supabase, appUser } = resolution;
 
-  const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
   const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
+  const direction = normalizeLoadDirection(request.nextUrl.searchParams.get("direction"));
+  const cursorDate = normalizeDateInput(request.nextUrl.searchParams.get("cursorDate"));
+  const cursorId = normalizeText(request.nextUrl.searchParams.get("cursorId"));
   const startDate = normalizeDateInput(request.nextUrl.searchParams.get("startDate"));
   const endDate = normalizeDateInput(request.nextUrl.searchParams.get("endDate"));
   const movementType = normalizeMovementType(request.nextUrl.searchParams.get("movementType"));
@@ -419,57 +516,152 @@ async function loadTransferList(request: NextRequest) {
   const materialCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("materialCode"));
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
 
+  // Pre-filters run in parallel before the main query
+  const needsTeamOpExclusion = !movementType || movementType === "TRANSFER";
+  const needsReversalSets = reversalStatus !== "TODOS";
+
+  const [materialTransferIds, preloadedProjectIds, reversalSets, teamOpIds] = await Promise.all([
+    materialCodeFilter
+      ? preloadMaterialTransferIds(supabase, appUser.tenant_id, materialCodeFilter)
+      : Promise.resolve(null),
+    projectCodeFilter
+      ? preloadProjectIdsForCode(supabase, appUser.tenant_id, projectCodeFilter)
+      : Promise.resolve(null),
+    needsReversalSets
+      ? preloadTransferReversalSets(supabase, appUser.tenant_id)
+      : Promise.resolve(null),
+    needsTeamOpExclusion
+      ? preloadTeamOpTransferIds(supabase, appUser.tenant_id)
+      : Promise.resolve(new Set<string>()),
+  ]);
+
+  // Short-circuit on empty pre-filter results
+  if (materialCodeFilter && materialTransferIds !== null && materialTransferIds.length === 0) {
+    return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
+  }
+  if (projectCodeFilter && preloadedProjectIds !== null && preloadedProjectIds.length === 0) {
+    return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
+  }
+  if (reversalSets && reversalStatus === "ESTORNADAS" && reversalSets.originalIds.size === 0) {
+    return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
+  }
+  if (reversalSets && reversalStatus === "ESTORNOS" && reversalSets.reversalIds.size === 0) {
+    return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
+  }
+
+  const ascending = direction === "newer";
+
   let transfersQuery = supabase
     .from("stock_transfers")
     .select(
       "id, movement_type, operation_purpose, from_stock_center_id, to_stock_center_id, project_id, direct_purchase, entry_date, entry_type, balance_correction_reason, notes, created_at, updated_at, created_by, updated_by",
     )
     .eq("tenant_id", appUser.tenant_id)
-    .order("updated_at", { ascending: false })
-    .order("created_at", { ascending: false });
+    .order("entry_date", { ascending })
+    .order("id", { ascending });
 
-  if (startDate) {
-    transfersQuery = transfersQuery.gte("entry_date", startDate);
-  }
-  if (endDate) {
-    transfersQuery = transfersQuery.lte("entry_date", endDate);
-  }
-  if (movementType) {
-    transfersQuery = transfersQuery.eq("movement_type", movementType);
-  }
+  if (startDate) transfersQuery = transfersQuery.gte("entry_date", startDate);
+  if (endDate) transfersQuery = transfersQuery.lte("entry_date", endDate);
+  if (movementType) transfersQuery = transfersQuery.eq("movement_type", movementType);
   if (operationPurposeFilter === "NORMAL" || operationPurposeFilter === "BALANCE_CORRECTION") {
     transfersQuery = transfersQuery.eq("operation_purpose", operationPurposeFilter);
   }
-  if (entryType) {
-    transfersQuery = transfersQuery.eq("entry_type", entryType);
+  if (entryType) transfersQuery = transfersQuery.eq("entry_type", entryType);
+
+  if (preloadedProjectIds !== null && preloadedProjectIds.length > 0) {
+    transfersQuery = transfersQuery.in("project_id", preloadedProjectIds);
+  }
+  if (materialTransferIds !== null && materialTransferIds.length > 0) {
+    transfersQuery = transfersQuery.in("id", materialTransferIds);
   }
 
-  const { data: transferHeaders, error: transfersError } = await transfersQuery.returns<StockTransferHeaderRow[]>();
+  if (reversalSets) {
+    if (reversalStatus === "ESTORNADAS") {
+      const ids = [...reversalSets.originalIds].slice(0, 200);
+      transfersQuery = transfersQuery.in("id", ids);
+    } else if (reversalStatus === "ESTORNOS") {
+      const ids = [...reversalSets.reversalIds].slice(0, 200);
+      transfersQuery = transfersQuery.in("id", ids);
+    } else if (reversalStatus === "NAO_ESTORNADAS") {
+      const allReversalIds = [...new Set([...reversalSets.originalIds, ...reversalSets.reversalIds])];
+      if (allReversalIds.length > 0 && allReversalIds.length <= 200) {
+        transfersQuery = transfersQuery.not("id", "in", `(${allReversalIds.join(",")})`);
+      }
+    }
+  }
+
+  if (teamOpIds && teamOpIds.size > 0 && teamOpIds.size <= 200) {
+    transfersQuery = transfersQuery.not("id", "in", `(${[...teamOpIds].join(",")})`);
+  }
+
+  if (cursorDate && cursorId) {
+    if (direction === "older") {
+      transfersQuery = transfersQuery.or(
+        `entry_date.lt.${cursorDate},and(entry_date.eq.${cursorDate},id.lt.${cursorId})`,
+      );
+    } else if (direction === "newer") {
+      transfersQuery = transfersQuery.or(
+        `entry_date.gt.${cursorDate},and(entry_date.eq.${cursorDate},id.gt.${cursorId})`,
+      );
+    }
+  }
+
+  transfersQuery = transfersQuery.limit(pageSize + 1);
+
+  const { data: rawTransfers, error: transfersError } = await transfersQuery.returns<StockTransferHeaderRow[]>();
 
   if (transfersError) {
     return NextResponse.json({ message: "Falha ao carregar movimentacoes de estoque." }, { status: 500 });
   }
 
-  if (!transferHeaders?.length) {
-    return NextResponse.json({
-      history: [],
-      pagination: {
-        page,
-        pageSize,
-        total: 0,
-      },
-    });
+  if (!rawTransfers?.length) {
+    return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
   }
 
-  const transferIds = transferHeaders.map((row) => row.id);
+  const hasMore = rawTransfers.length > pageSize;
+  let pageTransfers = rawTransfers.slice(0, pageSize);
+  if (direction === "newer") pageTransfers = [...pageTransfers].reverse();
 
+  // Post-filter for large team op exclusion sets (> 200 IDs)
+  if (teamOpIds && teamOpIds.size > 200) {
+    pageTransfers = pageTransfers.filter((t) => !teamOpIds.has(t.id));
+  }
+
+  // Post-filter NAO_ESTORNADAS for large reversal sets (> 200 IDs)
+  if (reversalSets && reversalStatus === "NAO_ESTORNADAS") {
+    const allReversalIds = new Set([...reversalSets.originalIds, ...reversalSets.reversalIds]);
+    if (allReversalIds.size > 200) {
+      pageTransfers = pageTransfers.filter((t) => !allReversalIds.has(t.id));
+    }
+  }
+
+  const hasOlder = direction === "initial" ? hasMore : direction === "older" ? hasMore : true;
+  const hasNewer = direction === "newer" ? hasMore : direction === "older" ? true : false;
+
+  const newestTransfer = pageTransfers[0] ?? null;
+  const oldestTransfer = pageTransfers[pageTransfers.length - 1] ?? null;
+
+  const pageInfo: PageInfo = {
+    hasOlder,
+    hasNewer,
+    oldestCursor: oldestTransfer ? { entryDate: oldestTransfer.entry_date, id: oldestTransfer.id } : null,
+    newestCursor: newestTransfer ? { entryDate: newestTransfer.entry_date, id: newestTransfer.id } : null,
+  };
+
+  const transferIds = pageTransfers.map((t) => t.id);
+
+  if (transferIds.length === 0) {
+    return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
+  }
+
+  // Load items only for this page of transfers
   const { data: itemRows, error: itemsError } = await loadRowsInChunks<StockTransferItemRow>(
     transferIds,
-    (transferIdChunk) => supabase
+    (chunk) => supabase
       .from("stock_transfer_items")
       .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
       .eq("tenant_id", appUser.tenant_id)
-      .in("stock_transfer_id", transferIdChunk)
+      .in("stock_transfer_id", chunk)
       .returns<StockTransferItemRow[]>(),
   );
 
@@ -480,25 +672,13 @@ async function loadTransferList(request: NextRequest) {
   const materialIds = Array.from(new Set((itemRows ?? []).map((row) => row.material_id).filter(Boolean)));
   const transferItemIds = Array.from(new Set((itemRows ?? []).map((row) => row.id).filter(Boolean)));
   const stockCenterIds = Array.from(
-    new Set(
-      (transferHeaders ?? [])
-        .flatMap((row) => [row.from_stock_center_id, row.to_stock_center_id])
-        .filter(Boolean),
-    ),
+    new Set(pageTransfers.flatMap((row) => [row.from_stock_center_id, row.to_stock_center_id]).filter(Boolean)),
   );
-  const projectIds = Array.from(
-    new Set(
-      (transferHeaders ?? [])
-        .map((row) => row.project_id)
-        .filter((value): value is string => Boolean(value)),
-    ),
+  const enrichProjectIds = Array.from(
+    new Set(pageTransfers.map((row) => row.project_id).filter((v): v is string => Boolean(v))),
   );
   const userIds = Array.from(
-    new Set(
-      (transferHeaders ?? [])
-        .flatMap((row) => [row.updated_by, row.created_by])
-        .filter((value): value is string => Boolean(value)),
-    ),
+    new Set(pageTransfers.flatMap((row) => [row.updated_by, row.created_by]).filter((v): v is string => Boolean(v))),
   );
 
   const [
@@ -506,7 +686,6 @@ async function loadTransferList(request: NextRequest) {
     stockCentersResult,
     projectsResult,
     usersResult,
-    teamOperationsResult,
     reversalsFromOriginalResult,
     reversalsByReversalResult,
     itemReversalsFromOriginalResult,
@@ -528,12 +707,12 @@ async function loadTransferList(request: NextRequest) {
           .in("id", stockCenterIds)
           .returns<StockCenterRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: StockCenterRow[]; error: null }),
-    projectIds.length
+    enrichProjectIds.length
       ? supabase
           .from("project")
           .select("id, sob")
           .eq("tenant_id", appUser.tenant_id)
-          .in("id", projectIds)
+          .in("id", enrichProjectIds)
           .returns<ProjectRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
     userIds.length
@@ -545,75 +724,59 @@ async function loadTransferList(request: NextRequest) {
           .returns<AppUserRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
     transferIds.length
-      ? loadRowsInChunks<TeamStockOperationRow>(
-          transferIds,
-          (transferIdChunk) => supabase
-            .from("stock_transfer_team_operations")
-            .select("transfer_id")
-            .eq("tenant_id", appUser.tenant_id)
-            .in("transfer_id", transferIdChunk)
-            .returns<TeamStockOperationRow[]>(),
-        )
-      : Promise.resolve({ data: [], error: null } as { data: TeamStockOperationRow[]; error: null }),
-    transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
           transferIds,
-          (transferIdChunk) => supabase
+          (chunk) => supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
-            .in("original_stock_transfer_id", transferIdChunk)
+            .in("original_stock_transfer_id", chunk)
             .returns<StockTransferReversalRow[]>(),
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
           transferIds,
-          (transferIdChunk) => supabase
+          (chunk) => supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
-            .in("reversal_stock_transfer_id", transferIdChunk)
+            .in("reversal_stock_transfer_id", chunk)
             .returns<StockTransferReversalRow[]>(),
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferItemIds.length
       ? loadRowsInChunks<StockTransferItemReversalRow>(
           transferItemIds,
-          (transferItemIdChunk) => supabase
+          (chunk) => supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
-            .in("original_stock_transfer_item_id", transferItemIdChunk)
+            .in("original_stock_transfer_item_id", chunk)
             .returns<StockTransferItemReversalRow[]>(),
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
     transferItemIds.length
       ? loadRowsInChunks<StockTransferItemReversalRow>(
           transferItemIds,
-          (transferItemIdChunk) => supabase
+          (chunk) => supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
-            .in("reversal_stock_transfer_item_id", transferItemIdChunk)
+            .in("reversal_stock_transfer_item_id", chunk)
             .returns<StockTransferItemReversalRow[]>(),
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
 
   if (
-    teamOperationsResult.error
-    || reversalsFromOriginalResult.error
+    reversalsFromOriginalResult.error
     || reversalsByReversalResult.error
     || itemReversalsFromOriginalResult.error
     || itemReversalsByReversalResult.error
   ) {
     return NextResponse.json(
-      {
-        message: teamOperationsResult.error
-          ? "Falha ao separar Operacoes de Equipe das movimentacoes de estoque."
-          : "Falha ao validar o status de estorno das movimentacoes de estoque.",
-      },
+      { message: "Falha ao validar o status de estorno das movimentacoes de estoque." },
       { status: 500 },
     );
   }
@@ -630,7 +793,7 @@ async function loadTransferList(request: NextRequest) {
     materialsData = legacyMaterialsResult.data ?? [];
   }
 
-  const transferMap = new Map((transferHeaders ?? []).map((row) => [row.id, row]));
+  const transferMap = new Map(pageTransfers.map((row) => [row.id, row]));
   const materialMap = new Map(materialsData.map((row) => [row.id, row]));
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
@@ -639,9 +802,6 @@ async function loadTransferList(request: NextRequest) {
       row.id,
       String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
     ]),
-  );
-  const teamOperationTransferIds = new Set(
-    (teamOperationsResult.data ?? []).map((row) => row.transfer_id),
   );
   const reversalByOriginalMap = new Map(
     (reversalsFromOriginalResult.data ?? []).map((row) => [
@@ -691,7 +851,6 @@ async function loadTransferList(request: NextRequest) {
   const allRows: TransferListItem[] = (itemRows ?? []).flatMap((item) => {
     const transfer = transferMap.get(item.stock_transfer_id);
     if (!transfer) return [];
-    if (teamOperationTransferIds.has(transfer.id)) return [];
 
     const material = materialMap.get(item.material_id);
     const fromStockCenterName = stockCenterMap.get(transfer.from_stock_center_id) ?? "-";
@@ -743,45 +902,7 @@ async function loadTransferList(request: NextRequest) {
     ];
   });
 
-  const filteredRows = allRows.filter((row) => {
-    const normalizedProjectCode = String(row.projectCode ?? "").trim().toUpperCase();
-    const normalizedMaterialCode = String(row.materialCode ?? "").trim().toUpperCase();
-
-    if (projectCodeFilter && !normalizedProjectCode.includes(projectCodeFilter)) {
-      return false;
-    }
-    if (materialCodeFilter && !normalizedMaterialCode.includes(materialCodeFilter)) {
-      return false;
-    }
-    if (reversalStatus === "ESTORNADAS" && !row.isReversed) {
-      return false;
-    }
-    if (reversalStatus === "NAO_ESTORNADAS" && (row.isReversed || row.isReversal)) {
-      return false;
-    }
-    if (reversalStatus === "ESTORNOS" && !row.isReversal) {
-      return false;
-    }
-    return true;
-  });
-
-  filteredRows.sort((left, right) => {
-    const leftTime = new Date(left.updatedAt).getTime();
-    const rightTime = new Date(right.updatedAt).getTime();
-    return rightTime - leftTime;
-  });
-
-  const from = (page - 1) * pageSize;
-  const pagedRows = filteredRows.slice(from, from + pageSize);
-
-  return NextResponse.json({
-    history: pagedRows,
-    pagination: {
-      page,
-      pageSize,
-      total: filteredRows.length,
-    },
-  });
+  return NextResponse.json({ history: allRows, pageInfo });
 }
 
 async function loadTransferEditHistory(request: NextRequest) {
