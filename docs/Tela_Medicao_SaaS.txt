@@ -1041,3 +1041,27 @@ Atualizacao 2026-06-15 (Atualizacao automatica da composicao)
 - Multi-tenant:
   - O evento apenas invalida a visualizacao; ele nao transporta dados de negocio ou tenant.
   - A API continua recalculando o match por `tenant_id + project_id + team_id + execution_date` com RLS ativa.
+
+Atualizacao 2026-06-30 — P1-A: paginacao real no banco para todos os filtros
+------------------------------------------------------------------------------
+- O que mudou:
+  - Removido o caminho legado baseado em `fetchPagedSupabaseRows` que acumulava TODAS as ordens em memoria antes de paginar.
+  - Removida a bifurcacao `hasMemoryFilter` / `isSimplePaginationMode`.
+  - O caminho unificado agora usa `count:"exact"` + `.range()` para todos os casos.
+  - `activityId` passa a ser um filtro nativo no banco: as IDs das ordens que possuem a atividade sao pre-resolvidas em `project_measurement_order_items` (via `fetchPagedSupabaseRows` sobre a tabela de itens, que e muito menor) e entram como `.in("id", activityOrderIds)` na query principal. Early-return quando nenhuma ordem contem a atividade.
+  - `programmingMatchFilter`, `workCompletionStatusFilter` e `completionAlertFilter` sao aplicados como pos-filtro na pagina retornada do banco (filtros derivados — necessitam de dados da programacao que chegam via `loadProgrammingMatchMap`). O `total` no pagination reflete o count nativo + `activityId`; o total real com filtros derivados e aproximado (P1-A).
+  - Dados auxiliares (usuarios, matchMap, projectIsTest, serviceCenterMap, composicao de equipe, metas) sao carregados apenas para os IDs da pagina atual — nunca para o conjunto total.
+  - Limite `simpleAggregateItemsResult` — itens de medicao sao buscados somente para os IDs da pagina.
+- Arquivos alterados:
+  - `src/app/api/medicao/route.ts`
+- Funcoes/hooks/constantes tocadas:
+  - Removida: logica legada com `fetchPagedSupabaseRows` para ordens completas, `hasMemoryFilter`, `isSimplePaginationMode`, `activityOrdersResult` dentro de Promise.all legado.
+  - Adicionada: `activityOrderIdSet` (pre-resolucao de IDs de ordem por atividade, antes do query principal).
+  - Adicionada: `simpleNonTestOrders`, `simpleFilteredByProgramming`, `simpleFilteredByWorkCompletion` (cadeia de pos-filtros derivados na pagina).
+  - Mantida: `simplePagedBaseOrders` (agora resultado final da cadeia de pos-filtros).
+- Comportamento antes/depois:
+  - Antes: com qualquer filtro derivado ativo (activityId, programmingMatch, workCompletionStatus, completionAlert), a API carregava todas as ordens do periodo em memoria e paginava no Node.
+  - Depois: sempre DB count + range. `activityId` vira filtro nativo. Os tres filtros derivados restantes sao pos-filtros leves na pagina.
+- Multi-tenant:
+  - Nenhuma mudanca em RLS. Todos os queries continuam com `.eq("tenant_id", ...)`.
+  - `activityOrderIdSet` e resolvido com `tenant_id` correto antes de entrar no filtro `.in("id", ...)`.
