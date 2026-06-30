@@ -2701,3 +2701,16 @@ Atualizacao 2026-06 - Correcao de falso bloqueio ao REPROGRAMAR linha CONCLUIDO 
   - `supabase/migrations/280_fix_completed_group_integrity_on_reprogram.sql`
   - `scripts/audit-completed-group-reprogram-280-readonly.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
+
+Atualizacao 2026-06-30 (P3 - Limite de 50 registros em fetchProgrammingHistory)
+--------------------------------------------------------------------------------
+- Problema resolvido: `fetchProgrammingHistory` em `src/server/modules/programacao/queries.ts` buscava todos os registros do historico de uma programacao sem limite, podendo retornar centenas de linhas em programacoes antigas.
+- Solucao: adicionado `.limit(50)` entre `.order("created_at", { ascending: false })` e `.returns<...>()` na query de `project_programming_history`.
+- Impacto: apenas os 50 registros mais recentes sao exibidos no modal de historico. Historico mais antigo permanece no banco mas nao e carregado na tela.
+- Arquivos:
+  - `src/server/modules/programacao/queries.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
+  - `TASKS.md`
+- Como validar:
+  - Abrir modal de historico em uma programacao com muitas entradas e confirmar que a lista e limitada a 50 registros sem erro.
+- Impacto multi-tenant: nenhum; a query ja usa `tenant_id` via a programacao pai.
