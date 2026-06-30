@@ -163,8 +163,8 @@ Filtros, auto-complete e listagem
   - No CSV de pontuacao, `Status` compara `Pontos` com `measurement_score_targets.target_points` do tipo da equipe (`MK`, `LV` ou `CESTO`).
   - No CSV de pontuacao, `Compensatorio` compara `Valor` com a meta diaria financeira do tipo/equipe no ciclo salvo em `measurement_cycle_target_items.daily_value`, com fallback em `measurement_team_type_targets.daily_value`.
   - Ao exportar, a tela exibe modal `Gerando...` com percentual de progresso e bloqueia os cliques da pagina ate concluir a geracao do arquivo.
-  - Botao `Atualizar lista` ao lado de `Detalhamento (CSV)` para recarregar lista, filtros aplicados e consolidacoes com os dados mais recentes.
-  - A coluna `Composicao equipe` e atualizada automaticamente a cada 60 segundos, ao voltar para a aba/tela e quando outra aba do sistema salva uma composicao.
+  - Botao `Atualizar lista` ao lado de `Detalhamento (CSV)` para recarregar lista, filtros aplicados, consolidacoes e coluna `Composicao equipe` com os dados mais recentes.
+  - A coluna `Composicao equipe` nao possui auto-refresh por tempo, foco de aba ou retorno para a tela; a atualizacao e feita pelo botao `Atualizar lista`.
   - As consultas da lista usam requisicao sem cache e identificador unico para evitar reutilizacao de resposta anterior.
 - Acoes:
   - Detalhes
@@ -232,6 +232,25 @@ Atualizacao 2026-06-30 (Paginacao real no banco)
 - Impacto multi-tenant:
   - `tenant_id` continua filtrado em todas as queries do caminho simples.
   - Nenhuma alteracao de RLS ou schema.
+
+Atualizacao 2026-06-30 (Refresh manual da lista)
+-------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Removido o efeito de auto-refresh baseado em `focus`, `pageshow`, `visibilitychange`, evento de composicao, `storage` e intervalo de 60 segundos.
+  - Removido `TEAM_COMPOSITION_AUTO_REFRESH_MS`.
+  - Removido `compositionRefreshTick`.
+  - Mantido `refreshMeasurementList` como gatilho manual pelo botao `Atualizar lista`.
+- Comportamento antes/depois:
+  - Antes: a lista de Medicao podia refazer `GET /api/medicao` automaticamente ao focar/voltar para a aba, por evento de composicao, por storage e a cada 60 segundos com a tela visivel.
+  - Depois: a tela nao faz auto-refresh da lista por tempo/foco/aba; o usuario atualiza sob demanda pelo botao `Atualizar lista`.
+  - Depois: filtros, paginacao, salvamento e acoes manuais continuam recarregando a lista pelos fluxos ja existentes.
+- Impacto multi-tenant:
+  - Nao houve alteracao de schema, RLS ou escopo de tenant.
+  - A mudanca reduz chamadas autenticadas repetidas sem alterar regras de acesso.
 
 Atualizacao 2026-06-26 (Taxa em Sem producao)
 ---------------------------------------------

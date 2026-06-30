@@ -3,10 +3,6 @@
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
-import {
-  TEAM_COMPOSITION_UPDATED_EVENT,
-  TEAM_COMPOSITION_UPDATED_STORAGE_KEY,
-} from "@/lib/events/teamComposition";
 import styles from "./MeasurementPageView.module.css";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { parseCsvLine } from "@/lib/utils/parsers";
@@ -332,7 +328,6 @@ const PAGE_SIZE = 20;
 const EXPORT_PAGE_SIZE = 200;
 const EXPORT_DETAIL_BATCH_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
-const TEAM_COMPOSITION_AUTO_REFRESH_MS = 60_000;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
   teamId: "Equipe",
@@ -939,7 +934,6 @@ export function MeasurementPageView() {
   const [statusAction, setStatusAction] = useState<StatusAction>("CANCELAR");
   const [statusReason, setStatusReason] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
-  const [compositionRefreshTick, setCompositionRefreshTick] = useState(0);
   const [isLoadingSources, setIsLoadingSources] = useState(false);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
@@ -1295,52 +1289,6 @@ export function MeasurementPageView() {
 
   useEffect(() => {
     if (!accessToken) {
-      return;
-    }
-
-    let lastRefreshAt = 0;
-    const requestCompositionRefresh = () => {
-      const now = Date.now();
-      if (now - lastRefreshAt < 1_500) {
-        return;
-      }
-      lastRefreshAt = now;
-      setCompositionRefreshTick((current) => current + 1);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        requestCompositionRefresh();
-      }
-    };
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === TEAM_COMPOSITION_UPDATED_STORAGE_KEY) {
-        requestCompositionRefresh();
-      }
-    };
-
-    window.addEventListener("focus", requestCompositionRefresh);
-    window.addEventListener("pageshow", requestCompositionRefresh);
-    window.addEventListener(TEAM_COMPOSITION_UPDATED_EVENT, requestCompositionRefresh);
-    window.addEventListener("storage", handleStorage);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        requestCompositionRefresh();
-      }
-    }, TEAM_COMPOSITION_AUTO_REFRESH_MS);
-
-    return () => {
-      window.removeEventListener("focus", requestCompositionRefresh);
-      window.removeEventListener("pageshow", requestCompositionRefresh);
-      window.removeEventListener(TEAM_COMPOSITION_UPDATED_EVENT, requestCompositionRefresh);
-      window.removeEventListener("storage", handleStorage);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.clearInterval(intervalId);
-    };
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (!accessToken) {
       setOrders([]);
       setTotal(0);
       setIsLoadingOrders(false);
@@ -1374,7 +1322,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters, compositionRefreshTick, fetchOrdersPage, page, refreshTick]);
+  }, [accessToken, activeFilters, fetchOrdersPage, page, refreshTick]);
 
   useEffect(() => {
     if (!accessToken) {
