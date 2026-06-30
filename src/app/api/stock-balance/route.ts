@@ -82,6 +82,11 @@ type AppUserRow = {
   login_name: string | null;
 };
 
+type BalanceSummaryRow = {
+  quantity: number | string | null;
+  materials: { umb: string | null } | { umb: string | null }[] | null;
+};
+
 type StockTransferReversalRow = {
   original_stock_transfer_id: string;
   reversal_stock_transfer_id: string;
@@ -255,55 +260,49 @@ async function loadStockHistory(request: NextRequest) {
     );
   }
 
-  const { data: transferHeaders, error: transfersError } = await supabase
-    .from("stock_transfers")
-    .select(
-      "id, movement_type, operation_purpose, from_stock_center_id, to_stock_center_id, project_id, entry_date, balance_correction_reason, notes, created_at, updated_at, created_by, updated_by",
-    )
+  const { data: allMaterialItems, error: itemsError } = await supabase
+    .from("stock_transfer_items")
+    .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
     .eq("tenant_id", appUser.tenant_id)
-    .or(`from_stock_center_id.eq.${stockCenterId},to_stock_center_id.eq.${stockCenterId}`)
-    .returns<StockTransferHeaderRow[]>();
+    .eq("material_id", materialId)
+    .limit(2000)
+    .returns<StockTransferItemRow[]>();
+
+  if (itemsError) {
+    return NextResponse.json({ message: "Falha ao carregar os itens do historico do estoque atual." }, { status: 500 });
+  }
+
+  if (!allMaterialItems?.length) {
+    return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
+  }
+
+  const allTransferIds = Array.from(new Set(allMaterialItems.map((row) => row.stock_transfer_id)));
+  const { data: transferHeaders, error: transfersError } = await loadRowsInChunks<StockTransferHeaderRow>(
+    allTransferIds,
+    (chunk) => supabase
+      .from("stock_transfers")
+      .select(
+        "id, movement_type, operation_purpose, from_stock_center_id, to_stock_center_id, project_id, entry_date, balance_correction_reason, notes, created_at, updated_at, created_by, updated_by",
+      )
+      .eq("tenant_id", appUser.tenant_id)
+      .or(`from_stock_center_id.eq.${stockCenterId},to_stock_center_id.eq.${stockCenterId}`)
+      .in("id", chunk)
+      .returns<StockTransferHeaderRow[]>(),
+  );
 
   if (transfersError) {
     return NextResponse.json({ message: "Falha ao carregar o historico do estoque atual." }, { status: 500 });
   }
 
   if (!transferHeaders?.length) {
-    return NextResponse.json({
-      history: [],
-      pagination: {
-        page,
-        pageSize,
-        total: 0,
-      },
-    });
+    return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
-  const transferIds = transferHeaders.map((row) => row.id);
-  const { data: itemRows, error: itemsError } = await loadRowsInChunks<StockTransferItemRow>(
-    transferIds,
-    (transferIdChunk) => supabase
-      .from("stock_transfer_items")
-      .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("material_id", materialId)
-      .in("stock_transfer_id", transferIdChunk)
-      .returns<StockTransferItemRow[]>(),
-  );
+  const transferMap = new Map((transferHeaders ?? []).map((row) => [row.id, row]));
+  const itemRows = allMaterialItems.filter((row) => transferMap.has(row.stock_transfer_id));
 
-  if (itemsError) {
-    return NextResponse.json({ message: "Falha ao carregar os itens do historico do estoque atual." }, { status: 500 });
-  }
-
-  if (!itemRows?.length) {
-    return NextResponse.json({
-      history: [],
-      pagination: {
-        page,
-        pageSize,
-        total: 0,
-      },
-    });
+  if (!itemRows.length) {
+    return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
   const stockCenterIds = Array.from(
@@ -318,6 +317,8 @@ async function loadStockHistory(request: NextRequest) {
       transferHeaders.flatMap((row) => [row.updated_by, row.created_by]).filter((value): value is string => Boolean(value)),
     ),
   );
+
+  const transferIds = (transferHeaders ?? []).map((row) => row.id);
 
   const [
     stockCentersResult,
@@ -415,7 +416,6 @@ async function loadStockHistory(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar detalhes do historico do estoque atual." }, { status: 500 });
   }
 
-  const transferMap = new Map(transferHeaders.map((row) => [row.id, row]));
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map(
@@ -548,6 +548,7 @@ export async function GET(request: NextRequest) {
     const qtyMax = parseNonNegativeDecimal(request.nextUrl.searchParams.get("qtyMax"));
     const onlyPositive = normalizeOnlyPositive(request.nextUrl.searchParams.get("onlyPositive"));
     const includeTeamCenters = normalizeText(request.nextUrl.searchParams.get("includeTeamCenters")) === "1";
+    const includeHistoricalZeros = normalizeText(request.nextUrl.searchParams.get("includeHistoricalZeros")) === "1";
 
     if (qtyMin !== null && qtyMax !== null && qtyMin > qtyMax) {
       return NextResponse.json(
@@ -614,7 +615,91 @@ export async function GET(request: NextRequest) {
 
     const availableStockCenterIds = availableStockCenters.map((row) => row.id);
     const stockCenterMap = new Map(availableStockCenters.map((row) => [row.id, row.name]));
-    const shouldHydrateHistoricalZeros = !includeTeamCenters && onlyPositive !== "SIM" && (qtyMin === null || qtyMin <= 0);
+    const shouldHydrateHistoricalZeros = includeHistoricalZeros && !includeTeamCenters && onlyPositive !== "SIM" && (qtyMin === null || qtyMin <= 0);
+    const from = (page - 1) * pageSize;
+
+    if (!shouldHydrateHistoricalZeros) {
+      const baseSelect = [
+        "stock_center_id",
+        "material_id",
+        "quantity",
+        "updated_at",
+        "materials!inner(id, codigo, descricao, umb, tipo, is_active)",
+      ].join(", ");
+
+      let pageQuery = supabase
+        .from("stock_center_balances")
+        .select(baseSelect, { count: "exact" })
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("materials.is_active", true)
+        .in("stock_center_id", availableStockCenterIds);
+      if (onlyPositive === "SIM") pageQuery = pageQuery.gt("quantity", 0);
+      if (qtyMin !== null) pageQuery = pageQuery.gte("quantity", qtyMin);
+      if (qtyMax !== null) pageQuery = pageQuery.lte("quantity", qtyMax);
+      if (materialCode) pageQuery = pageQuery.ilike("materials.codigo", `%${materialCode}%`);
+      if (description) pageQuery = pageQuery.ilike("materials.descricao", `%${description}%`);
+
+      let summaryQuery = supabase
+        .from("stock_center_balances")
+        .select("quantity, materials!inner(umb)")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("materials.is_active", true)
+        .in("stock_center_id", availableStockCenterIds);
+      if (onlyPositive === "SIM") summaryQuery = summaryQuery.gt("quantity", 0);
+      if (qtyMin !== null) summaryQuery = summaryQuery.gte("quantity", qtyMin);
+      if (qtyMax !== null) summaryQuery = summaryQuery.lte("quantity", qtyMax);
+      if (materialCode) summaryQuery = summaryQuery.ilike("materials.codigo", `%${materialCode}%`);
+      if (description) summaryQuery = summaryQuery.ilike("materials.descricao", `%${description}%`);
+
+      const [
+        { data: pageData, count: pageCount, error: pageError },
+        { data: summaryData, error: summaryError },
+      ] = await Promise.all([
+        pageQuery
+          .order("updated_at", { ascending: false, nullsFirst: false })
+          .order("material_id", { ascending: true })
+          .range(from, from + pageSize - 1)
+          .returns<BalanceQueryRow[]>(),
+        summaryQuery.returns<BalanceSummaryRow[]>(),
+      ]);
+
+      if (pageError || summaryError) {
+        return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });
+      }
+
+      const pageItems = (pageData ?? []).flatMap((row) => {
+        const material = unwrapRelation(row.materials);
+        const stockCenterName = stockCenterMap.get(row.stock_center_id);
+        if (!material || !stockCenterName) return [];
+        return [{
+          stockCenterId: row.stock_center_id,
+          stockCenterName,
+          materialId: row.material_id,
+          materialCode: material.codigo,
+          description: material.descricao,
+          unit: String(material.umb ?? "").trim(),
+          materialType: String(material.tipo ?? "").trim().toUpperCase(),
+          balanceQuantity: Number(row.quantity ?? 0),
+          lastMovementAt: row.updated_at,
+        }];
+      });
+
+      const summaryByUnit = Array.from(
+        (summaryData ?? []).reduce((acc, row) => {
+          const mat = unwrapRelation(row.materials);
+          const unit = String(mat?.umb ?? "").trim().toUpperCase() || "SEM UMB";
+          acc.set(unit, (acc.get(unit) ?? 0) + Number(row.quantity ?? 0));
+          return acc;
+        }, new Map<string, number>()),
+        ([unit, balanceQuantity]) => ({ unit, balanceQuantity }),
+      ).sort((a, b) => a.unit.localeCompare(b.unit, "pt-BR"));
+
+      return NextResponse.json({
+        items: pageItems,
+        summaryByUnit,
+        pagination: { page, pageSize, total: pageCount ?? 0 },
+      });
+    }
 
     let balanceQuery = supabase
       .from("stock_center_balances")
@@ -776,7 +861,7 @@ export async function GET(request: NextRequest) {
           return false;
         }
 
-        if (onlyPositive === "SIM" && item.balanceQuantity <= 0) {
+        if (onlyPositive !== "TODOS" && item.balanceQuantity <= 0) {
           return false;
         }
 
@@ -796,7 +881,6 @@ export async function GET(request: NextRequest) {
         return left.materialCode.localeCompare(right.materialCode, "pt-BR");
       });
 
-    const from = (page - 1) * pageSize;
     const summaryByUnit = Array.from(
       filteredItems.reduce((summary, item) => {
         const unit = item.unit.trim().toUpperCase() || "SEM UMB";

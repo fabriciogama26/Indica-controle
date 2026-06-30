@@ -12,4 +12,5 @@ export const INITIAL_FILTERS: CurrentStockFilters = {
   qtyMin: "",
   qtyMax: "",
   onlyPositive: "TODOS",
+  includeHistoricalZeros: false,
 };

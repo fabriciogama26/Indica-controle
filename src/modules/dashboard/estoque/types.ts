@@ -12,6 +12,7 @@ export type CurrentStockFilters = {
   qtyMin: string;
   qtyMax: string;
   onlyPositive: "SIM" | "TODOS";
+  includeHistoricalZeros: boolean;
 };
 
 export type CurrentStockListItem = {

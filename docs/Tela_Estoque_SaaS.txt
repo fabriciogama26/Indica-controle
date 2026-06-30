@@ -36,6 +36,7 @@ Filtros, auto-complete e listagem
   - `Saldo minimo` (aceita virgula ou ponto)
   - `Saldo maximo` (aceita virgula ou ponto)
   - `Exibir saldo zero`
+  - `Incluir historico zerado` (opt-in; desabilitado por padrao para performance)
 - Listagem:
   - `Centro`
   - `Material`
@@ -48,7 +49,8 @@ Filtros, auto-complete e listagem
 - Regras de exibicao:
   - `Saldo` exibido como numero decimal em pt-BR, com ate 3 casas decimais.
   - `Exibir saldo zero` inicia em `Sim`, para manter o saldo fisico visivel mesmo apos requisicoes para equipe.
-  - Materiais que ja passaram pelo centro fisico continuam aparecendo com saldo `0`, mesmo quando o saldo atual nao possui mais linha persistida em `stock_center_balances`.
+  - `Incluir historico zerado` inicia em `Nao`. Quando desabilitado, a API usa paginacao real no banco (caminho rapido) e so retorna materiais com linha ativa em `stock_center_balances`. Quando habilitado, a API recompoe linhas zeradas a partir de `stock_transfers`, o que tem custo adicional de I/O.
+  - Materiais que ja passaram pelo centro fisico continuam aparecendo com saldo `0` somente quando `Incluir historico zerado = Sim`.
   - `Ultima movimentacao` usa o timestamp mais recente entre o saldo atual e o historico de `stock_transfers` do centro fisico.
   - A lista e paginada no backend (`page`, `pageSize`, `total`).
   - O cabecalho da lista exibe `Registros filtrados` e cards de `Saldo total` por UMB, priorizando `M`, `UN` e `KG`.
@@ -133,6 +135,40 @@ Atualizacao 2026-04
   - O resumo da lista passa a agrupar o saldo filtrado por `UMB`, antes da paginacao, exibindo cards dedicados para `M`, `UN`, `KG` e outras UMBs presentes.
   - A exportacao CSV passou a usar lote de `100` registros, alinhado ao limite maximo do `GET /api/stock-balance`, e o loop passou a respeitar o `pageSize` efetivo retornado pela API para nao interromper antes de exportar todos os registros filtrados.
   - O historico do saldo passa a exibir `Correcao de saldo` quando a movimentacao veio marcada com `stock_transfers.operation_purpose = BALANCE_CORRECTION`, incluindo o motivo registrado na movimentacao.
+
+Atualizacao 2026-06-30 (Performance: paginacao real e historico opt-in)
+------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/stock-balance/route.ts`
+  - `src/modules/dashboard/estoque/types.ts`
+  - `src/modules/dashboard/estoque/constants.ts`
+  - `src/modules/dashboard/estoque/utils.ts`
+  - `src/modules/dashboard/estoque/CurrentStockPageView.tsx`
+  - `docs/Tela_Estoque_SaaS.txt`
+  - `TASKS.md`
+- O que mudou:
+  - `GET /api/stock-balance` (listagem):
+    - Adicionado parametro `includeHistoricalZeros` (default `0`).
+    - `shouldHydrateHistoricalZeros` agora exige `includeHistoricalZeros=1`; desabilitado por padrao.
+    - Caminho padrao (sem historico zerado): usa `count:"exact"` + `.range()` + filtros no BD; executa page query e summary query em paralelo. Custo: 2 queries leves.
+    - Caminho legado (com historico zerado, `includeHistoricalZeros=1`): comportamento anterior preservado intacto, incluindo recomposicao via `stock_transfers`.
+    - `BalanceSummaryRow`: novo tipo local para a query de resumo por UMB.
+  - `GET /api/stock-balance?mode=history` (`loadStockHistory`):
+    - Antes: buscava TODOS os `stock_transfers` do centro (sem filtro de material), depois filtrava `stock_transfer_items` por `materialId`.
+    - Depois: busca `stock_transfer_items` do material primeiro (limit 2000), depois cruza com `stock_transfers` filtrados por `stockCenterId` via `in("id", chunk)`.
+    - `transferIds` e `transferMap` agora derivam do conjunto filtrado, sem carregamento de todos os transfers do centro.
+  - Frontend (`CurrentStockPageView`, `types`, `constants`, `utils`):
+    - `CurrentStockFilters` ganhou `includeHistoricalZeros: boolean`.
+    - `INITIAL_FILTERS` inicializa `includeHistoricalZeros: false`.
+    - `buildCurrentStockQuery` serializa `includeHistoricalZeros=1` quando ativo.
+    - Novo filtro `Incluir historico zerado` na UI (select `Nao` / `Sim`).
+    - Texto do hint da lista atualizado para refletir o novo comportamento padrao.
+- Como validar:
+  - Abrir `/estoque` e verificar que a lista carrega sem lentidao.
+  - Ativar `Incluir historico zerado = Sim`, aplicar, e verificar que materiais com saldo `0` aparecem.
+  - Abrir historico de um material e verificar que o modal exibe o historico correto sem erro.
+  - Verificar no DevTools que `GET /api/stock-balance` retorna `pagination.total` correto.
+- Multi-tenant: sem impacto em RLS; todos os filtros ja incluem `tenant_id`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
