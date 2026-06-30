@@ -230,6 +230,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "startDate e endDate sao obrigatorios." }, { status: 400 });
     }
 
+    const MAX_WINDOW_DAYS = 60;
+    const windowDays = Math.round(
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (windowDays > MAX_WINDOW_DAYS) {
+      return NextResponse.json(
+        { message: `A janela de datas nao pode exceder ${MAX_WINDOW_DAYS} dias. Periodo solicitado: ${windowDays} dias.` },
+        { status: 400 },
+      );
+    }
+
     const weekStart = startOfWeekMonday(startDate);
     const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes, reasonOptions, eqCatalog, workCompletionCatalog] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
