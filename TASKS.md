@@ -162,7 +162,7 @@
 - [x] Disponibilizar Edge Functions ja existentes para login, logout, log de erro, sincronismo, materiais, responsaveis e saldo de estoque.
 - [x] Documentar handoff, arquitetura, contratos de backend, login, home e layout principal em `docs/`.
 
-- [ ] Implementar consumo real no frontend para `get_materials`, `get_responsaveis` e `get_inventory_balance`.
+- [x] [Obsoleto/Substituido] Implementar consumo real no frontend para `get_materials`, `get_responsaveis` e `get_inventory_balance`: o frontend operacional atual usa APIs Next (`/api/materials`, `/api/stock-balance`, metas por `/api/*/meta`) e as Edge Functions em `supabase/functions/*` ficam como integracoes externas/legadas documentadas.
 - [x] Implementar CRUD de `Pessoas` integrado a `people`, `job_titles`, `job_title_types` e `job_levels`, com historico, status e exportacao CSV.
 - [x] Aplicar trava de 10 segundos nos botoes `Exportar Excel (CSV)` das listagens para evitar multiplos disparos de exportacao.
 - [x] Ampliar todos os `Exportar Excel (CSV)` para incluir campos obrigatorios de cadastro por tela e metadados extras de auditoria/disponibilidade (`Status`, `Criado/Atualizado por`, `Criado/Atualizado em`, quando disponiveis).
@@ -255,7 +255,7 @@
 - [x] Evoluir `Materiais previstos` e `Atividades previstas` em `Projetos` para suportar importacao em massa e inclusao manual, com edicao em linha e protecao via RPC.
 - [x] Padronizar o posicionamento do botao `Adicionar atividade` em `Projetos` para seguir o mesmo layout de `Adicionar material`.
 - [ ] Integrar aprovacao da previsao de materiais (locacao) e liberar saque no almoxarifado somente para lista aprovada.
-- [ ] Implementar modulo de `Locacao` com regras de periodo, custo e status operacional.
+- [x] Implementar modulo de `Locacao` com tela, APIs, RPCs transacionais, regras de periodo/custo, historico e docs; o item antigo de "status operacional" ficou obsoleto porque `docs/Tela_Locacao_SaaS.txt` registra que nao existe cancelamento/status operacional da locacao nesta etapa.
 - [x] Implementar primeira versao visual de `Programacao` com painel de pendencias, timeline por equipe, drag and drop local e modal de programacao.
 - [x] Ajustar a tela de `Programacao` para semana completa de segunda a domingo, melhor encaixe visual em 100% e padronizacao documental `PEP`.
 - [x] Integrar `Programacao` com dados reais de projetos, equipes, atividades e persistencia da agenda por tenant.
@@ -429,7 +429,7 @@
 - [x] Sugerir automaticamente a `Taxa` no cadastro novo da Medicao ao selecionar projeto, priorizando a ultima medicao `COM_PRODUCAO` do mesmo projeto e mantendo fallback para preenchimento manual.
 - [x] Preservar e corrigir o encarregado historico da Medicao: criar `team_foreman_history`, resolver snapshot por `Data execucao`, abrir vigencia anterior quando a primeira troca estiver no historico e backfillar ordens ja contaminadas.
 - [ ] Concluir backfill/manual cleanup das equipes antigas sem base quando o tenant tiver mais de um centro de servico ativo.
-- [ ] Implementar modulo de `Medicao` com consolidacao por periodo, aprovacao e historico.
+- [x] Implementar modulo de `Medicao` com rota `/medicao`, APIs, RPCs, consolidacao por periodo/filtros, status `ABERTA`/`FECHADA`/`CANCELADA`, reabertura/cancelamento com motivo, historico e docs (`docs/Tela_Medicao_SaaS.txt`).
 - [x] Implementar CRUD de `Cargo` integrado a `people/job_titles`, incluindo tipos por cargo, niveis do tenant, historico, status, exportacao CSV e controle de concorrencia.
 - [ ] Implementar CRUDs de `Cadastro Base` (`Prioridade`, `Centro de Servico`, `Contrato`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora`, `Municipio`).
 - [x] Revisao de cadastros (2026-03-20): bloquear submit de `Pessoas` com feedback explicito quando `job_titles` estiver vazio e orientar abertura do cadastro base de `Cargo`.
@@ -459,7 +459,7 @@
 - [ ] Definir se o provisionamento padrao de usuarios sera por pre-cadastro em `app_users` + invite no Auth, ou por metadata obrigatoria no invite admin.
 - [ ] Integrar `log_error` no frontend para registrar falhas por modulo.
 - [ ] Adicionar testes automatizados para auth e fluxo base de navegacao.
-- [ ] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito.
+- [x] [Obsoleto/Corrigido] Corrigir o `lint` atual em `supabase/edge_functions/get_responsaveis/index.ts` removendo o `any` explicito: o caminho atual e `supabase/functions/get_responsaveis/index.ts` e nao ha `any` explicito nesse arquivo.
 - [x] Corrigir o `build` atual do Next destravando o type-check de `xlsx` usado em `src/lib/server/projectForecastXlsx.ts`.
 - [x] Corrigir falha de type-check no `build` em `src/app/api/projects/route.ts` removendo uso de `delete` em propriedade nao-opcional no fallback legado de RPC.
 
@@ -469,21 +469,8 @@
 - [ ] Mapear quais operacoes sensiveis de estoque precisam gerar auditoria adicional alem de `login_audit` e `app_error_logs`.
 - [ ] Definir backlog funcional do SaaS de engenharia eletrica alem do modulo atual de materiais/estoque.
 
-- [ ] Pendencia de dependencia registrada em 2026-03-11: `@supabase/supabase-js` `2.98.0 -> 2.99.1`.
-- [ ] Pendencia de dependencia registrada em 2026-03-11: `react` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-11: `react-dom` `19.2.3 -> 19.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-03-11: `@types/node` `20.19.37 -> 25.4.0`.
-- [ ] Pendencia de dependencia registrada em 2026-03-11: `eslint` `9.39.4 -> 10.0.3`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `@supabase/supabase-js` `2.98.0 -> 2.106.2`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `@tanstack/react-query` `5.90.21 -> 5.100.14`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `@types/node` `20.19.37 -> 20.19.41` (latest `25.9.1`).
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `@types/react` `19.2.14 -> 19.2.15`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `eslint` `9.39.4 -> 10.4.1`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `eslint-config-next` `16.1.6 -> 16.2.6`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `next` `16.1.6 -> 16.2.6`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `react` `19.2.3 -> 19.2.6`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `react-dom` `19.2.3 -> 19.2.6`.
-- [ ] Pendencia de dependencia registrada em 2026-06-01: `typescript` `5.9.3 -> 6.0.3`.
+- [x] [Consolidada] Pendencias de dependencia registradas em 2026-03-11: registros historicos substituidos pela pendencia mais recente de `npm outdated`; `package.json` ainda mantem as versoes antigas.
+- [x] [Consolidada] Pendencias de dependencia registradas em 2026-06-01: registros historicos substituidos pela pendencia mais recente de `npm outdated`; `package.json` ainda mantem as versoes antigas.
 - [x] Criar catalogo de Nº EQ (RE, CO, CF, CC ou TR) na Programacao, com coluna em project_programming, persistencia em fluxo full RPC e historico operacional por alteracao.
 - [x] Adicionar botao Extracao ENEL NOVO na Programacao Simples, mantendo Extracao ENEL, com novo layout de colunas e mapeamentos operacionais (Placa, Responsáveis Ampla, AREA LIVRE, Número SGD normalizado, Nº EQ composto, Periodo por horario e STATUS combinado com Estado Trabalho).
 - [x] Ajustar Extracao ENEL NOVO com formato operacional final: BASE apos  - , Data Execucao dd-mmm-yy, Dia da semana abreviado, INFO STATUS ordinal (xª ETAPA), Tempo previsto HH:MM:SS, Estrutura por equipes (|), Parceira antes de  - , Responsavel Execucao por encarregado, SOLICITACAO/AREA LIVRE por Tipo de SGD, TIPO DE SGD textual e fallback de Descricao do servico (Programacao > Projeto).
@@ -550,15 +537,7 @@
 
 - [x] Ajustar Meta para usar Equipes medida manual no calculo das metas e manter Equipes ativas como referencia.
 
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `@supabase/supabase-js` `2.98.0 -> 2.105.1`.
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `@tanstack/react-query` `5.90.21 -> 5.100.6`.
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `@types/node` `20.19.37 -> 25.6.0` (`wanted` 20.19.39).
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `eslint` `9.39.4 -> 10.2.1`.
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `eslint-config-next` `16.1.6 -> 16.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `next` `16.1.6 -> 16.2.4`.
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `react` `19.2.3 -> 19.2.5`.
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `react-dom` `19.2.3 -> 19.2.5`.
-- [ ] Pendencia de dependencia registrada em 2026-04-29: `typescript` `5.9.3 -> 6.0.3`.
+- [x] [Consolidada] Pendencias de dependencia registradas em 2026-04-29: registros historicos substituidos pela pendencia mais recente de `npm outdated`; `package.json` ainda mantem as versoes antigas.
 
 - [x] Clarificar e endurecer Dias trabalhados da Meta usando Data execucao distinta por equipe nas medicoes.
 
@@ -641,10 +620,10 @@
 
 - [x] Renomear Dias trabalhados da Meta para Media Dias trabalhados mantendo calculo por media de dias com medicao por equipe.
 - [ ] Corrigir tela Meta para permitir gerar/salvar ciclo novo sem depender de medicao existente, e tratar ciclo ja cadastrado como edicao automatica quando selecionado no formulario.
-- [ ] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para fixar `search_path` das funcoes reportadas pelo linter (`function_search_path_mutable`).
-- [ ] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para revogar `EXECUTE` do role `anon` nas RPCs `SECURITY DEFINER`, preservando somente chamadas autenticadas/service-role justificadas.
-- [ ] Tratamento de seguranca Supabase (2026-05-07): classificar RPCs `SECURITY DEFINER` acessiveis por `authenticated` entre uso intencional do app e uso exclusivo de `service_role`, ajustando grants sem quebrar rotas atuais.
-- [ ] Tratamento de seguranca Supabase (2026-05-07): habilitar Leaked Password Protection no Supabase Auth e registrar evidencia de validacao apos novo linter sem alertas.
+- [x] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para fixar `search_path` das funcoes reportadas pelo linter (`function_search_path_mutable`) - atendido pelas migrations `210_harden_function_search_path_and_rpc_execute.sql`, `250_revoke_trigger_functions_from_public.sql`, `251_restrict_rpc_execute_to_service_role.sql` e reforcos posteriores.
+- [x] Tratamento de seguranca Supabase (2026-05-07): criar migration versionada para revogar `EXECUTE` do role `anon` nas RPCs `SECURITY DEFINER` - atendido pelas migrations `210_harden_function_search_path_and_rpc_execute.sql`, `251_restrict_rpc_execute_to_service_role.sql` e `278_harden_security_advisor_warnings.sql`.
+- [x] Tratamento de seguranca Supabase (2026-05-07): classificar RPCs `SECURITY DEFINER` acessiveis por `authenticated` entre uso intencional do app e uso exclusivo de `service_role` - consolidado na auditoria/migration `251` e no script `scripts/check-security-definer.ps1`.
+- [x] [Duplicada] Tratamento de seguranca Supabase (2026-05-07): habilitar Leaked Password Protection no Supabase Auth e registrar evidencia de validacao apos novo linter sem alertas - pendencia manual mantida nas linhas especificas de Leaked Password Protection, pois nao pode ser resolvida por migration.
 
 - [x] Implementar aviso obrigatorio para projeto com Estado Trabalho CONCLUIDO em Programacao (programar/reprogramar/adiar/cancelar), exigindo troca para status diferente de CONCLUIDO na edicao e propagando o novo estado para outros dias programados do mesmo projeto.
 - [x] Exibir `Centro de servico` no modal `Todos os prazos das obras` da Programacao Simples e incluir a coluna na exportacao CSV de prazos.
@@ -901,7 +880,7 @@
 - [x] Versionar Medicao Asbuilt por `Projeto + Servicos considerados ate`, permitindo snapshots acumulados em cortes diferentes e fazendo o Dash operacional considerar somente o ultimo snapshot `FECHADA` por projeto.
 - [ ] Evoluir a tela `Medicao Asbuilt` com nova visualizacao agrupada por projeto (linha por projeto exibindo ultimo Asbuilt, quantidade de fechamentos e valor acumulado; fechamentos expansiveis com itens internos) e alerta de duplicidade parecida ao salvar (mesmo projeto + codigos + quantidades + valores com data diferente — so alertar, nao bloquear).
 
-- [ ] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.106.2`, `@tanstack/react-query` `5.90.21 -> 5.100.14`, `@types/node` `20.19.37 -> 20.19.41` (`latest 25.9.1`), `@types/react` `19.2.14 -> 19.2.16`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.7`), `next` `16.1.6` (`latest 16.2.7`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
+- [x] [Consolidada] Pendencias registradas por `npm outdated` em 2026-06-02 antes de qualquer atualizacao: substituidas pela pendencia mais recente de 2026-06-11; `package.json` ainda mantem as versoes antigas.
 
 - [x] Corrigir o campo `Valor estimado` em `Projetos` para aceitar valor monetario em formato brasileiro, evitando bloqueio do `input type=number` com `step=0.01` e normalizando entradas como `22.035,33` para `22035.33` antes de salvar.
 
@@ -913,7 +892,7 @@
 
 - [x] Melhorar o `Dashboard Estoque`: mover a legenda `Quantidade` acima da area plotada da dispersao, exibir `UMB` na lista de materiais, remover o zoom e contar operacoes distintas por movimentacao na evolucao mensal e nos totais.
 
-- [ ] Pendencias registradas por `npm outdated` em 2026-06-10 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.108.1`, `@tanstack/react-query` `5.90.21 -> 5.101.0`, `@types/node` `20.19.37 -> 20.19.42` (`latest 25.9.2`), `@types/react` `19.2.14 -> 19.2.17`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.9`), `next` `16.1.6` (`latest 16.2.9`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
+- [x] [Consolidada] Pendencias registradas por `npm outdated` em 2026-06-10 antes de qualquer atualizacao: substituidas pela pendencia mais recente de 2026-06-11; `package.json` ainda mantem as versoes antigas.
 
 - [ ] Pendencias registradas por `npm outdated` em 2026-06-11 antes de qualquer atualizacao: `@supabase/supabase-js` `2.98.0 -> 2.108.1`, `@tanstack/react-query` `5.90.21 -> 5.101.0`, `@types/node` `20.19.37 -> 20.19.43` (`latest 25.9.3`), `@types/react` `19.2.14 -> 19.2.17`, `eslint` `9.39.4` (`latest 10.4.1`), `eslint-config-next` `16.1.6` (`latest 16.2.9`), `next` `16.1.6` (`latest 16.2.9`), `react` `19.2.3` (`latest 19.2.7`), `react-dom` `19.2.3` (`latest 19.2.7`) e `typescript` `5.9.3` (`latest 6.0.3`).
 
@@ -944,7 +923,7 @@
 - [x] [P1][Estoque seriado][Operacoes de Equipe][Guard] Manter `Requisicao`, `Devolucao` e `Retorno de campo` com serial obrigatorio para material rastreavel, incluindo bloqueio na RPC `save_team_stock_operation_record` para chamadas diretas sem serial.
 - [ ] [P1][Estoque seriado][Operacoes de Equipe][Identificacao futura] Quando a quantidade solicitada exceder os seriais disponiveis, mostrar saldo fisico x seriais identificados x pendentes e oferecer fluxo `Identificar serial agora`, validando material, centro, disponibilidade, duplicidade e status antes de incluir a unidade na requisicao.
 - [ ] [P1][Estoque seriado][Saida externa] Definir motivos/permissoes para saida externa de material rastreavel sem identificacao; o padrao deve exigir serial, e a excecao deve exigir permissao especifica, motivo, observacao, usuario responsavel e registro de auditoria.
-- [ ] Exigir permissao de pagina/acao nas APIs de `Movimentacao de Estoque` e `Composicao de Equipe`, alem da autenticacao e do escopo de tenant.
+- [ ] Exigir permissao de pagina/acao nas APIs de `Composicao de Equipe`, alem da autenticacao e do escopo de tenant; `Movimentacao de Estoque` e `Operacoes de Equipe` ja usam `requirePageAction` em leitura/criacao/estorno.
 - [ ] Revogar escrita direta de `authenticated` em `stock_center_balances`, `stock_transfers`, `stock_transfer_items`, `team_compositions` e `team_composition_members`, mantendo gravacao apenas por RPC autorizada.
 - [ ] Remover policies `FOR ALL` de `team_compositions` e `team_composition_members`, garantindo ausencia de `DELETE` direto apos migrations novas.
 - [ ] Restringir RPCs `SECURITY DEFINER` de estorno ao `service_role` ou validar internamente `auth.uid()`, tenant, ator e permissao operacional.
