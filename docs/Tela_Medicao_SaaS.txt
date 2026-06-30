@@ -210,6 +210,29 @@ Atalhos
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
 
+Atualizacao 2026-06-30 (Paginacao real no banco)
+-------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+  - `README.md`
+- Funcoes/hooks/constantes tocadas:
+  - `hasMemoryFilter` (flag nova, calculada a partir de activityId, programmingMatchFilter, workCompletionStatusFilter, completionAlertFilter)
+  - `isSimplePaginationMode` (flag nova: true quando hasMemoryFilter = false)
+  - Bloco `if (isSimplePaginationMode)` (early-return com paginacao real, inserido antes do caminho legado fetchPagedSupabaseRows)
+  - `fetchPagedSupabaseRows` (preservada e inalterada; acionada apenas quando isSimplePaginationMode = false)
+- Comportamento antes/depois:
+  - Antes: todos os requests ao `GET /api/medicao` passavam por `fetchPagedSupabaseRows`, que busca todas as linhas do banco em blocos de 1000, monta o array completo em memoria e so entao fatia a pagina solicitada.
+  - Depois: quando nenhum filtro em memoria esta ativo, a rota usa `count:"exact"` + `.range(startIndex, endIndex)` no Supabase, retornando apenas os registros da pagina solicitada. Os dados auxiliares (programacoes, usuarios, composicoes) tambem sao buscados somente para os IDs da pagina.
+  - O caminho legado (fetchPagedSupabaseRows) continua inalterado e e acionado quando activityId, programmingMatch PROGRAMADA/NAO_PROGRAMADA, workCompletionStatus ativo ou completionAlert SIM/NAO estiverem presentes.
+- Filtros DB-safe (sempre enviados ao banco no caminho simples): startDate, endDate, projectId, teamId, status, serviceTypeId (via subquery), measurementKind, noProductionReasonId.
+- Filtros que exigem caminho em memoria: activityId (cross-join com order_items), programmingMatch PROGRAMADA/NAO_PROGRAMADA (requer loadProgrammingMatchMap + project_programming), workCompletionStatus (requer o mesmo mapa), completionAlert SIM/NAO (requer programmingCompletionStatusChangedAfterMeasurement).
+- Limitacao conhecida: quando filteredByProjectType remove ordens de projetos de teste, o `total` do DB pode ser ligeiramente maior que o total filtrado. Aceito como discrepancia minima em producao.
+- Impacto multi-tenant:
+  - `tenant_id` continua filtrado em todas as queries do caminho simples.
+  - Nenhuma alteracao de RLS ou schema.
+
 Atualizacao 2026-06-26 (Taxa em Sem producao)
 ---------------------------------------------
 - Arquivos alterados/criados:
