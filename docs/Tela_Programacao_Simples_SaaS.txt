@@ -2714,3 +2714,29 @@ Atualizacao 2026-06-30 (P3 - Limite de 50 registros em fetchProgrammingHistory)
 - Como validar:
   - Abrir modal de historico em uma programacao com muitas entradas e confirmar que a lista e limitada a 50 registros sem erro.
 - Impacto multi-tenant: nenhum; a query ja usa `tenant_id` via a programacao pai.
+
+Atualizacao 2026-06-30 (Programacao Split — paralelizacao backend e split /meta)
+----------------------------------------------------------------------------------
+- Problema resolvido: GET /api/programacao executava 4 queries sequenciais apos fetchProgrammingRows (~430ms de overhead):
+  fetchProjectSupportDefaults -> fetchProgrammingActivities -> fetchRescheduledProgrammingIds -> userMap.
+  Cada refresh da tela carregava projetos+equipes+catalogos mesmo quando so mudavam os agendamentos.
+- Solucoes aplicadas:
+  1. `.limit(500)` em `fetchRescheduledProgrammingIds` — limita historico de reprogramacao a 500 entradas.
+  2. Parallelizacao: as 5 queries pos-fetchProgrammingRows (extraTeams, supportDefaults, activities, rescheduleHistory, userMap) passam a rodar em um unico Promise.all.
+  3. Novo endpoint `GET /api/programacao/meta` — retorna apenas catalogos estaticos (projects, teams, supportOptions, sgdTypes, electricalEqCatalog, reasonOptions, workCompletionCatalog). Sem agendamentos.
+  4. Suporte a `?meta=0` no GET /api/programacao — pula fetchSupportOptions, fetchReasonCatalog, fetchWorkCompletionCatalog, fetchProjectSupportDefaults; retorna apenas schedules+teamSummaries+activitiesLoadError.
+  5. Frontend: `fetchBoardSnapshot` em `hooks.ts` passa a chamar /api/programacao/meta + /api/programacao?meta=0 em paralelo via Promise.all e mescla os resultados via spread ({ ...metaData, ...schedulesData }).
+- Economia estimada por refresh: ~200ms backend (paralelizacao) + ~100ms backend (skip fetchProjectSupportDefaults) + ~30-50KB de payload.
+- Arquivos tocados:
+  - `src/server/modules/programacao/queries.ts` — .limit(500) em fetchRescheduledProgrammingIds
+  - `src/app/api/programacao/route.ts` — schedulesOnly flag, Promise.all paralelo, early return meta=0
+  - `src/app/api/programacao/meta/route.ts` — novo endpoint criado
+  - `src/modules/dashboard/programacao-simples/api.ts` — fetchProgrammingMeta adicionado, includeMeta em fetchProgrammingSnapshot
+  - `src/modules/dashboard/programacao-simples/hooks.ts` — fetchBoardSnapshot chama meta+schedules em paralelo
+  - `TASKS.md`, `docs/Tela_Programacao_Simples_SaaS.txt`
+- Como validar:
+  - Abrir tela de Programacao Simples e confirmar carregamento normal.
+  - Verificar no DevTools: duas requests paralelas — GET /api/programacao/meta e GET /api/programacao?...&meta=0.
+  - Confirmar que projetos, equipes e catalogos aparecem corretamente na tela.
+  - Confirmar que agendamentos, teamSummaries e atividades carregam normalmente.
+- Impacto multi-tenant: nenhum; todas as queries ja usam tenant_id; o endpoint /meta aplica a mesma autorizacao.

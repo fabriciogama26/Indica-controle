@@ -46,9 +46,11 @@ export async function fetchProgrammingSnapshot(params: {
   accessToken: string;
   startDate: string;
   endDate: string;
+  includeMeta?: boolean;
 }) {
+  const metaParam = params.includeMeta === false ? "&meta=0" : "";
   const response = await fetch(
-    `/api/programacao?startDate=${params.startDate}&endDate=${params.endDate}`,
+    `/api/programacao?startDate=${params.startDate}&endDate=${params.endDate}${metaParam}`,
     {
       cache: "no-store",
       headers: authHeaders(params.accessToken),
@@ -58,6 +60,20 @@ export async function fetchProgrammingSnapshot(params: {
   const data = await readJson<ProgrammingResponse>(response);
   if (!response.ok) {
     throw new Error(data.message ?? "Falha ao carregar programacao.");
+  }
+
+  return data;
+}
+
+export async function fetchProgrammingMeta(params: { accessToken: string }) {
+  const response = await fetch("/api/programacao/meta", {
+    cache: "no-store",
+    headers: authHeaders(params.accessToken),
+  });
+
+  const data = await readJson<ProgrammingResponse>(response);
+  if (!response.ok) {
+    throw new Error(data.message ?? "Falha ao carregar catalogo de programacao.");
   }
 
   return data;
