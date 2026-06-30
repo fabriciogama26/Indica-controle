@@ -1403,6 +1403,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Atividade invalida." }, { status: 400 });
   }
 
+  const hasMemoryFilter =
+    Boolean(activityId) ||
+    programmingMatchFilter === "PROGRAMADA" ||
+    programmingMatchFilter === "NAO_PROGRAMADA" ||
+    Boolean(workCompletionStatusFilter && workCompletionStatusFilter !== "TODOS") ||
+    completionAlertFilter === "SIM" ||
+    completionAlertFilter === "NAO";
+
+  const isSimplePaginationMode = !hasMemoryFilter;
+
   let serviceTypeProjectIdSet: Set<string> | null = null;
   if (serviceTypeId) {
     const serviceTypeProjectsResult = await fetchPagedSupabaseRows<ProjectServiceTypeProjectRow>((from, to) =>
@@ -1420,6 +1430,243 @@ export async function GET(request: NextRequest) {
     }
 
     serviceTypeProjectIdSet = new Set(serviceTypeProjectsResult.data.map((item) => item.id));
+  }
+
+  if (isSimplePaginationMode) {
+    const startIndex = ((page ?? 1) - 1) * (pageSize ?? 20);
+
+    let pagedQuery = resolution.supabase
+      .from("project_measurement_orders")
+      .select(MEASUREMENT_ORDER_SELECT, { count: "exact" })
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .gte("execution_date", startDate)
+      .lte("execution_date", endDate)
+      .order("execution_date", { ascending: false })
+      .order("updated_at", { ascending: false });
+
+    if (projectId) pagedQuery = pagedQuery.eq("project_id", projectId);
+    if (teamId) pagedQuery = pagedQuery.eq("team_id", teamId);
+    if (statusFilter && statusFilter !== "TODOS") pagedQuery = pagedQuery.eq("status", statusFilter);
+    if (serviceTypeProjectIdSet && serviceTypeProjectIdSet.size > 0) {
+      pagedQuery = pagedQuery.in("project_id", Array.from(serviceTypeProjectIdSet));
+    }
+    if (measurementKindFilter === "COM_PRODUCAO" || measurementKindFilter === "SEM_PRODUCAO") {
+      pagedQuery = pagedQuery.eq("measurement_kind", measurementKindFilter);
+    }
+    if (noProductionReasonIdFilter) {
+      pagedQuery = pagedQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
+    }
+
+    const { data: pagedData, count: pagedCount, error: pagedError } = await pagedQuery
+      .range(startIndex, startIndex + (pageSize ?? 20) - 1)
+      .returns<MeasurementOrderRow[]>();
+
+    if (pagedError) {
+      const hint = measurementModuleMigrationHint(pagedError.message);
+      return NextResponse.json({ message: `Falha ao listar ordens de medicao.${hint}`.trim() }, { status: 500 });
+    }
+
+    const simpleOrders = pagedData ?? [];
+    const simpleTotal = pagedCount ?? 0;
+
+    const simpleProjectIds = Array.from(new Set(simpleOrders.map((item) => item.project_id)));
+    const simpleUserIds = Array.from(
+      new Set(
+        simpleOrders
+          .flatMap((item) => [item.created_by, item.updated_by])
+          .filter((item): item is string => Boolean(item)),
+      ),
+    );
+
+    const [
+      simpleUserMap,
+      simpleProgrammingMatchMap,
+      simpleProjectIsTestMap,
+      simpleProjectServiceCenterMap,
+      simpleTeamCompositionContexts,
+    ] = await Promise.all([
+      fetchAppUserMap({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        ids: simpleUserIds,
+      }),
+      loadProgrammingMatchMap({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        windowEndDate: endDate,
+        orders: simpleOrders,
+      }),
+      fetchProjectIsTestMap({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        projectIds: simpleProjectIds,
+      }),
+      fetchProjectServiceCenterMap({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        projectIds: simpleProjectIds,
+      }),
+      fetchTeamCompositionContextSet({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        orders: simpleOrders,
+      }),
+    ]);
+
+    if (simpleTeamCompositionContexts.error) {
+      return NextResponse.json({ message: "Falha ao carregar composicoes de equipe das ordens de medicao." }, { status: 500 });
+    }
+
+    const simpleBaseOrders = simpleOrders.map((item) => {
+      const programmingMatch = simpleProgrammingMatchMap.get(item.id) ?? {
+        status: "NAO_PROGRAMADA" as ProgrammingMatchStatus,
+        programmingId: null,
+        completionStatus: null,
+        completionStatusChangedAfterMeasurement: false,
+      };
+      return {
+        id: item.id,
+        orderNumber: normalizeText(item.order_number),
+        programmingId: item.programming_id,
+        projectId: item.project_id,
+        teamId: item.team_id,
+        executionDate: item.execution_date,
+        measurementDate: item.measurement_date,
+        voicePoint: Number(item.voice_point ?? 0),
+        manualRate: Number(item.manual_rate ?? 0),
+        measurementKind: normalizeMeasurementKind(item.measurement_kind),
+        noProductionReasonId: item.no_production_reason_id,
+        noProductionReasonName: normalizeText(item.no_production_reason_name_snapshot),
+        status: item.status,
+        notes: normalizeText(item.notes),
+        projectCode: normalizeText(item.project_code_snapshot),
+        projectServiceCenter: simpleProjectServiceCenterMap.get(item.project_id) ?? "Sem base",
+        teamName: normalizeText(item.team_name_snapshot),
+        foremanName: normalizeText(item.foreman_name_snapshot),
+        cancellationReason: normalizeText(item.cancellation_reason),
+        canceledAt: item.canceled_at,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+        createdByName: resolveAppUserName(simpleUserMap.get(item.created_by ?? "")),
+        updatedByName: resolveAppUserName(simpleUserMap.get(item.updated_by ?? "")),
+        projectIsTest: Boolean(simpleProjectIsTestMap.get(item.project_id)),
+        hasTeamComposition: simpleTeamCompositionContexts.data.has(
+          buildProgrammingMatchKey(item.project_id, item.team_id, item.execution_date),
+        ),
+        programmingMatchStatus: programmingMatch.status,
+        matchedProgrammingId: programmingMatch.programmingId,
+        programmingCompletionStatus: programmingMatch.completionStatus,
+        programmingCompletionStatusChangedAfterMeasurement: programmingMatch.completionStatusChangedAfterMeasurement,
+        minimumBillingAmount: Number(item.minimum_billing_amount ?? 0),
+        minimumBillingTeamTypeId: item.minimum_billing_team_type_id,
+        minimumBillingTeamTypeName: normalizeText(item.minimum_billing_team_type_name_snapshot),
+        minimumBillingScoreTargetId: item.minimum_billing_score_target_id,
+        minimumBillingTargetPoints: Number(item.minimum_billing_target_points ?? 0),
+        minimumBillingUnitValueSourceActivityId: item.minimum_billing_unit_value_source_activity_id,
+        minimumBillingUnitValueGroup: normalizeText(item.minimum_billing_unit_value_group_snapshot),
+        minimumBillingUnitValue: Number(item.minimum_billing_unit_value ?? 0),
+        minimumBillingCalculatedAt: item.minimum_billing_calculated_at,
+      };
+    });
+
+    const simplePagedBaseOrders = simpleBaseOrders.filter((item) => !item.projectIsTest);
+
+    const simpleTeamTypeResolutionMaps = await fetchTeamTypeResolutionMaps({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      orders: simplePagedBaseOrders,
+    });
+    const simpleOrderTeamTypeMap = new Map<string, { teamTypeId: string | null; teamTypeName: string; typeLabel: string }>();
+    for (const item of simplePagedBaseOrders) {
+      const resolvedTeamType = resolveOrderTeamType({
+        teamId: item.teamId,
+        executionDate: item.executionDate,
+        teamTypeByTeam: simpleTeamTypeResolutionMaps.teamTypeByTeam,
+        teamTypeNameById: simpleTeamTypeResolutionMaps.teamTypeNameById,
+        historyByTeam: simpleTeamTypeResolutionMaps.historyByTeam,
+      });
+      simpleOrderTeamTypeMap.set(item.id, {
+        ...resolvedTeamType,
+        typeLabel: measurementScoreTypeLabel(resolvedTeamType.teamTypeName),
+      });
+    }
+    const simpleScoreTeamTypeIds = Array.from(
+      new Set(
+        Array.from(simpleOrderTeamTypeMap.values())
+          .map((item) => item.teamTypeId)
+          .filter((item): item is string => Boolean(item)),
+      ),
+    );
+    const [simplePointTargetMap, simpleFinancialTargets] = await Promise.all([
+      fetchPointTargetMap({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        teamTypeIds: simpleScoreTeamTypeIds,
+      }),
+      fetchFinancialTargetMap({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        orders: simplePagedBaseOrders,
+        teamTypeIds: simpleScoreTeamTypeIds,
+      }),
+    ]);
+
+    const simplePagedOrderIds = simplePagedBaseOrders.map((item) => item.id);
+    const simpleAggregateItemsResult = simplePagedOrderIds.length
+      ? await fetchPagedSupabaseRows<MeasurementOrderAggregateItem>((from, to) =>
+          resolution.supabase
+            .from("project_measurement_order_items")
+            .select("measurement_order_id, total_value, quantity, voice_point")
+            .eq("tenant_id", resolution.appUser.tenant_id)
+            .eq("is_active", true)
+            .in("measurement_order_id", simplePagedOrderIds)
+            .range(from, to)
+            .returns<MeasurementOrderAggregateItem[]>(),
+        )
+      : { data: [] as MeasurementOrderAggregateItem[], error: null };
+
+    if (simpleAggregateItemsResult.error) {
+      return NextResponse.json({ message: "Falha ao consolidar totais das ordens de medicao." }, { status: 500 });
+    }
+
+    const simpleAggregateMap = new Map<string, { totalAmount: number; itemCount: number; scorePoints: number }>();
+    for (const item of simpleAggregateItemsResult.data ?? []) {
+      const current = simpleAggregateMap.get(item.measurement_order_id) ?? { totalAmount: 0, itemCount: 0, scorePoints: 0 };
+      current.totalAmount += Number(item.total_value ?? 0);
+      current.itemCount += 1;
+      current.scorePoints += Number(item.voice_point ?? 0) * Number(item.quantity ?? 0);
+      simpleAggregateMap.set(item.measurement_order_id, current);
+    }
+
+    const simplePagedOrders = simplePagedBaseOrders.map((item) => {
+      const aggregate = simpleAggregateMap.get(item.id) ?? { totalAmount: 0, itemCount: 0, scorePoints: 0 };
+      const teamType = simpleOrderTeamTypeMap.get(item.id) ?? { teamTypeId: null, teamTypeName: "", typeLabel: "Nao identificado" };
+      const cycleStart = buildMeasurementCycleStart(item.executionDate);
+      const financialTarget = teamType.teamTypeId
+        ? simpleFinancialTargets.cycleTargetMap.get(`${cycleStart}:${teamType.teamTypeId}`)
+          ?? simpleFinancialTargets.fallbackTargetMap.get(teamType.teamTypeId)
+          ?? 0
+        : 0;
+      return {
+        ...item,
+        totalAmount: Number(aggregate.totalAmount ?? 0) + Number(item.minimumBillingAmount ?? 0),
+        itemCount: Number(aggregate.itemCount ?? 0),
+        scorePoints: Number(aggregate.scorePoints ?? 0) + Number(item.minimumBillingTargetPoints ?? 0),
+        teamTypeId: teamType.teamTypeId,
+        teamTypeName: teamType.typeLabel,
+        pointTarget: teamType.teamTypeId ? simplePointTargetMap.get(teamType.teamTypeId) ?? 0 : 0,
+        financialTarget,
+      };
+    });
+
+    return NextResponse.json({
+      orders: simplePagedOrders,
+      pagination: {
+        page: page ?? 1,
+        pageSize: pageSize ?? 20,
+        total: simpleTotal,
+      },
+    });
   }
 
   const ordersResult = await fetchPagedSupabaseRows<MeasurementOrderRow>((from, to) => {
