@@ -247,6 +247,7 @@ export async function fetchProgrammingHistory(
     .eq("tenant_id", tenantId)
     .eq("programming_id", programmingId)
     .order("created_at", { ascending: false })
+    .limit(50)
     .returns<Array<ProgrammingOperationalHistoryRow & { action_type: string }>>();
 
   if (error) {
