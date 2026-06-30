@@ -248,6 +248,7 @@ Atualizacao 2026-06-30 (Refresh manual da lista)
   - Antes: a lista de Medicao podia refazer `GET /api/medicao` automaticamente ao focar/voltar para a aba, por evento de composicao, por storage e a cada 60 segundos com a tela visivel.
   - Depois: a tela nao faz auto-refresh da lista por tempo/foco/aba; o usuario atualiza sob demanda pelo botao `Atualizar lista`.
   - Depois: filtros, paginacao, salvamento e acoes manuais continuam recarregando a lista pelos fluxos ja existentes.
+  - Depois: o indicador textual `Carregando...` foi removido do topo da lista para nao aparecer ao lado dos botoes de exportacao/atualizacao durante carregamentos de tabela.
 - Impacto multi-tenant:
   - Nao houve alteracao de schema, RLS ou escopo de tenant.
   - A mudanca reduz chamadas autenticadas repetidas sem alterar regras de acesso.

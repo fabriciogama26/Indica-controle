@@ -3286,7 +3286,6 @@ export function MeasurementPageView() {
         <div className={styles.tableHeader}>
           <h2 className={styles.cardTitle}>Lista de Ordens de Medicao</h2>
           <div className={styles.tableHeaderActions}>
-            {isLoadingOrders ? <span className={styles.loadingHint}>Carregando...</span> : null}
             <button
               type="button"
               className={styles.secondaryButton}
