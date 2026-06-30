@@ -7,6 +7,7 @@ import {
   fetchActivityCatalog,
   fetchNextEtapaNumber,
   fetchProgrammingHistory,
+  fetchProgrammingMeta,
   fetchProgrammingSnapshot,
   postponeProgramming,
 } from "./api";
@@ -131,11 +132,16 @@ export function useProgrammingBoardData(params: {
 
     setIsLoadingList(true);
     try {
-      return fetchProgrammingSnapshot({
-        accessToken,
-        startDate: requestStartDate,
-        endDate: requestEndDate,
-      });
+      const [metaData, schedulesData] = await Promise.all([
+        fetchProgrammingMeta({ accessToken }),
+        fetchProgrammingSnapshot({
+          accessToken,
+          startDate: requestStartDate,
+          endDate: requestEndDate,
+          includeMeta: false,
+        }),
+      ]);
+      return { ...metaData, ...schedulesData };
     } finally {
       setIsLoadingList(false);
     }

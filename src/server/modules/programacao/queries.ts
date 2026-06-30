@@ -171,6 +171,7 @@ export async function fetchRescheduledProgrammingIds(
     .eq("action_type", "RESCHEDULE")
     .in("programming_id", programmingIds)
     .order("created_at", { ascending: false })
+    .limit(500)
     .returns<Array<ProgrammingOperationalHistoryRow & { action_type: string }>>();
 
   if (error) {

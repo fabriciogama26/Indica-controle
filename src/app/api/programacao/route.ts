@@ -231,16 +231,17 @@ export async function GET(request: NextRequest) {
     }
 
     const weekStart = startOfWeekMonday(startDate);
+    const schedulesOnly = normalizeText(request.nextUrl.searchParams.get("meta")) === "0";
     const [projects, teams, programmingRows, supportOptions, teamSummaries, sgdTypes, reasonOptions, eqCatalog, workCompletionCatalog] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, startDate, endDate),
-      fetchSupportOptions(resolution.supabase, resolution.appUser.tenant_id),
+      schedulesOnly ? Promise.resolve([] as SupportOptionRow[]) : fetchSupportOptions(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingWeekSummary(resolution.supabase, resolution.appUser.tenant_id, weekStart),
       fetchProgrammingSgdTypes(resolution.supabase, resolution.appUser.tenant_id),
-      fetchProgrammingReasonCatalog(resolution.supabase, resolution.appUser.tenant_id),
+      schedulesOnly ? Promise.resolve([] as ProgrammingReasonCatalogRow[]) : fetchProgrammingReasonCatalog(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingEqCatalog(resolution.supabase, resolution.appUser.tenant_id),
-      fetchProgrammingWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
+      schedulesOnly ? Promise.resolve([] as ProgrammingWorkCompletionCatalogRow[]) : fetchProgrammingWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
     const activeTeamIds = new Set(teams.map((item) => item.id));
@@ -251,38 +252,12 @@ export async function GET(request: NextRequest) {
           .filter((teamId) => !activeTeamIds.has(teamId)),
       ),
     );
-    const extraTeamsForSchedules = await fetchTeamsByIds(
-      resolution.supabase,
-      resolution.appUser.tenant_id,
-      missingScheduledTeamIds,
-    );
-    const teamLookupMap = new Map(
-      [...teams, ...extraTeamsForSchedules].map((item) => [item.id, item]),
-    );
 
     const projectMap = new Map(projects.map((item) => [item.id, item]));
     const filteredProgrammingRows = programmingRows.filter((item) => projectMap.has(item.project_id));
     const sgdTypeMap = new Map(sgdTypes.map((item) => [item.id, item]));
     const eqCatalogMap = new Map(eqCatalog.map((item) => [item.id, item]));
-    const supportDefaults = await fetchProjectSupportDefaults({
-      supabase: resolution.supabase,
-      tenantId: resolution.appUser.tenant_id,
-      projectIds: projects.map((item) => item.id),
-      supportOptions,
-    });
-    const activitiesResult = await fetchProgrammingActivities(
-      resolution.supabase,
-      resolution.appUser.tenant_id,
-      filteredProgrammingRows.map((item) => item.id),
-    );
     const programmingIds = filteredProgrammingRows.map((item) => item.id);
-    const [rescheduleHistoryMap] = await Promise.all([
-      fetchRescheduledProgrammingIds(
-        resolution.supabase,
-        resolution.appUser.tenant_id,
-        programmingIds,
-      ),
-    ]);
     const programmingUserIds = Array.from(
       new Set(
         filteredProgrammingRows
@@ -291,20 +266,32 @@ export async function GET(request: NextRequest) {
       ),
     );
 
-    let programmingUsers: AppUserLookupRow[] = [];
-    if (programmingUserIds.length > 0) {
-      const usersResult = await resolution.supabase
-        .from("app_users")
-        .select("id, display, login_name")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .in("id", programmingUserIds)
-        .returns<AppUserLookupRow[]>();
+    const [extraTeamsForSchedules, supportDefaults, activitiesResult, rescheduleHistoryMap, usersResult] = await Promise.all([
+      fetchTeamsByIds(resolution.supabase, resolution.appUser.tenant_id, missingScheduledTeamIds),
+      schedulesOnly
+        ? Promise.resolve(new Map<string, { supportItemId: string; supportLabel: string }>())
+        : fetchProjectSupportDefaults({
+            supabase: resolution.supabase,
+            tenantId: resolution.appUser.tenant_id,
+            projectIds: projects.map((item) => item.id),
+            supportOptions,
+          }),
+      fetchProgrammingActivities(resolution.supabase, resolution.appUser.tenant_id, programmingIds),
+      fetchRescheduledProgrammingIds(resolution.supabase, resolution.appUser.tenant_id, programmingIds),
+      programmingUserIds.length > 0
+        ? resolution.supabase
+            .from("app_users")
+            .select("id, display, login_name")
+            .eq("tenant_id", resolution.appUser.tenant_id)
+            .in("id", programmingUserIds)
+            .returns<AppUserLookupRow[]>()
+        : Promise.resolve({ data: [] as AppUserLookupRow[], error: null }),
+    ]);
 
-      if (!usersResult.error) {
-        programmingUsers = usersResult.data ?? [];
-      }
-    }
-
+    const teamLookupMap = new Map(
+      [...teams, ...extraTeamsForSchedules].map((item) => [item.id, item]),
+    );
+    const programmingUsers = usersResult.data ?? [];
     const programmingUserMap = new Map(programmingUsers.map((item) => [item.id, item]));
 
     const boardPayload = {
@@ -464,6 +451,13 @@ export async function GET(request: NextRequest) {
         };
       }),
     };
+    if (schedulesOnly) {
+      return NextResponse.json({
+        schedules: boardPayload.schedules,
+        teamSummaries: boardPayload.teamSummaries,
+        activitiesLoadError: boardPayload.activitiesLoadError,
+      });
+    }
     const boardPayloadSize = JSON.stringify(boardPayload).length;
     if (boardPayloadSize > 100_000) {
       console.warn(`[resp-size] GET /api/programacao board ${Math.round(boardPayloadSize / 1024)}KB tenant=${resolution.appUser.tenant_id}`);
