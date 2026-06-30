@@ -128,9 +128,16 @@ type TransferEditHistoryEntry = {
   changes?: Record<string, { from?: unknown; to?: unknown }>;
 };
 
+type PageInfo = {
+  hasOlder: boolean;
+  hasNewer: boolean;
+  oldestCursor: { entryDate: string; id: string } | null;
+  newestCursor: { entryDate: string; id: string } | null;
+};
+
 type TransferListResponse = {
   history?: TransferListItem[];
-  pagination?: { page: number; pageSize: number; total: number };
+  pageInfo?: PageInfo;
   message?: string;
 };
 
@@ -562,8 +569,7 @@ export function StockTransfersPageView() {
   const [reversalReasons, setReversalReasons] = useState<ReversalReasonOption[]>([]);
 
   const [historyItems, setHistoryItems] = useState<TransferListItem[]>([]);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPageInfo, setHistoryPageInfo] = useState<PageInfo | null>(null);
   const [filterDraft, setFilterDraft] = useState<FilterState>(INITIAL_FILTERS);
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [detailItem, setDetailItem] = useState<TransferListItem | null>(null);
@@ -639,7 +645,6 @@ export function StockTransfersPageView() {
     [stockCenters],
   );
 
-  const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const selectedMaterialAllowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
   const hasSerialDraft = Boolean(normalizeText(form.serialNumber));
   const serialFieldAvailable = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
@@ -674,10 +679,19 @@ export function StockTransfersPageView() {
     serialNumber: normalizeText(searchParams.get("serialNumber")),
     lotCode: normalizeText(searchParams.get("lotCode")),
   }), [searchParams]);
-  const buildHistoryListParams = useCallback((targetPage: number, pageSize: number, activeFilters: FilterState) => {
+  const buildHistoryListParams = useCallback((
+    direction: "initial" | "older" | "newer",
+    pageSize: number,
+    activeFilters: FilterState,
+    cursor?: { entryDate: string; id: string } | null,
+  ) => {
     const params = new URLSearchParams();
-    params.set("page", String(targetPage));
+    params.set("direction", direction);
     params.set("pageSize", String(pageSize));
+    if (cursor) {
+      params.set("cursorDate", cursor.entryDate);
+      params.set("cursorId", cursor.id);
+    }
     if (activeFilters.startDate) params.set("startDate", activeFilters.startDate);
     if (activeFilters.endDate) params.set("endDate", activeFilters.endDate);
     if (activeFilters.movementType !== "TODOS") params.set("movementType", activeFilters.movementType);
@@ -724,14 +738,20 @@ export function StockTransfersPageView() {
     }
   }, [reversalReasonCode, session?.accessToken]);
 
-  const loadHistory = useCallback(async (targetPage: number) => {
+  const loadHistory = useCallback(async (direction: "initial" | "older" | "newer" = "initial") => {
     if (!session?.accessToken) {
       return;
     }
 
+    const cursor = direction === "older"
+      ? historyPageInfo?.oldestCursor
+      : direction === "newer"
+        ? historyPageInfo?.newestCursor
+        : null;
+
     setIsLoadingHistory(true);
     try {
-      const params = buildHistoryListParams(targetPage, HISTORY_PAGE_SIZE, filters);
+      const params = buildHistoryListParams(direction, HISTORY_PAGE_SIZE, filters, cursor);
 
       const response = await fetch(`/api/stock-transfers?${params.toString()}`, {
         cache: "no-store",
@@ -744,23 +764,23 @@ export function StockTransfersPageView() {
       if (!response.ok) {
         setFeedback({ type: "error", message: data.message ?? "Falha ao carregar movimentacoes de estoque." });
         setHistoryItems([]);
-        setHistoryTotal(0);
+        setHistoryPageInfo(null);
         return;
       }
 
       setHistoryItems(data.history ?? []);
-      setHistoryPage(data.pagination?.page ?? targetPage);
-      setHistoryTotal(data.pagination?.total ?? 0);
+      setHistoryPageInfo(data.pageInfo ?? null);
     } catch {
       setFeedback({ type: "error", message: "Falha ao carregar movimentacoes de estoque." });
       setHistoryItems([]);
-      setHistoryTotal(0);
+      setHistoryPageInfo(null);
     } finally {
       setIsLoadingHistory(false);
     }
   }, [
     buildHistoryListParams,
     filters,
+    historyPageInfo,
     session?.accessToken,
   ]);
 
@@ -775,11 +795,11 @@ export function StockTransfersPageView() {
 
     try {
       const exportedItems: TransferListItem[] = [];
-      let targetPage = 1;
-      let totalItems = 0;
+      let direction: "initial" | "older" = "initial";
+      let cursor: { entryDate: string; id: string } | null = null;
 
       while (true) {
-        const params = buildHistoryListParams(targetPage, HISTORY_EXPORT_PAGE_SIZE, filters);
+        const params = buildHistoryListParams(direction, HISTORY_EXPORT_PAGE_SIZE, filters, cursor);
         const response = await fetch(`/api/stock-transfers?${params.toString()}`, {
           cache: "no-store",
           headers: {
@@ -794,14 +814,14 @@ export function StockTransfersPageView() {
         }
 
         const pageItems = data.history ?? [];
-        totalItems = data.pagination?.total ?? totalItems;
         exportedItems.push(...pageItems);
 
-        if (pageItems.length === 0 || exportedItems.length >= totalItems || pageItems.length < HISTORY_EXPORT_PAGE_SIZE) {
+        if (pageItems.length === 0 || !data.pageInfo?.hasOlder) {
           break;
         }
 
-        targetPage += 1;
+        direction = "older";
+        cursor = data.pageInfo.oldestCursor;
       }
 
       if (exportedItems.length === 0) {
@@ -929,7 +949,7 @@ export function StockTransfersPageView() {
   }, [materials, prefillApplied, stockCenters, transferPrefill]);
 
   useEffect(() => {
-    void loadHistory(1);
+    void loadHistory("initial");
   }, [filters, loadHistory]);
 
   useEffect(() => {
@@ -1715,7 +1735,7 @@ export function StockTransfersPageView() {
         setFeedback({ type: "success", message: data.message ?? "Movimentacao salva com sucesso." });
         resetOperationForm();
       }
-      await loadHistory(1);
+      await loadHistory("initial");
     } catch (error) {
       showError("Falha ao salvar movimentacao de estoque.");
       await logError("Falha ao salvar movimentacao de estoque.", error, {
@@ -2062,7 +2082,7 @@ export function StockTransfersPageView() {
       setReversalReasonCode(reversalReasons[0]?.code ?? "");
       setReversalReasonNotes("");
       setReversalDate(toIsoDate(new Date()));
-      await loadHistory(1);
+      await loadHistory("initial");
     } catch (error) {
       setReversalFeedback({
         type: "error",
@@ -2164,7 +2184,7 @@ export function StockTransfersPageView() {
       setReversalReasonCode(reversalReasons[0]?.code ?? "");
       setReversalReasonNotes("");
       setReversalDate(toIsoDate(new Date()));
-      await loadHistory(1);
+      await loadHistory("initial");
     } catch (error) {
       setReversalFeedback({
         type: "error",
@@ -2455,7 +2475,7 @@ export function StockTransfersPageView() {
       }
 
       setImportFile(null);
-      await loadHistory(1);
+      await loadHistory("initial");
     } catch {
       setImportResult({
         status: "error",
@@ -3136,25 +3156,22 @@ export function StockTransfersPageView() {
         </div>
 
         <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(historyPage, historyTotalPages)} de {historyTotalPages} | Total: {historyTotal}
-          </span>
           <div className={styles.paginationButtons}>
             <button
               type="button"
               className={styles.ghostButton}
-              onClick={() => void loadHistory(Math.max(1, historyPage - 1))}
-              disabled={historyPage <= 1 || isLoadingHistory}
+              onClick={() => void loadHistory("newer")}
+              disabled={!historyPageInfo?.hasNewer || isLoadingHistory}
             >
-              Anterior
+              ← Mais recentes
             </button>
             <button
               type="button"
               className={styles.ghostButton}
-              onClick={() => void loadHistory(Math.min(historyTotalPages, historyPage + 1))}
-              disabled={historyPage >= historyTotalPages || isLoadingHistory}
+              onClick={() => void loadHistory("older")}
+              disabled={!historyPageInfo?.hasOlder || isLoadingHistory}
             >
-              Proxima
+              Mais antigos →
             </button>
           </div>
         </div>
