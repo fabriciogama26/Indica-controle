@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -232,6 +232,7 @@ export function DashboardMeasurementPageView() {
   const [projectDetailModal, setProjectDetailModal] = useState<ProjectDetailModal>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const suppressNextAutoLoadRef = useRef(false);
 
   const loadDashboard = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -268,11 +269,17 @@ export function DashboardMeasurementPageView() {
       setPeriodCompletionChart(data.periodCompletionChart ?? data.completionChart ?? []);
       setPeriodSummary(data.periodSummary ?? null);
       setCycleComparison(data.cycleComparison ?? null);
-      setStartDate((current) => current || data.startDate || "");
-      setEndDate((current) => current || data.endDate || "");
-      setPeriodStartDraft((current) => current || data.startDate || "");
-      setPeriodEndDraft((current) => current || data.endDate || "");
-      setSelectedCycleStart((current) => current || data.selectedCycleStart || "");
+      const nextStartDate = data.startDate || "";
+      const nextEndDate = data.endDate || "";
+      const nextSelectedCycleStart = data.selectedCycleStart || "";
+      if ((!startDate && nextStartDate) || (!endDate && nextEndDate) || (!selectedCycleStart && nextSelectedCycleStart)) {
+        suppressNextAutoLoadRef.current = true;
+      }
+      setStartDate((current) => current || nextStartDate);
+      setEndDate((current) => current || nextEndDate);
+      setPeriodStartDraft((current) => current || nextStartDate);
+      setPeriodEndDraft((current) => current || nextEndDate);
+      setSelectedCycleStart((current) => current || nextSelectedCycleStart);
       setFeedback(null);
     } catch (error) {
       await logError("Falha ao carregar Dashboard Medicao", error, {
@@ -285,6 +292,10 @@ export function DashboardMeasurementPageView() {
   }, [completionStatus, endDate, logError, projectSearch, selectedCycleStart, session?.accessToken, startDate]);
 
   useEffect(() => {
+    if (suppressNextAutoLoadRef.current) {
+      suppressNextAutoLoadRef.current = false;
+      return;
+    }
     void loadDashboard();
   }, [loadDashboard]);
 

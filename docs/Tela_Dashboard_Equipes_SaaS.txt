@@ -139,6 +139,24 @@ Atualizacao 2026-06
   - a producao do supervisor e resolvida pela data de execucao da ordem
   - a meta de supervisor e calculada pelos dias em que a equipe esteve vinculada ao supervisor dentro do ciclo/semana
 
+Atualizacao 2026-06-30 (carga inicial sem segunda consulta)
+-----------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dashboard-equipes/hooks.ts`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `suppressNextAutoLoadRef`
+  - `load`
+  - efeito de carga inicial do hook `useDashboardTeams`
+- Comportamento antes/depois:
+  - Antes: a primeira resposta podia preencher `filters.cycleStart`, alterar o objeto de filtros e fazer o efeito executar uma segunda chamada automatica ao montar.
+  - Depois: a tela hidrata o ciclo inicial retornado pela API sem disparar nova consulta automatica.
+  - O botao `Filtrar` continua aplicando os filtros do usuario e recarregando o dashboard.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS ou escopo de tenant.
+  - A mudanca reduz chamadas autenticadas repetidas sem alterar filtros de tenant.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 - Funcoes principais analisadas:
