@@ -50,6 +50,7 @@ export function buildCurrentStockQuery(
   if (filters.description) params.set("description", filters.description);
   if (filters.qtyMin) params.set("qtyMin", filters.qtyMin);
   if (filters.qtyMax) params.set("qtyMax", filters.qtyMax);
+  if (filters.includeHistoricalZeros) params.set("includeHistoricalZeros", "1");
 
   return params.toString();
 }

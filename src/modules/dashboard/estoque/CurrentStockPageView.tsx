@@ -551,6 +551,17 @@ export function CurrentStockPageView() {
             </select>
           </label>
 
+          <label className={styles.field}>
+            <span>Incluir historico zerado</span>
+            <select
+              value={filterDraft.includeHistoricalZeros ? "SIM" : "NAO"}
+              onChange={(event) => updateFilterDraft("includeHistoricalZeros", event.target.value === "SIM")}
+            >
+              <option value="NAO">Nao</option>
+              <option value="SIM">Sim</option>
+            </select>
+          </label>
+
           <div className={styles.actions}>
             <button type="submit" className={styles.secondaryButton} disabled={isLoadingList}>
               Aplicar
@@ -573,7 +584,7 @@ export function CurrentStockPageView() {
           <div>
             <h3 className={styles.cardTitle}>Lista de Estoque Atual</h3>
             <p className={styles.tableHint}>
-              O saldo exibido ja vem calculado do backend e considera apenas estoques fisicos/proprios. Materiais que ja passaram pelo centro fisico continuam visiveis com saldo `0`, preservando o acesso ao historico operacional.
+              O saldo exibido considera apenas estoques fisicos/proprios. Por padrao, apenas materiais com movimentacao ativa sao listados. Para ver materiais com saldo zerado que ja passaram pelo centro, ative &quot;Incluir historico zerado&quot; nos filtros.
             </p>
           </div>
 
