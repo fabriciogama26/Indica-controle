@@ -6,7 +6,7 @@ Escopo:
 - Tela `Programacao` atual: `/programacao-simples`.
 - Tela de consulta: `/programacao-visualizacao`, usando a mesma view em modo visualizacao.
 - API principal: `/api/programacao`.
-- Banco esperado com migrations ate `276_fix_anticipated_reopen_copy_and_group_ownership.sql`.
+- Banco esperado com migrations ate `282_fix_completed_group_integrity_null_boolean.sql`.
 
 ---
 
@@ -37,6 +37,7 @@ Regras centrais:
 - Combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag, `ETAPA UNICA + ETAPA FINAL` ou nenhuma ETAPA ativa sao bloqueadas no banco.
 - `Estado Trabalho = CONCLUIDO` representa conclusao do projeto inteiro, independentemente da equipe/linha que registrou a conclusao.
 - Um projeto pode ter no maximo uma programacao ativa com `Estado Trabalho = CONCLUIDO` por `tenant_id + project_id`.
+- A guarda de grupo para `CONCLUIDO` deve agir somente quando a linha entra efetivamente em `CONCLUIDO` de forma canonica (texto ou UUID), ou quando uma linha `CONCLUIDO` passa a ficar ativa/em novo grupo. Edicoes operacionais comuns de uma linha que ja era `CONCLUIDO` no mesmo grupo nao devem ser bloqueadas.
 - `Estado Trabalho = CONCLUIDO` bloqueia novas programacoes, copias, inclusao de equipe, adiamento e cancelamento ate reabrir o projeto por uma edicao/acao permitida.
 - Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser encerradas operacionalmente como `ANTECIPADA` com `Estado Trabalho = ANTECIPADO`.
 - `ANTECIPADA` nao conta como programacao ativa, nao bloqueia agenda da equipe e nao deve aparecer como servico pendente.
@@ -853,6 +854,22 @@ Banco e migrations relevantes:
   - Recria o trigger de sincronismo de `work_completion_status`/`work_completion_status_id` para aceitar somente catalogo ativo.
   - Recria a sincronizacao de Estado Trabalho para usar `programming_group_id` e nao propagar `CONCLUIDO`/`ANTECIPADO`.
   - Bloqueia `CONCLUIDO` quando houver outra linha ativa no mesmo `programming_group_id`.
+- `278_harden_security_rpc_search_path.sql`
+  - Corrige `search_path` de funcoes sensiveis.
+  - Revoga `anon` de RPCs criticas.
+  - Adiciona validacao de chamador por `auth.uid()` e guard de admin em `save_user_permissions`.
+- `279_harden_completed_group_integrity_transition.sql`
+  - Ajusta o trigger de sincronismo texto/UUID para respeitar limpeza explicita, remove trigger legado duplicado quando existir.
+  - Ajusta a guarda `enforce_completed_work_status_group_integrity` para comparar estado canonico anterior e novo (texto e UUID), evitando falso bloqueio em edicoes comuns quando a linha ja era tecnicamente `CONCLUIDO`.
+  - Bypass 1: se o grupo nao mudou e a linha ja era CONCLUIDO, nao bloqueia.
+- `280_fix_completed_group_integrity_on_reprogram.sql`
+  - Bypass 2 inicial: compara valores brutos de `work_completion_status` e `work_completion_status_id` entre OLD e NEW. Insuficiente quando o trigger de sync preenche UUID de NULL.
+- `281_fix_completed_group_bypass_canonical_code.sql`
+  - Bypass 2 corrigido: compara codigos canonicos resolvidos (`v_old_canonical`/`v_new_canonical`) em vez de valores brutos, resistindo a sync que muda UUID sem mudar o estado.
+- `282_fix_completed_group_integrity_null_boolean.sql`
+  - Corrige armadilha de boolean NULL em PL/pgSQL: quando `work_completion_status` e `work_completion_status_id` sao ambos NULL, a expressao booleana avaliava para NULL (nao FALSE), impedindo o early-return e causando exception falsa.
+  - Fix: `COALESCE(..., false)` em todas as atribuicoes de `v_new_is_completed`, `v_old_is_completed` e `v_was_same_active_completed_group`.
+  - Regra de prevencao documentada em `docs/arquitetura/plpgsql-null-boolean-armadilha.md`.
 
 ---
 
@@ -885,6 +902,10 @@ Estado Trabalho:
 - Conferir em uma linha `ANTECIPADO` os campos `status = ANTECIPADA`, `is_active = false`, `anticipated_by_programming_id`, `anticipated_at`, `previous_work_completion_status` e `previous_operational_status`.
 - Tentar salvar uma segunda programacao ativa do mesmo projeto como `CONCLUIDO`: deve bloquear por `tenant_id + project_id`.
 - Tentar salvar `CONCLUIDO` em linha com outra equipe ativa no mesmo `programming_group_id`: deve bloquear.
+- Editar KM/quantidades/documentos de uma linha que ja era canonicamente `CONCLUIDO` no mesmo `programming_group_id`: nao deve bloquear pela guarda de transicao para `CONCLUIDO`.
+- Simular divergencia tecnica com `work_completion_status` nulo e `work_completion_status_id` apontando para `CONCLUIDO`; editar campo operacional e confirmar que a trigger nao trata a sincronizacao como nova conclusao.
+- Limpar explicitamente Estado Trabalho e confirmar que texto e UUID ficam nulos, sem restaurar o UUID anterior.
+- Editar campos operacionais (ex.: REDE, POSTE) em linha com Estado Trabalho vazio (NULL) que tenha irmaos ativos no mesmo grupo e confirmar que a gravacao nao cai em "Estado Trabalho CONCLUIDO nao pode ser salvo..." — regressao coberta pela migration 282.
 - Trocar o unico `CONCLUIDO` para outro status e verificar restauracao das linhas `ANTECIPADA` para `previous_work_completion_status` e `previous_operational_status`.
 - Confirmar que linha `ANTECIPADA` nao bloqueia conflito de horario da equipe na data futura.
 - Tentar adiar/cancelar/copiar/adicionar equipe em projeto `CONCLUIDO`: deve bloquear.

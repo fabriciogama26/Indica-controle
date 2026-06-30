@@ -2601,3 +2601,103 @@ Atualizacao 2026-06-29 - Organizacao do cabecalho de reprogramacao
 - Multi-tenant:
   - Alteracao apenas visual no frontend.
   - Nenhuma query, RPC, RLS ou migration foi alterada.
+
+Atualizacao 2026-06-29 - Guarda de CONCLUIDO por transicao canonica
+--------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/279_harden_completed_group_integrity_transition.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Banco: `sync_project_programming_work_completion_status_fields`.
+  - Banco: `enforce_completed_work_status_group_integrity`.
+- Comportamento antes:
+  - A trigger bloqueava qualquer `NEW.work_completion_status = CONCLUIDO` quando havia outra linha ativa no mesmo `programming_group_id`.
+  - Edicoes operacionais, como ajustar KM/quantidades, podiam falhar se a linha ja tivesse `CONCLUIDO` tecnico em texto ou UUID, mesmo sem o usuario tentar concluir novamente.
+  - Dados divergentes (`work_completion_status` nulo e `work_completion_status_id` apontando para `CONCLUIDO`) podiam ser sincronizados durante o update e disparar falso bloqueio.
+  - O trigger legado `trg_project_programming_sync_work_completion_status_fields` podia permanecer instalado junto com o trigger novo em ambientes que passaram pelas migrations antigas.
+- Comportamento depois:
+  - A trigger de sincronismo volta a respeitar update explicito por texto, inclusive limpeza para `NULL`, sem restaurar UUID antigo.
+  - A migration remove o trigger legado de sincronismo quando existir e mantem apenas o trigger canonico atual.
+  - A trigger resolve o Estado Trabalho canonico anterior e novo usando texto e UUID.
+  - O bloqueio de grupo continua valendo para insert, reativacao ou transicao efetiva para `CONCLUIDO`.
+  - Edicao comum de uma linha que ja era canonicamente `CONCLUIDO` no mesmo grupo nao e bloqueada pela regra de transicao.
+- Como validar:
+  - Em uma programacao com `work_completion_status_id` tecnico de `CONCLUIDO`, editar somente KM/quantidades e confirmar que a gravacao nao cai em `Estado Trabalho CONCLUIDO nao pode ser salvo...`.
+  - Limpar Estado Trabalho no formulario e confirmar que `work_completion_status` e `work_completion_status_id` ficam nulos.
+  - Tentar mudar uma linha ativa de outro Estado Trabalho para `CONCLUIDO` enquanto houver outra linha ativa no mesmo `programming_group_id` e confirmar bloqueio.
+  - Tentar inserir/reativar linha ativa ja `CONCLUIDO` em grupo com outra linha ativa e confirmar bloqueio.
+- Multi-tenant:
+  - A validacao segue limitada por `tenant_id` e `programming_group_id`.
+  - A consulta ao catalogo usa `tenant_id + work_completion_status_id`.
+  - RLS nao foi alterado.
+
+Atualizacao 2026-06-29 - Correcao definitiva: boolean NULL em trigger de integridade CONCLUIDO (migration 282)
+--------------------------------------------------------------------
+- Problema (detectado apos migrations 279/280/281 ainda nao resolverem o erro):
+  - O erro "Estado Trabalho CONCLUIDO nao pode ser salvo enquanto houver outra programacao ativa no mesmo grupo operacional." persistia ao editar qualquer campo (ex.: REDE) em linhas com Estado Trabalho vazio (NULL) que tivessem irmaos ativos no mesmo grupo.
+  - Nenhum registro do banco tinha work_completion_status = CONCLUIDO para os projetos afetados (confirmado via Query E diagnostica).
+  - Os bypasses das migrations 279, 280 e 281 nao resolviam porque a causa raiz era anterior a eles.
+- Causa raiz (identificada via debug-trigger-capture-281.sql):
+  - Em PostgreSQL, qualquer comparacao envolvendo NULL retorna NULL, nao FALSE:
+      NULL in ('CONCLUIDO', 'COMPLETO') = NULL
+      NULL like 'CONCLUIDO%'            = NULL
+      NULL OR NULL OR NULL OR NULL      = NULL
+  - A variavel `v_new_is_completed` recebia a expressao composta. Quando `work_completion_status = NULL` E `work_completion_status_id = NULL`, toda a expressao avaliava para NULL.
+  - Em PL/pgSQL, `IF NULL THEN ... END IF` trata NULL como FALSE e NAO executa o corpo.
+  - O early-return `if ... or not v_new_is_completed then return new` NAO disparava quando `v_new_is_completed = NULL`, pois `not NULL = NULL`, e `FALSE OR NULL = NULL`.
+  - O trigger seguia em frente ate o check EXISTS de irmaos ativos → excecao lancada incorretamente.
+  - O mesmo problema afetava `v_old_is_completed` e `v_was_same_active_completed_group`.
+- Tecnica de diagnostico usada:
+  - `scripts/debug-trigger-capture-281.sql`: substituiu a mensagem de exception por template com todos os valores de estado:
+      CONCLUIDO_DEBUG id=% status=% new_wcs=[%] new_wcs_id=[%] old_wcs=[%] old_wcs_id=[%] ...
+  - O resultado revelou: `new_wcs=[NULL] new_wcs_id=[NULL] v_old_completed=<NULL>`, confirmando que o early-return nao disparou por causa do NULL boolean.
+- Correcao (migration 282):
+  - Todas as atribuicoes de boolean com expressoes NULL-possiveis foram envolvidas com COALESCE(..., false):
+      v_new_is_completed := coalesce(<expressao>, false);
+      v_old_is_completed := coalesce(<expressao>, false);
+      v_was_same_active_completed_group := coalesce(<expressao>, false);
+  - COALESCE garante false quando todos os inputs sao NULL, tornando os IF previsveis.
+- Prevencao para futuras funcoes de trigger:
+  - Toda variavel boolean que recebe expressao composta com colunas NULaveis deve usar COALESCE(..., false).
+  - Referencia: `docs/arquitetura/plpgsql-null-boolean-armadilha.md`.
+- Como validar:
+  - Aplicar migration 282 e confirmar que editare REDE/KM/qualquer campo em linha com Estado Trabalho vazio nao retorna mais o erro de integridade CONCLUIDO.
+  - Confirmar que tentar DEFINIR CONCLUIDO em linha com irmaos ativos ainda e bloqueado.
+- Arquivos:
+  - `supabase/migrations/282_fix_completed_group_integrity_null_boolean.sql`
+  - `scripts/debug-trigger-capture-281.sql`
+  - `docs/arquitetura/plpgsql-null-boolean-armadilha.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
+  - `TASKS.md`
+
+Atualizacao 2026-06 - Correcao de falso bloqueio ao REPROGRAMAR linha CONCLUIDO (migration 280)
+-----------
+- Problema (detectado apos 279 e botao Reprogramar Individual):
+  - Ao usar `Reprogramar Individual` para mover uma linha com `work_completion_status = CONCLUIDO` para uma nova data, o trigger `trg_project_programming_assign_group_id` (migration 273) recalculava `programming_group_id` para o novo grupo antes do trigger de integridade rodar.
+  - O trigger de integridade disparava porque `status` estava no SET da atualizacao base. Ao ver CONCLUIDO com `old.group != new.group`, o bypass da migration 279 (`v_was_same_active_completed_group`) nao se aplicava. Se o novo grupo tinha irmaos ativos, a excecao era lancada incorretamente.
+  - Mensagem: "Estado Trabalho CONCLUIDO nao pode ser salvo enquanto houver outra programacao ativa no mesmo grupo operacional."
+- Causa raiz:
+  - O bypass da 279 exige `old.programming_group_id is not distinct from new.programming_group_id`. Quando a data muda, o grupo muda (via trigger 273), rompendo essa condicao.
+  - O `work_completion_status` nao estava sendo alterado explicitamente — era herdado do OLD — mas o trigger de integridade nao diferenciava entre "herdado" e "explicitamente definido".
+- Correcao (migration 280):
+  - Adicionado Bypass 2: quando `v_old_is_completed = TRUE` E `new.work_completion_status is not distinct from old.work_completion_status` E `new.work_completion_status_id is not distinct from old.work_completion_status_id`, o trigger retorna sem excecao.
+  - Logica: CONCLUIDO foi herdado (nao definido nesta atualizacao); a restricao ja foi aplicada quando CONCLUIDO foi originalmente gravado.
+- Script de diagnostico:
+  - `scripts/audit-completed-group-reprogram-280-readonly.sql`
+  - Secao 01: lista registros CONCLUIDO ativos com irmaos que seriam bloqueados ao reprogramar.
+  - Secao 02: verifica estado dos triggers e qual migration esta ativa (277/279/280).
+  - Secao 03: resumo por tenant.
+- Como validar:
+  - Executar `scripts/audit-completed-group-reprogram-280-readonly.sql` antes da migration para verificar registros afetados.
+  - Aplicar migration 280 e verificar `Secao 02` reportando `280_APLICADO`.
+  - Abrir Reprogramar Individual em uma linha com Estado Trabalho `CONCLUIDO`.
+  - Informar nova data que tenha irmaos ativos no mesmo grupo operacional e salvar.
+  - Confirmar que a gravacao sucede sem "Estado Trabalho CONCLUIDO nao pode ser salvo...".
+  - Confirmar que tentar DEFINIR (nao apenas herdar) CONCLUIDO em linha com irmaos ainda e bloqueado.
+- Arquivos:
+  - `supabase/migrations/280_fix_completed_group_integrity_on_reprogram.sql`
+  - `scripts/audit-completed-group-reprogram-280-readonly.sql`
+  - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
