@@ -745,9 +745,6 @@ npm run build
 - `Tenant nao permitido para o usuario autenticado.`:
   - Causa: envio de `x-tenant-id` sem vinculo ativo em `app_user_tenants`.
   - Solucao: aplicar a migration `045_create_tenants_and_user_tenant_access.sql`, conferir backfill e liberar o tenant para o usuario em `app_user_tenants`.
-- `A janela de datas nao pode exceder 60 dias.`:
-  - Causa: o periodo selecionado na tela de `Programacao Simples` ultrapassa o limite de 60 dias implementado em `GET /api/programacao` para proteger a performance do endpoint.
-  - Solucao: reduzir o intervalo de datas para no maximo 60 dias e repetir a consulta.
 - `Informe seu login para enviar o email de recuperacao.`:
   - Causa: clique em `Esqueci minha senha` sem preencher o `login_name`.
   - Solucao: informar o `login_name` na tela de login antes de solicitar a recuperacao.

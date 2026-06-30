@@ -101,6 +101,13 @@ export function getCurrentYearDateRange(referenceDate: string) {
   };
 }
 
+export function get90DayWindowDateRange(referenceDate: string) {
+  return {
+    startDate: referenceDate,
+    endDate: addDays(referenceDate, 89),
+  };
+}
+
 export function startOfWeekMonday(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(year, month - 1, day);

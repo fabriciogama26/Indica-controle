@@ -55,7 +55,7 @@ import {
   formatAuditActor,
   formatDate,
   formatDateTime,
-  getCurrentYearDateRange,
+  get90DayWindowDateRange,
   getDisplayProgrammingStatus,
   isActiveProgrammingStatus,
   isDateInRange,
@@ -110,7 +110,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const isVisualizationMode = mode === "visualizacao";
 
   const today = useMemo(() => toIsoDate(new Date()), []);
-  const currentYearDateRange = useMemo(() => getCurrentYearDateRange(today), [today]);
+  const currentYearDateRange = useMemo(() => get90DayWindowDateRange(today), [today]);
   const [form, setForm] = useState<FormState>(() => createInitialForm(today));
   const [weekStartDate, setWeekStartDate] = useState(() => startOfWeekMonday(today));
   const [filterDraft, setFilterDraft] = useState<FilterState>({

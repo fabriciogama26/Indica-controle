@@ -2702,24 +2702,6 @@ Atualizacao 2026-06 - Correcao de falso bloqueio ao REPROGRAMAR linha CONCLUIDO 
   - `scripts/audit-completed-group-reprogram-280-readonly.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
 
-Atualizacao 2026-06-30 (P2 - Limite de janela de datas no GET /api/programacao)
---------------------------------------------------------------------------------
-- Problema resolvido: o endpoint `GET /api/programacao` aceitava qualquer intervalo de datas, podendo retornar volumes muito grandes sem restricao.
-- Solucao:
-  - Adicionado `MAX_WINDOW_DAYS = 60` no handler GET de `src/app/api/programacao/route.ts`.
-  - Apos validar presenca de `startDate`/`endDate`, calcula `windowDays = round((endDate - startDate) / 86400000)`.
-  - Quando `windowDays > 60`, retorna imediatamente HTTP 400 com mensagem: "A janela de datas nao pode exceder 60 dias. Periodo solicitado: N dias."
-  - Nenhuma alteracao em logica de negocio, queries ou schema.
-- Arquivos:
-  - `src/app/api/programacao/route.ts`
-  - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
-  - `TASKS.md`
-  - `README.md`
-- Como validar:
-  - Selecionar periodo maior que 60 dias na tela: deve retornar erro 400 antes de processar qualquer query no banco.
-  - Selecionar periodo de ate 60 dias: fluxo normal, sem mudanca de comportamento.
-- Impacto multi-tenant: nenhum; a validacao e pre-query e nao altera RLS.
-
 Atualizacao 2026-06-30 (P3 - Limite de 50 registros em fetchProgrammingHistory)
 --------------------------------------------------------------------------------
 - Problema resolvido: `fetchProgrammingHistory` em `src/server/modules/programacao/queries.ts` buscava todos os registros do historico de uma programacao sem limite, podendo retornar centenas de linhas em programacoes antigas.
