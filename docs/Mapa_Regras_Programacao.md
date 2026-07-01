@@ -36,7 +36,8 @@ Regras centrais:
   - `etapa_number = null`, `etapa_unica = false`, `etapa_final = true`.
 - Combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag, `ETAPA UNICA + ETAPA FINAL` ou nenhuma ETAPA ativa sao bloqueadas no banco.
 - `Estado Trabalho = CONCLUIDO` representa conclusao do projeto inteiro, independentemente da equipe/linha que registrou a conclusao.
-- Um projeto pode ter no maximo uma programacao ativa com `Estado Trabalho = CONCLUIDO` por `tenant_id + project_id`.
+- Um projeto pode ter no maximo um `programming_group_id` ativo com `Estado Trabalho = CONCLUIDO` por `tenant_id + project_id`.
+- Dentro do mesmo `programming_group_id`, varias equipes ativas podem ficar `CONCLUIDO`, pois representam a mesma execucao operacional.
 - A guarda de grupo para `CONCLUIDO` deve agir somente quando a linha entra efetivamente em `CONCLUIDO` de forma canonica (texto ou UUID), ou quando uma linha `CONCLUIDO` passa a ficar ativa/em novo grupo. Edicoes operacionais comuns de uma linha que ja era `CONCLUIDO` no mesmo grupo nao devem ser bloqueadas.
 - `Estado Trabalho = CONCLUIDO` bloqueia novas programacoes, copias, inclusao de equipe, adiamento e cancelamento ate reabrir o projeto por uma edicao/acao permitida.
 - Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser encerradas operacionalmente como `ANTECIPADA` com `Estado Trabalho = ANTECIPADO`.
@@ -118,8 +119,8 @@ Regra pratica de `programming_group_id`:
 | --- | --- | --- | --- |
 | `PROGRAMADA` | Agenda ativa original | Editar, copiar, adicionar equipe, adiar, cancelar | Aparece na lista/calendario como ativa. |
 | `REPROGRAMADA` | Agenda ativa resultante de reprogramacao/adiamento/copia conforme fluxo | Editar, copiar, adicionar equipe, adiar, cancelar | Tambem conta como ativa. |
-| `ADIADA` | Agenda interrompida por adiamento | Detalhes/historico; sem edicao operacional | Guarda motivo/data de interrupcao. Pode ter nova linha `REPROGRAMADA` vinculada. |
-| `CANCELADA` | Agenda cancelada | Detalhes/historico; sem edicao operacional | Guarda motivo/data de cancelamento. |
+| `ADIADA` | Agenda interrompida por adiamento | Detalhes/historico; sem edicao operacional | Guarda motivo/data de interrupcao. Pode ter nova linha `REPROGRAMADA` vinculada. `Estado Trabalho` deve ficar em branco. |
+| `CANCELADA` | Agenda cancelada | Detalhes/historico; sem edicao operacional | Guarda motivo/data de cancelamento. `Estado Trabalho` deve ficar em branco. |
 | `ANTECIPADA` | Agenda encerrada porque o projeto foi concluido antes da data futura | Detalhes/historico; sem edicao operacional | Libera a equipe e mantem rastreio em `work_completion_status = ANTECIPADO`. |
 
 Regra de atividade:
@@ -271,10 +272,10 @@ Ao copiar ou adicionar equipe:
 
 Decisao funcional:
 - `CONCLUIDO` e status de conclusao do projeto inteiro.
-- Uma unica programacao marcada como `CONCLUIDO` trava novas operacoes desse projeto ate reabertura explicita.
-- `CONCLUIDO` nao e propagado por sincronizacao operacional generica. Apenas a linha canonica recebe `CONCLUIDO`.
-- A linha canonica so pode receber `CONCLUIDO` se nao existir outra programacao ativa no mesmo `programming_group_id`.
-- A sincronizacao generica de Estado Trabalho usa `programming_group_id` e ignora estados finais (`CONCLUIDO` e `ANTECIPADO`).
+- Um grupo operacional marcado como `CONCLUIDO` trava novas operacoes desse projeto ate reabertura explicita.
+- `CONCLUIDO` e propagado somente para outras programacoes ativas do mesmo `programming_group_id`.
+- Uma linha so pode receber `CONCLUIDO` se nao existir outro `programming_group_id` ativo do mesmo projeto ja concluido.
+- A sincronizacao generica de Estado Trabalho usa `programming_group_id` e ignora apenas `ANTECIPADO`.
 
 Quando existe programacao do projeto com `Estado Trabalho = CONCLUIDO`:
 - Bloqueia novo cadastro.
@@ -291,7 +292,7 @@ Mensagem esperada:
 
 Quando uma edicao salva `work_completion_status = CONCLUIDO` e a programacao tem `etapa_number`:
 1. Programacao editada fica `CONCLUIDO`.
-2. Banco bloqueia se houver outra linha ativa no mesmo `programming_group_id`.
+2. Banco permite outras linhas ativas no mesmo `programming_group_id` e bloqueia apenas outro grupo operacional ativo ja concluido no mesmo projeto.
 3. Backend chama `mark_project_programming_future_stages_anticipated`.
 4. Etapas futuras ativas do mesmo projeto, com `etapa_number` maior, podem receber `ANTECIPADO`.
 5. Cada linha antecipada grava `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
@@ -319,9 +320,10 @@ Quando o usuario troca uma programacao de `CONCLUIDO` para outro Estado Trabalho
 ### Interrompidas e CONCLUIDO
 
 Regras:
-- Programacao `ADIADA` ou `CANCELADA` nao deve receber `Estado Trabalho = CONCLUIDO`.
-- Banco possui trigger/guarda para impedir divergencia `ADIADA/CANCELADA + CONCLUIDO`.
-- Tambem bloqueia nova transicao para `ADIADA`/`CANCELADA` quando o projeto ja possui `CONCLUIDO`.
+- Programacao `ADIADA` ou `CANCELADA` deve manter `Estado Trabalho` em branco (`work_completion_status` e `work_completion_status_id` nulos).
+- Banco possui trigger/guarda para limpar automaticamente qualquer `Estado Trabalho` em `ADIADA`/`CANCELADA`.
+- `ANTECIPADA` e a excecao: usa `status = ANTECIPADA` com `Estado Trabalho = ANTECIPADO` para rastrear conclusao antecipada.
+- Tambem bloqueia nova transicao para `ADIADA`/`CANCELADA` quando o projeto ou a propria linha ja possui `CONCLUIDO`.
 
 ---
 
@@ -900,8 +902,8 @@ Estado Trabalho:
 - Rodar a migration 276 em base com duplicados legados de `CONCLUIDO` e confirmar que apenas um registro ativo por projeto manteve `CONCLUIDO`.
 - Verificar no historico das linhas duplicadas saneadas a acao `DEDUPLICATE_ACTIVE_PROJECT_COMPLETED_WORK_STATUS`.
 - Conferir em uma linha `ANTECIPADO` os campos `status = ANTECIPADA`, `is_active = false`, `anticipated_by_programming_id`, `anticipated_at`, `previous_work_completion_status` e `previous_operational_status`.
-- Tentar salvar uma segunda programacao ativa do mesmo projeto como `CONCLUIDO`: deve bloquear por `tenant_id + project_id`.
-- Tentar salvar `CONCLUIDO` em linha com outra equipe ativa no mesmo `programming_group_id`: deve bloquear.
+- Tentar salvar `CONCLUIDO` em outro grupo operacional ativo do mesmo projeto: deve bloquear por `tenant_id + project_id + programming_group_id`.
+- Tentar salvar `CONCLUIDO` em linha com outra equipe ativa no mesmo `programming_group_id`: deve salvar e sincronizar `CONCLUIDO` para as linhas irmas do grupo.
 - Editar KM/quantidades/documentos de uma linha que ja era canonicamente `CONCLUIDO` no mesmo `programming_group_id`: nao deve bloquear pela guarda de transicao para `CONCLUIDO`.
 - Simular divergencia tecnica com `work_completion_status` nulo e `work_completion_status_id` apontando para `CONCLUIDO`; editar campo operacional e confirmar que a trigger nao trata a sincronizacao como nova conclusao.
 - Limpar explicitamente Estado Trabalho e confirmar que texto e UUID ficam nulos, sem restaurar o UUID anterior.

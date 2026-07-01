@@ -662,7 +662,7 @@ A migration 275 criou o trigger `project_programming_active_stage_valid_check` (
 Porém, os valores `reject` e `allow_without_anticipation` afetam funções de banco:
 - O valor `reject` exige validação no handler TypeScript — o banco não bloqueia automaticamente CONCLUIDO em etapa não-final (a migration 275 valida ETAPA, não status de work_completion).
 - O valor `allow_without_anticipation` exige que o handler TypeScript NÃO chame a RPC `mark_project_programming_future_stages_anticipated`.
-- A migration 258 (`enforce_interrupted_programming_completed_work_status`) bloqueia ADIADA/CANCELADA com CONCLUIDO — não conflita com intermediate_completion_policy.
+- A migration 258 (`enforce_interrupted_programming_completed_work_status`) iniciou o bloqueio de ADIADA/CANCELADA com CONCLUIDO; a migration 284 recria a mesma guarda para limpar qualquer Estado Trabalho em ADIADA/CANCELADA. Nao conflita com intermediate_completion_policy.
 - A migration 272 reescreve `mark_project_programming_future_stages_anticipated` com lógica endurecida — deve ser respeitada como está para o valor `mark_future_as_anticipated`.
 
 **Fases que dependem de ajuste para liberar reject/allow_without_anticipation:** A Fase 5 (programação completa) precisa documentar que esses dois valores requerem teste completo do checklist antes de serem ativados em produção. O handler TypeScript é o único ponto de controle — não há guarda de banco adicional a criar.

@@ -112,8 +112,9 @@ Boas praticas
 - `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
 - Etapa `CANCELADA` ou `ADIADA` preserva o numero historico da etapa; se houver etapa ativa posterior no mesmo projeto, a obra entra em `Revisao de etapas`.
 - `Revisao de etapas` nao renumera etapas e nao altera dados; apenas sinaliza que as etapas futuras dependem de revisao operacional.
-- Programacao `ADIADA` ou `CANCELADA` com `Estado Trabalho = CONCLUIDO` e tratada como divergencia operacional e aparece em `Interrompidas com Estado concluido`.
-- Obras com divergencia `ADIADA/CANCELADA + CONCLUIDO` nao entram como concluidas no Mapa ate revisao operacional.
+- Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284.
+- Programacao `ADIADA` ou `CANCELADA` com `Estado Trabalho = CONCLUIDO` e tratada como divergencia legada/importacao administrativa e aparece em `Interrompidas com Estado concluido`.
+- Obras com divergencia `ADIADA/CANCELADA + CONCLUIDO` nao entram como concluidas no Mapa ate saneamento.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
 - `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
 - A quantidade de programacoes conta linhas/registros de `project_programming`.
@@ -151,7 +152,7 @@ Atualizacao 2026-06
 - Etapas historicas canceladas/adiadas nao sao renumeradas; a tela apenas marca as etapas futuras como dependentes de revisao.
 - `Revisao de etapas` passou a ter uma tabela dedicada na tela principal, com exportacao CSV e destaque visual.
 - A coluna `Revisao` ficou restrita a tabela dedicada e ao modal do card `Revisao de etapas`, evitando misturar esse alerta nas demais tabelas.
-- Card e tabela `Interrompidas com Estado concluido` criados para expor casos legados ou divergentes em que status operacional e Estado Trabalho entram em conflito.
+- Card e tabela `Interrompidas com Estado concluido` criados para expor casos legados ou divergentes em que status operacional e Estado Trabalho entram em conflito; apos a migration 284, o esperado e ficar zerado.
 - Comportamento antes/depois:
   - Antes: a tela mostrava principalmente obras nunca programadas e equipes sem agenda.
   - Depois: a tela mostra carteira valida, concluidas, nao concluidas, parciais, pendentes, canceladas/adiadas, sem Estado Trabalho e nunca programadas.
@@ -166,7 +167,7 @@ Atualizacao 2026-06
   - Antes: a revisao aparecia apenas como coluna dentro de tabelas gerais.
   - Depois: a revisao possui tabela propria para analise operacional.
   - Antes: `ADIADA`/`CANCELADA` com Estado Trabalho `CONCLUIDO` podia aparecer como concluida.
-  - Depois: o caso aparece como inconsistencia em tabela dedicada.
+  - Depois: o caso aparece como inconsistencia em tabela dedicada; apos a migration 284, a regra de banco limpa Estado Trabalho de interrompidas.
 - Impacto multi-tenant:
   - Todas as leituras usam o `tenant_id` autenticado.
   - A mudanca nao altera RLS, grants ou schema.

@@ -111,6 +111,13 @@ Ordem de aplicacao
 275. 275_harden_programming_stage_state_integrity.sql
 276. 276_fix_anticipated_reopen_copy_and_group_ownership.sql
 277. 277_normalize_partial_and_completed_work_status.sql
+278. 278_harden_security_advisor_warnings.sql
+279. 279_harden_completed_group_integrity_transition.sql
+280. 280_fix_completed_group_integrity_on_reprogram.sql
+281. 281_fix_completed_group_bypass_canonical_code.sql
+282. 282_fix_completed_group_integrity_null_boolean.sql
+283. 283_sync_completed_work_status_by_programming_group.sql
+284. 284_clear_interrupted_programming_work_completion_status.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -696,14 +703,16 @@ Observacao
 - Registra historico em `project_programming_history` para cada linha atualizada.
 
 257_backfill_inactive_programming_work_completion_status.sql
-- Preenche `Estado Trabalho` em branco de programacoes inativas (`ADIADA`/`CANCELADA`) usando sugestoes nao conclusivas e catalogo ativo do tenant.
+- Historicamente preencheu `Estado Trabalho` em branco de programacoes inativas (`ADIADA`/`CANCELADA`) usando sugestoes nao conclusivas e catalogo ativo do tenant.
 - Nao herda `CONCLUIDO` para programacoes interrompidas; divergencias ficam para revisao operacional.
 - Mantem o status operacional original e registra historico em `project_programming_history`.
+- Comportamento superado pela migration 284: `ADIADA`/`CANCELADA` devem ficar com `Estado Trabalho` em branco.
 
 258_guard_interrupted_programming_completed_work_status.sql
-- Cria trigger em `project_programming` para impedir novas divergencias `ADIADA/CANCELADA + CONCLUIDO`.
+- Criou trigger em `project_programming` para impedir novas divergencias `ADIADA/CANCELADA + CONCLUIDO`.
 - Bloqueia nova transicao para `ADIADA` ou `CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
 - Mantem dados legados intactos para revisao por auditoria, sem backfill destrutivo.
+- Guarda recriada pela migration 284 para limpar qualquer `Estado Trabalho` em `ADIADA`/`CANCELADA`, preservando o bloqueio de projeto concluido.
 
 267_sync_programming_operational_fields_by_project_date.sql
 - Cria `sync_project_programming_group_operational_fields` para sincronizar campos operacionais da Programacao entre equipes ativas do mesmo Projeto + Data.
@@ -772,9 +781,36 @@ Observacao
 - Registra historico tecnico `NORMALIZE_WORK_COMPLETION_STATUS` nas linhas ajustadas.
 - Bloqueia `CONCLUIDO` quando existir outra programacao ativa no mesmo `programming_group_id`, impedindo conclusao ambigua na mesma ETAPA/grupo.
 
+278_harden_security_advisor_warnings.sql
+- Corrige alertas de seguranca do Supabase Advisor em funcoes/RPCs sensiveis.
+- Ajusta `search_path`, revoga grants amplos e adiciona validacao de chamador onde aplicavel.
+
 279_harden_completed_group_integrity_transition.sql
 - Recria `sync_project_programming_work_completion_status_fields` para respeitar update explicito por texto, inclusive limpeza para `NULL`, sem restaurar UUID antigo.
 - Remove o trigger legado `trg_project_programming_sync_work_completion_status_fields` quando existir e mantem apenas `trg_project_programming_sync_work_completion_status`.
 - Recria `enforce_completed_work_status_group_integrity` para comparar o Estado Trabalho canonico anterior e novo usando texto e UUID (`work_completion_status_id`).
 - Mantem o bloqueio ao inserir/reativar/transicionar para `CONCLUIDO` quando houver outra linha ativa no mesmo `programming_group_id`.
 - Evita falso bloqueio em edicoes operacionais comuns quando a linha ja estava tecnicamente `CONCLUIDO` no mesmo grupo, inclusive em dados com texto nulo e UUID apontando para `CONCLUIDO`.
+
+280_fix_completed_group_integrity_on_reprogram.sql
+- Corrige falso bloqueio ao reprogramar linha que ja herdava `CONCLUIDO`, quando a mudanca de data recalculava `programming_group_id`.
+
+281_fix_completed_group_bypass_canonical_code.sql
+- Ajusta o bypass da guarda de `CONCLUIDO` para comparar codigo canonico resolvido por texto/UUID, nao valores brutos.
+
+282_fix_completed_group_integrity_null_boolean.sql
+- Corrige booleanos NULL na guarda de `CONCLUIDO`, evitando falso bloqueio em linhas com Estado Trabalho vazio.
+
+283_sync_completed_work_status_by_programming_group.sql
+- Remove o indice parcial `idx_project_programming_one_active_completed_per_project`, que permitia apenas uma linha ativa `CONCLUIDO` por projeto.
+- Cria indice parcial auxiliar por `tenant_id + project_id + programming_group_id` para programacoes ativas concluidas.
+- Recria `enforce_completed_work_status_group_integrity` para permitir `CONCLUIDO` em varias equipes do mesmo `programming_group_id` e bloquear apenas outro grupo operacional ativo concluido no mesmo projeto.
+- Usa `pg_advisory_xact_lock` por tenant/projeto para serializar conclusoes concorrentes apos a remocao do indice unico global.
+- Faz backfill de grupos ja parcialmente concluidos, copiando `CONCLUIDO` para as linhas ativas irmas do mesmo `programming_group_id` com historico.
+- Recria `sync_programming_work_completion_status_by_project_date` para sincronizar `CONCLUIDO` dentro do `programming_group_id` e continuar ignorando `ANTECIPADO`.
+
+284_clear_interrupted_programming_work_completion_status.sql
+- Limpa `work_completion_status` e `work_completion_status_id` de programacoes `ADIADA`/`CANCELADA` legadas, com historico por linha.
+- Recria `enforce_interrupted_programming_completed_work_status` para manter `Estado Trabalho` em branco em linhas interrompidas.
+- Preserva o bloqueio de adiamento/cancelamento quando o projeto ou a propria linha ja esta `CONCLUIDO`.
+- Mantem `ANTECIPADA` fora dessa limpeza, pois `ANTECIPADO` e rastreio tecnico da conclusao antecipada.

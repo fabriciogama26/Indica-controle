@@ -190,6 +190,7 @@ Todos os fatos foram verificados e as decisões fechadas:
 | 229 | RPC `save_project_programming_work_completion_status_full` — bloqueia CONCLUIDO/COMPLETO |
 | 251 | REVOKE EXECUTE de `authenticated`/`anon` em todas as RPCs SECURITY DEFINER |
 | 255 | Adição de ANTECIPADO ao catálogo; RPC `mark_project_programming_future_stages_anticipated` |
-| 258 | Trigger `enforce_interrupted_programming_completed_work_status` — bloqueia ADIADA/CANCELADA com CONCLUIDO |
+| 258 | Trigger `enforce_interrupted_programming_completed_work_status` — bloqueio inicial de ADIADA/CANCELADA com CONCLUIDO |
+| 284 | Recria `enforce_interrupted_programming_completed_work_status` — limpa qualquer Estado Trabalho em ADIADA/CANCELADA e preserva bloqueio de CONCLUIDO |
 | 272 | Endurecimento de `mark_project_programming_future_stages_anticipated` |
 | 275 | Trigger `project_programming_active_stage_valid_check` — valida ETAPA em PROGRAMADA/REPROGRAMADA (NÃO valida work_completion_status) |
