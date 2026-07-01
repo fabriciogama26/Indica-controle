@@ -1,4 +1,5 @@
 ﻿import {
+  ENEL_NOVO_OPERATIONAL_STATUS_LABELS,
   HISTORY_ALLOWED_ACTIONS,
   HISTORY_HIDDEN_FIELDS,
 } from "./constants";
@@ -352,19 +353,7 @@ export function extractTextBeforeDash(value: string | null | undefined) {
 
 export function resolveEnelNovoStatus(schedule: ScheduleItem) {
   const displayStatus = getDisplayProgrammingStatus(schedule);
-  switch (displayStatus) {
-    case "ADIADA":
-      return "ADIADO";
-    case "CANCELADA":
-      return "CANCELADO";
-    case "ANTECIPADA":
-      return "ANTECIPADA";
-    case "REPROGRAMADA":
-      return "REPROGRAMADA";
-    case "PROGRAMADA":
-    default:
-      return "PROGRAMADO";
-  }
+  return ENEL_NOVO_OPERATIONAL_STATUS_LABELS[displayStatus] ?? ENEL_NOVO_OPERATIONAL_STATUS_LABELS.PROGRAMADA;
 }
 
 export function isAreaLivreSgd(

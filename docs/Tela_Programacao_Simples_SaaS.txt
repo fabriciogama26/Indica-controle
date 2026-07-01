@@ -2740,3 +2740,46 @@ Atualizacao 2026-06-30 (Programacao Split — paralelizacao backend e split /met
   - Confirmar que projetos, equipes e catalogos aparecem corretamente na tela.
   - Confirmar que agendamentos, teamSummaries e atividades carregam normalmente.
 - Impacto multi-tenant: nenhum; todas as queries ja usam tenant_id; o endpoint /meta aplica a mesma autorizacao.
+
+Atualizacao 2026-07-01 (Extracao ENEL NOVO - STATUS REPROGRAMADO e km numerico)
+--------------------------------------------------------------------------------
+- Problema resolvido:
+  - A coluna `STATUS` da `Extracao ENEL NOVO` exportava programacoes reprogramadas como `REPROGRAMADA`.
+  - A coluna `km` era exportada como texto, impedindo a contabilizacao numerica do KM de Rede na planilha.
+  - Valores decimais de `REDE` com virgula podiam nao ser reconhecidos na escolha do primeiro valor preenchido do grupo consolidado.
+- Solucao:
+  - Criado mapeamento central `ENEL_NOVO_OPERATIONAL_STATUS_LABELS` para os labels operacionais do layout ENEL NOVO.
+  - `resolveEnelNovoStatus` passa a consumir esse mapeamento e retorna `REPROGRAMADO` para status fisico `REPROGRAMADA`.
+  - `parseDecimalNumber` passa a aceitar numero, decimal com virgula e decimal com ponto.
+  - `formatDecimalForEnelNovoNumber` passa a retornar `number` para o XLSB, deixando a celula `km` numerica.
+- Mapa de Codigo (funcoes, hooks e constantes):
+  - Constantes e configuracoes:
+    - Caminho: `src/modules/dashboard/programacao-simples/constants.ts`
+    - Responsavel por: centralizar `ENEL_NOVO_OPERATIONAL_STATUS_LABELS`.
+  - Funcoes principais:
+    - Caminho: `src/modules/dashboard/programacao-simples/utils.ts`
+    - Funcao: `resolveEnelNovoStatus`
+    - Responsavel por: converter status operacional interno para label da `Extracao ENEL NOVO`.
+  - Funcoes utilitarias relacionadas:
+    - Caminho: `src/modules/dashboard/programacao-simples/exports.ts`
+    - Funcoes: `resolveFirstFilledNumber`, `parseDecimalNumber`, `formatDecimalForEnelNovoNumber`, `buildEnelNovoWorkbookData`
+    - Responsavel por: localizar o primeiro valor numerico preenchido em grupos consolidados e exportar `km` como numero.
+- Comportamento antes/depois:
+  - Antes: status reprogramado saia como `REPROGRAMADA`.
+  - Depois: status reprogramado sai como `REPROGRAMADO` no ENEL NOVO.
+  - Antes: `km` saia como texto formatado com virgula.
+  - Depois: `km` sai como numero no XLSB, permitindo soma/contabilizacao.
+- Como validar:
+  - Abrir Programacao Simples.
+  - Filtrar programacoes com ao menos uma linha reprogramada e `REDE` preenchida com decimal (ex.: `0,5` ou `0.5`).
+  - Exportar `Extracao ENEL NOVO`.
+  - Confirmar no arquivo `PROGRAMAÇÃO_ANGRA_INDICA.xlsb` que `STATUS` mostra `REPROGRAMADO` e a coluna `km` permite soma numerica.
+- Impacto multi-tenant:
+  - Nenhuma query, RLS, migration ou escopo de tenant alterado.
+  - Mudanca limitada ao mapeamento frontend da exportacao gerada com dados ja autorizados.
+- Arquivos:
+  - `src/modules/dashboard/programacao-simples/constants.ts`
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`

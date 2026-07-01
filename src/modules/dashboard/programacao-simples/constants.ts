@@ -1,4 +1,4 @@
-import type { DocumentKey } from "./types";
+import type { DocumentKey, ProgrammingStatus } from "./types";
 
 export const PAGE_SIZE = 20;
 export const HISTORY_PAGE_SIZE = 5;
@@ -80,4 +80,12 @@ export const VALIDATION_FIELD_LABELS: Record<string, string> = {
   electricalEqCatalogId: "Nº EQ",
   sgdTypeId: "Tipo de SGD",
   changeReason: "Motivo da reprogramacao",
+};
+
+export const ENEL_NOVO_OPERATIONAL_STATUS_LABELS: Record<ProgrammingStatus, string> = {
+  PROGRAMADA: "PROGRAMADO",
+  REPROGRAMADA: "REPROGRAMADO",
+  ADIADA: "ADIADO",
+  CANCELADA: "CANCELADO",
+  ANTECIPADA: "ANTECIPADA",
 };
