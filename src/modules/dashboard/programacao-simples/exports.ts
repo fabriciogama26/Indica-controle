@@ -371,23 +371,42 @@ function resolveFirstFilledNumber<T extends number | string>(
 ) {
   const filledValue = schedules
     .map((schedule) => selector(schedule))
-    .find((value) => Number(value ?? 0) > 0);
+    .find((value) => {
+      const numericValue = parseDecimalNumber(value);
+      return numericValue !== null && numericValue > 0;
+    });
 
   return filledValue ?? fallback ?? "";
 }
 
-function formatDecimalForEnelNovo(value: number | string | null | undefined) {
+function parseDecimalNumber(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
   const normalized = String(value ?? "").trim();
   if (!normalized) {
-    return "";
+    return null;
   }
 
-  const numericValue = Number(normalized.replace(",", "."));
+  const compactValue = normalized.replace(/\s+/g, "");
+  const lastCommaIndex = compactValue.lastIndexOf(",");
+  const lastDotIndex = compactValue.lastIndexOf(".");
+  const decimalNormalized = lastCommaIndex > -1 && lastDotIndex > -1
+    ? lastCommaIndex > lastDotIndex
+      ? compactValue.replace(/\./g, "").replace(",", ".")
+      : compactValue.replace(/,/g, "")
+    : compactValue.replace(",", ".");
+  const numericValue = Number(decimalNormalized);
   if (!Number.isFinite(numericValue)) {
-    return normalized;
+    return null;
   }
 
-  return normalized.replace(".", ",");
+  return numericValue;
+}
+
+function formatDecimalForEnelNovoNumber(value: number | string | null | undefined) {
+  return parseDecimalNumber(value) ?? "";
 }
 
 export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: ExportContext) {
@@ -561,7 +580,7 @@ export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: Ex
       "",
       "",
       "",
-      formatDecimalForEnelNovo(redeQtyValue),
+      formatDecimalForEnelNovoNumber(redeQtyValue),
       "",
       "",
       "",
