@@ -64,8 +64,10 @@ type SaveResponse = {
 
 type StatusModalState = {
   order: AsbuiltMeasurementListItem;
-  action: "FECHAR" | "CANCELAR" | "ABRIR";
+  action: "CANCELAR" | "ABRIR";
 };
+
+type StatusAction = "FECHAR" | "CANCELAR" | "ABRIR";
 
 type MassImportGroup = {
   rowNumbers: number[];
@@ -524,18 +526,17 @@ export function AsbuiltMeasurementPageView() {
     }
   }
 
-  async function changeStatus() {
-    if (!statusModal) return;
+  async function changeStatus(order: AsbuiltMeasurementListItem, action: StatusAction, reason = "") {
     setIsChangingStatus(true);
     try {
       const response = await fetch("/api/medicao-asbuilt", {
         method: "PATCH",
         headers: authHeaders,
         body: JSON.stringify({
-          id: statusModal.order.id,
-          action: statusModal.action,
-          reason: statusReason,
-          expectedUpdatedAt: statusModal.order.updatedAt,
+          id: order.id,
+          action,
+          reason,
+          expectedUpdatedAt: order.updatedAt,
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as SaveResponse;
@@ -549,8 +550,8 @@ export function AsbuiltMeasurementPageView() {
     } catch (error) {
       setError(error instanceof Error ? error.message : "Falha ao alterar status.");
       await logError("Falha ao alterar status do medicao-asbuilt", error, {
-        orderId: statusModal.order.id,
-        action: statusModal.action,
+        orderId: order.id,
+        action,
       });
     } finally {
       setIsChangingStatus(false);
@@ -1044,7 +1045,7 @@ export function AsbuiltMeasurementPageView() {
                       <button type="button" className={`${styles.actionButton} ${styles.actionView}`} title="Detalhes" onClick={() => void openDetail(order)}><ActionIcon name="details" /></button>
                       <button type="button" className={`${styles.actionButton} ${styles.actionHistory}`} title="Historico" onClick={() => void openHistory(order)}><ActionIcon name="history" /></button>
                       {order.status === "ABERTA" ? <button type="button" className={`${styles.actionButton} ${styles.actionEdit}`} title="Editar" onClick={() => void startEdit(order)}><ActionIcon name="edit" /></button> : null}
-                      {order.status === "ABERTA" ? <button type="button" className={`${styles.actionButton} ${styles.actionClose}`} title="Fechar" onClick={() => setStatusModal({ order, action: "FECHAR" })}><ActionIcon name="activate" /></button> : null}
+                      {order.status === "ABERTA" ? <button type="button" className={`${styles.actionButton} ${styles.actionClose}`} title="Fechar" onClick={() => void changeStatus(order, "FECHAR")} disabled={isChangingStatus}><ActionIcon name="activate" /></button> : null}
                       {order.status === "FECHADA" ? <button type="button" className={`${styles.actionButton} ${styles.actionClose}`} title="Abrir" onClick={() => setStatusModal({ order, action: "ABRIR" })}><ActionIcon name="activate" /></button> : null}
                       {order.status !== "CANCELADA" ? <button type="button" className={`${styles.actionButton} ${styles.actionCancel}`} title="Cancelar" onClick={() => setStatusModal({ order, action: "CANCELAR" })}><ActionIcon name="cancel" /></button> : null}
                     </div>
@@ -1127,14 +1128,14 @@ export function AsbuiltMeasurementPageView() {
         <div className={styles.modalOverlay} onClick={() => setStatusModal(null)}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
-              <div><h4>{statusModal.action === "FECHAR" ? "Fechar medicao-asbuilt" : statusModal.action === "ABRIR" ? "Abrir medicao-asbuilt" : "Cancelar medicao-asbuilt"}</h4><p className={styles.modalSubtitle}>{statusModal.order.asbuiltMeasurementNumber}</p></div>
+              <div><h4>{statusModal.action === "ABRIR" ? "Abrir medicao-asbuilt" : "Cancelar medicao-asbuilt"}</h4><p className={styles.modalSubtitle}>{statusModal.order.asbuiltMeasurementNumber}</p></div>
               <button type="button" className={styles.modalCloseButton} onClick={() => setStatusModal(null)}>Fechar</button>
             </header>
             <div className={styles.modalBody}>
-              {statusModal.action !== "FECHAR" ? <label className={styles.field}><span>Motivo</span><textarea value={statusReason} onChange={(event) => setStatusReason(event.target.value)} /></label> : null}
+              <label className={styles.field}><span>Motivo</span><textarea value={statusReason} onChange={(event) => setStatusReason(event.target.value)} /></label>
               <div className={styles.actions}>
                 <button type="button" className={styles.ghostButton} onClick={() => setStatusModal(null)} disabled={isChangingStatus}>Cancelar</button>
-                <button type="button" className={statusModal.action === "CANCELAR" ? styles.dangerButton : styles.primaryButton} onClick={() => void changeStatus()} disabled={isChangingStatus}>{isChangingStatus ? "Salvando..." : "Confirmar"}</button>
+                <button type="button" className={statusModal.action === "CANCELAR" ? styles.dangerButton : styles.primaryButton} onClick={() => void changeStatus(statusModal.order, statusModal.action, statusReason)} disabled={isChangingStatus}>{isChangingStatus ? "Salvando..." : "Confirmar"}</button>
               </div>
             </div>
           </article>

@@ -105,7 +105,7 @@ Filtros, auto-complete e listagem
   - Detalhes
   - Historico
   - Editar (somente `ABERTA`)
-  - Fechar (somente `ABERTA`)
+  - Fechar direto, sem modal de confirmacao (somente `ABERTA`)
   - Abrir (somente `FECHADA`)
   - Cancelar (quando diferente de `CANCELADA`)
 - Exportacao:
@@ -127,7 +127,7 @@ Boas praticas
 Cancelamento e saldo
 --------------------
 - Nao ha impacto em saldo de estoque.
-- Fechamento altera status para `FECHADA`.
+- Fechamento altera status para `FECHADA` diretamente pelo botao da listagem, sem modal de confirmacao.
 - Reabertura altera status para `ABERTA` e exige motivo.
 - Cancelamento altera status para `CANCELADA` e exige motivo.
 - Todas as mudancas de status usam RPC propria e registram historico.
@@ -218,6 +218,20 @@ Atualizacao 2026-06
   - Alteracoes da data geram historico transacional.
   - O mesmo projeto passa a aceitar snapshots acumulados em datas de corte diferentes.
   - Duplicidade ativa passa a ser validada por `tenant_id + project_id + service_coverage_end_date`.
+
+Atualizacao 2026-07
+-------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - `docs/Tela_Medicao_Asbuilt_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - O botao `Fechar` abria o mesmo modal usado por `Abrir` e `Cancelar`.
+- Depois:
+  - O botao `Fechar` executa a alteracao para `FECHADA` diretamente pela listagem.
+  - O modal de status permanece para `Abrir` e `Cancelar`, pois essas acoes exigem motivo.
+- Multi-tenant:
+  - Sem alteracao de API, RPC, RLS ou escopo de tenant.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
