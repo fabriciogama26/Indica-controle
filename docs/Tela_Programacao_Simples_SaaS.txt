@@ -171,7 +171,8 @@ Arquitetura
 - Migration de guarda de status interrompido x Estado Trabalho:
   - `supabase/migrations/258_guard_interrupted_programming_completed_work_status.sql`
   - Trigger: `zz_trg_project_programming_block_interrupted_completed`
-  - Objetivo: impedir que programacao `ADIADA` ou `CANCELADA` receba `Estado Trabalho = CONCLUIDO` e impedir nova transicao para `ADIADA`/`CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
+  - Objetivo inicial: impedir que programacao `ADIADA` ou `CANCELADA` receba `Estado Trabalho = CONCLUIDO` e impedir nova transicao para `ADIADA`/`CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
+  - Regra atual apos a migration `284`: programacao `ADIADA` ou `CANCELADA` fica com `Estado Trabalho` em branco; qualquer valor em `work_completion_status` ou `work_completion_status_id` e limpo pela guarda.
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -221,7 +222,7 @@ Cadastro
   - A acao `Adicionar equipe` cria uma nova programacao para a equipe selecionada usando uma programacao ativa existente como modelo, sem trocar a equipe da linha original.
   - `Adicionar equipe` bloqueia duplicidade no mesmo `programming_group_id`, conflito de horario, equipe inativa/de outro tenant, etapa igual/maior no historico da equipe e projeto com `Estado Trabalho = CONCLUIDO`.
   - `Adiar` e `Cancelar` bloqueiam projeto com `Estado Trabalho = CONCLUIDO`.
-  - A regra de bloqueio tambem existe no banco: programacao `ADIADA` ou `CANCELADA` nao pode ter `Estado Trabalho = CONCLUIDO`.
+  - A regra de bloqueio tambem existe no banco: programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco; o trigger limpa qualquer valor informado e preserva o bloqueio de projeto concluido.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
   - Para equipes `LV-xx`, a replicacao de documentos tambem alcanca as programacoes ativas do mesmo projeto com `Data de execucao` em ate `+7 dias` da programacao de origem.
   - Quando `Periodo = Parcial`, `Hora termino` passa automaticamente para `12:00`, mas continua editavel.
@@ -2036,6 +2037,7 @@ Atualizacao 2026-06-23 - Backfill de Estado Trabalho em branco
   - Depois: casos operacionais, como `SEM_ETAPA_OU_FLAG` ou projeto nao encontrado, ficam fora do backfill automatico.
   - Depois: a migration complementar preenche programacoes `ADIADA` e `CANCELADA` em branco quando ha sugestao segura, sem alterar o status operacional.
   - Depois: programacoes `ADIADA` e `CANCELADA` nao herdam mais `CONCLUIDO` no backfill automatico; esses casos ficam para revisao operacional.
+  - Regra atual apos a migration 284: `ADIADA` e `CANCELADA` voltam a ficar com `Estado Trabalho` em branco.
 - Multi-tenant:
   - Todas as leituras e escritas usam `tenant_id`.
   - O valor aplicado precisa existir ativo no catalogo do mesmo tenant.
@@ -2060,6 +2062,7 @@ Atualizacao 2026-06-23 - Bloqueio de ADIADA/CANCELADA com Estado concluido
   - Depois: o banco bloqueia `ADIADA`/`CANCELADA + CONCLUIDO` e bloqueia nova transicao para `ADIADA`/`CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
   - Antes: o backfill de inativas podia herdar `CONCLUIDO`.
   - Depois: o backfill de inativas ignora sugestoes `CONCLUIDO` e usa somente sugestoes nao conclusivas.
+  - Regra atual apos a migration 284: a guarda limpa qualquer Estado Trabalho em `ADIADA`/`CANCELADA`; `PARCIAL_*` tambem deixa de permanecer em linhas interrompidas.
 - Multi-tenant:
   - Trigger e consultas usam `tenant_id` e `project_id`.
   - A migration nao cria policy nem permissao para cliente autenticado.
@@ -2418,7 +2421,7 @@ Atualizacao 2026-06-27 - Revalidacao de ANTECIPADO, copia e grupo
 - Decisao funcional:
   - `CONCLUIDO` continua representando conclusao do projeto inteiro, nao apenas da equipe ou grupo.
 - Como validar:
-  - Tentar concluir duas programacoes ativas do mesmo projeto e confirmar bloqueio.
+  - Tentar concluir dois grupos operacionais ativos do mesmo projeto e confirmar bloqueio.
   - Em base com duplicados legados, aplicar a migration 276 e confirmar que apenas um `CONCLUIDO` ativo por projeto permanece.
   - Concluir ETAPA 1; confirmar que ETAPA futura fica `ANTECIPADA` e nao bloqueia agenda da equipe.
   - Reabrir o unico `CONCLUIDO` e confirmar restauracao de `previous_work_completion_status` e `previous_operational_status`.
@@ -2443,8 +2446,8 @@ Atualizacao 2026-06-27 - Estado Trabalho canonico e CONCLUIDO por grupo
 - Funcoes/hooks/constantes tocadas:
   - `normalize_programming_work_completion_code`: passa a normalizar `PARCIAL`/`PARTIAL` para `PARCIAL_NAO_PLANEJADO`.
   - `sync_project_programming_work_completion_status_fields`: passa a sincronizar texto/UUID apenas com catalogo ativo canonico.
-  - `sync_programming_work_completion_status_by_project_date`: preserva o nome legado, mas passa a sincronizar por `programming_group_id` e ignora `CONCLUIDO`/`ANTECIPADO`.
-  - `enforce_completed_work_status_group_integrity`: bloqueia `CONCLUIDO` quando outra linha ativa existe no mesmo `programming_group_id`.
+  - `sync_programming_work_completion_status_by_project_date`: preserva o nome legado, mas passa a sincronizar por `programming_group_id` e ignora `ANTECIPADO`.
+  - `enforce_completed_work_status_group_integrity`: bloqueia `CONCLUIDO` quando outro `programming_group_id` ativo do mesmo projeto ja esta concluido.
   - `normalizeWorkCompletionStatus`: normaliza payload legado `PARCIAL` para `PARCIAL_NAO_PLANEJADO`.
   - `resolveEnelNovoStatus`: exporta `ANTECIPADA` como `ANTECIPADA`.
   - `normalizeWorkCompletionCode` e `formatWorkCompletionStatusLabel`: exibem `PARCIAL` legado como `Parcial nao planejado`.
@@ -2461,15 +2464,15 @@ Atualizacao 2026-06-27 - Estado Trabalho canonico e CONCLUIDO por grupo
   - `PARCIAL` legado em texto/payload/banco vira `PARCIAL_NAO_PLANEJADO`.
   - Item `PARCIAL` do catalogo fica inativo.
   - Escrita direta, RPC ou importacao que tente usar UUID inativo de `PARCIAL` e bloqueada pelo trigger.
-  - `CONCLUIDO` nao e propagado por sincronizacao generica e nao salva se houver outra programacao ativa no mesmo `programming_group_id`.
-  - Sincronizacao generica de Estado Trabalho fica limitada ao `programming_group_id` e nao propaga `CONCLUIDO`/`ANTECIPADO`.
+  - `CONCLUIDO` e propagado por sincronizacao generica apenas para programacoes ativas do mesmo `programming_group_id`.
+  - Sincronizacao generica de Estado Trabalho fica limitada ao `programming_group_id` e nao propaga `ANTECIPADO`.
   - `ANTECIPADA` tem status proprio na Extracao ENEL NOVO e cor propria no calendario semanal.
 - Como validar:
   - Aplicar migration 277 e confirmar que `project_programming.work_completion_status` nao possui `PARCIAL`.
   - Confirmar que `programming_work_completion_catalog` nao possui `PARCIAL` ativo.
   - Tentar enviar `PARCIAL` pelo payload e confirmar persistencia como `PARCIAL_NAO_PLANEJADO`.
   - Alterar `PARCIAL_PLANEJADO`/`PARCIAL_NAO_PLANEJADO` em uma linha e confirmar sincronizacao apenas dentro do mesmo `programming_group_id`.
-  - Tentar salvar `CONCLUIDO` em grupo com outra equipe ativa e confirmar bloqueio.
+  - Tentar salvar `CONCLUIDO` em grupo com outra equipe ativa e confirmar sincronizacao para as linhas irmas.
   - Exportar ENEL NOVO com linha `ANTECIPADA` e confirmar valor `ANTECIPADA`.
   - Ver calendario semanal e confirmar cor/legenda propria para `ANTECIPADA`.
 
@@ -2627,12 +2630,66 @@ Atualizacao 2026-06-29 - Guarda de CONCLUIDO por transicao canonica
 - Como validar:
   - Em uma programacao com `work_completion_status_id` tecnico de `CONCLUIDO`, editar somente KM/quantidades e confirmar que a gravacao nao cai em `Estado Trabalho CONCLUIDO nao pode ser salvo...`.
   - Limpar Estado Trabalho no formulario e confirmar que `work_completion_status` e `work_completion_status_id` ficam nulos.
-  - Tentar mudar uma linha ativa de outro Estado Trabalho para `CONCLUIDO` enquanto houver outra linha ativa no mesmo `programming_group_id` e confirmar bloqueio.
-  - Tentar inserir/reativar linha ativa ja `CONCLUIDO` em grupo com outra linha ativa e confirmar bloqueio.
+  - Tentar mudar uma linha ativa de outro Estado Trabalho para `CONCLUIDO` enquanto houver outra linha ativa no mesmo `programming_group_id` e confirmar sincronizacao do grupo.
+  - Tentar inserir/reativar linha ativa ja `CONCLUIDO` em outro grupo operacional de projeto ja concluido e confirmar bloqueio.
 - Multi-tenant:
-  - A validacao segue limitada por `tenant_id` e `programming_group_id`.
+  - A validacao segue limitada por `tenant_id`, `project_id` e `programming_group_id`.
+
+Atualizacao 2026-07-01 - CONCLUIDO por grupo operacional
+---------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/283_sync_completed_work_status_by_programming_group.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `enforce_completed_work_status_group_integrity`: passa a permitir multiplas linhas `CONCLUIDO` no mesmo `programming_group_id`, bloqueando apenas outro grupo ativo concluido no mesmo projeto.
+  - `sync_programming_work_completion_status_by_project_date`: volta a sincronizar `CONCLUIDO` dentro do `programming_group_id` e continua ignorando `ANTECIPADO`.
+- Comportamento antes:
+  - Uma equipe ativa nao podia ser marcada como `CONCLUIDO` se houvesse outra equipe ativa no mesmo grupo operacional.
+  - O indice parcial `idx_project_programming_one_active_completed_per_project` impedia mais de uma linha ativa `CONCLUIDO` no mesmo projeto.
+- Comportamento depois:
+  - Ao salvar `CONCLUIDO` em uma linha ativa, as demais linhas ativas do mesmo `programming_group_id` herdam `CONCLUIDO`.
+  - Grupos ja parcialmente concluidos sao corrigidos pela migration, com historico por linha sincronizada.
+  - Outro `programming_group_id` ativo do mesmo projeto continua bloqueado para evitar conclusao ambigua entre ETAPAs/grupos.
+  - A validacao usa `tenant_id`, `project_id` e `programming_group_id`, com lock transacional por tenant/projeto para evitar corrida de conclusoes.
+- Como validar:
+  - Aplicar migration 283.
+  - Salvar `CONCLUIDO` em uma linha com outra equipe ativa no mesmo grupo e confirmar que ambas ficam `CONCLUIDO`.
+  - Tentar salvar `CONCLUIDO` em outro grupo operacional ativo do mesmo projeto e confirmar bloqueio.
+  - Reabrir o grupo concluido para outro Estado Trabalho e confirmar sincronizacao dentro do grupo.
   - A consulta ao catalogo usa `tenant_id + work_completion_status_id`.
   - RLS nao foi alterado.
+
+Atualizacao 2026-07-01 - Estado Trabalho em branco para ADIADA/CANCELADA
+------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/284_clear_interrupted_programming_work_completion_status.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `enforce_interrupted_programming_completed_work_status`: passa a limpar `work_completion_status` e `work_completion_status_id` quando a linha estiver `ADIADA` ou `CANCELADA`.
+  - Trigger existente `zz_trg_project_programming_block_interrupted_completed`: permanece como ponto de guarda antes de insert/update.
+- Comportamento antes:
+  - `ADIADA` e `CANCELADA` podiam ficar com `Estado Trabalho` parcial, por exemplo `PARCIAL_NAO_PLANEJADO`, criando leitura operacional ambigua.
+  - A guarda da migration 258 bloqueava apenas a combinacao `ADIADA/CANCELADA + CONCLUIDO`.
+- Comportamento depois:
+  - Linhas `ADIADA` ou `CANCELADA` ficam sem Estado Trabalho em texto e UUID.
+  - Backfill limpa registros legados interrompidos com Estado Trabalho preenchido e registra historico por linha.
+  - Tentativas futuras de preencher Estado Trabalho em `ADIADA` ou `CANCELADA` sao normalizadas para branco pelo trigger.
+  - Projeto/linha `CONCLUIDO` continua bloqueando adiamento/cancelamento ate reabertura.
+  - `ANTECIPADA` continua sendo excecao e preserva `Estado Trabalho = ANTECIPADO`.
+- Como validar:
+  - Aplicar migration 284.
+  - Conferir que registros `ADIADA`/`CANCELADA` retornam com `work_completion_status` e `work_completion_status_id` nulos.
+  - Editar ou cancelar/adiar uma linha com Estado Trabalho parcial e confirmar que a lista mostra `-` ou vazio em `Estado Trabalho`.
+  - Tentar adiar/cancelar projeto ja `CONCLUIDO` e confirmar o bloqueio.
+- Multi-tenant:
+  - Backfill e guarda usam `tenant_id` da propria linha.
+  - Consulta ao catalogo de Estado Trabalho segue limitada por `tenant_id`.
 
 Atualizacao 2026-06-29 - Correcao definitiva: boolean NULL em trigger de integridade CONCLUIDO (migration 282)
 --------------------------------------------------------------------
