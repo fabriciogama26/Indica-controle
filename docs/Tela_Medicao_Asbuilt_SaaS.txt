@@ -148,6 +148,9 @@ Atalhos
   - `servicos_considerados_ate` aceita `YYYY-MM-DD` ou `DD/MM/YYYY`.
   - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
   - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
+  - O importador aceita CSV separado por `;` ou `,`, respeitando campos entre aspas.
+  - O cabecalho aceita aliases operacionais como `sob`/`obra` para `projeto`, `data`/`data_corte` para `servicos_considerados_ate`, `codigo`/`voz` para `codigo_atividade`, `qtd` para `quantidade` e `obs` para `observacao`.
+  - Arquivos acima de 5MB sao bloqueados antes da leitura.
   - Linhas com projeto inativo sao rejeitadas e retornam erro no resultado da importacao parcial.
 
 Atualizacao 2026-05
@@ -230,6 +233,7 @@ Atualizacao 2026-07
 - Depois:
   - O botao `Fechar` executa a alteracao para `FECHADA` diretamente pela listagem.
   - O modal de status permanece para `Abrir` e `Cancelar`, pois essas acoes exigem motivo.
+  - Cadastro em massa alinhado ao padrao de Medicao/Faturamento: parser CSV com `;` ou `,`, campos entre aspas, aliases de cabecalho, limite de 5MB, texto do modal corrigido para listar `servicos_considerados_ate` e pre-validacao server-side da data de corte antes da RPC.
 - Multi-tenant:
   - Sem alteracao de API, RPC, RLS ou escopo de tenant.
 

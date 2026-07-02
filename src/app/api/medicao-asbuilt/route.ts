@@ -888,12 +888,23 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     items: hasInvalidAsbuiltMeasurementItemValues(row.items) ? [] : normalizeAsbuiltMeasurementItems(row.items),
   }));
 
+  const missingCoverageDateResults = rows
+    .filter((row) => !row.serviceCoverageEndDate)
+    .map((row) => ({
+      rowNumbers: row.rowNumbers,
+      success: false,
+      reason: "MISSING_SERVICE_COVERAGE_END_DATE",
+      message: "Informe uma data valida em Servicos considerados ate.",
+      asbuiltMeasurementOrderId: null,
+    }));
+  const rowsWithCoverageDate = rows.filter((row) => row.serviceCoverageEndDate);
+
   const activeProjectIds = await loadActiveProjectIdSet({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
-    projectIds: rows.map((row) => row.projectId),
+    projectIds: rowsWithCoverageDate.map((row) => row.projectId),
   });
-  const inactiveProjectResults = rows
+  const inactiveProjectResults = rowsWithCoverageDate
     .filter((row) => row.projectId && !activeProjectIds.has(row.projectId))
     .map((row) => ({
       rowNumbers: row.rowNumbers,
@@ -902,7 +913,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
       message: "Projeto inativo nao pode ser usado no medicao-asbuilt.",
       asbuiltMeasurementOrderId: null,
     }));
-  const rowsWithActiveProjects = rows.filter((row) => !row.projectId || activeProjectIds.has(row.projectId));
+  const rowsWithActiveProjects = rowsWithCoverageDate.filter((row) => !row.projectId || activeProjectIds.has(row.projectId));
 
   const seenBatchProjectCoverageKeys = new Set<string>();
   const duplicateProjectResults: BatchPreValidationResult[] = [];
@@ -948,6 +959,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     || !existingProjectCoverageKeys.has(buildProjectCoverageKey(row.projectId, row.serviceCoverageEndDate))
   ));
   const preValidationResults = [
+    ...missingCoverageDateResults,
     ...inactiveProjectResults,
     ...duplicateProjectResults,
     ...existingProjectCoverageResults,

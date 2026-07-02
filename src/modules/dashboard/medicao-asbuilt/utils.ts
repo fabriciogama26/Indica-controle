@@ -135,7 +135,43 @@ export function normalizeAsbuiltMeasurementKind(value: unknown): AsbuiltMeasurem
 export function parseCsvContent(content: string) {
   const normalized = content.replace(/^\uFEFF/, "");
   const lines = normalized.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  return lines.map((line) => line.split(";").map((cell) => cell.trim()));
+  if (!lines.length) return [];
+
+  const delimiter = lines[0].includes(";") ? ";" : ",";
+  return lines.map((line) => parseDelimitedLine(line, delimiter));
+}
+
+function parseDelimitedLine(line: string, delimiter: ";" | ",") {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === "\"" && inQuotes && next === "\"") {
+      current += "\"";
+      index += 1;
+      continue;
+    }
+
+    if (char === "\"") {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
 }
 
 export function downloadCsv(filename: string, rows: string[][]) {
