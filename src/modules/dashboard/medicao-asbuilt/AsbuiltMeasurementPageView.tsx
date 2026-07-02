@@ -41,7 +41,6 @@ import {
   parseCsvContent,
   parseDateInput,
   parsePositiveDecimal,
-  readCsvField,
   toIsoDate,
 } from "./utils";
 import styles from "./AsbuiltMeasurementPageView.module.css";
@@ -82,6 +81,17 @@ type MassImportGroup = {
     rate: number;
     observation: string;
   }>;
+};
+
+const MASS_IMPORT_HEADER_ALIASES: Record<string, string[]> = {
+  projeto: ["projeto", "sob", "obra", "project"],
+  servicos_considerados_ate: ["servicos_considerados_ate", "data", "data_corte", "corte", "service_coverage_end_date"],
+  tipo_medicao_asbuilt: ["tipo_medicao_asbuilt", "tipo_asbuilt", "tipo", "measurement_kind"],
+  motivo_sem_producao: ["motivo_sem_producao", "motivo", "no_production_reason"],
+  codigo_atividade: ["codigo_atividade", "codigo", "atividade", "voz", "code"],
+  quantidade: ["quantidade", "qtd", "qty"],
+  taxa: ["taxa", "rate"],
+  observacao: ["observacao", "obs", "observacao_item"],
 };
 
 function buildRowId() {
@@ -709,6 +719,21 @@ export function AsbuiltMeasurementPageView() {
     ]);
   }
 
+  function resolveImportHeaderIndex(headerMap: Map<string, number>, fieldName: string) {
+    const aliases = MASS_IMPORT_HEADER_ALIASES[fieldName] ?? [fieldName];
+    for (const alias of aliases) {
+      const index = headerMap.get(normalizeHeaderName(alias));
+      if (index !== undefined) return index;
+    }
+    return undefined;
+  }
+
+  function readImportField(row: string[], headerMap: Map<string, number>, fieldName: string) {
+    const index = resolveImportHeaderIndex(headerMap, fieldName);
+    if (index === undefined) return "";
+    return normalizeText(row[index]);
+  }
+
   async function lookupActivityByCode(code: string) {
     const response = await fetch(`/api/medicao-asbuilt/activities/catalog?q=${encodeURIComponent(code)}&includeInactive=true`, { headers: authHeaders });
     const payload = (await response.json().catch(() => ({}))) as AsbuiltMeasurementCatalogResponse;
@@ -718,6 +743,12 @@ export function AsbuiltMeasurementPageView() {
 
   async function importMassFile(file: File) {
     if (!file) return;
+
+    const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_IMPORT_FILE_SIZE) {
+      setMassImportIssues([{ linha: 0, coluna: "arquivo", valor: file.name, erro: "Arquivo muito grande. Maximo permitido: 5MB." }]);
+      return;
+    }
 
     setIsImporting(true);
     setMassImportIssues([]);
@@ -732,7 +763,7 @@ export function AsbuiltMeasurementPageView() {
       }
 
       const headerMap = new Map(rows[0].map((header, index) => [normalizeHeaderName(header), index]));
-      const missingHeaders = IMPORT_TEMPLATE_HEADERS.filter((header) => !headerMap.has(normalizeHeaderName(header)));
+      const missingHeaders = IMPORT_TEMPLATE_HEADERS.filter((header) => resolveImportHeaderIndex(headerMap, header) === undefined);
       if (missingHeaders.length) {
         setMassImportIssues(missingHeaders.map((header) => ({ linha: 1, coluna: header, valor: "", erro: "Coluna obrigatoria ausente." })));
         return;
@@ -744,14 +775,14 @@ export function AsbuiltMeasurementPageView() {
       for (let index = 1; index < rows.length; index += 1) {
         const rowNumber = index + 1;
         const row = rows[index];
-        const projectInput = readCsvField(row, headerMap, "projeto");
-        const serviceCoverageEndDateInput = readCsvField(row, headerMap, "servicos_considerados_ate");
-        const kindInput = readCsvField(row, headerMap, "tipo_medicao_asbuilt");
-        const reasonInput = readCsvField(row, headerMap, "motivo_sem_producao");
-        const activityInput = readCsvField(row, headerMap, "codigo_atividade");
-        const quantityInput = readCsvField(row, headerMap, "quantidade");
-        const rateInput = readCsvField(row, headerMap, "taxa");
-        const observation = readCsvField(row, headerMap, "observacao");
+        const projectInput = readImportField(row, headerMap, "projeto");
+        const serviceCoverageEndDateInput = readImportField(row, headerMap, "servicos_considerados_ate");
+        const kindInput = readImportField(row, headerMap, "tipo_medicao_asbuilt");
+        const reasonInput = readImportField(row, headerMap, "motivo_sem_producao");
+        const activityInput = readImportField(row, headerMap, "codigo_atividade");
+        const quantityInput = readImportField(row, headerMap, "quantidade");
+        const rateInput = readImportField(row, headerMap, "taxa");
+        const observation = readImportField(row, headerMap, "observacao");
         const project = findProjectOption(projectInput);
         const serviceCoverageEndDate = parseDateInput(serviceCoverageEndDateInput);
         const asbuiltMeasurementKind = normalizeAsbuiltMeasurementKind(kindInput);
@@ -819,7 +850,7 @@ export function AsbuiltMeasurementPageView() {
         .filter((item) => item.success !== true)
         .flatMap((item) => (item.rowNumbers?.length ? item.rowNumbers : [0]).map((rowNumber) => ({
           linha: rowNumber,
-          coluna: "salvamento",
+          coluna: item.reason === "MISSING_SERVICE_COVERAGE_END_DATE" ? "servicos_considerados_ate" : "salvamento",
           valor: "",
           erro: item.message ?? "Falha ao salvar linha.",
         })));
@@ -1165,7 +1196,7 @@ export function AsbuiltMeasurementPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas do modelo: projeto, tipo_medicao_asbuilt, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao. Obrigatorias: projeto, tipo_medicao_asbuilt, codigo_atividade, quantidade e taxa. Motivo e obrigatorio somente em Sem producao.</p>
+                    <p>Colunas do modelo: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao. Obrigatorias: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, codigo_atividade, quantidade e taxa. Motivo e obrigatorio somente em Sem producao.</p>
                   </div>
                 </div>
               </section>
