@@ -11,7 +11,7 @@ import {
   fetchSupportOptions,
   fetchTeams,
 } from "@/server/modules/programacao/catalogs";
-import { authorizeProgrammingAction } from "@/server/modules/programacao/handlers";
+import { authorizeProgrammingReadAction } from "@/server/modules/programacao/handlers";
 import { normalizeText } from "@/server/modules/programacao/normalizers";
 
 export async function GET(request: NextRequest) {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    const authorizationError = await authorizeProgrammingAction(resolution, "read");
+    const authorizationError = await authorizeProgrammingReadAction(resolution);
     if (authorizationError) return authorizationError;
 
     const [projects, teams, supportOptions, sgdTypes, eqCatalog, reasonOptions, workCompletionCatalog] = await Promise.all([

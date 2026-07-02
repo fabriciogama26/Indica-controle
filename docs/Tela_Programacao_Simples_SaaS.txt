@@ -173,6 +173,10 @@ Arquitetura
   - Trigger: `zz_trg_project_programming_block_interrupted_completed`
   - Objetivo inicial: impedir que programacao `ADIADA` ou `CANCELADA` receba `Estado Trabalho = CONCLUIDO` e impedir nova transicao para `ADIADA`/`CANCELADA` quando o projeto ja possui Estado Trabalho concluido.
   - Regra atual apos a migration `284`: programacao `ADIADA` ou `CANCELADA` fica com `Estado Trabalho` em branco; qualquer valor em `work_completion_status` ou `work_completion_status_id` e limpo pela guarda.
+- Migration de transferencia de equipe:
+  - `supabase/migrations/286_transfer_programming_team.sql`
+  - RPC: `transfer_project_programming_team`
+  - Objetivo: transferir uma equipe de uma programacao ativa para outra programacao ativa, marcando apenas a linha de origem como `TRANSFERIDA` e criando nova linha ativa no destino.
 - Menu/permissao frontend:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -221,6 +225,8 @@ Cadastro
   - Novas programacoes podem ser salvas com `Estado Trabalho` em branco; o preenchimento ocorre somente por edicao/acao explicita do usuario.
   - A acao `Adicionar equipe` cria uma nova programacao para a equipe selecionada usando uma programacao ativa existente como modelo, sem trocar a equipe da linha original.
   - `Adicionar equipe` bloqueia duplicidade no mesmo `programming_group_id`, conflito de horario, equipe inativa/de outro tenant, etapa igual/maior no historico da equipe e projeto com `Estado Trabalho = CONCLUIDO`.
+  - A acao `Transferir equipe` marca somente a linha da equipe de origem como `TRANSFERIDA`; as demais equipes da programacao origem permanecem com o status operacional atual.
+  - `Transferir equipe` cria nova linha ativa no grupo/programacao destino, copiando os dados operacionais da programacao destino e usando a equipe da origem.
   - `Adiar` e `Cancelar` bloqueiam projeto com `Estado Trabalho = CONCLUIDO`.
   - A regra de bloqueio tambem existe no banco: programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco; o trigger limpa qualquer valor informado e preserva o bloqueio de projeto concluido.
   - Quando os documentos (`SGD`, `PI`, `PEP`) forem alterados em uma equipe, os mesmos valores sao replicados para as demais equipes ativas do mesmo `Projeto + Data de execucao`.
@@ -261,7 +267,7 @@ Filtros, auto-complete e listagem
   - Colunas: Data execucao, Projeto, Equipe, Base, Horario, Registrado por, Status, Estado Trabalho, Atualizado em.
   - Ordenacao da lista: `Data execucao` em ordem decrescente (mais recente primeiro). Em empate de data, prioridade para o cadastro mais recente (`created_at` desc).
   - Quando uma programacao e salva fora do intervalo, projeto, equipe ou status filtrados, a tela avisa no feedback de sucesso que o registro pode nao aparecer na lista atual por causa dos filtros.
-- Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Copiar programacao`, `Adicionar equipe`, `Adiar` e `Cancelar`.
+- Acoes por linha no mesmo padrao visual da tela de Projetos (icones): `Detalhes`, `Edicao`, `Historico`, `Copiar programacao`, `Adicionar equipe`, `Transferir equipe`, `Adiar` e `Cancelar`.
 - A acao `Adicionar equipe`:
   - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
   - lista somente equipes ativas ainda nao presentes no grupo operacional da linha modelo (`programming_group_id`)
@@ -269,6 +275,13 @@ Filtros, auto-complete e listagem
   - grava `copied_from_programming_id` apontando para a programacao modelo
   - registra historico operacional com metadata `ADD_TEAM`
   - valida tenant, agenda da equipe, etapa, catalogo de `Estado Trabalho` quando a linha modelo tiver valor preenchido, concorrencia por `updated_at` e trava de projeto `CONCLUIDO`
+- A acao `Transferir equipe`:
+  - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
+  - abre modal com filtro de data e busca de projeto/programacao destino
+  - exige motivo com pelo menos 10 caracteres
+  - bloqueia origem e destino iguais, mesmo `programming_group_id`, destino inativo, destino concluido e equipe ja ativa no grupo destino
+  - altera a linha da equipe origem para `TRANSFERIDA`, `is_active = false`, motivo/data/usuario preenchidos e `Estado Trabalho` em branco
+  - cria nova linha ativa no destino e registra historico operacional `TRANSFER_TEAM`
 - A acao `Copiar programacao`:
   - fica disponivel apenas para programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`)
   - valida antes do modal se a origem nao e `ETAPA UNICA` nem `ETAPA FINAL`
@@ -1500,9 +1513,13 @@ Atualizacao 2026-06-13 - Etapa 1 de autorizacao server-side
     tenant, usuario e role obtido da sessao autenticada.
   - `authorizeProgrammingAction`: adapta a negacao do helper para a resposta HTTP da
     Programacao.
-  - `PROGRAMMING_PAGE_KEY`: fixa a chave `programacao-simples` no servidor.
+  - `authorizeProgrammingReadAction`: aceita leitura por `programacao-simples/read`
+    ou `programacao-visualizacao/read`.
+  - `PROGRAMMING_PAGE_KEY`: fixa a chave de cadastro `programacao-simples` no servidor.
+  - `PROGRAMMING_VISUALIZATION_PAGE_KEY`: fixa a chave de consulta
+    `programacao-visualizacao` para os GETs compartilhados.
   - Handlers protegidos:
-    - `GET`: `read`;
+    - `GET`: `read` por `programacao-simples` ou `programacao-visualizacao`;
     - cadastro individual, lote e copias: `create`;
     - `PUT`, adiamento e Estado Trabalho: `update`;
     - cancelamento: `cancel`.
@@ -1511,6 +1528,9 @@ Atualizacao 2026-06-13 - Etapa 1 de autorizacao server-side
     que a rota verificasse a permissao da pagina.
   - Depois: o guard executa antes de qualquer SELECT/RPC de negocio; negacao retorna
     `403` e falha na consulta da matriz retorna `500`, sem liberar por fallback.
+  - Ajuste posterior em 2026-07: os GETs compartilhados passaram a aceitar a permissao
+    dedicada da tela `programacao-visualizacao`; as rotas de gravacao continuam
+    bloqueadas por `programacao-simples`.
   - Permissao individual explicita prevalece; quando ausente, o helper consulta a
     permissao do role. O bypass administrativo existente foi preservado.
 - Limitacao conhecida:
@@ -2840,3 +2860,45 @@ Atualizacao 2026-07-01 (Extracao ENEL NOVO - STATUS REPROGRAMADO e km numerico)
   - `src/modules/dashboard/programacao-simples/exports.ts`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
+
+Atualizacao 2026-07-02 - Transferencia de equipe entre programacoes
+--------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/286_transfer_programming_team.sql`
+  - `src/app/api/programacao/route.ts`
+  - `src/server/modules/programacao/types.ts`
+  - `src/server/modules/programacao/rpc.ts`
+  - `src/server/modules/programacao/handlers.ts`
+  - `src/modules/dashboard/programacao-simples/types.ts`
+  - `src/modules/dashboard/programacao-simples/api.ts`
+  - `src/modules/dashboard/programacao-simples/constants.ts`
+  - `src/modules/dashboard/programacao-simples/utils.ts`
+  - `src/modules/dashboard/programacao-simples/components.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
+- Funcoes/hooks/constantes tocadas:
+  - `transfer_project_programming_team`: RPC transacional que marca origem como `TRANSFERIDA` e cria a linha destino.
+  - `transferTeamToProgramming`: handler server-side da acao `TRANSFER_TEAM`.
+  - `transferTeamProgrammingViaRpc`: chamada server-side da RPC.
+  - `transferTeamToProgramming` frontend: chamada `POST /api/programacao`.
+  - `ProgrammingTransferTeamModal`: modal de escolha de destino, filtro por data/projeto e motivo.
+  - `HISTORY_ALLOWED_ACTIONS`: inclui `TRANSFER_TEAM`.
+  - `isInactiveProgrammingStatus`: inclui `TRANSFERIDA`.
+- Comportamento antes:
+  - Para tirar uma equipe de uma programacao e colocar em outra, seria necessario editar/cancelar manualmente, com risco de alterar a programacao inteira ou perder rastreio claro.
+- Comportamento depois:
+  - A origem continua `PROGRAMADA`/`REPROGRAMADA` para as demais equipes.
+  - A linha da equipe transferida vira `TRANSFERIDA`, inativa e com motivo/data/usuario.
+  - O destino recebe nova linha ativa para a mesma equipe.
+  - O historico registra `TRANSFER_TEAM` com origem, destino, grupo, projeto, data, etapa e nova linha criada.
+- Como validar:
+  - Aplicar migration 286.
+  - Abrir Programacao Simples e selecionar uma linha ativa de uma programacao com mais de uma equipe.
+  - Usar `Transferir equipe`, escolher uma programacao destino ativa e informar motivo.
+  - Confirmar que apenas a linha da equipe origem ficou `TRANSFERIDA`.
+  - Confirmar que a programacao origem permanece ativa para as outras equipes.
+  - Confirmar que a equipe aparece como nova linha ativa no destino e que o historico mostra `Transferencia de equipe`.
+- Impacto multi-tenant:
+  - A API resolve `tenant_id` pela sessao.
+  - A RPC filtra e bloqueia origem/destino por `tenant_id`.
+  - EXECUTE da RPC fica restrito a `service_role`; `anon` e `authenticated` nao executam diretamente.

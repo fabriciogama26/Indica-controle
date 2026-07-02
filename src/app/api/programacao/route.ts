@@ -93,12 +93,14 @@ import {
 import {
   addTeamToProgramming,
   authorizeProgrammingAction,
+  authorizeProgrammingReadAction,
   copyProgramming,
   copyProgrammingToDates,
   resolveProjectCompletedProgrammingContext,
   saveProgramming,
   saveProgrammingBatch,
   saveProgrammingWorkCompletionStatus,
+  transferTeamToProgramming,
 } from "@/server/modules/programacao/handlers";
 
 
@@ -113,7 +115,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    const authorizationError = await authorizeProgrammingAction(resolution, "read");
+    const authorizationError = await authorizeProgrammingReadAction(resolution);
     if (authorizationError) return authorizationError;
 
     const historyProgrammingId = normalizeText(request.nextUrl.searchParams.get("historyProgrammingId"));
@@ -500,6 +502,16 @@ export async function POST(request: NextRequest) {
     });
 
     return addTeamToProgramming(clonedRequest);
+  }
+
+  if (normalizedAction === "TRANSFER_TEAM") {
+    const clonedRequest = new NextRequest(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(body),
+    });
+
+    return transferTeamToProgramming(clonedRequest);
   }
 
   if (normalizedAction === "BATCH_CREATE") {

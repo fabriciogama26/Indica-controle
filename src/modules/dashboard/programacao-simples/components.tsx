@@ -704,6 +704,10 @@ function getScheduleCardClassName(status: ProgrammingStatus, workCompletionStatu
     return styles.weekCardAnticipated;
   }
 
+  if (status === "TRANSFERIDA") {
+    return styles.weekCardTransferred;
+  }
+
   return styles.weekCardPlanned;
 }
 
@@ -1184,9 +1188,9 @@ export function ProgrammingDetailsModal(props: {
             <p className={styles.detailWide}><strong>Anotacao:</strong> {target.note || "-"}</p>
             {isInactiveProgrammingStatus(getDisplayProgrammingStatus(target)) ? (
               <>
-                <p><strong>Data do cancelamento/adiamento:</strong> {formatDateTime(target.statusChangedAt ?? "")}</p>
+                <p><strong>Data da alteracao de status:</strong> {formatDateTime(target.statusChangedAt ?? "")}</p>
                 <p className={styles.detailWide}>
-                  <strong>Motivo do cancelamento/adiamento:</strong> {target.statusReason || "-"}
+                  <strong>Motivo do status:</strong> {target.statusReason || "-"}
                 </p>
               </>
             ) : null}
@@ -1874,6 +1878,171 @@ export function ProgrammingAddTeamModal(props: {
               disabled={isSubmitting || !selectedTeamId || !availableTeams.length}
             >
               {isSubmitting ? "Adicionando..." : "Adicionar equipe"}
+            </button>
+            <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+export function ProgrammingTransferTeamModal(props: {
+  target: ScheduleItem | null;
+  projectCode: string;
+  teamName: string;
+  destinationOptions: ScheduleItem[];
+  destinationProjectMap: Map<string, ProjectItem>;
+  destinationTeamMap: Map<string, TeamItem>;
+  selectedDestinationId: string;
+  filterDate: string;
+  filterProjectSearch: string;
+  reason: string;
+  isSubmitting: boolean;
+  isLoadingDestinations: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onDestinationChange: (programmingId: string) => void;
+  onFilterDateChange: (value: string) => void;
+  onFilterProjectSearchChange: (value: string) => void;
+  onReasonChange: (value: string) => void;
+}) {
+  const {
+    target,
+    projectCode,
+    teamName,
+    destinationOptions,
+    destinationProjectMap,
+    destinationTeamMap,
+    selectedDestinationId,
+    filterDate,
+    filterProjectSearch,
+    reason,
+    isSubmitting,
+    isLoadingDestinations,
+    onClose,
+    onConfirm,
+    onDestinationChange,
+    onFilterDateChange,
+    onFilterProjectSearchChange,
+    onReasonChange,
+  } = props;
+
+  if (!target) {
+    return null;
+  }
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <div className={styles.modalTitleBlock}>
+            <h4>Transferir equipe</h4>
+            <p className={styles.modalSubtitle}>
+              {teamName} | origem {projectCode} em {formatDate(target.date)}
+            </p>
+          </div>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>
+            Fechar
+          </button>
+        </header>
+
+        <div className={styles.modalBody}>
+          <div className={styles.warningCard}>
+            <p>
+              A linha desta equipe na programacao de origem ficara como TRANSFERIDA. As demais equipes da origem
+              continuam com o status atual.
+            </p>
+          </div>
+
+          <div className={styles.modalMetaGrid}>
+            <label className={styles.field}>
+              <span>Data destino</span>
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(event) => onFilterDateChange(event.target.value)}
+                disabled={isSubmitting}
+              />
+            </label>
+            <label className={styles.field}>
+              <span>Projeto destino</span>
+              <input
+                value={filterProjectSearch}
+                onChange={(event) => onFilterProjectSearchChange(event.target.value)}
+                placeholder="SOB ou descricao"
+                disabled={isSubmitting}
+              />
+            </label>
+          </div>
+
+          <div className={styles.copyTeamPicker}>
+            <div className={styles.copyTeamPickerHeader}>
+              <span>
+                Programacao destino <span className="requiredMark">*</span>
+              </span>
+            </div>
+            <div className={styles.copyTeamList}>
+              {isLoadingDestinations ? (
+                <p className={styles.emptyHint}>Carregando programacoes destino...</p>
+              ) : destinationOptions.length ? (
+                destinationOptions.map((option) => {
+                  const project = destinationProjectMap.get(option.projectId);
+                  const team = destinationTeamMap.get(option.teamId);
+                  const stageLabel = option.etapaUnica
+                    ? "ETAPA UNICA"
+                    : option.etapaFinal
+                      ? "ETAPA FINAL"
+                      : `ETAPA ${option.etapaNumber ?? "-"}`;
+
+                  return (
+                    <label key={option.id} className={styles.copyTeamOption}>
+                      <input
+                        type="radio"
+                        name="transfer-team-destination"
+                        checked={selectedDestinationId === option.id}
+                        onChange={() => onDestinationChange(option.id)}
+                        disabled={isSubmitting || isLoadingDestinations}
+                      />
+                      <span>
+                        <strong>{project?.code ?? option.projectId}</strong>
+                        <small>
+                          {formatDate(option.date)} | {stageLabel} | {option.startTime} - {option.endTime}
+                        </small>
+                        <small>{team?.name ?? option.teamName ?? option.teamId}</small>
+                      </span>
+                    </label>
+                  );
+                })
+              ) : (
+                <p className={styles.emptyHint}>Nenhuma programacao ativa encontrada para os filtros informados.</p>
+              )}
+            </div>
+          </div>
+
+          <label className={`${styles.field} ${styles.fieldWide}`}>
+            <span>
+              Motivo da transferencia <span className="requiredMark">*</span>
+            </span>
+            <textarea
+              value={reason}
+              onChange={(event) => onReasonChange(event.target.value)}
+              rows={3}
+              placeholder="Informe o motivo operacional da transferencia."
+              disabled={isSubmitting}
+            />
+          </label>
+
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onConfirm}
+              disabled={isSubmitting || isLoadingDestinations || !selectedDestinationId || reason.trim().length < 10}
+            >
+              {isSubmitting ? "Transferindo..." : "Transferir equipe"}
             </button>
             <button type="button" className={styles.ghostButton} onClick={onClose} disabled={isSubmitting}>
               Voltar

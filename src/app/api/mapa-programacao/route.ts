@@ -89,6 +89,19 @@ type TeamProgrammingRow = {
   team_id: string | null;
 };
 
+type TransferHistoryRow = {
+  id: string;
+  programming_id: string | null;
+  related_programming_id: string | null;
+  project_id: string | null;
+  team_id: string | null;
+  from_execution_date: string | null;
+  to_execution_date: string | null;
+  reason: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string | null;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -271,6 +284,46 @@ function buildTeamLookup(teams: TeamRow[], teamTypeMap: Map<string, string>, peo
   );
 }
 
+function readMetadataText(metadata: Record<string, unknown> | null, key: string) {
+  return normalizeText(metadata?.[key]);
+}
+
+function buildTransferEvents(params: {
+  rows: TransferHistoryRow[];
+  projectMap: Map<string, ProjectRow>;
+  teamMap: Map<string, ReturnType<typeof buildTeamLookup> extends Map<string, infer T> ? T : never>;
+}) {
+  return params.rows.map((row) => {
+    const sourceProjectId = readMetadataText(row.metadata, "sourceProjectId") || normalizeText(row.project_id);
+    const destinationProjectId = readMetadataText(row.metadata, "destinationProjectId");
+    const teamId = readMetadataText(row.metadata, "sourceTeamId") || normalizeText(row.team_id);
+    const sourceProject = sourceProjectId ? params.projectMap.get(sourceProjectId) : null;
+    const destinationProject = destinationProjectId ? params.projectMap.get(destinationProjectId) : null;
+    const team = teamId ? params.teamMap.get(teamId) : null;
+
+    return {
+      id: row.id,
+      changedAt: normalizeText(row.created_at),
+      reason: normalizeText(row.reason),
+      teamId,
+      teamName: team?.name ?? teamId,
+      sourceProjectId,
+      sourceProjectCode: normalizeText(sourceProject?.sob) || sourceProjectId,
+      sourceServiceCenter: normalizeText(sourceProject?.service_center_text),
+      sourceProgrammingId: readMetadataText(row.metadata, "sourceProgrammingId") || normalizeText(row.programming_id),
+      sourceDate: normalizeIsoDate(readMetadataText(row.metadata, "sourceExecutionDate")) ?? normalizeIsoDate(row.from_execution_date) ?? "",
+      sourceStage: readMetadataText(row.metadata, "sourceEtapaNumber"),
+      destinationProjectId,
+      destinationProjectCode: normalizeText(destinationProject?.sob) || destinationProjectId,
+      destinationServiceCenter: normalizeText(destinationProject?.service_center_text),
+      destinationProgrammingId: readMetadataText(row.metadata, "destinationProgrammingId"),
+      newProgrammingId: readMetadataText(row.metadata, "newProgrammingId") || normalizeText(row.related_programming_id),
+      destinationDate: normalizeIsoDate(readMetadataText(row.metadata, "destinationExecutionDate")) ?? normalizeIsoDate(row.to_execution_date) ?? "",
+      destinationStage: readMetadataText(row.metadata, "destinationEtapaNumber"),
+    };
+  });
+}
+
 async function authorizeMapProgrammingRead(context: AuthenticatedAppUserContext) {
   const authorization = await requirePageAction({
     context,
@@ -413,6 +466,23 @@ async function fetchTeams(supabase: SupabaseClient, tenantId: string) {
   return buildTeamLookup(teamRows, teamTypeMap, peopleMap, serviceCenterMap);
 }
 
+async function fetchTransferHistoryRows(supabase: SupabaseClient, tenantId: string) {
+  const { data, error } = await supabase
+    .from("project_programming_history")
+    .select("id, programming_id, related_programming_id, project_id, team_id, from_execution_date, to_execution_date, reason, metadata, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("action_type", "TRANSFER_TEAM")
+    .order("created_at", { ascending: false })
+    .limit(100)
+    .returns<TransferHistoryRow[]>();
+
+  if (error) {
+    throw new Error("Falha ao carregar rastreio de transferencias da Programacao.");
+  }
+
+  return data ?? [];
+}
+
 async function fetchProgrammedTeamIds(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -466,14 +536,20 @@ export async function GET(request: NextRequest) {
     programmingWindowStartDate.setUTCMonth(programmingWindowStartDate.getUTCMonth() - 18);
     const programmingWindowStart = toIsoDate(programmingWindowStartDate);
 
-    const [projects, programmingRows, workCompletionLabelMap, teamMap] = await Promise.all([
+    const [projects, programmingRows, workCompletionLabelMap, teamMap, transferHistoryRows] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, programmingWindowStart),
       fetchWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
+      fetchTransferHistoryRows(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
     const validProjectMap = new Map(projects.map((project) => [project.id, project]));
+    const transferEvents = buildTransferEvents({
+      rows: transferHistoryRows,
+      projectMap: validProjectMap,
+      teamMap,
+    });
     const programmingByProject = new Map<string, ProgrammingRow[]>();
 
     for (const row of programmingRows) {
@@ -631,6 +707,7 @@ export async function GET(request: NextRequest) {
       priorityProjects: consolidatedProjects.filter((project) => project.actionRequired && !project.neverProgrammed),
       neverProgrammedProjects: consolidatedProjects.filter((project) => project.neverProgrammed),
       teamsWithoutProgramming,
+      transferEvents,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao carregar Mapa de Programacao.";

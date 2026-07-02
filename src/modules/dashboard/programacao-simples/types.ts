@@ -1,5 +1,5 @@
 ﻿export type PeriodMode = "integral" | "partial";
-export type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA";
+export type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA" | "TRANSFERIDA";
 export type WorkCompletionStatus = "PARCIAL_PLANEJADO" | "PARCIAL_NAO_PLANEJADO" | "CONCLUIDO" | "ANTECIPADO";
 export type DocumentKey = "sgd" | "pi" | "pep";
 
@@ -254,6 +254,19 @@ export type AddTeamToProgrammingResponse = {
   hasConflict?: boolean;
   highestStage?: number;
   teams?: StageValidationTeamSummary[];
+};
+
+export type TransferTeamProgrammingResponse = {
+  success?: boolean;
+  id?: string;
+  newId?: string | null;
+  transferredCount?: number;
+  updatedAt?: string;
+  schedule?: ScheduleItem | null;
+  newSchedule?: ScheduleItem | null;
+  message?: string;
+  reason?: string | null;
+  detail?: string | null;
 };
 
 export type HistoryChange = {

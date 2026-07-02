@@ -18,6 +18,8 @@ Regras centrais:
 - Uma programacao ativa tem status operacional `PROGRAMADA` ou `REPROGRAMADA`.
 - Uma programacao interrompida tem status `ADIADA` ou `CANCELADA`.
 - Uma programacao encerrada por conclusao antecipada do projeto tem status `ANTECIPADA`.
+- Uma linha de equipe transferida para outra programacao tem status interno `TRANSFERIDA`.
+- `TRANSFERIDA` nao altera o status das demais equipes do grupo/programacao de origem.
 - O grupo operacional e definido por `programming_group_id`.
 - `programming_group_id` representa:
   - ETAPA numerica: mesmo `tenant_id + project_id + execution_date + etapa_number`.
@@ -63,7 +65,7 @@ Campos de identidade:
 - `execution_date`: data de execucao.
 
 Status operacional:
-- `status`: `PROGRAMADA`, `REPROGRAMADA`, `ADIADA`, `CANCELADA`, `ANTECIPADA`.
+- `status`: `PROGRAMADA`, `REPROGRAMADA`, `ADIADA`, `CANCELADA`, `ANTECIPADA`, `TRANSFERIDA`.
 - `is_active`: legado/apoio visual; a regra atual usa principalmente `status`.
 - `cancellation_reason`: motivo de cancelamento/adiamento.
 - `canceled_at`: data/hora da interrupcao.
@@ -122,10 +124,12 @@ Regra pratica de `programming_group_id`:
 | `ADIADA` | Agenda interrompida por adiamento | Detalhes/historico; sem edicao operacional | Guarda motivo/data de interrupcao. Pode ter nova linha `REPROGRAMADA` vinculada. `Estado Trabalho` deve ficar em branco. |
 | `CANCELADA` | Agenda cancelada | Detalhes/historico; sem edicao operacional | Guarda motivo/data de cancelamento. `Estado Trabalho` deve ficar em branco. |
 | `ANTECIPADA` | Agenda encerrada porque o projeto foi concluido antes da data futura | Detalhes/historico; sem edicao operacional | Libera a equipe e mantem rastreio em `work_completion_status = ANTECIPADO`. |
+| `TRANSFERIDA` | Linha da equipe movida para outra programacao | Detalhes/historico; sem edicao operacional | Libera a equipe na origem, mantem motivo/data/usuario e cria nova linha ativa no destino. |
 
 Regra de atividade:
 - Ativas: `PROGRAMADA`, `REPROGRAMADA`.
-- Inativas/interrompidas: `ADIADA`, `CANCELADA`, `ANTECIPADA`.
+- Inativas/interrompidas: `ADIADA`, `CANCELADA`, `ANTECIPADA`, `TRANSFERIDA`.
+- No Mapa de Programacao, `TRANSFERIDA` nao entra como `Canceladas/adiadas`; o rastreio fica em tabela propria baseada no historico `TRANSFER_TEAM`.
 
 ---
 
@@ -750,6 +754,7 @@ RLS:
 | Cancelar | Linha ativa | Linha/grupo vira `CANCELADA` | Projeto `CONCLUIDO`, motivo ausente, concorrencia |
 | Copiar para datas | Origem ativa com ETAPA numerica | Cria destinos por data/equipe | ETAPA UNICA/FINAL, destino <= origem, conflito agenda/etapa |
 | Adicionar equipe | Linha ativa | Cria linha irma para nova equipe | Equipe ja no grupo, conflito horario/etapa, projeto `CONCLUIDO` |
+| Transferir equipe | Linha ativa | Marca origem como `TRANSFERIDA` e cria linha ativa no destino | Origem/destino iguais, mesmo grupo, destino inativo, equipe ja no destino, projeto destino `CONCLUIDO`, conflito horario |
 
 ---
 

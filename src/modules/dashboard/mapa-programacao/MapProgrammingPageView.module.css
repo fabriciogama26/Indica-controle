@@ -259,6 +259,22 @@
   font-weight: 800;
 }
 
+.transferRoute {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 130px;
+}
+
+.transferRoute strong {
+  color: #172033;
+}
+
+.transferRoute small {
+  color: #667085;
+  font-size: 0.76rem;
+}
+
 .priorityNormal {
   background: #e7f7ef;
   color: #087443;

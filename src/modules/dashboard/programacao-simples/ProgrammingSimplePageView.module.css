@@ -729,6 +729,12 @@ fieldset.field {
   border-color: rgba(39, 91, 106, 0.24);
 }
 
+.weekCardTransferred {
+  background: linear-gradient(180deg, #d8dee8 0%, #a8b3c4 100%);
+  color: #253044;
+  border-color: rgba(71, 84, 103, 0.24);
+}
+
 .weekCardCancelled {
   background: linear-gradient(180deg, #f5bcbc 0%, #e98787 100%);
   color: #7f1f1f;
