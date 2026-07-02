@@ -226,6 +226,9 @@ Atualizacao 2026-07
 -------------------
 - Arquivos alterados:
   - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - `src/app/api/medicao-asbuilt/route.ts`
+  - `src/modules/dashboard/medicao-asbuilt/utils.ts`
+  - `supabase/migrations/285_fix_asbuilt_batch_import_coverage_date.sql`
   - `docs/Tela_Medicao_Asbuilt_SaaS.txt`
   - `TASKS.md`
 - Antes:
@@ -234,8 +237,11 @@ Atualizacao 2026-07
   - O botao `Fechar` executa a alteracao para `FECHADA` diretamente pela listagem.
   - O modal de status permanece para `Abrir` e `Cancelar`, pois essas acoes exigem motivo.
   - Cadastro em massa alinhado ao padrao de Medicao/Faturamento: parser CSV com `;` ou `,`, campos entre aspas, aliases de cabecalho, limite de 5MB, texto do modal corrigido para listar `servicos_considerados_ate` e pre-validacao server-side da data de corte antes da RPC.
+  - Corrigida regressao da migration `259_fix_billing_security_and_rules.sql`, que recriou `save_project_asbuilt_measurement_order_batch_partial` sem repassar `serviceCoverageEndDate` para `save_project_asbuilt_measurement_order`.
+  - A migration `285_fix_asbuilt_batch_import_coverage_date.sql` recompila a RPC de lote mantendo o limite de 500 registros e restaurando o envio da data de corte para o banco.
 - Multi-tenant:
-  - Sem alteracao de API, RPC, RLS ou escopo de tenant.
+  - Sem alteracao de RLS ou escopo de tenant.
+  - A RPC segue recebendo `p_tenant_id` e `p_actor_user_id`, e grava via RPC transacional existente.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -268,6 +274,8 @@ Constantes e configuracoes
   - Responsavel por: remover a ambiguidade PostgreSQL `42725` entre as assinaturas antiga e nova da RPC, mantendo a implementacao anterior como helper interno.
 - Caminho: `supabase/migrations/220_version_asbuilt_by_project_coverage_date.sql`
   - Responsavel por: permitir snapshots do mesmo projeto em cortes diferentes, criar unicidade parcial por projeto/data e atualizar trigger/RPC para bloquear somente a repeticao do mesmo corte.
+- Caminho: `supabase/migrations/285_fix_asbuilt_batch_import_coverage_date.sql`
+  - Responsavel por: corrigir a RPC de importacao em massa de Medicao Asbuilt para repassar `serviceCoverageEndDate` ao salvar cada ordem, preservando o limite de 500 registros.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`

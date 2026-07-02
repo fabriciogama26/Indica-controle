@@ -814,3 +814,8 @@ Observacao
 - Recria `enforce_interrupted_programming_completed_work_status` para manter `Estado Trabalho` em branco em linhas interrompidas.
 - Preserva o bloqueio de adiamento/cancelamento quando o projeto ou a propria linha ja esta `CONCLUIDO`.
 - Mantem `ANTECIPADA` fora dessa limpeza, pois `ANTECIPADO` e rastreio tecnico da conclusao antecipada.
+
+285_fix_asbuilt_batch_import_coverage_date.sql
+- Corrige regressao da migration 259 na RPC `save_project_asbuilt_measurement_order_batch_partial`.
+- Restaura o repasse de `serviceCoverageEndDate`/`service_coverage_end_date` para `save_project_asbuilt_measurement_order` no cadastro em massa de Medicao Asbuilt.
+- Preserva o limite de 500 medicoes por lote e os grants restritos a `authenticated`/`service_role`.
