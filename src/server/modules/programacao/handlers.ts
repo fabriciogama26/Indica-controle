@@ -67,6 +67,7 @@ import {
 } from "./normalizers";
 
 export const PROGRAMMING_PAGE_KEY = "programacao-simples";
+export const PROGRAMMING_VISUALIZATION_PAGE_KEY = "programacao-visualizacao";
 
 export async function authorizeProgrammingAction(context: AuthenticatedAppUserContext, action: PageAction) {
   const authorization = await requirePageAction({
@@ -75,6 +76,44 @@ export async function authorizeProgrammingAction(context: AuthenticatedAppUserCo
     action,
   });
 
+  return buildProgrammingAuthorizationResponse(authorization);
+}
+
+export async function authorizeProgrammingReadAction(context: AuthenticatedAppUserContext) {
+  const registrationAuthorization = await requirePageAction({
+    context,
+    pageKey: PROGRAMMING_PAGE_KEY,
+    action: "read",
+  });
+
+  if (registrationAuthorization.allowed) return null;
+  if (registrationAuthorization.error.status === 500) {
+    return buildProgrammingAuthorizationResponse(registrationAuthorization);
+  }
+
+  const visualizationAuthorization = await requirePageAction({
+    context,
+    pageKey: PROGRAMMING_VISUALIZATION_PAGE_KEY,
+    action: "read",
+  });
+
+  if (visualizationAuthorization.allowed) return null;
+  if (visualizationAuthorization.error.status === 500) {
+    return buildProgrammingAuthorizationResponse(visualizationAuthorization);
+  }
+
+  return NextResponse.json(
+    {
+      message: `Acesso negado para executar read em ${PROGRAMMING_PAGE_KEY} ou ${PROGRAMMING_VISUALIZATION_PAGE_KEY}.`,
+      code: "PAGE_ACTION_FORBIDDEN",
+      pageKeys: [PROGRAMMING_PAGE_KEY, PROGRAMMING_VISUALIZATION_PAGE_KEY],
+      action: "read",
+    },
+    { status: 403 },
+  );
+}
+
+function buildProgrammingAuthorizationResponse(authorization: Awaited<ReturnType<typeof requirePageAction>>) {
   if (authorization.allowed) return null;
 
   return NextResponse.json(

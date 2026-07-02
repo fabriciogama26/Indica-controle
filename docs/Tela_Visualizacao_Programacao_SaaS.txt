@@ -12,6 +12,8 @@ Arquitetura
 - View reutilizada: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx` (modo `visualizacao`)
 - Estilo: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
 - API: `src/app/api/programacao/route.ts`
+- API de catalogos: `src/app/api/programacao/meta/route.ts`
+- Autorizacao server-side: `src/server/modules/programacao/handlers.ts`
 - Permissao/menu:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -67,6 +69,8 @@ Filtros, auto-complete e listagem
 Boas praticas
 -------------
 - Escopo multi-tenant mantido por `pageKey` e permissoes por tenant.
+- `GET /api/programacao` e `GET /api/programacao/meta` aceitam leitura pela permissao
+  `programacao-visualizacao/read` ou `programacao-simples/read`.
 - Tela de visualizacao nao grava dados operacionais.
 - Consulta de historico e detalhes reutiliza o mesmo contrato da Programacao Simples.
 
@@ -132,6 +136,34 @@ Atualizacao adicional 2026-04-16 (filtros e calendario)
     - Antes: a visualizacao nao filtrava por `Tipo SGD` e nao mostrava `Encarregado` na linha da equipe do calendario.
     - Depois: passa a filtrar por `Tipo SGD` e a exibir `Encarregado` junto ao nome da equipe.
 
+Atualizacao 2026-07 - Permissao de consulta dedicada
+----------------------------------------------------
+- Corrigida a autorizacao server-side da tela de visualizacao para nao exigir
+  `programacao-simples/read` quando o usuario possui `programacao-visualizacao/read`.
+- `GET /api/programacao` e `GET /api/programacao/meta` passam a usar
+  `authorizeProgrammingReadAction`.
+- As rotas de gravacao (`POST`, `PUT`, `PATCH`) continuam exigindo permissao da
+  Programacao Simples conforme a acao (`create`, `update`, `cancel`).
+- Mapeamento desta atualizacao:
+  - Arquivos alterados:
+    - `src/server/modules/programacao/handlers.ts`
+    - `src/app/api/programacao/route.ts`
+    - `src/app/api/programacao/meta/route.ts`
+    - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+    - `docs/Tela_Programacao_Simples_SaaS.txt`
+    - `TASKS.md`
+  - Funcoes/hooks/constantes tocadas:
+    - `authorizeProgrammingReadAction`
+    - `authorizeProgrammingAction`
+    - `PROGRAMMING_PAGE_KEY`
+    - `PROGRAMMING_VISUALIZATION_PAGE_KEY`
+  - Comportamento antes/depois:
+    - Antes: a visualizacao chamava endpoints que exigiam `read` em
+      `programacao-simples`, gerando `403` para usuarios com permissao apenas na tela
+      de consulta.
+    - Depois: a leitura aceita `programacao-visualizacao/read`; usuarios sem nenhuma
+      das duas permissoes continuam bloqueados.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -139,6 +171,9 @@ Funcoes principais
   - Responsavel por: renderizacao em modo `visualizacao`, filtros, lista, calendario semanal, detalhe e historico.
 - Caminho: `src/app/(dashboard)/programacao-visualizacao/page.tsx`
   - Responsavel por: ativar a view no modo `visualizacao`.
+- Caminho: `src/server/modules/programacao/handlers.ts`
+  - Responsavel por: validar leitura por `programacao-simples` ou `programacao-visualizacao`
+    e manter gravacoes restritas a `programacao-simples`.
 
 Constantes e configuracoes
 - `ROUTE_PAGE_KEYS` e `resolveDefaultPageAccess` em `src/lib/auth/authorization.ts`.

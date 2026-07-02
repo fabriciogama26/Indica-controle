@@ -93,6 +93,7 @@ import {
 import {
   addTeamToProgramming,
   authorizeProgrammingAction,
+  authorizeProgrammingReadAction,
   copyProgramming,
   copyProgrammingToDates,
   resolveProjectCompletedProgrammingContext,
@@ -113,7 +114,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    const authorizationError = await authorizeProgrammingAction(resolution, "read");
+    const authorizationError = await authorizeProgrammingReadAction(resolution);
     if (authorizationError) return authorizationError;
 
     const historyProgrammingId = normalizeText(request.nextUrl.searchParams.get("historyProgrammingId"));

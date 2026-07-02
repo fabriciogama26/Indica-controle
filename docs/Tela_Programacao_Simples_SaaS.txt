@@ -1500,9 +1500,13 @@ Atualizacao 2026-06-13 - Etapa 1 de autorizacao server-side
     tenant, usuario e role obtido da sessao autenticada.
   - `authorizeProgrammingAction`: adapta a negacao do helper para a resposta HTTP da
     Programacao.
-  - `PROGRAMMING_PAGE_KEY`: fixa a chave `programacao-simples` no servidor.
+  - `authorizeProgrammingReadAction`: aceita leitura por `programacao-simples/read`
+    ou `programacao-visualizacao/read`.
+  - `PROGRAMMING_PAGE_KEY`: fixa a chave de cadastro `programacao-simples` no servidor.
+  - `PROGRAMMING_VISUALIZATION_PAGE_KEY`: fixa a chave de consulta
+    `programacao-visualizacao` para os GETs compartilhados.
   - Handlers protegidos:
-    - `GET`: `read`;
+    - `GET`: `read` por `programacao-simples` ou `programacao-visualizacao`;
     - cadastro individual, lote e copias: `create`;
     - `PUT`, adiamento e Estado Trabalho: `update`;
     - cancelamento: `cancel`.
@@ -1511,6 +1515,9 @@ Atualizacao 2026-06-13 - Etapa 1 de autorizacao server-side
     que a rota verificasse a permissao da pagina.
   - Depois: o guard executa antes de qualquer SELECT/RPC de negocio; negacao retorna
     `403` e falha na consulta da matriz retorna `500`, sem liberar por fallback.
+  - Ajuste posterior em 2026-07: os GETs compartilhados passaram a aceitar a permissao
+    dedicada da tela `programacao-visualizacao`; as rotas de gravacao continuam
+    bloqueadas por `programacao-simples`.
   - Permissao individual explicita prevalece; quando ausente, o helper consulta a
     permissao do role. O bypass administrativo existente foi preservado.
 - Limitacao conhecida:
