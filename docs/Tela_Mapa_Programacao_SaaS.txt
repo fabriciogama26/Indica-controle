@@ -8,6 +8,7 @@ Visao geral
 - A tela indica obras nunca programadas, obras sem Estado Trabalho, obras pendentes/parciais e obras com ultima programacao cancelada ou adiada.
 - A tela indica equipes ativas sem programacao quando o periodo e informado.
 - A tela exibe o bloco `Prazos das Obras`, consolidado por SOB e data limite.
+- A tela exibe rastreio das transferencias de equipe entre programacoes.
 - Rota: `/mapa-programacao`.
 - Page key: `mapa-programacao`.
 - Acao server-side: `read`.
@@ -78,6 +79,7 @@ Filtros, auto-complete e listagem
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
   - Revisao de etapas em tabela propria, destacando obras com etapa cancelada/adiada e etapa ativa posterior.
   - Interrompidas com Estado concluido em tabela propria, destacando divergencia entre status operacional e Estado Trabalho.
+  - Rastreio de transferencias, exibindo equipe, origem, destino, datas, etapas e motivo.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
   - Equipes sem programacao
@@ -86,6 +88,7 @@ Filtros, auto-complete e listagem
   - CSV das obras do card aberto.
   - CSV da tabela dedicada de `Revisao de etapas`.
   - CSV da tabela dedicada de `Interrompidas com Estado concluido`.
+  - CSV do rastreio de transferencias.
   - CSV de equipes sem programacao quando houver periodo.
 - Prazos das Obras:
   - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
@@ -114,6 +117,8 @@ Boas praticas
 - `Revisao de etapas` nao renumera etapas e nao altera dados; apenas sinaliza que as etapas futuras dependem de revisao operacional.
 - Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284.
 - Programacao `ADIADA` ou `CANCELADA` com `Estado Trabalho = CONCLUIDO` e tratada como divergencia legada/importacao administrativa e aparece em `Interrompidas com Estado concluido`.
+- Programacao `TRANSFERIDA` e status interno de linha; nao entra como programacao ativa e nao entra no card `Canceladas/adiadas`.
+- O rastreio de transferencia vem de `project_programming_history` com `action_type = TRANSFER_TEAM` e limite de 100 eventos recentes.
 - Obras com divergencia `ADIADA/CANCELADA + CONCLUIDO` nao entram como concluidas no Mapa ate saneamento.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
 - `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
@@ -172,6 +177,24 @@ Atualizacao 2026-06
   - Todas as leituras usam o `tenant_id` autenticado.
   - A mudanca nao altera RLS, grants ou schema.
   - A rota continua protegida por `mapa-programacao/read`.
+
+Atualizacao 2026-07-02
+----------------------
+- Rastreio de transferencias adicionado ao Mapa de Programacao.
+- O endpoint `GET /api/mapa-programacao` carrega `project_programming_history` com `action_type = TRANSFER_TEAM`, ordenado por `created_at desc` e limitado a 100 registros.
+- A tela exibe tabela paginada com equipe, origem, destino, datas, etapas e motivo.
+- O CSV `mapa_programacao_transferencias_YYYY-MM-DD.csv` exporta o mesmo rastreio filtrado.
+- Comportamento antes/depois:
+  - Antes: a transferencia ficaria visivel apenas indiretamente nas linhas/historico da Programacao.
+  - Depois: o Mapa mostra explicitamente quem mudou, de onde saiu e para onde foi.
+- Impacto multi-tenant:
+  - O endpoint usa o `tenant_id` da sessao autenticada.
+  - A consulta de historico tem `.limit(100)` e nao faz leitura global entre tenants.
+- Arquivos alterados:
+  - `src/app/api/mapa-programacao/route.ts`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -238,6 +261,16 @@ Funcoes utilitarias relacionadas
   - Montam os dados do painel de prazos a partir da carteira filtrada.
 - `handleExportDeadlineModalCsv`
   - Exporta os prazos da janela selecionada em CSV.
+- `fetchTransferHistoryRows`
+  - Carrega os 100 eventos mais recentes de transferencia no historico operacional da Programacao.
+- `buildTransferEvents`
+  - Converte metadata `TRANSFER_TEAM` em origem/destino legiveis para a tela.
+- `filteredTransferEvents`
+  - Aplica filtros locais de obra, equipe e centro de servico sobre o rastreio.
+- `TransferTable`
+  - Renderiza a tabela paginada de transferencias.
+- `exportTransferEvents`
+  - Exporta o rastreio de transferencias em CSV.
 - `ProgrammingDeadlinePanel` e `ProgrammingDeadlineModal`
   - Componentes reaproveitados da Programacao Simples para renderizar o painel e o modal de prazos no Mapa.
 
@@ -251,6 +284,7 @@ Servicos e integracoes externas
   - `team_types`
   - `people`
   - `service_centers`
+  - `project_programming_history`
 
 Ajuda contextual
 - Use os cards de Estado Trabalho para acompanhar obras cujo ultimo Estado Trabalho valido ainda nao concluiu a execucao.

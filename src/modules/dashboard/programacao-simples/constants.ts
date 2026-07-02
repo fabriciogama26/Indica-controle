@@ -56,7 +56,7 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   activities: "Atividades",
 };
 
-export const HISTORY_ALLOWED_ACTIONS = new Set(["UPDATE", "RESCHEDULE", "ADIADA", "CANCELADA"]);
+export const HISTORY_ALLOWED_ACTIONS = new Set(["UPDATE", "RESCHEDULE", "ADIADA", "CANCELADA", "ADD_TEAM", "TRANSFER_TEAM"]);
 export const HISTORY_HIDDEN_FIELDS = new Set(["isActive", "cancellationReason", "canceledAt", "statusChangedAt"]);
 
 export const VALIDATION_FIELD_LABELS: Record<string, string> = {
@@ -88,4 +88,5 @@ export const ENEL_NOVO_OPERATIONAL_STATUS_LABELS: Record<ProgrammingStatus, stri
   ADIADA: "ADIADO",
   CANCELADA: "CANCELADO",
   ANTECIPADA: "ANTECIPADA",
+  TRANSFERIDA: "TRANSFERIDA",
 };

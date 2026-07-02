@@ -819,3 +819,10 @@ Observacao
 - Corrige regressao da migration 259 na RPC `save_project_asbuilt_measurement_order_batch_partial`.
 - Restaura o repasse de `serviceCoverageEndDate`/`service_coverage_end_date` para `save_project_asbuilt_measurement_order` no cadastro em massa de Medicao Asbuilt.
 - Preserva o limite de 500 medicoes por lote e os grants restritos a `authenticated`/`service_role`.
+
+286_transfer_programming_team.sql
+- Adiciona o status interno `TRANSFERIDA` em `project_programming`.
+- Recria a guarda de linhas interrompidas para manter `Estado Trabalho` em branco tambem em `TRANSFERIDA`.
+- Cria a RPC transacional `transfer_project_programming_team` para marcar a linha de origem como `TRANSFERIDA` e criar nova linha ativa na programacao destino.
+- Registra historico `TRANSFER_TEAM` com origem, destino, grupo, projeto, data, etapa e nova linha criada.
+- Mantem EXECUTE restrito a `service_role`.

@@ -19,12 +19,15 @@ import {
   ProgrammingPostponeModal,
   ProgrammingReprogramModal,
   ProgrammingStageConflictModal,
+  ProgrammingTransferTeamModal,
   ProgrammingWeeklyCalendarPanel,
 } from "./components";
 import {
   addTeamToProgramming,
+  fetchProgrammingSnapshot,
   saveProgramming,
   saveProgrammingWorkCompletionStatus,
+  transferTeamToProgramming,
   validateProgrammingStageConflict,
 } from "./api";
 import {
@@ -164,6 +167,14 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const [addTeamTarget, setAddTeamTarget] = useState<ScheduleItem | null>(null);
   const [addTeamSelectedTeamId, setAddTeamSelectedTeamId] = useState("");
   const [isAddingTeam, setIsAddingTeam] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<ScheduleItem | null>(null);
+  const [transferDestinationId, setTransferDestinationId] = useState("");
+  const [transferFilterDate, setTransferFilterDate] = useState("");
+  const [transferFilterProjectSearch, setTransferFilterProjectSearch] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [transferDateSchedules, setTransferDateSchedules] = useState<ScheduleItem[]>([]);
+  const [isTransferringTeam, setIsTransferringTeam] = useState(false);
+  const [isLoadingTransferDestinations, setIsLoadingTransferDestinations] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
   const [isSavingWorkCompletionStatusFromModal, setIsSavingWorkCompletionStatusFromModal] = useState(false);
@@ -249,6 +260,12 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const addTeamProjectCode = addTeamTarget
     ? (projectMap.get(addTeamTarget.projectId)?.code ?? addTeamTarget.projectId)
     : "";
+  const transferProjectCode = transferTarget
+    ? (projectMap.get(transferTarget.projectId)?.code ?? transferTarget.projectId)
+    : "";
+  const transferTeamName = transferTarget
+    ? (teamMap.get(transferTarget.teamId)?.name ?? transferTarget.teamName ?? transferTarget.teamId)
+    : "";
   const reprogramProjectCode = reprogramTarget
     ? (projectMap.get(reprogramTarget.projectId)?.code ?? reprogramTarget.projectId)
     : "";
@@ -321,6 +338,67 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     return teams.filter((team) => !existingTeamIds.has(team.id));
   }, [addTeamTarget, schedules, teams]);
+  const transferDestinationOptions = useMemo(() => {
+    if (!transferTarget) {
+      return [];
+    }
+
+    const search = transferFilterProjectSearch.trim().toLowerCase();
+    const destinationSourceSchedules = transferDateSchedules.length ? transferDateSchedules : schedules;
+
+    return destinationSourceSchedules
+      .filter((item) => {
+        const displayStatus = getDisplayProgrammingStatus(item);
+        if (!isActiveProgrammingStatus(displayStatus)) {
+          return false;
+        }
+
+        if (item.id === transferTarget.id) {
+          return false;
+        }
+
+        if (transferTarget.programmingGroupId && item.programmingGroupId === transferTarget.programmingGroupId) {
+          return false;
+        }
+
+        if (transferFilterDate && item.date !== transferFilterDate) {
+          return false;
+        }
+
+        if (item.programmingGroupId) {
+          const destinationAlreadyHasTeam = destinationSourceSchedules.some((candidate) => (
+            candidate.id !== transferTarget.id
+            && candidate.programmingGroupId === item.programmingGroupId
+            && candidate.teamId === transferTarget.teamId
+            && isActiveProgrammingStatus(getDisplayProgrammingStatus(candidate))
+          ));
+          if (destinationAlreadyHasTeam) {
+            return false;
+          }
+        }
+
+        if (search) {
+          const project = projectMap.get(item.projectId);
+          const searchable = [
+            project?.code,
+            project?.serviceName,
+            project?.city,
+            project?.base,
+          ].filter(Boolean).join(" ").toLowerCase();
+
+          if (!searchable.includes(search)) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((left, right) =>
+        left.date.localeCompare(right.date)
+        || (projectMap.get(left.projectId)?.code ?? left.projectId).localeCompare(projectMap.get(right.projectId)?.code ?? right.projectId)
+        || left.startTime.localeCompare(right.startTime),
+      );
+  }, [projectMap, schedules, transferDateSchedules, transferFilterDate, transferFilterProjectSearch, transferTarget]);
   const originalEditingTeamName = editingTeamId ? teamMap.get(editingTeamId)?.name ?? editingTeamId : "";
   const selectedEditingTeamId = isEditing ? form.teamIds[0] ?? "" : "";
   const selectedEditingTeamName = selectedEditingTeamId ? teamMap.get(selectedEditingTeamId)?.name ?? selectedEditingTeamId : "";
@@ -343,6 +421,45 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     setFeedback,
     onError: logError,
   });
+
+  useEffect(() => {
+    if (!transferTarget || !transferFilterDate || !accessToken) {
+      setTransferDateSchedules([]);
+      setIsLoadingTransferDestinations(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsLoadingTransferDestinations(true);
+
+    fetchProgrammingSnapshot({
+      accessToken,
+      startDate: transferFilterDate,
+      endDate: transferFilterDate,
+      includeMeta: false,
+    })
+      .then((data) => {
+        if (!isCurrent) return;
+        setTransferDateSchedules(data.schedules ?? []);
+      })
+      .catch((error) => {
+        if (!isCurrent) return;
+        setTransferDateSchedules([]);
+        void logError("Falha ao carregar destinos da transferencia.", error, {
+          operation: "load_transfer_destinations",
+          transferFilterDate,
+        });
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsLoadingTransferDestinations(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, logError, transferFilterDate, transferTarget]);
 
   const {
     historyTarget,
@@ -1278,6 +1395,142 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
       });
     } finally {
       setIsAddingTeam(false);
+    }
+  }
+
+  function openTransferTeamModal(schedule: ScheduleItem) {
+    const displayStatus = getDisplayProgrammingStatus(schedule);
+    if (!isActiveProgrammingStatus(displayStatus)) {
+      setFeedback({
+        type: "error",
+        message: "Somente programacoes ativas podem transferir equipe.",
+      });
+      return;
+    }
+
+    setTransferTarget(schedule);
+    setTransferFilterDate(schedule.date);
+    setTransferFilterProjectSearch("");
+    setTransferDestinationId("");
+    setTransferReason("");
+    setTransferDateSchedules([]);
+    setFeedback(null);
+  }
+
+  function closeTransferTeamModal() {
+    if (isTransferringTeam) {
+      return;
+    }
+
+    setTransferTarget(null);
+    setTransferDestinationId("");
+    setTransferFilterDate("");
+    setTransferFilterProjectSearch("");
+    setTransferReason("");
+    setTransferDateSchedules([]);
+    setIsLoadingTransferDestinations(false);
+  }
+
+  async function confirmTransferTeam() {
+    if (!transferTarget || !transferDestinationId) {
+      setFeedback({ type: "error", message: "Selecione a programacao destino." });
+      return;
+    }
+
+    const destination = schedules.find((item) => item.id === transferDestinationId) ?? null;
+    if (!destination) {
+      setFeedback({ type: "error", message: "Programacao destino nao encontrada no snapshot atual." });
+      return;
+    }
+
+    if (transferReason.trim().length < 10) {
+      setFeedback({ type: "error", message: "O motivo da transferencia deve ter ao menos 10 caracteres." });
+      return;
+    }
+
+    const initialAccessToken = await resolveLatestAccessToken();
+    if (!initialAccessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para transferir equipe." });
+      return;
+    }
+
+    setIsTransferringTeam(true);
+    setFeedback(null);
+
+    try {
+      const executeTransferRequest = (token: string) => transferTeamToProgramming({
+        accessToken: token,
+        sourceProgrammingId: transferTarget.id,
+        destinationProgrammingId: destination.id,
+        expectedUpdatedAt: transferTarget.updatedAt,
+        destinationExpectedUpdatedAt: destination.updatedAt,
+        reason: transferReason,
+      });
+
+      let transferResult = await executeTransferRequest(initialAccessToken);
+      if (transferResult.status === 401) {
+        const refreshedAccessToken = await resolveLatestAccessToken();
+        if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
+          transferResult = await executeTransferRequest(refreshedAccessToken);
+        }
+      }
+
+      const { data } = transferResult;
+      if (!transferResult.ok || !data.success) {
+        const message = buildConflictFeedbackMessage(data, "Falha ao transferir equipe.");
+        setFeedback({ type: "error", message });
+        if (data.reason === "PROJECT_COMPLETED_REQUIRES_REOPEN") {
+          openProjectCompletedAlertModal({
+            title: "Projeto concluido",
+            payload: data,
+          });
+        } else {
+          openAlertModal("Falha ao transferir equipe", message, buildConflictAlertDetails(data));
+        }
+        await logError("Falha ao transferir equipe.", undefined, {
+          operation: "transfer_team_programming",
+          sourceProgrammingId: transferTarget.id,
+          destinationProgrammingId: destination.id,
+          responseStatus: transferResult.status,
+          responseReason: data.reason ?? null,
+          responseDetail: data.detail ?? null,
+        });
+        return;
+      }
+
+      const successMessage = data.message ?? "Equipe transferida com sucesso.";
+      setTransferTarget(null);
+      setTransferDestinationId("");
+      setTransferFilterDate("");
+      setTransferFilterProjectSearch("");
+      setTransferReason("");
+      setFeedback({ type: "success", message: successMessage });
+
+      try {
+        const boardData = await fetchBoardSnapshot();
+        if (boardData) {
+          applyBoardSnapshot(boardData);
+        }
+      } catch (refreshError) {
+        await logError("Equipe transferida, mas houve falha ao atualizar a visualizacao.", refreshError, {
+          operation: "refresh_after_transfer_team_programming",
+          sourceProgrammingId: transferTarget.id,
+          destinationProgrammingId: destination.id,
+        });
+        setFeedback({
+          type: "success",
+          message: `${successMessage} Programacao salva com sucesso, mas houve falha ao atualizar a visualizacao.`,
+        });
+      }
+    } catch (error) {
+      setFeedback({ type: "error", message: "Falha ao transferir equipe." });
+      await logError("Falha ao transferir equipe.", error, {
+        operation: "transfer_team_programming",
+        sourceProgrammingId: transferTarget.id,
+        destinationProgrammingId: transferDestinationId,
+      });
+    } finally {
+      setIsTransferringTeam(false);
     }
   }
 
@@ -2234,6 +2487,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
               <option value="ADIADA">Adiada</option>
               <option value="CANCELADA">Cancelada</option>
               <option value="ANTECIPADA">Antecipada</option>
+              <option value="TRANSFERIDA">Transferida</option>
             </select>
           </label>
           <label className={styles.field}>
@@ -2464,6 +2718,36 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                               <button
                                 type="button"
                                 className={`${styles.actionButton} ${styles.actionReprogram}`}
+                                onClick={() => openTransferTeamModal(schedule)}
+                                title="Transferir equipe"
+                                aria-label={`Transferir equipe da programacao ${project?.code ?? schedule.id}`}
+                                disabled={!isActiveProgrammingStatus(displayStatus)}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path
+                                    d="M6 7h10.5M13.5 4l3 3-3 3"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <path
+                                    d="M18 17H7.5M10.5 14l-3 3 3 3"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <path
+                                    d="M8.5 11.5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0ZM20.5 12.5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.actionButton} ${styles.actionReprogram}`}
                                 onClick={() => openReprogramModal(schedule)}
                                 title="Reprogramar"
                                 aria-label={`Reprogramar programacao ${project?.code ?? schedule.id}`}
@@ -2663,6 +2947,30 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         onClose={closeAddTeamModal}
         onConfirm={() => void confirmAddTeam()}
         onTeamChange={setAddTeamSelectedTeamId}
+      />
+      <ProgrammingTransferTeamModal
+        target={transferTarget}
+        projectCode={transferProjectCode}
+        teamName={transferTeamName}
+        destinationOptions={transferDestinationOptions}
+        destinationProjectMap={projectMap}
+        destinationTeamMap={teamMap}
+        selectedDestinationId={transferDestinationId}
+        filterDate={transferFilterDate}
+        filterProjectSearch={transferFilterProjectSearch}
+        reason={transferReason}
+        isSubmitting={isTransferringTeam}
+        isLoadingDestinations={isLoadingTransferDestinations}
+        onClose={closeTransferTeamModal}
+        onConfirm={() => void confirmTransferTeam()}
+        onDestinationChange={setTransferDestinationId}
+        onFilterDateChange={(value) => {
+          setTransferFilterDate(value);
+          setTransferDestinationId("");
+          setTransferDateSchedules([]);
+        }}
+        onFilterProjectSearchChange={setTransferFilterProjectSearch}
+        onReasonChange={setTransferReason}
       />
       <ProgrammingCancelModal
         target={cancelTarget}

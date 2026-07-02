@@ -12,6 +12,7 @@ import type {
   ProgrammingSgdTypeRow,
   SaveProgrammingPayload,
   SaveProgrammingRpcResult,
+  TransferTeamProgrammingRpcResult,
 } from "./types";
 import { isMissingRpcFunctionError, normalizeText } from "./normalizers";
 
@@ -80,6 +81,68 @@ export async function copyProgrammingToDatesViaRpc(params: {
       : [],
     sourceCount: Number(result.source_count ?? 0),
     message: result.message ?? "Programacao copiada com sucesso.",
+  } as const;
+}
+
+export async function transferTeamProgrammingViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  sourceProgrammingId: string;
+  destinationProgrammingId: string;
+  expectedUpdatedAt: string;
+  destinationExpectedUpdatedAt: string;
+  reason: string;
+}) {
+  const rpcName = "transfer_project_programming_team";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_source_programming_id: params.sourceProgrammingId,
+    p_destination_programming_id: params.destinationProgrammingId,
+    p_expected_updated_at: params.expectedUpdatedAt,
+    p_destination_expected_updated_at: params.destinationExpectedUpdatedAt,
+    p_reason: params.reason,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "TRANSFER_TEAM_RPC_NOT_AVAILABLE",
+        message: "Seu ambiente ainda nao suporta transferencia de equipe na Programacao. Aplique a migration 286.",
+      } as const;
+    }
+
+    return {
+      ok: false,
+      status: 500,
+      reason: "TRANSFER_TEAM_RPC_FAILED",
+      message: error.message
+        ? `Falha ao transferir equipe via RPC: ${error.message}`
+        : "Falha ao transferir equipe via RPC.",
+    } as const;
+  }
+
+  const result = (data ?? {}) as TransferTeamProgrammingRpcResult;
+  if (result.success !== true || !result.new_programming_id) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      reason: result.reason ?? null,
+      detail: result.detail ?? null,
+      message: result.message ?? "Falha ao transferir equipe.",
+    } as const;
+  }
+
+  return {
+    ok: true,
+    sourceProgrammingId: normalizeText(result.source_programming_id) || params.sourceProgrammingId,
+    destinationProgrammingId: normalizeText(result.destination_programming_id) || params.destinationProgrammingId,
+    newProgrammingId: normalizeText(result.new_programming_id),
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Equipe transferida com sucesso.",
   } as const;
 }
 

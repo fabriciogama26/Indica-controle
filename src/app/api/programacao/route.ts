@@ -100,6 +100,7 @@ import {
   saveProgramming,
   saveProgrammingBatch,
   saveProgrammingWorkCompletionStatus,
+  transferTeamToProgramming,
 } from "@/server/modules/programacao/handlers";
 
 
@@ -501,6 +502,16 @@ export async function POST(request: NextRequest) {
     });
 
     return addTeamToProgramming(clonedRequest);
+  }
+
+  if (normalizedAction === "TRANSFER_TEAM") {
+    const clonedRequest = new NextRequest(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(body),
+    });
+
+    return transferTeamToProgramming(clonedRequest);
   }
 
   if (normalizedAction === "BATCH_CREATE") {

@@ -20,6 +20,8 @@ import type {
   ProjectConflictLookupRow,
   SaveProgrammingPayload,
   TeamConflictLookupRow,
+  TransferTeamProgrammingPayload,
+  TransferTeamProgrammingResponse,
   WorkCompletionStatusRpcResult,
 } from "./types";
 import {
@@ -31,6 +33,7 @@ import {
   resolveProgrammingWorkCompletionStatus,
   saveProgrammingBatchFullViaRpc,
   saveProgrammingFullViaRpc,
+  transferTeamProgrammingViaRpc,
 } from "./rpc";
 import {
   fetchProgrammingActivitiesForSave,
@@ -1036,6 +1039,133 @@ export async function addTeamToProgramming(request: NextRequest) {
     addedCount: 1,
     message: `Equipe ${targetTeamName} adicionada a programacao.`,
   } satisfies AddTeamToProgrammingResponse);
+}
+
+export async function transferTeamToProgramming(request: NextRequest) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para transferir equipe da programacao.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizeProgrammingAction(resolution, "update");
+  if (authorizationError) return authorizationError;
+
+  const payload = (await request.json().catch(() => null)) as TransferTeamProgrammingPayload | null;
+  const sourceProgrammingId = normalizeText(payload?.sourceProgrammingId);
+  const destinationProgrammingId = normalizeText(payload?.destinationProgrammingId);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+  const destinationExpectedUpdatedAt = normalizeText(payload?.destinationExpectedUpdatedAt);
+  const reason = normalizeNullableText(payload?.reason);
+
+  if (!sourceProgrammingId || !destinationProgrammingId) {
+    return NextResponse.json(
+      { success: false, message: "Informe a programacao de origem e a programacao destino." } satisfies TransferTeamProgrammingResponse,
+      { status: 400 },
+    );
+  }
+
+  if (sourceProgrammingId === destinationProgrammingId) {
+    return NextResponse.json(
+      { success: false, reason: "SAME_PROGRAMMING_TRANSFER", message: "A programacao destino deve ser diferente da origem." } satisfies TransferTeamProgrammingResponse,
+      { status: 400 },
+    );
+  }
+
+  if (!expectedUpdatedAt || !destinationExpectedUpdatedAt) {
+    return NextResponse.json(
+      { success: false, message: "Atualize a lista antes de transferir equipe." } satisfies TransferTeamProgrammingResponse,
+      { status: 409 },
+    );
+  }
+
+  if (!reason || reason.trim().length < 10) {
+    return NextResponse.json(
+      { success: false, message: "O motivo da transferencia deve ter ao menos 10 caracteres." } satisfies TransferTeamProgrammingResponse,
+      { status: 400 },
+    );
+  }
+
+  const [source, destination] = await Promise.all([
+    fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, sourceProgrammingId),
+    fetchProgrammingById(resolution.supabase, resolution.appUser.tenant_id, destinationProgrammingId),
+  ]);
+
+  if (!source) {
+    return NextResponse.json(
+      { success: false, message: "Programacao de origem nao encontrada." } satisfies TransferTeamProgrammingResponse,
+      { status: 404 },
+    );
+  }
+
+  if (!destination) {
+    return NextResponse.json(
+      { success: false, message: "Programacao destino nao encontrada." } satisfies TransferTeamProgrammingResponse,
+      { status: 404 },
+    );
+  }
+
+  const completedProjectContext = await resolveProjectCompletedProgrammingContext({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId: destination.project_id,
+  });
+
+  if (completedProjectContext) {
+    return NextResponse.json(
+      buildProjectCompletedConflictResponse({
+        message:
+          "Este projeto esta com Estado Trabalho CONCLUIDO. Antes de transferir equipe para esta programacao, altere o Estado Trabalho para diferente de CONCLUIDO.",
+        context: completedProjectContext,
+      }),
+      { status: 409 },
+    );
+  }
+
+  const transferResult = await transferTeamProgrammingViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    sourceProgrammingId,
+    destinationProgrammingId,
+    expectedUpdatedAt,
+    destinationExpectedUpdatedAt,
+    reason,
+  });
+
+  if (!transferResult.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: transferResult.reason ?? null,
+        detail: "detail" in transferResult ? transferResult.detail ?? null : null,
+        message: transferResult.message ?? "Falha ao transferir equipe.",
+      } satisfies TransferTeamProgrammingResponse,
+      { status: transferResult.status },
+    );
+  }
+
+  const [updatedSourceSchedule, newSchedule] = await Promise.all([
+    fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, transferResult.sourceProgrammingId),
+    fetchProgrammingResponseItem(resolution.supabase, resolution.appUser.tenant_id, transferResult.newProgrammingId),
+  ]);
+
+  return NextResponse.json({
+    success: true,
+    id: transferResult.sourceProgrammingId,
+    newId: transferResult.newProgrammingId,
+    transferredCount: 1,
+    updatedAt: transferResult.updatedAt,
+    schedule: updatedSourceSchedule,
+    newSchedule,
+    message: transferResult.message,
+  } satisfies TransferTeamProgrammingResponse & {
+    schedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>>;
+    newSchedule: Awaited<ReturnType<typeof fetchProgrammingResponseItem>>;
+  });
 }
 
 export async function saveProgrammingBatch(request: NextRequest) {

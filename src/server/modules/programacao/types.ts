@@ -105,7 +105,7 @@ export type ProgrammingRow = {
   id: string;
   project_id: string;
   team_id: string;
-  status: "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA";
+  status: "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA" | "TRANSFERIDA";
   execution_date: string;
   programming_group_id: string;
   period: "INTEGRAL" | "PARCIAL";
@@ -260,6 +260,15 @@ export type AddTeamToProgrammingPayload = {
   expectedUpdatedAt?: string;
 };
 
+export type TransferTeamProgrammingPayload = {
+  action?: "TRANSFER_TEAM";
+  sourceProgrammingId?: string;
+  destinationProgrammingId?: string;
+  expectedUpdatedAt?: string;
+  destinationExpectedUpdatedAt?: string;
+  reason?: string;
+};
+
 export type BatchCreateProgrammingPayload = {
   action?: "BATCH_CREATE";
   projectId?: string;
@@ -389,6 +398,29 @@ export type AddTeamToProgrammingResponse = {
   hasConflict?: boolean;
   highestStage?: number;
   teams?: ProgrammingStageValidationTeamSummary[];
+};
+
+export type TransferTeamProgrammingResponse = {
+  success?: boolean;
+  id?: string;
+  newId?: string | null;
+  transferredCount?: number;
+  updatedAt?: string | null;
+  message?: string;
+  reason?: string | null;
+  detail?: string | null;
+};
+
+export type TransferTeamProgrammingRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string | null;
+  detail?: string | null;
+  message?: string;
+  source_programming_id?: string;
+  destination_programming_id?: string;
+  new_programming_id?: string;
+  updated_at?: string;
 };
 
 export type BatchCreateProgrammingResponse = {

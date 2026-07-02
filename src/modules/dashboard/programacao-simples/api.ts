@@ -9,6 +9,7 @@ import type {
   SaveProgrammingResponse,
   StageValidationResponse,
   StageValidationTeamSummary,
+  TransferTeamProgrammingResponse,
 } from "./types";
 
 async function readJson<T>(response: Response) {
@@ -339,6 +340,37 @@ export async function addTeamToProgramming(params: {
     ok: response.ok,
     status: response.status,
     data: await readJson<AddTeamToProgrammingResponse>(response),
+  };
+}
+
+export async function transferTeamToProgramming(params: {
+  accessToken: string;
+  sourceProgrammingId: string;
+  destinationProgrammingId: string;
+  expectedUpdatedAt: string;
+  destinationExpectedUpdatedAt: string;
+  reason: string;
+}) {
+  const response = await fetch("/api/programacao", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(params.accessToken),
+    },
+    body: JSON.stringify({
+      action: "TRANSFER_TEAM",
+      sourceProgrammingId: params.sourceProgrammingId,
+      destinationProgrammingId: params.destinationProgrammingId,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+      destinationExpectedUpdatedAt: params.destinationExpectedUpdatedAt,
+      reason: params.reason,
+    }),
+  });
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data: await readJson<TransferTeamProgrammingResponse>(response),
   };
 }
 

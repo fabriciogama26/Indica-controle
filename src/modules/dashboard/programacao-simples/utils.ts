@@ -814,6 +814,9 @@ export function formatHistoryAction(action: string) {
   if (normalized === "ANTECIPADA") {
     return "Encerramento antecipado";
   }
+  if (normalized === "TRANSFER_TEAM") {
+    return "Transferencia de equipe";
+  }
   return action || "-";
 }
 
@@ -823,7 +826,7 @@ export function isWorkCompleted(workCompletionStatus: ScheduleItem["workCompleti
 }
 
 export function isInactiveProgrammingStatus(status: ProgrammingStatus) {
-  return status === "ADIADA" || status === "CANCELADA" || status === "ANTECIPADA";
+  return status === "ADIADA" || status === "CANCELADA" || status === "ANTECIPADA" || status === "TRANSFERIDA";
 }
 
 export function isActiveProgrammingStatus(status: ProgrammingStatus) {
