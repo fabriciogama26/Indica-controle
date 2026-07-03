@@ -66,6 +66,7 @@ Filtros, auto-complete e listagem
     - Quantidade mensal de operacoes realizadas por tipo
     - Cada `stock_transfers.operation_event_id` e contado uma unica vez no mes e tipo, mesmo quando possui varios materiais ou varias linhas do mesmo evento
     - O evento operacional e persistido por `tenant_id + data da movimentacao + equipe + projeto + status`
+    - A contagem da evolucao nao depende da hidratacao de `materials` quando nao ha filtro de material/tipo
     - O total de cada tipo e exibido diretamente acima da respectiva barra mensal
     - Nao soma quantidades de UMB diferentes no mesmo grafico
 - Cards:
@@ -118,7 +119,8 @@ Atualizacao 2026-07
   - Varias transferencias do mesmo contexto operacional podiam aparecer como varias operacoes.
 - Depois:
   - `stock_transfers.operation_event_id` passa a persistir o evento unico por `tenant_id + data + equipe + projeto + status`.
-  - A evolucao e o total do Dashboard Estoque contam `operation_event_id` distinto por mes e tipo.
+  - A evolucao e o total do Dashboard Estoque contam `operation_event_id` distinto por mes e tipo, a partir dos eventos de transferencia validos.
+  - A dispersao passa a contar operacoes por `operation_event_id`, evitando multiplicar varias transferencias do mesmo evento.
   - Quando algum registro ainda estiver sem `operation_event_id`, a API mantem fallback calculado por `data + equipe + projeto + status`.
 - Impacto multi-tenant:
   - O hash deterministico inclui `tenant_id`, evitando colisao funcional entre tenants.
@@ -146,8 +148,8 @@ Atualizacao 2026-06
   - A legenda fica em uma faixa acima do grafico.
   - A lista lateral exibe a UMB de cada material.
   - O controle e a regra de zoom foram removidos.
-  - Evolucao e total contam cada transferencia uma unica vez; Requisicao, Devolucao e Retorno de campo seguem a classificacao de `stock_transfer_team_operations`.
-  - A dispersao conta operacoes distintas por transferencia para cada material.
+  - Evolucao e total contam cada evento operacional uma unica vez; Requisicao, Devolucao e Retorno de campo seguem a classificacao de `stock_transfer_team_operations`.
+  - A dispersao conta operacoes distintas por `operation_event_id` para cada material.
   - A dispersao exibe cards por UMB com quantidade movimentada, alternando conforme o botao ativo `Requisicao` ou `Devolucao`.
   - A leitura dos itens de movimentacao passa a buscar `stock_transfer_items` e `materials` separadamente, evitando falha de relacionamento no carregamento do dashboard.
   - As leituras por listas de movimentacoes passam a usar lotes menores em filtros `.in(...)` e registram log tecnico quando `stock_transfer_items` falhar.
@@ -238,6 +240,7 @@ Funcoes utilitarias relacionadas
     - `buildAbcRows`
     - `buildEvolutionRows`
     - `buildFallbackOperationEventId`
+    - `OperationEventAggregate`
     - `buildScatterUnitSummary`
     - `buildScatterRows`
 - Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`

@@ -115,6 +115,12 @@ type MovementAggregate = {
   projectCode: string | null;
 };
 
+type OperationEventAggregate = {
+  operationEventId: string;
+  operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
+  entryDate: string;
+};
+
 type ScatterUnitSummary = {
   operationKind: "REQUISITION" | "RETURN";
   unit: string;
@@ -686,7 +692,7 @@ function buildAbcRows(items: MaterialAggregate[], mode: "value" | "quantity" = "
   }));
 }
 
-function buildEvolutionRows(movements: MovementAggregate[], startDate: string, endDate: string) {
+function buildEvolutionRows(events: OperationEventAggregate[], startDate: string, endDate: string) {
   const keys = new Set<string>();
   let current = new Date(`${startDate.slice(0, 7)}-01T00:00:00.000Z`);
   const end = new Date(`${endDate.slice(0, 7)}-01T00:00:00.000Z`);
@@ -703,19 +709,19 @@ function buildEvolutionRows(movements: MovementAggregate[], startDate: string, e
   );
 
   const countedOperations = new Set<string>();
-  for (const movement of movements) {
-    const key = monthKey(movement.entryDate);
+  for (const event of events) {
+    const key = monthKey(event.entryDate);
     const row = map.get(key);
     if (!row) continue;
-    const operationKey = `${key}:${movement.operationKind}:${movement.operationEventId}`;
+    const operationKey = `${key}:${event.operationKind}:${event.operationEventId}`;
     if (countedOperations.has(operationKey)) continue;
     countedOperations.add(operationKey);
-    if (movement.operationKind === "ENTRY") row.entry += 1;
-    if (movement.operationKind === "EXIT") row.exit += 1;
-    if (movement.operationKind === "TRANSFER") row.transfer += 1;
-    if (movement.operationKind === "REQUISITION") row.requisition += 1;
-    if (movement.operationKind === "RETURN") row.return += 1;
-    if (movement.operationKind === "FIELD_RETURN") row.fieldReturn += 1;
+    if (event.operationKind === "ENTRY") row.entry += 1;
+    if (event.operationKind === "EXIT") row.exit += 1;
+    if (event.operationKind === "TRANSFER") row.transfer += 1;
+    if (event.operationKind === "REQUISITION") row.requisition += 1;
+    if (event.operationKind === "RETURN") row.return += 1;
+    if (event.operationKind === "FIELD_RETURN") row.fieldReturn += 1;
   }
 
   return Array.from(map.values()).sort((left, right) => left.period.localeCompare(right.period));
@@ -750,7 +756,7 @@ function buildScatterRows(movements: MovementAggregate[], balanceByMaterial: Map
     };
 
     current.quantity += movement.quantity;
-    current.operationIds.add(movement.transferId);
+    current.operationIds.add(movement.operationEventId);
     if (movement.projectId) current.projectIds.add(movement.projectId);
     map.set(key, current);
   }
@@ -789,7 +795,7 @@ function buildScatterUnitSummary(movements: MovementAggregate[]) {
 
     current.quantity += movement.quantity;
     current.materialIds.add(movement.materialId);
-    current.operationIds.add(movement.transferId);
+    current.operationIds.add(movement.operationEventId);
     map.set(key, current);
   }
 
@@ -860,6 +866,37 @@ export async function GET(request: NextRequest) {
     const teamIds = Array.from(new Set(teamOperations.map((operation) => operation.team_id).filter(Boolean)));
     const teams = await loadTeams({ context, teamIds });
     const teamOperationByTransfer = new Map(teamOperations.map((operation) => [operation.transfer_id, operation]));
+
+    const hasMovementMaterialFilter = Boolean(materialCode || materialType);
+    const countableTransferIds = new Set<string>();
+    for (const item of items) {
+      if (reversals.reversedItemIds.has(item.id) || reversals.reversalItemIds.has(item.id)) continue;
+      if (hasMovementMaterialFilter && !movementMaterials.has(item.material_id)) continue;
+      countableTransferIds.add(item.stock_transfer_id);
+    }
+
+    const operationEvents: OperationEventAggregate[] = [];
+    for (const transfer of relevantTransfers) {
+      if (reversals.reversedTransferIds.has(transfer.id) || reversals.reversalTransferIds.has(transfer.id)) continue;
+      if (!countableTransferIds.has(transfer.id)) continue;
+
+      const teamOperation = teamOperationByTransfer.get(transfer.id) ?? null;
+      if (teamId && teamOperation?.team_id !== teamId) continue;
+      const team = teamOperation?.team_id ? teams.get(teamOperation.team_id) ?? null : null;
+      const operationKind = resolveOperationKind({ transfer, teamOperation, team });
+      const operationEventId = transfer.operation_event_id ?? buildFallbackOperationEventId({
+        entryDate: transfer.entry_date,
+        teamId: teamOperation?.team_id ?? null,
+        projectId: transfer.project_id,
+        operationKind,
+      });
+
+      operationEvents.push({
+        operationEventId,
+        operationKind,
+        entryDate: transfer.entry_date,
+      });
+    }
 
     const movements: MovementAggregate[] = [];
     for (const item of items) {
@@ -949,7 +986,7 @@ export async function GET(request: NextRequest) {
     const totalEstimatedValue = materials.reduce((sum, item) => sum + item.estimatedValue, 0);
     const criticalCount = materials.filter((item) => item.balanceQuantity <= criticalQty).length;
     const zeroCount = materials.filter((item) => item.balanceQuantity <= 0).length;
-    const movementCount = new Set(movements.map((movement) => movement.operationEventId)).size;
+    const movementCount = new Set(operationEvents.map((event) => event.operationEventId)).size;
     const totalMovementQuantity = movements.reduce((sum, movement) => sum + movement.quantity, 0);
 
     return NextResponse.json({
@@ -983,7 +1020,7 @@ export async function GET(request: NextRequest) {
       idleBuckets: buildIdleBuckets(materials),
       abcRows: buildAbcRows(materials),
       abcQuantityRows: buildAbcRows(materials, "quantity"),
-      movementEvolution: buildEvolutionRows(movements, startDate, endDate),
+      movementEvolution: buildEvolutionRows(operationEvents, startDate, endDate),
       scatterSummaryByUnit: buildScatterUnitSummary(movements),
       scatter: buildScatterRows(movements, balanceByMaterial),
     });
