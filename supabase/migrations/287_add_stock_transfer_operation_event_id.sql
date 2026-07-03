@@ -89,7 +89,12 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+declare
+  v_previous_internal_update text;
 begin
+  v_previous_internal_update := current_setting('app.stock_transfer_internal_update', true);
+  perform set_config('app.stock_transfer_internal_update', 'true', true);
+
   if tg_op = 'DELETE' then
     update public.stock_transfers transfer
     set operation_event_id = public.build_stock_transfer_operation_event_id(
@@ -102,6 +107,7 @@ begin
     where transfer.tenant_id = old.tenant_id
       and transfer.id = old.transfer_id;
 
+    perform set_config('app.stock_transfer_internal_update', coalesce(v_previous_internal_update, 'false'), true);
     return old;
   end if;
 
@@ -116,6 +122,7 @@ begin
   where transfer.tenant_id = new.tenant_id
     and transfer.id = new.transfer_id;
 
+  perform set_config('app.stock_transfer_internal_update', coalesce(v_previous_internal_update, 'false'), true);
   return new;
 end;
 $$;
@@ -133,6 +140,8 @@ after insert or update of tenant_id, transfer_id, team_id, operation_kind or del
 on public.stock_transfer_team_operations
 for each row
 execute function public.sync_team_stock_operation_event_id();
+
+select set_config('app.stock_transfer_internal_update', 'true', true);
 
 with resolved_events as (
   select
@@ -154,6 +163,8 @@ set operation_event_id = resolved_events.operation_event_id
 from resolved_events
 where transfer.id = resolved_events.id
   and transfer.operation_event_id is distinct from resolved_events.operation_event_id;
+
+select set_config('app.stock_transfer_internal_update', 'false', true);
 
 revoke all on function public.build_stock_transfer_operation_event_id(uuid, date, uuid, text, uuid) from public;
 revoke all on function public.build_stock_transfer_operation_event_id(uuid, date, uuid, text, uuid) from anon;
