@@ -713,6 +713,7 @@
 - [x] Reduzir lotes de filtros `.in(...)` do `Dashboard Estoque` para movimentacoes/estornos e registrar log tecnico quando `stock_transfer_items` falhar.
 - [x] Agrupar os cards de saldo por UMB do `Dashboard Estoque` em um bloco visual `Estoque`.
 - [x] Adicionar exportacao Excel (CSV) da tabela gerada na `Dispersao de materiais`, respeitando a operacao ativa `Requisicao` ou `Devolucao`.
+- [x] Persistir `stock_transfers.operation_event_id` como regra de negocio por `tenant_id + data + equipe + projeto + status` e ajustar a evolucao do `Dashboard Estoque` para contar eventos operacionais unicos.
 
 - [x] Corrigir Status execucao da Medicao para usar o ultimo Estado Trabalho por `Data + Projeto`, considerando Programacao do mesmo projeto com data menor ou igual a data da Medicao e desempate por `updated_at`.
 - [x] Corrigir graficos do Dashboard Medicao para consolidar `Concluidos`, `Parciais` e `Pendencias` pelo Estado Trabalho vigente em `Data + Projeto`, sem aplicar estados futuros em ciclos passados.
