@@ -130,6 +130,7 @@ type ScatterUnitSummary = {
 };
 
 const DASH_IN_FILTER_CHUNK_SIZE = 100;
+const DASH_TRANSFERS_MAX_ROWS = 20000;
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -338,18 +339,28 @@ async function loadTransfers(params: {
   startDate: string;
   endDate: string;
 }) {
-  const { data, error } = await params.context.supabase
-    .from("stock_transfers")
-    .select("id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at, operation_event_id")
-    .eq("tenant_id", params.context.appUser.tenant_id)
-    .gte("entry_date", params.startDate)
-    .lte("entry_date", params.endDate)
-    .order("entry_date", { ascending: true })
-    .limit(5000)
-    .returns<TransferRow[]>();
+  const rows: TransferRow[] = [];
+  const batchSize = 1000;
 
-  if (error) throw new Error("Falha ao carregar movimentacoes do dashboard.");
-  return data ?? [];
+  for (let offset = 0; offset < DASH_TRANSFERS_MAX_ROWS; offset += batchSize) {
+    const { data, error } = await params.context.supabase
+      .from("stock_transfers")
+      .select("id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at, operation_event_id")
+      .eq("tenant_id", params.context.appUser.tenant_id)
+      .gte("entry_date", params.startDate)
+      .lte("entry_date", params.endDate)
+      .order("entry_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + batchSize - 1)
+      .returns<TransferRow[]>();
+
+    if (error) throw new Error("Falha ao carregar movimentacoes do dashboard.");
+    rows.push(...(data ?? []));
+
+    if ((data ?? []).length < batchSize) break;
+  }
+
+  return rows;
 }
 
 async function loadTransferItems(params: {

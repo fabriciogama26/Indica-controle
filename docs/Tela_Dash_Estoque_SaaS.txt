@@ -104,6 +104,23 @@ Cancelamento e saldo
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
 
+Atualizacao 2026-07-03 (2) - Correcao de truncamento silencioso em loadTransfers
+---------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dash-estoque/route.ts`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - `loadTransfers` buscava `stock_transfers` do periodo com `.limit(5000)` em uma unica chamada.
+  - O Supabase/PostgREST deste projeto aplica um teto de 1000 linhas por resposta (`db-max-rows`), que sobrepoe silenciosamente qualquer `.limit()` maior pedido no codigo, sem retornar erro.
+  - Com `order("entry_date", { ascending: true })`, o corte em 1000 linhas descartava todo o restante do periodo a partir de um certo ponto (ex.: em 2026, os 1000 primeiros registros do ano paravam em 03/06, apagando o resto de junho e os meses seguintes de todas as agregacoes do Dashboard Estoque: evolucao, dispersao, etc.).
+  - Isso causava subcontagem severa (nao apenas para Requisicao) em qualquer mes cujos registros ficassem fora da janela das primeiras 1000 linhas do periodo filtrado.
+- Depois:
+  - `loadTransfers` passa a paginar de fato via `.range()` em lotes de 1000 (constante `DASH_TRANSFERS_MAX_ROWS = 20000`), ordenando por `entry_date, id` para paginacao estavel, seguindo o mesmo padrao ja usado em `src/app/api/app-users/search/route.ts`.
+  - Validado com consulta direta ao Supabase: 2026 tinha 1358 `stock_transfers` reais, mas a query anterior retornava apenas 1000; apos a correcao, os 1358 sao carregados e a contagem de Requisicao em 06/2026 sobe de 5 para 50 (05/2026, que ja estava dentro da janela de 1000 linhas, permanece em 71, confirmando que o calculo em si estava correto).
+- Impacto multi-tenant:
+  - Sem mudanca de schema/RLS; a paginacao mantem o filtro por `tenant_id` existente em cada pagina.
+
 Atualizacao 2026-07-03 - Correcao de subcontagem na evolucao de movimentacoes
 ------------------------------------------------------------------------------
 - Arquivos alterados:
