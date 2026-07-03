@@ -37,7 +37,6 @@ type BalanceRow = {
 
 type TransferRow = {
   id: string;
-  operation_event_id: string | null;
   movement_type: "ENTRY" | "EXIT" | "TRANSFER";
   from_stock_center_id: string;
   to_stock_center_id: string;
@@ -340,7 +339,7 @@ async function loadTransfers(params: {
 }) {
   const { data, error } = await params.context.supabase
     .from("stock_transfers")
-    .select("id, operation_event_id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at")
+    .select("id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at")
     .eq("tenant_id", params.context.appUser.tenant_id)
     .gte("entry_date", params.startDate)
     .lte("entry_date", params.endDate)
@@ -884,7 +883,7 @@ export async function GET(request: NextRequest) {
       if (teamId && teamOperation?.team_id !== teamId) continue;
       const team = teamOperation?.team_id ? teams.get(teamOperation.team_id) ?? null : null;
       const operationKind = resolveOperationKind({ transfer, teamOperation, team });
-      const operationEventId = transfer.operation_event_id ?? buildFallbackOperationEventId({
+      const operationEventId = buildFallbackOperationEventId({
         entryDate: transfer.entry_date,
         teamId: teamOperation?.team_id ?? null,
         projectId: transfer.project_id,
@@ -911,7 +910,7 @@ export async function GET(request: NextRequest) {
       if (teamId && teamOperation?.team_id !== teamId) continue;
       const team = teamOperation?.team_id ? teams.get(teamOperation.team_id) ?? null : null;
       const operationKind = resolveOperationKind({ transfer, teamOperation, team });
-      const operationEventId = transfer.operation_event_id ?? buildFallbackOperationEventId({
+      const operationEventId = buildFallbackOperationEventId({
         entryDate: transfer.entry_date,
         teamId: teamOperation?.team_id ?? null,
         projectId: transfer.project_id,

@@ -64,8 +64,8 @@ Filtros, auto-complete e listagem
     - Modo `Quantidade`: classificacao por quantidade em estoque
   - `Evolucao de movimentacoes`
     - Quantidade mensal de operacoes realizadas por tipo
-    - Cada `stock_transfers.operation_event_id` e contado uma unica vez no mes e tipo, mesmo quando possui varios materiais ou varias linhas do mesmo evento
-    - O evento operacional e persistido por `tenant_id + data da movimentacao + equipe + projeto + status`
+    - Cada combinacao `data da movimentacao + equipe + projeto + status` e contada uma unica vez no mes e tipo, mesmo quando possui varios materiais ou varias linhas do mesmo evento
+    - O evento operacional tambem e persistido em `stock_transfers.operation_event_id` por `tenant_id + data da movimentacao + equipe + projeto + status`
     - A contagem da evolucao nao depende da hidratacao de `materials` quando nao ha filtro de material/tipo
     - O total de cada tipo e exibido diretamente acima da respectiva barra mensal
     - Nao soma quantidades de UMB diferentes no mesmo grafico
@@ -86,8 +86,8 @@ Boas praticas
 - Registrar erros com `useErrorLogger("dash_estoque")`.
 - Manter `Centro de estoque` apenas como filtro, sem ranking por centro.
 - Aplicar filtros somente pelo botao `Filtrar`; alteracoes nos campos nao recarregam automaticamente a tela.
-- Para evolucao temporal, contar operacoes distintas por `operation_event_id`, sem usar a quantidade de itens ou transferencias como quantidade de operacoes.
-- `operation_event_id` representa a regra de negocio `tenant + data + equipe + projeto + status`.
+- Para evolucao temporal, contar operacoes distintas por `data + equipe + projeto + status`, sem usar a quantidade de itens ou transferencias como quantidade de operacoes.
+- `operation_event_id` persiste a mesma regra de negocio com `tenant + data + equipe + projeto + status`.
 - Excluir movimentacoes estornadas e movimentacoes de estorno dos agregados quando houver vinculo em `stock_transfer_reversals` ou `stock_transfer_item_reversals`.
 
 Cancelamento e saldo
@@ -119,9 +119,9 @@ Atualizacao 2026-07
   - Varias transferencias do mesmo contexto operacional podiam aparecer como varias operacoes.
 - Depois:
   - `stock_transfers.operation_event_id` passa a persistir o evento unico por `tenant_id + data + equipe + projeto + status`.
-  - A evolucao e o total do Dashboard Estoque contam `operation_event_id` distinto por mes e tipo, a partir dos eventos de transferencia validos.
-  - A dispersao passa a contar operacoes por `operation_event_id`, evitando multiplicar varias transferencias do mesmo evento.
-  - Quando algum registro ainda estiver sem `operation_event_id`, a API mantem fallback calculado por `data + equipe + projeto + status`.
+  - A evolucao e o total do Dashboard Estoque contam a chave `data + equipe + projeto + status` por mes e tipo, a partir dos eventos de transferencia validos.
+  - A dispersao passa a contar operacoes pela chave `data + equipe + projeto + status`, evitando multiplicar varias transferencias do mesmo evento.
+  - A API recalcula a chave visual por `data + equipe + projeto + status`, evitando depender de `operation_event_id` historico/stale.
 - Impacto multi-tenant:
   - O hash deterministico inclui `tenant_id`, evitando colisao funcional entre tenants.
   - A migration nao altera policies RLS; as consultas seguem filtradas pelo `tenant_id` autenticado.
@@ -149,7 +149,7 @@ Atualizacao 2026-06
   - A lista lateral exibe a UMB de cada material.
   - O controle e a regra de zoom foram removidos.
   - Evolucao e total contam cada evento operacional uma unica vez; Requisicao, Devolucao e Retorno de campo seguem a classificacao de `stock_transfer_team_operations`.
-  - A dispersao conta operacoes distintas por `operation_event_id` para cada material.
+  - A dispersao conta operacoes distintas pela chave `data + equipe + projeto + status` para cada material.
   - A dispersao exibe cards por UMB com quantidade movimentada, alternando conforme o botao ativo `Requisicao` ou `Devolucao`.
   - A leitura dos itens de movimentacao passa a buscar `stock_transfer_items` e `materials` separadamente, evitando falha de relacionamento no carregamento do dashboard.
   - As leituras por listas de movimentacoes passam a usar lotes menores em filtros `.in(...)` e registram log tecnico quando `stock_transfer_items` falhar.
@@ -330,4 +330,4 @@ Ajuda contextual
   - Antes: a Curva ABC era calculada apenas por valor estimado (`saldo x preco`).
   - Depois: a Curva ABC permite alternar entre valor estimado e quantidade em estoque.
   - Antes: a evolucao e o total podiam multiplicar uma operacao pela quantidade de materiais vinculados.
-  - Depois: `buildEvolutionRows` e o resumo usam `operation_event_id` distinto; a lista da dispersao mostra UMB, nao possui zoom e mantem a legenda fora da area plotada.
+  - Depois: `buildEvolutionRows` e o resumo usam a chave `data + equipe + projeto + status`; a lista da dispersao mostra UMB, nao possui zoom e mantem a legenda fora da area plotada.
