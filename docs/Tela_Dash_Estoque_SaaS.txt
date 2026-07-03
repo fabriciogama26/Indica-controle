@@ -104,6 +104,21 @@ Cancelamento e saldo
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
 
+Atualizacao 2026-07-03 - Correcao de subcontagem na evolucao de movimentacoes
+------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dash-estoque/route.ts`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+- Antes:
+  - A API ignorava `stock_transfers.operation_event_id` (persistido e mantido por trigger) e sempre recalculava a chave visual em runtime via `buildFallbackOperationEventId`.
+  - O recalculo usava o `operationKind` ja classificado (`resolveOperationKind`, que infere Requisicao/Devolucao por comparacao de `stock_center_id` quando `operation_kind` da equipe esta nulo) como status da chave, divergindo da formula persistida no banco (`coalesce(operation_kind da equipe, movement_type)`).
+  - Essa divergencia podia colapsar eventos operacionais distintos na mesma chave, subcontando tipos como Requisicao em determinados meses (ex.: 06/2026 exibia poucas unidades quando o esperado era 53).
+- Depois:
+  - A API volta a priorizar `transfer.operation_event_id` (persistido e sincronizado por trigger a cada insercao/alteracao de `stock_transfers` ou `stock_transfer_team_operations`); o recalculo em runtime (`buildFallbackOperationEventId`) so e usado como fallback quando a coluna estiver nula (registros sem backfill).
+  - O fallback passa a montar o status com a mesma regra do banco (`operation_kind` da equipe ou `movement_type`), eliminando a divergencia de formula em relacao a `build_stock_transfer_operation_event_id`.
+- Impacto multi-tenant:
+  - Sem mudanca de schema, migration ou politica RLS; a leitura de `operation_event_id` ja respeita o filtro por `tenant_id` existente em `loadTransfers`.
+
 Atualizacao 2026-07
 -------------------
 - Arquivos criados:
@@ -121,7 +136,6 @@ Atualizacao 2026-07
   - `stock_transfers.operation_event_id` passa a persistir o evento unico por `tenant_id + data + equipe + projeto + status`.
   - A evolucao e o total do Dashboard Estoque contam a chave `data + equipe + projeto + status` por mes e tipo, a partir dos eventos de transferencia validos.
   - A dispersao passa a contar operacoes pela chave `data + equipe + projeto + status`, evitando multiplicar varias transferencias do mesmo evento.
-  - A API recalcula a chave visual por `data + equipe + projeto + status`, evitando depender de `operation_event_id` historico/stale.
 - Impacto multi-tenant:
   - O hash deterministico inclui `tenant_id`, evitando colisao funcional entre tenants.
   - A migration nao altera policies RLS; as consultas seguem filtradas pelo `tenant_id` autenticado.
