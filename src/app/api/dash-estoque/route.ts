@@ -44,6 +44,7 @@ type TransferRow = {
   entry_date: string;
   updated_at: string | null;
   created_at: string;
+  operation_event_id: string | null;
 };
 
 type TransferItemRow = {
@@ -193,13 +194,13 @@ function buildFallbackOperationEventId(params: {
   entryDate: string;
   teamId: string | null;
   projectId: string | null;
-  operationKind: string;
+  status: string;
 }) {
   return [
     normalizeText(params.entryDate).slice(0, 10),
     params.teamId ?? "SEM_EQUIPE",
     params.projectId ?? "SEM_PROJETO",
-    normalizeCode(params.operationKind),
+    normalizeCode(params.status),
   ].join(":");
 }
 
@@ -339,7 +340,7 @@ async function loadTransfers(params: {
 }) {
   const { data, error } = await params.context.supabase
     .from("stock_transfers")
-    .select("id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at")
+    .select("id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at, operation_event_id")
     .eq("tenant_id", params.context.appUser.tenant_id)
     .gte("entry_date", params.startDate)
     .lte("entry_date", params.endDate)
@@ -883,11 +884,11 @@ export async function GET(request: NextRequest) {
       if (teamId && teamOperation?.team_id !== teamId) continue;
       const team = teamOperation?.team_id ? teams.get(teamOperation.team_id) ?? null : null;
       const operationKind = resolveOperationKind({ transfer, teamOperation, team });
-      const operationEventId = buildFallbackOperationEventId({
+      const operationEventId = transfer.operation_event_id ?? buildFallbackOperationEventId({
         entryDate: transfer.entry_date,
         teamId: teamOperation?.team_id ?? null,
         projectId: transfer.project_id,
-        operationKind,
+        status: teamOperation?.operation_kind ?? transfer.movement_type,
       });
 
       operationEvents.push({
@@ -910,11 +911,11 @@ export async function GET(request: NextRequest) {
       if (teamId && teamOperation?.team_id !== teamId) continue;
       const team = teamOperation?.team_id ? teams.get(teamOperation.team_id) ?? null : null;
       const operationKind = resolveOperationKind({ transfer, teamOperation, team });
-      const operationEventId = buildFallbackOperationEventId({
+      const operationEventId = transfer.operation_event_id ?? buildFallbackOperationEventId({
         entryDate: transfer.entry_date,
         teamId: teamOperation?.team_id ?? null,
         projectId: transfer.project_id,
-        operationKind,
+        status: teamOperation?.operation_kind ?? transfer.movement_type,
       });
       const movementStockCenterId = stockCenterIdSet.has(transfer.from_stock_center_id)
         ? transfer.from_stock_center_id
