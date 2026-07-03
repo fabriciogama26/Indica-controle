@@ -1,4 +1,4 @@
-- [x] [Programacao] Criar transferencia de equipe entre programacoes: status interno de linha `TRANSFERIDA`, RPC transacional `transfer_project_programming_team`, acao `Transferir equipe` na Programacao Simples, historico `TRANSFER_TEAM` e rastreio no Mapa de Programacao com exportacao CSV.
+- [x] [Programacao] Criar transferencia de equipe entre programacoes: status interno de linha `TRANSFERIDA`, RPC transacional `transfer_project_programming_team`, acao `Transferir equipe` na Programacao Simples, historico `TRANSFER_TEAM`, rastreio no Mapa de Programacao com exportacao CSV e exclusao de `TRANSFERIDA` das extracoes ENEL.
 - [x] [Programacao][Permissoes] Corrigir GETs compartilhados da Visualizacao Programacao para aceitar `programacao-visualizacao/read` ou `programacao-simples/read`, mantendo `POST`/`PUT`/`PATCH` restritos a `programacao-simples` e documentando a regra nas telas.
 - [x] [MedicaoAsbuilt] Corrigir regressao da migration 259 na importacao em massa: migration 285 recompila `save_project_asbuilt_measurement_order_batch_partial` para repassar `serviceCoverageEndDate` ao salvar cada ordem Asbuilt, preservando limite de 500 registros.
 - [x] [MedicaoAsbuilt] Padronizar cadastro em massa com Medicao/Faturamento: CSV aceita `;` ou `,` com aspas, aliases de cabecalho, limite de 5MB, modal atualizado com `servicos_considerados_ate` e erro server-side por coluna quando faltar data de corte.
@@ -713,6 +713,7 @@
 - [x] Reduzir lotes de filtros `.in(...)` do `Dashboard Estoque` para movimentacoes/estornos e registrar log tecnico quando `stock_transfer_items` falhar.
 - [x] Agrupar os cards de saldo por UMB do `Dashboard Estoque` em um bloco visual `Estoque`.
 - [x] Adicionar exportacao Excel (CSV) da tabela gerada na `Dispersao de materiais`, respeitando a operacao ativa `Requisicao` ou `Devolucao`.
+- [x] Persistir `stock_transfers.operation_event_id` como regra de negocio por `tenant_id + data + equipe + projeto + status` e ajustar a evolucao do `Dashboard Estoque` para contar eventos operacionais unicos.
 
 - [x] Corrigir Status execucao da Medicao para usar o ultimo Estado Trabalho por `Data + Projeto`, considerando Programacao do mesmo projeto com data menor ou igual a data da Medicao e desempate por `updated_at`.
 - [x] Corrigir graficos do Dashboard Medicao para consolidar `Concluidos`, `Parciais` e `Pendencias` pelo Estado Trabalho vigente em `Data + Projeto`, sem aplicar estados futuros em ciclos passados.

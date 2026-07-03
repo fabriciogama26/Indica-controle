@@ -218,7 +218,9 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
     foremanNames: Set<string>;
   }>();
 
-  for (const schedule of schedules) {
+  const exportSchedules = schedules.filter((schedule) => getDisplayProgrammingStatus(schedule) !== "TRANSFERIDA");
+
+  for (const schedule of exportSchedules) {
     const project = projectMap.get(schedule.projectId);
     const key = buildEnelNovoGroupKey(schedule, project);
     const current = groupedAccumulator.get(key) ?? {
@@ -411,6 +413,10 @@ function formatDecimalForEnelNovoNumber(value: number | string | null | undefine
 
 export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: ExportContext) {
   const exportSchedules = schedules.filter((schedule) => {
+    if (getDisplayProgrammingStatus(schedule) === "TRANSFERIDA") {
+      return false;
+    }
+
     const project = projectMap.get(schedule.projectId);
     const serviceType = String(project?.serviceType ?? "").trim().toUpperCase();
     return serviceType !== "EMERGENCIAL";

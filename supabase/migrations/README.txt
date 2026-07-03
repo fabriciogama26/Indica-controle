@@ -826,3 +826,10 @@ Observacao
 - Cria a RPC transacional `transfer_project_programming_team` para marcar a linha de origem como `TRANSFERIDA` e criar nova linha ativa na programacao destino.
 - Registra historico `TRANSFER_TEAM` com origem, destino, grupo, projeto, data, etapa e nova linha criada.
 - Mantem EXECUTE restrito a `service_role`.
+
+287_add_stock_transfer_operation_event_id.sql
+- Adiciona `stock_transfers.operation_event_id` como identificador deterministico do evento operacional.
+- Define a regra de negocio por `tenant_id + data da movimentacao + equipe + projeto + status`.
+- Cria triggers para manter o evento sincronizado em movimentacoes fisicas e operacoes de equipe.
+- Faz backfill dos eventos existentes e adiciona indice por `tenant_id + operation_event_id`.
+- Mantem funcoes auxiliares restritas e sem alteracao de policies RLS.

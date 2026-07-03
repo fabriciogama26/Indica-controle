@@ -301,6 +301,8 @@ Filtros, auto-complete e listagem
   - `Exportar Excel (CSV)` (CSV da lista filtrada)
   - `Extracao ENEL` (layout operacional ENEL)
   - `Extracao ENEL NOVO` (layout operacional novo)
+- As extrações `Extracao ENEL` e `Extracao ENEL NOVO` nao exportam linhas com status interno `TRANSFERIDA`.
+- O CSV comum da lista pode exibir `TRANSFERIDA`, pois ele serve para auditoria interna da tela.
 - Todos os botoes de exportacao da lista passam a ter trava de novo clique por `10` segundos para evitar exportacoes repetidas.
 - Mapeamentos ENEL:
   - Ordem de colunas segue exatamente o layout operacional solicitado para `ENEL excel` (incluindo `ENCARREGADO` apos `Estrutura` e `Mão de obra` no bloco final).
@@ -2891,6 +2893,7 @@ Atualizacao 2026-07-02 - Transferencia de equipe entre programacoes
   - A linha da equipe transferida vira `TRANSFERIDA`, inativa e com motivo/data/usuario.
   - O destino recebe nova linha ativa para a mesma equipe.
   - O historico registra `TRANSFER_TEAM` com origem, destino, grupo, projeto, data, etapa e nova linha criada.
+  - As linhas `TRANSFERIDA` nao entram nas extrações ENEL e ENEL NOVO.
 - Como validar:
   - Aplicar migration 286.
   - Abrir Programacao Simples e selecionar uma linha ativa de uma programacao com mais de uma equipe.

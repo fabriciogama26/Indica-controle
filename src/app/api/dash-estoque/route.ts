@@ -37,6 +37,7 @@ type BalanceRow = {
 
 type TransferRow = {
   id: string;
+  operation_event_id: string | null;
   movement_type: "ENTRY" | "EXIT" | "TRANSFER";
   from_stock_center_id: string;
   to_stock_center_id: string;
@@ -96,6 +97,7 @@ type MaterialAggregate = {
 
 type MovementAggregate = {
   transferId: string;
+  operationEventId: string;
   transferItemId: string;
   operationKind: "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
   materialId: string;
@@ -180,6 +182,20 @@ function monthKey(value: string) {
 function formatMonthLabel(value: string) {
   const [year, month] = value.split("-");
   return `${month}/${year}`;
+}
+
+function buildFallbackOperationEventId(params: {
+  entryDate: string;
+  teamId: string | null;
+  projectId: string | null;
+  operationKind: string;
+}) {
+  return [
+    normalizeText(params.entryDate).slice(0, 10),
+    params.teamId ?? "SEM_EQUIPE",
+    params.projectId ?? "SEM_PROJETO",
+    normalizeCode(params.operationKind),
+  ].join(":");
 }
 
 function chunk<T>(items: T[], size: number) {
@@ -318,7 +334,7 @@ async function loadTransfers(params: {
 }) {
   const { data, error } = await params.context.supabase
     .from("stock_transfers")
-    .select("id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at")
+    .select("id, operation_event_id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at")
     .eq("tenant_id", params.context.appUser.tenant_id)
     .gte("entry_date", params.startDate)
     .lte("entry_date", params.endDate)
@@ -691,7 +707,7 @@ function buildEvolutionRows(movements: MovementAggregate[], startDate: string, e
     const key = monthKey(movement.entryDate);
     const row = map.get(key);
     if (!row) continue;
-    const operationKey = `${key}:${movement.operationKind}:${movement.transferId}`;
+    const operationKey = `${key}:${movement.operationKind}:${movement.operationEventId}`;
     if (countedOperations.has(operationKey)) continue;
     countedOperations.add(operationKey);
     if (movement.operationKind === "ENTRY") row.entry += 1;
@@ -858,6 +874,12 @@ export async function GET(request: NextRequest) {
       if (teamId && teamOperation?.team_id !== teamId) continue;
       const team = teamOperation?.team_id ? teams.get(teamOperation.team_id) ?? null : null;
       const operationKind = resolveOperationKind({ transfer, teamOperation, team });
+      const operationEventId = transfer.operation_event_id ?? buildFallbackOperationEventId({
+        entryDate: transfer.entry_date,
+        teamId: teamOperation?.team_id ?? null,
+        projectId: transfer.project_id,
+        operationKind,
+      });
       const movementStockCenterId = stockCenterIdSet.has(transfer.from_stock_center_id)
         ? transfer.from_stock_center_id
         : stockCenterIdSet.has(transfer.to_stock_center_id)
@@ -866,6 +888,7 @@ export async function GET(request: NextRequest) {
 
       movements.push({
         transferId: transfer.id,
+        operationEventId,
         transferItemId: item.id,
         operationKind,
         materialId: item.material_id,
@@ -926,7 +949,7 @@ export async function GET(request: NextRequest) {
     const totalEstimatedValue = materials.reduce((sum, item) => sum + item.estimatedValue, 0);
     const criticalCount = materials.filter((item) => item.balanceQuantity <= criticalQty).length;
     const zeroCount = materials.filter((item) => item.balanceQuantity <= 0).length;
-    const movementCount = new Set(movements.map((movement) => movement.transferId)).size;
+    const movementCount = new Set(movements.map((movement) => movement.operationEventId)).size;
     const totalMovementQuantity = movements.reduce((sum, movement) => sum + movement.quantity, 0);
 
     return NextResponse.json({
