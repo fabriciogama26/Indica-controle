@@ -497,3 +497,10 @@ Atualizacao 2026-06-17 - Filtro de Situacao da equipe
 - Impacto multi-tenant:
   - A API continua usando `tenant_id = appUser.tenant_id` em todas as leituras.
   - Nao houve alteracao de schema, RLS, policies ou RPC.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`.
+- Funcoes/estado tocados: botoes de exportacao, `isExporting`.
+- Antes: botoes `Exportar lista (CSV)` e `Detalhes (CSV)` usavam botoes locais.
+- Depois: ambos usam `CsvExportButton`; apenas um modal compartilhado fica ativo por exportacao.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks/useAuth";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { notifyTeamCompositionUpdated } from "@/lib/events/teamComposition";
@@ -1236,8 +1237,22 @@ export function TeamCompositionPageView() {
             <span className={styles.tableHint}>Projeto filtrado: {activeFilterProject?.code ?? "Todos"}</span>
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.ghostButton} onClick={() => void exportListCsv()} disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}>{isExporting ? "Exportando..." : "Exportar lista (CSV)"}</button>
-            <button type="button" className={styles.ghostButton} onClick={() => void exportDetailedCsv()} disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}>Detalhes (CSV)</button>
+            <CsvExportButton
+              onClick={() => void exportListCsv()}
+              disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
+              isLoading={isExporting}
+              className={styles.ghostButton}
+              idleLabel="Exportar lista (CSV)"
+            />
+            <CsvExportButton
+              onClick={() => void exportDetailedCsv()}
+              disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
+              isLoading={isExporting}
+              className={styles.ghostButton}
+              idleLabel="Detalhes (CSV)"
+              loadingLabel="Gerando..."
+              showProgressModal={false}
+            />
           </div>
         </div>
         <div className={styles.tableWrapper}>

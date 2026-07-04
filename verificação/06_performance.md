@@ -260,3 +260,8 @@ Antes de abrir PR em qualquer tela ou API, responder:
 - [x] Rota de exportacao reaproveita paginacao de ate 500 registros por pagina, sem `.select("*")` novo e sem `.limit(50000)`.
 - [x] Resposta CSV acima de 100KB registra log `[EGRESS]`.
 - [x] Lacuna documentada: rota ainda reaproveita o pipeline paginado existente; proxima etapa pode extrair service/RPC dedicado para reduzir queries internas.
+
+## Verificacao desta entrega - 2026-07-04 - Modal compartilhado
+- [x] Mudanca posterior foi apenas de estado/modal em botoes de exportacao existentes.
+- [x] Nao foram adicionadas queries, endpoints, `.select("*")`, `.limit()` ou processamento extra de listas.
+- [x] Nao aplicavel: nenhuma alteracao de cache, paginacao ou filtro de banco.

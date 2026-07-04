@@ -249,3 +249,10 @@ Ajuda contextual
   - Ajuste de importacao: atividades salvas pelo cadastro em massa continuam vinculadas ao detalhe/edicao; se o banco estiver sem a coluna nova, a API usa leitura compativel ate a migration `178` ser aplicada.
 - Lacuna explicita:
   - A regra de calculo automatico para garantia de faturamento minimo nao foi implementada nesta etapa.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/faturamento/BillingPageView.tsx`.
+- Funcoes/estado tocados: botao `Detalhamento (CSV)`, `isExportingDetails`.
+- Antes: detalhamento usava botao local sem o modal padrao.
+- Depois: detalhamento usa `CsvExportButton`, herdando `ExportProgressModal`.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

@@ -634,3 +634,10 @@ Atualizacao 2026-06 - fiscalizacao cruzada com Programacao
   - escrita direta de authenticated foi removida no escopo auditado;
   - fallback ocorre apenas quando a assinatura da RPC estiver ausente.
 - Nenhuma policy RLS ou permissao de `DELETE` foi criada.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/projetos/ProjectsPageView.tsx`.
+- Funcoes/estado tocados: botoes de exportacao de lista, materiais previstos e atividades previstas; estados `isExporting*`.
+- Antes: exportacoes usavam botoes locais sem o modal padrao.
+- Depois: exportacoes usam `CsvExportButton`, herdando `ExportProgressModal`.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

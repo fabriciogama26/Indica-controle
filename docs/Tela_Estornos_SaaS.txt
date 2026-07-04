@@ -226,3 +226,9 @@ Ajuda contextual
   - Depois: `estornos` passa a existir em `app_pages`, `role_page_permissions`, `app_user_page_permissions`, `permissionCatalog` e `authorization.ts`.
   - Antes: a proposta inicial poderia incluir acao de estornar.
   - Depois: a tela ficou somente leitura, sem `POST`, sem RPC de reversao e sem alteracao de saldo.
+- Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+  - Arquivo alterado: `src/modules/dashboard/estornos/ReversalsPageView.tsx`.
+  - Funcoes/estado tocados: `exportRows`, `isExporting`.
+  - Antes: exportacao usava `CsvExportButton` sem estado de modal ativo.
+  - Depois: `exportRows` controla `isExporting`, exibindo `ExportProgressModal` pelo `CsvExportButton`.
+  - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

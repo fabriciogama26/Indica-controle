@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./TeamsPageView.module.css";
@@ -1134,14 +1135,12 @@ export function TeamsPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Equipes</h3>
-          <button
-            type="button"
-            className={styles.ghostButton}
+          <CsvExportButton
             onClick={() => void handleExportTeams()}
             disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
-          >
-            {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
-          </button>
+            isLoading={isExporting}
+            className={styles.ghostButton}
+          />
         </div>
 
         <div className={styles.tableWrapper}>

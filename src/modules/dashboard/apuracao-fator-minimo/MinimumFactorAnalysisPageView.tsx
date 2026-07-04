@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./MinimumFactorAnalysisPageView.module.css";
 
@@ -210,6 +211,7 @@ export function MinimumFactorAnalysisPageView() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [detailModal, setDetailModal] = useState<DetailModal | null>(null);
   const [lastExportAt, setLastExportAt] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
   const [resultPage, setResultPage] = useState(1);
 
   const accessToken = session?.accessToken ?? "";
@@ -355,7 +357,7 @@ export function MinimumFactorAnalysisPageView() {
     }
   }
 
-  function exportRows() {
+  async function exportRows() {
     if (!rows.length) {
       setFeedback({ type: "error", message: "Nenhuma apuracao encontrada para exportar." });
       return;
@@ -365,48 +367,60 @@ export function MinimumFactorAnalysisPageView() {
       return;
     }
     setLastExportAt(Date.now());
-    downloadCsv(`apuracao_fator_minimo_${toIsoDate(new Date())}.csv`, [
-      ["Data", "Equipe", "Encarregado", "Tipo", "Pontos", "Meta pontos", "Diferenca pontos", "Valor", "Meta financeira", "Complemento estimado", "Status", "Ordens", "Projetos", "Codigos"],
-      ...rows.map((row) => [
-        formatDate(row.executionDate),
-        row.teamName,
-        row.foremanName,
-        row.teamTypeName,
-        formatDecimal(row.points),
-        formatDecimal(row.pointTarget),
-        formatDecimal(row.pointDifference),
-        formatCurrency(row.totalValue),
-        formatCurrency(row.financialTarget),
-        formatCurrency(row.complementValue),
-        statusLabel(row.status),
-        row.orderCount,
-        row.projectCodes.join(" / "),
-        row.serviceCodes.map((item) => item.code).join(" / "),
-      ]),
-    ]);
-    setFeedback({ type: "success", message: "Apuracao exportada com sucesso." });
+    setIsExporting(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      downloadCsv(`apuracao_fator_minimo_${toIsoDate(new Date())}.csv`, [
+        ["Data", "Equipe", "Encarregado", "Tipo", "Pontos", "Meta pontos", "Diferenca pontos", "Valor", "Meta financeira", "Complemento estimado", "Status", "Ordens", "Projetos", "Codigos"],
+        ...rows.map((row) => [
+          formatDate(row.executionDate),
+          row.teamName,
+          row.foremanName,
+          row.teamTypeName,
+          formatDecimal(row.points),
+          formatDecimal(row.pointTarget),
+          formatDecimal(row.pointDifference),
+          formatCurrency(row.totalValue),
+          formatCurrency(row.financialTarget),
+          formatCurrency(row.complementValue),
+          statusLabel(row.status),
+          row.orderCount,
+          row.projectCodes.join(" / "),
+          row.serviceCodes.map((item) => item.code).join(" / "),
+        ]),
+      ]);
+      setFeedback({ type: "success", message: "Apuracao exportada com sucesso." });
+    } finally {
+      setIsExporting(false);
+    }
   }
 
-  function exportDetail() {
+  async function exportDetail() {
     if (!detailModal?.details.length) {
       setFeedback({ type: "error", message: "Nenhum detalhe encontrado para exportar." });
       return;
     }
-    downloadCsv(`apuracao_fator_minimo_detalhe_${detailModal.row.teamName}_${detailModal.row.executionDate}.csv`, [
-      ["Ordem", "Data", "Projeto", "Centro de servico", "Codigo", "Descricao", "Quantidade", "Pontos", "Valor", "Status ordem"],
-      ...detailModal.details.map((row) => [
-        row.orderNumber,
-        formatDate(row.executionDate),
-        row.projectCode,
-        row.serviceCenter,
-        row.activityCode,
-        row.activityDescription,
-        formatDecimal(row.quantity, 4),
-        formatDecimal(row.points),
-        formatCurrency(row.totalValue),
-        row.status,
-      ]),
-    ]);
+    setIsExporting(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      downloadCsv(`apuracao_fator_minimo_detalhe_${detailModal.row.teamName}_${detailModal.row.executionDate}.csv`, [
+        ["Ordem", "Data", "Projeto", "Centro de servico", "Codigo", "Descricao", "Quantidade", "Pontos", "Valor", "Status ordem"],
+        ...detailModal.details.map((row) => [
+          row.orderNumber,
+          formatDate(row.executionDate),
+          row.projectCode,
+          row.serviceCenter,
+          row.activityCode,
+          row.activityDescription,
+          formatDecimal(row.quantity, 4),
+          formatDecimal(row.points),
+          formatCurrency(row.totalValue),
+          row.status,
+        ]),
+      ]);
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -569,9 +583,14 @@ export function MinimumFactorAnalysisPageView() {
             <button type="button" className={styles.ghostButton} onClick={clearFilters} disabled={isLoading || isLoadingMeta}>
               Limpar
             </button>
-            <button type="button" className={styles.secondaryButton} onClick={exportRows} disabled={isLoading || !rows.length}>
-              Exportar CSV
-            </button>
+            <CsvExportButton
+              onClick={() => void exportRows()}
+              disabled={isLoading || isExporting || !rows.length}
+              isLoading={isExporting}
+              className={styles.secondaryButton}
+              idleLabel="Exportar CSV"
+              loadingLabel="Gerando..."
+            />
           </div>
         </div>
         <div className={styles.tableWrapper}>
@@ -641,7 +660,15 @@ export function MinimumFactorAnalysisPageView() {
                 <span>{statusLabel(detailModal.row.status)} | {formatDecimal(detailModal.row.points)} de {formatDecimal(detailModal.row.pointTarget)} pontos</span>
               </div>
               <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={exportDetail} disabled={!detailModal.details.length}>Exportar detalhe</button>
+                <CsvExportButton
+                  onClick={() => void exportDetail()}
+                  disabled={isExporting || !detailModal.details.length}
+                  isLoading={isExporting}
+                  showProgressModal={false}
+                  className={styles.secondaryButton}
+                  idleLabel="Exportar detalhe"
+                  loadingLabel="Gerando..."
+                />
                 <button type="button" className={styles.ghostButton} onClick={() => setDetailModal(null)}>Fechar</button>
               </div>
             </header>

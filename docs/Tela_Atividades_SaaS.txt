@@ -365,3 +365,9 @@ Ajuda contextual
   - Antes: CSV de Atividades nao trazia `Grupo`, `Alcance` nem dados de atualizacao.
   - Depois: CSV de Atividades exporta colunas operacionais completas com trilha de auditoria.
   - Depois: modal de detalhes e CSV de Atividades aplicam fallback `Nao identificado` para nomes de auditoria vazios.
+- Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+  - Arquivo alterado: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`.
+  - Funcoes/estado tocados: botao de exportacao, `isExporting`.
+  - Antes: exportacao usava botao local sem o modal padrao.
+  - Depois: exportacao usa `CsvExportButton`, herdando `ExportProgressModal`.
+  - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

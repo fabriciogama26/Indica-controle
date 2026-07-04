@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { supabase } from "@/lib/supabase/client";
@@ -2531,30 +2532,28 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Programacoes</h3>
           <div className={styles.tableActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
+            <CsvExportButton
               onClick={() => void handleExportCsv()}
               disabled={isExporting || isExportingEnel || isExportingEnelNovo || isLoadingList || !filteredSchedules.length || commonExportCooldown.isCoolingDown}
-            >
-              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
+              isLoading={isExporting}
+              className={styles.ghostButton}
+            />
+            <CsvExportButton
               onClick={() => void handleExportEnelExcel()}
               disabled={isExportingEnel || isExporting || isExportingEnelNovo || isLoadingList || !filteredSchedules.length || enelExportCooldown.isCoolingDown}
-            >
-              {isExportingEnel ? "Gerando..." : "Extracao ENEL"}
-            </button>
-            <button
-              type="button"
+              isLoading={isExportingEnel}
               className={styles.secondaryButton}
+              idleLabel="Extracao ENEL"
+              loadingLabel="Gerando..."
+            />
+            <CsvExportButton
               onClick={() => void handleExportEnelExcelNovo()}
               disabled={isExportingEnelNovo || isExportingEnel || isExporting || isLoadingList || !filteredSchedules.length || enelExportCooldown.isCoolingDown}
-            >
-              {isExportingEnelNovo ? "Gerando..." : "Extracao ENEL NOVO"}
-            </button>
+              isLoading={isExportingEnelNovo}
+              className={styles.secondaryButton}
+              idleLabel="Extracao ENEL NOVO"
+              loadingLabel="Gerando..."
+            />
           </div>
         </div>
 

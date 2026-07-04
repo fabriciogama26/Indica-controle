@@ -118,3 +118,10 @@ Mapa de Codigo (funcoes, hooks e constantes)
 - Ajuda contextual:
   - O cadastro informa a chave de vinculo com a Programacao.
   - A Observacao orienta justificativa de divergencia, cancelamento ou correcao.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/controle-apr/AprControlPageView.tsx`.
+- Funcoes/estado tocados: `exportExcel`, `isExporting`, botao `Extrair para Excel`.
+- Antes: exportacao usava botao local sem o modal padrao.
+- Depois: exportacao usa `CsvExportButton`, herdando `ExportProgressModal`.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

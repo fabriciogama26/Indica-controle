@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./DashboardMeasurementPageView.module.css";
 
@@ -230,6 +231,7 @@ export function DashboardMeasurementPageView() {
   const [periodSummary, setPeriodSummary] = useState<PeriodSummary | null>(null);
   const [cycleComparison, setCycleComparison] = useState<CycleComparison | null>(null);
   const [projectDetailModal, setProjectDetailModal] = useState<ProjectDetailModal>(null);
+  const [isExportingProjectDetails, setIsExportingProjectDetails] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const suppressNextAutoLoadRef = useRef(false);
@@ -360,29 +362,35 @@ export function DashboardMeasurementPageView() {
     }
   }
 
-  function exportProjectDetailsCsv() {
+  async function exportProjectDetailsCsv() {
     if (!projectDetailModal?.rows.length) {
       setFeedback({ type: "error", message: "Nenhum projeto encontrado para exportar." });
       return;
     }
 
-    const header = ["Projeto", "Centro", "Valor cobrado", "Ordens"];
-    const rows = projectDetailModal.rows.map((item) => [
-      item.projectCode,
-      item.serviceCenter,
-      item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      item.orderCount,
-    ]);
-    const csv = `\uFEFF${[header, ...rows].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = projectDetailModal.filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setIsExportingProjectDetails(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      const header = ["Projeto", "Centro", "Valor cobrado", "Ordens"];
+      const rows = projectDetailModal.rows.map((item) => [
+        item.projectCode,
+        item.serviceCenter,
+        item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        item.orderCount,
+      ]);
+      const csv = `\uFEFF${[header, ...rows].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = projectDetailModal.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExportingProjectDetails(false);
+    }
   }
 
   function renderExpandButton(chart: Exclude<ExpandedChart, null>, title: string) {
@@ -513,6 +521,11 @@ export function DashboardMeasurementPageView() {
 
   return (
     <section className={styles.wrapper}>
+      <ExportProgressModal
+        open={isExportingProjectDetails}
+        title="Gerando..."
+        message="Preparando arquivo para download."
+      />
       {feedback ? (
         <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div>
       ) : null}
@@ -1170,8 +1183,8 @@ export function DashboardMeasurementPageView() {
                 <p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p>
               </div>
               <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={exportProjectDetailsCsv}>
-                  Exportar Excel (CSV)
+                <button type="button" className={styles.secondaryButton} onClick={() => void exportProjectDetailsCsv()} disabled={isExportingProjectDetails}>
+                  {isExportingProjectDetails ? "Exportando..." : "Exportar Excel (CSV)"}
                 </button>
                 <button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)} aria-label="Fechar detalhe de projetos">
                   x

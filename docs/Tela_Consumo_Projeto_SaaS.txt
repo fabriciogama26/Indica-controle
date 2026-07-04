@@ -265,3 +265,4 @@ Ajuda contextual
   - Atualizacao (2026-05): antes os cards exibiam somas de quantidade e indicadores extras; depois exibem apenas contagens de materiais distintos para materiais, requisicao, devolucao, estoque e falta.
   - Atualizacao (2026-05): antes o bloco `Materiais do projeto` exibia todas as linhas retornadas pela API; depois permite filtrar localmente por quantidades diferentes de zero e por situacao, inclusive na exportacao.
   - Atualizacao (2026-05): antes `Em estoque` ficava apos `Desvio`; depois fica antes de `Quantidade prevista`.
+  - Atualizacao 2026-07-04: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx` passou a controlar `isExporting` no `exportRows`; o botao `Extrair Excel` usa `CsvExportButton` e exibe o modal compartilhado `Gerando...`. Sem mudanca em API, query, schema, RLS ou permissao.

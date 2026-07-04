@@ -331,3 +331,10 @@ Atualizacao 2026-06-30 — P4: paginacao real no banco e limit no historico
     leve; summary global mantido; user map limitado a pagina.
 - Multi-tenant:
   - RLS inalterada. Ambas as queries incluem `.eq("tenant_id", ...)`.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`.
+- Funcoes/estado tocados: botao `Detalhamento (CSV)`, `isExportingDetails`.
+- Antes: detalhamento usava botao local sem o modal padrao.
+- Depois: detalhamento usa `CsvExportButton`, herdando `ExportProgressModal`.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

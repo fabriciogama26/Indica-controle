@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
+import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./OperationalBillingDashboardPageView.module.css";
@@ -375,6 +376,7 @@ export function OperationalBillingDashboardPageView() {
   const [isAsbuiltBreakdownLoading, setIsAsbuiltBreakdownLoading] = useState(false);
   const [isOperationalCategoryDetailLoading, setIsOperationalCategoryDetailLoading] = useState(false);
   const [isChartProjectDetailLoading, setIsChartProjectDetailLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const visibleProjects = useMemo(
@@ -915,6 +917,18 @@ export function OperationalBillingDashboardPageView() {
     }
   }
 
+  async function runCsvExport(exporter: () => void) {
+    if (isExporting) return;
+
+    setIsExporting(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      exporter();
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   function exportRows() {
     if (!rows.length) {
       setFeedback({ type: "error", message: "Nenhum registro para exportar." });
@@ -1051,6 +1065,11 @@ export function OperationalBillingDashboardPageView() {
 
   return (
     <section className={styles.wrapper}>
+      <ExportProgressModal
+        open={isExporting}
+        title="Gerando..."
+        message="Gerando arquivo CSV."
+      />
       {feedback ? (
         <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>
           {feedback.message}
@@ -1458,8 +1477,8 @@ export function OperationalBillingDashboardPageView() {
             </p>
           </div>
           <div className={styles.tableActions}>
-            <button type="button" className={styles.secondaryButton} onClick={exportRows} disabled={isLoading}>
-              Exportar CSV
+            <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(exportRows)} disabled={isLoading || isExporting}>
+              {isExporting ? "Exportando..." : "Exportar CSV"}
             </button>
           </div>
         </div>
@@ -1548,8 +1567,8 @@ export function OperationalBillingDashboardPageView() {
             </p>
           </div>
           <div className={styles.tableActions}>
-            <button type="button" className={styles.secondaryButton} onClick={exportCategorySummary} disabled={isLoading}>
-              Exportar CSV
+            <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(exportCategorySummary)} disabled={isLoading || isExporting}>
+              {isExporting ? "Exportando..." : "Exportar CSV"}
             </button>
           </div>
         </div>
@@ -1605,8 +1624,8 @@ export function OperationalBillingDashboardPageView() {
             <p className={styles.cardSubtitle}>Valores consolidados por projeto em Medicao, Asbuilt e Faturamento.</p>
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.secondaryButton} onClick={exportProjectValues} disabled={isProjectValuesLoading}>
-              Exportar CSV
+            <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(exportProjectValues)} disabled={isProjectValuesLoading || isExporting}>
+              {isExporting ? "Exportando..." : "Exportar CSV"}
             </button>
             <button type="button" className={styles.secondaryButton} onClick={() => void loadProjectValues()} disabled={isProjectValuesLoading}>
               {isProjectValuesLoading ? "Atualizando..." : "Atualizar"}
@@ -1949,7 +1968,7 @@ export function OperationalBillingDashboardPageView() {
                   <button
                     type="button"
                     className={styles.secondaryButton}
-                    onClick={() => downloadCsv(
+                    onClick={() => void runCsvExport(() => downloadCsv(
                       `projetos_indicador_${filenameToken(chartProjectDetailModal.label)}.csv`,
                       [
                         ["projeto", "centro_de_servico", "valor", "ordens", "taxa", "faixa_asbuilt"],
@@ -1962,9 +1981,10 @@ export function OperationalBillingDashboardPageView() {
                           row.asbuiltFaixaEnd ?? "",
                         ]),
                       ],
-                    )}
+                    ))}
+                    disabled={isExporting}
                   >
-                    Exportar CSV
+                    {isExporting ? "Exportando..." : "Exportar CSV"}
                   </button>
                 ) : null}
                 <button type="button" className={styles.modalCloseButton} onClick={closeChartProjectDetailModal}>

@@ -176,6 +176,7 @@ export function ReversalsPageView() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [detailRow, setDetailRow] = useState<ReversalRow | null>(null);
@@ -254,8 +255,9 @@ export function ReversalsPageView() {
   }
 
   const exportRows = useCallback(async () => {
-    if (!session?.accessToken) return;
+    if (!session?.accessToken || isExporting) return;
 
+    setIsExporting(true);
     try {
       const params = buildSearchParams(activeFilters, 1, 50000);
       const response = await fetch(`/api/estornos?${params.toString()}`, {
@@ -324,8 +326,10 @@ export function ReversalsPageView() {
       const message = error instanceof Error ? error.message : "Falha ao exportar Estornos.";
       setFeedback({ type: "error", message });
       await logError("Falha ao exportar Estornos", error, activeFilters);
+    } finally {
+      setIsExporting(false);
     }
-  }, [activeFilters, logError, session?.accessToken]);
+  }, [activeFilters, isExporting, logError, session?.accessToken]);
 
   const metrics = useMemo(
     () => [
@@ -473,7 +477,7 @@ export function ReversalsPageView() {
             <h2 className={styles.cardTitle}>Lista de estornos</h2>
             <p className={styles.cardSubtitle}>Cada linha representa um item original vinculado a uma movimentacao de estorno.</p>
           </div>
-          <CsvExportButton onClick={exportRows} disabled={isLoading || total === 0} className={styles.secondaryButton} />
+          <CsvExportButton onClick={exportRows} disabled={isLoading || isExporting || total === 0} isLoading={isExporting} className={styles.secondaryButton} />
         </div>
 
         <div className={styles.tableWrapper}>

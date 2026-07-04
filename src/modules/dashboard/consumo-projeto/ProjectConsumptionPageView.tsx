@@ -205,6 +205,7 @@ export function ProjectConsumptionPageView() {
     situationCode: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const projectByQuery = useMemo(() => findProjectOption(projectQuery, projects), [projectQuery, projects]);
@@ -306,43 +307,49 @@ export function ProjectConsumptionPageView() {
     void loadConsumption(projectByQuery.id);
   }
 
-  function exportRows() {
+  async function exportRows() {
     if (!filteredRows.length) {
       setFeedback({ type: "error", message: "Nao ha materiais para exportar." });
       return;
     }
 
-    const header = [
-      "Projeto",
-      "Codigo do Material",
-      "Descricao",
-      "UMB",
-      "Em estoque",
-      "Quantidade prevista",
-      "Quantidade Requisicao",
-      "Quantidade Devolucao",
-      "Qtd Liquida",
-      "Desvio",
-      "Situacao",
-    ];
-    const projectLabel = selectedProject?.label ?? projectByQuery?.label ?? "projeto";
-    const lines = filteredRows.map((row) => [
-      projectLabel,
-      row.materialCode,
-      row.description,
-      row.unit,
-      formatDecimal(row.stockQuantity),
-      formatDecimal(row.plannedQuantity),
-      formatDecimal(row.requisitionQuantity),
-      formatDecimal(row.returnQuantity),
-      formatDecimal(row.netQuantity),
-      formatDecimal(row.deviationQuantity),
-      row.situationLabel,
-    ]);
-    const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
-    const filenameProject = projectLabel.replace(/[^a-zA-Z0-9_-]+/g, "_") || "projeto";
-    downloadCsv(csv, `consumo_projeto_${filenameProject}_${toIsoDate(new Date())}.csv`);
-    setFeedback({ type: "success", message: "Materiais do projeto exportados com sucesso." });
+    setIsExporting(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      const header = [
+        "Projeto",
+        "Codigo do Material",
+        "Descricao",
+        "UMB",
+        "Em estoque",
+        "Quantidade prevista",
+        "Quantidade Requisicao",
+        "Quantidade Devolucao",
+        "Qtd Liquida",
+        "Desvio",
+        "Situacao",
+      ];
+      const projectLabel = selectedProject?.label ?? projectByQuery?.label ?? "projeto";
+      const lines = filteredRows.map((row) => [
+        projectLabel,
+        row.materialCode,
+        row.description,
+        row.unit,
+        formatDecimal(row.stockQuantity),
+        formatDecimal(row.plannedQuantity),
+        formatDecimal(row.requisitionQuantity),
+        formatDecimal(row.returnQuantity),
+        formatDecimal(row.netQuantity),
+        formatDecimal(row.deviationQuantity),
+        row.situationLabel,
+      ]);
+      const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
+      const filenameProject = projectLabel.replace(/[^a-zA-Z0-9_-]+/g, "_") || "projeto";
+      downloadCsv(csv, `consumo_projeto_${filenameProject}_${toIsoDate(new Date())}.csv`);
+      setFeedback({ type: "success", message: "Materiais do projeto exportados com sucesso." });
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -427,8 +434,9 @@ export function ProjectConsumptionPageView() {
               </p>
             </div>
             <CsvExportButton
-              onClick={exportRows}
-              disabled={!filteredRows.length || isLoading}
+              onClick={() => void exportRows()}
+              disabled={!filteredRows.length || isLoading || isExporting}
+              isLoading={isExporting}
               className={styles.secondaryButton}
               idleLabel="Extrair Excel"
             />

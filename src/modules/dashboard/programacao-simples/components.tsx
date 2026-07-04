@@ -1,5 +1,6 @@
 import type { FormEvent, RefObject } from "react";
 
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { DOCUMENT_KEYS, HISTORY_FIELD_LABELS } from "./constants";
 import styles from "./ProgrammingSimplePageView.module.css";
 import type {
@@ -1062,14 +1063,12 @@ export function ProgrammingDeadlineModal(props: {
 
         <div className={styles.modalBody}>
           <div className={styles.deadlineModalActions}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
+            <CsvExportButton
               onClick={onExport}
               disabled={isExporting || !items.length}
-            >
-              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
-            </button>
+              isLoading={isExporting}
+              className={styles.secondaryButton}
+            />
           </div>
 
           <div className={styles.tableWrapper}>

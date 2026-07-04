@@ -1026,9 +1026,14 @@ export function BillingPageView() {
           <div className={styles.tableHeaderActions}>
             {isLoadingOrders ? <span className={styles.loadingHint}>Carregando...</span> : null}
             <CsvExportButton onClick={() => void exportOrders()} disabled={isExporting || isExportingDetails || exportCooldown.isCoolingDown || pagination.total <= 0} isLoading={isExporting} className={styles.secondaryButton} />
-            <button type="button" className={styles.ghostButton} onClick={() => void exportOrdersDetailed()} disabled={isExportingDetails || isExporting || exportCooldown.isCoolingDown || pagination.total <= 0}>
-              {isExportingDetails ? "Gerando..." : "Detalhamento (CSV)"}
-            </button>
+            <CsvExportButton
+              onClick={() => void exportOrdersDetailed()}
+              disabled={isExportingDetails || isExporting || exportCooldown.isCoolingDown || pagination.total <= 0}
+              isLoading={isExportingDetails}
+              className={styles.ghostButton}
+              idleLabel="Detalhamento (CSV)"
+              loadingLabel="Gerando..."
+            />
             <button type="button" className={styles.ghostButton} onClick={() => void loadOrders(pagination.page)} disabled={isLoadingOrders || isExporting || isExportingDetails}>Atualizar lista</button>
           </div>
         </div>

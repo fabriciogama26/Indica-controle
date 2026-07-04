@@ -1091,11 +1091,15 @@ Atualizacao 2026-07-04 (Exportacao CSV server-side)
 ----------------------------------------------------
 - Arquivos alterados/criados:
   - `src/app/api/medicao/export/route.ts`
+  - `src/components/ui/ExportProgressModal.tsx`
+  - `src/components/ui/ExportProgressModal.module.css`
   - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
   - `docs/Tela_Medicao_SaaS.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
   - Nova rota `GET /api/medicao/export`
+  - Novo componente compartilhado `ExportProgressModal`
   - `downloadMeasurementExport`
   - `exportOrdersCsv`
   - `exportOrdersDetailedCsv`
@@ -1105,8 +1109,17 @@ Atualizacao 2026-07-04 (Exportacao CSV server-side)
   - Depois: os tres botoes chamam `GET /api/medicao/export`, que monta o CSV no servidor e retorna `text/csv` com `Content-Disposition`.
   - Depois: a rota reaproveita a listagem atual da Medicao em paginas de ate 500 registros para preservar filtros e colunas existentes nesta primeira etapa.
   - Depois: o detalhamento tambem passa a ser consolidado no servidor, reduzindo chamadas browser -> API por ordem detalhada.
+  - Depois: o modal de geracao foi extraido para `ExportProgressModal`, sem criar modal especifico por tela.
+  - Depois: a Medicao usa o modo simples/indeterminado do modal para downloads server-side, exibindo estado de geracao sem percentual real.
   - Lacuna tecnica conhecida: a rota ainda reaproveita o pipeline paginado de `GET /api/medicao`; uma proxima etapa pode extrair service/RPC dedicado para evitar revalidacoes internas e reduzir queries server-side.
 - Impacto multi-tenant:
   - A rota valida sessao com `resolveAuthenticatedAppUser`.
   - A rota exige permissao server-side `page_key=medicao` e `action=export` antes de carregar dados.
   - O `tenant_id` continua derivado da sessao e aplicado pela rota existente de listagem; nenhum `tenant_id` do cliente e aceito como fonte de verdade.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao em todas as telas:
+- Arquivos alterados: `src/components/ui/ExportProgressModal.tsx`, `src/components/ui/ExportProgressModal.module.css`, `src/components/ui/CsvExportButton.tsx`, `src/modules/dashboard/medicao/MeasurementPageView.tsx`, `src/modules/dashboard/medicao/MeasurementPageView.module.css`.
+- Funcoes/estado tocados: `ExportProgressModal`, `CsvExportButton`, estados de exportacao da Medicao.
+- Antes: o modal estava acoplado a Medicao e o CSS ficava no module da tela.
+- Depois: o modal virou bloco compartilhado e a Medicao usa o mesmo componente em modo simples/indeterminado.
+- Multi-tenant: sem mudanca adicional em API, query, schema, RLS ou permissao alem da rota server-side de exportacao ja documentada acima.
