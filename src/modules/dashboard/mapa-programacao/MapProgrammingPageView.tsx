@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
@@ -307,6 +308,7 @@ export function MapProgrammingPageView() {
   const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
   const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
   const [isExportingDeadlineModal, setIsExportingDeadlineModal] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const deadlineModalExportCooldown = useExportCooldown();
@@ -643,6 +645,7 @@ export function MapProgrammingPageView() {
     }
 
     setIsExportingDeadlineModal(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
       const csv = buildDeadlineCsvContent({
         items: deadlineSobCards,
@@ -658,6 +661,18 @@ export function MapProgrammingPageView() {
       });
     } finally {
       setIsExportingDeadlineModal(false);
+    }
+  }
+
+  async function runCsvExport(exporter: () => void) {
+    if (isExportingCsv) return;
+
+    setIsExportingCsv(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      exporter();
+    } finally {
+      setIsExportingCsv(false);
     }
   }
 
@@ -773,6 +788,11 @@ export function MapProgrammingPageView() {
 
   return (
     <section className={styles.wrapper}>
+      <ExportProgressModal
+        open={isExportingCsv}
+        title="Gerando..."
+        message="Gerando arquivo CSV."
+      />
       {feedback ? (
         <div className={feedback.type === "error" ? styles.errorMessage : styles.successMessage}>
           {feedback.message}
@@ -916,11 +936,11 @@ export function MapProgrammingPageView() {
             type="button"
             className={styles.secondaryButton}
             onClick={() => {
-              if (stageReviewCard) exportProjects(stageReviewCard, filteredStageReviewProjects);
+              if (stageReviewCard) void runCsvExport(() => exportProjects(stageReviewCard, filteredStageReviewProjects));
             }}
-            disabled={!filteredStageReviewProjects.length}
+            disabled={isExportingCsv || !filteredStageReviewProjects.length}
           >
-            Exportar CSV
+            {isExportingCsv ? "Exportando..." : "Exportar CSV"}
           </button>
         </div>
         <ProjectTable
@@ -943,11 +963,11 @@ export function MapProgrammingPageView() {
             type="button"
             className={styles.secondaryButton}
             onClick={() => {
-              if (interruptedCompletedCard) exportProjects(interruptedCompletedCard, filteredInterruptedCompletedProjects);
+              if (interruptedCompletedCard) void runCsvExport(() => exportProjects(interruptedCompletedCard, filteredInterruptedCompletedProjects));
             }}
-            disabled={!filteredInterruptedCompletedProjects.length}
+            disabled={isExportingCsv || !filteredInterruptedCompletedProjects.length}
           >
-            Exportar CSV
+            {isExportingCsv ? "Exportando..." : "Exportar CSV"}
           </button>
         </div>
         <ProjectTable
@@ -968,10 +988,10 @@ export function MapProgrammingPageView() {
           <button
             type="button"
             className={styles.secondaryButton}
-            onClick={exportTransferEvents}
-            disabled={!filteredTransferEvents.length}
+            onClick={() => void runCsvExport(exportTransferEvents)}
+            disabled={isExportingCsv || !filteredTransferEvents.length}
           >
-            Exportar CSV
+            {isExportingCsv ? "Exportando..." : "Exportar CSV"}
           </button>
         </div>
         <TransferTable
@@ -1004,8 +1024,8 @@ export function MapProgrammingPageView() {
               <h3>Equipes sem programacao</h3>
               <span>{data?.filters?.teamPeriodEnabled ? periodLabel : "Informe periodo para analisar equipes."}</span>
             </div>
-            <button type="button" className={styles.secondaryButton} onClick={exportTeamsWithoutProgramming} disabled={!data?.filters?.teamPeriodEnabled}>
-              Exportar CSV
+            <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(exportTeamsWithoutProgramming)} disabled={isExportingCsv || !data?.filters?.teamPeriodEnabled}>
+              {isExportingCsv ? "Exportando..." : "Exportar CSV"}
             </button>
           </div>
           <div className={styles.teamList}>
@@ -1061,8 +1081,8 @@ export function MapProgrammingPageView() {
                 <span>{filteredSelectedProjects.length} obras</span>
               </div>
               <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={() => exportProjects(selectedCard, filteredSelectedProjects)}>
-                  Exportar CSV
+                <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(() => exportProjects(selectedCard, filteredSelectedProjects))} disabled={isExportingCsv}>
+                  {isExportingCsv ? "Exportando..." : "Exportar CSV"}
                 </button>
                 <button type="button" className={styles.ghostButton} onClick={() => setSelectedCardKey(null)}>
                   Fechar

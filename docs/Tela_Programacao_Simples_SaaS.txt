@@ -2905,3 +2905,10 @@ Atualizacao 2026-07-02 - Transferencia de equipe entre programacoes
   - A API resolve `tenant_id` pela sessao.
   - A RPC filtra e bloqueia origem/destino por `tenant_id`.
   - EXECUTE da RPC fica restrito a `service_role`; `anon` e `authenticated` nao executam diretamente.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivos alterados: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`, `src/modules/dashboard/programacao-simples/components.tsx`.
+- Funcoes/estado tocados: exportacoes Excel/ENEL, `ProgrammingDeadlineModal`, estados `isExporting*`.
+- Antes: botoes de exportacao usavam botoes locais ou feedback apenas no texto do botao.
+- Depois: exportacoes usam `CsvExportButton`, herdando `ExportProgressModal`.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

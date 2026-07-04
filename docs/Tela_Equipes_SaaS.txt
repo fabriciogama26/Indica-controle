@@ -341,3 +341,9 @@ Ajuda contextual
 - Comportamento antes/depois (2026-04-02 - ativacao com troca de encarregado):
   - Antes: ao reativar equipe com encarregado em conflito, o usuario recebia erro e precisava sair do modal para resolver por outro fluxo.
   - Depois: o proprio modal de ativacao habilita selecao de novo encarregado quando ocorre conflito, e permite concluir a ativacao no mesmo passo.
+- Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+  - Arquivo alterado: `src/modules/dashboard/equipes/TeamsPageView.tsx`.
+  - Funcoes/estado tocados: botao de exportacao, `isExporting`.
+  - Antes: exportacao usava botao local sem o modal padrao.
+  - Depois: exportacao usa `CsvExportButton`, herdando `ExportProgressModal`.
+  - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

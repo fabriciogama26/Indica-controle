@@ -402,3 +402,4 @@ Ajuda contextual
   - Ajuste posterior: `Projetos por valor` passa a ter filtro/coluna de `Tipo de servico`, linha `Total filtrado` e exportacao CSV com `tipo_servico` e total.
   - Ajuste posterior: `Projetos por valor` passa a ter checkboxes `Ocultar Medicao zerada` e `Ocultar Asbuilt zerado`, removendo do resultado filtrado as linhas com valor `0` na respectiva origem.
   - Ajuste posterior: `Projetos por valor` passa a ter checkboxes `Somente Medicao zerada` e `Somente Asbuilt zerado`, incompativeis com o filtro `Ocultar` da mesma origem.
+  - Atualizacao 2026-07-04: `OperationalBillingDashboardPageView.tsx` adiciona `runCsvExport` e `isExporting`; exportacoes de tabela, categorias, projetos por valor e modal de indicador exibem `ExportProgressModal`. Sem mudanca em API, query, schema, RLS ou permissao.

@@ -291,3 +291,10 @@ Ajuda contextual
 - Use `Canceladas/adiadas` para localizar obras cuja ultima tentativa foi interrompida e nao teve continuidade posterior.
 - Use `Sem Estado Trabalho` para corrigir inconsistencias de apontamento.
 - Use `Nunca programadas` para localizar carteira que ainda nao entrou em nenhuma programacao.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`.
+- Funcoes/estado tocados: `runCsvExport`, `exportProjects`, `exportTeamsWithoutProgramming`, `exportTransferEvents`, `handleExportDeadlineModalCsv`, `isExportingCsv`, `isExportingDeadlineModal`.
+- Antes: exportacoes CSV da tela nao compartilhavam o modal padrao.
+- Depois: listas e modal de prazos exibem `ExportProgressModal`/`CsvExportButton` durante a geracao.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

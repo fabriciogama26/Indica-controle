@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import styles from "./ActivitiesPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
@@ -960,14 +961,12 @@ export function ActivitiesPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Atividades</h3>
-          <button
-            type="button"
-            className={styles.ghostButton}
+          <CsvExportButton
             onClick={() => void handleExportActivities()}
             disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
-          >
-            {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
-          </button>
+            isLoading={isExporting}
+            className={styles.ghostButton}
+          />
         </div>
 
         <div className={styles.tableWrapper}>

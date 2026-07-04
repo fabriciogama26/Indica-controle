@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState 
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import styles from "./ProjectsPageView.module.css";
 import { downloadBlobFile, downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
@@ -3008,14 +3009,12 @@ export function ProjectsPageView() {
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Lista de Projetos</h3>
           <div className={styles.tableHeaderActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
+            <CsvExportButton
               onClick={() => void handleExportProjects()}
               disabled={isExporting || isLoadingList || exportProjectsCooldown.isCoolingDown}
-            >
-              {isExporting ? "Exportando..." : "Exportar Excel (CSV)"}
-            </button>
+              isLoading={isExporting}
+              className={styles.ghostButton}
+            />
           </div>
         </div>
 
@@ -3284,14 +3283,12 @@ export function ProjectsPageView() {
                   ? `Projeto selecionado: ${forecastProject.sob}`
                   : "Selecione um projeto para visualizar a lista de materiais previstos."}
               </div>
-              <button
-                type="button"
-                className={styles.ghostButton}
+              <CsvExportButton
                 onClick={() => void handleExportForecastItems()}
                 disabled={!forecastProject || isLoadingForecast || isExportingForecast || exportForecastCooldown.isCoolingDown}
-              >
-                {isExportingForecast ? "Exportando..." : "Exportar Excel (CSV)"}
-              </button>
+                isLoading={isExportingForecast}
+                className={styles.ghostButton}
+              />
             </div>
           </div>
 
@@ -3444,14 +3441,12 @@ export function ProjectsPageView() {
                   ? `Projeto selecionado: ${activityForecastProject.sob}`
                   : "Selecione um projeto para visualizar a lista de atividades previstas."}
               </div>
-              <button
-                type="button"
-                className={styles.ghostButton}
+              <CsvExportButton
                 onClick={() => void handleExportActivityForecastItems()}
                 disabled={!activityForecastProject || isLoadingActivityForecast || isExportingActivityForecast || exportActivityForecastCooldown.isCoolingDown}
-              >
-                {isExportingActivityForecast ? "Exportando..." : "Exportar Excel (CSV)"}
-              </button>
+                isLoading={isExportingActivityForecast}
+                className={styles.ghostButton}
+              />
             </div>
           </div>
 

@@ -11,3 +11,10 @@
 - Centralizar lógica
 - Usar services/helpers
 - Refatorar código repetido
+
+## Verificacao desta entrega - 2026-07-04
+- [x] Modal de geracao de exportacao foi extraido para `src/components/ui/ExportProgressModal.tsx`.
+- [x] CSS do modal saiu de `MeasurementPageView.module.css` e foi centralizado em `ExportProgressModal.module.css`.
+- [x] `CsvExportButton` passou a renderizar o modal compartilhado quando recebe `isLoading`.
+- [x] Exportacoes locais que nao usam `CsvExportButton` reutilizam o mesmo `ExportProgressModal`, sem criar modais duplicados por tela.
+- [x] Nao aplicavel: nenhuma regra de negocio foi movida para componente compartilhado.

@@ -362,3 +362,9 @@ Ajuda contextual
   - Depois: a Curva ABC permite alternar entre valor estimado e quantidade em estoque.
   - Antes: a evolucao e o total podiam multiplicar uma operacao pela quantidade de materiais vinculados.
   - Depois: `buildEvolutionRows` e o resumo usam a chave `data + equipe + projeto + status`; a lista da dispersao mostra UMB, nao possui zoom e mantem a legenda fora da area plotada.
+- Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+  - Arquivo alterado: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`.
+  - Funcoes/estado tocados: `exportScatterRows`, `isExportingScatter`.
+  - Antes: exportacao da dispersao gerava CSV sem modal padrao.
+  - Depois: os botoes `Exportar Excel` usam `ExportProgressModal` compartilhado durante a geracao.
+  - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

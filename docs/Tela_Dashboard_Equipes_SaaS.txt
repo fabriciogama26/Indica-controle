@@ -391,3 +391,10 @@ Atualizacao 2026-06-16 (Supervisor historico no ciclo)
   - A migration cria `team_supervisor_history` com `tenant_id`, FK composta para `people(id, tenant_id)`, RLS por `user_can_access_tenant` e sem permissao de `DELETE`.
   - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read` antes das leituras.
   - O cliente nao envia `tenant_id`; o tenant permanece resolvido pela sessao autenticada.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx`.
+- Funcoes/estado tocados: `exportTeamDetails`, `exportProjectDetails`, `isExporting`.
+- Antes: exportacoes de contribuicoes/projetos nao usavam o modal padrao.
+- Depois: a tela renderiza `ExportProgressModal` compartilhado durante a geracao dos CSVs.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.

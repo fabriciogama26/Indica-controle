@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./AprControlPageView.module.css";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
@@ -622,9 +623,14 @@ export function AprControlPageView() {
             <p className={styles.cardSubtitle}>{total} registro(s) encontrado(s).</p>
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.secondaryButton} onClick={() => void exportExcel()} disabled={isExporting}>
-              {isExporting ? "Extraindo..." : "Extrair para Excel"}
-            </button>
+            <CsvExportButton
+              onClick={() => void exportExcel()}
+              disabled={isExporting}
+              isLoading={isExporting}
+              className={styles.secondaryButton}
+              idleLabel="Extrair para Excel"
+              loadingLabel="Extraindo..."
+            />
             <button type="button" className={styles.ghostButton} onClick={() => void loadRecords(page)} disabled={isLoading}>
               Atualizar lista
             </button>

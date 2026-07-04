@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
@@ -589,6 +590,7 @@ export function StockDashboardPageView() {
   const [scatterSummaryByUnit, setScatterSummaryByUnit] = useState<ScatterUnitSummary[]>([]);
   const [scatter, setScatter] = useState<ScatterPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExportingScatter, setIsExportingScatter] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const loadDashboard = useCallback(async () => {
@@ -687,22 +689,30 @@ export function StockDashboardPageView() {
     setSelectedScatterMaterialId(null);
   };
 
-  const exportScatterRows = () => {
-    const csv = buildCsvContent(
-      ["Operacao", "Material", "Descricao", "UMB", "Quantidade", "Operacoes", "Projetos", "Saldo atual"],
-      activeScatterRows.map((row) => [
-        operationLabels[row.operationKind],
-        row.materialCode,
-        row.description,
-        row.unit,
-        formatDecimal(row.quantity),
-        row.operationCount,
-        row.projectCount,
-        formatDecimal(row.currentBalance),
-      ]),
-    );
+  const exportScatterRows = async () => {
+    if (!activeScatterRows.length || isExportingScatter) return;
 
-    downloadCsvFile(csv, `dispersao_materiais_${scatterOperation.toLowerCase()}_${formatExportDate()}.csv`);
+    setIsExportingScatter(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      const csv = buildCsvContent(
+        ["Operacao", "Material", "Descricao", "UMB", "Quantidade", "Operacoes", "Projetos", "Saldo atual"],
+        activeScatterRows.map((row) => [
+          operationLabels[row.operationKind],
+          row.materialCode,
+          row.description,
+          row.unit,
+          formatDecimal(row.quantity),
+          row.operationCount,
+          row.projectCount,
+          formatDecimal(row.currentBalance),
+        ]),
+      );
+
+      downloadCsvFile(csv, `dispersao_materiais_${scatterOperation.toLowerCase()}_${formatExportDate()}.csv`);
+    } finally {
+      setIsExportingScatter(false);
+    }
   };
 
   useEffect(() => {
@@ -721,6 +731,11 @@ export function StockDashboardPageView() {
 
   return (
     <section className={styles.wrapper}>
+      <ExportProgressModal
+        open={isExportingScatter}
+        title="Gerando..."
+        message="Gerando arquivo CSV."
+      />
       {feedback ? (
         <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>
           {feedback.message}
@@ -859,8 +874,8 @@ export function StockDashboardPageView() {
             <button type="button" className={styles.expandButton} onClick={() => setIsScatterExpanded(true)}>
               Expandir
             </button>
-            <button type="button" className={styles.expandButton} onClick={exportScatterRows} disabled={!activeScatterRows.length}>
-              Exportar Excel
+            <button type="button" className={styles.expandButton} onClick={() => void exportScatterRows()} disabled={isExportingScatter || !activeScatterRows.length}>
+              {isExportingScatter ? "Exportando..." : "Exportar Excel"}
             </button>
           </div>
         </div>
@@ -996,8 +1011,8 @@ export function StockDashboardPageView() {
                 <button type="button" className={styles.closeButton} onClick={() => setIsScatterExpanded(false)} aria-label="Fechar dispersao ampliada">
                   x
                 </button>
-                <button type="button" className={styles.expandButton} onClick={exportScatterRows} disabled={!activeScatterRows.length}>
-                  Exportar Excel
+                <button type="button" className={styles.expandButton} onClick={() => void exportScatterRows()} disabled={isExportingScatter || !activeScatterRows.length}>
+                  {isExportingScatter ? "Exportando..." : "Exportar Excel"}
                 </button>
               </div>
             </div>

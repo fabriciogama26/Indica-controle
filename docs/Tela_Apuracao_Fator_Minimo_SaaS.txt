@@ -154,3 +154,10 @@ Servicos e integracoes externas:
 
 Ajuda contextual:
 - Nao existe ajuda contextual dedicada nesta versao.
+
+Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
+- Arquivo alterado: `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.tsx`.
+- Funcoes/estado tocados: `exportRows`, `exportDetail`, `isExporting`.
+- Antes: botoes de CSV geravam o arquivo sem modal padrao.
+- Depois: botoes usam `CsvExportButton` e exibem o modal compartilhado `Gerando...`.
+- Multi-tenant: nao houve rota, query, schema, RLS ou permissao alterada.

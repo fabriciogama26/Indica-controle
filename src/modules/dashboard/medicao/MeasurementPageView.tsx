@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, u
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./MeasurementPageView.module.css";
 import { downloadBlobFile } from "@/lib/utils/csv";
+import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { parseCsvLine } from "@/lib/utils/parsers";
 
@@ -322,7 +323,7 @@ type StatusAction = "FECHAR" | "CANCELAR" | "ABRIR";
 type ExportProgress = {
   title: string;
   message: string;
-  percent: number;
+  percent?: number;
 };
 
 const PAGE_SIZE = 20;
@@ -2699,10 +2700,10 @@ export function MeasurementPageView() {
     if (isGeneratingExport) return;
 
     setIsExporting(true);
-    setExportProgress({ title: "Gerando...", message: "Gerando arquivo CSV no servidor.", percent: 35 });
+    setExportProgress({ title: "Gerando...", message: "Gerando arquivo CSV no servidor." });
     try {
       await downloadMeasurementExport("summary", `ordens_medicao_${toIsoDate(new Date())}.csv`);
-      setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
+      setExportProgress({ title: "Gerando...", message: "Exportacao concluida." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar ordens de medicao." });
     } finally {
@@ -2720,10 +2721,10 @@ export function MeasurementPageView() {
     if (isGeneratingExport) return;
 
     setIsExportingDetails(true);
-    setExportProgress({ title: "Gerando...", message: "Gerando detalhamento CSV no servidor.", percent: 35 });
+    setExportProgress({ title: "Gerando...", message: "Gerando detalhamento CSV no servidor." });
     try {
       await downloadMeasurementExport("details", `ordens_medicao_detalhamento_${toIsoDate(new Date())}.csv`);
-      setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
+      setExportProgress({ title: "Gerando...", message: "Exportacao concluida." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar detalhamento da medicao." });
     } finally {
@@ -2740,10 +2741,10 @@ export function MeasurementPageView() {
     if (isGeneratingExport) return;
 
     setIsExportingScore(true);
-    setExportProgress({ title: "Gerando...", message: "Gerando pontuacao CSV no servidor.", percent: 35 });
+    setExportProgress({ title: "Gerando...", message: "Gerando pontuacao CSV no servidor." });
     try {
       await downloadMeasurementExport("score", `ordens_medicao_pontuacao_${toIsoDate(new Date())}.csv`);
-      setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
+      setExportProgress({ title: "Gerando...", message: "Exportacao concluida." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar pontuacao da medicao." });
     } finally {
@@ -2760,21 +2761,13 @@ export function MeasurementPageView() {
 
   return (
     <section className={styles.wrapper}>
-      {exportProgress ? (
-        <div className={styles.exportModalOverlay} role="dialog" aria-modal="true" aria-labelledby="measurement-export-title">
-          <article className={styles.exportModalCard}>
-            <div className={styles.exportSpinner} aria-hidden="true" />
-            <div className={styles.exportModalContent}>
-              <h4 id="measurement-export-title">{exportProgress.title}</h4>
-              <p>{exportProgress.message}</p>
-              <div className={styles.exportProgressTrack} aria-hidden="true">
-                <div className={styles.exportProgressBar} style={{ width: `${Math.max(0, Math.min(100, exportProgress.percent))}%` }} />
-              </div>
-              <strong>{Math.max(0, Math.min(100, exportProgress.percent))}%</strong>
-            </div>
-          </article>
-        </div>
-      ) : null}
+      <ExportProgressModal
+        open={Boolean(exportProgress)}
+        title={exportProgress?.title ?? "Gerando..."}
+        message={exportProgress?.message ?? "Preparando arquivo."}
+        percent={exportProgress?.percent}
+        id="measurement-export-title"
+      />
       {feedback ? <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div> : null}
 
       <article className={`${styles.card} ${form.id ? styles.editingCard : ""}`}>
