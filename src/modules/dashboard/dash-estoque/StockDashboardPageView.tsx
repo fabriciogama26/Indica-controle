@@ -875,7 +875,7 @@ export function StockDashboardPageView() {
               Expandir
             </button>
             <button type="button" className={styles.expandButton} onClick={() => void exportScatterRows()} disabled={isExportingScatter || !activeScatterRows.length}>
-              {isExportingScatter ? "Exportando..." : "Exportar Excel"}
+              {isExportingScatter ? "Exportando..." : "Exportar CSV"}
             </button>
           </div>
         </div>
@@ -1012,7 +1012,7 @@ export function StockDashboardPageView() {
                   x
                 </button>
                 <button type="button" className={styles.expandButton} onClick={() => void exportScatterRows()} disabled={isExportingScatter || !activeScatterRows.length}>
-                  {isExportingScatter ? "Exportando..." : "Exportar Excel"}
+                  {isExportingScatter ? "Exportando..." : "Exportar CSV"}
                 </button>
               </div>
             </div>
