@@ -1,0 +1,198 @@
+Tela: Exportacao Excel/CSV SaaS
+
+Visao geral
+-----------
+- Documento transversal (nao e uma tela unica) que mapeia como funciona hoje a exportacao para Excel/CSV em todas as telas do sistema.
+- Existem 3 padroes de exportacao coexistindo: (A) rota server-side dedicada `/export` (padrao novo, so Medicao), (B) laco client-side que busca todas as paginas e monta CSV no navegador (padrao antigo, maioria das telas), (C) exportacao de dados ja carregados em memoria nos dashboards (sem nova chamada de rede).
+- So existe um caso de geracao real de arquivo binario `.xlsx` (Controle APR, via SheetJS no navegador); todos os demais botoes "Exportar Excel" na verdade geram texto `.csv` com BOM.
+- Dois commits recentes definiram o padrao "correto" mais recente: `3d78277` (`refactor(medicao): mover exportacoes CSV para rota server-side`) e `66ba3c6` (`feat(exportacao): padronizar modal de geracao nos botoes CSV`).
+
+Arquitetura
+-----------
+- Componente de botao padrao: `src/components/ui/CsvExportButton.tsx`
+  - Props: `onClick`, `disabled?`, `isLoading?`, `className?`, `idleLabel="Exportar Excel (CSV)"`, `loadingLabel="Exportando..."`, `modalTitle="Gerando..."`, `modalMessage="Preparando arquivo para download."`, `showProgressModal=true`.
+  - Quando `isLoading=true` e `showProgressModal!==false`, o proprio botao renderiza o modal de progresso.
+  - Usado em 21 `PageView`s (ver inventario abaixo).
+- Componente de modal de progresso: `src/components/ui/ExportProgressModal.tsx` (+ `ExportProgressModal.module.css`)
+  - Props: `{open, title, message, percent?, id?}`.
+  - Barra determinada quando `percent` e numero; barra indeterminada (`barIndeterminate`) quando `percent` nao e informado.
+  - Usado embutido no `CsvExportButton` e tambem isolado (chamado direto) nos dashboards que nao usam `CsvExportButton`.
+- Util compartilhado de CSV: `src/lib/utils/csv.ts`
+  - `escapeCsvValue(value)`: escapa valor para celula CSV.
+  - `buildCsvContent(headers, rows)`: monta o texto do CSV com BOM `﻿` e separador `;`.
+  - `downloadCsvFile(content, filename)`: dispara o download de um texto CSV ja montado.
+  - `downloadBlobFile(blob, filename)`: dispara o download de um `Blob` (usado quando o arquivo vem pronto do servidor).
+- Hook de cooldown: `src/hooks/useExportCooldown.ts`
+  - `useExportCooldown(durationMs=10_000)` retorna `{isCoolingDown, getRemainingSeconds, tryStart}`.
+  - Usado em 13 telas para evitar exportacoes repetidas em sequencia.
+- Rota server-side dedicada (unico exemplo hoje): `src/app/api/medicao/export/route.ts`
+  - Reinvoca internamente o handler de listagem (`GET as listMeasurementOrders` de `../route`), paginando em lotes de `EXPORT_PAGE_SIZE=500` ate esgotar `pagination.total` (funcao `loadOrdersForExport`).
+  - Monta o CSV no servidor com `buildCsvContent`.
+  - Exige permissao granular dedicada: `requirePageAction({ pageKey: "medicao", action: "export" })`.
+  - Registra log de egress quando o CSV gerado passa de 100KB (funcao `csvResponse`).
+  - Responde com `Content-Disposition: attachment` e `Content-Type: text/csv`.
+  - Suporta 3 tipos via query `?type=`: `summary`, `details`, `score`.
+- Infra de permissao granular ja existe para todas as telas, mas so e usada pela Medicao hoje:
+  - Tipo `PageAction` (`src/lib/server/pageAuthorization.ts`) ja prevê a acao `"export"`.
+  - Coluna `can_export` ja existe em `page_permissions`.
+
+Cadastro
+--------
+- Nao se aplica (documento nao cobre cadastro de dados, apenas exportacao de listas ja existentes).
+
+Filtros, auto-complete e listagem
+----------------------------------
+- Nao se aplica diretamente; a exportacao normalmente reaproveita os mesmos filtros aplicados na listagem da tela (o payload de export usa os mesmos parametros de filtro da consulta principal).
+
+Boas praticas
+-------------
+- Sempre usar `buildCsvContent`/`downloadCsvFile`/`downloadBlobFile` de `src/lib/utils/csv.ts` em vez de reimplementar escape/blob localmente.
+- Sempre usar `useExportCooldown` para evitar cliques repetidos, em vez de controlar cooldown manualmente com `Date.now()`.
+- Preferir gerar o CSV no servidor (padrao Medicao) quando o dataset puder ser grande, evitando `pageSize` alto de uma vez so (ex.: `pageSize=10000`) ou lacos client-side com muitas paginas.
+- Rotular o botao como "Exportar Excel" somente quando o arquivo gerado for realmente `.xlsx`; caso contrario, usar rotulo que deixe claro que o resultado e `.csv`.
+- Ao criar uma rota `/export` nova, seguir o padrao da Medicao: reaproveitar o handler de listagem existente, exigir `requirePageAction({ pageKey, action: "export" })`, e retornar `Content-Disposition: attachment`.
+
+Cancelamento e saldo
+---------------------
+- Nao se aplica.
+
+Atalhos
+-------
+- Util central: `src/lib/utils/csv.ts`.
+- Botao padrao: `src/components/ui/CsvExportButton.tsx`.
+- Modal de progresso: `src/components/ui/ExportProgressModal.tsx`.
+- Cooldown: `src/hooks/useExportCooldown.ts`.
+- Unica rota server-side dedicada hoje: `src/app/api/medicao/export/route.ts`.
+
+Inventario por tela
+--------------------
+A. Migrada para o padrao novo (rota `/export` dedicada, server-side)
+- Medicao (`src/modules/dashboard/medicao/MeasurementPageView.tsx` + `src/app/api/medicao/export/route.ts`)
+  - Fluxo: clique -> `setIsExporting(true)` + `ExportProgressModal` ("Gerando arquivo CSV no servidor") -> `fetch` na rota -> `response.blob()` -> `downloadBlobFile`.
+  - Arquivos gerados: `ordens_medicao_{data}.csv`, `ordens_medicao_detalhamento_{data}.csv`, `ordens_medicao_pontuacao_{data}.csv`.
+  - Sem limite de linhas (a rota pagina internamente em 500 ate esgotar o total).
+  - Unica tela sem `useExportCooldown` (o cooldown deixou de ser necessario porque a geracao e no servidor).
+  - Exige permissao dedicada de export (`can_export`).
+
+B. Padrao antigo — client-side, busca todas as paginas via fetch em loop (ou `pageSize` alto de uma vez) e monta CSV no navegador com `CsvExportButton` + `useExportCooldown`
+- Medicao As Built (`src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`)
+  - Dois botoes `CsvExportButton` (resumo + detalhamento).
+  - Busca tudo de uma vez com `page:1, pageSize:"10000"` (nao pagina em lotes).
+  - `useExportCooldown` ativo. Ainda sem rota `/export` dedicada.
+- Faturamento (`src/modules/dashboard/faturamento/BillingPageView.tsx`)
+  - Mesmo padrao exato do As Built (`page=1, pageSize=10000`, dois `CsvExportButton`, `useExportCooldown`).
+- Equipes (`TeamsPageView.tsx`)
+  - `handleExportTeams`: laco `while(true)` paginando `/api/teams` em `EXPORT_PAGE_SIZE`, monta CSV com `buildTeamsCsv`, `downloadCsvFile`, `useExportCooldown`.
+- Pessoas (`PeoplePageView.tsx`)
+  - `handleExportPeople`: mesmo padrao de laco por paginas.
+  - Alem da exportacao normal, tambem gera modelo de importacao em massa (`modelo_pessoas_cadastro_em_massa.csv`) e relatorio de erros de importacao (`massImportErrorReport`).
+- Atividades (`ActivitiesPageView.tsx`)
+  - `handleExportActivities`: mesmo padrao de laco por paginas.
+- Materiais (`MaterialsPageView.tsx`)
+  - `handleExportMaterials`: mesmo padrao, mais modelo de importacao em massa.
+- Cargo (`JobTitlesPageView.tsx`)
+  - `handleExportJobTitles`: mesmo padrao de laco por paginas.
+- Meta / Dashboard-Medicao (`MetaPageView.tsx`)
+  - Exporta `buildRegistrationsCsv(registrations)`, com `useExportCooldown` e `CsvExportButton`.
+- Composicao de Equipe (`TeamCompositionPageView.tsx`)
+  - Dois exports: `buildVisibleCsv(items)` e `buildDetailedCsv(items)` ("detalhes por integrante"), com `useExportCooldown`.
+- Projetos (`ProjectsPageView.tsx`)
+  - Tres exports client-side independentes: `handleExportProjects`, `handleExportForecastItems`, `handleExportActivityForecastItems`, cada um com seu proprio cooldown (`exportProjectsCooldown`, `exportForecastCooldown`, `exportActivityForecastCooldown`).
+  - Tambem baixa modelos `.xlsx` reais via `/api/projects/forecast/template` (gerados no servidor por `src/lib/server/projectForecastXlsx.ts` usando SheetJS): `modelo_materiais_previstos.xlsx`, `modelo_atividades_previstas.xlsx`.
+- Posicao Trafo (`TrafoPositionPageView.tsx`)
+  - `handleExportCsv`: monta o CSV manualmente com BOM embutido inline (`﻿${lines.join("\n")}\n`) em vez de usar `buildCsvContent` — pequena divergencia de implementacao.
+- Estoque Corrente (`CurrentStockPageView.tsx`)
+  - `handleExportCsv`: usa `downloadCsvFile` do util compartilhado (sem divergencia).
+- Estoque-Equipes (`TeamStockPageView.tsx`)
+  - `exportCsv`: monta o CSV manualmente (`rows.map(...).join(";")`) com `csvEscape` local — nao usa `buildCsvContent`.
+- Entrada / Saida (`StockTransfersPageView.tsx` / `TeamStockOperationsPageView.tsx`)
+  - Exportam somente o historico (`handleExportHistory`), com `HISTORY_EXPORT_PAGE_SIZE=100`, `CsvExportButton`.
+- Estornos (`ReversalsPageView.tsx`)
+  - `exportRows`, `CsvExportButton`, sem `useExportCooldown` visivel.
+- Programacao Simples (`ProgrammingSimplePageView.tsx`)
+  - Tres exports distintos: `handleExportCsv`, `handleExportEnelExcel`, `handleExportEnelExcelNovo` (dois cooldowns: `commonExportCooldown`, `enelExportCooldown`).
+  - Logica de montagem em `src/modules/dashboard/programacao-simples/exports.ts`.
+  - Nomes "Excel"/"ExcelNovo" mas todos geram `.csv` (nunca `.xlsx` real).
+- Mapa de Programacao (`MapProgrammingPageView.tsx`)
+  - Exporta prazos de obras do modal "Ver todos" (`handleExportDeadlineModalCsv`), reaproveitando `buildDeadlineCsvContent` do modulo `programacao-simples/exports.ts` (import cross-modulo) + cooldown proprio (`deadlineModalExportCooldown`) + `downloadCsvFile`.
+  - Nao usa `CsvExportButton` — usa modal customizado com prop `onExport`.
+- Controle APR (`AprControlPageView.tsx`)
+  - Unico caso de geracao real de `.xlsx` binario: `downloadExcel()` faz `import("xlsx")` dinamico (SheetJS) no navegador.
+  - Ainda assim usa `CsvExportButton` (rotulo/icone generico de CSV, mas o resultado e `.xlsx`).
+- Consumo por Projeto (`ProjectConsumptionPageView.tsx`)
+  - Reimplementa localmente `csvEscape()` e `downloadCsv()` — duplicacao exata de codigo ja existente em `src/lib/utils/csv.ts`.
+
+C. Dashboards — exportam dados ja carregados em memoria (sem nova chamada de rede)
+- Dash Estoque (`StockDashboardPageView.tsx`)
+  - `exportScatterRows` usa `buildCsvContent` + `downloadCsvFile` sobre `activeScatterRows` ja em memoria.
+  - Botao customizado "Exportar Excel" (rotulo incorreto — gera `.csv`), nao usa `CsvExportButton`, usa `ExportProgressModal` direto com `isExportingScatter`.
+- Dash Operacional Faturamento (`OperationalBillingDashboardPageView.tsx`)
+  - `runCsvExport(exporter)`: wrapper generico local que envolve `exportRows`, `exportCategorySummary`, `exportProjectValues`.
+  - Botoes customizados "Exportar CSV" (nao `CsvExportButton`), `ExportProgressModal` direto.
+- Dashboard Equipes (`DashboardTeamsPageView.tsx`)
+  - Usa `exportDashboardProjectsCsv`, `exportDashboardTeamContributionsCsv` de `src/modules/dashboard/dashboard-equipes/utils.ts`.
+  - Reimplementa cooldown manualmente (`Date.now() - lastExportAt < 10_000`) em vez de `useExportCooldown`.
+- Dashboard Medicao (`DashboardMeasurementPageView.tsx`)
+  - `exportProjectDetailsCsv` reimplementa `csvEscape()` local e monta o `Blob` manualmente, em vez de usar `buildCsvContent`/`downloadCsvFile`.
+
+D. Sem exportacao
+- Locacao (`LocationPageView.tsx`): nenhum botao de export encontrado.
+
+Duplicacoes de codigo identificadas (candidatas a limpeza)
+------------------------------------------------------------
+- `escapeCsvValue`/`csvEscape` reimplementado localmente em: `ProjectConsumptionPageView.tsx`, `TeamStockPageView.tsx`, `DashboardMeasurementPageView.tsx`, `AprControlPageView.tsx` (via `csvEscape`), `TrafoPositionPageView.tsx` (BOM manual). Todos ja existem prontos em `src/lib/utils/csv.ts`.
+- `downloadCsvFile`/download de blob reimplementado localmente em `ProjectConsumptionPageView.tsx` (`downloadCsv`), `AprControlPageView.tsx` (`downloadCsv`), `DashboardMeasurementPageView.tsx` (Blob manual).
+- Cooldown de exportacao reimplementado manualmente (fora do hook `useExportCooldown`) em `DashboardTeamsPageView.tsx` (`lastExportAt` + `10_000`).
+- Laco "buscar todas as paginas para exportar" reescrito do zero em cada tela: Equipes, Pessoas, Atividades, Materiais, Cargo, Composicao-Equipe, Projetos (3x), Controle APR.
+- Rotulo "Exportar Excel" usado em telas que geram `.csv` (Dash Estoque, Programacao Simples "ExcelNovo"); so Controle APR gera `.xlsx` de fato.
+
+O que falta para completar a migracao ao padrao novo (pos-commits `3d78277`/`66ba3c6`)
+----------------------------------------------------------------------------------------
+- Nenhuma outra tela tem rota `/api/<modulo>/export`. Candidatas prioritarias por serem "irmas" arquiteturais da Medicao e ja buscarem `pageSize=10000` de uma vez (risco de payload maior do que o laco em paginas que a Medicao tinha antes do refactor): Medicao As Built e Faturamento.
+- Nenhuma outra rota usa `requirePageAction({ action: "export" })`, apesar de a infraestrutura (`PageAction`, `can_export`) ja estar pronta.
+- `CsvExportButton`/`ExportProgressModal` ainda nao cobrem os dashboards (Dash Estoque, Dash Operacional Faturamento, Dashboard Equipes, Dashboard Medicao), que usam botoes/modais "artesanais" com o mesmo objetivo.
+
+Atualizacao 2026-07
+--------------------
+- Documento criado a partir de levantamento completo do codigo (commits `3d78277` e `66ba3c6` inspecionados via `git show`) para consolidar o estado real da exportacao Excel/CSV em todas as telas.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+---------------------------------------------
+Funcoes principais
+- Caminho: `src/app/api/medicao/export/route.ts`
+  - Responsavel por: gerar CSV server-side (`summary`/`details`/`score`), paginar internamente via `loadOrdersForExport` em lotes de 500, aplicar `requirePageAction` e logar egress em `csvResponse`.
+- Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - Responsavel por: `downloadMeasurementExport`, que chama a rota `/export`, converte a resposta em `blob()` e aciona `downloadBlobFile`.
+- Caminho: `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`, `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - Responsavel por: exportacao client-side buscando `pageSize=10000` de uma vez, ainda sem rota `/export`.
+- Caminho: `src/modules/dashboard/equipes/TeamsPageView.tsx` (`handleExportTeams`), `src/modules/dashboard/pessoas/PeoplePageView.tsx` (`handleExportPeople`), `src/modules/dashboard/atividades/ActivitiesPageView.tsx` (`handleExportActivities`), `src/modules/dashboard/materiais/MaterialsPageView.tsx` (`handleExportMaterials`), `src/modules/dashboard/cargo/JobTitlesPageView.tsx` (`handleExportJobTitles`)
+  - Responsavel por: laco client-side `while`/`do...while` paginando a rota de listagem propria ate esgotar o total, montando CSV com util compartilhado.
+- Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - Responsavel por: `handleExportProjects`, `handleExportForecastItems`, `handleExportActivityForecastItems` e download de modelos `.xlsx` via `/api/projects/forecast/template`.
+- Caminho: `src/lib/server/projectForecastXlsx.ts`
+  - Responsavel por: gerar `.xlsx` real no servidor (SheetJS) para os modelos de importacao de Projetos.
+- Caminho: `src/modules/dashboard/controle-apr/AprControlPageView.tsx`
+  - Responsavel por: `downloadExcel()`, unico fluxo que gera `.xlsx` binario real no navegador via `import("xlsx")` dinamico.
+- Caminho: `src/modules/dashboard/programacao-simples/exports.ts`
+  - Responsavel por: `buildDeadlineCsvContent` e demais builders de CSV reaproveitados por `ProgrammingSimplePageView.tsx` e `MapProgrammingPageView.tsx`.
+
+Constantes e configuracoes
+- Caminho: `src/components/ui/CsvExportButton.tsx`
+  - Responsavel por: props padrao de rotulo/estado/modal do botao de exportacao.
+- Caminho: `src/components/ui/ExportProgressModal.tsx`
+  - Responsavel por: modal de progresso reutilizavel (determinado/indeterminado).
+- Caminho: `src/hooks/useExportCooldown.ts`
+  - Responsavel por: cooldown padrao de exportacao (`durationMs=10_000` default).
+- Caminho: `src/lib/server/pageAuthorization.ts`
+  - Responsavel por: tipo `PageAction` (ja inclui `"export"`) e `requirePageAction`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/utils/csv.ts`
+  - Responsavel por: `escapeCsvValue`, `buildCsvContent`, `downloadCsvFile`, `downloadBlobFile` — base compartilhada que deveria ser usada por todas as telas.
+
+Servicos e integracoes externas
+- SheetJS (`xlsx`) — usado em `AprControlPageView.tsx` (client-side) e `src/lib/server/projectForecastXlsx.ts` (server-side) para geracao de `.xlsx` real.
+- Supabase Postgres — fonte dos dados exportados via rotas de listagem/`/export`.
+
+Ajuda contextual
+- Nao se aplica (documento de mapeamento, sem fluxo de ajuda propria).

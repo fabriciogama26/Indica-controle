@@ -1,0 +1,116 @@
+Tela: Listas e Paginacao SaaS
+
+Visao geral
+-----------
+- Documento transversal (nao e uma tela unica) que mapeia como funciona hoje a paginacao das listas em todas as telas do sistema.
+- Existe um consenso majoritario (~15 telas) de paginacao real no banco via `count + range`, alinhado ao padrao documentado em `docs/arquitetura/padrao-performance-backend.md`.
+- Apesar do consenso, coexistem 4 paradigmas diferentes de paginacao sem nenhuma abstracao comum, e nao existe nenhum componente de UI de paginacao compartilhado — o JSX de "Anterior/Proxima" esta duplicado em pelo menos 20 arquivos.
+
+Arquitetura
+-----------
+- Helper server-side generico (subutilizado): `src/lib/server/apiHelpers.ts`
+  - `parsePositiveInteger(value, fallback)`.
+  - `parsePagination(params, defaultPageSize=20, maxPageSize=100)` retorna `{ page, pageSize, from, to }`.
+  - Usado em apenas 3 rotas: `src/app/api/teams/route.ts`, `src/app/api/people/route.ts`, `src/app/api/activities/route.ts`. Todas as outras ~15 rotas paginadas reimplementam a mesma logica localmente (funcoes proprias tipo `normalizePositiveInteger`, calculo manual de `from/to`, constantes locais de limite), com pequenas variacoes de clamp/limite maximo.
+  - Exemplo de divergencia: `src/app/api/medicao/route.ts` define seu proprio `normalizePositiveInteger(...)` com `min=1, max=10_000` para `page` e `min=20 (default), max=500` para `pageSize`.
+- Nao existe nenhum componente de UI compartilhado tipo `Pagination.tsx`/`PaginationControls` nem hook `usePagination`. Cada `*PageView.tsx` implementa seus proprios botoes "Anterior"/"Proxima" inline, com estilos locais em CSS Modules por tela.
+- Duas "familias" de estado de paginacao coexistem no frontend sem padronizacao:
+  - Familia A — objeto unico `pagination: {page, pageSize, total}`: Medicao, Medicao As Built, Faturamento, Estornos, Estoque-Equipes, Composicao-Equipe.
+  - Familia B — `page` + `total` soltos, com `totalPages` computado via `Math.ceil(total/PAGE_SIZE)` direto no JSX: Equipes, Pessoas, Atividades, Materiais, Cargo, Projetos, Posicao Trafo, Estoque (Corrente).
+  - Ambas renderizam o rodape de paginacao como HTML cru duplicado: botao "Anterior" com `disabled={page<=1||isLoading}` e "Proxima" com `disabled={page>=totalPages||isLoading}`, cada um com sua propria arrow function de `onClick`.
+
+Cadastro
+--------
+- Nao se aplica (documento cobre apenas paginacao/exibicao de listas, nao cadastro).
+
+Filtros, auto-complete e listagem
+----------------------------------
+- Paradigma 1 — Paginacao numerada com `.range()` no banco (maioria das telas). Fluxo: filtro aplicado -> API roda `count:"exact"` + `.range(from,to)` -> retorna `{data, total}` -> frontend calcula `totalPages` e mostra "Pagina X de Y" com botoes Anterior/Proxima.
+- Paradigma 2 — Paginacao por cursor/keyset (unico caso: Entrada de Estoque / `stock-transfers`).
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`: `buildHistoryListParams(direction, pageSize, filters, cursor)`, com `direction: "initial"|"older"|"newer"`, `cursorDate`, `cursorId`.
+  - `src/app/api/stock-transfers/route.ts`: usa `.or("entry_date.lt.X,and(entry_date.eq.X,id.lt.Y)")` em vez de `.range()`; retorna `hasOlder`/`hasNewer` em vez de `total`/`totalPages`.
+  - UI usa rotulos diferentes: "Mais recentes" / "Mais antigos", sem exibir "Pagina X de Y".
+  - Mais escalavel para historicos grandes, mas e o unico caso assim no projeto — contrato de API e de UI totalmente diferente das demais telas.
+- Paradigma 3 — Paginacao 100% em memoria sobre dataset ja completo (contraria o padrao documentado em `docs/arquitetura/padrao-performance-backend.md`, que proibe buscar todos os registros para paginar em memoria):
+  - Locacao (`LocationPageView.tsx`): `OVERVIEW_PAGE_SIZE=10`, `filteredOverviewItems.slice(start, start+OVERVIEW_PAGE_SIZE)`.
+  - Apuracao Fator Minimo (`MinimumFactorAnalysisPageView.tsx`): `RESULT_PAGE_SIZE=20`, `rows.slice(...)` sobre array ja carregado por completo.
+  - Mapa de Programacao (`MapProgrammingPageView.tsx`): `TABLE_PAGE_SIZE=8`, `events.slice(...)` e `projects.slice(...)`.
+  - Atenuante: nos dois primeiros os datasets tendem a ser pequenos (fator minimo por ano/projeto, visao geral de locacao), mas segue sendo inconsistencia de arquitetura frente ao padrao do proprio projeto.
+- Paradigma 4 — Sem paginacao, por janela de data (Programacao e Programacao Simples): carregam por `startDate`/`endDate` o conjunto de agendamentos do periodo, sem `page`/`pageSize`. Adequado ao dominio (volume limitado por periodo), mas quebra a expectativa de "toda lista tem page/pageSize".
+- Historico paginado (modais "Ver historico") usa `.range()` real no banco (nao e in-memory) nas telas: Equipes, Pessoas, Atividades, Materiais, Cargo, Projetos, Job Titles — todas com `HISTORY_PAGE_SIZE=5` (excecao: Entrada/Saida usam `HISTORY_PAGE_SIZE=15`). Parametros `historyPage`/`historyPageSize`, `count:"exact"`, `.range(historyFrom,historyTo)` (ex.: `src/app/api/teams/route.ts`).
+
+Boas praticas
+-------------
+- Preferir sempre paginacao real no banco (`count + range` ou RPC equivalente); nunca buscar todos os registros para paginar/filtrar em memoria no Node ou no cliente (regra ja registrada em `docs/arquitetura/padrao-performance-backend.md`).
+- Ao criar uma rota nova, usar `parsePagination`/`parsePositiveInteger` de `src/lib/server/apiHelpers.ts` em vez de reimplementar `from/to`/clamp localmente.
+- Ao criar uma tela nova, escolher uma unica convencao de estado de paginacao (recomendado: objeto unico `{page, pageSize, total}`, familia A) em vez de variaveis soltas.
+- So usar paginacao por cursor/keyset quando o volume justificar (historicos muito longos); caso contrario manter paginacao numerada padrao para nao divergir do contrato das demais telas.
+
+Cancelamento e saldo
+---------------------
+- Nao se aplica.
+
+Atalhos
+-------
+- Helper server-side: `src/lib/server/apiHelpers.ts` (`parsePagination`, `parsePositiveInteger`).
+- Referencia de padrao documentado: `docs/arquitetura/padrao-performance-backend.md`.
+- Exemplo de paginacao por cursor: `src/app/api/stock-transfers/route.ts` + `src/modules/dashboard/entrada/StockTransfersPageView.tsx`.
+
+Resumo de PAGE_SIZE por tela (constantes locais, nenhuma central)
+--------------------------------------------------------------------
+- Medicao: lista 20, historico 5, export 200 (agora via rota server-side).
+- Medicao As Built: lista 20 (`ASBUILT_MEASUREMENT_PAGE_SIZE`), historico 5, export 10000 (fetch unico).
+- Faturamento: lista 20 (`BILLING_PAGE_SIZE`), historico 5, export 10000.
+- Composicao Equipe: lista 20, historico 5, export 100.
+- Estornos: lista 20.
+- Controle APR: lista 20, export 500.
+- Equipes / Pessoas / Atividades / Materiais / Cargo / Projetos / Posicao Trafo: lista 20, historico 5, export 100.
+- Entrada / Saida: lista por cursor (sem PAGE_SIZE fixo), historico 15, export 100.
+- Mapa de Programacao: 8 (in-memory).
+- Dash Operacional Faturamento: lista 20 (`PROJECT_VALUE_PAGE_SIZE`), exibicao "{page} / {totalPages}" sem texto Anterior/Proxima.
+- Locacao: 10 (in-memory).
+- Apuracao Fator Minimo: 20 (in-memory).
+- Nao ha nenhuma constante compartilhada (`DEFAULT_PAGE_SIZE`); cada modulo declara seu proprio `PAGE_SIZE`/`EXPORT_PAGE_SIZE`/`HISTORY_PAGE_SIZE` local, quase sempre com os mesmos valores (20/5/100).
+
+Analise de viabilidade — util generico de paginacao
+-------------------------------------------------------
+- E viavel e recomendado, em duas frentes independentes:
+  1. Backend: expandir `parsePagination`/`parsePositiveInteger` (`src/lib/server/apiHelpers.ts`) e adotar em todas as ~18 rotas paginadas, substituindo as reimplementacoes locais (`normalizePositiveInteger` e afins). Baixo risco, pois e apenas parsing de query params — nao muda contrato de resposta.
+  2. Frontend: criar um componente `Pagination`/hook `usePagination` compartilhado em `src/components/ui/` para eliminar a duplicacao de JSX "Anterior/Proxima" e unificar a familia de estado (`{page, pageSize, total}`) usada em ~20 arquivos.
+- Fora do escopo de um util generico simples (exigem tratamento a parte, nao "encaixam" no mesmo componente):
+  - Entrada de Estoque (`stock-transfers`) usa cursor/keyset, contrato de API e rotulos de UI diferentes — precisaria de uma variante propria ou ficar fora do util.
+  - Locacao, Apuracao Fator Minimo e Mapa de Programacao paginam em memoria hoje; adotar o util exigiria primeiro migrar essas 3 telas para paginacao real no banco (mudanca de API, nao so de UI).
+  - Programacao / Programacao Simples nao tem paginacao (janela de data); nao se aplica.
+- Recomendacao: comecar pelo backend (baixo risco, ganho de consistencia imediato), depois o componente de UI para a familia de telas que ja usa `.range()` numerado (a maioria). Migrar os 3 casos in-memory e o caso de cursor pode ficar para uma etapa separada, pois envolve mudanca de contrato de API, nao so de reuso de componente.
+
+Atualizacao 2026-07
+--------------------
+- Documento criado a partir de levantamento completo do codigo para consolidar o estado real de paginacao de listas em todas as telas e avaliar a viabilidade de um util generico compartilhado.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+---------------------------------------------
+Funcoes principais
+- Caminho: `src/lib/server/apiHelpers.ts`
+  - Responsavel por: `parsePositiveInteger`, `parsePagination` — unico helper server-side generico de paginacao hoje, usado em `teams`, `people` e `activities`.
+- Caminho: `src/app/api/medicao/route.ts`, `src/app/api/materials/route.ts`, `src/app/api/job-titles/route.ts`, `src/app/api/projects/route.ts`, `src/app/api/stock-balance/route.ts`
+  - Responsavel por: reimplementacoes locais de normalizacao de `page`/`pageSize` (`normalizePositiveInteger` e equivalentes), candidatas a migrar para `parsePagination`.
+- Caminho: `src/app/api/stock-transfers/route.ts`
+  - Responsavel por: paginacao por cursor/keyset (`.or("entry_date.lt.X,...")`), unico caso divergente do padrao numerado.
+- Caminho: `src/modules/dashboard/locacao/LocationPageView.tsx`, `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.tsx`, `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
+  - Responsavel por: paginacao 100% em memoria (`.slice(...)`) sobre dataset ja carregado por completo.
+- Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - Responsavel por: `buildHistoryListParams`, construcao de parametros de cursor (`direction`, `cursorDate`, `cursorId`).
+
+Constantes e configuracoes
+- Caminho: cada `*PageView.tsx` das telas listadas em "Resumo de PAGE_SIZE por tela"
+  - Responsavel por: constantes locais `PAGE_SIZE`/`EXPORT_PAGE_SIZE`/`HISTORY_PAGE_SIZE`, sem constante central compartilhada.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/apiHelpers.ts`
+  - Responsavel por: base candidata a expansao para virar o util generico de paginacao server-side unico do projeto.
+
+Servicos e integracoes externas
+- Supabase Postgres (`count: "exact"` + `.range(from, to)`) — mecanismo de paginacao real usado pela maioria das rotas.
+
+Ajuda contextual
+- Nao se aplica (documento de mapeamento, sem fluxo de ajuda propria).
