@@ -8,8 +8,16 @@ export function parsePositiveInteger(value: string | null, fallback: number): nu
   return parsed;
 }
 
-export function parsePagination(params: URLSearchParams, defaultPageSize = 20, maxPageSize = 100) {
-  const page = parsePositiveInteger(params.get("page"), 1);
+export interface ParsePaginationOptions {
+  defaultPageSize?: number;
+  maxPageSize?: number;
+  maxPage?: number;
+}
+
+export function parsePagination(params: URLSearchParams, options: ParsePaginationOptions = {}) {
+  const { defaultPageSize = 20, maxPageSize = 100, maxPage } = options;
+  const rawPage = parsePositiveInteger(params.get("page"), 1);
+  const page = maxPage ? Math.min(rawPage, maxPage) : rawPage;
   const pageSize = Math.min(parsePositiveInteger(params.get("pageSize"), defaultPageSize), maxPageSize);
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
