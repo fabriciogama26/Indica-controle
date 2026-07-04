@@ -21,7 +21,7 @@ import type {
 } from "./types";
 import {
   buildTrafoPositionQuery,
-  csvEscape,
+  buildCsvContent,
   downloadCsvFile,
   formatDate,
   formatDateTime,
@@ -489,30 +489,32 @@ export function TrafoPositionPageView() {
         return;
       }
 
-      const lines = [
-        "centro_fisico;situacao;equipe_atual;encarregado_atual;projeto_ultimo;material_codigo;descricao;rastreio;serial;lp;ultima_operacao;data_ultima_movimentacao;atualizado_em;ultima_transferencia;ret_em;ret_por;ret_motivo",
-        ...exportedItems.map((item) => [
-          csvEscape(item.currentStockCenterName ?? "-"),
-          csvEscape(currentStatusLabel(item.currentStatus)),
-          csvEscape(item.currentTeamName ?? "-"),
-          csvEscape(item.currentForemanName ?? "-"),
-          csvEscape(item.lastProjectCode ?? "-"),
-          csvEscape(item.materialCode),
-          csvEscape(item.description),
-          csvEscape(serialTrackingLabel(item.serialTrackingType)),
-          csvEscape(item.serialNumber),
-          csvEscape(item.lotCode),
-          csvEscape(movementTypeLabel(item.lastOperationKind)),
-          csvEscape(formatDate(item.lastEntryDate)),
-          csvEscape(formatDateTime(item.updatedAt)),
-          csvEscape(item.lastTransferId ?? "-"),
-          csvEscape(formatDateTime(item.retiredAt)),
-          csvEscape(item.retiredByName ?? "-"),
-          csvEscape(item.retiredReason ?? "-"),
-        ].join(";")),
+      const headers = [
+        "centro_fisico", "situacao", "equipe_atual", "encarregado_atual", "projeto_ultimo",
+        "material_codigo", "descricao", "rastreio", "serial", "lp", "ultima_operacao",
+        "data_ultima_movimentacao", "atualizado_em", "ultima_transferencia", "ret_em", "ret_por", "ret_motivo",
       ];
+      const rows = exportedItems.map((item) => [
+        item.currentStockCenterName ?? "-",
+        currentStatusLabel(item.currentStatus),
+        item.currentTeamName ?? "-",
+        item.currentForemanName ?? "-",
+        item.lastProjectCode ?? "-",
+        item.materialCode,
+        item.description,
+        serialTrackingLabel(item.serialTrackingType),
+        item.serialNumber,
+        item.lotCode,
+        movementTypeLabel(item.lastOperationKind),
+        formatDate(item.lastEntryDate),
+        formatDateTime(item.updatedAt),
+        item.lastTransferId ?? "-",
+        formatDateTime(item.retiredAt),
+        item.retiredByName ?? "-",
+        item.retiredReason ?? "-",
+      ]);
 
-      downloadCsvFile(`\uFEFF${lines.join("\n")}\n`, `rastreio_serial_${toIsoDate(new Date())}.csv`);
+      downloadCsvFile(buildCsvContent(headers, rows), `rastreio_serial_${toIsoDate(new Date())}.csv`);
 
       setFeedback({ type: "success", message: "Exportacao do rastreio de serial concluida." });
       setIsExportCooldownActive(true);

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import styles from "./ProjectConsumptionPageView.module.css";
 
 type ProjectOption = {
@@ -77,23 +78,6 @@ function formatDecimal(value: number) {
 
 function normalizeCompare(value: string) {
   return value.trim().toUpperCase();
-}
-
-function csvEscape(value: unknown) {
-  const normalized = String(value ?? "").replace(/"/g, '""');
-  return `"${normalized}"`;
-}
-
-function downloadCsv(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }
 
 function toIsoDate(value: Date) {
@@ -343,9 +327,9 @@ export function ProjectConsumptionPageView() {
         formatDecimal(row.deviationQuantity),
         row.situationLabel,
       ]);
-      const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
+      const csv = buildCsvContent(header, lines);
       const filenameProject = projectLabel.replace(/[^a-zA-Z0-9_-]+/g, "_") || "projeto";
-      downloadCsv(csv, `consumo_projeto_${filenameProject}_${toIsoDate(new Date())}.csv`);
+      downloadCsvFile(csv, `consumo_projeto_${filenameProject}_${toIsoDate(new Date())}.csv`);
       setFeedback({ type: "success", message: "Materiais do projeto exportados com sucesso." });
     } finally {
       setIsExporting(false);

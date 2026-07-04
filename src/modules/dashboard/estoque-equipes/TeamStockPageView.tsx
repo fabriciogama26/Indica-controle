@@ -24,7 +24,7 @@ import type {
 } from "./types";
 import {
   buildTeamStockQuery,
-  csvEscape,
+  buildCsvContent,
   downloadCsvFile,
   formatDateTime,
   formatDecimal,
@@ -226,22 +226,20 @@ export function TeamStockPageView() {
         exportPage += 1;
       } while (exportedItems.length < exportTotal);
 
-      const rows = [
-        ["Equipe", "Status equipe", "Encarregado", "Base", "Material", "Descricao", "UMB", "Tipo", "Saldo", "Ultima movimentacao"],
-        ...exportedItems.map((item) => [
-          item.teamName,
-          item.teamIsActive ? "Ativa" : "Inativa",
-          item.foremanName,
-          item.serviceCenterName,
-          item.materialCode,
-          item.description,
-          item.unit,
-          item.materialType,
-          String(item.balanceQuantity).replace(".", ","),
-          formatDateTime(item.lastMovementAt),
-        ]),
-      ];
-      downloadCsvFile(`\uFEFF${rows.map((row) => row.map(csvEscape).join(";")).join("\r\n")}`, "estoque-equipes.csv");
+      const headers = ["Equipe", "Status equipe", "Encarregado", "Base", "Material", "Descricao", "UMB", "Tipo", "Saldo", "Ultima movimentacao"];
+      const rows = exportedItems.map((item) => [
+        item.teamName,
+        item.teamIsActive ? "Ativa" : "Inativa",
+        item.foremanName,
+        item.serviceCenterName,
+        item.materialCode,
+        item.description,
+        item.unit,
+        item.materialType,
+        String(item.balanceQuantity).replace(".", ","),
+        formatDateTime(item.lastMovementAt),
+      ]);
+      downloadCsvFile(buildCsvContent(headers, rows), "estoque-equipes.csv");
       setFeedback({ type: "success", message: "Estoque das equipes exportado." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar." });

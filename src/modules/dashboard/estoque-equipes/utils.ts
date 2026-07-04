@@ -36,4 +36,4 @@ export function formatDateTime(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("pt-BR");
 }
 
-export { escapeCsvValue as csvEscape, downloadCsvFile } from "@/lib/utils/csv";
+export { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
