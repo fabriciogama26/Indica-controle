@@ -4,7 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import styles from "./ActivitiesPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
@@ -290,11 +292,9 @@ export function ActivitiesPageView() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [statusActivity, setStatusActivity] = useState<ActivityItem | null>(null);
   const [statusReason, setStatusReason] = useState("");
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
   const statusAction = statusActivity?.isActive ? "cancel" : "activate";
@@ -384,7 +384,7 @@ export function ActivitiesPageView() {
         setIsLoadingList(false);
       }
     },
-    [session?.accessToken],
+    [session?.accessToken, setTotal],
   );
 
   const loadActivityHistory = useCallback(
@@ -1101,30 +1101,17 @@ export function ActivitiesPageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
-          </span>
-
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || isLoadingList}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || isLoadingList}
-            >
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingList}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {detailActivity ? (
