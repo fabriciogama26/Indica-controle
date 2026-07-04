@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type TeamRow = {
   id: string;
@@ -76,11 +77,6 @@ function normalizeText(value: unknown) {
 
 function normalizeCode(value: unknown) {
   return normalizeText(value).toUpperCase();
-}
-
-function parsePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number(value ?? "");
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function parseNonNegativeDecimal(value: string | null) {
@@ -230,8 +226,10 @@ async function loadMeta(context: AuthenticatedAppUserContext) {
 async function loadHistory(request: NextRequest, context: AuthenticatedAppUserContext) {
   const teamId = normalizeText(request.nextUrl.searchParams.get("teamId"));
   const materialId = normalizeText(request.nextUrl.searchParams.get("materialId"));
-  const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 5), 50);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
+    defaultPageSize: 5,
+    maxPageSize: 50,
+  });
 
   if (!teamId || !materialId) {
     return NextResponse.json({ message: "Equipe e material sao obrigatorios para carregar o historico." }, { status: 400 });
@@ -350,8 +348,7 @@ async function loadHistory(request: NextRequest, context: AuthenticatedAppUserCo
 }
 
 async function loadList(request: NextRequest, context: AuthenticatedAppUserContext) {
-  const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
   const teamId = normalizeText(request.nextUrl.searchParams.get("teamId"));
   const foreman = normalizeCode(request.nextUrl.searchParams.get("foreman"));
   const serviceCenter = normalizeCode(request.nextUrl.searchParams.get("serviceCenter"));

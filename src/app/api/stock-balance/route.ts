@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type MaterialRelation = {
   id: string;
@@ -144,15 +145,6 @@ async function loadRowsInChunks<T>(
   return { data: rows, error: null };
 }
 
-function parsePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number(value ?? "");
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return parsed;
-}
-
 function normalizeText(value: string | null) {
   return String(value ?? "").trim();
 }
@@ -250,8 +242,10 @@ async function loadStockHistory(request: NextRequest) {
   const materialId = normalizeText(request.nextUrl.searchParams.get("materialId"));
   const historyOperationKind = normalizeHistoryOperationKind(request.nextUrl.searchParams.get("historyOperationKind"));
   const historyOrigin = normalizeCode(request.nextUrl.searchParams.get("historyOrigin"));
-  const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 5), 50);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
+    defaultPageSize: 5,
+    maxPageSize: 50,
+  });
 
   if (!stockCenterId || !materialId) {
     return NextResponse.json(
@@ -539,8 +533,7 @@ export async function GET(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
 
-    const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
+    const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
     const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
     const materialCode = normalizeCode(request.nextUrl.searchParams.get("materialCode"));
     const description = normalizeText(request.nextUrl.searchParams.get("description"));

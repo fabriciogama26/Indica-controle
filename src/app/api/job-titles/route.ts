@@ -7,6 +7,7 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type JobTitleRow = {
   id: string;
@@ -456,10 +457,7 @@ export async function GET(request: NextRequest) {
     const code = normalizeText(params.get("code"));
     const name = normalizeText(params.get("name"));
     const statusFilter = parseStatusFilter(params.get("status"));
-    const page = parsePositiveInteger(params.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInteger(params.get("pageSize"), 20), 100);
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const { page, pageSize, from, to } = parsePagination(params, { maxPageSize: 100 });
 
     let query = supabase
       .from("job_titles")

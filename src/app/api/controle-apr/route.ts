@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type AprStatus = "ATIVO" | "CANCELADO" | "DIVERGENTE" | "CONFERIDO";
 
@@ -102,12 +103,6 @@ function normalizeUuid(value: unknown) {
 function normalizeIsoDate(value: unknown) {
   const normalized = normalizeText(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
-}
-
-function normalizePositiveInteger(value: unknown, fallback: number, max: number) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
-  return Math.min(parsed, max);
 }
 
 function resolveUserName(user: AppUserRow | undefined) {
@@ -234,8 +229,11 @@ export async function GET(request: NextRequest) {
   const aprId = normalizeText(url.searchParams.get("aprId"));
   const foremanName = normalizeText(url.searchParams.get("foremanName"));
   const status = normalizeText(url.searchParams.get("status")).toUpperCase();
-  const page = normalizePositiveInteger(url.searchParams.get("page"), 1, 100000);
-  const pageSize = normalizePositiveInteger(url.searchParams.get("pageSize"), 20, 500);
+  const { page, pageSize } = parsePagination(url.searchParams, {
+    defaultPageSize: 20,
+    maxPageSize: 500,
+    maxPage: 100000,
+  });
 
   let query = resolution.supabase
     .from("project_apr_controls")
