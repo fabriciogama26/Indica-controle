@@ -1,3 +1,4 @@
+- [x] [UI][Refactor] Fase 1 (PR7) do plano de paginacao/exportacao: migrar Posicao Trafo (`TrafoPositionPageView.tsx`) para `usePagination`/`Pagination` compartilhados. Testado no navegador e aprovado pelo usuario.
 - [x] [UI][Refactor] Fase 1 (PR7) do plano de paginacao/exportacao: migrar Projetos (`ProjectsPageView.tsx`) para `usePagination`/`Pagination` compartilhados. Testado no navegador e aprovado pelo usuario.
 - [x] [UI][Refactor] Fase 1 (PR7) do plano de paginacao/exportacao: migrar Cargo (`JobTitlesPageView.tsx`) para `usePagination`/`Pagination` compartilhados. Testado no navegador e aprovado pelo usuario.
 - [x] [UI][Refactor] Fase 1 (PR7) do plano de paginacao/exportacao: migrar Materiais (`MaterialsPageView.tsx`) para `usePagination`/`Pagination` compartilhados. Testado no navegador e aprovado pelo usuario.
