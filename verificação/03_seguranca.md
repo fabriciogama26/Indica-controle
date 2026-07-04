@@ -20,3 +20,8 @@
 - [x] Migration 277 nao cria rota/API nova.
 - [x] Funcoes SECURITY DEFINER novas/recriadas revogam `public`, `anon` e `authenticated` e concedem execute para `service_role`.
 - [x] Nao aplicavel: mudanca de menu/permissao de tela.
+
+## Verificacao desta entrega - 2026-07-04
+- [x] `GET /api/medicao/export` valida sessao com `resolveAuthenticatedAppUser`.
+- [x] `GET /api/medicao/export` exige `requirePageAction` com `page_key=medicao` e `action=export`.
+- [x] A rota nao recebe nem confia em `tenant_id`, usuario, role ou auditoria vindos do cliente.
