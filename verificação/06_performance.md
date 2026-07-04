@@ -254,3 +254,9 @@ Antes de abrir PR em qualquer tela ou API, responder:
 - [x] Trigger de sincronizacao usa chave operacional `tenant_id + programming_group_id`.
 - [x] Backfill limita validacoes de detalhe a 20 registros em mensagens de erro.
 - [x] Nao aplicavel: endpoint de listagem ou dashboard novo.
+
+## Verificacao desta entrega - 2026-07-04
+- [x] Exportacao da Medicao deixa de montar CSV no navegador e passa a baixar `text/csv` de rota server-side.
+- [x] Rota de exportacao reaproveita paginacao de ate 500 registros por pagina, sem `.select("*")` novo e sem `.limit(50000)`.
+- [x] Resposta CSV acima de 100KB registra log `[EGRESS]`.
+- [x] Lacuna documentada: rota ainda reaproveita o pipeline paginado existente; proxima etapa pode extrair service/RPC dedicado para reduzir queries internas.

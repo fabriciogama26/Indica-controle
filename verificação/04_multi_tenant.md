@@ -16,3 +16,8 @@
 - [x] Backfill e catalogo filtram por `tenant_id`.
 - [x] Sincronizacao de Estado Trabalho filtra por `tenant_id` e `programming_group_id`.
 - [x] Bloqueio de `CONCLUIDO` verifica somente linhas do mesmo `tenant_id`.
+
+## Verificacao desta entrega - 2026-07-04
+- [x] Exportacao de Medicao deriva tenant da sessao autenticada.
+- [x] A rota reaproveita a listagem `/api/medicao`, que filtra dados por `tenant_id` no servidor.
+- [x] Nao aplicavel: nenhuma escrita, migration, FK ou RLS alterada.

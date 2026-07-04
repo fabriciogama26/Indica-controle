@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, u
 
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./MeasurementPageView.module.css";
+import { downloadBlobFile } from "@/lib/utils/csv";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { parseCsvLine } from "@/lib/utils/parsers";
 
@@ -326,7 +327,6 @@ type ExportProgress = {
 
 const PAGE_SIZE = 20;
 const EXPORT_PAGE_SIZE = 200;
-const EXPORT_DETAIL_BATCH_SIZE = 20;
 const HISTORY_PAGE_SIZE = 5;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
@@ -490,13 +490,6 @@ function parseNonNegativeNumber(value: string | number) {
   const parsed = Number(normalized);
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return Number(parsed.toFixed(6));
-}
-
-function formatDecimal(value: number, digits = 2) {
-  return Number(value ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
 }
 
 function measurementKindLabel(value: MeasurementKind) {
@@ -1146,6 +1139,27 @@ export function MeasurementPageView() {
 
     return collected;
   }, [accessToken, activeFilters, fetchOrdersPage]);
+
+  async function downloadMeasurementExport(type: "summary" | "details" | "score", filename: string) {
+    if (!accessToken) {
+      throw new Error("Sessao invalida para exportar ordens de medicao.");
+    }
+
+    const query = new URLSearchParams(buildOrdersQuery(activeFilters, 1, PAGE_SIZE));
+    query.set("type", type);
+    const response = await fetch(`/api/medicao/export?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const errorPayload = (await response.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(errorPayload?.message ?? "Falha ao exportar ordens de medicao.");
+    }
+
+    const blob = await response.blob();
+    downloadBlobFile(blob, filename);
+  }
 
   useEffect(() => {
     if (!accessToken) {
@@ -2685,74 +2699,9 @@ export function MeasurementPageView() {
     if (isGeneratingExport) return;
 
     setIsExporting(true);
-    setExportProgress({ title: "Gerando...", message: "Carregando ordens filtradas.", percent: 5 });
+    setExportProgress({ title: "Gerando...", message: "Gerando arquivo CSV no servidor.", percent: 35 });
     try {
-      const exportOrders = await loadAllOrdersForExport({
-        onProgress: ({ loaded, total: exportTotal }) => {
-          const base = exportTotal > 0 ? loaded / exportTotal : 1;
-          setExportProgress({
-            title: "Gerando...",
-            message: `Carregando ordens (${loaded}/${exportTotal || loaded}).`,
-            percent: Math.min(85, Math.max(10, Math.round(base * 80))),
-          });
-        },
-      });
-      if (!exportOrders.length) {
-        throw new Error("Nenhuma ordem encontrada para exportar com os filtros atuais.");
-      }
-
-      setExportProgress({ title: "Gerando...", message: "Montando arquivo CSV.", percent: 92 });
-      const header = [
-        "Ordem",
-        "Projeto",
-        "Centro de Servicos",
-        "Data execucao",
-        "Equipe",
-        "Composicao equipe",
-        "Encarregado",
-        "Tipo da medicao",
-        "Motivo sem producao",
-        "Programacao",
-        "Status execucao",
-        "Itens",
-        "Valor total",
-        "Status",
-        "Atualizado em",
-      ];
-      const rows = exportOrders.map((order) => {
-        const executionStatusLabel = workCompletionStatusLabel(order.programmingCompletionStatus, workCompletionLabelMap);
-        const executionStatus = order.programmingCompletionStatusChangedAfterMeasurement
-          ? `${executionStatusLabel} (Atualizado apos medicao)`
-          : executionStatusLabel;
-        return [
-          order.orderNumber,
-          order.projectCode,
-          order.projectServiceCenter || "Sem base",
-          formatDate(order.executionDate),
-          order.teamName,
-          order.hasTeamComposition ? "Sim" : "Nao",
-          order.foremanName || "-",
-          measurementKindLabel(order.measurementKind),
-          order.noProductionReasonName || "-",
-          programmingMatchLabel(order.programmingMatchStatus),
-          executionStatus,
-          String(order.itemCount),
-          formatCurrency(order.totalAmount),
-          order.status,
-          formatDateTime(order.updatedAt),
-        ];
-      });
-      const csvLines = [header, ...rows].map((line) => line.map((item) => csvEscape(item)).join(";"));
-      const csv = `\uFEFF${csvLines.join("\n")}`;
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `ordens_medicao_${toIsoDate(new Date())}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await downloadMeasurementExport("summary", `ordens_medicao_${toIsoDate(new Date())}.csv`);
       setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar ordens de medicao." });
@@ -2771,149 +2720,10 @@ export function MeasurementPageView() {
     if (isGeneratingExport) return;
 
     setIsExportingDetails(true);
-    setExportProgress({ title: "Gerando...", message: "Carregando ordens filtradas.", percent: 5 });
+    setExportProgress({ title: "Gerando...", message: "Gerando detalhamento CSV no servidor.", percent: 35 });
     try {
-      const exportOrders = await loadAllOrdersForExport({
-        onProgress: ({ loaded, total: exportTotal }) => {
-          const base = exportTotal > 0 ? loaded / exportTotal : 1;
-          setExportProgress({
-            title: "Gerando...",
-            message: `Carregando ordens (${loaded}/${exportTotal || loaded}).`,
-            percent: Math.min(35, Math.max(8, Math.round(base * 30))),
-          });
-        },
-      });
-      if (!exportOrders.length) {
-        throw new Error("Nenhuma ordem encontrada para exportar detalhamento.");
-      }
-
-      const detailResults: PromiseSettledResult<OrderDetail | null>[] = [];
-      for (let index = 0; index < exportOrders.length; index += EXPORT_DETAIL_BATCH_SIZE) {
-        const batch = exportOrders.slice(index, index + EXPORT_DETAIL_BATCH_SIZE);
-        const batchResults = await Promise.allSettled(batch.map((order) => loadOrderDetail(order.id)));
-        detailResults.push(...batchResults);
-        const loadedDetails = Math.min(index + batch.length, exportOrders.length);
-        setExportProgress({
-          title: "Gerando...",
-          message: `Carregando detalhes (${loadedDetails}/${exportOrders.length}).`,
-          percent: Math.min(88, 35 + Math.round((loadedDetails / exportOrders.length) * 50)),
-        });
-      }
-      const details = detailResults
-        .filter((result): result is PromiseFulfilledResult<OrderDetail | null> => result.status === "fulfilled")
-        .map((result) => result.value)
-        .filter((item): item is OrderDetail => Boolean(item));
-      const failedCount = detailResults.length - details.length;
-
-      if (!details.length) {
-        throw new Error("Falha ao carregar detalhes das ordens para exportar.");
-      }
-
-      setExportProgress({ title: "Gerando...", message: "Montando arquivo CSV detalhado.", percent: 93 });
-      const header = [
-        "Ordem",
-        "Projeto",
-        "Centro de Servicos",
-        "Data execucao",
-        "Equipe",
-        "Encarregado",
-        "Tipo da medicao",
-        "Motivo sem producao",
-        "Programacao",
-        "Status execucao",
-        "Status ordem",
-        "Codigo atividade",
-        "Descricao atividade",
-        "Unidade",
-        "Pontos",
-        "MVA",
-        "Horas",
-        "Quantidade",
-        "Taxa manual",
-        "Valor unitario",
-        "Total item",
-        "Observacao",
-        "Atualizado em",
-      ];
-
-      const rows: string[][] = [];
-      for (const detail of details) {
-        const summary = exportOrders.find((order) => order.id === detail.id);
-        const projectCode = summary?.projectCode ?? projectMap.get(detail.projectId)?.code ?? detail.projectId;
-        const projectServiceCenter = summary?.projectServiceCenter ?? detail.projectServiceCenter ?? "Sem base";
-        const teamName = summary?.teamName ?? teamMap.get(detail.teamId)?.name ?? detail.teamId;
-        const foremanName = summary?.foremanName ?? teamMap.get(detail.teamId)?.foremanName ?? "-";
-        const programmingLabel = programmingMatchLabel(detail.programmingMatchStatus);
-        const executionStatusLabel = workCompletionStatusLabel(detail.programmingCompletionStatus, workCompletionLabelMap);
-        const executionStatus = detail.programmingCompletionStatusChangedAfterMeasurement
-          ? `${executionStatusLabel} (Atualizado apos medicao)`
-          : executionStatusLabel;
-
-        const detailItems = detail.items.length ? detail.items : [{
-          id: `${detail.id}-empty`,
-          activityId: "",
-          programmingActivityId: null,
-          projectActivityForecastId: null,
-          code: "",
-          description: detail.minimumBillingAmount > 0 ? "Garantia de faturamento minimo" : "",
-          unit: detail.minimumBillingAmount > 0 ? detail.minimumBillingUnitValueGroup : "",
-          quantity: detail.minimumBillingAmount > 0 ? 1 : 0,
-          mvaQuantity: null,
-          workedHours: null,
-          voicePoint: detail.minimumBillingTargetPoints,
-          manualRate: detail.manualRate,
-          unitValue: detail.minimumBillingUnitValue,
-          totalValue: detail.minimumBillingAmount,
-          observation: "",
-        }];
-
-        for (const item of detailItems) {
-          const itemRate = item.manualRate || detail.manualRate;
-          const totalItem = item.totalValue || (item.voicePoint * item.quantity * itemRate * item.unitValue);
-          rows.push([
-            detail.orderNumber,
-            projectCode,
-            projectServiceCenter,
-            formatDate(detail.executionDate),
-            teamName,
-            foremanName || "-",
-            measurementKindLabel(detail.measurementKind),
-            detail.noProductionReasonName || "-",
-            programmingLabel,
-            executionStatus,
-            detail.status,
-            item.code || "-",
-            item.description || "-",
-            item.unit || "-",
-            item.voicePoint ? item.voicePoint.toLocaleString("pt-BR") : "0",
-            item.mvaQuantity ? item.mvaQuantity.toLocaleString("pt-BR") : "-",
-            item.workedHours ? item.workedHours.toLocaleString("pt-BR") : "-",
-            item.quantity ? item.quantity.toLocaleString("pt-BR") : "0",
-            itemRate.toLocaleString("pt-BR"),
-            formatCurrency(item.unitValue),
-            formatCurrency(totalItem),
-            item.observation || "-",
-            formatDateTime(detail.updatedAt),
-          ]);
-        }
-      }
-
-      const csvLines = [header, ...rows].map((line) => line.map((item) => csvEscape(item)).join(";"));
-      const csv = `\uFEFF${csvLines.join("\n")}`;
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `ordens_medicao_detalhamento_${toIsoDate(new Date())}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await downloadMeasurementExport("details", `ordens_medicao_detalhamento_${toIsoDate(new Date())}.csv`);
       setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
-
-      if (failedCount > 0) {
-        setFeedback({ type: "success", message: `Detalhamento exportado com sucesso. ${failedCount} ordens foram ignoradas por falha ao carregar detalhes.` });
-      }
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar detalhamento da medicao." });
     } finally {
@@ -2930,54 +2740,9 @@ export function MeasurementPageView() {
     if (isGeneratingExport) return;
 
     setIsExportingScore(true);
-    setExportProgress({ title: "Gerando...", message: "Carregando ordens para pontuacao.", percent: 5 });
+    setExportProgress({ title: "Gerando...", message: "Gerando pontuacao CSV no servidor.", percent: 35 });
     try {
-      const exportOrders = await loadAllOrdersForExport({
-        onProgress: ({ loaded, total: exportTotal }) => {
-          const base = exportTotal > 0 ? loaded / exportTotal : 1;
-          setExportProgress({
-            title: "Gerando...",
-            message: `Carregando pontuacao (${loaded}/${exportTotal || loaded}).`,
-            percent: Math.min(85, Math.max(10, Math.round(base * 80))),
-          });
-        },
-      });
-      if (!exportOrders.length) {
-        throw new Error("Nenhuma ordem encontrada para exportar pontuacao.");
-      }
-
-      setExportProgress({ title: "Gerando...", message: "Montando arquivo CSV de pontuacao.", percent: 92 });
-      const header = ["Tipo", "Nome", "Data", "Projeto", "Pontos", "Valor", "Status", "Compensatorio"];
-      const rows = exportOrders.map((order) => {
-        const points = Number(order.scorePoints ?? 0);
-        const pointTarget = Number(order.pointTarget ?? 0);
-        const financialTarget = Number(order.financialTarget ?? 0);
-        const totalAmount = Number(order.totalAmount ?? 0);
-        const scoreStatus = pointTarget > 0 && points >= pointTarget ? "Superou Ponto" : "Nao Superou Ponto";
-        const compensatory = financialTarget > 0 && totalAmount >= financialTarget ? "NAO" : "SIM";
-        return [
-          order.teamTypeName || "Nao identificado",
-          order.foremanName || order.teamName || "Nao identificado",
-          formatDate(order.executionDate),
-          order.projectCode,
-          formatDecimal(points),
-          formatCurrency(totalAmount),
-          scoreStatus,
-          compensatory,
-        ];
-      });
-
-      const csvLines = [header, ...rows].map((line) => line.map((item) => csvEscape(item)).join(";"));
-      const csv = `\uFEFF${csvLines.join("\n")}`;
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `ordens_medicao_pontuacao_${toIsoDate(new Date())}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await downloadMeasurementExport("score", `ordens_medicao_pontuacao_${toIsoDate(new Date())}.csv`);
       setExportProgress({ title: "Gerando...", message: "Exportacao concluida.", percent: 100 });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar pontuacao da medicao." });
