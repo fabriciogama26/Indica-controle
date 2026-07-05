@@ -194,6 +194,65 @@ drop trigger if exists trg_warehouse_address_history_audit on public.warehouse_a
 create trigger trg_warehouse_address_history_audit before insert or update on public.warehouse_address_history
 for each row execute function public.apply_audit_fields();
 
+create or replace function public.is_physical_warehouse_stock_center(
+  p_tenant_id uuid,
+  p_stock_center_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from public.stock_centers sc
+    where sc.id = p_stock_center_id
+      and sc.tenant_id = p_tenant_id
+      and sc.is_active = true
+      and sc.center_type = 'OWN'
+      and sc.controls_balance = true
+      and not exists (
+        select 1
+        from public.teams t
+        where t.tenant_id = sc.tenant_id
+          and t.stock_center_id = sc.id
+      )
+  );
+$$;
+
+comment on function public.is_physical_warehouse_stock_center(uuid, uuid) is
+'Identifica centros fisicos elegiveis para enderecamento de almoxarifado: centro OWN ativo, controla saldo e nao esta vinculado a uma equipe.';
+
+revoke all on function public.is_physical_warehouse_stock_center(uuid, uuid) from public;
+revoke all on function public.is_physical_warehouse_stock_center(uuid, uuid) from anon;
+revoke all on function public.is_physical_warehouse_stock_center(uuid, uuid) from authenticated;
+grant execute on function public.is_physical_warehouse_stock_center(uuid, uuid) to service_role;
+
+create or replace function public.validate_warehouse_map_stock_center()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.is_physical_warehouse_stock_center(new.tenant_id, new.stock_center_id) then
+    raise exception 'Centro de estoque do mapa deve ser fisico de almoxarifado, sem vinculo com equipe.'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.validate_warehouse_map_stock_center() from public;
+revoke all on function public.validate_warehouse_map_stock_center() from anon;
+revoke all on function public.validate_warehouse_map_stock_center() from authenticated;
+
+drop trigger if exists trg_warehouse_maps_validate_stock_center on public.warehouse_maps;
+create trigger trg_warehouse_maps_validate_stock_center before insert or update of stock_center_id, tenant_id on public.warehouse_maps
+for each row execute function public.validate_warehouse_map_stock_center();
+
 insert into public.app_pages (page_key, path, name, section, description, default_user_access)
 values
   (
@@ -633,14 +692,13 @@ begin
     return jsonb_build_object('success', false, 'status', 400, 'reason', 'GRID_REQUIRED', 'message', 'Informe colunas e linhas do mapa.');
   end if;
 
-  perform 1
-  from public.stock_centers sc
-  where sc.id = p_stock_center_id
-    and sc.tenant_id = p_tenant_id
-    and sc.is_active = true;
-
-  if not found then
-    return jsonb_build_object('success', false, 'status', 404, 'reason', 'STOCK_CENTER_NOT_FOUND', 'message', 'Centro de estoque nao encontrado ou inativo.');
+  if not public.is_physical_warehouse_stock_center(p_tenant_id, p_stock_center_id) then
+    return jsonb_build_object(
+      'success', false,
+      'status', 422,
+      'reason', 'STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE',
+      'message', 'Use somente centro fisico de almoxarifado. Centros vinculados a equipes nao podem receber enderecamento.'
+    );
   end if;
 
   create temporary table if not exists tmp_warehouse_positions (
@@ -896,6 +954,15 @@ begin
     return jsonb_build_object('success', false, 'status', 404, 'reason', 'MAP_NOT_FOUND', 'message', 'Mapa do almoxarifado nao encontrado.');
   end if;
 
+  if not public.is_physical_warehouse_stock_center(p_tenant_id, v_map.stock_center_id) then
+    return jsonb_build_object(
+      'success', false,
+      'status', 422,
+      'reason', 'STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE',
+      'message', 'Use somente centro fisico de almoxarifado. Centros vinculados a equipes nao podem receber enderecamento.'
+    );
+  end if;
+
   perform 1
   from public.materials mat
   where mat.id = p_material_id
@@ -1041,6 +1108,15 @@ begin
 
   if not found then
     return jsonb_build_object('success', false, 'status', 404, 'reason', 'ADDRESS_NOT_FOUND', 'message', 'Endereco do material nao encontrado.');
+  end if;
+
+  if not public.is_physical_warehouse_stock_center(p_tenant_id, v_current.stock_center_id) then
+    return jsonb_build_object(
+      'success', false,
+      'status', 422,
+      'reason', 'STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE',
+      'message', 'Use somente centro fisico de almoxarifado. Centros vinculados a equipes nao podem receber enderecamento.'
+    );
   end if;
 
   if p_expected_updated_at is null or v_current.updated_at <> p_expected_updated_at then

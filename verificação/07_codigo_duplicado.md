@@ -23,3 +23,4 @@
 - [x] Modulo novo separa tipos, API, utils, constantes, PageViews e CSS.
 - [x] Rotas novas delegam regra para `src/server/modules/warehouse-addressing/handlers.ts`.
 - [x] Nao aplicavel: nao houve extracao global de utilitarios nesta etapa.
+- [x] Regra de centro fisico ficou centralizada em `fetchPhysicalWarehouseStockCenters` no server e `is_physical_warehouse_stock_center` no banco.

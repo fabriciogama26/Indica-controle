@@ -7,6 +7,7 @@ Visao geral
   - `/configuracao-mapa-almoxarifado`: cadastro do layout fisico em Cadastro Base.
   - `/mapa-almoxarifado`: leitura operacional e atribuicao de endereco em Almoxarifado.
 - O mapa cruza layout configurado, saldo atual em `stock_center_balances`, cadastro de `materials` e enderecos salvos em `warehouse_material_addresses`.
+- O modulo aceita somente centro fisico de almoxarifado: `stock_centers.center_type = OWN`, `controls_balance = true`, ativo e sem vinculo em `teams.stock_center_id`.
 
 Arquitetura
 -----------
@@ -34,7 +35,7 @@ Arquitetura
 Cadastro
 --------
 - A tela de configuracao permite:
-  - selecionar centro de estoque;
+  - selecionar centro fisico de almoxarifado;
   - definir quantidade de colunas e linhas;
   - clicar em celulas para adicionar/remover prateleiras;
   - selecionar prateleira;
@@ -43,11 +44,12 @@ Cadastro
   - salvar layout via RPC `save_warehouse_map_config`.
 - O layout e salvo por `tenant_id + stock_center_id`.
 - A RPC bloqueia salvar layout que remova posicoes ainda ocupadas.
+- A RPC bloqueia centro vinculado a equipe com `STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - A tela de leitura permite:
-  - selecionar centro de estoque;
+  - selecionar centro fisico de almoxarifado;
   - buscar material por codigo ou nome;
   - visualizar prateleiras e chao livre;
   - abrir detalhe de andar/posicao;
@@ -56,6 +58,7 @@ Filtros, auto-complete e listagem
   - realocar material;
   - remover endereco.
 - A API retorna somente materiais vinculados ao saldo do centro selecionado e/ou ja enderecados no mapa.
+- A lista de centros vem de `fetchPhysicalWarehouseStockCenters`, que identifica centros fisicos por ausencia de vinculo em `teams.stock_center_id`; nao usa nome como filtro.
 
 Boas praticas
 -------------
@@ -69,6 +72,7 @@ Boas praticas
 - Tabelas novas usam RLS para leitura e nao criam policy de escrita direta para `authenticated`.
 - Escritas passam por RPC `SECURITY DEFINER` com EXECUTE somente para `service_role`.
 - Queries selecionam colunas explicitamente; nao ha `.select("*")`.
+- O backend valida centro fisico antes de carregar/salvar configuracao, carregar mapa, atribuir endereco e remover endereco.
 
 Cancelamento e saldo
 --------------------
@@ -91,6 +95,7 @@ Atualizacao 2026-07
   - Criadas RPCs `save_warehouse_map_config`, `assign_warehouse_material_address` e `clear_warehouse_material_address`.
   - Materiais recebeu `stock_minimum` e `stock_maximum`.
   - Criadas telas reais de configuracao e leitura do mapa.
+  - Ajustada a identificacao de centro fisico: centros de equipe continuam sendo `OWN`, mas ficam bloqueados por vinculo em `teams.stock_center_id`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -100,13 +105,13 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressingMapPageView.tsx`
   - Responsavel por: renderizar mapa, status de ocupacao, detalhe, busca e atribuicao/remocao de endereco.
 - Caminho: `src/server/modules/warehouse-addressing/handlers.ts`
-  - Responsavel por: autenticar, autorizar, listar configuracao/mapa e delegar escritas para RPC.
+  - Responsavel por: autenticar, autorizar, identificar centros fisicos elegiveis, listar configuracao/mapa e delegar escritas para RPC.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/constants.ts`
   - Responsavel por: limites de grid, andares e posicoes por andar.
 - Caminho: `supabase/migrations/288_create_warehouse_addressing_module.sql`
-  - Responsavel por: schema, RLS, permissoes, page keys e RPCs do enderecamento.
+  - Responsavel por: schema, RLS, permissoes, page keys, funcao `is_physical_warehouse_stock_center`, trigger de validacao e RPCs do enderecamento.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`

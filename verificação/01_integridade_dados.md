@@ -26,3 +26,4 @@
 - [x] Migration 288 cria constraints para limites de estoque e posicao unica no mapa.
 - [x] RPCs de configuracao e endereco validam tenant, centro, material e posicao antes de gravar.
 - [x] Layout nao pode remover posicao ocupada sem realocar/remover o endereco antes.
+- [x] Centro de estoque do mapa agora deve ser fisico de almoxarifado; trigger/RPC recusam centro vinculado a equipe.

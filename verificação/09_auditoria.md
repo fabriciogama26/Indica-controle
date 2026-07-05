@@ -21,3 +21,4 @@
 - [x] Criada `warehouse_address_history` para salvar configuracao, atribuicao e remocao de endereco.
 - [x] `materials` continua registrando alteracoes via `material_history`, agora incluindo limites de estoque.
 - [x] Nao aplicavel: enderecamento nao altera saldo de estoque.
+- [x] Tentativa valida de configuracao/endereco continua gerando historico; centro de equipe e bloqueado antes da gravacao.

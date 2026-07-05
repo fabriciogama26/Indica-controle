@@ -34,6 +34,8 @@ export type StockCenterOption = {
   name: string;
   centerType: "OWN" | "THIRD_PARTY";
   controlsBalance: boolean;
+  centerKind: "PHYSICAL_WAREHOUSE";
+  isPhysicalWarehouse: boolean;
 };
 
 export type WarehouseConfiguracao = ConfiguracaoMapa & {

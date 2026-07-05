@@ -13,6 +13,7 @@ import type {
   WarehouseShelfFloorRow,
   WarehouseShelfRow,
   WarehouseStockCenterRow,
+  WarehouseTeamStockCenterRow,
 } from "./types";
 
 type RpcResult = {
@@ -144,29 +145,66 @@ function mapConfig(map: WarehouseMapRow | null, shelves: WarehouseShelfRow[], fl
   };
 }
 
-async function fetchStockCenters(context: AuthenticatedAppUserContext) {
-  const { data, error } = await context.supabase
-    .from("stock_centers")
-    .select("id, name, center_type, controls_balance")
-    .eq("tenant_id", context.appUser.tenant_id)
-    .eq("is_active", true)
-    .eq("controls_balance", true)
-    .order("name", { ascending: true })
-    .returns<WarehouseStockCenterRow[]>();
+async function fetchPhysicalWarehouseStockCenters(context: AuthenticatedAppUserContext) {
+  const [stockCentersResult, teamCentersResult] = await Promise.all([
+    context.supabase
+      .from("stock_centers")
+      .select("id, name, center_type, controls_balance")
+      .eq("tenant_id", context.appUser.tenant_id)
+      .eq("is_active", true)
+      .eq("center_type", "OWN")
+      .eq("controls_balance", true)
+      .order("name", { ascending: true })
+      .returns<WarehouseStockCenterRow[]>(),
+    context.supabase
+      .from("teams")
+      .select("stock_center_id")
+      .eq("tenant_id", context.appUser.tenant_id)
+      .returns<WarehouseTeamStockCenterRow[]>(),
+  ]);
 
-  if (error) {
+  if (stockCentersResult.error || teamCentersResult.error) {
     return { data: null, response: NextResponse.json({ message: "Falha ao carregar centros de estoque." }, { status: 500 }) };
   }
 
+  const teamStockCenterIds = new Set(
+    (teamCentersResult.data ?? [])
+      .map((row) => String(row.stock_center_id ?? "").trim())
+      .filter(Boolean),
+  );
+
   return {
-    data: (data ?? []).map((center) => ({
-      id: center.id,
-      name: center.name,
-      centerType: center.center_type,
-      controlsBalance: center.controls_balance,
-    })),
+    data: (stockCentersResult.data ?? [])
+      .filter((center) => !teamStockCenterIds.has(center.id))
+      .map((center) => ({
+        id: center.id,
+        name: center.name,
+        centerType: center.center_type,
+        controlsBalance: center.controls_balance,
+        centerKind: "PHYSICAL_WAREHOUSE" as const,
+        isPhysicalWarehouse: true,
+      })),
     response: null,
   };
+}
+
+async function ensurePhysicalWarehouseStockCenter(context: AuthenticatedAppUserContext, stockCenterId: string) {
+  const centers = await fetchPhysicalWarehouseStockCenters(context);
+  if (centers.response) {
+    return { centers: null, response: centers.response };
+  }
+
+  if (!centers.data?.some((center) => center.id === stockCenterId)) {
+    return {
+      centers: centers.data ?? [],
+      response: NextResponse.json(
+        { message: "Use somente centro fisico de almoxarifado. Centros vinculados a equipes nao podem receber enderecamento." },
+        { status: 422 },
+      ),
+    };
+  }
+
+  return { centers: centers.data ?? [], response: null };
 }
 
 async function fetchMapConfig(context: AuthenticatedAppUserContext, stockCenterId: string) {
@@ -228,10 +266,17 @@ export async function handleWarehouseConfigGet(request: NextRequest) {
   const authResponse = await authorize(context, "configuracao-mapa-almoxarifado", "read");
   if (authResponse) return authResponse;
 
-  const centers = await fetchStockCenters(context);
+  const centers = await fetchPhysicalWarehouseStockCenters(context);
   if (centers.response) return centers.response;
 
   const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
+  if (stockCenterId && !centers.data?.some((center) => center.id === stockCenterId)) {
+    return NextResponse.json(
+      { message: "Use somente centro fisico de almoxarifado. Centros vinculados a equipes nao podem receber enderecamento." },
+      { status: 422 },
+    );
+  }
+
   const config = stockCenterId ? await fetchMapConfig(context, stockCenterId) : { config: null, response: null };
   if (config.response) return config.response;
 
@@ -257,6 +302,9 @@ export async function handleWarehouseConfigPost(request: NextRequest) {
   if (!stockCenterId || colunas.length === 0 || linhas.length === 0) {
     return NextResponse.json({ message: "Centro, colunas e linhas sao obrigatorios." }, { status: 400 });
   }
+
+  const physicalCenter = await ensurePhysicalWarehouseStockCenter(context, stockCenterId);
+  if (physicalCenter.response) return physicalCenter.response;
 
   const { data, error } = await context.supabase.rpc("save_warehouse_map_config", {
     p_tenant_id: context.appUser.tenant_id,
@@ -297,21 +345,20 @@ export async function handleWarehouseMapGet(request: NextRequest) {
 
   const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
   if (!stockCenterId) {
-    const centers = await fetchStockCenters(context);
+    const centers = await fetchPhysicalWarehouseStockCenters(context);
     if (centers.response) return centers.response;
     return NextResponse.json({ stockCenters: centers.data ?? [], configuracao: null, materiais: [] });
   }
 
-  const [centers, config] = await Promise.all([
-    fetchStockCenters(context),
-    fetchMapConfig(context, stockCenterId),
-  ]);
-  if (centers.response) return centers.response;
+  const physicalCenter = await ensurePhysicalWarehouseStockCenter(context, stockCenterId);
+  if (physicalCenter.response) return physicalCenter.response;
+
+  const config = await fetchMapConfig(context, stockCenterId);
   if (config.response) return config.response;
 
   const mapId = config.config?.id ?? null;
   if (!mapId) {
-    return NextResponse.json({ stockCenters: centers.data ?? [], configuracao: null, materiais: [] });
+    return NextResponse.json({ stockCenters: physicalCenter.centers ?? [], configuracao: null, materiais: [] });
   }
 
   const [balancesResult, addressesResult] = await Promise.all([
@@ -360,7 +407,7 @@ export async function handleWarehouseMapGet(request: NextRequest) {
   const addressByMaterial = new Map((addressesResult.data ?? []).map((row) => [row.material_id, row]));
 
   return NextResponse.json({
-    stockCenters: centers.data ?? [],
+    stockCenters: physicalCenter.centers ?? [],
     configuracao: config.config,
     materiais: materials
       .filter((material) => material.is_active)

@@ -5,6 +5,10 @@ export type WarehouseStockCenterRow = {
   controls_balance: boolean;
 };
 
+export type WarehouseTeamStockCenterRow = {
+  stock_center_id: string | null;
+};
+
 export type WarehouseMapRow = {
   id: string;
   stock_center_id: string;
