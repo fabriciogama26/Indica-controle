@@ -68,7 +68,6 @@ export function WarehouseMapConfigPageView() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [lastErrorCode, setLastErrorCode] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<WarehouseConflict[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<ConfigHistoryEntry[]>([]);
@@ -130,7 +129,6 @@ export function WarehouseMapConfigPageView() {
         setConfig(nextConfig ?? emptyConfig());
         setSelectedShelfKey(null);
         setFeedback(null);
-        setLastErrorCode(null);
         setConflicts([]);
       } catch (error) {
         if (active) setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar mapa." });
@@ -157,8 +155,10 @@ export function WarehouseMapConfigPageView() {
       setConfig(nextConfig ?? emptyConfig());
       setSelectedShelfKey(null);
       setConflicts([]);
-      setLastErrorCode(null);
-      setFeedback({ type: "success", message: "Configuracao recarregada. Refaca as alteracoes desejadas e salve novamente." });
+      setFeedback({
+        type: "error",
+        message: "A configuracao foi alterada por outro usuario enquanto voce editava. A tela foi atualizada automaticamente com a versao mais recente — refaca as alteracoes desejadas e salve novamente.",
+      });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao recarregar configuracao do mapa." });
       await logError("Falha ao recarregar configuracao do mapa apos conflito.", error, { stockCenterId });
@@ -289,7 +289,6 @@ export function WarehouseMapConfigPageView() {
 
     setIsSaving(true);
     setConflicts([]);
-    setLastErrorCode(null);
     try {
       const result = await saveWarehouseConfig({
         accessToken,
@@ -308,10 +307,12 @@ export function WarehouseMapConfigPageView() {
       if (error instanceof WarehouseMapConflictError) {
         setConflicts(error.conflicts);
       }
-      if (error instanceof WarehouseMapSaveError) {
-        setLastErrorCode(error.code ?? null);
+
+      if (error instanceof WarehouseMapSaveError && error.code === "CONCURRENT_MODIFICATION") {
+        await reloadConfigAfterConflict();
+      } else {
+        setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao salvar mapa." });
       }
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao salvar mapa." });
       await logError("Falha ao salvar configuracao do mapa.", error, { stockCenterId });
     } finally {
       setIsSaving(false);
@@ -320,16 +321,7 @@ export function WarehouseMapConfigPageView() {
 
   return (
     <section className={styles.wrapper}>
-      {feedback ? (
-        <div className={`${styles.feedback} ${styles[feedback.type]}`}>
-          <span>{feedback.message}</span>
-          {lastErrorCode === "CONCURRENT_MODIFICATION" ? (
-            <button type="button" className={styles.secondaryButton} onClick={() => void reloadConfigAfterConflict()} disabled={isLoading}>
-              Recarregar
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      {feedback ? <div className={`${styles.feedback} ${styles[feedback.type]}`}>{feedback.message}</div> : null}
 
       {conflicts.length > 0 ? (
         <article className={styles.card}>
@@ -351,14 +343,24 @@ export function WarehouseMapConfigPageView() {
       <article className={styles.card}>
         <div className={styles.tableHeader}>
           <h3 className={styles.cardTitle}>Configuracao do mapa</h3>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={openHistoryModal}
-            disabled={!persistedConfig?.id}
-          >
-            Historico
-          </button>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={openHistoryModal}
+              disabled={!persistedConfig?.id}
+            >
+              Historico
+            </button>
+            <button
+              type="submit"
+              form="warehouse-map-config-form"
+              className={styles.primaryButton}
+              disabled={isSaving || !stockCenterId}
+            >
+              {isSaving ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
         </div>
         <div className={styles.formGrid}>
           <label className={styles.field}>
@@ -404,7 +406,7 @@ export function WarehouseMapConfigPageView() {
         </div>
       </article>
 
-      <form className={styles.mapLayout} onSubmit={handleSubmit}>
+      <form id="warehouse-map-config-form" className={styles.mapLayout} onSubmit={handleSubmit}>
         <article className={styles.card}>
           <div className={styles.summaryBar}>
             <strong>{config.prateleiras.length} prateleira(s)</strong>
@@ -499,12 +501,6 @@ export function WarehouseMapConfigPageView() {
           ) : (
             <p className={styles.muted}>Clique em uma prateleira ou pallet para configurar o endereco.</p>
           )}
-
-          <div className={styles.actions}>
-            <button type="submit" className={styles.primaryButton} disabled={isSaving || !stockCenterId}>
-              {isSaving ? "Salvando..." : "Salvar"}
-            </button>
-          </div>
         </aside>
       </form>
 
@@ -528,7 +524,10 @@ export function WarehouseMapConfigPageView() {
             ) : (
               <div className={styles.sidePanel}>
                 {historyEntries.map((entry) => {
-                  const changes = summarizeConfigHistoryChanges(entry.details.before, entry.details.after, storageTypes);
+                  const hasSnapshot = Boolean(entry.details.before && entry.details.after);
+                  const changes = hasSnapshot
+                    ? summarizeConfigHistoryChanges(entry.details.before, entry.details.after, storageTypes)
+                    : [];
                   return (
                     <article key={entry.id} className={styles.importStep}>
                       <div className={styles.importStepHeader}>
@@ -543,6 +542,8 @@ export function WarehouseMapConfigPageView() {
                             <li key={change}>{change}</li>
                           ))}
                         </ul>
+                      ) : hasSnapshot ? (
+                        <p className={styles.muted}>Configuracao salva sem alteracoes de layout.</p>
                       ) : (
                         <p className={styles.muted}>Configuracao salva sem detalhe de alteracao (registro anterior a este recurso).</p>
                       )}
