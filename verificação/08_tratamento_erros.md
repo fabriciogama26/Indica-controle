@@ -21,3 +21,8 @@
 - [x] `GET /api/medicao/export` retorna mensagens objetivas para tipo invalido, sessao invalida, permissao negada e ausencia de registros.
 - [x] Frontend le erro JSON da rota de exportacao e exibe feedback ao usuario.
 - [x] Nao ha exposicao de stack trace na resposta HTTP.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] APIs novas retornam mensagens objetivas e `code` quando a RPC informa motivo.
+- [x] Frontend registra falhas com `useErrorLogger` nas duas telas novas.
+- [x] Nao ha exposicao de stack trace nas respostas HTTP adicionadas.

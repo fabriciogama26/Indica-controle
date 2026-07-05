@@ -25,6 +25,8 @@ type MaterialItem = {
   serialTrackingType: SerialTrackingType;
   hasSerialTrackingUsage: boolean;
   unitPrice: number;
+  stockMinimum: number;
+  stockMaximum: number | null;
   isActive: boolean;
   cancellationReason: string | null;
   canceledAt: string | null;
@@ -51,6 +53,8 @@ type FormState = {
   serialTrackingType: SerialTrackingType;
   umb: string;
   unitPrice: string;
+  stockMinimum: string;
+  stockMaximum: string;
   updatedAt: string;
 };
 
@@ -128,6 +132,8 @@ const INITIAL_FORM: FormState = {
   serialTrackingType: "NONE",
   umb: "",
   unitPrice: "",
+  stockMinimum: "0",
+  stockMaximum: "",
   updatedAt: "",
 };
 
@@ -147,6 +153,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   serialTrackingType: "Rastreio por serial",
   umb: "UMB",
   unitPrice: "Preco",
+  stockMinimum: "Estoque minimo",
+  stockMaximum: "Estoque maximo",
   isActive: "Status",
   cancellationReason: "Motivo do cancelamento",
   canceledAt: "Data do cancelamento",
@@ -260,6 +268,8 @@ function buildMaterialsCsv(materialItems: MaterialItem[]) {
     "Rastreio por serial",
     "UMB",
     "Preco",
+    "Estoque minimo",
+    "Estoque maximo",
     "Status",
     "Registrado por",
     "Registrado em",
@@ -273,6 +283,8 @@ function buildMaterialsCsv(materialItems: MaterialItem[]) {
     serialTrackingLabel(material.serialTrackingType),
     material.umb ?? "",
     material.unitPrice.toFixed(2),
+    material.stockMinimum.toFixed(2),
+    material.stockMaximum === null ? "" : material.stockMaximum.toFixed(2),
     material.isActive ? "Ativo" : "Inativo",
     formatAuditActor(material.createdByName),
     formatDateTime(material.createdAt),
@@ -315,12 +327,28 @@ function formatOptionalText(value: string | null | undefined, fallback = "-") {
   return normalized || fallback;
 }
 
+function formatQuantity(value: number | string | null | undefined) {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue)) {
+    return "-";
+  }
+
+  return numericValue.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 function formatHistoryValue(field: string, value: string | null) {
   if (!value) return "-";
 
   if (field === "unitPrice") {
     const numericValue = Number(value);
     return Number.isFinite(numericValue) ? formatCurrency(numericValue) : value;
+  }
+
+  if (field === "stockMinimum" || field === "stockMaximum") {
+    return formatQuantity(value);
   }
 
   if (field === "isActive") {
@@ -351,6 +379,8 @@ function toFormState(material: MaterialItem): FormState {
     serialTrackingType: material.serialTrackingType,
     umb: formatOptionalText(material.umb, ""),
     unitPrice: String(material.unitPrice ?? 0),
+    stockMinimum: String(material.stockMinimum ?? 0),
+    stockMaximum: material.stockMaximum === null ? "" : String(material.stockMaximum),
     updatedAt: material.updatedAt,
   };
 }
@@ -647,6 +677,8 @@ export function MaterialsPageView() {
         serialTrackingType: form.serialTrackingType,
         umb: normalizeText(form.umb) || null,
         unitPrice: normalizeText(form.unitPrice),
+        stockMinimum: normalizeText(form.stockMinimum),
+        stockMaximum: normalizeText(form.stockMaximum) || null,
         ...(isEditing ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
 
@@ -854,7 +886,7 @@ export function MaterialsPageView() {
   }
 
   function downloadMassTemplate() {
-    const model = "\uFEFFcodigo;descricao;tipo;umb;preco;rastreio_por_serial\nMAT-001;Cabo multiplexado;NOVO;M;12,50;NAO\nMAT-002;Religador automatico;NOVO;UN;0;RELIGADOR\nMAT-003;Chave faca;SUCATA;UN;;CHAVE\n";
+    const model = "\uFEFFcodigo;descricao;tipo;umb;preco;estoque_minimo;estoque_maximo;rastreio_por_serial\nMAT-001;Cabo multiplexado;NOVO;M;12,50;10;100;NAO\nMAT-002;Religador automatico;NOVO;UN;0;1;;RELIGADOR\nMAT-003;Chave faca;SUCATA;UN;;0;;CHAVE\n";
     downloadCsvFile(model, "modelo_materiais_cadastro_em_massa.csv");
   }
 
@@ -928,6 +960,8 @@ export function MaterialsPageView() {
         tipo: string;
         umb: string;
         unitPrice: number;
+        stockMinimum: number;
+        stockMaximum: number | null;
         serialTrackingType: SerialTrackingType;
       }> = [];
       const seenCodes = new Set<string>();
@@ -946,8 +980,12 @@ export function MaterialsPageView() {
           const tipo = normalizeMaterialType(resolveCsvValue(row, ["tipo", "type"]));
           const umb = normalizeText(resolveCsvValue(row, ["umb", "unidade", "unidade_medida"]));
           const unitPriceRaw = resolveCsvValue(row, ["preco", "preco_unitario", "unit_price"]);
+          const stockMinimumRaw = resolveCsvValue(row, ["estoque_minimo", "estoque_min", "stock_minimum"]);
+          const stockMaximumRaw = resolveCsvValue(row, ["estoque_maximo", "estoque_max", "stock_maximum"]);
           const serialRaw = resolveCsvValue(row, ["rastreio_por_serial", "rastreio", "serial_tracking_type"]);
           const unitPrice = parseNonNegativeCurrency(unitPriceRaw);
+          const stockMinimum = parseNonNegativeCurrency(stockMinimumRaw || "0");
+          const stockMaximum = normalizeText(stockMaximumRaw) ? parseNonNegativeCurrency(stockMaximumRaw) : null;
           const serialTrackingType = normalizeSerialTrackingInput(serialRaw);
           const rowIssuesBefore = importIssues.length;
 
@@ -973,6 +1011,14 @@ export function MaterialsPageView() {
             importIssues.push({ rowNumber, column: "preco", value: unitPriceRaw, error: "Preco invalido. Informe valor maior ou igual a zero." });
           }
 
+          if (stockMinimum === null) {
+            importIssues.push({ rowNumber, column: "estoque_minimo", value: stockMinimumRaw, error: "Estoque minimo invalido. Informe valor maior ou igual a zero." });
+          }
+
+          if (stockMaximum !== null && stockMinimum !== null && stockMaximum < stockMinimum) {
+            importIssues.push({ rowNumber, column: "estoque_maximo", value: stockMaximumRaw, error: "Estoque maximo deve ser maior ou igual ao minimo." });
+          }
+
           if (!serialTrackingType) {
             importIssues.push({ rowNumber, column: "rastreio_por_serial", value: serialRaw, error: "Rastreio invalido. Use NAO, TRAFO, RELIGADOR ou CHAVE." });
           }
@@ -985,6 +1031,8 @@ export function MaterialsPageView() {
               tipo,
               umb,
               unitPrice: unitPrice ?? 0,
+              stockMinimum: stockMinimum ?? 0,
+              stockMaximum,
               serialTrackingType: serialTrackingType ?? "NONE",
             });
             seenCodes.add(codigo);
@@ -1166,6 +1214,30 @@ export function MaterialsPageView() {
             />
           </label>
 
+          <label className={styles.field}>
+            <span>Estoque minimo</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.stockMinimum}
+              onChange={(event) => updateFormField("stockMinimum", event.target.value)}
+              placeholder="0"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Estoque maximo</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.stockMaximum}
+              onChange={(event) => updateFormField("stockMaximum", event.target.value)}
+              placeholder="Opcional"
+            />
+          </label>
+
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
@@ -1326,6 +1398,8 @@ export function MaterialsPageView() {
                 <th>Rastreio</th>
                 <th>UMB</th>
                 <th>Preco</th>
+                <th>Min.</th>
+                <th>Max.</th>
                 <th>Registrado por</th>
                 <th>Registrado em</th>
                 <th>Acoes</th>
@@ -1346,6 +1420,8 @@ export function MaterialsPageView() {
                       <td>{serialTrackingLabel(material.serialTrackingType)}</td>
                       <td>{formatOptionalText(material.umb)}</td>
                       <td>{formatCurrency(material.unitPrice)}</td>
+                      <td>{formatQuantity(material.stockMinimum)}</td>
+                      <td>{material.stockMaximum === null ? "-" : formatQuantity(material.stockMaximum)}</td>
                       <td>{material.createdByName}</td>
                       <td>{formatDateTime(material.createdAt)}</td>
                       <td className={styles.actionsCell}>
@@ -1386,7 +1462,7 @@ export function MaterialsPageView() {
                   ))
                 : (
                   <tr>
-                    <td colSpan={9} className={styles.emptyRow}>
+                    <td colSpan={11} className={styles.emptyRow}>
                       {isLoadingList ? "Carregando materiais..." : "Nenhum material encontrado para os filtros informados."}
                     </td>
                   </tr>

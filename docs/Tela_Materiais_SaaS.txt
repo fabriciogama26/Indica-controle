@@ -182,6 +182,14 @@ Atualizacao 2026-03
   - Depois: a RPC `save_material_record` tambem bloqueia a alteracao/remocao de `serial_tracking_type` quando ha uso serializado, protegendo chamadas diretas fora da tela.
   - Impacto em `Operacoes de Equipe`: requisicao, devolucao e retorno de campo continuam exigindo Serial para materiais ja rastreados, evitando que uma CHAVE com unidade em equipe seja devolvida como saldo agregado sem atualizar `trafo_instances`.
   - Impacto multi-tenant: todas as validacoes filtram `tenant_id = p_tenant_id` ou `tenant_id = appUser.tenant_id`; RLS permanece inalterada.
+- Atualizacao (2026-07):
+  - Incluidos campos `Estoque minimo` e `Estoque maximo` no cadastro, edicao, listagem, exportacao CSV e cadastro em massa.
+  - Criadas colunas `materials.stock_minimum` e `materials.stock_maximum` na migration `288_create_warehouse_addressing_module.sql`.
+  - A RPC `save_material_record` passou a gravar os limites junto com os demais campos do material, mantendo historico dentro da transacao.
+  - `GET /api/materials` e `GET /api/materials/meta` passaram a exigir `requirePageAction` com `pageKey = materiais`.
+  - `POST`, `PUT` e `PATCH /api/materials` passaram a exigir acoes `create`, `update` e `cancel/update` conforme a operacao.
+  - Impacto em `Mapa do Almoxarifado`: os limites alimentam status visual de posicao (`baixo`, `ok`, `lotado`).
+  - Impacto multi-tenant: sem aceitar `tenant_id` do cliente; limites sao gravados no material do tenant autenticado.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -189,7 +197,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
   - Responsavel por: estado da tela, cadastro, edicao, cadastro em massa CSV, filtros, paginacao e modais de historico/cancelamento, incluindo envio de `expectedUpdatedAt`, bloqueio visual de rastreio por serial em uso e refresh da lista quando houver conflito.
 - Caminho: `src/app/api/materials/route.ts`
-  - Responsavel por: validar payload manual/lote, listar/historico, calcular `hasSerialTrackingUsage`, executar pre-check de codigo, bloquear alteracao/remocao de rastreio em uso e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`.
+  - Responsavel por: validar payload manual/lote, listar/historico, calcular `hasSerialTrackingUsage`, executar pre-check de codigo, bloquear alteracao/remocao de rastreio em uso, validar limites de estoque, exigir permissao server-side por acao e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
@@ -206,6 +214,8 @@ Constantes e configuracoes
   - Responsavel por: criar `save_material_record` e `set_material_record_status` para escrita transacional da tela de materiais.
 - Caminho: `supabase/migrations/243_block_material_serial_tracking_downgrade.sql`
   - Responsavel por: republicar `save_material_record` com bloqueio transacional de alteracao/remocao de `serial_tracking_type` quando houver `trafo_instances` ou `stock_transfer_items.serial_number`.
+- Caminho: `supabase/migrations/288_create_warehouse_addressing_module.sql`
+  - Responsavel por: adicionar `stock_minimum`/`stock_maximum` em `materials` e republicar `save_material_record` com persistencia transacional desses limites.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`

@@ -17,3 +17,8 @@
 - [x] Tipo frontend `WorkCompletionStatus` foi fechado nos codigos canonicos.
 - [x] Normalizadores backend/frontend convertem aliases legados para codigos canonicos.
 - [x] Docs e TASKS foram atualizados com a regra final.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] Tipos compartilhados do mapa seguem `ConfiguracaoMapa`, `Prateleira`, `AndarConfig` e `Material`.
+- [x] Campos de limite usam `stock_minimum`/`stock_maximum` no banco e `stockMinimum`/`stockMaximum` na API/frontend.
+- [x] `npx tsc --noEmit` executado sem erros.

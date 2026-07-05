@@ -25,3 +25,8 @@
 - [x] `GET /api/medicao/export` valida sessao com `resolveAuthenticatedAppUser`.
 - [x] `GET /api/medicao/export` exige `requirePageAction` com `page_key=medicao` e `action=export`.
 - [x] A rota nao recebe nem confia em `tenant_id`, usuario, role ou auditoria vindos do cliente.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] Novas rotas `/api/warehouse-addressing/*` validam sessao e `requirePageAction`.
+- [x] `GET/POST/PUT/PATCH /api/materials` e `GET /api/materials/meta` passaram a exigir `requirePageAction`.
+- [x] RPCs novas revogam `public`, `anon` e `authenticated`, concedendo EXECUTE apenas para `service_role`.
