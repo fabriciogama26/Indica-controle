@@ -4,10 +4,28 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
-import { DEFAULT_COLUMN_COUNT, DEFAULT_LINE_COUNT, MAX_FLOORS, MAX_GRID_SIZE, MAX_POSITIONS_PER_FLOOR } from "./constants";
-import { fetchWarehouseConfig, saveWarehouseConfig } from "./api";
-import type { ConfiguracaoMapa, Prateleira, StockCenterOption, WarehouseConfiguracao } from "./types";
-import { buildColumnLabels, buildDefaultShelf, buildLineLabels, countPositions, findShelf, shelfKey } from "./utils";
+import {
+  DEFAULT_COLUMN_COUNT,
+  DEFAULT_LINE_COUNT,
+  MAX_COLUMN_COUNT,
+  MAX_FLOORS,
+  MAX_LINE_COUNT,
+  MAX_POSITIONS_PER_FLOOR,
+} from "./constants";
+import { fetchWarehouseConfig, saveWarehouseConfig, WarehouseMapConflictError } from "./api";
+import type { ConfiguracaoMapa, Prateleira, StockCenterOption, StorageType, StorageTypeOption, WarehouseConfiguracao, WarehouseConflict } from "./types";
+import {
+  buildColumnLabels,
+  buildDefaultShelf,
+  buildLineLabels,
+  countPositions,
+  DEFAULT_STORAGE_TYPE_OPTIONS,
+  findShelf,
+  normalizeStorageFloors,
+  shelfKey,
+  storageTypeLabel,
+  storageTypeUsesFloors,
+} from "./utils";
 import styles from "./WarehouseAddressing.module.css";
 
 function emptyConfig(): ConfiguracaoMapa {
@@ -29,13 +47,16 @@ export function WarehouseMapConfigPageView() {
   const accessToken = session?.accessToken ?? null;
 
   const [stockCenters, setStockCenters] = useState<StockCenterOption[]>([]);
+  const [storageTypes, setStorageTypes] = useState<StorageTypeOption[]>(DEFAULT_STORAGE_TYPE_OPTIONS);
   const [stockCenterId, setStockCenterId] = useState("");
   const [persistedConfig, setPersistedConfig] = useState<WarehouseConfiguracao | null>(null);
   const [config, setConfig] = useState<ConfiguracaoMapa>(emptyConfig);
   const [selectedShelfKey, setSelectedShelfKey] = useState<string | null>(null);
+  const [selectedStorageType, setSelectedStorageType] = useState<StorageType>("SHELF");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [conflicts, setConflicts] = useState<WarehouseConflict[]>([]);
 
   const selectedShelf = useMemo(() => {
     if (!selectedShelfKey) return null;
@@ -53,7 +74,10 @@ export function WarehouseMapConfigPageView() {
         const data = await fetchWarehouseConfig({ accessToken: tokenValue });
         if (!active) return;
         const centers = data.stockCenters ?? [];
+        const nextStorageTypes = data.storageTypes?.length ? data.storageTypes : DEFAULT_STORAGE_TYPE_OPTIONS;
         setStockCenters(centers);
+        setStorageTypes(nextStorageTypes);
+        setSelectedStorageType((current) => nextStorageTypes.some((option) => option.code === current) ? current : nextStorageTypes[0]?.code ?? "SHELF");
         const firstCenterId = centers[0]?.id ?? "";
         setStockCenterId((current) => current || firstCenterId);
       } catch (error) {
@@ -81,10 +105,14 @@ export function WarehouseMapConfigPageView() {
         const data = await fetchWarehouseConfig({ accessToken: tokenValue, stockCenterId });
         if (!active) return;
         const nextConfig = data.configuracao ?? null;
+        const nextStorageTypes = data.storageTypes?.length ? data.storageTypes : DEFAULT_STORAGE_TYPE_OPTIONS;
+        setStorageTypes(nextStorageTypes);
+        setSelectedStorageType((current) => nextStorageTypes.some((option) => option.code === current) ? current : nextStorageTypes[0]?.code ?? "SHELF");
         setPersistedConfig(nextConfig);
         setConfig(nextConfig ?? emptyConfig());
         setSelectedShelfKey(null);
         setFeedback(null);
+        setConflicts([]);
       } catch (error) {
         if (active) setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar mapa." });
         await logError("Falha ao carregar configuracao do mapa.", error, { stockCenterId });
@@ -100,8 +128,8 @@ export function WarehouseMapConfigPageView() {
   }, [accessToken, logError, stockCenterId]);
 
   function resizeGrid(columnCount: number, lineCount: number) {
-    const colunas = buildColumnLabels(clamp(columnCount, 1, MAX_GRID_SIZE));
-    const linhas = buildLineLabels(clamp(lineCount, 1, MAX_GRID_SIZE));
+    const colunas = buildColumnLabels(clamp(columnCount, 1, MAX_COLUMN_COUNT));
+    const linhas = buildLineLabels(clamp(lineCount, 1, MAX_LINE_COUNT));
     const colunaSet = new Set(colunas);
     const linhaSet = new Set(linhas);
 
@@ -113,7 +141,7 @@ export function WarehouseMapConfigPageView() {
     setSelectedShelfKey(null);
   }
 
-  function toggleShelf(coluna: string, linha: number) {
+  function toggleStorage(coluna: string, linha: number) {
     const key = shelfKey(coluna, linha);
     const currentShelf = findShelf(config, coluna, linha);
     if (currentShelf && selectedShelfKey !== key) {
@@ -131,10 +159,24 @@ export function WarehouseMapConfigPageView() {
       }
       return {
         ...current,
-        prateleiras: [...current.prateleiras, buildDefaultShelf(coluna, linha)],
+        prateleiras: [...current.prateleiras, buildDefaultShelf(coluna, linha, selectedStorageType)],
       };
     });
     setSelectedShelfKey(currentShelf ? null : key);
+  }
+
+  function updateStorageType(shelf: Prateleira, tipo: StorageType) {
+    setConfig((current) => ({
+      ...current,
+      prateleiras: current.prateleiras.map((item) => {
+        if (item.id !== shelf.id) return item;
+        return {
+          ...item,
+          tipo,
+          andares: normalizeStorageFloors(tipo, item.andares, storageTypes),
+        };
+      }),
+    }));
   }
 
   function updateShelfFloors(shelf: Prateleira, floorCount: number) {
@@ -179,6 +221,7 @@ export function WarehouseMapConfigPageView() {
     }
 
     setIsSaving(true);
+    setConflicts([]);
     try {
       const result = await saveWarehouseConfig({
         accessToken,
@@ -194,6 +237,9 @@ export function WarehouseMapConfigPageView() {
       });
       setFeedback({ type: "success", message: result.message ?? "Configuracao salva com sucesso." });
     } catch (error) {
+      if (error instanceof WarehouseMapConflictError) {
+        setConflicts(error.conflicts);
+      }
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao salvar mapa." });
       await logError("Falha ao salvar configuracao do mapa.", error, { stockCenterId });
     } finally {
@@ -204,6 +250,23 @@ export function WarehouseMapConfigPageView() {
   return (
     <section className={styles.wrapper}>
       {feedback ? <div className={`${styles.feedback} ${styles[feedback.type]}`}>{feedback.message}</div> : null}
+
+      {conflicts.length > 0 ? (
+        <article className={styles.card}>
+          <h3 className={styles.cardTitle}>Materiais bloqueando o novo layout</h3>
+          <p className={styles.muted}>
+            Estes materiais ficariam sem posicao valida com o layout atual. Va em &quot;Mapa do Almoxarifado&quot; e use
+            &quot;Limpar posicao&quot; na celula correspondente (ou realoque o material) antes de salvar novamente.
+          </p>
+          <ul>
+            {conflicts.map((conflict) => (
+              <li key={`${conflict.materialId}-${conflict.coluna}-${conflict.linha}-${conflict.andar}-${conflict.posicao}`}>
+                {conflict.codigo} — posicao {conflict.coluna}{conflict.linha}.{conflict.andar}.{conflict.posicao}
+              </li>
+            ))}
+          </ul>
+        </article>
+      ) : null}
 
       <article className={styles.card}>
         <h3 className={styles.cardTitle}>Configuracao do mapa</h3>
@@ -223,7 +286,7 @@ export function WarehouseMapConfigPageView() {
             <input
               type="number"
               min="1"
-              max={MAX_GRID_SIZE}
+              max={MAX_COLUMN_COUNT}
               value={config.colunas.length}
               onChange={(event) => resizeGrid(Number(event.target.value), config.linhas.length)}
             />
@@ -234,10 +297,19 @@ export function WarehouseMapConfigPageView() {
             <input
               type="number"
               min="1"
-              max={MAX_GRID_SIZE}
+              max={MAX_LINE_COUNT}
               value={config.linhas.length}
               onChange={(event) => resizeGrid(config.colunas.length, Number(event.target.value))}
             />
+          </label>
+
+          <label className={styles.field}>
+            <span>Tipo ao adicionar</span>
+            <select value={selectedStorageType} onChange={(event) => setSelectedStorageType(event.target.value as StorageType)}>
+              {storageTypes.map((type) => (
+                <option key={type.code} value={type.code}>{type.label}</option>
+              ))}
+            </select>
           </label>
         </div>
       </article>
@@ -259,20 +331,20 @@ export function WarehouseMapConfigPageView() {
                     <button
                       type="button"
                       key={key}
-                      className={`${styles.gridCell} ${shelf ? styles.shelfCell : styles.floorCell} ${selectedShelfKey === key ? styles.selectedCell : ""}`}
+                      className={`${styles.gridCell} ${shelf ? styles.shelfCell : styles.floorCell} ${shelf?.tipo === "PALLET" ? styles.palletCell : ""} ${shelf?.tipo === "BAIA" ? styles.bayCell : ""} ${selectedShelfKey === key ? styles.selectedCell : ""}`}
                       onClick={() => {
-                        toggleShelf(coluna, linha);
+                        toggleStorage(coluna, linha);
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          toggleShelf(coluna, linha);
+                          toggleStorage(coluna, linha);
                         }
                       }}
-                      aria-label={`${shelf ? "Remover" : "Adicionar"} prateleira ${coluna}${linha}`}
+                      aria-label={`${shelf ? "Remover" : "Adicionar"} ${shelf ? storageTypeLabel(shelf.tipo, storageTypes).toLowerCase() : storageTypeLabel(selectedStorageType, storageTypes).toLowerCase()} ${coluna}${linha}`}
                     >
                       <strong>{coluna}{linha}</strong>
-                      <span>{shelf ? "Prateleira" : "Chao"}</span>
+                      <span>{shelf ? storageTypeLabel(shelf.tipo, storageTypes) : "Chao"}</span>
                     </button>
                   );
                 }),
@@ -286,6 +358,28 @@ export function WarehouseMapConfigPageView() {
           {selectedShelf ? (
             <div className={styles.sidePanel}>
               <strong>{selectedShelf.coluna}{selectedShelf.linha}</strong>
+              <label className={styles.field}>
+                <span>Tipo</span>
+                <select value={selectedShelf.tipo} onChange={(event) => updateStorageType(selectedShelf, event.target.value as StorageType)}>
+                  {storageTypes.map((type) => (
+                    <option key={type.code} value={type.code}>{type.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              {!storageTypeUsesFloors(selectedShelf.tipo, storageTypes) ? (
+                <label className={styles.field}>
+                  <span>Quantidade de posicoes</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={MAX_POSITIONS_PER_FLOOR}
+                    value={selectedShelf.andares[0]?.qtdPosicoes ?? 1}
+                    onChange={(event) => updateFloorPositions(selectedShelf, 1, Number(event.target.value))}
+                  />
+                </label>
+              ) : (
+                <>
               <label className={styles.field}>
                 <span>Quantidade de andares</span>
                 <input
@@ -309,9 +403,11 @@ export function WarehouseMapConfigPageView() {
                   />
                 </label>
               ))}
+                </>
+              )}
             </div>
           ) : (
-            <p className={styles.muted}>Clique em uma prateleira para configurar andares e posicoes.</p>
+            <p className={styles.muted}>Clique em uma prateleira ou pallet para configurar o endereco.</p>
           )}
 
           <div className={styles.actions}>

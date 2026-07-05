@@ -833,3 +833,8 @@ Observacao
 - Cria triggers para manter o evento sincronizado em movimentacoes fisicas e operacoes de equipe.
 - Faz backfill dos eventos existentes e adiciona indice por `tenant_id + operation_event_id`.
 - Mantem funcoes auxiliares restritas e sem alteracao de policies RLS.
+
+289_warehouse_addressing_cell_clear_and_conflicts.sql
+- Cria `clear_warehouse_cell_addresses` para limpar em lote todos os materiais enderecados numa posicao (coluna+linha) do mapa do almoxarifado, independente de andar/posicao/tipo, com log em `warehouse_address_history`.
+- Recria `save_warehouse_map_config` para retornar a lista detalhada de materiais/posicoes conflitantes (`conflicts`) quando o novo layout deixaria enderecos orfaos, mantendo o bloqueio `ADDRESSES_OUTSIDE_NEW_LAYOUT`.
+- Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.

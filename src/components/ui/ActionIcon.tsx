@@ -1,4 +1,4 @@
-type ActionIconName = "details" | "edit" | "history" | "cancel" | "activate" | "exportCsv" | "transfer";
+type ActionIconName = "details" | "edit" | "history" | "cancel" | "activate" | "exportCsv" | "transfer" | "address";
 
 type ActionIconProps = {
   name: ActionIconName;
@@ -71,6 +71,25 @@ export function ActionIcon({ name, className }: ActionIconProps) {
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
           <path
             d="M4.75 8.5h9.75m0 0-2.75-2.75M14.5 8.5l-2.75 2.75M19.25 15.5H9.5m0 0 2.75-2.75M9.5 15.5l2.75 2.75"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "address":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <path
+            d="M5 5.5h10.5a2.5 2.5 0 0 1 0 5H8.5a2.5 2.5 0 0 0 0 5H19"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="m16.5 13 2.5 2.5-2.5 2.5M8 3.75 5 5.5 8 7.25"
             stroke="currentColor"
             strokeWidth="1.7"
             strokeLinecap="round"

@@ -31,6 +31,7 @@
 - [x] `GET/POST/PUT/PATCH /api/materials` e `GET /api/materials/meta` passaram a exigir `requirePageAction`.
 - [x] RPCs novas revogam `public`, `anon` e `authenticated`, concedendo EXECUTE apenas para `service_role`.
 - [x] Chamada manual com centro vinculado a equipe retorna 422 no backend/RPC, mesmo que o front nao liste esse centro.
+- [x] RPC de lote `assign_warehouse_material_addresses_batch` tambem revoga `public`, `anon` e `authenticated`, mantendo EXECUTE apenas para `service_role`.
 
 ## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
 - [x] `GET /api/dashboard-medicao` continua validando sessao por `resolveAuthenticatedAppUser`.
