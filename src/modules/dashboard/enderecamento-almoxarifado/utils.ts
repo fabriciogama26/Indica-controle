@@ -87,9 +87,9 @@ export function materialStatus(material: WarehouseMaterial | null | undefined) {
   return "ok" as const;
 }
 
-export function floorOccupancyStatus(shelf: Prateleira, floorNumber: number, materials: WarehouseMaterial[]) {
+export function floorOccupancyCounts(shelf: Prateleira, floorNumber: number, materials: WarehouseMaterial[]) {
   const floor = shelf.andares.find((item) => item.numero === floorNumber);
-  if (!floor) return "empty" as const;
+  const total = floor?.qtdPosicoes ?? 0;
 
   const occupied = materials.reduce(
     (count, material) =>
@@ -99,9 +99,7 @@ export function floorOccupancyStatus(shelf: Prateleira, floorNumber: number, mat
     0,
   );
 
-  if (occupied === 0) return "empty" as const;
-  if (occupied >= floor.qtdPosicoes) return "full" as const;
-  return "partial" as const;
+  return { occupied, total };
 }
 
 export function summarizeConfigHistoryChanges(

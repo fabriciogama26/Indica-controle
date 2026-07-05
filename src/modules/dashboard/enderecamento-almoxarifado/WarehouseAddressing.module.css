@@ -90,6 +90,12 @@
   padding: 10px;
   cursor: pointer;
   text-align: center;
+  transition: opacity 0.15s ease, filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dimmedCell {
+  opacity: 0.32;
+  filter: grayscale(0.55);
 }
 
 .floorCell {
@@ -119,8 +125,11 @@
 }
 
 .highlightCell {
+  position: relative;
+  z-index: 1;
   border-color: #2b4fa8;
-  box-shadow: 0 0 0 3px rgba(43, 79, 168, 0.14);
+  box-shadow: 0 0 0 3px rgba(43, 79, 168, 0.22), 0 10px 20px rgba(23, 52, 122, 0.16);
+  transform: scale(1.03);
 }
 
 .summaryBar,
@@ -151,10 +160,10 @@
 .floorDots {
   display: flex;
   gap: 5px;
+  flex-wrap: wrap;
   justify-content: center;
 }
 
-.floorDot,
 .legend i {
   width: 12px;
   height: 12px;
@@ -163,22 +172,35 @@
   display: inline-block;
 }
 
-.floorDot {
+.floorBadge {
+  min-width: 30px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 52, 122, 0.2);
+  font-size: 0.64rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  padding: 0;
+  transition: transform 0.12s ease;
 }
 
-.empty,
+.floorBadge:hover {
+  transform: scale(1.1);
+}
+
 .dotEmpty {
   background: #c9d2e3;
 }
 
-.partial,
 .dotPartial {
   background: #f1c21b;
 }
 
-.full,
 .dotFull {
   background: #2b74d6;
 }
