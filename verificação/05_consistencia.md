@@ -22,3 +22,4 @@
 - [x] Tipos compartilhados do mapa seguem `ConfiguracaoMapa`, `Prateleira`, `AndarConfig` e `Material`.
 - [x] Campos de limite usam `stock_minimum`/`stock_maximum` no banco e `stockMinimum`/`stockMaximum` na API/frontend.
 - [x] `npx tsc --noEmit` executado sem erros.
+- [x] `StockCenterOption` explicita `centerKind = PHYSICAL_WAREHOUSE` para diferenciar a lista do cadastro geral de centros.

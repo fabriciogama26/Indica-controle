@@ -26,6 +26,7 @@
 - [x] Tabelas novas possuem `tenant_id`, FK para `tenants` e RLS de leitura por `user_can_access_tenant`.
 - [x] Relacoes com `stock_centers` e `materials` usam FK composta `(id, tenant_id)`.
 - [x] APIs e RPCs derivam tenant da sessao; `tenant_id` do cliente nao e aceito.
+- [x] Identificacao de centro fisico compara `teams.stock_center_id` sempre com o mesmo `tenant_id`.
 
 ## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
 - [x] Busca de `project_measurement_order_items` em chunks preserva `.eq("tenant_id", tenantId)` em todos os lotes.

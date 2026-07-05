@@ -22,3 +22,4 @@
 - [x] Regra de layout fisico ficou no backend/RPC, nao apenas na tela.
 - [x] Regra de ocupacao de posicao unica ficou protegida por UNIQUE e RPC.
 - [x] Nao aplicavel: esta etapa nao movimenta saldo de estoque.
+- [x] Centro fisico foi identificado por `stock_centers` sem vinculo em `teams.stock_center_id`, nao por texto do nome.
