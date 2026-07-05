@@ -4,8 +4,10 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { usePagination } from "@/hooks/usePagination";
 import styles from "./TeamsPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
@@ -269,11 +271,9 @@ export function TeamsPageView() {
   const [swapTeamOptions, setSwapTeamOptions] = useState<TeamItem[]>([]);
   const [isLoadingSwapTeams, setIsLoadingSwapTeams] = useState(false);
   const [isSwappingForeman, setIsSwappingForeman] = useState(false);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
   const statusAction = statusTeam?.isActive ? "cancel" : "activate";
@@ -397,7 +397,7 @@ export function TeamsPageView() {
         setIsLoadingList(false);
       }
     },
-    [logError, session?.accessToken],
+    [logError, session?.accessToken, setTotal],
   );
 
   const loadTeamHistory = useCallback(
@@ -1294,30 +1294,17 @@ export function TeamsPageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
-          </span>
-
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || isLoadingList}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || isLoadingList}
-            >
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingList}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {detailTeam ? (

@@ -4,8 +4,10 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { usePagination } from "@/hooks/usePagination";
 import {
   EXPORT_COOLDOWN_MS,
   EXPORT_PAGE_SIZE,
@@ -24,7 +26,7 @@ import type {
 } from "./types";
 import {
   buildTeamStockQuery,
-  csvEscape,
+  buildCsvContent,
   downloadCsvFile,
   formatDateTime,
   formatDecimal,
@@ -56,8 +58,7 @@ export function TeamStockPageView() {
   const [items, setItems] = useState<TeamStockItem[]>([]);
   const [summary, setSummary] = useState({ teamsWithStock: 0, distinctMaterials: 0, totalRows: 0 });
   const [summaryByUnit, setSummaryByUnit] = useState<Array<{ unit: string; balanceQuantity: number }>>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportCooldownActive, setIsExportCooldownActive] = useState(false);
@@ -69,7 +70,6 @@ export function TeamStockPageView() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const materialTypes = useMemo(
     () => Array.from(new Set(items.map((item) => item.materialType).filter(Boolean))).sort(),
@@ -143,7 +143,7 @@ export function TeamStockPageView() {
     return () => {
       mounted = false;
     };
-  }, [accessToken, filters, logError, page]);
+  }, [accessToken, filters, logError, page, setTotal]);
 
   useEffect(() => {
     if (!accessToken || !historyItem) return;
@@ -226,22 +226,20 @@ export function TeamStockPageView() {
         exportPage += 1;
       } while (exportedItems.length < exportTotal);
 
-      const rows = [
-        ["Equipe", "Status equipe", "Encarregado", "Base", "Material", "Descricao", "UMB", "Tipo", "Saldo", "Ultima movimentacao"],
-        ...exportedItems.map((item) => [
-          item.teamName,
-          item.teamIsActive ? "Ativa" : "Inativa",
-          item.foremanName,
-          item.serviceCenterName,
-          item.materialCode,
-          item.description,
-          item.unit,
-          item.materialType,
-          String(item.balanceQuantity).replace(".", ","),
-          formatDateTime(item.lastMovementAt),
-        ]),
-      ];
-      downloadCsvFile(`\uFEFF${rows.map((row) => row.map(csvEscape).join(";")).join("\r\n")}`, "estoque-equipes.csv");
+      const headers = ["Equipe", "Status equipe", "Encarregado", "Base", "Material", "Descricao", "UMB", "Tipo", "Saldo", "Ultima movimentacao"];
+      const rows = exportedItems.map((item) => [
+        item.teamName,
+        item.teamIsActive ? "Ativa" : "Inativa",
+        item.foremanName,
+        item.serviceCenterName,
+        item.materialCode,
+        item.description,
+        item.unit,
+        item.materialType,
+        String(item.balanceQuantity).replace(".", ","),
+        formatDateTime(item.lastMovementAt),
+      ]);
+      downloadCsvFile(buildCsvContent(headers, rows), "estoque-equipes.csv");
       setFeedback({ type: "success", message: "Estoque das equipes exportado." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar." });
@@ -356,13 +354,18 @@ export function TeamStockPageView() {
             </tbody>
           </table>
         </div>
-        <div className={styles.pagination}>
-          <span>Pagina {page} de {totalPages}</span>
-          <div className={styles.paginationActions}>
-            <button className={styles.ghostButton} type="button" disabled={page <= 1 || isLoading} onClick={() => setPage((value) => value - 1)}>Anterior</button>
-            <button className={styles.ghostButton} type="button" disabled={page >= totalPages || isLoading} onClick={() => setPage((value) => value + 1)}>Proxima</button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          showTotal={false}
+          onPrev={() => setPage((value) => value - 1)}
+          onNext={() => setPage((value) => value + 1)}
+          disabled={isLoading}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </section>
 
       {detailItem ? <div className={styles.modalOverlay} role="presentation">

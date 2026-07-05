@@ -2,6 +2,7 @@
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type AsbuiltMeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type AsbuiltMeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
@@ -206,14 +207,6 @@ function normalizeDecimalText(value: unknown) {
   }
 
   return raw.replace(/,/g, "");
-}
-
-function normalizePositiveInteger(value: unknown, fallback: number, max = 200) {
-  const parsed = Number(String(value ?? "").trim());
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return Math.min(parsed, max);
 }
 
 function normalizePositiveIntegerArray(values: unknown) {
@@ -608,8 +601,11 @@ export async function GET(request: NextRequest) {
   const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
   const asbuiltMeasurementKindFilter = normalizeText(request.nextUrl.searchParams.get("asbuiltMeasurementKind")).toUpperCase();
   const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
-  const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
-  const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
+    defaultPageSize: 20,
+    maxPageSize: 500,
+    maxPage: 10_000,
+  });
   const startIndex = (page - 1) * pageSize;
 
   const ASBUILT_ORDER_SELECT = "id, asbuilt_number, project_id, service_coverage_end_date, asbuilt_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by";

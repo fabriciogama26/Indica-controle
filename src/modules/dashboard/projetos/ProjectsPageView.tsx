@@ -5,7 +5,9 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState 
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import styles from "./ProjectsPageView.module.css";
 import { downloadBlobFile, downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
@@ -752,15 +754,13 @@ export function ProjectsPageView() {
   const [isSavingProjectActivityForecast, setIsSavingProjectActivityForecast] = useState(false);
   const [cancelProject, setCancelProject] = useState<ProjectItem | null>(null);
   const [cancelReason, setCancelReason] = useState("");
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [projectListSummary, setProjectListSummary] = useState<ProjectListSummary>(INITIAL_PROJECT_LIST_SUMMARY);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const deferredForecastSearch = useDeferredValue(forecastSearch);
   const deferredActivityForecastSearch = useDeferredValue(activityForecastSearch);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isSobEnabled = Boolean(form.priority.trim());
   const isEditing = Boolean(editingProjectId);
@@ -943,7 +943,7 @@ export function ProjectsPageView() {
         setIsLoadingList(false);
       }
     },
-    [session?.accessToken],
+    [session?.accessToken, setTotal],
   );
 
   useEffect(() => {
@@ -3201,30 +3201,17 @@ export function ProjectsPageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
-          </span>
-
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || isLoadingList}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || isLoadingList}
-            >
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingList}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
       </>
       ) : activeTab === "forecast" ? (

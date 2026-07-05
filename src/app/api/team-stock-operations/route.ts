@@ -4,6 +4,7 @@ import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
+import { parsePagination } from "@/lib/server/apiHelpers";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -164,15 +165,6 @@ async function loadRowsInChunks<T>(
   }
 
   return { data: rows, error: null };
-}
-
-function parsePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number(value ?? "");
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return parsed;
 }
 
 function normalizeCodeFilter(value: string | null) {
@@ -514,8 +506,7 @@ async function loadTeamOperationList(request: NextRequest) {
   }
 
   const { supabase, appUser } = resolution;
-  const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
   const startDate = normalizeDateInput(request.nextUrl.searchParams.get("startDate"));
   const endDate = normalizeDateInput(request.nextUrl.searchParams.get("endDate"));
   const operationKindFilter = normalizeTeamOperationKind(request.nextUrl.searchParams.get("operationKind"));
@@ -920,8 +911,7 @@ async function loadTeamOperationHistory(request: NextRequest) {
   }
 
   const { supabase, appUser } = resolution;
-  const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
   const transferId = normalizeText(request.nextUrl.searchParams.get("transferId"));
 
   if (!transferId) {

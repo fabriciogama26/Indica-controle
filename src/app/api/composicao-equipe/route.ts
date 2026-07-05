@@ -7,6 +7,7 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type CompositionRow = {
   id: string;
@@ -729,10 +730,7 @@ export async function GET(request: NextRequest) {
     const projectId = normalizeUuid(params.get("projectId"));
     const teamId = normalizeUuid(params.get("teamId"));
     const workStatus = normalizeWorkStatus(params.get("workStatus"));
-    const page = parsePositiveInteger(params.get("page"), 1);
-    const pageSize = parsePositiveInteger(params.get("pageSize"), 20, 100);
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const { page, pageSize, from, to } = parsePagination(params, { maxPageSize: 100 });
 
     let projectCompositionIds: string[] | null = null;
     if (projectId) {

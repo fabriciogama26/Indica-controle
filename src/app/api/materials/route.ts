@@ -8,6 +8,7 @@ import {
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
 import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 const WITHOUT_UMB_FILTER = "__SEM_UMB__";
 
@@ -615,10 +616,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const { page, pageSize, from, to } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
 
     const codeFilter = normalizeText(request.nextUrl.searchParams.get("codigo"));
     const descriptionFilter = normalizeText(request.nextUrl.searchParams.get("descricao"));

@@ -3,6 +3,7 @@
 import { useMemo, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
 
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useDashboardTeams } from "./hooks";
 import type {
   DashboardTeamRow,
@@ -95,8 +96,8 @@ export function DashboardTeamsPageView() {
   const [projectDetailModal, setProjectDetailModal] = useState<ProjectDetailModal>(null);
   const [teamDetailModal, setTeamDetailModal] = useState<TeamDetailModal>(null);
   const [localMessage, setLocalMessage] = useState("");
-  const [lastExportAt, setLastExportAt] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const exportCooldown = useExportCooldown();
 
   const selectedTeams = useMemo(
     () => teamWeekFilter ? dashboard.teamRowsByWeek[teamWeekFilter] ?? [] : dashboard.teamRows,
@@ -218,15 +219,14 @@ export function DashboardTeamsPageView() {
       setLocalMessage("Nenhum projeto encontrado para exportar.");
       return;
     }
-    if (Date.now() - lastExportAt < 10_000) {
-      setLocalMessage("Aguarde 10 segundos entre as exportacoes.");
+    if (!exportCooldown.tryStart()) {
+      setLocalMessage(`Aguarde ${exportCooldown.getRemainingSeconds()} segundos entre as exportacoes.`);
       return;
     }
     setIsExporting(true);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
       exportDashboardProjectsCsv(projectDetailModal.filename, projectDetailModal.rows);
-      setLastExportAt(Date.now());
       setLocalMessage("");
     } finally {
       setIsExporting(false);
@@ -235,8 +235,8 @@ export function DashboardTeamsPageView() {
 
   async function exportTeamDetails() {
     if (!teamDetailModal) return;
-    if (Date.now() - lastExportAt < 10_000) {
-      setLocalMessage("Aguarde 10 segundos entre as exportacoes.");
+    if (!exportCooldown.tryStart()) {
+      setLocalMessage(`Aguarde ${exportCooldown.getRemainingSeconds()} segundos entre as exportacoes.`);
       return;
     }
     setIsExporting(true);
@@ -254,7 +254,6 @@ export function DashboardTeamsPageView() {
           rows: teamDetailModal.row.foremanContributions,
         },
       );
-      setLastExportAt(Date.now());
       setLocalMessage("");
     } finally {
       setIsExporting(false);

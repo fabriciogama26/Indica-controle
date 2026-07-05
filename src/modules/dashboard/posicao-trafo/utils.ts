@@ -49,7 +49,7 @@ export function buildTrafoPositionQuery(filters: TrafoPositionFilters, page: num
   return params.toString();
 }
 
-export { escapeCsvValue as csvEscape, downloadCsvFile } from "@/lib/utils/csv";
+export { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 
 export function toIsoDate(value: Date) {
   const year = value.getFullYear();

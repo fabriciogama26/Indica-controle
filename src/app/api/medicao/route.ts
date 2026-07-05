@@ -2,6 +2,7 @@
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type MeasurementOrderStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
@@ -376,15 +377,6 @@ function normalizeOptionalNonNegativeNumber(value: unknown) {
   }
 
   return Number(parsed.toFixed(6));
-}
-
-function normalizePositiveInteger(value: unknown, fallback: number, max = 200) {
-  const parsed = Number(String(value ?? "").trim());
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return Math.min(parsed, max);
 }
 
 function normalizePositiveIntegerArray(values: unknown) {
@@ -1388,8 +1380,11 @@ export async function GET(request: NextRequest) {
     ? workCompletionStatusFilterRaw
     : resolveMeasurementWorkCompletionStatus(workCompletionStatusFilterRaw) ?? workCompletionStatusFilterRaw;
   const completionAlertFilter = normalizeText(request.nextUrl.searchParams.get("completionAlert")).toUpperCase();
-  const page = normalizePositiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
-  const pageSize = normalizePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20, 500);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
+    defaultPageSize: 20,
+    maxPageSize: 500,
+    maxPage: 10_000,
+  });
 
   if (!startDate || !endDate) {
     return NextResponse.json({ message: "startDate e endDate sao obrigatorios." }, { status: 400 });

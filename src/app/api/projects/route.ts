@@ -9,6 +9,7 @@ import {
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type ProjectRow = {
   id: string;
@@ -1487,10 +1488,7 @@ export async function GET(request: NextRequest) {
     const canceledOnly = normalizeBoolean(params.get("canceledOnly"));
     const workCompletionStatus = normalizeProjectWorkCompletionStatusFilter(params.get("workCompletionStatus"));
     const sgdTypeId = normalizeUuid(params.get("sgdTypeId"));
-    const page = Math.max(1, Number(params.get("page") ?? 1));
-    const pageSize = Math.min(100, Math.max(1, Number(params.get("pageSize") ?? 20)));
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const { page, pageSize, from, to } = parsePagination(params, { maxPageSize: 100 });
     const programmingFilteredProjectIdsResult = await fetchProjectIdsByProgrammingFiltersCompat({
       supabase,
       tenantId: appUser.tenant_id,

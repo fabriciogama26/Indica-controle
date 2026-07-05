@@ -4,8 +4,10 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { usePagination } from "@/hooks/usePagination";
 import { EXPORT_COOLDOWN_MS, EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
 import type {
   CurrentStockFilters,
@@ -76,8 +78,7 @@ export function CurrentStockPageView() {
   const [filters, setFilters] = useState<CurrentStockFilters>(INITIAL_FILTERS);
   const [items, setItems] = useState<CurrentStockListItem[]>([]);
   const [summaryByUnit, setSummaryByUnit] = useState<CurrentStockUnitSummary[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -98,7 +99,6 @@ export function CurrentStockPageView() {
     originText: "",
   });
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const filteredBalanceTotalsByUnit = useMemo(() => {
     const totals = new Map<string, number>();
@@ -240,7 +240,7 @@ export function CurrentStockPageView() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, filters, logError, page]);
+  }, [accessToken, filters, logError, page, setTotal]);
 
   useEffect(() => {
     if (!historyItem) {
@@ -670,30 +670,17 @@ export function CurrentStockPageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
-          </span>
-
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || isLoadingList}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || isLoadingList}
-            >
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingList}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {detailItem ? (

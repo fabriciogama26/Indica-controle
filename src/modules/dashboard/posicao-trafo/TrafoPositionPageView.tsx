@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { usePagination } from "@/hooks/usePagination";
 import { serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { EXPORT_COOLDOWN_MS, EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
 import type {
@@ -21,7 +23,7 @@ import type {
 } from "./types";
 import {
   buildTrafoPositionQuery,
-  csvEscape,
+  buildCsvContent,
   downloadCsvFile,
   formatDate,
   formatDateTime,
@@ -109,8 +111,7 @@ export function TrafoPositionPageView() {
     outsideCount: 0,
     retCount: 0,
   });
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -126,7 +127,6 @@ export function TrafoPositionPageView() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
 
   useEffect(() => {
@@ -243,7 +243,7 @@ export function TrafoPositionPageView() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, filters, logError, page]);
+  }, [accessToken, filters, logError, page, setTotal]);
 
   function updateFilterDraft<K extends keyof TrafoPositionFilters>(key: K, value: TrafoPositionFilters[K]) {
     setFilterDraft((current) => ({ ...current, [key]: value }));
@@ -489,30 +489,32 @@ export function TrafoPositionPageView() {
         return;
       }
 
-      const lines = [
-        "centro_fisico;situacao;equipe_atual;encarregado_atual;projeto_ultimo;material_codigo;descricao;rastreio;serial;lp;ultima_operacao;data_ultima_movimentacao;atualizado_em;ultima_transferencia;ret_em;ret_por;ret_motivo",
-        ...exportedItems.map((item) => [
-          csvEscape(item.currentStockCenterName ?? "-"),
-          csvEscape(currentStatusLabel(item.currentStatus)),
-          csvEscape(item.currentTeamName ?? "-"),
-          csvEscape(item.currentForemanName ?? "-"),
-          csvEscape(item.lastProjectCode ?? "-"),
-          csvEscape(item.materialCode),
-          csvEscape(item.description),
-          csvEscape(serialTrackingLabel(item.serialTrackingType)),
-          csvEscape(item.serialNumber),
-          csvEscape(item.lotCode),
-          csvEscape(movementTypeLabel(item.lastOperationKind)),
-          csvEscape(formatDate(item.lastEntryDate)),
-          csvEscape(formatDateTime(item.updatedAt)),
-          csvEscape(item.lastTransferId ?? "-"),
-          csvEscape(formatDateTime(item.retiredAt)),
-          csvEscape(item.retiredByName ?? "-"),
-          csvEscape(item.retiredReason ?? "-"),
-        ].join(";")),
+      const headers = [
+        "centro_fisico", "situacao", "equipe_atual", "encarregado_atual", "projeto_ultimo",
+        "material_codigo", "descricao", "rastreio", "serial", "lp", "ultima_operacao",
+        "data_ultima_movimentacao", "atualizado_em", "ultima_transferencia", "ret_em", "ret_por", "ret_motivo",
       ];
+      const rows = exportedItems.map((item) => [
+        item.currentStockCenterName ?? "-",
+        currentStatusLabel(item.currentStatus),
+        item.currentTeamName ?? "-",
+        item.currentForemanName ?? "-",
+        item.lastProjectCode ?? "-",
+        item.materialCode,
+        item.description,
+        serialTrackingLabel(item.serialTrackingType),
+        item.serialNumber,
+        item.lotCode,
+        movementTypeLabel(item.lastOperationKind),
+        formatDate(item.lastEntryDate),
+        formatDateTime(item.updatedAt),
+        item.lastTransferId ?? "-",
+        formatDateTime(item.retiredAt),
+        item.retiredByName ?? "-",
+        item.retiredReason ?? "-",
+      ]);
 
-      downloadCsvFile(`\uFEFF${lines.join("\n")}\n`, `rastreio_serial_${toIsoDate(new Date())}.csv`);
+      downloadCsvFile(buildCsvContent(headers, rows), `rastreio_serial_${toIsoDate(new Date())}.csv`);
 
       setFeedback({ type: "success", message: "Exportacao do rastreio de serial concluida." });
       setIsExportCooldownActive(true);
@@ -844,30 +846,17 @@ export function TrafoPositionPageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
-          </span>
-
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || isLoadingList}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || isLoadingList}
-            >
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingList}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {detailItem ? (

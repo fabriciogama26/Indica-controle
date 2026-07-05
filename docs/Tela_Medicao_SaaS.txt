@@ -123,8 +123,8 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
-  - Data inicial
-  - Data final
+  - Data inicial (padrao: primeiro dia do mes corrente)
+  - Data final (padrao: ultimo dia do mes corrente)
   - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
   - Equipe (lista carregada dos metadados da tela; filtra por `team_id`)
   - Tipo de Servico (catalogo ativo de `project_service_types`; filtra pelo tipo vinculado ao projeto)
@@ -1122,4 +1122,17 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao em todas as telas:
 - Funcoes/estado tocados: `ExportProgressModal`, `CsvExportButton`, estados de exportacao da Medicao.
 - Antes: o modal estava acoplado a Medicao e o CSS ficava no module da tela.
 - Depois: o modal virou bloco compartilhado e a Medicao usa o mesmo componente em modo simples/indeterminado.
+
+Atualizacao 2026-07 - Paginacao compartilhada e filtro padrao por mes
+----------------------------------------------------------------------
+- Arquivos alterados: `src/modules/dashboard/medicao/MeasurementPageView.tsx`, `src/hooks/usePagination.ts` (novo), `src/components/ui/Pagination.tsx` (novo), `src/components/ui/Pagination.module.css` (novo).
+- Funcoes/hooks/constantes tocadas:
+  - `usePagination` (novo hook compartilhado) substitui o par local `useState` de `page`/`total` e o calculo manual de `totalPages`.
+  - `Pagination` (novo componente compartilhado) substitui o rodape de paginacao (JSX "Anterior"/"Proxima") que antes era duplicado inline na tela.
+  - `monthRange` substitui `yearRange` no calculo do intervalo padrao de data.
+- Comportamento antes/depois:
+  - Antes: `Data inicial`/`Data final` abriam preenchidas com o ano inteiro (`01/01` a `31/12` do ano corrente) tanto no carregamento inicial quanto ao clicar em `Limpar`.
+  - Depois: `Data inicial`/`Data final` abrem preenchidas com o mes corrente (primeiro ao ultimo dia do mes atual). O usuario continua podendo digitar manualmente qualquer intervalo maior.
+  - Antes/depois (paginacao): nenhuma mudanca de comportamento visivel; o rodape "Pagina X de Y | Total: Z" e os botoes Anterior/Proxima continuam identicos, agora vindos de um componente compartilhado usado tambem em outras telas (piloto: Equipes).
+- Impacto multi-tenant: nenhum (mudanca de UI e de valor padrao de filtro no cliente; a API continua exigindo `startDate`/`endDate` explicitos e aplicando o mesmo escopo de tenant).
 - Multi-tenant: sem mudanca adicional em API, query, schema, RLS ou permissao alem da rota server-side de exportacao ja documentada acima.

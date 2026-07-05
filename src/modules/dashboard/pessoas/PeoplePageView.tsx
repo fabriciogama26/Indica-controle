@@ -4,7 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import styles from "./PeoplePageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
@@ -409,8 +411,7 @@ export function PeoplePageView() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [statusPerson, setStatusPerson] = useState<PersonItem | null>(null);
   const [statusReason, setStatusReason] = useState("");
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isMassImportModalOpen, setIsMassImportModalOpen] = useState(false);
   const [massImportFile, setMassImportFile] = useState<File | null>(null);
@@ -418,7 +419,6 @@ export function PeoplePageView() {
   const [massImportResult, setMassImportResult] = useState<MassImportResultSummary | null>(null);
   const [isImportingMass, setIsImportingMass] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
   const statusAction = statusPerson?.isActive ? "cancel" : "activate";
@@ -532,7 +532,7 @@ export function PeoplePageView() {
         setIsLoadingList(false);
       }
     },
-    [session?.accessToken],
+    [session?.accessToken, setTotal],
   );
 
   const loadPersonHistory = useCallback(
@@ -1608,30 +1608,17 @@ export function PeoplePageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
-          </span>
-
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || isLoadingList}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || isLoadingList}
-            >
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingList}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {isMassImportModalOpen ? (
