@@ -10,6 +10,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import styles from "./ActivitiesPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
 type ActivityItem = {
   id: string;
@@ -93,9 +94,9 @@ type ActivitiesMetaResponse = {
   message?: string;
 };
 
-const PAGE_SIZE = 20;
-const HISTORY_PAGE_SIZE = 5;
-const EXPORT_PAGE_SIZE = 100;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
+const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
+const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   code: "Codigo",

@@ -9,6 +9,7 @@ import { downloadBlobFile } from "@/lib/utils/csv";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { Pagination } from "@/components/ui/Pagination";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import { parseCsvLine } from "@/lib/utils/parsers";
 
 type MeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
@@ -328,9 +329,9 @@ type ExportProgress = {
   percent?: number;
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = 200;
-const HISTORY_PAGE_SIZE = 5;
+const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
   teamId: "Equipe",
