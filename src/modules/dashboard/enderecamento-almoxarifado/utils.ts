@@ -6,6 +6,11 @@ export const DEFAULT_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { code: "BAIA", label: "Baia", usesFloors: false },
 ];
 
+export function clamp(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
 export function buildColumnLabels(count: number) {
   return Array.from({ length: Math.max(1, count) }, (_, index) => {
     let value = "";
@@ -86,12 +91,13 @@ export function floorOccupancyStatus(shelf: Prateleira, floorNumber: number, mat
   const floor = shelf.andares.find((item) => item.numero === floorNumber);
   if (!floor) return "empty" as const;
 
-  const occupied = materials.filter(
-    (material) =>
-      material.coluna === shelf.coluna
-      && material.linha === shelf.linha
-      && material.andar === floorNumber,
-  ).length;
+  const occupied = materials.reduce(
+    (count, material) =>
+      count + material.enderecos.filter(
+        (address) => address.coluna === shelf.coluna && address.linha === shelf.linha && address.andar === floorNumber,
+      ).length,
+    0,
+  );
 
   if (occupied === 0) return "empty" as const;
   if (occupied >= floor.qtdPosicoes) return "full" as const;

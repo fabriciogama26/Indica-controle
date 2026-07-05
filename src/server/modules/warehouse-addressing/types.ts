@@ -90,6 +90,7 @@ export type WarehouseConfigHistoryRow = {
 export type AssignWarehouseAddressPayload = {
   mapId?: string | null;
   materialId?: string | null;
+  addressId?: string | null;
   coluna?: string | null;
   linha?: number | null;
   andar?: number | null;

@@ -9,8 +9,9 @@ import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { parseCsvLine } from "@/lib/utils/parsers";
 import { MAX_BULK_ASSIGNMENTS } from "./constants";
 import { assignWarehouseAddress, assignWarehouseAddressBatch, clearWarehouseAddress, clearWarehouseCellAddresses, fetchWarehouseMap } from "./api";
-import type { Prateleira, StockCenterOption, StorageTypeOption, WarehouseConfiguracao, WarehouseMaterial } from "./types";
+import type { Prateleira, StockCenterOption, StorageTypeOption, WarehouseAddressEntry, WarehouseConfiguracao, WarehouseMaterial } from "./types";
 import {
+  clamp,
   DEFAULT_STORAGE_TYPE_OPTIONS,
   floorOccupancyStatus,
   formatQuantity,
@@ -23,6 +24,7 @@ import styles from "./WarehouseAddressing.module.css";
 
 type AssignmentDraft = {
   materialId: string;
+  addressId: string | null;
   coluna: string;
   linha: number;
   andar: number;
@@ -82,6 +84,7 @@ export function WarehouseAddressingMapPageView() {
   const [selectedShelf, setSelectedShelf] = useState<Prateleira | null>(null);
   const [selectedFloor, setSelectedFloor] = useState(1);
   const [selectedMaterial, setSelectedMaterial] = useState<WarehouseMaterial | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState<WarehouseAddressEntry | null>(null);
   const [search, setSearch] = useState("");
   const [unaddressedSearch, setUnaddressedSearch] = useState("");
   const [assignmentDraft, setAssignmentDraft] = useState<AssignmentDraft | null>(null);
@@ -92,24 +95,29 @@ export function WarehouseAddressingMapPageView() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [clearCellConfirm, setClearCellConfirm] = useState<Prateleira | null>(null);
 
   const materialByPosition = useMemo(() => {
-    const map = new Map<string, WarehouseMaterial>();
+    const map = new Map<string, { material: WarehouseMaterial; address: WarehouseAddressEntry }>();
     for (const material of materials) {
-      if (material.coluna && material.linha && material.andar && material.posicao) {
-        map.set(positionCode(material.coluna, material.linha, material.andar, material.posicao), material);
+      for (const address of material.enderecos) {
+        map.set(positionCode(address.coluna, address.linha, address.andar, address.posicao), { material, address });
       }
     }
     return map;
   }, [materials]);
 
-  const materialsInSelectedShelf = useMemo(() => {
+  const addressesInSelectedShelf = useMemo(() => {
     if (!selectedShelf) return [];
-    return materials.filter((material) => material.coluna === selectedShelf.coluna && material.linha === selectedShelf.linha);
+    return materials.flatMap((material) =>
+      material.enderecos
+        .filter((address) => address.coluna === selectedShelf.coluna && address.linha === selectedShelf.linha)
+        .map((address) => ({ material, address })),
+    );
   }, [materials, selectedShelf]);
 
   const unaddressedMaterials = useMemo(
-    () => materials.filter((material) => !material.coluna && material.quantidade > 0),
+    () => materials.filter((material) => material.enderecos.length === 0 && material.quantidade > 0),
     [materials],
   );
 
@@ -160,6 +168,10 @@ export function WarehouseAddressingMapPageView() {
 
   const assignmentUsesFloors = assignmentShelf ? storageTypeUsesFloors(assignmentShelf.tipo, storageTypes) : true;
 
+  const assignmentFloorPositions = assignmentDraft && assignmentShelf
+    ? assignmentShelf.andares.find((floor) => floor.numero === assignmentDraft.andar)?.qtdPosicoes ?? 1
+    : 1;
+
   const highlightedMaterialIds = useMemo(() => {
     const normalized = search.trim().toLowerCase();
     if (!normalized) return new Set<string>();
@@ -208,19 +220,27 @@ export function WarehouseAddressingMapPageView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  function openAssignment(material: WarehouseMaterial, shelf?: Prateleira, floor?: number, position?: number) {
+  function openAssignment(material: WarehouseMaterial, address?: WarehouseAddressEntry, shelf?: Prateleira, floor?: number, position?: number) {
     const targetShelf = shelf ?? selectedShelf ?? config?.prateleiras[0] ?? null;
     const targetFloor = targetShelf && !storageTypeUsesFloors(targetShelf.tipo, storageTypes)
       ? 1
       : floor ?? targetShelf?.andares[0]?.numero ?? 1;
+    const targetFloorConfig = targetShelf?.andares.find((item) => item.numero === targetFloor);
+    const maxPosicao = targetFloorConfig?.qtdPosicoes ?? 1;
     setAssignmentDraft({
       materialId: material.id,
-      coluna: targetShelf?.coluna ?? material.coluna ?? "",
-      linha: targetShelf?.linha ?? material.linha ?? 1,
+      addressId: address?.id ?? null,
+      coluna: targetShelf?.coluna ?? address?.coluna ?? "",
+      linha: targetShelf?.linha ?? address?.linha ?? 1,
       andar: targetFloor,
-      posicao: position ?? material.posicao ?? 1,
-      expectedUpdatedAt: material.enderecoUpdatedAt,
+      posicao: clamp(position ?? address?.posicao ?? 1, 1, maxPosicao),
+      expectedUpdatedAt: address?.updatedAt ?? null,
     });
+  }
+
+  function openRealocar(material: WarehouseMaterial, address: WarehouseAddressEntry) {
+    const shelf = config?.prateleiras.find((item) => item.coluna === address.coluna && item.linha === address.linha);
+    openAssignment(material, address, shelf, address.andar, address.posicao);
   }
 
   function openBulkAssignment() {
@@ -280,7 +300,6 @@ export function WarehouseAddressingMapPageView() {
       }
 
       const nextDraft: BulkAssignmentItem[] = [];
-      const seenMaterials = new Set<string>();
       const seenPositions = new Set<string>();
       const issues: string[] = [];
 
@@ -309,11 +328,6 @@ export function WarehouseAddressingMapPageView() {
           continue;
         }
 
-        if (seenMaterials.has(codigo)) {
-          issues.push(`Linha ${rowNumber}: material ${codigo} duplicado no arquivo.`);
-          continue;
-        }
-
         const code = positionCode(coluna, linha, andar, posicao);
         if (!availablePositionByCode.has(code)) {
           issues.push(`Linha ${rowNumber}: endereco ${code} nao existe ou ja esta ocupado.`);
@@ -325,7 +339,6 @@ export function WarehouseAddressingMapPageView() {
           continue;
         }
 
-        seenMaterials.add(codigo);
         seenPositions.add(code);
         nextDraft.push({ material, coluna, linha, andar, posicao });
       }
@@ -419,12 +432,7 @@ export function WarehouseAddressingMapPageView() {
   async function clearCellAddresses(shelf: Prateleira) {
     if (!accessToken || !config) return;
 
-    const count = materialsInSelectedShelf.length;
-    if (count === 0) return;
-    if (!window.confirm(`Remover o endereco de ${count} material(is) da posicao ${shelf.coluna}${shelf.linha}? Os materiais ficarao sem endereco ate serem realocados.`)) {
-      return;
-    }
-
+    setClearCellConfirm(null);
     setIsSaving(true);
     try {
       const response = await clearWarehouseCellAddresses({
@@ -435,6 +443,7 @@ export function WarehouseAddressingMapPageView() {
       });
       setFeedback({ type: "success", message: response.message ?? "Posicao limpa com sucesso." });
       setSelectedMaterial(null);
+      setSelectedAddress(null);
       await loadMap(stockCenterId);
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao limpar materiais da posicao." });
@@ -444,23 +453,24 @@ export function WarehouseAddressingMapPageView() {
     }
   }
 
-  async function removeAddress(material: WarehouseMaterial) {
-    if (!accessToken || !config || !material.enderecoUpdatedAt) return;
+  async function removeAddress(material: WarehouseMaterial, address: WarehouseAddressEntry) {
+    if (!accessToken || !config) return;
 
     setIsSaving(true);
     try {
       const response = await clearWarehouseAddress({
         accessToken,
         mapId: config.id,
-        materialId: material.id,
-        expectedUpdatedAt: material.enderecoUpdatedAt,
+        addressId: address.id,
+        expectedUpdatedAt: address.updatedAt,
       });
       setFeedback({ type: "success", message: response.message ?? "Endereco removido com sucesso." });
       setSelectedMaterial(null);
+      setSelectedAddress(null);
       await loadMap(stockCenterId);
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao remover endereco." });
-      await logError("Falha ao remover endereco do mapa.", error, { materialId: material.id });
+      await logError("Falha ao remover endereco do mapa.", error, { materialId: material.id, addressId: address.id });
     } finally {
       setIsSaving(false);
     }
@@ -482,16 +492,17 @@ export function WarehouseAddressingMapPageView() {
         {Array.from({ length: floor.qtdPosicoes }, (_, index) => {
           const posicao = index + 1;
           const code = positionCode(shelf.coluna, shelf.linha, floor.numero, posicao);
-          const material = materialByPosition.get(code) ?? null;
+          const entry = materialByPosition.get(code) ?? null;
           return (
             <button
               type="button"
               key={code}
-              className={`${styles.positionButton} ${styles[materialStatus(material)]}`}
+              className={`${styles.positionButton} ${styles[materialStatus(entry?.material ?? null)]}`}
               onClick={(event) => {
                 event.stopPropagation();
-                if (material) {
-                  setSelectedMaterial(material);
+                if (entry) {
+                  setSelectedMaterial(entry.material);
+                  setSelectedAddress(entry.address);
                 } else if (assignmentDraft) {
                   setAssignmentDraft((current) => current ? {
                     ...current,
@@ -504,7 +515,7 @@ export function WarehouseAddressingMapPageView() {
               }}
             >
               <span>{code}</span>
-              <strong>{material ? material.codigo : "Vaga"}</strong>
+              <strong>{entry ? entry.material.codigo : "Vaga"}</strong>
             </button>
           );
         })}
@@ -571,7 +582,9 @@ export function WarehouseAddressingMapPageView() {
                     }
 
                     const isHighlighted = materials.some(
-                      (material) => highlightedMaterialIds.has(material.id) && material.coluna === coluna && material.linha === linha,
+                      (material) =>
+                        highlightedMaterialIds.has(material.id)
+                        && material.enderecos.some((address) => address.coluna === coluna && address.linha === linha),
                     );
 
                     return (
@@ -618,7 +631,7 @@ export function WarehouseAddressingMapPageView() {
 
           <aside className={styles.card}>
             <h3 className={styles.cardTitle}>Detalhe</h3>
-            {selectedMaterial ? (
+            {selectedMaterial && selectedAddress ? (
               <div className={styles.sidePanel}>
                 <strong>{selectedMaterial.codigo}</strong>
                 <span>{selectedMaterial.nome}</span>
@@ -626,18 +639,20 @@ export function WarehouseAddressingMapPageView() {
                 <span>Minimo: {formatQuantity(selectedMaterial.estoqueMinimo, selectedMaterial.unidade)}</span>
                 <span>Maximo: {selectedMaterial.estoqueMaximo === null ? "-" : formatQuantity(selectedMaterial.estoqueMaximo, selectedMaterial.unidade)}</span>
                 <span>Status: {statusLabel(materialStatus(selectedMaterial))}</span>
-                {selectedMaterial.coluna && selectedMaterial.linha && selectedMaterial.andar && selectedMaterial.posicao ? (
-                  <span>{positionCode(selectedMaterial.coluna, selectedMaterial.linha, selectedMaterial.andar, selectedMaterial.posicao)}</span>
+                <span>{positionCode(selectedAddress.coluna, selectedAddress.linha, selectedAddress.andar, selectedAddress.posicao)}</span>
+                {selectedMaterial.enderecos.length > 1 ? (
+                  <span className={styles.muted}>Tambem enderecado em mais {selectedMaterial.enderecos.length - 1} posicao(oes).</span>
                 ) : null}
                 <div className={styles.actions}>
-                  <button type="button" className={styles.secondaryButton} onClick={() => openAssignment(selectedMaterial)} disabled={isSaving}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => openRealocar(selectedMaterial, selectedAddress)} disabled={isSaving}>
                     Realocar
                   </button>
-                  {selectedMaterial.enderecoUpdatedAt ? (
-                    <button type="button" className={styles.dangerButton} onClick={() => void removeAddress(selectedMaterial)} disabled={isSaving}>
-                      Remover endereco
-                    </button>
-                  ) : null}
+                  <button type="button" className={styles.secondaryButton} onClick={() => openAssignment(selectedMaterial)} disabled={isSaving}>
+                    Adicionar outro endereco
+                  </button>
+                  <button type="button" className={styles.dangerButton} onClick={() => void removeAddress(selectedMaterial, selectedAddress)} disabled={isSaving}>
+                    Remover endereco
+                  </button>
                 </div>
               </div>
             ) : (
@@ -648,13 +663,13 @@ export function WarehouseAddressingMapPageView() {
               <div className={styles.sidePanel}>
                 <strong>Posicao {selectedShelf.coluna}{selectedShelf.linha}</strong>
                 <span>{storageTypeLabel(selectedShelf.tipo, storageTypes)}</span>
-                <span>{materialsInSelectedShelf.length} material(is) enderecado(s) nesta posicao</span>
-                {materialsInSelectedShelf.length > 0 ? (
+                <span>{addressesInSelectedShelf.length} material(is) enderecado(s) nesta posicao</span>
+                {addressesInSelectedShelf.length > 0 ? (
                   <div className={styles.actions}>
                     <button
                       type="button"
                       className={styles.dangerButton}
-                      onClick={() => void clearCellAddresses(selectedShelf)}
+                      onClick={() => setClearCellConfirm(selectedShelf)}
                       disabled={isSaving}
                     >
                       Limpar posicao
@@ -733,6 +748,29 @@ export function WarehouseAddressingMapPageView() {
         </div>
       )}
 
+      {clearCellConfirm ? (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalCard}>
+            <header className={styles.modalHeader}>
+              <h3>Limpar posicao</h3>
+              <button type="button" className={styles.ghostButton} onClick={() => setClearCellConfirm(null)}>Fechar</button>
+            </header>
+            <p>
+              Remover o endereco de {materials.reduce((count, material) => count + material.enderecos.filter((address) => address.coluna === clearCellConfirm.coluna && address.linha === clearCellConfirm.linha).length, 0)} material(is) da posicao {clearCellConfirm.coluna}{clearCellConfirm.linha}?
+              Os materiais ficarao sem endereco ate serem realocados.
+            </p>
+            <div className={styles.actions}>
+              <button type="button" className={styles.ghostButton} onClick={() => setClearCellConfirm(null)} disabled={isSaving}>
+                Cancelar
+              </button>
+              <button type="button" className={styles.dangerButton} onClick={() => void clearCellAddresses(clearCellConfirm)} disabled={isSaving}>
+                {isSaving ? "Removendo..." : "Remover endereco"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {assignmentDraft && config ? (
         <div className={styles.modalOverlay}>
           <form className={styles.modalCard} onSubmit={submitAssignment}>
@@ -766,23 +804,35 @@ export function WarehouseAddressingMapPageView() {
               {assignmentUsesFloors ? (
                 <label className={styles.field}>
                   <span>Andar</span>
-                  <input
-                    type="number"
-                    min="1"
+                  <select
                     value={assignmentDraft.andar}
-                    onChange={(event) => setAssignmentDraft((current) => current ? { ...current, andar: Number(event.target.value) } : current)}
-                  />
+                    onChange={(event) => {
+                      const nextAndar = Number(event.target.value);
+                      const nextFloor = assignmentShelf?.andares.find((floor) => floor.numero === nextAndar);
+                      setAssignmentDraft((current) => current ? {
+                        ...current,
+                        andar: nextAndar,
+                        posicao: clamp(current.posicao, 1, nextFloor?.qtdPosicoes ?? 1),
+                      } : current);
+                    }}
+                  >
+                    {(assignmentShelf?.andares ?? []).map((floor) => (
+                      <option key={floor.numero} value={floor.numero}>{floor.numero}</option>
+                    ))}
+                  </select>
                 </label>
               ) : null}
 
               <label className={styles.field}>
                 <span>Posicao</span>
-                <input
-                  type="number"
-                  min="1"
+                <select
                   value={assignmentDraft.posicao}
                   onChange={(event) => setAssignmentDraft((current) => current ? { ...current, posicao: Number(event.target.value) } : current)}
-                />
+                >
+                  {Array.from({ length: assignmentFloorPositions }, (_, index) => index + 1).map((position) => (
+                    <option key={position} value={position}>{position}</option>
+                  ))}
+                </select>
               </label>
             </div>
 
