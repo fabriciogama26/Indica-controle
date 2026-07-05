@@ -63,8 +63,8 @@ Filtros, auto-complete e listagem
 ---------------------------------
 - A tela de leitura permite:
   - selecionar centro fisico de almoxarifado;
-  - buscar material por codigo ou nome;
-  - visualizar prateleiras, pallets e chao livre;
+  - buscar material por codigo ou nome (com busca ativa, celulas sem material correspondente ficam apagadas/dessaturadas — efeito "holofote" — e a celula com match ganha destaque com sombra e leve zoom);
+  - visualizar prateleiras, pallets e chao livre; cada andar mostra um selo com a ocupacao real (ex.: "2/5"), com cor de fundo interpolada de claro (vago) a azul solido (cheio) via `color-mix`, no lugar do pontinho de 3 cores fixas usado antes;
   - abrir detalhe de andar/posicao;
   - ver materiais disponiveis para enderecar;
   - atribuir endereco: `Andar` e `Posicao` sao selects preenchidos a partir da configuracao real da prateleira/baia/pallet escolhida (nunca aceitam numero fora do que foi configurado; trocar a prateleira ou o andar reajusta as opcoes e reenquadra a posicao selecionada automaticamente);
@@ -147,6 +147,9 @@ Atualizacao 2026-07
   - Frontend: novo estado `selectedAddress` (endereco especifico selecionado no mapa); "Realocar" edita so aquele endereco; novo botao "Adicionar outro endereco" cria um endereco extra pro mesmo material; "Remover endereco" remove so o endereco especifico, nao todos do material.
 - Depois (fix da lista "Materiais para enderecar"):
   - A lista (antes "Sem endereco") so mostrava material com **zero** enderecos; ao endereca-lo uma vez ele sumia da lista, dificultando endereca-lo numa segunda posicao (o proposito da migration 292). Corrigido: a lista passou a mostrar todo material com saldo > 0, com "Ja enderecado em N posicao(oes)" indicado por linha quando aplicavel; o botao de acao sempre cria mais um endereco.
+- Depois (selo de ocupacao por andar e busca em modo holofote):
+  - O pontinho de 3 cores fixas por andar (vago/parcial/ocupado, sem numero) virou um selo (`floorBadge`) mostrando a fracao real "ocupado/total", com fundo interpolado de claro a azul solido via `color-mix` conforme o percentual ocupado. Criada `floorOccupancyCounts` em `utils.ts` (substitui `floorOccupancyStatus`, que so devolvia 3 categorias).
+  - A busca por material (`Busca`) passou a apagar/dessaturar (`dimmedCell`) as celulas sem material correspondente enquanto ha texto digitado, e a celula com match ganha destaque mais forte (sombra + leve zoom), em vez de so uma borda azul sutil nas combinacoes.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -174,7 +177,7 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`
-  - Responsavel por: gerar colunas/linhas, codigo de posicao, status de material/andar (baseado em saldo, nao em endereco), `floorOccupancyStatus` (conta ocupacao por lista de enderecos), formatacao de quantidade e `summarizeConfigHistoryChanges` (resumo legivel do diff de historico).
+  - Responsavel por: gerar colunas/linhas, codigo de posicao, status de material/andar (baseado em saldo, nao em endereco), `floorOccupancyCounts` (conta ocupado/total por andar a partir da lista de enderecos, usado no selo de ocupacao), formatacao de quantidade e `summarizeConfigHistoryChanges` (resumo legivel do diff de historico).
 
 Servicos e integracoes externas
 - Nao ha integracao externa.

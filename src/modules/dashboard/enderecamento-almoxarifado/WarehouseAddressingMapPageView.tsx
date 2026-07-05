@@ -13,7 +13,7 @@ import type { Prateleira, StockCenterOption, StorageTypeOption, WarehouseAddress
 import {
   clamp,
   DEFAULT_STORAGE_TYPE_OPTIONS,
-  floorOccupancyStatus,
+  floorOccupancyCounts,
   formatQuantity,
   materialStatus,
   positionCode,
@@ -171,6 +171,8 @@ export function WarehouseAddressingMapPageView() {
   const assignmentFloorPositions = assignmentDraft && assignmentShelf
     ? assignmentShelf.andares.find((floor) => floor.numero === assignmentDraft.andar)?.qtdPosicoes ?? 1
     : 1;
+
+  const hasActiveSearch = search.trim().length > 0;
 
   const highlightedMaterialIds = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -574,7 +576,10 @@ export function WarehouseAddressingMapPageView() {
                     const shelf = config.prateleiras.find((item) => item.coluna === coluna && item.linha === linha) ?? null;
                     if (!shelf) {
                       return (
-                        <div key={`${coluna}-${linha}`} className={`${styles.gridCell} ${styles.floorCell}`}>
+                        <div
+                          key={`${coluna}-${linha}`}
+                          className={`${styles.gridCell} ${styles.floorCell} ${hasActiveSearch ? styles.dimmedCell : ""}`}
+                        >
                           <strong>{coluna}{linha}</strong>
                           <span>Chao</span>
                         </div>
@@ -592,7 +597,7 @@ export function WarehouseAddressingMapPageView() {
                         role="button"
                         tabIndex={0}
                         key={shelf.id}
-                        className={`${styles.gridCell} ${styles.shelfCell} ${shelf.tipo === "PALLET" ? styles.palletCell : ""} ${shelf.tipo === "BAIA" ? styles.bayCell : ""} ${selectedShelf?.id === shelf.id ? styles.selectedCell : ""} ${isHighlighted ? styles.highlightCell : ""}`}
+                        className={`${styles.gridCell} ${styles.shelfCell} ${shelf.tipo === "PALLET" ? styles.palletCell : ""} ${shelf.tipo === "BAIA" ? styles.bayCell : ""} ${selectedShelf?.id === shelf.id ? styles.selectedCell : ""} ${isHighlighted ? styles.highlightCell : ""} ${hasActiveSearch && !isHighlighted ? styles.dimmedCell : ""}`}
                         onClick={() => {
                           setSelectedShelf(shelf);
                           setSelectedFloor(shelf.andares[0]?.numero ?? 1);
@@ -606,19 +611,29 @@ export function WarehouseAddressingMapPageView() {
                         }}
                       >
                         <div className={styles.floorDots}>
-                          {shelf.andares.map((floor) => (
-                            <button
-                              type="button"
-                              key={floor.numero}
-                              className={`${styles.floorDot} ${styles[floorOccupancyStatus(shelf, floor.numero, materials)]}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setSelectedShelf(shelf);
-                                setSelectedFloor(floor.numero);
-                              }}
-                              aria-label={`Andar ${floor.numero} da prateleira ${shelf.coluna}${shelf.linha}`}
-                            />
-                          ))}
+                          {shelf.andares.map((floor) => {
+                            const { occupied, total } = floorOccupancyCounts(shelf, floor.numero, materials);
+                            const pct = total > 0 ? Math.round((occupied / total) * 100) : 0;
+                            return (
+                              <button
+                                type="button"
+                                key={floor.numero}
+                                className={styles.floorBadge}
+                                style={{
+                                  background: `color-mix(in srgb, #2b74d6 ${pct}%, #e3e8f5)`,
+                                  color: pct > 55 ? "#ffffff" : "#17347a",
+                                }}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedShelf(shelf);
+                                  setSelectedFloor(floor.numero);
+                                }}
+                                aria-label={`Andar ${floor.numero} da prateleira ${shelf.coluna}${shelf.linha}: ${occupied} de ${total} posicoes ocupadas`}
+                              >
+                                {occupied}/{total}
+                              </button>
+                            );
+                          })}
                         </div>
                         {renderShelfContent(shelf)}
                       </div>
@@ -878,6 +893,10 @@ export function WarehouseAddressingMapPageView() {
                 <div>
                   <strong>Preencha a planilha</strong>
                   <p>Colunas obrigatorias: codigo, coluna, linha e posicao. Andar e usado para prateleira; Pallet e Baia usam 1.</p>
+                  <p>
+                    Exemplo (codigo;coluna;linha;andar;posicao): <code>330991;D;2;1;3</code>. O mesmo material pode
+                    repetir em outra linha com posicao diferente para dividir o estoque, ex.: <code>330991;D;2;2;1</code>.
+                  </p>
                 </div>
               </div>
             </div>
