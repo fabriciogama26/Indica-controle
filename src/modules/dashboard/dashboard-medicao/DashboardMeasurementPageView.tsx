@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
@@ -1171,9 +1172,13 @@ export function DashboardMeasurementPageView() {
                 <p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p>
               </div>
               <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={() => void exportProjectDetailsCsv()} disabled={isExportingProjectDetails}>
-                  {isExportingProjectDetails ? "Exportando..." : "Exportar Excel (CSV)"}
-                </button>
+                <CsvExportButton
+                  onClick={() => void exportProjectDetailsCsv()}
+                  isLoading={isExportingProjectDetails}
+                  className={styles.secondaryButton}
+                  idleLabel="Exportar Excel (CSV)"
+                  showProgressModal={false}
+                />
                 <button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)} aria-label="Fechar detalhe de projetos">
                   x
                 </button>
