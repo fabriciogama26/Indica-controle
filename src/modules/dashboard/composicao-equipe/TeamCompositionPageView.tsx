@@ -13,6 +13,7 @@ import { notifyTeamCompositionUpdated } from "@/lib/events/teamComposition";
 import styles from "./TeamCompositionPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
 type ProjectOption = {
   id: string;
@@ -155,9 +156,9 @@ type FilterState = {
   workStatus: WorkStatusFilter;
 };
 
-const PAGE_SIZE = 20;
-const EXPORT_PAGE_SIZE = 100;
-const HISTORY_PAGE_SIZE = 5;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
+const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
+const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 
 function toIsoDate(value: Date) {
   const year = value.getFullYear();

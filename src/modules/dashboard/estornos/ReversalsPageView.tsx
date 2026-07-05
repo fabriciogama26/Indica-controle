@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./ReversalsPageView.module.css";
 import { formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
 
 type ReversalRow = {
   id: string;
@@ -111,7 +112,7 @@ const INITIAL_FILTERS: FilterState = {
   userId: "",
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "-";

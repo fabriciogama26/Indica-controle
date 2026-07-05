@@ -1,7 +1,8 @@
 import type { BillingFilters, BillingFormState } from "./types";
+import { DEFAULT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
-export const BILLING_PAGE_SIZE = 20;
-export const HISTORY_PAGE_SIZE = 5;
+export const BILLING_PAGE_SIZE = DEFAULT_PAGE_SIZE;
+export const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 
 export const INITIAL_FORM: BillingFormState = {
   id: null,

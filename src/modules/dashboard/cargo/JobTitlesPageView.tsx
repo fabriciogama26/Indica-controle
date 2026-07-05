@@ -12,6 +12,7 @@ import { usePagination } from "@/hooks/usePagination";
 import styles from "../pessoas/PeoplePageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
 type JobTitleItem = {
   id: string;
@@ -67,9 +68,9 @@ type JobTitleHistoryResponse = {
   message?: string;
 };
 
-const PAGE_SIZE = 20;
-const HISTORY_PAGE_SIZE = 5;
-const EXPORT_PAGE_SIZE = 100;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
+const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
+const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 
 const INITIAL_FORM: JobTitleFormState = {
   id: null,
