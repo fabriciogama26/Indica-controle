@@ -27,6 +27,7 @@
 - [x] Frontend registra falhas com `useErrorLogger` nas duas telas novas.
 - [x] Nao ha exposicao de stack trace nas respostas HTTP adicionadas.
 - [x] Centro vinculado a equipe retorna erro objetivo `STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE`/422.
+- [x] RPC de lote retorna motivos objetivos para lote vazio, grande, material sem saldo, material ja enderecado, posicao inexistente e posicao ocupada.
 
 ## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
 - [x] Falha ao buscar itens de valor continua retornando mensagem objetiva: `Falha ao carregar valores das medicoes.`.

@@ -17,10 +17,18 @@ export type WarehouseMapRow = {
   updated_at: string;
 };
 
+export type WarehouseStorageTypeRow = {
+  code: string;
+  label: string;
+  uses_floors: boolean;
+  sort_order: number;
+};
+
 export type WarehouseShelfRow = {
   id: string;
   coluna: string;
   linha: number;
+  storage_type: string | null;
 };
 
 export type WarehouseShelfFloorRow = {
@@ -62,6 +70,8 @@ export type SaveWarehouseMapPayload = {
     id?: string;
     coluna?: string;
     linha?: number;
+    tipo?: string;
+    storageType?: string;
     andares?: Array<{
       numero?: number;
       qtdPosicoes?: number;
@@ -78,4 +88,11 @@ export type AssignWarehouseAddressPayload = {
   andar?: number | null;
   posicao?: number | null;
   expectedUpdatedAt?: string | null;
+  assignments?: Array<{
+    materialId?: string | null;
+    coluna?: string | null;
+    linha?: number | null;
+    andar?: number | null;
+    posicao?: number | null;
+  }>;
 };

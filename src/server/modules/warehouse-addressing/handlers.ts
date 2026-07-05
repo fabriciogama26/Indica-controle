@@ -12,9 +12,19 @@ import type {
   WarehouseMaterialRow,
   WarehouseShelfFloorRow,
   WarehouseShelfRow,
+  WarehouseStorageTypeRow,
   WarehouseStockCenterRow,
   WarehouseTeamStockCenterRow,
 } from "./types";
+
+type RpcConflictRow = {
+  materialId: string;
+  codigo: string;
+  coluna: string;
+  linha: number;
+  andar: number;
+  posicao: number;
+};
 
 type RpcResult = {
   success?: boolean;
@@ -23,7 +33,10 @@ type RpcResult = {
   message?: string;
   map_id?: string;
   address_id?: string;
+  assigned_count?: number;
+  cleared_count?: number;
   updated_at?: string;
+  conflicts?: RpcConflictRow[];
 };
 
 function normalizeText(value: unknown) {
@@ -37,6 +50,11 @@ function normalizeColumn(value: unknown) {
 function normalizePositiveInteger(value: unknown) {
   const numeric = Number(value);
   return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
+}
+
+function normalizeStorageType(value: unknown) {
+  const normalized = normalizeText(value).toUpperCase();
+  return normalized || "SHELF";
 }
 
 function normalizeColumns(values: unknown) {
@@ -61,26 +79,47 @@ function normalizeLines(values: unknown) {
   ).sort((a, b) => a - b);
 }
 
-function normalizeShelves(values: unknown) {
+function normalizeShelves(values: unknown, storageTypesWithoutFloors: Set<string>) {
   if (!Array.isArray(values)) {
     return [];
   }
 
   return values.map((item) => {
     const raw = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const tipo = normalizeStorageType(raw.tipo ?? raw.storageType);
     const andares = Array.isArray(raw.andares) ? raw.andares : [];
 
     return {
       id: normalizeText(raw.id) || undefined,
       coluna: normalizeColumn(raw.coluna),
       linha: normalizePositiveInteger(raw.linha) ?? 0,
-      andares: andares.map((floor) => {
-        const floorRaw = floor && typeof floor === "object" ? floor as Record<string, unknown> : {};
-        return {
-          numero: normalizePositiveInteger(floorRaw.numero) ?? 0,
-          qtdPosicoes: normalizePositiveInteger(floorRaw.qtdPosicoes) ?? 1,
-        };
-      }),
+      tipo,
+      andares: storageTypesWithoutFloors.has(tipo)
+        ? [{ numero: 1, qtdPosicoes: normalizePositiveInteger((andares[0] as Record<string, unknown> | undefined)?.qtdPosicoes) ?? 1 }]
+        : andares.map((floor) => {
+            const floorRaw = floor && typeof floor === "object" ? floor as Record<string, unknown> : {};
+            return {
+              numero: normalizePositiveInteger(floorRaw.numero) ?? 0,
+              qtdPosicoes: normalizePositiveInteger(floorRaw.qtdPosicoes) ?? 1,
+            };
+          }),
+    };
+  });
+}
+
+function normalizeBatchAssignments(values: unknown) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values.map((item) => {
+    const raw = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    return {
+      materialId: normalizeText(raw.materialId),
+      coluna: normalizeColumn(raw.coluna),
+      linha: normalizePositiveInteger(raw.linha),
+      andar: normalizePositiveInteger(raw.andar),
+      posicao: normalizePositiveInteger(raw.posicao),
     };
   });
 }
@@ -132,16 +171,39 @@ function mapConfig(map: WarehouseMapRow | null, shelves: WarehouseShelfRow[], fl
     linhas: map.linhas,
     updatedAt: map.updated_at,
     prateleiras: shelves.map((shelf) => ({
-      id: shelf.id,
-      coluna: shelf.coluna,
-      linha: shelf.linha,
-      andares: (floorsByShelf.get(shelf.id) ?? [])
+          id: shelf.id,
+          coluna: shelf.coluna,
+          linha: shelf.linha,
+          tipo: shelf.storage_type ?? "SHELF",
+          andares: (floorsByShelf.get(shelf.id) ?? [])
         .sort((a, b) => a.numero - b.numero)
         .map((floor) => ({
           numero: floor.numero,
           qtdPosicoes: floor.qtd_posicoes,
         })),
     })),
+  };
+}
+
+async function fetchWarehouseStorageTypes(context: AuthenticatedAppUserContext) {
+  const { data, error } = await context.supabase
+    .from("warehouse_storage_types")
+    .select("code, label, uses_floors, sort_order")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .returns<WarehouseStorageTypeRow[]>();
+
+  if (error) {
+    return { data: null, response: NextResponse.json({ message: "Falha ao carregar tipos de endereco." }, { status: 500 }) };
+  }
+
+  return {
+    data: (data ?? []).map((type) => ({
+      code: type.code,
+      label: type.label,
+      usesFloors: type.uses_floors,
+    })),
+    response: null,
   };
 }
 
@@ -226,7 +288,7 @@ async function fetchMapConfig(context: AuthenticatedAppUserContext, stockCenterI
 
   const shelvesResult = await context.supabase
     .from("warehouse_shelves")
-    .select("id, coluna, linha")
+    .select("id, coluna, linha, storage_type")
     .eq("tenant_id", context.appUser.tenant_id)
     .eq("map_id", map.id)
     .order("linha", { ascending: true })
@@ -268,6 +330,8 @@ export async function handleWarehouseConfigGet(request: NextRequest) {
 
   const centers = await fetchPhysicalWarehouseStockCenters(context);
   if (centers.response) return centers.response;
+  const storageTypes = await fetchWarehouseStorageTypes(context);
+  if (storageTypes.response) return storageTypes.response;
 
   const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
   if (stockCenterId && !centers.data?.some((center) => center.id === stockCenterId)) {
@@ -282,6 +346,7 @@ export async function handleWarehouseConfigGet(request: NextRequest) {
 
   return NextResponse.json({
     stockCenters: centers.data ?? [],
+    storageTypes: storageTypes.data ?? [],
     configuracao: config.config,
   });
 }
@@ -294,10 +359,17 @@ export async function handleWarehouseConfigPost(request: NextRequest) {
   if (authResponse) return authResponse;
 
   const body = (await request.json().catch(() => ({}))) as SaveWarehouseMapPayload;
+  const storageTypes = await fetchWarehouseStorageTypes(context);
+  if (storageTypes.response) return storageTypes.response;
+  const storageTypesWithoutFloors = new Set(
+    (storageTypes.data ?? [])
+      .filter((type) => !type.usesFloors)
+      .map((type) => type.code),
+  );
   const stockCenterId = normalizeText(body.stockCenterId);
   const colunas = normalizeColumns(body.colunas);
   const linhas = normalizeLines(body.linhas);
-  const prateleiras = normalizeShelves(body.prateleiras);
+  const prateleiras = normalizeShelves(body.prateleiras, storageTypesWithoutFloors);
 
   if (!stockCenterId || colunas.length === 0 || linhas.length === 0) {
     return NextResponse.json({ message: "Centro, colunas e linhas sao obrigatorios." }, { status: 400 });
@@ -323,7 +395,11 @@ export async function handleWarehouseConfigPost(request: NextRequest) {
   const result = (data ?? {}) as RpcResult;
   if (result.success !== true) {
     return NextResponse.json(
-      { message: result.message ?? "Falha ao salvar configuracao do mapa.", code: result.reason ?? undefined },
+      {
+        message: result.message ?? "Falha ao salvar configuracao do mapa.",
+        code: result.reason ?? undefined,
+        conflicts: Array.isArray(result.conflicts) ? result.conflicts : undefined,
+      },
       { status: Number(result.status ?? 500) },
     );
   }
@@ -347,18 +423,22 @@ export async function handleWarehouseMapGet(request: NextRequest) {
   if (!stockCenterId) {
     const centers = await fetchPhysicalWarehouseStockCenters(context);
     if (centers.response) return centers.response;
-    return NextResponse.json({ stockCenters: centers.data ?? [], configuracao: null, materiais: [] });
+    const storageTypes = await fetchWarehouseStorageTypes(context);
+    if (storageTypes.response) return storageTypes.response;
+    return NextResponse.json({ stockCenters: centers.data ?? [], storageTypes: storageTypes.data ?? [], configuracao: null, materiais: [] });
   }
 
   const physicalCenter = await ensurePhysicalWarehouseStockCenter(context, stockCenterId);
   if (physicalCenter.response) return physicalCenter.response;
+  const storageTypes = await fetchWarehouseStorageTypes(context);
+  if (storageTypes.response) return storageTypes.response;
 
   const config = await fetchMapConfig(context, stockCenterId);
   if (config.response) return config.response;
 
   const mapId = config.config?.id ?? null;
   if (!mapId) {
-    return NextResponse.json({ stockCenters: physicalCenter.centers ?? [], configuracao: null, materiais: [] });
+    return NextResponse.json({ stockCenters: physicalCenter.centers ?? [], storageTypes: storageTypes.data ?? [], configuracao: null, materiais: [] });
   }
 
   const [balancesResult, addressesResult] = await Promise.all([
@@ -408,6 +488,7 @@ export async function handleWarehouseMapGet(request: NextRequest) {
 
   return NextResponse.json({
     stockCenters: physicalCenter.centers ?? [],
+    storageTypes: storageTypes.data ?? [],
     configuracao: config.config,
     materiais: materials
       .filter((material) => material.is_active)
@@ -441,6 +522,39 @@ export async function handleWarehouseAddressPost(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as AssignWarehouseAddressPayload;
   const mapId = normalizeText(body.mapId);
+
+  if (Array.isArray(body.assignments)) {
+    const assignments = normalizeBatchAssignments(body.assignments);
+    if (!mapId || assignments.length === 0 || assignments.some((item) => !item.materialId || !item.coluna || item.linha === null || item.andar === null || item.posicao === null)) {
+      return NextResponse.json({ message: "Mapa e lista de enderecos completos sao obrigatorios." }, { status: 400 });
+    }
+
+    const { data, error } = await context.supabase.rpc("assign_warehouse_material_addresses_batch", {
+      p_tenant_id: context.appUser.tenant_id,
+      p_actor_user_id: context.appUser.id,
+      p_map_id: mapId,
+      p_assignments: assignments,
+    });
+
+    if (error) {
+      return NextResponse.json({ message: "Falha ao enderecar materiais em massa." }, { status: 500 });
+    }
+
+    const result = (data ?? {}) as RpcResult;
+    if (result.success !== true) {
+      return NextResponse.json(
+        { message: result.message ?? "Falha ao enderecar materiais em massa.", code: result.reason ?? undefined },
+        { status: Number(result.status ?? 500) },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      assignedCount: Number(result.assigned_count ?? assignments.length),
+      message: result.message ?? "Materiais enderecados com sucesso.",
+    });
+  }
+
   const materialId = normalizeText(body.materialId);
   const coluna = normalizeColumn(body.coluna);
   const linha = normalizePositiveInteger(body.linha);
@@ -493,6 +607,42 @@ export async function handleWarehouseAddressDelete(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as AssignWarehouseAddressPayload;
   const mapId = normalizeText(body.mapId);
   const materialId = normalizeText(body.materialId);
+
+  if (!materialId) {
+    const coluna = normalizeColumn(body.coluna);
+    const linha = normalizePositiveInteger(body.linha);
+
+    if (!mapId || !coluna || linha === null) {
+      return NextResponse.json({ message: "Mapa, coluna e linha da posicao sao obrigatorios." }, { status: 400 });
+    }
+
+    const { data, error } = await context.supabase.rpc("clear_warehouse_cell_addresses", {
+      p_tenant_id: context.appUser.tenant_id,
+      p_actor_user_id: context.appUser.id,
+      p_map_id: mapId,
+      p_coluna: coluna,
+      p_linha: linha,
+    });
+
+    if (error) {
+      return NextResponse.json({ message: "Falha ao limpar materiais da posicao." }, { status: 500 });
+    }
+
+    const result = (data ?? {}) as RpcResult;
+    if (result.success !== true) {
+      return NextResponse.json(
+        { message: result.message ?? "Falha ao limpar materiais da posicao.", code: result.reason ?? undefined },
+        { status: Number(result.status ?? 500) },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      clearedCount: Number(result.cleared_count ?? 0),
+      message: result.message ?? "Posicao limpa com sucesso.",
+    });
+  }
+
   const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
   if (!mapId || !materialId || !expectedUpdatedAt) {

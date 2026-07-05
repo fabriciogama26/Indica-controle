@@ -3,10 +3,19 @@ export interface AndarConfig {
   qtdPosicoes: number;
 }
 
+export type StorageType = string;
+
+export interface StorageTypeOption {
+  code: StorageType;
+  label: string;
+  usesFloors: boolean;
+}
+
 export interface Prateleira {
   id: string;
   coluna: string;
   linha: number;
+  tipo: StorageType;
   andares: AndarConfig[];
 }
 
@@ -53,6 +62,7 @@ export type WarehouseMaterial = Material & {
 
 export type WarehouseConfigResponse = {
   stockCenters?: StockCenterOption[];
+  storageTypes?: StorageTypeOption[];
   configuracao?: WarehouseConfiguracao | null;
   message?: string;
 };
@@ -61,17 +71,29 @@ export type WarehouseMapResponse = WarehouseConfigResponse & {
   materiais?: WarehouseMaterial[];
 };
 
+export type WarehouseConflict = {
+  materialId: string;
+  codigo: string;
+  coluna: string;
+  linha: number;
+  andar: number;
+  posicao: number;
+};
+
 export type SaveMapResponse = {
   success?: boolean;
   mapId?: string;
   updatedAt?: string;
   message?: string;
   code?: string;
+  conflicts?: WarehouseConflict[];
 };
 
 export type AddressMutationResponse = {
   success?: boolean;
   addressId?: string;
+  assignedCount?: number;
+  clearedCount?: number;
   updatedAt?: string;
   message?: string;
   code?: string;

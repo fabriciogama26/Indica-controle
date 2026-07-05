@@ -23,3 +23,6 @@
 - [x] Regra de ocupacao de posicao unica ficou protegida por UNIQUE e RPC.
 - [x] Nao aplicavel: esta etapa nao movimenta saldo de estoque.
 - [x] Centro fisico foi identificado por `stock_centers` sem vinculo em `teams.stock_center_id`, nao por texto do nome.
+- [x] Pallet foi tratado como tipo de endereco fisico com posicao unica.
+- [x] Cadastro em massa considera somente material com saldo positivo no centro selecionado e sem endereco anterior.
+- [x] Regra operacional do mapa limita colunas, linhas, andares e posicoes tanto na tela quanto no banco.

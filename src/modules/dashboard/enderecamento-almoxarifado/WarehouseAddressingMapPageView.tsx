@@ -2,15 +2,22 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { ActionIcon } from "@/components/ui/ActionIcon";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
-import { assignWarehouseAddress, clearWarehouseAddress, fetchWarehouseMap } from "./api";
-import type { Prateleira, StockCenterOption, WarehouseConfiguracao, WarehouseMaterial } from "./types";
+import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
+import { parseCsvLine } from "@/lib/utils/parsers";
+import { MAX_BULK_ASSIGNMENTS } from "./constants";
+import { assignWarehouseAddress, assignWarehouseAddressBatch, clearWarehouseAddress, clearWarehouseCellAddresses, fetchWarehouseMap } from "./api";
+import type { Prateleira, StockCenterOption, StorageTypeOption, WarehouseConfiguracao, WarehouseMaterial } from "./types";
 import {
+  DEFAULT_STORAGE_TYPE_OPTIONS,
   floorOccupancyStatus,
   formatQuantity,
   materialStatus,
   positionCode,
+  storageTypeLabel,
+  storageTypeUsesFloors,
 } from "./utils";
 import styles from "./WarehouseAddressing.module.css";
 
@@ -23,11 +30,43 @@ type AssignmentDraft = {
   expectedUpdatedAt: string | null;
 };
 
+type BulkAssignmentItem = {
+  material: WarehouseMaterial;
+  coluna: string;
+  linha: number;
+  andar: number;
+  posicao: number;
+};
+
+type BulkImportResult = {
+  status: "success" | "error";
+  message: string;
+  rows: number;
+};
+
 function statusLabel(status: ReturnType<typeof materialStatus>) {
   if (status === "vago") return "Vago";
   if (status === "baixo") return "Baixo";
   if (status === "lotado") return "Lotado";
   return "OK";
+}
+
+function normalizeImportValue(value: string) {
+  return value.trim().replace(/^\uFEFF/, "");
+}
+
+function normalizeImportHeader(value: string) {
+  return normalizeImportValue(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function parsePositiveInteger(value: string) {
+  const parsed = Number.parseInt(normalizeImportValue(value), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 export function WarehouseAddressingMapPageView() {
@@ -36,6 +75,7 @@ export function WarehouseAddressingMapPageView() {
   const accessToken = session?.accessToken ?? null;
 
   const [stockCenters, setStockCenters] = useState<StockCenterOption[]>([]);
+  const [storageTypes, setStorageTypes] = useState<StorageTypeOption[]>(DEFAULT_STORAGE_TYPE_OPTIONS);
   const [stockCenterId, setStockCenterId] = useState("");
   const [config, setConfig] = useState<WarehouseConfiguracao | null>(null);
   const [materials, setMaterials] = useState<WarehouseMaterial[]>([]);
@@ -43,7 +83,12 @@ export function WarehouseAddressingMapPageView() {
   const [selectedFloor, setSelectedFloor] = useState(1);
   const [selectedMaterial, setSelectedMaterial] = useState<WarehouseMaterial | null>(null);
   const [search, setSearch] = useState("");
+  const [unaddressedSearch, setUnaddressedSearch] = useState("");
   const [assignmentDraft, setAssignmentDraft] = useState<AssignmentDraft | null>(null);
+  const [bulkDraft, setBulkDraft] = useState<BulkAssignmentItem[] | null>(null);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [bulkImportFile, setBulkImportFile] = useState<File | null>(null);
+  const [bulkImportResult, setBulkImportResult] = useState<BulkImportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -58,10 +103,62 @@ export function WarehouseAddressingMapPageView() {
     return map;
   }, [materials]);
 
+  const materialsInSelectedShelf = useMemo(() => {
+    if (!selectedShelf) return [];
+    return materials.filter((material) => material.coluna === selectedShelf.coluna && material.linha === selectedShelf.linha);
+  }, [materials, selectedShelf]);
+
   const unaddressedMaterials = useMemo(
     () => materials.filter((material) => !material.coluna && material.quantidade > 0),
     [materials],
   );
+
+  const filteredUnaddressedMaterials = useMemo(() => {
+    const normalized = unaddressedSearch.trim().toLowerCase();
+    if (!normalized) return unaddressedMaterials;
+
+    return unaddressedMaterials.filter((material) =>
+      material.codigo.toLowerCase().includes(normalized)
+      || material.nome.toLowerCase().includes(normalized)
+      || material.unidade.toLowerCase().includes(normalized),
+    );
+  }, [unaddressedMaterials, unaddressedSearch]);
+
+  const availablePositions = useMemo(() => {
+    if (!config) return [];
+
+    return config.prateleiras
+      .flatMap((shelf) =>
+        shelf.andares.flatMap((floor) =>
+          Array.from({ length: floor.qtdPosicoes }, (_, index) => ({
+            coluna: shelf.coluna,
+            linha: shelf.linha,
+            andar: floor.numero,
+            posicao: index + 1,
+            tipo: shelf.tipo,
+            code: positionCode(shelf.coluna, shelf.linha, floor.numero, index + 1),
+          })),
+        ),
+      )
+      .filter((position) => !materialByPosition.has(position.code));
+  }, [config, materialByPosition]);
+
+  const availablePositionByCode = useMemo(
+    () => new Map(availablePositions.map((position) => [position.code, position])),
+    [availablePositions],
+  );
+
+  const unaddressedMaterialByCode = useMemo(
+    () => new Map(unaddressedMaterials.map((material) => [material.codigo.trim().toUpperCase(), material])),
+    [unaddressedMaterials],
+  );
+
+  const assignmentShelf = useMemo(() => {
+    if (!assignmentDraft || !config) return null;
+    return config.prateleiras.find((shelf) => shelf.coluna === assignmentDraft.coluna && shelf.linha === assignmentDraft.linha) ?? null;
+  }, [assignmentDraft, config]);
+
+  const assignmentUsesFloors = assignmentShelf ? storageTypeUsesFloors(assignmentShelf.tipo, storageTypes) : true;
 
   const highlightedMaterialIds = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -83,12 +180,14 @@ export function WarehouseAddressingMapPageView() {
     try {
       const data = await fetchWarehouseMap({ accessToken, stockCenterId: nextStockCenterId || null });
       const centers = data.stockCenters ?? [];
+      setStorageTypes(data.storageTypes?.length ? data.storageTypes : DEFAULT_STORAGE_TYPE_OPTIONS);
       setStockCenters(centers);
       const resolvedCenterId = nextStockCenterId || centers[0]?.id || "";
       setStockCenterId(resolvedCenterId);
 
       if (resolvedCenterId && !nextStockCenterId) {
         const secondLoad = await fetchWarehouseMap({ accessToken, stockCenterId: resolvedCenterId });
+        setStorageTypes(secondLoad.storageTypes?.length ? secondLoad.storageTypes : DEFAULT_STORAGE_TYPE_OPTIONS);
         setConfig(secondLoad.configuracao ?? null);
         setMaterials(secondLoad.materiais ?? []);
       } else {
@@ -111,7 +210,9 @@ export function WarehouseAddressingMapPageView() {
 
   function openAssignment(material: WarehouseMaterial, shelf?: Prateleira, floor?: number, position?: number) {
     const targetShelf = shelf ?? selectedShelf ?? config?.prateleiras[0] ?? null;
-    const targetFloor = floor ?? targetShelf?.andares[0]?.numero ?? 1;
+    const targetFloor = targetShelf && !storageTypeUsesFloors(targetShelf.tipo, storageTypes)
+      ? 1
+      : floor ?? targetShelf?.andares[0]?.numero ?? 1;
     setAssignmentDraft({
       materialId: material.id,
       coluna: targetShelf?.coluna ?? material.coluna ?? "",
@@ -120,6 +221,144 @@ export function WarehouseAddressingMapPageView() {
       posicao: position ?? material.posicao ?? 1,
       expectedUpdatedAt: material.enderecoUpdatedAt,
     });
+  }
+
+  function openBulkAssignment() {
+    setBulkDraft(null);
+    setBulkImportFile(null);
+    setBulkImportResult(null);
+    setIsBulkImportOpen(true);
+  }
+
+  function closeBulkImport() {
+    if (isSaving) return;
+    setIsBulkImportOpen(false);
+    setBulkDraft(null);
+    setBulkImportFile(null);
+    setBulkImportResult(null);
+  }
+
+  function downloadBulkTemplate() {
+    const quantity = Math.min(filteredUnaddressedMaterials.length, availablePositions.length, MAX_BULK_ASSIGNMENTS);
+    const rows = Array.from({ length: quantity }, (_, index) => {
+      const material = filteredUnaddressedMaterials[index];
+      const position = availablePositions[index];
+      return [
+        material.codigo,
+        material.nome,
+        material.unidade || "SEM UMB",
+        formatQuantity(material.quantidade, material.unidade),
+        position.coluna,
+        position.linha,
+        position.andar,
+        position.posicao,
+      ];
+    });
+
+    const csv = buildCsvContent(["codigo", "descricao", "umb", "quantidade", "coluna", "linha", "andar", "posicao"], rows);
+    downloadCsvFile(csv, "modelo_enderecamento_massa_almoxarifado.csv");
+  }
+
+  async function prepareBulkImport() {
+    if (!bulkImportFile) return;
+
+    setBulkImportResult(null);
+    try {
+      const content = await bulkImportFile.text();
+      const lines = content.split(/\r?\n/).filter((line) => normalizeImportValue(line));
+      if (lines.length < 2) {
+        setBulkImportResult({ status: "error", message: "Arquivo CSV sem linhas de dados.", rows: 0 });
+        return;
+      }
+
+      const headers = parseCsvLine(lines[0] ?? "").map(normalizeImportHeader);
+      const requiredHeaders = ["codigo", "coluna", "linha", "posicao"];
+      const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+      if (missingHeaders.length) {
+        setBulkImportResult({ status: "error", message: `Coluna(s) obrigatoria(s) ausente(s): ${missingHeaders.join(", ")}.`, rows: 0 });
+        return;
+      }
+
+      const nextDraft: BulkAssignmentItem[] = [];
+      const seenMaterials = new Set<string>();
+      const seenPositions = new Set<string>();
+      const issues: string[] = [];
+
+      for (let index = 1; index < lines.length; index += 1) {
+        const rowNumber = index + 1;
+        const values = parseCsvLine(lines[index]);
+        const row = headers.reduce<Record<string, string>>((accumulator, header, headerIndex) => {
+          accumulator[header] = normalizeImportValue(values[headerIndex] ?? "");
+          return accumulator;
+        }, {});
+
+        const codigo = row.codigo.trim().toUpperCase();
+        const coluna = row.coluna.trim().toUpperCase();
+        const linha = parsePositiveInteger(row.linha ?? "");
+        const andar = parsePositiveInteger(row.andar ?? "1");
+        const posicao = parsePositiveInteger(row.posicao ?? "");
+
+        if (!codigo || !coluna || !linha || !andar || !posicao) {
+          issues.push(`Linha ${rowNumber}: codigo, coluna, linha, posicao e andar valido quando informado sao obrigatorios.`);
+          continue;
+        }
+
+        const material = unaddressedMaterialByCode.get(codigo);
+        if (!material) {
+          issues.push(`Linha ${rowNumber}: material ${codigo} nao esta sem endereco com saldo neste centro.`);
+          continue;
+        }
+
+        if (seenMaterials.has(codigo)) {
+          issues.push(`Linha ${rowNumber}: material ${codigo} duplicado no arquivo.`);
+          continue;
+        }
+
+        const code = positionCode(coluna, linha, andar, posicao);
+        if (!availablePositionByCode.has(code)) {
+          issues.push(`Linha ${rowNumber}: endereco ${code} nao existe ou ja esta ocupado.`);
+          continue;
+        }
+
+        if (seenPositions.has(code)) {
+          issues.push(`Linha ${rowNumber}: endereco ${code} duplicado no arquivo.`);
+          continue;
+        }
+
+        seenMaterials.add(codigo);
+        seenPositions.add(code);
+        nextDraft.push({ material, coluna, linha, andar, posicao });
+      }
+
+      if (issues.length) {
+        setBulkDraft(null);
+        setBulkImportResult({
+          status: "error",
+          message: issues.slice(0, 4).join(" "),
+          rows: nextDraft.length,
+        });
+        return;
+      }
+
+      if (!nextDraft.length) {
+        setBulkDraft(null);
+        setBulkImportResult({ status: "error", message: "Nenhum material valido foi encontrado para importar.", rows: 0 });
+        return;
+      }
+
+      if (nextDraft.length > MAX_BULK_ASSIGNMENTS) {
+        setBulkDraft(null);
+        setBulkImportResult({ status: "error", message: `O lote pode ter no maximo ${MAX_BULK_ASSIGNMENTS} materiais.`, rows: nextDraft.length });
+        return;
+      }
+
+      setBulkDraft(nextDraft);
+      setBulkImportResult({ status: "success", message: "Planilha validada. Confira a pre-visualizacao antes de confirmar.", rows: nextDraft.length });
+    } catch (error) {
+      setBulkDraft(null);
+      setBulkImportResult({ status: "error", message: "Falha ao ler o arquivo CSV.", rows: 0 });
+      await logError("Falha ao preparar enderecamento em massa.", error, { fileName: bulkImportFile.name });
+    }
   }
 
   async function submitAssignment(event: FormEvent<HTMLFormElement>) {
@@ -139,6 +378,67 @@ export function WarehouseAddressingMapPageView() {
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao atribuir endereco." });
       await logError("Falha ao atribuir endereco no mapa.", error, assignmentDraft);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function submitBulkAssignment() {
+    if (!accessToken || !config || !bulkDraft?.length) return;
+
+    setIsSaving(true);
+    try {
+      const response = await assignWarehouseAddressBatch({
+        accessToken,
+        mapId: config.id,
+        assignments: bulkDraft.map((item) => ({
+          materialId: item.material.id,
+          coluna: item.coluna,
+          linha: item.linha,
+          andar: item.andar,
+          posicao: item.posicao,
+        })),
+      });
+      setFeedback({
+        type: "success",
+        message: response.message ?? `${response.assignedCount ?? bulkDraft.length} material(is) enderecado(s) com sucesso.`,
+      });
+      setBulkDraft(null);
+      setIsBulkImportOpen(false);
+      setBulkImportFile(null);
+      setBulkImportResult(null);
+      await loadMap(stockCenterId);
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao enderecar materiais em massa." });
+      await logError("Falha ao enderecar materiais em massa.", error, { count: bulkDraft.length });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function clearCellAddresses(shelf: Prateleira) {
+    if (!accessToken || !config) return;
+
+    const count = materialsInSelectedShelf.length;
+    if (count === 0) return;
+    if (!window.confirm(`Remover o endereco de ${count} material(is) da posicao ${shelf.coluna}${shelf.linha}? Os materiais ficarao sem endereco ate serem realocados.`)) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await clearWarehouseCellAddresses({
+        accessToken,
+        mapId: config.id,
+        coluna: shelf.coluna,
+        linha: shelf.linha,
+      });
+      setFeedback({ type: "success", message: response.message ?? "Posicao limpa com sucesso." });
+      setSelectedMaterial(null);
+      await loadMap(stockCenterId);
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao limpar materiais da posicao." });
+      await logError("Falha ao limpar materiais da posicao no mapa.", error, { coluna: shelf.coluna, linha: shelf.linha });
     } finally {
       setIsSaving(false);
     }
@@ -169,7 +469,12 @@ export function WarehouseAddressingMapPageView() {
   function renderShelfContent(shelf: Prateleira) {
     const floor = shelf.andares.find((item) => item.numero === selectedFloor) ?? shelf.andares[0];
     if (!floor || selectedShelf?.id !== shelf.id) {
-      return <strong>{shelf.coluna}{shelf.linha}</strong>;
+      return (
+        <>
+          <strong>{shelf.coluna}{shelf.linha}</strong>
+          <span>{storageTypeLabel(shelf.tipo, storageTypes)}</span>
+        </>
+      );
     }
 
     return (
@@ -274,7 +579,7 @@ export function WarehouseAddressingMapPageView() {
                         role="button"
                         tabIndex={0}
                         key={shelf.id}
-                        className={`${styles.gridCell} ${styles.shelfCell} ${selectedShelf?.id === shelf.id ? styles.selectedCell : ""} ${isHighlighted ? styles.highlightCell : ""}`}
+                        className={`${styles.gridCell} ${styles.shelfCell} ${shelf.tipo === "PALLET" ? styles.palletCell : ""} ${shelf.tipo === "BAIA" ? styles.bayCell : ""} ${selectedShelf?.id === shelf.id ? styles.selectedCell : ""} ${isHighlighted ? styles.highlightCell : ""}`}
                         onClick={() => {
                           setSelectedShelf(shelf);
                           setSelectedFloor(shelf.andares[0]?.numero ?? 1);
@@ -339,16 +644,90 @@ export function WarehouseAddressingMapPageView() {
               <p className={styles.muted}>Selecione uma posicao ocupada para ver detalhes.</p>
             )}
 
+            {selectedShelf ? (
+              <div className={styles.sidePanel}>
+                <strong>Posicao {selectedShelf.coluna}{selectedShelf.linha}</strong>
+                <span>{storageTypeLabel(selectedShelf.tipo, storageTypes)}</span>
+                <span>{materialsInSelectedShelf.length} material(is) enderecado(s) nesta posicao</span>
+                {materialsInSelectedShelf.length > 0 ? (
+                  <div className={styles.actions}>
+                    <button
+                      type="button"
+                      className={styles.dangerButton}
+                      onClick={() => void clearCellAddresses(selectedShelf)}
+                      disabled={isSaving}
+                    >
+                      Limpar posicao
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <h3 className={styles.cardTitle}>Sem endereco</h3>
-            <div className={styles.unaddressedList}>
-              {unaddressedMaterials.map((material) => (
-                <button key={material.id} type="button" className={styles.materialListItem} onClick={() => openAssignment(material)}>
-                  <strong>{material.codigo}</strong>
-                  <span>{material.nome}</span>
-                  <small>{formatQuantity(material.quantidade, material.unidade)}</small>
-                </button>
-              ))}
-              {unaddressedMaterials.length === 0 ? <p className={styles.muted}>Nenhum material com saldo sem endereco.</p> : null}
+            <div className={styles.tableHeader}>
+              <span className={styles.tableHint}>
+                {filteredUnaddressedMaterials.length} de {unaddressedMaterials.length} materiais
+              </span>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={openBulkAssignment}
+                disabled={isSaving || !config || filteredUnaddressedMaterials.length === 0 || availablePositions.length === 0}
+              >
+                Enderecar em massa
+              </button>
+            </div>
+            <label className={styles.compactField}>
+              <span>Filtro</span>
+              <input
+                value={unaddressedSearch}
+                onChange={(event) => setUnaddressedSearch(event.target.value)}
+                placeholder="Codigo, nome ou UMB"
+              />
+            </label>
+            <div className={styles.tableWrapper}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>UMB</th>
+                    <th>Quantidade</th>
+                    <th>Acao</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUnaddressedMaterials.map((material) => (
+                    <tr key={material.id}>
+                      <td>
+                        <button type="button" className={styles.tableRowButton} onClick={() => openAssignment(material)}>
+                          {material.codigo}
+                        </button>
+                        <small>{material.nome}</small>
+                      </td>
+                      <td>{material.unidade || "SEM UMB"}</td>
+                      <td>{formatQuantity(material.quantidade, material.unidade)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.tableActionButton}
+                          onClick={() => openAssignment(material)}
+                          disabled={isSaving}
+                          title="Enderecar"
+                          aria-label={`Enderecar material ${material.codigo}`}
+                        >
+                          <ActionIcon name="address" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredUnaddressedMaterials.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className={styles.emptyRow}>Sem dados.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
           </aside>
         </div>
@@ -373,7 +752,7 @@ export function WarehouseAddressingMapPageView() {
                       ...current,
                       coluna: shelf.coluna,
                       linha: shelf.linha,
-                      andar: shelf.andares[0]?.numero ?? 1,
+                      andar: storageTypeUsesFloors(shelf.tipo, storageTypes) ? shelf.andares[0]?.numero ?? 1 : 1,
                       posicao: 1,
                     } : current);
                   }}
@@ -384,15 +763,17 @@ export function WarehouseAddressingMapPageView() {
                 </select>
               </label>
 
-              <label className={styles.field}>
-                <span>Andar</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={assignmentDraft.andar}
-                  onChange={(event) => setAssignmentDraft((current) => current ? { ...current, andar: Number(event.target.value) } : current)}
-                />
-              </label>
+              {assignmentUsesFloors ? (
+                <label className={styles.field}>
+                  <span>Andar</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={assignmentDraft.andar}
+                    onChange={(event) => setAssignmentDraft((current) => current ? { ...current, andar: Number(event.target.value) } : current)}
+                  />
+                </label>
+              ) : null}
 
               <label className={styles.field}>
                 <span>Posicao</span>
@@ -411,6 +792,117 @@ export function WarehouseAddressingMapPageView() {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {isBulkImportOpen && config ? (
+        <div className={styles.modalOverlay}>
+          <section className={styles.modalCard}>
+            <header className={styles.modalHeader}>
+              <div>
+                <h3>Cadastro em massa</h3>
+                <p>Importe um CSV para enderecar materiais em lote.</p>
+              </div>
+              <button type="button" className={styles.ghostButton} onClick={closeBulkImport}>Fechar</button>
+            </header>
+
+            <div className={styles.importStep}>
+              <div className={styles.importStepHeader}>
+                <span className={styles.importStepNumber}>1</span>
+                <div>
+                  <strong>Baixe o modelo</strong>
+                  <p>O modelo usa os materiais sem endereco do filtro atual e sugere as primeiras posicoes vagas.</p>
+                </div>
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={downloadBulkTemplate} disabled={!filteredUnaddressedMaterials.length || !availablePositions.length}>
+                Baixar modelo CSV
+              </button>
+            </div>
+
+            <div className={styles.importStep}>
+              <div className={styles.importStepHeader}>
+                <span className={styles.importStepNumber}>2</span>
+                <div>
+                  <strong>Preencha a planilha</strong>
+                  <p>Colunas obrigatorias: codigo, coluna, linha e posicao. Andar e usado para prateleira; Pallet e Baia usam 1.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.importStep}>
+              <div className={styles.importStepHeader}>
+                <span className={styles.importStepNumber}>3</span>
+                <div>
+                  <strong>Envie o arquivo</strong>
+                  <p>Somente arquivo CSV separado por ponto e virgula.</p>
+                </div>
+              </div>
+              <label className={styles.importDropzone}>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => {
+                    setBulkImportFile(event.target.files?.[0] ?? null);
+                    setBulkDraft(null);
+                    setBulkImportResult(null);
+                  }}
+                />
+                <span>{bulkImportFile ? bulkImportFile.name : "Clique para selecionar o arquivo CSV"}</span>
+              </label>
+              <div className={styles.actions}>
+                <button type="button" className={styles.primaryButton} onClick={() => void prepareBulkImport()} disabled={!bulkImportFile || isSaving}>
+                  Importar planilha
+                </button>
+              </div>
+            </div>
+
+            {bulkImportResult ? (
+              <div className={`${styles.feedback} ${bulkImportResult.status === "success" ? styles.success : styles.error}`}>
+                {bulkImportResult.message}
+              </div>
+            ) : null}
+
+            {bulkDraft?.length ? (
+              <>
+                <div className={styles.tableHeader}>
+                  <span className={styles.tableHint}>{bulkDraft.length} material(is) preparados para gravacao</span>
+                  <span className={styles.tableHint}>{availablePositions.length} posicao(oes) vagas no mapa</span>
+                </div>
+
+                <div className={styles.tableWrapper}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Material</th>
+                        <th>UMB</th>
+                        <th>Quantidade</th>
+                        <th>Endereco</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkDraft.map((item) => (
+                        <tr key={item.material.id}>
+                          <td>
+                            <strong>{item.material.codigo}</strong>
+                            <small>{item.material.nome}</small>
+                          </td>
+                          <td>{item.material.unidade || "SEM UMB"}</td>
+                          <td>{formatQuantity(item.material.quantidade, item.material.unidade)}</td>
+                          <td><strong>{positionCode(item.coluna, item.linha, item.andar, item.posicao)}</strong></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : null}
+
+            <div className={styles.actions}>
+              <button type="button" className={styles.primaryButton} onClick={() => void submitBulkAssignment()} disabled={isSaving || !bulkDraft?.length}>
+                {isSaving ? "Salvando..." : "Confirmar lote"}
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
     </section>

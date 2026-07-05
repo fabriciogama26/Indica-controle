@@ -22,3 +22,4 @@
 - [x] `materials` continua registrando alteracoes via `material_history`, agora incluindo limites de estoque.
 - [x] Nao aplicavel: enderecamento nao altera saldo de estoque.
 - [x] Tentativa valida de configuracao/endereco continua gerando historico; centro de equipe e bloqueado antes da gravacao.
+- [x] Enderecamento em massa registra `ADDRESS_ASSIGN` por material com flag `batch=true` no historico.

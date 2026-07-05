@@ -271,6 +271,7 @@ Antes de abrir PR em qualquer tela ou API, responder:
 - [x] Leitura do mapa filtra por `tenant_id` e `stockCenterId`; andares sao buscados por `shelf_id IN (...)`, nao por tenant inteiro.
 - [x] Nao aplicavel nesta etapa: dashboard/agregacao pesada; a tela retorna layout e saldo do centro selecionado.
 - [x] Centros de equipe sao identificados por query pequena em `teams.stock_center_id`, paralela a `stock_centers`, sem carregar saldo/material para centros inelegiveis.
+- [x] Enderecamento em massa limita o lote a 100 itens e reaproveita o payload de materiais com saldo ja carregado na tela.
 
 ## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
 - [x] Query de `project_measurement_order_items` continua sem `.select("*")`, usando somente `measurement_order_id, total_value`.

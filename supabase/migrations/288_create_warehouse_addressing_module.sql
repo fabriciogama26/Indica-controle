@@ -36,8 +36,68 @@ create table if not exists public.warehouse_maps (
   constraint warehouse_maps_id_tenant_key unique (id, tenant_id),
   constraint warehouse_maps_unique_center unique (tenant_id, stock_center_id),
   constraint warehouse_maps_colunas_not_empty check (array_length(colunas, 1) is not null),
-  constraint warehouse_maps_linhas_not_empty check (array_length(linhas, 1) is not null)
+  constraint warehouse_maps_linhas_not_empty check (array_length(linhas, 1) is not null),
+  constraint warehouse_maps_grid_limits_check
+    check (array_length(colunas, 1) <= 15 and array_length(linhas, 1) <= 20)
 );
+
+alter table if exists public.warehouse_maps
+  drop constraint if exists warehouse_maps_grid_limits_check;
+
+alter table if exists public.warehouse_maps
+  add constraint warehouse_maps_grid_limits_check
+  check (array_length(colunas, 1) <= 15 and array_length(linhas, 1) <= 20)
+  not valid;
+
+create table if not exists public.warehouse_storage_types (
+  code text primary key,
+  label text not null,
+  uses_floors boolean not null default true,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint warehouse_storage_types_code_not_blank check (nullif(btrim(code), '') is not null),
+  constraint warehouse_storage_types_label_not_blank check (nullif(btrim(label), '') is not null)
+);
+
+alter table if exists public.warehouse_storage_types
+  add column if not exists uses_floors boolean;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'warehouse_storage_types'
+      and column_name = 'is_single_position'
+  ) then
+    execute 'update public.warehouse_storage_types set uses_floors = not coalesce(is_single_position, false) where uses_floors is null';
+  end if;
+end;
+$$;
+
+update public.warehouse_storage_types
+set uses_floors = true
+where uses_floors is null;
+
+alter table if exists public.warehouse_storage_types
+  alter column uses_floors set default true,
+  alter column uses_floors set not null;
+
+insert into public.warehouse_storage_types (code, label, uses_floors, sort_order, is_active)
+values
+  ('SHELF', 'Prateleira', true, 10, true),
+  ('PALLET', 'Pallet', false, 20, true),
+  ('BAIA', 'Baia', false, 30, true)
+on conflict (code) do update
+set
+  label = excluded.label,
+  uses_floors = excluded.uses_floors,
+  sort_order = excluded.sort_order,
+  is_active = excluded.is_active,
+  updated_at = now();
 
 create table if not exists public.warehouse_shelves (
   id uuid primary key default gen_random_uuid(),
@@ -45,6 +105,7 @@ create table if not exists public.warehouse_shelves (
   map_id uuid not null,
   coluna text not null,
   linha integer not null,
+  storage_type text not null default 'SHELF',
   created_by uuid null,
   updated_by uuid null,
   created_at timestamptz not null default now(),
@@ -56,8 +117,25 @@ create table if not exists public.warehouse_shelves (
   constraint warehouse_shelves_id_tenant_key unique (id, tenant_id),
   constraint warehouse_shelves_unique_position unique (tenant_id, map_id, coluna, linha),
   constraint warehouse_shelves_coluna_not_blank check (nullif(btrim(coluna), '') is not null),
-  constraint warehouse_shelves_linha_positive check (linha > 0)
+  constraint warehouse_shelves_linha_positive check (linha > 0),
+  constraint warehouse_shelves_storage_type_fk
+    foreign key (storage_type)
+    references public.warehouse_storage_types(code)
 );
+
+alter table if exists public.warehouse_shelves
+  add column if not exists storage_type text not null default 'SHELF';
+
+alter table if exists public.warehouse_shelves
+  drop constraint if exists warehouse_shelves_storage_type_check;
+
+alter table if exists public.warehouse_shelves
+  drop constraint if exists warehouse_shelves_storage_type_fk;
+
+alter table if exists public.warehouse_shelves
+  add constraint warehouse_shelves_storage_type_fk
+  foreign key (storage_type)
+  references public.warehouse_storage_types(code);
 
 create table if not exists public.warehouse_shelf_floors (
   id uuid primary key default gen_random_uuid(),
@@ -74,9 +152,25 @@ create table if not exists public.warehouse_shelf_floors (
     references public.warehouse_shelves(id, tenant_id)
     on delete cascade,
   constraint warehouse_shelf_floors_unique_number unique (tenant_id, shelf_id, numero),
-  constraint warehouse_shelf_floors_numero_positive check (numero > 0),
-  constraint warehouse_shelf_floors_positions_positive check (qtd_posicoes > 0)
+  constraint warehouse_shelf_floors_numero_positive check (numero > 0 and numero <= 10),
+  constraint warehouse_shelf_floors_positions_positive check (qtd_posicoes > 0 and qtd_posicoes <= 10)
 );
+
+alter table if exists public.warehouse_shelf_floors
+  drop constraint if exists warehouse_shelf_floors_numero_positive;
+
+alter table if exists public.warehouse_shelf_floors
+  add constraint warehouse_shelf_floors_numero_positive
+  check (numero > 0 and numero <= 10)
+  not valid;
+
+alter table if exists public.warehouse_shelf_floors
+  drop constraint if exists warehouse_shelf_floors_positions_positive;
+
+alter table if exists public.warehouse_shelf_floors
+  add constraint warehouse_shelf_floors_positions_positive
+  check (qtd_posicoes > 0 and qtd_posicoes <= 10)
+  not valid;
 
 create table if not exists public.warehouse_material_addresses (
   id uuid primary key default gen_random_uuid(),
@@ -137,11 +231,17 @@ create index if not exists idx_warehouse_material_addresses_tenant_center
 create index if not exists idx_warehouse_address_history_tenant_map_created
   on public.warehouse_address_history (tenant_id, map_id, created_at desc);
 
+alter table if exists public.warehouse_storage_types enable row level security;
 alter table if exists public.warehouse_maps enable row level security;
 alter table if exists public.warehouse_shelves enable row level security;
 alter table if exists public.warehouse_shelf_floors enable row level security;
 alter table if exists public.warehouse_material_addresses enable row level security;
 alter table if exists public.warehouse_address_history enable row level security;
+
+drop policy if exists warehouse_storage_types_select on public.warehouse_storage_types;
+create policy warehouse_storage_types_select on public.warehouse_storage_types
+for select to authenticated
+using (true);
 
 drop policy if exists warehouse_maps_tenant_select on public.warehouse_maps;
 create policy warehouse_maps_tenant_select on public.warehouse_maps
@@ -168,6 +268,7 @@ create policy warehouse_address_history_tenant_select on public.warehouse_addres
 for select to authenticated
 using (public.user_can_access_tenant(warehouse_address_history.tenant_id));
 
+grant select on public.warehouse_storage_types to authenticated;
 grant select on public.warehouse_maps to authenticated;
 grant select on public.warehouse_shelves to authenticated;
 grant select on public.warehouse_shelf_floors to authenticated;
@@ -683,6 +784,8 @@ declare
   v_shelf_id uuid;
   v_position integer;
   v_map_exists boolean := false;
+  v_storage_type text;
+  v_uses_floors boolean;
 begin
   if p_stock_center_id is null then
     return jsonb_build_object('success', false, 'status', 400, 'reason', 'STOCK_CENTER_REQUIRED', 'message', 'Centro de estoque obrigatorio.');
@@ -690,6 +793,10 @@ begin
 
   if array_length(p_colunas, 1) is null or array_length(p_linhas, 1) is null then
     return jsonb_build_object('success', false, 'status', 400, 'reason', 'GRID_REQUIRED', 'message', 'Informe colunas e linhas do mapa.');
+  end if;
+
+  if array_length(p_colunas, 1) > 15 or array_length(p_linhas, 1) > 20 then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'GRID_LIMIT_EXCEEDED', 'message', 'O mapa permite no maximo 15 colunas e 20 linhas.');
   end if;
 
   if not public.is_physical_warehouse_stock_center(p_tenant_id, p_stock_center_id) then
@@ -715,9 +822,40 @@ begin
   loop
     v_coluna := upper(btrim(coalesce(v_shelf ->> 'coluna', '')));
     v_linha := nullif(v_shelf ->> 'linha', '')::integer;
+    v_storage_type := upper(btrim(coalesce(v_shelf ->> 'tipo', v_shelf ->> 'storageType', 'SHELF')));
 
     if v_coluna = '' or v_linha is null or not (v_coluna = any(p_colunas)) or not (v_linha = any(p_linhas)) then
       return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_SHELF_POSITION', 'message', 'Prateleira fora do grid configurado.');
+    end if;
+
+    select storage_type_row.uses_floors
+    into v_uses_floors
+    from public.warehouse_storage_types storage_type_row
+    where storage_type_row.code = v_storage_type
+      and storage_type_row.is_active = true;
+
+    if not found then
+      return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_STORAGE_TYPE', 'message', 'Tipo de endereco invalido.');
+    end if;
+
+    if not coalesce(v_uses_floors, true) then
+      v_qtd_posicoes := coalesce(nullif(v_shelf -> 'andares' -> 0 ->> 'qtdPosicoes', '')::integer, 1);
+
+      if v_qtd_posicoes <= 0 or v_qtd_posicoes > 10 then
+        return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_POSITIONS', 'message', 'Quantidade de posicoes deve ficar entre 1 e 10.');
+      end if;
+
+      for v_position in 1..v_qtd_posicoes
+      loop
+        insert into tmp_warehouse_positions (coluna, linha, andar, posicao)
+        values (v_coluna, v_linha, 1, v_position)
+        on conflict do nothing;
+      end loop;
+      continue;
+    end if;
+
+    if jsonb_array_length(coalesce(v_shelf -> 'andares', '[]'::jsonb)) = 0 then
+      return jsonb_build_object('success', false, 'status', 400, 'reason', 'FLOORS_REQUIRED', 'message', 'Prateleira deve possuir ao menos um andar.');
     end if;
 
     for v_floor in select value from jsonb_array_elements(coalesce(v_shelf -> 'andares', '[]'::jsonb))
@@ -725,8 +863,8 @@ begin
       v_andar := nullif(v_floor ->> 'numero', '')::integer;
       v_qtd_posicoes := coalesce(nullif(v_floor ->> 'qtdPosicoes', '')::integer, 1);
 
-      if v_andar is null or v_andar <= 0 or v_qtd_posicoes <= 0 then
-        return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_FLOOR', 'message', 'Andar ou quantidade de posicoes invalida.');
+      if v_andar is null or v_andar <= 0 or v_andar > 10 or v_qtd_posicoes <= 0 or v_qtd_posicoes > 10 then
+        return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_FLOOR', 'message', 'Andar e quantidade de posicoes devem ficar entre 1 e 10.');
       end if;
 
       for v_position in 1..v_qtd_posicoes
@@ -832,12 +970,24 @@ begin
   loop
     v_coluna := upper(btrim(coalesce(v_shelf ->> 'coluna', '')));
     v_linha := nullif(v_shelf ->> 'linha', '')::integer;
+    v_storage_type := upper(btrim(coalesce(v_shelf ->> 'tipo', v_shelf ->> 'storageType', 'SHELF')));
+
+    select storage_type_row.uses_floors
+    into v_uses_floors
+    from public.warehouse_storage_types storage_type_row
+    where storage_type_row.code = v_storage_type
+      and storage_type_row.is_active = true;
+
+    if not found then
+      return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_STORAGE_TYPE', 'message', 'Tipo de endereco invalido.');
+    end if;
 
     insert into public.warehouse_shelves (
       tenant_id,
       map_id,
       coluna,
       linha,
+      storage_type,
       created_by,
       updated_by
     ) values (
@@ -845,17 +995,54 @@ begin
       v_map_id,
       v_coluna,
       v_linha,
+      v_storage_type,
       p_actor_user_id,
       p_actor_user_id
     )
     on conflict (tenant_id, map_id, coluna, linha) do update
-    set updated_by = excluded.updated_by
+    set
+      storage_type = excluded.storage_type,
+      updated_by = excluded.updated_by
     returning id into v_shelf_id;
+
+    if not coalesce(v_uses_floors, true) then
+      v_qtd_posicoes := coalesce(nullif(v_shelf -> 'andares' -> 0 ->> 'qtdPosicoes', '')::integer, 1);
+
+      if v_qtd_posicoes <= 0 or v_qtd_posicoes > 10 then
+        return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_POSITIONS', 'message', 'Quantidade de posicoes deve ficar entre 1 e 10.');
+      end if;
+
+      insert into public.warehouse_shelf_floors (
+        tenant_id,
+        shelf_id,
+        numero,
+        qtd_posicoes,
+        created_by,
+        updated_by
+      ) values (
+        p_tenant_id,
+        v_shelf_id,
+        1,
+        v_qtd_posicoes,
+        p_actor_user_id,
+        p_actor_user_id
+      )
+      on conflict (tenant_id, shelf_id, numero) do update
+      set
+        qtd_posicoes = excluded.qtd_posicoes,
+        updated_by = excluded.updated_by;
+
+      continue;
+    end if;
 
     for v_floor in select value from jsonb_array_elements(coalesce(v_shelf -> 'andares', '[]'::jsonb))
     loop
       v_andar := nullif(v_floor ->> 'numero', '')::integer;
       v_qtd_posicoes := coalesce(nullif(v_floor ->> 'qtdPosicoes', '')::integer, 1);
+
+      if v_andar is null or v_andar <= 0 or v_andar > 10 or v_qtd_posicoes <= 0 or v_qtd_posicoes > 10 then
+        return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_FLOOR', 'message', 'Andar e quantidade de posicoes devem ficar entre 1 e 10.');
+      end if;
 
       insert into public.warehouse_shelf_floors (
         tenant_id,
@@ -1082,6 +1269,236 @@ revoke all on function public.assign_warehouse_material_address(uuid, uuid, uuid
 revoke all on function public.assign_warehouse_material_address(uuid, uuid, uuid, uuid, text, integer, integer, integer, timestamptz) from anon;
 revoke all on function public.assign_warehouse_material_address(uuid, uuid, uuid, uuid, text, integer, integer, integer, timestamptz) from authenticated;
 grant execute on function public.assign_warehouse_material_address(uuid, uuid, uuid, uuid, text, integer, integer, integer, timestamptz) to service_role;
+
+create or replace function public.assign_warehouse_material_addresses_batch(
+  p_tenant_id uuid,
+  p_actor_user_id uuid,
+  p_map_id uuid,
+  p_assignments jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_map public.warehouse_maps%rowtype;
+  v_assignment jsonb;
+  v_material_id uuid;
+  v_coluna text;
+  v_linha integer;
+  v_andar integer;
+  v_posicao integer;
+  v_count integer;
+begin
+  if jsonb_typeof(coalesce(p_assignments, '[]'::jsonb)) <> 'array' then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_BATCH_PAYLOAD', 'message', 'Lista de enderecamento em massa invalida.');
+  end if;
+
+  v_count := jsonb_array_length(coalesce(p_assignments, '[]'::jsonb));
+  if v_count = 0 then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'EMPTY_BATCH', 'message', 'Informe ao menos um material para enderecar.');
+  end if;
+
+  if v_count > 100 then
+    return jsonb_build_object('success', false, 'status', 413, 'reason', 'BATCH_TOO_LARGE', 'message', 'Enderecamento em massa limitado a 100 materiais por lote.');
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(p_tenant_id::text || '|' || p_map_id::text || '|BATCH_ADDRESSING'));
+
+  select *
+  into v_map
+  from public.warehouse_maps
+  where id = p_map_id
+    and tenant_id = p_tenant_id
+    and is_active = true
+  for update;
+
+  if not found then
+    return jsonb_build_object('success', false, 'status', 404, 'reason', 'MAP_NOT_FOUND', 'message', 'Mapa do almoxarifado nao encontrado.');
+  end if;
+
+  if not public.is_physical_warehouse_stock_center(p_tenant_id, v_map.stock_center_id) then
+    return jsonb_build_object(
+      'success', false,
+      'status', 422,
+      'reason', 'STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE',
+      'message', 'Use somente centro fisico de almoxarifado. Centros vinculados a equipes nao podem receber enderecamento.'
+    );
+  end if;
+
+  create temporary table if not exists tmp_warehouse_batch_assignments (
+    material_id uuid primary key,
+    coluna text not null,
+    linha integer not null,
+    andar integer not null,
+    posicao integer not null,
+    unique (coluna, linha, andar, posicao)
+  ) on commit drop;
+
+  truncate table tmp_warehouse_batch_assignments;
+
+  for v_assignment in select value from jsonb_array_elements(coalesce(p_assignments, '[]'::jsonb))
+  loop
+    v_material_id := nullif(v_assignment ->> 'materialId', '')::uuid;
+    v_coluna := upper(btrim(coalesce(v_assignment ->> 'coluna', '')));
+    v_linha := nullif(v_assignment ->> 'linha', '')::integer;
+    v_andar := nullif(v_assignment ->> 'andar', '')::integer;
+    v_posicao := nullif(v_assignment ->> 'posicao', '')::integer;
+
+    if v_material_id is null or v_coluna = '' or v_linha is null or v_andar is null or v_posicao is null then
+      return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_BATCH_ITEM', 'message', 'Todos os itens do lote precisam de material e endereco completo.');
+    end if;
+
+    if exists (select 1 from tmp_warehouse_batch_assignments where material_id = v_material_id) then
+      return jsonb_build_object('success', false, 'status', 409, 'reason', 'DUPLICATE_BATCH_MATERIAL', 'message', 'O lote possui material repetido.');
+    end if;
+
+    if exists (
+      select 1
+      from tmp_warehouse_batch_assignments
+      where coluna = v_coluna
+        and linha = v_linha
+        and andar = v_andar
+        and posicao = v_posicao
+    ) then
+      return jsonb_build_object('success', false, 'status', 409, 'reason', 'DUPLICATE_BATCH_POSITION', 'message', 'O lote possui posicao repetida.');
+    end if;
+
+    insert into tmp_warehouse_batch_assignments (material_id, coluna, linha, andar, posicao)
+    values (v_material_id, v_coluna, v_linha, v_andar, v_posicao);
+  end loop;
+
+  if exists (
+    select 1
+    from tmp_warehouse_batch_assignments batch
+    left join public.materials mat
+      on mat.id = batch.material_id
+     and mat.tenant_id = p_tenant_id
+     and mat.is_active = true
+    where mat.id is null
+  ) then
+    return jsonb_build_object('success', false, 'status', 404, 'reason', 'MATERIAL_NOT_FOUND', 'message', 'O lote possui material inexistente ou inativo.');
+  end if;
+
+  if exists (
+    select 1
+    from tmp_warehouse_batch_assignments batch
+    left join public.stock_center_balances balance
+      on balance.tenant_id = p_tenant_id
+     and balance.stock_center_id = v_map.stock_center_id
+     and balance.material_id = batch.material_id
+     and balance.quantity > 0
+    where balance.material_id is null
+  ) then
+    return jsonb_build_object('success', false, 'status', 422, 'reason', 'MATERIAL_WITHOUT_STOCK', 'message', 'O lote possui material sem saldo no centro selecionado.');
+  end if;
+
+  if exists (
+    select 1
+    from tmp_warehouse_batch_assignments batch
+    join public.warehouse_material_addresses current_address
+      on current_address.tenant_id = p_tenant_id
+     and current_address.map_id = p_map_id
+     and current_address.material_id = batch.material_id
+  ) then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'MATERIAL_ALREADY_ADDRESSED', 'message', 'O lote possui material que ja esta enderecado.');
+  end if;
+
+  if exists (
+    select 1
+    from tmp_warehouse_batch_assignments batch
+    left join public.warehouse_shelves shelves
+      on shelves.tenant_id = p_tenant_id
+     and shelves.map_id = p_map_id
+     and shelves.coluna = batch.coluna
+     and shelves.linha = batch.linha
+    left join public.warehouse_shelf_floors floors
+      on floors.tenant_id = p_tenant_id
+     and floors.shelf_id = shelves.id
+     and floors.numero = batch.andar
+     and batch.posicao between 1 and floors.qtd_posicoes
+    where floors.shelf_id is null
+  ) then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_ADDRESS', 'message', 'O lote possui endereco inexistente na configuracao do mapa.');
+  end if;
+
+  if exists (
+    select 1
+    from tmp_warehouse_batch_assignments batch
+    join public.warehouse_material_addresses occupied
+      on occupied.tenant_id = p_tenant_id
+     and occupied.map_id = p_map_id
+     and occupied.coluna = batch.coluna
+     and occupied.linha = batch.linha
+     and occupied.andar = batch.andar
+     and occupied.posicao = batch.posicao
+  ) then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'POSITION_OCCUPIED', 'message', 'O lote possui posicao ja ocupada.');
+  end if;
+
+  insert into public.warehouse_material_addresses (
+    tenant_id,
+    map_id,
+    stock_center_id,
+    material_id,
+    coluna,
+    linha,
+    andar,
+    posicao,
+    created_by,
+    updated_by
+  )
+  select
+    p_tenant_id,
+    p_map_id,
+    v_map.stock_center_id,
+    batch.material_id,
+    batch.coluna,
+    batch.linha,
+    batch.andar,
+    batch.posicao,
+    p_actor_user_id,
+    p_actor_user_id
+  from tmp_warehouse_batch_assignments batch;
+
+  insert into public.warehouse_address_history (
+    tenant_id,
+    map_id,
+    material_id,
+    action_type,
+    details,
+    created_by,
+    updated_by
+  )
+  select
+    p_tenant_id,
+    p_map_id,
+    batch.material_id,
+    'ADDRESS_ASSIGN',
+    jsonb_build_object('batch', true, 'coluna', batch.coluna, 'linha', batch.linha, 'andar', batch.andar, 'posicao', batch.posicao),
+    p_actor_user_id,
+    p_actor_user_id
+  from tmp_warehouse_batch_assignments batch;
+
+  return jsonb_build_object(
+    'success', true,
+    'status', 200,
+    'assigned_count', v_count,
+    'message', format('%s material(is) enderecado(s) com sucesso.', v_count)
+  );
+exception
+  when invalid_text_representation then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_BATCH_PAYLOAD', 'message', 'Payload do lote invalido.');
+  when unique_violation then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'POSITION_OCCUPIED', 'message', 'O lote possui posicao ocupada ou material duplicado.');
+end;
+$$;
+
+revoke all on function public.assign_warehouse_material_addresses_batch(uuid, uuid, uuid, jsonb) from public;
+revoke all on function public.assign_warehouse_material_addresses_batch(uuid, uuid, uuid, jsonb) from anon;
+revoke all on function public.assign_warehouse_material_addresses_batch(uuid, uuid, uuid, jsonb) from authenticated;
+grant execute on function public.assign_warehouse_material_addresses_batch(uuid, uuid, uuid, jsonb) to service_role;
 
 create or replace function public.clear_warehouse_material_address(
   p_tenant_id uuid,

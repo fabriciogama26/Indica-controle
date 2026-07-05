@@ -137,7 +137,7 @@ vercel --prod
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros (incluindo `Status: Ativo/Inativo` e categorias em ordem alfabetica), listagem paginada e acoes de detalhe/historico/status.
   - `(dashboard)/cargo/page.tsx`: rota da tela de Cargo com cadastro, filtros, listagem, detalhes, historico, troca de status e manutencao dos tipos por cargo/niveis consumidos por Pessoas.
   - `(dashboard)/estoque/page.tsx`: rota da tela de Estoque Atual com filtros, lista paginada e exportacao CSV do saldo por centro/material.
-  - `(dashboard)/mapa-almoxarifado/page.tsx`: rota do Mapa do Almoxarifado para visualizar ocupacao por centro de estoque, localizar materiais e atribuir/remover endereco fisico.
+  - `(dashboard)/mapa-almoxarifado/page.tsx`: rota do Mapa do Almoxarifado para visualizar ocupacao por centro de estoque, localizar materiais e atribuir/remover endereco fisico manualmente ou em massa.
   - `(dashboard)/posicao-trafo/page.tsx`: rota da tela de Rastreio de SERIAL com consulta por `Serial + LP`, filtros ampliados por rastreio/operacao/material/projeto/equipe/periodo, uma linha por unidade, centro fisico de referencia, historico da cadeia de movimentos, atalho de movimentacao fisica quando a unidade estiver em estoque fisico e acao `RET` para baixar 1 do saldo disponivel sem remover a presenca fisica do rastreio.
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, importacao CSV em massa, pendencia de identificacao para materiais rastreaveis sem LP quando permitido e estorno individual ou atomico em lote.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por um ou mais projetos/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, filtros por periodo/projeto/equipe/situacao, acao `Fazer medicao`, detalhes, historico e CSV.
@@ -145,7 +145,7 @@ vercel --prod
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
   - `(dashboard)/estornos/page.tsx`: rota da tela `Estornos` para consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
-  - `(dashboard)/configuracao-mapa-almoxarifado/page.tsx`: rota da Configuracao do Mapa do Almoxarifado para definir grid, prateleiras, andares e posicoes por centro de estoque.
+  - `(dashboard)/configuracao-mapa-almoxarifado/page.tsx`: rota da Configuracao do Mapa do Almoxarifado para definir grid, prateleiras, pallets, andares e posicoes por centro de estoque, limitada a 15 colunas, 20 linhas, 10 andares e 10 posicoes por andar.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
   - `(dashboard)/centro-servico/page.tsx`: placeholder de Centro de Servico.
   - `(dashboard)/contrato/page.tsx`: placeholder de Contrato.
@@ -190,7 +190,7 @@ vercel --prod
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com filtro por `UMB`, validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a rastreio por serial, `Preco` opcional (default `0.00`), limites de estoque e autorizacao server-side por acao.
   - `api/materials/meta/route.ts`: carrega as UMBs distintas cadastradas nos materiais do tenant e informa a existencia de registros sem UMB para o select de filtro, exigindo permissao `materiais/read`.
   - `api/warehouse-addressing/config/route.ts`: carrega somente centros fisicos de almoxarifado identificados por `stock_centers` sem vinculo em `teams.stock_center_id`; salva layout por RPC transacional com permissao `configuracao-mapa-almoxarifado/update`.
-  - `api/warehouse-addressing/map/route.ts`: carrega mapa, saldo e enderecos por centro fisico; atribui/remove endereco por RPC com permissao `mapa-almoxarifado/update`.
+  - `api/warehouse-addressing/map/route.ts`: carrega mapa, saldo e enderecos por centro fisico; atribui/remove endereco manualmente ou em massa por RPC com permissao `mapa-almoxarifado/update`.
   - `api/stock-transfers/meta/route.ts`: carrega centros de estoque (com `center_type`/`controls_balance`), projetos ativos, materiais ativos e catalogo de motivos padrao de estorno para a tela de movimentacao.
   - `api/stock-transfers/route.ts`: cria movimentacao de estoque (`ENTRY`, `EXIT`, `TRANSFER`), lista movimentacoes com status de estorno, valida pendencia de serial somente para Entrada/Transferencia de material rastreavel sem LP com flag ativa, retorna historico operacional (edicao + estorno) e bloqueia edicao direta via `PUT`.
   - `api/stock-transfers/import/route.ts`: importa movimentacoes em modo parcial por linha e registra `operation_batch_id` para agrupar os sucessos do mesmo contexto operacional.

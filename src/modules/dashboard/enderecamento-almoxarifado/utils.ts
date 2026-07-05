@@ -1,4 +1,10 @@
-import type { ConfiguracaoMapa, Prateleira, WarehouseMaterial } from "./types";
+import type { ConfiguracaoMapa, Prateleira, StorageType, StorageTypeOption, WarehouseMaterial } from "./types";
+
+export const DEFAULT_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
+  { code: "SHELF", label: "Prateleira", usesFloors: true },
+  { code: "PALLET", label: "Pallet", usesFloors: false },
+  { code: "BAIA", label: "Baia", usesFloors: false },
+];
 
 export function buildColumnLabels(count: number) {
   return Array.from({ length: Math.max(1, count) }, (_, index) => {
@@ -24,6 +30,14 @@ export function positionCode(coluna: string, linha: number, andar: number, posic
   return `${coluna}${linha}-A${andar}-P${posicao}`;
 }
 
+export function storageTypeLabel(tipo: StorageType, options: StorageTypeOption[] = DEFAULT_STORAGE_TYPE_OPTIONS) {
+  return options.find((option) => option.code === tipo)?.label ?? tipo;
+}
+
+export function storageTypeUsesFloors(tipo: StorageType, options: StorageTypeOption[] = DEFAULT_STORAGE_TYPE_OPTIONS) {
+  return options.find((option) => option.code === tipo)?.usesFloors ?? true;
+}
+
 export function findShelf(config: ConfiguracaoMapa | null, coluna: string, linha: number) {
   return config?.prateleiras.find((shelf) => shelf.coluna === coluna && shelf.linha === linha) ?? null;
 }
@@ -35,13 +49,26 @@ export function countPositions(config: ConfiguracaoMapa | null) {
   );
 }
 
-export function buildDefaultShelf(coluna: string, linha: number): Prateleira {
+export function buildDefaultShelf(coluna: string, linha: number, tipo: StorageType = "SHELF"): Prateleira {
   return {
     id: `local-${coluna}-${linha}`,
     coluna,
     linha,
+    tipo,
     andares: [{ numero: 1, qtdPosicoes: 1 }],
   };
+}
+
+export function normalizeStorageFloors(
+  tipo: StorageType,
+  andares: Prateleira["andares"],
+  options: StorageTypeOption[] = DEFAULT_STORAGE_TYPE_OPTIONS,
+) {
+  if (!storageTypeUsesFloors(tipo, options)) {
+    return [{ numero: 1, qtdPosicoes: andares[0]?.qtdPosicoes ?? 1 }];
+  }
+
+  return andares.length > 0 ? andares : [{ numero: 1, qtdPosicoes: 1 }];
 }
 
 export function materialStatus(material: WarehouseMaterial | null | undefined) {
