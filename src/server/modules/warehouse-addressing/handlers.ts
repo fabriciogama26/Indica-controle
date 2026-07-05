@@ -548,7 +548,12 @@ export async function handleWarehouseMapGet(request: NextRequest) {
   }
 
   const balanceByMaterial = new Map((balancesResult.data ?? []).map((row) => [row.material_id, Number(row.quantity ?? 0)]));
-  const addressByMaterial = new Map((addressesResult.data ?? []).map((row) => [row.material_id, row]));
+  const addressesByMaterial = new Map<string, WarehouseAddressRow[]>();
+  for (const row of addressesResult.data ?? []) {
+    const list = addressesByMaterial.get(row.material_id) ?? [];
+    list.push(row);
+    addressesByMaterial.set(row.material_id, list);
+  }
 
   return NextResponse.json({
     stockCenters: physicalCenter.centers ?? [],
@@ -556,24 +561,23 @@ export async function handleWarehouseMapGet(request: NextRequest) {
     configuracao: config.config,
     materiais: materials
       .filter((material) => material.is_active)
-      .map((material) => {
-        const address = addressByMaterial.get(material.id) ?? null;
-        return {
-          id: material.id,
-          codigo: material.codigo,
-          nome: material.descricao,
-          unidade: material.umb ?? "",
-          quantidade: balanceByMaterial.get(material.id) ?? 0,
-          estoqueMinimo: Number(material.stock_minimum ?? 0),
-          estoqueMaximo: material.stock_maximum === null ? null : Number(material.stock_maximum),
-          enderecoId: address?.id ?? null,
-          enderecoUpdatedAt: address?.updated_at ?? null,
-          coluna: address?.coluna ?? null,
-          linha: address?.linha ?? null,
-          andar: address?.andar ?? null,
-          posicao: address?.posicao ?? null,
-        };
-      }),
+      .map((material) => ({
+        id: material.id,
+        codigo: material.codigo,
+        nome: material.descricao,
+        unidade: material.umb ?? "",
+        quantidade: balanceByMaterial.get(material.id) ?? 0,
+        estoqueMinimo: Number(material.stock_minimum ?? 0),
+        estoqueMaximo: material.stock_maximum === null ? null : Number(material.stock_maximum),
+        enderecos: (addressesByMaterial.get(material.id) ?? []).map((address) => ({
+          id: address.id,
+          coluna: address.coluna,
+          linha: address.linha,
+          andar: address.andar,
+          posicao: address.posicao,
+          updatedAt: address.updated_at,
+        })),
+      })),
   });
 }
 
@@ -620,6 +624,7 @@ export async function handleWarehouseAddressPost(request: NextRequest) {
   }
 
   const materialId = normalizeText(body.materialId);
+  const addressId = normalizeText(body.addressId) || null;
   const coluna = normalizeColumn(body.coluna);
   const linha = normalizePositiveInteger(body.linha);
   const andar = normalizePositiveInteger(body.andar);
@@ -638,6 +643,7 @@ export async function handleWarehouseAddressPost(request: NextRequest) {
     p_linha: linha,
     p_andar: andar,
     p_posicao: posicao,
+    p_address_id: addressId,
     p_expected_updated_at: normalizeExpectedUpdatedAt(body.expectedUpdatedAt),
   });
 
@@ -670,9 +676,9 @@ export async function handleWarehouseAddressDelete(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as AssignWarehouseAddressPayload;
   const mapId = normalizeText(body.mapId);
-  const materialId = normalizeText(body.materialId);
+  const addressId = normalizeText(body.addressId);
 
-  if (!materialId) {
+  if (!addressId) {
     const coluna = normalizeColumn(body.coluna);
     const linha = normalizePositiveInteger(body.linha);
 
@@ -709,15 +715,15 @@ export async function handleWarehouseAddressDelete(request: NextRequest) {
 
   const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
-  if (!mapId || !materialId || !expectedUpdatedAt) {
-    return NextResponse.json({ message: "Mapa, material e versao do endereco sao obrigatorios." }, { status: 400 });
+  if (!mapId || !expectedUpdatedAt) {
+    return NextResponse.json({ message: "Mapa e versao do endereco sao obrigatorios." }, { status: 400 });
   }
 
   const { data, error } = await context.supabase.rpc("clear_warehouse_material_address", {
     p_tenant_id: context.appUser.tenant_id,
     p_actor_user_id: context.appUser.id,
     p_map_id: mapId,
-    p_material_id: materialId,
+    p_address_id: addressId,
     p_expected_updated_at: expectedUpdatedAt,
   });
 

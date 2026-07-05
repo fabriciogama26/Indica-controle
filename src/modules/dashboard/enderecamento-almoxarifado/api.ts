@@ -95,6 +95,7 @@ export async function assignWarehouseAddress(params: {
   accessToken: string;
   mapId: string;
   materialId: string;
+  addressId?: string | null;
   coluna: string;
   linha: number;
   andar: number;
@@ -150,7 +151,7 @@ export async function assignWarehouseAddressBatch(params: {
 export async function clearWarehouseAddress(params: {
   accessToken: string;
   mapId: string;
-  materialId: string;
+  addressId: string;
   expectedUpdatedAt: string;
 }) {
   const response = await fetch("/api/warehouse-addressing/map", {

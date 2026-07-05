@@ -32,10 +32,15 @@ export interface Material {
   quantidade: number;
   estoqueMinimo: number;
   estoqueMaximo?: number;
-  coluna: string | null;
-  linha: number | null;
-  andar: number | null;
-  posicao: number | null;
+}
+
+export interface WarehouseAddressEntry {
+  id: string;
+  coluna: string;
+  linha: number;
+  andar: number;
+  posicao: number;
+  updatedAt: string;
 }
 
 export type StockCenterOption = {
@@ -56,8 +61,7 @@ export type WarehouseConfiguracao = ConfiguracaoMapa & {
 export type WarehouseMaterial = Material & {
   id: string;
   estoqueMaximo: number | null;
-  enderecoId: string | null;
-  enderecoUpdatedAt: string | null;
+  enderecos: WarehouseAddressEntry[];
 };
 
 export type WarehouseConfigResponse = {
