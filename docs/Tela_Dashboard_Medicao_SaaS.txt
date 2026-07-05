@@ -722,3 +722,20 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: exportacao do detalhamento de projetos nao usava o modal padrao.
 - Depois: a tela renderiza `ExportProgressModal` compartilhado durante a geracao do CSV.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-05 - Valores das medicoes em chunks:
+- Arquivos alterados:
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/constantes tocadas:
+  - `MEASUREMENT_ORDER_ITEMS_CHUNK_SIZE`
+  - `fetchMeasurementOrderItems`
+  - `handleDashboardMeasurementGet`
+- Comportamento antes/depois:
+  - Antes: a API buscava todos os itens de valor com um unico `.in("measurement_order_id", orderIds)`, podendo falhar em recortes com muitas ordens e retornar `Falha ao carregar valores das medicoes.`.
+  - Depois: a API divide os IDs de ordens em lotes de 200 e busca `project_measurement_order_items` por chunks, mantendo as mesmas colunas e a mesma consolidacao de valores.
+  - Depois: se algum lote falhar, a resposta ao usuario continua sem stack trace e o servidor registra codigo, mensagem e quantidade de ordens para diagnostico.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS, grants ou permissoes.
+  - Cada chunk continua filtrado por `tenant_id` autenticado e `is_active = true`.

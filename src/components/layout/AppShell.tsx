@@ -45,6 +45,7 @@ const menuSections = [
     items: [
       { href: "/estoque", label: "Estoque Atual", icon: "box" },
       { href: "/estoque-equipes", label: "Estoque das Equipes", icon: "users" },
+      { href: "/mapa-almoxarifado", label: "Mapa do Almoxarifado", icon: "box" },
       { href: "/posicao-trafo", label: "Rastreio de SERIAL", icon: "box" },
       { href: "/entrada", label: "Movimentacao de Estoque", icon: "arrow-down" },
       { href: "/saida", label: "Operacoes de Equipe", icon: "arrow-up" },
@@ -66,6 +67,7 @@ const menuSections = [
   {
     title: "Cadastro Base",
     items: [
+      { href: "/configuracao-mapa-almoxarifado", label: "Mapa Almoxarifado", icon: "settings" },
       { href: "/prioridade", label: "Prioridade", icon: "settings" },
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
@@ -185,6 +187,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Estoque das Equipes",
     subtitle: "Consulta do saldo atual de materiais vinculados a cada equipe.",
   },
+  "/mapa-almoxarifado": {
+    title: "Mapa do Almoxarifado",
+    subtitle: "Consulta e atribuicao do enderecamento fisico dos materiais.",
+  },
   "/posicao-trafo": {
     title: "Rastreio de SERIAL",
     subtitle: "Consulta da rastreabilidade atual de materiais com serial controlado.",
@@ -196,6 +202,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/equipes": {
     title: "Equipes",
     subtitle: "Cadastro e manutencao das equipes operacionais.",
+  },
+  "/configuracao-mapa-almoxarifado": {
+    title: "Configuracao do Mapa do Almoxarifado",
+    subtitle: "Cadastro do layout fisico de prateleiras, andares e posicoes.",
   },
   "/prioridade": {
     title: "Prioridade",

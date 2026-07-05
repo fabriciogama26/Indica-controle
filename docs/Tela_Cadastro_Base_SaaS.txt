@@ -9,6 +9,7 @@ Visao geral
 Arquitetura
 -----------
 - Rotas:
+  - `src/app/(dashboard)/configuracao-mapa-almoxarifado/page.tsx`
   - `src/app/(dashboard)/prioridade/page.tsx`
   - `src/app/(dashboard)/centro-servico/page.tsx`
   - `src/app/(dashboard)/contrato/page.tsx`
@@ -28,11 +29,13 @@ Arquitetura
 Cadastro
 --------
 - Demais telas de `Cadastro Base` seguem em placeholder nesta etapa.
+- `Configuracao do Mapa do Almoxarifado` possui tela real para cadastrar layout fisico por centro de estoque.
 - `Tipo de Equipe` segue como placeholder de tela, com dominio ja criado em banco (`team_types`).
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Demais telas de `Cadastro Base` seguem sem listagem nesta etapa.
+- `Configuracao do Mapa do Almoxarifado` lista visualmente o grid configurado, prateleiras, andares e posicoes.
 
 Boas praticas
 -------------
@@ -47,6 +50,7 @@ Cancelamento e saldo
 Atalhos
 -------
 - Rotas ativas:
+  - `/configuracao-mapa-almoxarifado`
   - `/prioridade`
   - `/centro-servico`
   - `/contrato`
@@ -103,3 +107,4 @@ Servicos e integracoes externas
 
 Ajuda contextual
 - Estado atual: secao de `Cadastro Base` estruturada com rotas independentes e controle de permissao por pagina; `Atividades` foi movida para `Cadastros`.
+- Atualizacao 2026-07: `/configuracao-mapa-almoxarifado` foi adicionada como tela real do Cadastro Base para preparar o enderecamento do almoxarifado.

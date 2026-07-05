@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { requirePageAction } from "@/lib/server/pageAuthorization";
 
 type MaterialUmbRow = {
   umb: string | null;
@@ -20,6 +21,19 @@ export async function GET(request: NextRequest) {
 
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorization = await requirePageAction({
+    context: resolution,
+    pageKey: "materiais",
+    action: "read",
+  });
+
+  if (!authorization.allowed) {
+    return NextResponse.json(
+      { message: authorization.error.message, code: authorization.error.code },
+      { status: authorization.error.status },
+    );
   }
 
   const umbSet = new Set<string>();

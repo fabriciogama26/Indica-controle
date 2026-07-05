@@ -265,3 +265,13 @@ Antes de abrir PR em qualquer tela ou API, responder:
 - [x] Mudanca posterior foi apenas de estado/modal em botoes de exportacao existentes.
 - [x] Nao foram adicionadas queries, endpoints, `.select("*")`, `.limit()` ou processamento extra de listas.
 - [x] Nao aplicavel: nenhuma alteracao de cache, paginacao ou filtro de banco.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] Novas rotas nao usam `.select("*")`; colunas foram listadas explicitamente.
+- [x] Leitura do mapa filtra por `tenant_id` e `stockCenterId`; andares sao buscados por `shelf_id IN (...)`, nao por tenant inteiro.
+- [x] Nao aplicavel nesta etapa: dashboard/agregacao pesada; a tela retorna layout e saldo do centro selecionado.
+
+## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
+- [x] Query de `project_measurement_order_items` continua sem `.select("*")`, usando somente `measurement_order_id, total_value`.
+- [x] `.in("measurement_order_id", orderIds)` grande foi dividido em chunks de 200 IDs para evitar falha por URL/query extensa no PostgREST.
+- [x] Payload final do dashboard nao foi ampliado; a alteracao muda apenas a estrategia interna de leitura dos itens.

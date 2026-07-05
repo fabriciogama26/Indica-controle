@@ -21,3 +21,8 @@
 - [x] Migration 277 usa backfill transacional para normalizar `PARCIAL` legado e falha se sobrarem linhas inconsistentes.
 - [x] Trigger novo bloqueia `CONCLUIDO` quando houver outra programacao ativa no mesmo `programming_group_id`.
 - [x] Nao aplicavel: exclusao fisica de dados.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] Migration 288 cria constraints para limites de estoque e posicao unica no mapa.
+- [x] RPCs de configuracao e endereco validam tenant, centro, material e posicao antes de gravar.
+- [x] Layout nao pode remover posicao ocupada sem realocar/remover o endereco antes.

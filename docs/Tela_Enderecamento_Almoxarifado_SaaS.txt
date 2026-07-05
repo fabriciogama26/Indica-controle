@@ -1,0 +1,121 @@
+Tela: Enderecamento Almoxarifado SaaS
+
+Visao geral
+-----------
+- Modulo real de enderecamento fisico do almoxarifado por centro de estoque.
+- Divide o fluxo em duas telas:
+  - `/configuracao-mapa-almoxarifado`: cadastro do layout fisico em Cadastro Base.
+  - `/mapa-almoxarifado`: leitura operacional e atribuicao de endereco em Almoxarifado.
+- O mapa cruza layout configurado, saldo atual em `stock_center_balances`, cadastro de `materials` e enderecos salvos em `warehouse_material_addresses`.
+
+Arquitetura
+-----------
+- Rotas:
+  - `src/app/(dashboard)/configuracao-mapa-almoxarifado/page.tsx`
+  - `src/app/(dashboard)/mapa-almoxarifado/page.tsx`
+- APIs:
+  - `src/app/api/warehouse-addressing/config/route.ts`
+  - `src/app/api/warehouse-addressing/map/route.ts`
+- Modulo frontend:
+  - `src/modules/dashboard/enderecamento-almoxarifado/types.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/constants.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/api.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/WarehouseMapConfigPageView.tsx`
+  - `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressingMapPageView.tsx`
+  - `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressing.module.css`
+  - `src/modules/dashboard/enderecamento-almoxarifado/index.ts`
+- Modulo server-side:
+  - `src/server/modules/warehouse-addressing/types.ts`
+  - `src/server/modules/warehouse-addressing/handlers.ts`
+- Banco:
+  - `supabase/migrations/288_create_warehouse_addressing_module.sql`
+
+Cadastro
+--------
+- A tela de configuracao permite:
+  - selecionar centro de estoque;
+  - definir quantidade de colunas e linhas;
+  - clicar em celulas para adicionar/remover prateleiras;
+  - selecionar prateleira;
+  - definir andares;
+  - definir quantidade de posicoes por andar;
+  - salvar layout via RPC `save_warehouse_map_config`.
+- O layout e salvo por `tenant_id + stock_center_id`.
+- A RPC bloqueia salvar layout que remova posicoes ainda ocupadas.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- A tela de leitura permite:
+  - selecionar centro de estoque;
+  - buscar material por codigo ou nome;
+  - visualizar prateleiras e chao livre;
+  - abrir detalhe de andar/posicao;
+  - ver materiais sem endereco;
+  - atribuir endereco;
+  - realocar material;
+  - remover endereco.
+- A API retorna somente materiais vinculados ao saldo do centro selecionado e/ou ja enderecados no mapa.
+
+Boas praticas
+-------------
+- Toda rota usa `resolveAuthenticatedAppUser`.
+- Toda rota usa `requirePageAction`:
+  - `configuracao-mapa-almoxarifado/read`
+  - `configuracao-mapa-almoxarifado/update`
+  - `mapa-almoxarifado/read`
+  - `mapa-almoxarifado/update`
+- Nenhuma rota aceita `tenant_id`, `actor_user_id` ou role do cliente.
+- Tabelas novas usam RLS para leitura e nao criam policy de escrita direta para `authenticated`.
+- Escritas passam por RPC `SECURITY DEFINER` com EXECUTE somente para `service_role`.
+- Queries selecionam colunas explicitamente; nao ha `.select("*")`.
+
+Cancelamento e saldo
+--------------------
+- Nao ha cancelamento de material ou movimentacao de saldo nesta tela.
+- Atribuir/remover endereco nao altera `stock_center_balances`.
+- O saldo exibido vem do estoque atual do centro selecionado.
+
+Atalhos
+-------
+- `/configuracao-mapa-almoxarifado`: secao `Cadastro Base`.
+- `/mapa-almoxarifado`: secao `Almoxarifado`.
+
+Atualizacao 2026-07
+-------------------
+- Antes:
+  - Nao existia enderecamento fisico de almoxarifado.
+  - Materiais nao possuia limites de estoque minimo/maximo.
+- Depois:
+  - Criadas tabelas `warehouse_maps`, `warehouse_shelves`, `warehouse_shelf_floors`, `warehouse_material_addresses` e `warehouse_address_history`.
+  - Criadas RPCs `save_warehouse_map_config`, `assign_warehouse_material_address` e `clear_warehouse_material_address`.
+  - Materiais recebeu `stock_minimum` e `stock_maximum`.
+  - Criadas telas reais de configuracao e leitura do mapa.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/WarehouseMapConfigPageView.tsx`
+  - Responsavel por: configurar grid, prateleiras, andares, posicoes e salvar layout.
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressingMapPageView.tsx`
+  - Responsavel por: renderizar mapa, status de ocupacao, detalhe, busca e atribuicao/remocao de endereco.
+- Caminho: `src/server/modules/warehouse-addressing/handlers.ts`
+  - Responsavel por: autenticar, autorizar, listar configuracao/mapa e delegar escritas para RPC.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/constants.ts`
+  - Responsavel por: limites de grid, andares e posicoes por andar.
+- Caminho: `supabase/migrations/288_create_warehouse_addressing_module.sql`
+  - Responsavel por: schema, RLS, permissoes, page keys e RPCs do enderecamento.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`
+  - Responsavel por: gerar colunas/linhas, codigo de posicao, status de material/andar e formatacao de quantidade.
+
+Servicos e integracoes externas
+- Nao ha integracao externa.
+- O modulo integra internamente com Supabase por rotas Next e RPC.
+
+Ajuda contextual
+- Para criar um mapa, primeiro cadastre o layout em `/configuracao-mapa-almoxarifado`.
+- Para atribuir materiais, acesse `/mapa-almoxarifado`, selecione o mesmo centro de estoque e use a lista `Sem endereco`.
