@@ -34,6 +34,7 @@ Arquitetura
   - `supabase/migrations/288_create_warehouse_addressing_module.sql`
   - `supabase/migrations/289_warehouse_addressing_cell_clear_and_conflicts.sql`
   - `supabase/migrations/290_warehouse_map_config_history_snapshot.sql`
+  - `supabase/migrations/291_warehouse_address_history_action_index.sql`
 
 Cadastro
 --------
@@ -46,14 +47,16 @@ Cadastro
   - definir andares e quantidade de posicoes por andar para prateleira, com limite de 10 andares e 10 posicoes por andar;
   - manter pallet como endereco de posicao unica;
   - salvar layout via RPC `save_warehouse_map_config`.
+- O botao `Salvar` fica no cabecalho do card "Configuracao do mapa", ao lado do botao `Historico` (nao mais dentro do painel "Prateleira selecionada"); tecnicamente e um `<button type="submit" form="warehouse-map-config-form">` fora da tag `<form>`, ligado a ela pelo atributo HTML `form`.
 - O layout e salvo por `tenant_id + stock_center_id`.
 - A RPC bloqueia salvar layout que remova posicoes ainda ocupadas e retorna em `conflicts` a lista de materiais/posicoes que impedem o salvamento (`codigo`, `coluna`, `linha`, `andar`, `posicao`).
 - A tela de configuracao exibe essa lista de conflitos quando o salvar falha por `ADDRESSES_OUTSIDE_NEW_LAYOUT`, orientando o usuario a limpar ou realocar o material em `/mapa-almoxarifado` antes de tentar salvar de novo.
 - A RPC bloqueia centro vinculado a equipe com `STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE`.
-- Erro `CONCURRENT_MODIFICATION` (409): o `updated_at` carregado pela tela e diferente do atual no banco (outra aba/usuario salvou este mesmo mapa nesse meio-tempo, ou a tela ficou aberta por um tempo). A mensagem de erro exibe um botao `Recarregar` que busca a configuracao atual antes de tentar salvar de novo; nao ha perda de dado no banco, so a versao em memoria da tela fica desatualizada.
+- Erro `CONCURRENT_MODIFICATION` (409): o `updated_at` carregado pela tela e diferente do atual no banco (outra aba/usuario salvou este mesmo mapa nesse meio-tempo, ou a tela ficou aberta por um tempo). A tela recarrega a configuracao atual **automaticamente** (sem clique) assim que o erro acontece e avisa o usuario; ela nunca reenvia sozinha as edicoes antigas por cima da versao nova (isso sobrescreveria silenciosamente a mudanca de outro usuario), entao o usuario precisa refazer as alteracoes desejadas e salvar de novo. Nao ha perda de dado no banco, so a versao em memoria da tela fica desatualizada.
+- Edicao no grid (adicionar/remover prateleira, trocar tipo, mexer em andares/posicoes) e 100% local (`setConfig`, sem chamada de API); o layout inteiro so sobe pro banco quando o usuario clica em `Salvar`, e cada clique gera **uma unica** linha de historico `CONFIG_SAVE` com o antes/depois daquela sessao de edicao (nao uma linha por celula mexida).
 - `warehouse_shelves.storage_type` diferencia `SHELF`, `PALLET` e `BAIA`.
 - `warehouse_maps_grid_limits_check`, `warehouse_shelf_floors_numero_positive` e `warehouse_shelf_floors_positions_positive` limitam novas gravacoes no banco.
-- Botao `Historico` na tela de configuracao abre lista paginada (5 por pagina) com quem alterou, quando e o resumo de mudancas (colunas/linhas adicionadas ou removidas; prateleiras/baias/pallets adicionados, removidos ou com tipo/andares alterados), a partir do snapshot `before`/`after` gravado em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
+- Botao `Historico` na tela de configuracao abre lista paginada (5 por pagina) com quem alterou, quando e o resumo de mudancas (colunas/linhas adicionadas ou removidas; prateleiras/baias/pallets adicionados, removidos ou com tipo/andares alterados), a partir do snapshot `before`/`after` gravado em `warehouse_address_history.details` a cada `CONFIG_SAVE`. Gravacoes sem mudanca real de layout (usuario clicou Salvar sem editar nada) aparecem como "Configuracao salva sem alteracoes de layout", distinto de registros anteriores a este recurso (sem snapshot).
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -121,8 +124,12 @@ Atualizacao 2026-07
 - Depois (migration 290):
   - `save_warehouse_map_config` passou a gravar snapshot `before`/`after` (colunas, linhas, prateleiras com andares) em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
   - Criado `GET /api/warehouse-addressing/config/history` (paginado, 5 por pagina) e o botao `Historico` em `/configuracao-mapa-almoxarifado`, mostrando quem alterou, quando e um resumo legivel do que mudou.
-  - Adicionado botao `Recarregar` na mensagem de erro `CONCURRENT_MODIFICATION` da tela de configuracao.
+  - Adicionado recarregamento automatico da configuracao quando o salvar falha com `CONCURRENT_MODIFICATION` (sem reenviar as edicoes antigas sozinho).
   - Cor da celula `Prateleira` trocada de branco para lilas (`#f6f0fc`) no grid, para diferenciar visualmente de Pallet (verde) e Baia (azul).
+- Depois (migration 291 e ajustes de auditoria):
+  - Substituido o indice de `warehouse_address_history` por um composto incluindo `action_type`, evitando que a consulta paginada de `CONFIG_SAVE` precise varrer o volume, maior e crescente, de `ADDRESS_ASSIGN`/`ADDRESS_CLEAR` do mesmo mapa.
+  - Corrigida a mensagem do historico para distinguir "salvo sem alteracoes de layout" (snapshot presente, sem diff) de "registro anterior a este recurso" (sem snapshot).
+  - Confirmado e documentado que a edicao do grid e local; o `CONFIG_SAVE` (e o crescimento do historico) so acontece por clique em Salvar, nao por celula mexida — decisao de manter o historico sem rotina de limpeza/retencao por enquanto.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -143,6 +150,8 @@ Constantes e configuracoes
   - Responsavel por: RPC `clear_warehouse_cell_addresses` (limpeza em lote por coluna+linha) e recriacao de `save_warehouse_map_config` com `conflicts` detalhado no bloqueio `ADDRESSES_OUTSIDE_NEW_LAYOUT`.
 - Caminho: `supabase/migrations/290_warehouse_map_config_history_snapshot.sql`
   - Responsavel por: recriacao de `save_warehouse_map_config` para gravar snapshot `before`/`after` (colunas, linhas, prateleiras com andares) em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
+- Caminho: `supabase/migrations/291_warehouse_address_history_action_index.sql`
+  - Responsavel por: indice composto `(tenant_id, map_id, action_type, created_at desc)` em `warehouse_address_history`, substituindo o indice sem `action_type`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`
@@ -158,5 +167,5 @@ Ajuda contextual
 - Para lote, use `Enderecar em massa` na lista `Sem endereco`; revise a lista de material -> endereco antes de confirmar.
 - Para mover uma prateleira/baia/pallet de lugar: va em `/mapa-almoxarifado`, selecione a celula e use `Limpar posicao` para desenderecar de uma vez todos os materiais dali; so depois mexa no layout em `/configuracao-mapa-almoxarifado`.
 - Se salvar o layout falhar com a lista de "Materiais bloqueando o novo layout", use essa lista para saber exatamente quais materiais/posicoes precisam ser limpos ou realocados antes de tentar salvar de novo.
-- Se salvar o layout falhar com "A configuracao do mapa foi alterada por outro usuario", clique em `Recarregar` (aparece junto da mensagem), refaca as alteracoes desejadas e salve de novo.
+- Se salvar o layout falhar com "A configuracao do mapa foi alterada por outro usuario", a tela ja recarrega sozinha a versao mais recente; so refaca as alteracoes desejadas e salve de novo.
 - Para ver quem alterou o layout e o que mudou, use o botao `Historico` em `/configuracao-mapa-almoxarifado`.

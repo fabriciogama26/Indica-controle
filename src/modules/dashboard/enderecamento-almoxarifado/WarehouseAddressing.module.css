@@ -427,11 +427,6 @@
   border-radius: 14px;
   padding: 12px 14px;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .success {

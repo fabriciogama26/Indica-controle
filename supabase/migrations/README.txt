@@ -842,3 +842,6 @@ Observacao
 290_warehouse_map_config_history_snapshot.sql
 - Recria `save_warehouse_map_config` para gravar em `warehouse_address_history.details` o snapshot `before`/`after` (colunas, linhas, prateleiras com andares) de cada `CONFIG_SAVE`, permitindo exibir historico de "como estava/como ficou" na tela de Configuracao do Mapa.
 - Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.
+
+291_warehouse_address_history_action_index.sql
+- Substitui `idx_warehouse_address_history_tenant_map_created` por `idx_warehouse_address_history_tenant_map_action_created` (inclui `action_type`), necessario para a consulta paginada de historico de `CONFIG_SAVE` nao precisar varrer o volume, maior e crescente, de `ADDRESS_ASSIGN`/`ADDRESS_CLEAR` do mesmo mapa.
