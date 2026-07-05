@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -1477,9 +1478,14 @@ export function OperationalBillingDashboardPageView() {
             </p>
           </div>
           <div className={styles.tableActions}>
-            <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(exportRows)} disabled={isLoading || isExporting}>
-              {isExporting ? "Exportando..." : "Exportar CSV"}
-            </button>
+            <CsvExportButton
+              onClick={() => void runCsvExport(exportRows)}
+              disabled={isLoading}
+              isLoading={isExporting}
+              className={styles.secondaryButton}
+              idleLabel="Exportar CSV"
+              showProgressModal={false}
+            />
           </div>
         </div>
 
@@ -1567,9 +1573,14 @@ export function OperationalBillingDashboardPageView() {
             </p>
           </div>
           <div className={styles.tableActions}>
-            <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(exportCategorySummary)} disabled={isLoading || isExporting}>
-              {isExporting ? "Exportando..." : "Exportar CSV"}
-            </button>
+            <CsvExportButton
+              onClick={() => void runCsvExport(exportCategorySummary)}
+              disabled={isLoading}
+              isLoading={isExporting}
+              className={styles.secondaryButton}
+              idleLabel="Exportar CSV"
+              showProgressModal={false}
+            />
           </div>
         </div>
 
@@ -1624,9 +1635,14 @@ export function OperationalBillingDashboardPageView() {
             <p className={styles.cardSubtitle}>Valores consolidados por projeto em Medicao, Asbuilt e Faturamento.</p>
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.secondaryButton} onClick={() => void runCsvExport(exportProjectValues)} disabled={isProjectValuesLoading || isExporting}>
-              {isExporting ? "Exportando..." : "Exportar CSV"}
-            </button>
+            <CsvExportButton
+              onClick={() => void runCsvExport(exportProjectValues)}
+              disabled={isProjectValuesLoading}
+              isLoading={isExporting}
+              className={styles.secondaryButton}
+              idleLabel="Exportar CSV"
+              showProgressModal={false}
+            />
             <button type="button" className={styles.secondaryButton} onClick={() => void loadProjectValues()} disabled={isProjectValuesLoading}>
               {isProjectValuesLoading ? "Atualizando..." : "Atualizar"}
             </button>
@@ -1965,9 +1981,7 @@ export function OperationalBillingDashboardPageView() {
               </div>
               <div className={styles.actions}>
                 {chartProjectDetailRows.length ? (
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
+                  <CsvExportButton
                     onClick={() => void runCsvExport(() => downloadCsv(
                       `projetos_indicador_${filenameToken(chartProjectDetailModal.label)}.csv`,
                       [
@@ -1982,10 +1996,11 @@ export function OperationalBillingDashboardPageView() {
                         ]),
                       ],
                     ))}
-                    disabled={isExporting}
-                  >
-                    {isExporting ? "Exportando..." : "Exportar CSV"}
-                  </button>
+                    isLoading={isExporting}
+                    className={styles.secondaryButton}
+                    idleLabel="Exportar CSV"
+                    showProgressModal={false}
+                  />
                 ) : null}
                 <button type="button" className={styles.modalCloseButton} onClick={closeChartProjectDetailModal}>
                   Fechar
