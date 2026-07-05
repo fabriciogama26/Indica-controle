@@ -30,3 +30,8 @@
 - [x] Novas rotas `/api/warehouse-addressing/*` validam sessao e `requirePageAction`.
 - [x] `GET/POST/PUT/PATCH /api/materials` e `GET /api/materials/meta` passaram a exigir `requirePageAction`.
 - [x] RPCs novas revogam `public`, `anon` e `authenticated`, concedendo EXECUTE apenas para `service_role`.
+
+## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
+- [x] `GET /api/dashboard-medicao` continua validando sessao por `resolveAuthenticatedAppUser`.
+- [x] `GET /api/dashboard-medicao` continua exigindo `requirePageAction` com `page_key=dashboard-medicao` e `action=read`.
+- [x] A correcao nao aceita `tenant_id`, usuario, role ou auditoria vindos do cliente e nao expoe stack trace ao usuario.

@@ -10,6 +10,7 @@ import {
 } from "@/server/modules/team-performance";
 
 const DASHBOARD_MEASUREMENT_PAGE_KEY = "dashboard-medicao";
+const MEASUREMENT_ORDER_ITEMS_CHUNK_SIZE = 200;
 
 type MeasurementOrderRow = {
   id: string;
@@ -386,6 +387,42 @@ async function fetchProjectCompletionTimeline(params: {
   }
 
   return result;
+}
+
+async function fetchMeasurementOrderItems(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  orderIds: string[];
+}) {
+  const orderIds = Array.from(new Set(params.orderIds.filter(Boolean)));
+  if (!orderIds.length) {
+    return { data: [] as MeasurementOrderItemRow[], error: null };
+  }
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < orderIds.length; index += MEASUREMENT_ORDER_ITEMS_CHUNK_SIZE) {
+    chunks.push(orderIds.slice(index, index + MEASUREMENT_ORDER_ITEMS_CHUNK_SIZE));
+  }
+
+  const results = await Promise.all(chunks.map((chunk) => (
+    params.supabase
+      .from("project_measurement_order_items")
+      .select("measurement_order_id, total_value")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .in("measurement_order_id", chunk)
+      .returns<MeasurementOrderItemRow[]>()
+  )));
+
+  const failedResult = results.find((result) => result.error);
+  if (failedResult?.error) {
+    return { data: [] as MeasurementOrderItemRow[], error: failedResult.error };
+  }
+
+  return {
+    data: results.flatMap((result) => result.data ?? []),
+    error: null,
+  };
 }
 
 function resolveProjectCompletionAtWindowEnd(
@@ -898,17 +935,18 @@ export async function handleDashboardMeasurementGet(
   });
 
   const orderIds = Array.from(new Set([...filteredOrders, ...periodFilteredOrders].map((order) => order.id)));
-  const { data: items, error: itemsError } = orderIds.length
-    ? await resolution.supabase
-        .from("project_measurement_order_items")
-        .select("measurement_order_id, total_value")
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true)
-        .in("measurement_order_id", orderIds)
-        .returns<MeasurementOrderItemRow[]>()
-    : { data: [] as MeasurementOrderItemRow[], error: null };
+  const { data: items, error: itemsError } = await fetchMeasurementOrderItems({
+    supabase: resolution.supabase,
+    tenantId,
+    orderIds,
+  });
 
   if (itemsError) {
+    console.error("[dashboard-medicao] Falha ao carregar valores das medicoes.", {
+      code: itemsError.code,
+      message: itemsError.message,
+      orderCount: orderIds.length,
+    });
     return NextResponse.json({ message: "Falha ao carregar valores das medicoes." }, { status: 500 });
   }
 
