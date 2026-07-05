@@ -116,21 +116,21 @@ export function WarehouseAddressingMapPageView() {
     );
   }, [materials, selectedShelf]);
 
-  const unaddressedMaterials = useMemo(
-    () => materials.filter((material) => material.enderecos.length === 0 && material.quantidade > 0),
+  const addressableMaterials = useMemo(
+    () => materials.filter((material) => material.quantidade > 0),
     [materials],
   );
 
-  const filteredUnaddressedMaterials = useMemo(() => {
+  const filteredAddressableMaterials = useMemo(() => {
     const normalized = unaddressedSearch.trim().toLowerCase();
-    if (!normalized) return unaddressedMaterials;
+    if (!normalized) return addressableMaterials;
 
-    return unaddressedMaterials.filter((material) =>
+    return addressableMaterials.filter((material) =>
       material.codigo.toLowerCase().includes(normalized)
       || material.nome.toLowerCase().includes(normalized)
       || material.unidade.toLowerCase().includes(normalized),
     );
-  }, [unaddressedMaterials, unaddressedSearch]);
+  }, [addressableMaterials, unaddressedSearch]);
 
   const availablePositions = useMemo(() => {
     if (!config) return [];
@@ -156,9 +156,9 @@ export function WarehouseAddressingMapPageView() {
     [availablePositions],
   );
 
-  const unaddressedMaterialByCode = useMemo(
-    () => new Map(unaddressedMaterials.map((material) => [material.codigo.trim().toUpperCase(), material])),
-    [unaddressedMaterials],
+  const addressableMaterialByCode = useMemo(
+    () => new Map(addressableMaterials.map((material) => [material.codigo.trim().toUpperCase(), material])),
+    [addressableMaterials],
   );
 
   const assignmentShelf = useMemo(() => {
@@ -259,9 +259,9 @@ export function WarehouseAddressingMapPageView() {
   }
 
   function downloadBulkTemplate() {
-    const quantity = Math.min(filteredUnaddressedMaterials.length, availablePositions.length, MAX_BULK_ASSIGNMENTS);
+    const quantity = Math.min(filteredAddressableMaterials.length, availablePositions.length, MAX_BULK_ASSIGNMENTS);
     const rows = Array.from({ length: quantity }, (_, index) => {
-      const material = filteredUnaddressedMaterials[index];
+      const material = filteredAddressableMaterials[index];
       const position = availablePositions[index];
       return [
         material.codigo,
@@ -322,9 +322,9 @@ export function WarehouseAddressingMapPageView() {
           continue;
         }
 
-        const material = unaddressedMaterialByCode.get(codigo);
+        const material = addressableMaterialByCode.get(codigo);
         if (!material) {
-          issues.push(`Linha ${rowNumber}: material ${codigo} nao esta sem endereco com saldo neste centro.`);
+          issues.push(`Linha ${rowNumber}: material ${codigo} nao tem saldo disponivel neste centro.`);
           continue;
         }
 
@@ -679,16 +679,16 @@ export function WarehouseAddressingMapPageView() {
               </div>
             ) : null}
 
-            <h3 className={styles.cardTitle}>Sem endereco</h3>
+            <h3 className={styles.cardTitle}>Materiais para enderecar</h3>
             <div className={styles.tableHeader}>
               <span className={styles.tableHint}>
-                {filteredUnaddressedMaterials.length} de {unaddressedMaterials.length} materiais
+                {filteredAddressableMaterials.length} de {addressableMaterials.length} materiais
               </span>
               <button
                 type="button"
                 className={styles.secondaryButton}
                 onClick={openBulkAssignment}
-                disabled={isSaving || !config || filteredUnaddressedMaterials.length === 0 || availablePositions.length === 0}
+                disabled={isSaving || !config || filteredAddressableMaterials.length === 0 || availablePositions.length === 0}
               >
                 Enderecar em massa
               </button>
@@ -712,13 +712,16 @@ export function WarehouseAddressingMapPageView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUnaddressedMaterials.map((material) => (
+                  {filteredAddressableMaterials.map((material) => (
                     <tr key={material.id}>
                       <td>
                         <button type="button" className={styles.tableRowButton} onClick={() => openAssignment(material)}>
                           {material.codigo}
                         </button>
                         <small>{material.nome}</small>
+                        {material.enderecos.length > 0 ? (
+                          <small>Ja enderecado em {material.enderecos.length} posicao(oes)</small>
+                        ) : null}
                       </td>
                       <td>{material.unidade || "SEM UMB"}</td>
                       <td>{formatQuantity(material.quantidade, material.unidade)}</td>
@@ -736,7 +739,7 @@ export function WarehouseAddressingMapPageView() {
                       </td>
                     </tr>
                   ))}
-                  {filteredUnaddressedMaterials.length === 0 ? (
+                  {filteredAddressableMaterials.length === 0 ? (
                     <tr>
                       <td colSpan={4} className={styles.emptyRow}>Sem dados.</td>
                     </tr>
@@ -861,10 +864,10 @@ export function WarehouseAddressingMapPageView() {
                 <span className={styles.importStepNumber}>1</span>
                 <div>
                   <strong>Baixe o modelo</strong>
-                  <p>O modelo usa os materiais sem endereco do filtro atual e sugere as primeiras posicoes vagas.</p>
+                  <p>O modelo usa os materiais com saldo do filtro atual e sugere as primeiras posicoes vagas.</p>
                 </div>
               </div>
-              <button type="button" className={styles.secondaryButton} onClick={downloadBulkTemplate} disabled={!filteredUnaddressedMaterials.length || !availablePositions.length}>
+              <button type="button" className={styles.secondaryButton} onClick={downloadBulkTemplate} disabled={!filteredAddressableMaterials.length || !availablePositions.length}>
                 Baixar modelo CSV
               </button>
             </div>
