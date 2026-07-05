@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import { formatDateTime } from "@/lib/utils/formatters";
 import {
   DEFAULT_COLUMN_COUNT,
   DEFAULT_LINE_COUNT,
@@ -12,8 +14,17 @@ import {
   MAX_LINE_COUNT,
   MAX_POSITIONS_PER_FLOOR,
 } from "./constants";
-import { fetchWarehouseConfig, saveWarehouseConfig, WarehouseMapConflictError } from "./api";
-import type { ConfiguracaoMapa, Prateleira, StockCenterOption, StorageType, StorageTypeOption, WarehouseConfiguracao, WarehouseConflict } from "./types";
+import { fetchWarehouseConfig, fetchWarehouseConfigHistory, saveWarehouseConfig, WarehouseMapConflictError, WarehouseMapSaveError } from "./api";
+import type {
+  ConfigHistoryEntry,
+  ConfiguracaoMapa,
+  Prateleira,
+  StockCenterOption,
+  StorageType,
+  StorageTypeOption,
+  WarehouseConfiguracao,
+  WarehouseConflict,
+} from "./types";
 import {
   buildColumnLabels,
   buildDefaultShelf,
@@ -25,6 +36,7 @@ import {
   shelfKey,
   storageTypeLabel,
   storageTypeUsesFloors,
+  summarizeConfigHistoryChanges,
 } from "./utils";
 import styles from "./WarehouseAddressing.module.css";
 
@@ -56,7 +68,13 @@ export function WarehouseMapConfigPageView() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [lastErrorCode, setLastErrorCode] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<WarehouseConflict[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<ConfigHistoryEntry[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const selectedShelf = useMemo(() => {
     if (!selectedShelfKey) return null;
@@ -112,6 +130,7 @@ export function WarehouseMapConfigPageView() {
         setConfig(nextConfig ?? emptyConfig());
         setSelectedShelfKey(null);
         setFeedback(null);
+        setLastErrorCode(null);
         setConflicts([]);
       } catch (error) {
         if (active) setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar mapa." });
@@ -126,6 +145,54 @@ export function WarehouseMapConfigPageView() {
       active = false;
     };
   }, [accessToken, logError, stockCenterId]);
+
+  async function reloadConfigAfterConflict() {
+    if (!accessToken || !stockCenterId) return;
+
+    setIsLoading(true);
+    try {
+      const data = await fetchWarehouseConfig({ accessToken, stockCenterId });
+      const nextConfig = data.configuracao ?? null;
+      setPersistedConfig(nextConfig);
+      setConfig(nextConfig ?? emptyConfig());
+      setSelectedShelfKey(null);
+      setConflicts([]);
+      setLastErrorCode(null);
+      setFeedback({ type: "success", message: "Configuracao recarregada. Refaca as alteracoes desejadas e salve novamente." });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao recarregar configuracao do mapa." });
+      await logError("Falha ao recarregar configuracao do mapa apos conflito.", error, { stockCenterId });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function loadConfigHistory(targetPage: number) {
+    if (!accessToken || !persistedConfig?.id) return;
+
+    setIsLoadingHistory(true);
+    try {
+      const data = await fetchWarehouseConfigHistory({
+        accessToken,
+        mapId: persistedConfig.id,
+        page: targetPage,
+        pageSize: DEFAULT_HISTORY_PAGE_SIZE,
+      });
+      setHistoryEntries(data.entries ?? []);
+      setHistoryTotal(data.total ?? 0);
+      setHistoryPage(targetPage);
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar historico da configuracao." });
+      await logError("Falha ao carregar historico da configuracao do mapa.", error, { mapId: persistedConfig.id });
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
+
+  function openHistoryModal() {
+    setIsHistoryOpen(true);
+    void loadConfigHistory(1);
+  }
 
   function resizeGrid(columnCount: number, lineCount: number) {
     const colunas = buildColumnLabels(clamp(columnCount, 1, MAX_COLUMN_COUNT));
@@ -222,6 +289,7 @@ export function WarehouseMapConfigPageView() {
 
     setIsSaving(true);
     setConflicts([]);
+    setLastErrorCode(null);
     try {
       const result = await saveWarehouseConfig({
         accessToken,
@@ -240,6 +308,9 @@ export function WarehouseMapConfigPageView() {
       if (error instanceof WarehouseMapConflictError) {
         setConflicts(error.conflicts);
       }
+      if (error instanceof WarehouseMapSaveError) {
+        setLastErrorCode(error.code ?? null);
+      }
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao salvar mapa." });
       await logError("Falha ao salvar configuracao do mapa.", error, { stockCenterId });
     } finally {
@@ -249,7 +320,16 @@ export function WarehouseMapConfigPageView() {
 
   return (
     <section className={styles.wrapper}>
-      {feedback ? <div className={`${styles.feedback} ${styles[feedback.type]}`}>{feedback.message}</div> : null}
+      {feedback ? (
+        <div className={`${styles.feedback} ${styles[feedback.type]}`}>
+          <span>{feedback.message}</span>
+          {lastErrorCode === "CONCURRENT_MODIFICATION" ? (
+            <button type="button" className={styles.secondaryButton} onClick={() => void reloadConfigAfterConflict()} disabled={isLoading}>
+              Recarregar
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {conflicts.length > 0 ? (
         <article className={styles.card}>
@@ -269,7 +349,17 @@ export function WarehouseMapConfigPageView() {
       ) : null}
 
       <article className={styles.card}>
-        <h3 className={styles.cardTitle}>Configuracao do mapa</h3>
+        <div className={styles.tableHeader}>
+          <h3 className={styles.cardTitle}>Configuracao do mapa</h3>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={openHistoryModal}
+            disabled={!persistedConfig?.id}
+          >
+            Historico
+          </button>
+        </div>
         <div className={styles.formGrid}>
           <label className={styles.field}>
             <span>Centro de estoque</span>
@@ -417,6 +507,77 @@ export function WarehouseMapConfigPageView() {
           </div>
         </aside>
       </form>
+
+      {isHistoryOpen ? (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+          <div className={styles.modalCard}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3>Historico da configuracao</h3>
+                <p>Alteracoes de layout deste centro de estoque: quem alterou, quando e o que mudou.</p>
+              </div>
+              <button type="button" className={styles.ghostButton} onClick={() => setIsHistoryOpen(false)}>
+                Fechar
+              </button>
+            </div>
+
+            {isLoadingHistory ? (
+              <p className={styles.muted}>Carregando historico...</p>
+            ) : historyEntries.length === 0 ? (
+              <p className={styles.muted}>Nenhuma alteracao registrada ainda.</p>
+            ) : (
+              <div className={styles.sidePanel}>
+                {historyEntries.map((entry) => {
+                  const changes = summarizeConfigHistoryChanges(entry.details.before, entry.details.after, storageTypes);
+                  return (
+                    <article key={entry.id} className={styles.importStep}>
+                      <div className={styles.importStepHeader}>
+                        <div>
+                          <strong>{entry.createdByName}</strong>
+                          <p>{formatDateTime(entry.createdAt)}</p>
+                        </div>
+                      </div>
+                      {changes.length > 0 ? (
+                        <ul>
+                          {changes.map((change) => (
+                            <li key={change}>{change}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className={styles.muted}>Configuracao salva sem detalhe de alteracao (registro anterior a este recurso).</p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className={styles.tableHeader}>
+              <span className={styles.tableHint}>
+                Pagina {historyPage} de {Math.max(1, Math.ceil(historyTotal / DEFAULT_HISTORY_PAGE_SIZE))} | Total: {historyTotal}
+              </span>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={isLoadingHistory || historyPage <= 1}
+                  onClick={() => void loadConfigHistory(historyPage - 1)}
+                >
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={isLoadingHistory || historyPage * DEFAULT_HISTORY_PAGE_SIZE >= historyTotal}
+                  onClick={() => void loadConfigHistory(historyPage + 1)}
+                >
+                  Proxima
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -98,3 +98,36 @@ export type AddressMutationResponse = {
   message?: string;
   code?: string;
 };
+
+export interface ConfigHistoryShelf {
+  coluna: string;
+  linha: number;
+  tipo: StorageType;
+  andares: AndarConfig[];
+}
+
+export interface ConfigHistorySnapshot {
+  colunas: string[];
+  linhas: number[];
+  prateleiras: ConfigHistoryShelf[];
+}
+
+export type ConfigHistoryEntry = {
+  id: string;
+  createdAt: string;
+  createdByName: string;
+  details: {
+    before?: ConfigHistorySnapshot;
+    after?: ConfigHistorySnapshot;
+    colunas?: string[];
+    linhas?: number[];
+  };
+};
+
+export type ConfigHistoryResponse = {
+  entries?: ConfigHistoryEntry[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  message?: string;
+};
