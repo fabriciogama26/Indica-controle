@@ -13,6 +13,7 @@ type PaginationProps = {
   prevLabel?: string;
   nextLabel?: string;
   showTotal?: boolean;
+  label?: string;
 };
 
 export function Pagination({
@@ -28,12 +29,12 @@ export function Pagination({
   prevLabel = "Anterior",
   nextLabel = "Proxima",
   showTotal = true,
+  label,
 }: PaginationProps) {
   return (
     <div className={className ?? styles.pagination}>
       <span>
-        Pagina {Math.min(page, totalPages)} de {totalPages}
-        {showTotal ? ` | Total: ${total}` : ""}
+        {label ?? `Pagina ${Math.min(page, totalPages)} de ${totalPages}${showTotal ? ` | Total: ${total}` : ""}`}
       </span>
       <div className={actionsClassName ?? styles.paginationActions}>
         <button
