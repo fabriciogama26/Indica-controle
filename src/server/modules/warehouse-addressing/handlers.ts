@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { buildUserDisplayMap, parsePagination } from "@/lib/server/apiHelpers";
 import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
+import { DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
 import type {
   AssignWarehouseAddressPayload,
   SaveWarehouseMapPayload,
   WarehouseAddressRow,
   WarehouseBalanceRow,
+  WarehouseConfigHistoryRow,
   WarehouseMapRow,
   WarehouseMaterialRow,
   WarehouseShelfFloorRow,
@@ -409,6 +412,67 @@ export async function handleWarehouseConfigPost(request: NextRequest) {
     mapId: result.map_id,
     updatedAt: result.updated_at,
     message: "Configuracao do mapa salva com sucesso.",
+  });
+}
+
+export async function handleWarehouseConfigHistoryGet(request: NextRequest) {
+  const { context, response } = await resolveContext(request);
+  if (!context) return response;
+
+  const authResponse = await authorize(context, "configuracao-mapa-almoxarifado", "read");
+  if (authResponse) return authResponse;
+
+  const mapId = normalizeText(request.nextUrl.searchParams.get("mapId"));
+  if (!mapId) {
+    return NextResponse.json({ message: "Mapa e obrigatorio." }, { status: 400 });
+  }
+
+  const { page, pageSize, from, to } = parsePagination(request.nextUrl.searchParams, {
+    defaultPageSize: DEFAULT_HISTORY_PAGE_SIZE,
+    maxPageSize: 30,
+  });
+
+  const { data, error, count } = await context.supabase
+    .from("warehouse_address_history")
+    .select("id, details, created_at, created_by", { count: "exact" })
+    .eq("tenant_id", context.appUser.tenant_id)
+    .eq("map_id", mapId)
+    .eq("action_type", "CONFIG_SAVE")
+    .order("created_at", { ascending: false })
+    .range(from, to)
+    .returns<WarehouseConfigHistoryRow[]>();
+
+  if (error) {
+    return NextResponse.json({ message: "Falha ao carregar historico da configuracao do mapa." }, { status: 500 });
+  }
+
+  const rows = data ?? [];
+  const userIds = Array.from(new Set(rows.map((row) => row.created_by).filter((id): id is string => Boolean(id))));
+
+  let userDisplayMap = new Map<string, string>();
+  if (userIds.length > 0) {
+    const usersResult = await context.supabase
+      .from("app_users")
+      .select("id, display, login_name")
+      .in("id", userIds);
+
+    if (usersResult.error) {
+      return NextResponse.json({ message: "Falha ao carregar historico da configuracao do mapa." }, { status: 500 });
+    }
+
+    userDisplayMap = buildUserDisplayMap(usersResult.data ?? []);
+  }
+
+  return NextResponse.json({
+    entries: rows.map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      createdByName: (row.created_by && userDisplayMap.get(row.created_by)) ?? "Nao identificado",
+      details: row.details ?? {},
+    })),
+    total: count ?? rows.length,
+    page,
+    pageSize,
   });
 }
 

@@ -838,3 +838,7 @@ Observacao
 - Cria `clear_warehouse_cell_addresses` para limpar em lote todos os materiais enderecados numa posicao (coluna+linha) do mapa do almoxarifado, independente de andar/posicao/tipo, com log em `warehouse_address_history`.
 - Recria `save_warehouse_map_config` para retornar a lista detalhada de materiais/posicoes conflitantes (`conflicts`) quando o novo layout deixaria enderecos orfaos, mantendo o bloqueio `ADDRESSES_OUTSIDE_NEW_LAYOUT`.
 - Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.
+
+290_warehouse_map_config_history_snapshot.sql
+- Recria `save_warehouse_map_config` para gravar em `warehouse_address_history.details` o snapshot `before`/`after` (colunas, linhas, prateleiras com andares) de cada `CONFIG_SAVE`, permitindo exibir historico de "como estava/como ficou" na tela de Configuracao do Mapa.
+- Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.

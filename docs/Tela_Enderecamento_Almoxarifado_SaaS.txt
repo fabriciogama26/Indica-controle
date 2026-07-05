@@ -16,6 +16,7 @@ Arquitetura
   - `src/app/(dashboard)/mapa-almoxarifado/page.tsx`
 - APIs:
   - `src/app/api/warehouse-addressing/config/route.ts`
+  - `src/app/api/warehouse-addressing/config/history/route.ts`
   - `src/app/api/warehouse-addressing/map/route.ts`
 - Modulo frontend:
   - `src/modules/dashboard/enderecamento-almoxarifado/types.ts`
@@ -32,6 +33,7 @@ Arquitetura
 - Banco:
   - `supabase/migrations/288_create_warehouse_addressing_module.sql`
   - `supabase/migrations/289_warehouse_addressing_cell_clear_and_conflicts.sql`
+  - `supabase/migrations/290_warehouse_map_config_history_snapshot.sql`
 
 Cadastro
 --------
@@ -48,8 +50,10 @@ Cadastro
 - A RPC bloqueia salvar layout que remova posicoes ainda ocupadas e retorna em `conflicts` a lista de materiais/posicoes que impedem o salvamento (`codigo`, `coluna`, `linha`, `andar`, `posicao`).
 - A tela de configuracao exibe essa lista de conflitos quando o salvar falha por `ADDRESSES_OUTSIDE_NEW_LAYOUT`, orientando o usuario a limpar ou realocar o material em `/mapa-almoxarifado` antes de tentar salvar de novo.
 - A RPC bloqueia centro vinculado a equipe com `STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE`.
-- `warehouse_shelves.storage_type` diferencia `SHELF` e `PALLET`.
+- Erro `CONCURRENT_MODIFICATION` (409): o `updated_at` carregado pela tela e diferente do atual no banco (outra aba/usuario salvou este mesmo mapa nesse meio-tempo, ou a tela ficou aberta por um tempo). A mensagem de erro exibe um botao `Recarregar` que busca a configuracao atual antes de tentar salvar de novo; nao ha perda de dado no banco, so a versao em memoria da tela fica desatualizada.
+- `warehouse_shelves.storage_type` diferencia `SHELF`, `PALLET` e `BAIA`.
 - `warehouse_maps_grid_limits_check`, `warehouse_shelf_floors_numero_positive` e `warehouse_shelf_floors_positions_positive` limitam novas gravacoes no banco.
+- Botao `Historico` na tela de configuracao abre lista paginada (5 por pagina) com quem alterou, quando e o resumo de mudancas (colunas/linhas adicionadas ou removidas; prateleiras/baias/pallets adicionados, removidos ou com tipo/andares alterados), a partir do snapshot `before`/`after` gravado em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -114,6 +118,11 @@ Atualizacao 2026-07
   - Criada a RPC `clear_warehouse_cell_addresses` para limpar em lote todos os materiais enderecados numa posicao (coluna+linha), independente de andar/posicao/tipo de armazenamento.
   - Adicionado o botao `Limpar posicao` em `/mapa-almoxarifado`, na celula selecionada, para uso proativo antes de mover uma prateleira/baia/pallet na configuracao.
   - `save_warehouse_map_config` passou a retornar `conflicts` (lista de materiais/posicoes) junto do erro `ADDRESSES_OUTSIDE_NEW_LAYOUT`, e `/configuracao-mapa-almoxarifado` passou a exibir essa lista em tela quando o salvar falha.
+- Depois (migration 290):
+  - `save_warehouse_map_config` passou a gravar snapshot `before`/`after` (colunas, linhas, prateleiras com andares) em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
+  - Criado `GET /api/warehouse-addressing/config/history` (paginado, 5 por pagina) e o botao `Historico` em `/configuracao-mapa-almoxarifado`, mostrando quem alterou, quando e um resumo legivel do que mudou.
+  - Adicionado botao `Recarregar` na mensagem de erro `CONCURRENT_MODIFICATION` da tela de configuracao.
+  - Cor da celula `Prateleira` trocada de branco para lilas (`#f6f0fc`) no grid, para diferenciar visualmente de Pallet (verde) e Baia (azul).
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -123,7 +132,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressingMapPageView.tsx`
   - Responsavel por: renderizar mapa, status de ocupacao, detalhe, busca, atribuicao/remocao manual e enderecamento em massa.
 - Caminho: `src/server/modules/warehouse-addressing/handlers.ts`
-  - Responsavel por: autenticar, autorizar, identificar centros fisicos elegiveis, listar configuracao/mapa, delegar escritas para RPC (incluindo `handleWarehouseAddressDelete`, que agora tambem roteia a limpeza por celula quando o corpo traz `coluna`+`linha` sem `materialId`) e repassar `conflicts` na resposta de erro do save de configuracao.
+  - Responsavel por: autenticar, autorizar, identificar centros fisicos elegiveis, listar configuracao/mapa, delegar escritas para RPC (incluindo `handleWarehouseAddressDelete`, que agora tambem roteia a limpeza por celula quando o corpo traz `coluna`+`linha` sem `materialId`), repassar `conflicts` na resposta de erro do save de configuracao e `handleWarehouseConfigHistoryGet` (historico paginado de `CONFIG_SAVE` com `createdByName` resolvido via `app_users`).
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/constants.ts`
@@ -132,10 +141,12 @@ Constantes e configuracoes
   - Responsavel por: schema, RLS, permissoes, page keys, `warehouse_shelves.storage_type`, funcao `is_physical_warehouse_stock_center`, trigger de validacao e RPCs do enderecamento.
 - Caminho: `supabase/migrations/289_warehouse_addressing_cell_clear_and_conflicts.sql`
   - Responsavel por: RPC `clear_warehouse_cell_addresses` (limpeza em lote por coluna+linha) e recriacao de `save_warehouse_map_config` com `conflicts` detalhado no bloqueio `ADDRESSES_OUTSIDE_NEW_LAYOUT`.
+- Caminho: `supabase/migrations/290_warehouse_map_config_history_snapshot.sql`
+  - Responsavel por: recriacao de `save_warehouse_map_config` para gravar snapshot `before`/`after` (colunas, linhas, prateleiras com andares) em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`
-  - Responsavel por: gerar colunas/linhas, codigo de posicao, status de material/andar e formatacao de quantidade.
+  - Responsavel por: gerar colunas/linhas, codigo de posicao, status de material/andar, formatacao de quantidade e `summarizeConfigHistoryChanges` (resumo legivel do diff de historico).
 
 Servicos e integracoes externas
 - Nao ha integracao externa.
@@ -147,3 +158,5 @@ Ajuda contextual
 - Para lote, use `Enderecar em massa` na lista `Sem endereco`; revise a lista de material -> endereco antes de confirmar.
 - Para mover uma prateleira/baia/pallet de lugar: va em `/mapa-almoxarifado`, selecione a celula e use `Limpar posicao` para desenderecar de uma vez todos os materiais dali; so depois mexa no layout em `/configuracao-mapa-almoxarifado`.
 - Se salvar o layout falhar com a lista de "Materiais bloqueando o novo layout", use essa lista para saber exatamente quais materiais/posicoes precisam ser limpos ou realocados antes de tentar salvar de novo.
+- Se salvar o layout falhar com "A configuracao do mapa foi alterada por outro usuario", clique em `Recarregar` (aparece junto da mensagem), refaca as alteracoes desejadas e salve de novo.
+- Para ver quem alterou o layout e o que mudou, use o botao `Historico` em `/configuracao-mapa-almoxarifado`.

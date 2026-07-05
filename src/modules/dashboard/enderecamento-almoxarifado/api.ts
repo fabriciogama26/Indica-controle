@@ -1,5 +1,6 @@
 import type {
   AddressMutationResponse,
+  ConfigHistoryResponse,
   ConfiguracaoMapa,
   SaveMapResponse,
   WarehouseConfigResponse,
@@ -13,11 +14,21 @@ function authHeaders(accessToken: string) {
   };
 }
 
-export class WarehouseMapConflictError extends Error {
+export class WarehouseMapSaveError extends Error {
+  code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "WarehouseMapSaveError";
+    this.code = code;
+  }
+}
+
+export class WarehouseMapConflictError extends WarehouseMapSaveError {
   conflicts: WarehouseConflict[];
 
   constructor(message: string, conflicts: WarehouseConflict[]) {
-    super(message);
+    super(message, "ADDRESSES_OUTSIDE_NEW_LAYOUT");
     this.name = "WarehouseMapConflictError";
     this.conflicts = conflicts;
   }
@@ -62,7 +73,7 @@ export async function saveWarehouseConfig(params: {
     if (data.code === "ADDRESSES_OUTSIDE_NEW_LAYOUT" && Array.isArray(data.conflicts) && data.conflicts.length > 0) {
       throw new WarehouseMapConflictError(data.message ?? "Falha ao salvar configuracao do mapa.", data.conflicts);
     }
-    throw new Error(data.message ?? "Falha ao salvar configuracao do mapa.");
+    throw new WarehouseMapSaveError(data.message ?? "Falha ao salvar configuracao do mapa.", data.code);
   }
   return data;
 }
@@ -154,6 +165,28 @@ export async function clearWarehouseAddress(params: {
   const data = (await response.json().catch(() => ({}))) as AddressMutationResponse;
   if (!response.ok) {
     throw new Error(data.message ?? "Falha ao remover endereco.");
+  }
+  return data;
+}
+
+export async function fetchWarehouseConfigHistory(params: {
+  accessToken: string;
+  mapId: string;
+  page: number;
+  pageSize: number;
+}) {
+  const query = new URLSearchParams({
+    mapId: params.mapId,
+    page: String(params.page),
+    pageSize: String(params.pageSize),
+  });
+  const response = await fetch(`/api/warehouse-addressing/config/history?${query.toString()}`, {
+    cache: "no-store",
+    headers: authHeaders(params.accessToken),
+  });
+  const data = (await response.json().catch(() => ({}))) as ConfigHistoryResponse;
+  if (!response.ok) {
+    throw new Error(data.message ?? "Falha ao carregar historico da configuracao do mapa.");
   }
   return data;
 }

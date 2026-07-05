@@ -80,6 +80,13 @@ export type SaveWarehouseMapPayload = {
   expectedUpdatedAt?: string | null;
 };
 
+export type WarehouseConfigHistoryRow = {
+  id: string;
+  details: unknown;
+  created_at: string;
+  created_by: string | null;
+};
+
 export type AssignWarehouseAddressPayload = {
   mapId?: string | null;
   materialId?: string | null;

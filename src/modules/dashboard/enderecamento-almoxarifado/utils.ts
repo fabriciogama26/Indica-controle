@@ -1,4 +1,4 @@
-import type { ConfiguracaoMapa, Prateleira, StorageType, StorageTypeOption, WarehouseMaterial } from "./types";
+import type { ConfigHistorySnapshot, ConfiguracaoMapa, Prateleira, StorageType, StorageTypeOption, WarehouseMaterial } from "./types";
 
 export const DEFAULT_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { code: "SHELF", label: "Prateleira", usesFloors: true },
@@ -96,6 +96,51 @@ export function floorOccupancyStatus(shelf: Prateleira, floorNumber: number, mat
   if (occupied === 0) return "empty" as const;
   if (occupied >= floor.qtdPosicoes) return "full" as const;
   return "partial" as const;
+}
+
+export function summarizeConfigHistoryChanges(
+  before: ConfigHistorySnapshot | null | undefined,
+  after: ConfigHistorySnapshot | null | undefined,
+  storageTypes: StorageTypeOption[] = DEFAULT_STORAGE_TYPE_OPTIONS,
+): string[] {
+  if (!before || !after) return [];
+
+  const summary: string[] = [];
+
+  if (before.colunas.join(",") !== after.colunas.join(",")) {
+    summary.push(`Colunas: ${before.colunas.join(", ") || "-"} -> ${after.colunas.join(", ") || "-"}`);
+  }
+
+  if (before.linhas.join(",") !== after.linhas.join(",")) {
+    summary.push(`Linhas: ${before.linhas.join(", ") || "-"} -> ${after.linhas.join(", ") || "-"}`);
+  }
+
+  const beforeMap = new Map(before.prateleiras.map((shelf) => [shelfKey(shelf.coluna, shelf.linha), shelf]));
+  const afterMap = new Map(after.prateleiras.map((shelf) => [shelfKey(shelf.coluna, shelf.linha), shelf]));
+
+  for (const [key, shelf] of afterMap) {
+    const beforeShelf = beforeMap.get(key);
+    const label = `${shelf.coluna}${shelf.linha}`;
+
+    if (!beforeShelf) {
+      summary.push(`Adicionada ${label} (${storageTypeLabel(shelf.tipo, storageTypes)})`);
+      continue;
+    }
+
+    const beforeSerialized = JSON.stringify({ tipo: beforeShelf.tipo, andares: beforeShelf.andares });
+    const afterSerialized = JSON.stringify({ tipo: shelf.tipo, andares: shelf.andares });
+    if (beforeSerialized !== afterSerialized) {
+      summary.push(`Alterada ${label}: ${storageTypeLabel(beforeShelf.tipo, storageTypes)} -> ${storageTypeLabel(shelf.tipo, storageTypes)}`);
+    }
+  }
+
+  for (const [key, shelf] of beforeMap) {
+    if (!afterMap.has(key)) {
+      summary.push(`Removida ${shelf.coluna}${shelf.linha} (${storageTypeLabel(shelf.tipo, storageTypes)})`);
+    }
+  }
+
+  return summary;
 }
 
 export function formatQuantity(value: number, unit: string) {
