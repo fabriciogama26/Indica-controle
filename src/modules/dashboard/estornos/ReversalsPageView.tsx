@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./ReversalsPageView.module.css";
 import { formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
 
 type ReversalRow = {
   id: string;
@@ -110,7 +112,7 @@ const INITIAL_FILTERS: FilterState = {
   userId: "",
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "-";
@@ -182,9 +184,6 @@ export function ReversalsPageView() {
   const [detailRow, setDetailRow] = useState<ReversalRow | null>(null);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  const canGoPrevious = page > 1 && !isLoading;
-  const canGoNext = page < pageCount && !isLoading;
 
   const loadReversals = useCallback(
     async (nextFilters: FilterState, nextPage: number) => {
@@ -536,19 +535,18 @@ export function ReversalsPageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {page} de {pageCount} | {total} registro(s)
-          </span>
-          <div className={styles.paginationActions}>
-            <button type="button" onClick={() => handlePageChange(page - 1)} disabled={!canGoPrevious}>
-              Anterior
-            </button>
-            <button type="button" onClick={() => handlePageChange(page + 1)} disabled={!canGoNext}>
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={pageCount}
+          total={total}
+          label={`Pagina ${page} de ${pageCount} | ${total} registro(s)`}
+          onPrev={() => handlePageChange(page - 1)}
+          onNext={() => handlePageChange(page + 1)}
+          disabled={isLoading}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName=""
+        />
       </article>
 
       {detailRow ? (

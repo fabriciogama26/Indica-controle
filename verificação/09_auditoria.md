@@ -16,3 +16,10 @@
 - [x] Backfill de `PARCIAL` legado registra historico tecnico em `project_programming_history`.
 - [x] Sincronizacao por grupo registra historico com metadata `work-completion-group-sync`.
 - [x] Nao aplicavel: criacao de tabela nova de auditoria.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] Criada `warehouse_address_history` para salvar configuracao, atribuicao e remocao de endereco.
+- [x] `materials` continua registrando alteracoes via `material_history`, agora incluindo limites de estoque.
+- [x] Nao aplicavel: enderecamento nao altera saldo de estoque.
+- [x] Tentativa valida de configuracao/endereco continua gerando historico; centro de equipe e bloqueado antes da gravacao.
+- [x] Enderecamento em massa registra `ADDRESS_ASSIGN` por material com flag `batch=true` no historico.

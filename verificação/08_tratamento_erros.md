@@ -21,3 +21,15 @@
 - [x] `GET /api/medicao/export` retorna mensagens objetivas para tipo invalido, sessao invalida, permissao negada e ausencia de registros.
 - [x] Frontend le erro JSON da rota de exportacao e exibe feedback ao usuario.
 - [x] Nao ha exposicao de stack trace na resposta HTTP.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] APIs novas retornam mensagens objetivas e `code` quando a RPC informa motivo.
+- [x] Frontend registra falhas com `useErrorLogger` nas duas telas novas.
+- [x] Nao ha exposicao de stack trace nas respostas HTTP adicionadas.
+- [x] Centro vinculado a equipe retorna erro objetivo `STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE`/422.
+- [x] RPC de lote retorna motivos objetivos para lote vazio, grande, material sem saldo, material ja enderecado, posicao inexistente e posicao ocupada.
+
+## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
+- [x] Falha ao buscar itens de valor continua retornando mensagem objetiva: `Falha ao carregar valores das medicoes.`.
+- [x] Backend registra codigo, mensagem e quantidade de ordens para diagnostico quando algum chunk falha.
+- [x] Nao ha exposicao de stack trace ou payload sensivel na resposta HTTP.

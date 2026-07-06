@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 type ReversalSource = "ESTOQUE" | "EQUIPE";
 type ReversalType = "ITEM" | "INTEGRAL";
@@ -127,11 +128,6 @@ type ReversalListItem = {
   reversedByName: string;
 };
 
-function parsePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number(value ?? "");
-  if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
-  return parsed;
-}
 
 function normalizeUpper(value: unknown) {
   return normalizeText(value).toUpperCase();
@@ -523,8 +519,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: context.error.message }, { status: context.error.status });
   }
 
-  const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-  const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), REVERSAL_QUERY_LIMIT * 2);
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
+    maxPageSize: REVERSAL_QUERY_LIMIT * 2,
+  });
   const reversalStartDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalStartDate"));
   const reversalEndDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalEndDate"));
 

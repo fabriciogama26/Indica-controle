@@ -3,10 +3,13 @@
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { usePagination } from "@/hooks/usePagination";
 import styles from "./MeasurementPageView.module.css";
 import { downloadBlobFile } from "@/lib/utils/csv";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
+import { Pagination } from "@/components/ui/Pagination";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import { parseCsvLine } from "@/lib/utils/parsers";
 
 type MeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
@@ -326,9 +329,9 @@ type ExportProgress = {
   percent?: number;
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = 200;
-const HISTORY_PAGE_SIZE = 5;
+const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   projectId: "Projeto",
   teamId: "Equipe",
@@ -433,9 +436,10 @@ function readMeasurementPrefillParams(): MeasurementPrefillParams | null {
   return { projectId, teamId, executionDate, compositionId };
 }
 
-function yearRange(today: string) {
-  const year = today.slice(0, 4);
-  return { startDate: `${year}-01-01`, endDate: `${year}-12-31` };
+function monthRange(today: string) {
+  const [year, month] = today.split("-");
+  const lastDay = new Date(Number(year), Number(month), 0).getDate();
+  return { startDate: `${year}-${month}-01`, endDate: `${year}-${month}-${String(lastDay).padStart(2, "0")}` };
 }
 
 function scrollDashboardContentToTop() {
@@ -886,7 +890,7 @@ export function MeasurementPageView() {
   const today = useMemo(() => toIsoDate(new Date()), []);
   const initialFilters = useMemo(
     () => ({
-      ...yearRange(today),
+      ...monthRange(today),
       projectId: "",
       teamId: "",
       serviceTypeId: "",
@@ -916,8 +920,7 @@ export function MeasurementPageView() {
   const [filterActivityOptions, setFilterActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [activeFilters, setActiveFilters] = useState<Filters>(initialFilters);
   const [orders, setOrders] = useState<OrderItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [filteredOrdersTotalAmount, setFilteredOrdersTotalAmount] = useState(0);
   const [filteredMinimumBillingAmount, setFilteredMinimumBillingAmount] = useState(0);
   const [detailOrder, setDetailOrder] = useState<OrderDetail | null>(null);
@@ -1066,7 +1069,6 @@ export function MeasurementPageView() {
     : "";
   const canSubmitStatusReason = Boolean(statusOrder) && statusReason.trim().length >= 10 && !isChangingStatus;
   const isEditing = Boolean(form.id);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyEntries.length / HISTORY_PAGE_SIZE));
   const pagedHistoryEntries = useMemo(
     () => historyEntries.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE),
@@ -1077,7 +1079,7 @@ export function MeasurementPageView() {
     if (page > totalPages) {
       setPage(totalPages);
     }
-  }, [page, totalPages]);
+  }, [page, totalPages, setPage]);
 
   useEffect(() => {
     if (historyPage > historyTotalPages) {
@@ -1337,7 +1339,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters, fetchOrdersPage, page, refreshTick]);
+  }, [accessToken, activeFilters, fetchOrdersPage, page, refreshTick, setPage, setTotal]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -3242,29 +3244,17 @@ export function MeasurementPageView() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <span>
-            Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}
-          </span>
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || isLoadingOrders}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || isLoadingOrders}
-            >
-              Proxima
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingOrders}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {detailOrder ? (

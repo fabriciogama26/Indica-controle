@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -874,9 +875,14 @@ export function StockDashboardPageView() {
             <button type="button" className={styles.expandButton} onClick={() => setIsScatterExpanded(true)}>
               Expandir
             </button>
-            <button type="button" className={styles.expandButton} onClick={() => void exportScatterRows()} disabled={isExportingScatter || !activeScatterRows.length}>
-              {isExportingScatter ? "Exportando..." : "Exportar Excel"}
-            </button>
+            <CsvExportButton
+              onClick={() => void exportScatterRows()}
+              disabled={!activeScatterRows.length}
+              isLoading={isExportingScatter}
+              className={styles.expandButton}
+              idleLabel="Exportar CSV"
+              showProgressModal={false}
+            />
           </div>
         </div>
         <ScatterUnitStrip rows={activeScatterUnitSummary} />
@@ -1011,9 +1017,14 @@ export function StockDashboardPageView() {
                 <button type="button" className={styles.closeButton} onClick={() => setIsScatterExpanded(false)} aria-label="Fechar dispersao ampliada">
                   x
                 </button>
-                <button type="button" className={styles.expandButton} onClick={() => void exportScatterRows()} disabled={isExportingScatter || !activeScatterRows.length}>
-                  {isExportingScatter ? "Exportando..." : "Exportar Excel"}
-                </button>
+                <CsvExportButton
+                  onClick={() => void exportScatterRows()}
+                  disabled={!activeScatterRows.length}
+                  isLoading={isExportingScatter}
+                  className={styles.expandButton}
+                  idleLabel="Exportar CSV"
+                  showProgressModal={false}
+                />
               </div>
             </div>
             <div className={styles.modalBody}>

@@ -1,0 +1,27 @@
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: #5b6a85;
+}
+
+.paginationActions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.ghostButton {
+  background: #ffffff;
+  color: #17347a;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  border-radius: 12px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.ghostButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

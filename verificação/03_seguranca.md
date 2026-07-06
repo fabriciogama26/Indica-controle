@@ -25,3 +25,15 @@
 - [x] `GET /api/medicao/export` valida sessao com `resolveAuthenticatedAppUser`.
 - [x] `GET /api/medicao/export` exige `requirePageAction` com `page_key=medicao` e `action=export`.
 - [x] A rota nao recebe nem confia em `tenant_id`, usuario, role ou auditoria vindos do cliente.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] Novas rotas `/api/warehouse-addressing/*` validam sessao e `requirePageAction`.
+- [x] `GET/POST/PUT/PATCH /api/materials` e `GET /api/materials/meta` passaram a exigir `requirePageAction`.
+- [x] RPCs novas revogam `public`, `anon` e `authenticated`, concedendo EXECUTE apenas para `service_role`.
+- [x] Chamada manual com centro vinculado a equipe retorna 422 no backend/RPC, mesmo que o front nao liste esse centro.
+- [x] RPC de lote `assign_warehouse_material_addresses_batch` tambem revoga `public`, `anon` e `authenticated`, mantendo EXECUTE apenas para `service_role`.
+
+## Verificacao desta entrega - 2026-07-05 - Dashboard Medicao
+- [x] `GET /api/dashboard-medicao` continua validando sessao por `resolveAuthenticatedAppUser`.
+- [x] `GET /api/dashboard-medicao` continua exigindo `requirePageAction` com `page_key=dashboard-medicao` e `action=read`.
+- [x] A correcao nao aceita `tenant_id`, usuario, role ou auditoria vindos do cliente e nao expoe stack trace ao usuario.

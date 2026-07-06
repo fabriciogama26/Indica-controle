@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks/useAuth";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { usePagination } from "@/hooks/usePagination";
 import { notifyTeamCompositionUpdated } from "@/lib/events/teamComposition";
 import styles from "./TeamCompositionPageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
 type ProjectOption = {
   id: string;
@@ -153,9 +156,9 @@ type FilterState = {
   workStatus: WorkStatusFilter;
 };
 
-const PAGE_SIZE = 20;
-const EXPORT_PAGE_SIZE = 100;
-const HISTORY_PAGE_SIZE = 5;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
+const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
+const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 
 function toIsoDate(value: Date) {
   const year = value.getFullYear();
@@ -398,8 +401,7 @@ export function TeamCompositionPageView() {
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [people, setPeople] = useState<PersonOption[]>([]);
   const [compositions, setCompositions] = useState<CompositionItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -415,7 +417,6 @@ export function TeamCompositionPageView() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isNavigatingToMedicao, setIsNavigatingToMedicao] = useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
   const projectByCode = useMemo(
@@ -512,7 +513,7 @@ export function TeamCompositionPageView() {
         setIsLoadingList(false);
       }
     },
-    [logError, projectByCode, session?.accessToken],
+    [logError, projectByCode, session?.accessToken, setTotal],
   );
 
   const loadDailyCoverage = useCallback(async (coverageDate: string) => {
@@ -1301,13 +1302,17 @@ export function TeamCompositionPageView() {
             </tbody>
           </table>
         </div>
-        <div className={styles.pagination}>
-          <span>Pagina {Math.min(page, totalPages)} de {totalPages} | Total: {total}</span>
-          <div className={styles.paginationActions}>
-            <button type="button" className={styles.ghostButton} onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1 || isLoadingList}>Anterior</button>
-            <button type="button" className={styles.ghostButton} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages || isLoadingList}>Proxima</button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPrev={() => setPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          disabled={isLoadingList}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {detailComposition ? (

@@ -833,3 +833,22 @@ Observacao
 - Cria triggers para manter o evento sincronizado em movimentacoes fisicas e operacoes de equipe.
 - Faz backfill dos eventos existentes e adiciona indice por `tenant_id + operation_event_id`.
 - Mantem funcoes auxiliares restritas e sem alteracao de policies RLS.
+
+289_warehouse_addressing_cell_clear_and_conflicts.sql
+- Cria `clear_warehouse_cell_addresses` para limpar em lote todos os materiais enderecados numa posicao (coluna+linha) do mapa do almoxarifado, independente de andar/posicao/tipo, com log em `warehouse_address_history`.
+- Recria `save_warehouse_map_config` para retornar a lista detalhada de materiais/posicoes conflitantes (`conflicts`) quando o novo layout deixaria enderecos orfaos, mantendo o bloqueio `ADDRESSES_OUTSIDE_NEW_LAYOUT`.
+- Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.
+
+290_warehouse_map_config_history_snapshot.sql
+- Recria `save_warehouse_map_config` para gravar em `warehouse_address_history.details` o snapshot `before`/`after` (colunas, linhas, prateleiras com andares) de cada `CONFIG_SAVE`, permitindo exibir historico de "como estava/como ficou" na tela de Configuracao do Mapa.
+- Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.
+
+291_warehouse_address_history_action_index.sql
+- Substitui `idx_warehouse_address_history_tenant_map_created` por `idx_warehouse_address_history_tenant_map_action_created` (inclui `action_type`), necessario para a consulta paginada de historico de `CONFIG_SAVE` nao precisar varrer o volume, maior e crescente, de `ADDRESS_ASSIGN`/`ADDRESS_CLEAR` do mesmo mapa.
+
+292_warehouse_addressing_multi_position.sql
+- Remove `warehouse_material_addresses_unique_material`, permitindo o mesmo material ocupar mais de uma posicao no mesmo mapa (endereco continua sendo so um marcador de presenca por posicao, sem quantidade).
+- Recria `assign_warehouse_material_address` com `p_address_id` opcional (null = cria endereco novo; preenchido = edita aquele endereco especifico), substituindo o upsert por `material_id`.
+- Recria `assign_warehouse_material_addresses_batch` removendo os bloqueios `DUPLICATE_BATCH_MATERIAL` e `MATERIAL_ALREADY_ADDRESSED` (mantem `DUPLICATE_BATCH_POSITION`/`POSITION_OCCUPIED`/`MATERIAL_WITHOUT_STOCK`).
+- Recria `clear_warehouse_material_address` para identificar a linha por `p_address_id` em vez de `p_material_id`.
+- Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.

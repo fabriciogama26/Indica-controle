@@ -17,3 +17,12 @@
 - [x] Regra de Estado Trabalho canonico documentada: `PARCIAL` legado vira `PARCIAL_NAO_PLANEJADO`.
 - [x] Regra de grupo documentada: sincronizacao generica usa `programming_group_id`.
 - [x] Regra de conclusao documentada: `CONCLUIDO` nao propaga e bloqueia quando ha outra linha ativa no grupo.
+
+## Verificacao desta entrega - 2026-07-05
+- [x] Regra de layout fisico ficou no backend/RPC, nao apenas na tela.
+- [x] Regra de ocupacao de posicao unica ficou protegida por UNIQUE e RPC.
+- [x] Nao aplicavel: esta etapa nao movimenta saldo de estoque.
+- [x] Centro fisico foi identificado por `stock_centers` sem vinculo em `teams.stock_center_id`, nao por texto do nome.
+- [x] Pallet foi tratado como tipo de endereco fisico com posicao unica.
+- [x] Cadastro em massa considera somente material com saldo positivo no centro selecionado e sem endereco anterior.
+- [x] Regra operacional do mapa limita colunas, linhas, andares e posicoes tanto na tela quanto no banco.

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
@@ -1085,13 +1086,17 @@ export function BillingPageView() {
             </tbody>
           </table>
         </div>
-        <div className={styles.pagination}>
-          <span>Pagina {pagination.page} de {Math.max(1, Math.ceil(pagination.total / pagination.pageSize))}</span>
-          <div className={styles.paginationActions}>
-            <button type="button" className={styles.ghostButton} disabled={pagination.page <= 1} onClick={() => void loadOrders(pagination.page - 1)}>Anterior</button>
-            <button type="button" className={styles.ghostButton} disabled={pagination.page >= Math.max(1, Math.ceil(pagination.total / pagination.pageSize))} onClick={() => void loadOrders(pagination.page + 1)}>Proxima</button>
-          </div>
-        </div>
+        <Pagination
+          page={pagination.page}
+          totalPages={Math.max(1, Math.ceil(pagination.total / pagination.pageSize))}
+          total={pagination.total}
+          showTotal={false}
+          onPrev={() => void loadOrders(pagination.page - 1)}
+          onNext={() => void loadOrders(pagination.page + 1)}
+          className={styles.pagination}
+          actionsClassName={styles.paginationActions}
+          buttonClassName={styles.ghostButton}
+        />
       </article>
 
       {detailOrder ? (

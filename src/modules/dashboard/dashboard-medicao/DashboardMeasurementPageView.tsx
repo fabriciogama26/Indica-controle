@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import styles from "./DashboardMeasurementPageView.module.css";
 
 type Option = {
@@ -146,11 +148,6 @@ function formatPercent(value: number) {
 
 function maxValue(values: number[]) {
   return Math.max(1, ...values.map((value) => Number(value) || 0));
-}
-
-function csvEscape(value: unknown) {
-  const text = String(value ?? "");
-  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function filenameToken(value: string) {
@@ -378,16 +375,8 @@ export function DashboardMeasurementPageView() {
         item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         item.orderCount,
       ]);
-      const csv = `\uFEFF${[header, ...rows].map((line) => line.map(csvEscape).join(";")).join("\n")}`;
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = projectDetailModal.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const csv = buildCsvContent(header, rows);
+      downloadCsvFile(csv, projectDetailModal.filename);
     } finally {
       setIsExportingProjectDetails(false);
     }
@@ -1183,9 +1172,13 @@ export function DashboardMeasurementPageView() {
                 <p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p>
               </div>
               <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={() => void exportProjectDetailsCsv()} disabled={isExportingProjectDetails}>
-                  {isExportingProjectDetails ? "Exportando..." : "Exportar Excel (CSV)"}
-                </button>
+                <CsvExportButton
+                  onClick={() => void exportProjectDetailsCsv()}
+                  isLoading={isExportingProjectDetails}
+                  className={styles.secondaryButton}
+                  idleLabel="Exportar Excel (CSV)"
+                  showProgressModal={false}
+                />
                 <button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)} aria-label="Fechar detalhe de projetos">
                   x
                 </button>

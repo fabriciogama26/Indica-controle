@@ -1,13 +1,15 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import {
   buildConcurrencyConflictResponse,
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
+import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
 import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
+import { parsePagination } from "@/lib/server/apiHelpers";
 
 const WITHOUT_UMB_FILTER = "__SEM_UMB__";
 
@@ -20,6 +22,8 @@ type MaterialRow = {
   is_transformer: boolean;
   serial_tracking_type: SerialTrackingType | null;
   unit_price: number;
+  stock_minimum: number;
+  stock_maximum: number | null;
   is_active: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
@@ -52,6 +56,8 @@ type CreateMaterialPayload = {
   umb?: string | null;
   tipo: string;
   unitPrice?: string | number | null;
+  stockMinimum?: string | number | null;
+  stockMaximum?: string | number | null;
   isTransformer?: boolean;
   serialTrackingType?: SerialTrackingType | string | null;
 };
@@ -92,6 +98,8 @@ type MaterialInput = {
   umb: string | null;
   tipo: string;
   unitPrice: number;
+  stockMinimum: number;
+  stockMaximum: number | null;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
 };
@@ -161,6 +169,40 @@ function normalizePrice(value: unknown) {
   return Number(numeric.toFixed(2));
 }
 
+function normalizeOptionalNonNegativeNumber(value: unknown) {
+  const raw = String(value ?? "").trim().replace(",", ".");
+  if (!raw) {
+    return null;
+  }
+
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return NaN;
+  }
+
+  return Number(numeric.toFixed(4));
+}
+
+async function authorizeMaterialsAction(
+  context: AuthenticatedAppUserContext,
+  action: PageAction,
+) {
+  const authorization = await requirePageAction({
+    context,
+    pageKey: "materiais",
+    action,
+  });
+
+  if (!authorization.allowed) {
+    return NextResponse.json(
+      { message: authorization.error.message, code: authorization.error.code },
+      { status: authorization.error.status },
+    );
+  }
+
+  return null;
+}
+
 function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialInput {
   return {
     codigo: normalizeCode(payload.codigo),
@@ -168,6 +210,8 @@ function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialIn
     umb: normalizeNullableText(payload.umb),
     tipo: normalizeMaterialType(payload.tipo),
     unitPrice: normalizePrice(payload.unitPrice),
+    stockMinimum: normalizeOptionalNonNegativeNumber(payload.stockMinimum) ?? 0,
+    stockMaximum: normalizeOptionalNonNegativeNumber(payload.stockMaximum),
     serialTrackingType: normalizeSerialTrackingType(
       payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
     ),
@@ -188,6 +232,14 @@ function validateRequiredMaterialFields(input: MaterialInput) {
 
   if (!Number.isFinite(input.unitPrice) || input.unitPrice < 0) {
     return "Preco invalido. Informe valor numerico maior ou igual a zero.";
+  }
+
+  if (
+    !Number.isFinite(input.stockMinimum)
+    || input.stockMinimum < 0
+    || (input.stockMaximum !== null && (!Number.isFinite(input.stockMaximum) || input.stockMaximum < input.stockMinimum))
+  ) {
+    return "Limites de estoque invalidos. O maximo deve estar vazio ou ser maior/igual ao minimo.";
   }
 
   return null;
@@ -308,7 +360,7 @@ async function fetchMaterialById(
   const { data, error } = await supabase
     .from("materials")
     .select(
-      "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", materialId)
@@ -373,6 +425,8 @@ async function saveMaterialViaRpc(params: {
   umb: string | null;
   tipo: string;
   unitPrice: number;
+  stockMinimum: number;
+  stockMaximum: number | null;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
   changes?: Record<string, HistoryChange>;
@@ -391,6 +445,8 @@ async function saveMaterialViaRpc(params: {
     p_serial_tracking_type: params.serialTrackingType,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
+    p_stock_minimum: params.stockMinimum,
+    p_stock_maximum: params.stockMaximum,
   });
 
   if (error) {
@@ -473,6 +529,8 @@ async function importMaterialBatch(params: {
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
       unitPrice: input.unitPrice,
+      stockMinimum: input.stockMinimum,
+      stockMaximum: input.stockMaximum,
     });
 
     if (!saveResult.ok) {
@@ -547,6 +605,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const authorizationResponse = await authorizeMaterialsAction(resolution, "read");
+    if (authorizationResponse) {
+      return authorizationResponse;
+    }
+
     const { supabase, appUser } = resolution;
     const historyMaterialId = normalizeText(request.nextUrl.searchParams.get("historyMaterialId"));
 
@@ -615,10 +678,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const page = parsePositiveInteger(request.nextUrl.searchParams.get("page"), 1);
-    const pageSize = Math.min(parsePositiveInteger(request.nextUrl.searchParams.get("pageSize"), 20), 100);
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const { page, pageSize, from, to } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
 
     const codeFilter = normalizeText(request.nextUrl.searchParams.get("codigo"));
     const descriptionFilter = normalizeText(request.nextUrl.searchParams.get("descricao"));
@@ -629,7 +689,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("materials")
       .select(
-        "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id)
@@ -771,6 +831,8 @@ export async function GET(request: NextRequest) {
         serialTrackingType: normalizeSerialTrackingType(item.serial_tracking_type ?? (item.is_transformer ? "TRAFO" : "NONE")),
         hasSerialTrackingUsage: serialTrackingUsageMaterialIds.has(item.id),
         unitPrice: item.unit_price,
+        stockMinimum: Number(item.stock_minimum ?? 0),
+        stockMaximum: item.stock_maximum === null ? null : Number(item.stock_maximum),
         isActive: item.is_active,
         cancellationReason: item.cancellation_reason,
         canceledAt: item.canceled_at,
@@ -800,6 +862,11 @@ export async function POST(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationResponse = await authorizeMaterialsAction(resolution, "create");
+    if (authorizationResponse) {
+      return authorizationResponse;
     }
 
     const body = (await request.json().catch(() => ({}))) as Partial<CreateMaterialPayload> & MaterialBatchImportPayload;
@@ -858,6 +925,8 @@ export async function POST(request: NextRequest) {
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
       unitPrice,
+      stockMinimum: input.stockMinimum,
+      stockMaximum: input.stockMaximum,
     });
 
     if (!saveResult.ok) {
@@ -882,6 +951,11 @@ export async function PUT(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationResponse = await authorizeMaterialsAction(resolution, "update");
+    if (authorizationResponse) {
+      return authorizationResponse;
     }
 
     const body = (await request.json().catch(() => ({}))) as Partial<UpdateMaterialPayload>;
@@ -961,6 +1035,8 @@ export async function PUT(request: NextRequest) {
       input.serialTrackingType,
     );
     addChange(changes, "unitPrice", currentMaterial.unit_price, unitPrice);
+    addChange(changes, "stockMinimum", currentMaterial.stock_minimum, input.stockMinimum);
+    addChange(changes, "stockMaximum", currentMaterial.stock_maximum, input.stockMaximum);
 
     if (Object.keys(changes).length === 0) {
       return NextResponse.json({ success: true, message: `Nenhuma alteracao detectada no material ${currentMaterial.codigo}.` });
@@ -978,6 +1054,8 @@ export async function PUT(request: NextRequest) {
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
       unitPrice,
+      stockMinimum: input.stockMinimum,
+      stockMaximum: input.stockMaximum,
       changes,
       expectedUpdatedAt,
     });
@@ -1008,6 +1086,11 @@ export async function PATCH(request: NextRequest) {
     const reason = normalizeText(body.reason);
     const action = normalizeText(body.action).toLowerCase() === "activate" ? "ACTIVATE" : "CANCEL";
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
+
+    const authorizationResponse = await authorizeMaterialsAction(resolution, action === "ACTIVATE" ? "update" : "cancel");
+    if (authorizationResponse) {
+      return authorizationResponse;
+    }
 
     if (!materialId) {
       return NextResponse.json({ message: "ID do material obrigatorio." }, { status: 400 });

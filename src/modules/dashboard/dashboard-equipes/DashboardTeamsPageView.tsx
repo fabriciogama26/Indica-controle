@@ -2,7 +2,9 @@
 
 import { useMemo, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
 
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useDashboardTeams } from "./hooks";
 import type {
   DashboardTeamRow,
@@ -95,8 +97,8 @@ export function DashboardTeamsPageView() {
   const [projectDetailModal, setProjectDetailModal] = useState<ProjectDetailModal>(null);
   const [teamDetailModal, setTeamDetailModal] = useState<TeamDetailModal>(null);
   const [localMessage, setLocalMessage] = useState("");
-  const [lastExportAt, setLastExportAt] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const exportCooldown = useExportCooldown();
 
   const selectedTeams = useMemo(
     () => teamWeekFilter ? dashboard.teamRowsByWeek[teamWeekFilter] ?? [] : dashboard.teamRows,
@@ -218,15 +220,14 @@ export function DashboardTeamsPageView() {
       setLocalMessage("Nenhum projeto encontrado para exportar.");
       return;
     }
-    if (Date.now() - lastExportAt < 10_000) {
-      setLocalMessage("Aguarde 10 segundos entre as exportacoes.");
+    if (!exportCooldown.tryStart()) {
+      setLocalMessage(`Aguarde ${exportCooldown.getRemainingSeconds()} segundos entre as exportacoes.`);
       return;
     }
     setIsExporting(true);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
       exportDashboardProjectsCsv(projectDetailModal.filename, projectDetailModal.rows);
-      setLastExportAt(Date.now());
       setLocalMessage("");
     } finally {
       setIsExporting(false);
@@ -235,8 +236,8 @@ export function DashboardTeamsPageView() {
 
   async function exportTeamDetails() {
     if (!teamDetailModal) return;
-    if (Date.now() - lastExportAt < 10_000) {
-      setLocalMessage("Aguarde 10 segundos entre as exportacoes.");
+    if (!exportCooldown.tryStart()) {
+      setLocalMessage(`Aguarde ${exportCooldown.getRemainingSeconds()} segundos entre as exportacoes.`);
       return;
     }
     setIsExporting(true);
@@ -254,7 +255,6 @@ export function DashboardTeamsPageView() {
           rows: teamDetailModal.row.foremanContributions,
         },
       );
-      setLastExportAt(Date.now());
       setLocalMessage("");
     } finally {
       setIsExporting(false);
@@ -539,9 +539,13 @@ export function DashboardTeamsPageView() {
                 <p className={styles.modalSubtitle}>{teamDetailModal.periodLabel}</p>
               </div>
               <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={() => void exportTeamDetails()} disabled={isExporting}>
-                  {isExporting ? "Exportando..." : "Exportar contribuicoes (CSV)"}
-                </button>
+                <CsvExportButton
+                  onClick={() => void exportTeamDetails()}
+                  isLoading={isExporting}
+                  className={styles.secondaryButton}
+                  idleLabel="Exportar contribuicoes (CSV)"
+                  showProgressModal={false}
+                />
                 <button type="button" className={styles.closeButton} onClick={() => setTeamDetailModal(null)}>x</button>
               </div>
             </div>
@@ -603,7 +607,7 @@ export function DashboardTeamsPageView() {
         </div>
       ) : null}
 
-      {projectDetailModal ? <div className={styles.modalBackdrop} role="dialog" aria-modal="true"><div className={styles.modal}><div className={styles.modalHeader}><div><h2>{projectDetailModal.title}</h2><p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p></div><div className={styles.modalActions}><button type="button" className={styles.secondaryButton} onClick={() => void exportProjectDetails()} disabled={isExporting}>{isExporting ? "Exportando..." : "Exportar Excel (CSV)"}</button><button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)}>x</button></div></div><div className={styles.modalBody}><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Projeto</th><th>Centro</th><th>Valor cobrado</th><th>Ordens</th></tr></thead><tbody>{projectDetailModal.rows.length ? projectDetailModal.rows.map((item) => <tr key={item.projectId}><td>{item.projectCode}</td><td>{item.serviceCenter}</td><td>{formatDashboardCurrency(item.totalValue)}</td><td>{item.orderCount}</td></tr>) : <tr><td colSpan={4} className={styles.emptyRow}>Nenhum projeto encontrado.</td></tr>}</tbody><tfoot><tr><td>Total</td><td>{projectDetailModal.rows.length} projetos</td><td>{formatDashboardCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td><td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td></tr></tfoot></table></div></div></div></div> : null}
+      {projectDetailModal ? <div className={styles.modalBackdrop} role="dialog" aria-modal="true"><div className={styles.modal}><div className={styles.modalHeader}><div><h2>{projectDetailModal.title}</h2><p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p></div><div className={styles.modalActions}><CsvExportButton onClick={() => void exportProjectDetails()} isLoading={isExporting} className={styles.secondaryButton} idleLabel="Exportar Excel (CSV)" showProgressModal={false} /><button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)}>x</button></div></div><div className={styles.modalBody}><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Projeto</th><th>Centro</th><th>Valor cobrado</th><th>Ordens</th></tr></thead><tbody>{projectDetailModal.rows.length ? projectDetailModal.rows.map((item) => <tr key={item.projectId}><td>{item.projectCode}</td><td>{item.serviceCenter}</td><td>{formatDashboardCurrency(item.totalValue)}</td><td>{item.orderCount}</td></tr>) : <tr><td colSpan={4} className={styles.emptyRow}>Nenhum projeto encontrado.</td></tr>}</tbody><tfoot><tr><td>Total</td><td>{projectDetailModal.rows.length} projetos</td><td>{formatDashboardCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td><td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td></tr></tfoot></table></div></div></div></div> : null}
     </section>
   );
 }

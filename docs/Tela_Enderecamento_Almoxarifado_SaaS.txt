@@ -1,0 +1,194 @@
+Tela: Enderecamento Almoxarifado SaaS
+
+Visao geral
+-----------
+- Modulo real de enderecamento fisico do almoxarifado por centro de estoque.
+- Divide o fluxo em duas telas:
+  - `/configuracao-mapa-almoxarifado`: cadastro do layout fisico em Cadastro Base.
+  - `/mapa-almoxarifado`: leitura operacional e atribuicao de endereco em Almoxarifado.
+- O mapa cruza layout configurado, saldo atual em `stock_center_balances`, cadastro de `materials` e enderecos salvos em `warehouse_material_addresses`.
+- O modulo aceita somente centro fisico de almoxarifado: `stock_centers.center_type = OWN`, `controls_balance = true`, ativo e sem vinculo em `teams.stock_center_id`.
+
+Arquitetura
+-----------
+- Rotas:
+  - `src/app/(dashboard)/configuracao-mapa-almoxarifado/page.tsx`
+  - `src/app/(dashboard)/mapa-almoxarifado/page.tsx`
+- APIs:
+  - `src/app/api/warehouse-addressing/config/route.ts`
+  - `src/app/api/warehouse-addressing/config/history/route.ts`
+  - `src/app/api/warehouse-addressing/map/route.ts`
+- Modulo frontend:
+  - `src/modules/dashboard/enderecamento-almoxarifado/types.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/constants.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/api.ts`
+  - `src/modules/dashboard/enderecamento-almoxarifado/WarehouseMapConfigPageView.tsx`
+  - `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressingMapPageView.tsx`
+  - `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressing.module.css`
+  - `src/modules/dashboard/enderecamento-almoxarifado/index.ts`
+- Modulo server-side:
+  - `src/server/modules/warehouse-addressing/types.ts`
+  - `src/server/modules/warehouse-addressing/handlers.ts`
+- Banco:
+  - `supabase/migrations/288_create_warehouse_addressing_module.sql`
+  - `supabase/migrations/289_warehouse_addressing_cell_clear_and_conflicts.sql`
+  - `supabase/migrations/290_warehouse_map_config_history_snapshot.sql`
+  - `supabase/migrations/291_warehouse_address_history_action_index.sql`
+  - `supabase/migrations/292_warehouse_addressing_multi_position.sql`
+
+Cadastro
+--------
+- A tela de configuracao permite:
+  - selecionar centro fisico de almoxarifado;
+  - definir quantidade de colunas e linhas, com limite de 15 colunas e 20 linhas;
+  - escolher o tipo ao adicionar: `Prateleira` ou `Pallet`;
+  - clicar em celulas para adicionar/remover prateleiras ou pallets;
+  - selecionar prateleira/pallet;
+  - definir andares e quantidade de posicoes por andar para prateleira, com limite de 10 andares e 10 posicoes por andar;
+  - manter pallet como endereco de posicao unica;
+  - salvar layout via RPC `save_warehouse_map_config`.
+- O botao `Salvar` fica no cabecalho do card "Configuracao do mapa", ao lado do botao `Historico` (nao mais dentro do painel "Prateleira selecionada"); tecnicamente e um `<button type="submit" form="warehouse-map-config-form">` fora da tag `<form>`, ligado a ela pelo atributo HTML `form`.
+- O layout e salvo por `tenant_id + stock_center_id`.
+- A RPC bloqueia salvar layout que remova posicoes ainda ocupadas e retorna em `conflicts` a lista de materiais/posicoes que impedem o salvamento (`codigo`, `coluna`, `linha`, `andar`, `posicao`).
+- A tela de configuracao exibe essa lista de conflitos quando o salvar falha por `ADDRESSES_OUTSIDE_NEW_LAYOUT`, orientando o usuario a limpar ou realocar o material em `/mapa-almoxarifado` antes de tentar salvar de novo.
+- A RPC bloqueia centro vinculado a equipe com `STOCK_CENTER_NOT_PHYSICAL_WAREHOUSE`.
+- Erro `CONCURRENT_MODIFICATION` (409): o `updated_at` carregado pela tela e diferente do atual no banco (outra aba/usuario salvou este mesmo mapa nesse meio-tempo, ou a tela ficou aberta por um tempo). A tela recarrega a configuracao atual **automaticamente** (sem clique) assim que o erro acontece e avisa o usuario; ela nunca reenvia sozinha as edicoes antigas por cima da versao nova (isso sobrescreveria silenciosamente a mudanca de outro usuario), entao o usuario precisa refazer as alteracoes desejadas e salvar de novo. Nao ha perda de dado no banco, so a versao em memoria da tela fica desatualizada.
+- Edicao no grid (adicionar/remover prateleira, trocar tipo, mexer em andares/posicoes) e 100% local (`setConfig`, sem chamada de API); o layout inteiro so sobe pro banco quando o usuario clica em `Salvar`, e cada clique gera **uma unica** linha de historico `CONFIG_SAVE` com o antes/depois daquela sessao de edicao (nao uma linha por celula mexida).
+- `warehouse_shelves.storage_type` diferencia `SHELF`, `PALLET` e `BAIA`.
+- `warehouse_maps_grid_limits_check`, `warehouse_shelf_floors_numero_positive` e `warehouse_shelf_floors_positions_positive` limitam novas gravacoes no banco.
+- Botao `Historico` na tela de configuracao abre lista paginada (5 por pagina) com quem alterou, quando e o resumo de mudancas (colunas/linhas adicionadas ou removidas; prateleiras/baias/pallets adicionados, removidos ou com tipo/andares alterados), a partir do snapshot `before`/`after` gravado em `warehouse_address_history.details` a cada `CONFIG_SAVE`. Gravacoes sem mudanca real de layout (usuario clicou Salvar sem editar nada) aparecem como "Configuracao salva sem alteracoes de layout", distinto de registros anteriores a este recurso (sem snapshot).
+
+Filtros, auto-complete e listagem
+---------------------------------
+- A tela de leitura permite:
+  - selecionar centro fisico de almoxarifado;
+  - buscar material por codigo ou nome (com busca ativa, celulas sem material correspondente ficam apagadas/dessaturadas — efeito "holofote" — e a celula com match ganha destaque com sombra e leve zoom);
+  - visualizar prateleiras, pallets e chao livre; cada andar mostra um selo com a ocupacao real (ex.: "2/5"), com cor de fundo interpolada de claro (vago) a azul solido (cheio) via `color-mix`, no lugar do pontinho de 3 cores fixas usado antes;
+  - abrir detalhe de andar/posicao;
+  - ver materiais disponiveis para enderecar;
+  - atribuir endereco: `Andar` e `Posicao` sao selects preenchidos a partir da configuracao real da prateleira/baia/pallet escolhida (nunca aceitam numero fora do que foi configurado; trocar a prateleira ou o andar reajusta as opcoes e reenquadra a posicao selecionada automaticamente);
+  - realocar um endereco especifico do material (muda a posicao daquele endereco, sem afetar outros enderecos do mesmo material);
+  - adicionar outro endereco para um material que ja esta enderecado (o mesmo material pode ocupar mais de uma posicao ao mesmo tempo; nao ha controle de quantidade por posicao, so presenca);
+  - remover um endereco especifico (o material some so daquela posicao; se tiver outros enderecos, eles continuam);
+  - limpar posicao (remove de uma vez todos os materiais enderecados numa celula coluna+linha, independente de andar/posicao/tipo), usada antes de mover uma prateleira/baia/pallet de lugar na configuracao; a confirmacao usa modal proprio da tela (`clearCellConfirm`), nao `window.confirm` do navegador;
+  - enderecar em massa materiais com saldo (o mesmo material pode aparecer em mais de uma linha do CSV, em posicoes diferentes, mesmo ja tendo outro endereco).
+- A API retorna somente materiais vinculados ao saldo do centro selecionado e/ou ja enderecados no mapa; cada material traz `enderecos: []` (lista, pode ter 0, 1 ou mais posicoes).
+- A lista "Materiais para enderecar" mostra todo material com saldo > 0, **independente de ja ter endereco ou nao** (correcao: antes o material sumia da lista assim que ganhava 1 endereco, dificultando endereca-lo numa segunda posicao). Cada linha mostra "Ja enderecado em N posicao(oes)" quando aplicavel; o botao de acao sempre cria mais um endereco novo, nunca remove os existentes.
+- A lista de centros vem de `fetchPhysicalWarehouseStockCenters`, que identifica centros fisicos por ausencia de vinculo em `teams.stock_center_id`; nao usa nome como filtro.
+- O enderecamento em massa usa as primeiras posicoes vagas do mapa e limita o lote a 100 materiais por chamada.
+- A RPC `assign_warehouse_material_addresses_batch` valida o lote inteiro antes de gravar: material ativo, saldo positivo no centro, posicao existente, posicao vaga e sem posicao duplicada no lote (o mesmo material pode aparecer mais de uma vez, em posicoes diferentes).
+
+Boas praticas
+-------------
+- Toda rota usa `resolveAuthenticatedAppUser`.
+- Toda rota usa `requirePageAction`:
+  - `configuracao-mapa-almoxarifado/read`
+  - `configuracao-mapa-almoxarifado/update`
+  - `mapa-almoxarifado/read`
+  - `mapa-almoxarifado/update`
+- Nenhuma rota aceita `tenant_id`, `actor_user_id` ou role do cliente.
+- Tabelas novas usam RLS para leitura e nao criam policy de escrita direta para `authenticated`.
+- Escritas passam por RPC `SECURITY DEFINER` com EXECUTE somente para `service_role`.
+- Queries selecionam colunas explicitamente; nao ha `.select("*")`.
+- O backend valida centro fisico antes de carregar/salvar configuracao, carregar mapa, atribuir endereco e remover endereco.
+- Enderecamento em massa e atomico por RPC; se qualquer item falhar, nenhum endereco do lote e gravado.
+- Enderecamento nao tem quantidade por posicao (decisao consciente, migration 292): mexer no saldo (Entrada/Saida/Transferencia/Operacoes de Equipe) so muda `stock_center_balances`, sem nenhum vinculo com prateleira/posicao; uma quantidade manual por endereco ficaria desatualizada silenciosamente a cada movimentacao, entao o endereco continua sendo so um marcador de presenca (onde o material esta), sem "quanto tem ali".
+
+Cancelamento e saldo
+--------------------
+- Nao ha cancelamento de material ou movimentacao de saldo nesta tela.
+- Atribuir/remover endereco nao altera `stock_center_balances`.
+- O saldo exibido vem do estoque atual do centro selecionado.
+- Cadastro em massa so considera materiais com `quantity > 0` em `stock_center_balances` para o centro selecionado.
+
+Atalhos
+-------
+- `/configuracao-mapa-almoxarifado`: secao `Cadastro Base`.
+- `/mapa-almoxarifado`: secao `Almoxarifado`.
+
+Atualizacao 2026-07
+-------------------
+- Antes:
+  - Nao existia enderecamento fisico de almoxarifado.
+  - Materiais nao possuia limites de estoque minimo/maximo.
+- Depois:
+  - Criadas tabelas `warehouse_maps`, `warehouse_shelves`, `warehouse_shelf_floors`, `warehouse_material_addresses` e `warehouse_address_history`.
+  - Criadas RPCs `save_warehouse_map_config`, `assign_warehouse_material_address` e `clear_warehouse_material_address`.
+  - Materiais recebeu `stock_minimum` e `stock_maximum`.
+  - Criadas telas reais de configuracao e leitura do mapa.
+  - Ajustada a identificacao de centro fisico: centros de equipe continuam sendo `OWN`, mas ficam bloqueados por vinculo em `teams.stock_center_id`.
+  - Adicionado tipo `PALLET` no cadastro do mapa.
+  - Adicionado enderecamento em massa atomico no mapa para materiais com saldo e sem endereco.
+  - Limitado o layout a 15 colunas, 20 linhas, 10 andares e 10 posicoes por andar no frontend e no banco.
+- Depois (migration 289):
+  - Criada a RPC `clear_warehouse_cell_addresses` para limpar em lote todos os materiais enderecados numa posicao (coluna+linha), independente de andar/posicao/tipo de armazenamento.
+  - Adicionado o botao `Limpar posicao` em `/mapa-almoxarifado`, na celula selecionada, para uso proativo antes de mover uma prateleira/baia/pallet na configuracao.
+  - `save_warehouse_map_config` passou a retornar `conflicts` (lista de materiais/posicoes) junto do erro `ADDRESSES_OUTSIDE_NEW_LAYOUT`, e `/configuracao-mapa-almoxarifado` passou a exibir essa lista em tela quando o salvar falha.
+- Depois (migration 290):
+  - `save_warehouse_map_config` passou a gravar snapshot `before`/`after` (colunas, linhas, prateleiras com andares) em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
+  - Criado `GET /api/warehouse-addressing/config/history` (paginado, 5 por pagina) e o botao `Historico` em `/configuracao-mapa-almoxarifado`, mostrando quem alterou, quando e um resumo legivel do que mudou.
+  - Adicionado recarregamento automatico da configuracao quando o salvar falha com `CONCURRENT_MODIFICATION` (sem reenviar as edicoes antigas sozinho).
+  - Cor da celula `Prateleira` trocada de branco para lilas (`#f6f0fc`) no grid, para diferenciar visualmente de Pallet (verde) e Baia (azul).
+- Depois (migration 291 e ajustes de auditoria):
+  - Substituido o indice de `warehouse_address_history` por um composto incluindo `action_type`, evitando que a consulta paginada de `CONFIG_SAVE` precise varrer o volume, maior e crescente, de `ADDRESS_ASSIGN`/`ADDRESS_CLEAR` do mesmo mapa.
+  - Corrigida a mensagem do historico para distinguir "salvo sem alteracoes de layout" (snapshot presente, sem diff) de "registro anterior a este recurso" (sem snapshot).
+  - Confirmado e documentado que a edicao do grid e local; o `CONFIG_SAVE` (e o crescimento do historico) so acontece por clique em Salvar, nao por celula mexida — decisao de manter o historico sem rotina de limpeza/retencao por enquanto.
+- Depois (fix Andar/Posicao no modal Atribuir endereco):
+  - `Andar` e `Posicao` no modal `Atribuir endereco` (`/mapa-almoxarifado`) eram `<input type="number">` com `min="1"` e sem `max`, aceitando visualmente qualquer numero mesmo fora do que a prateleira/baia/pallet tinha configurado (o backend ja bloqueava com `INVALID_ADDRESS`, mas so no submit). Viraram `<select>` preenchidos com os andares/posicoes reais da prateleira selecionada; trocar prateleira ou andar reenquadra a posicao automaticamente para um valor sempre valido.
+- Depois (modal proprio para confirmar `Limpar posicao`):
+  - Substituido o `window.confirm` nativo do navegador por um modal proprio da tela (mesmo padrao visual dos demais modais do modulo) ao clicar em `Limpar posicao`, com botoes `Cancelar` e `Remover endereco`.
+- Depois (migration 292 — mesmo material em mais de uma posicao):
+  - Removida a constraint `warehouse_material_addresses_unique_material`: um material pode ocupar mais de uma posicao no mesmo mapa (endereco continua sendo so marcador de presenca, sem quantidade — decisao consciente, ver "Boas praticas").
+  - `assign_warehouse_material_address` ganhou `p_address_id` opcional: nulo cria um endereco novo (o material passa a ocupar mais uma posicao), preenchido edita aquele endereco especifico (mover/realocar sem afetar os demais).
+  - `assign_warehouse_material_addresses_batch` parou de bloquear material repetido no lote (`DUPLICATE_BATCH_MATERIAL`) e material ja enderecado (`MATERIAL_ALREADY_ADDRESSED`); mantido o bloqueio de posicao repetida/ocupada.
+  - `clear_warehouse_material_address` passou a identificar a linha por `p_address_id` em vez de `p_material_id`, ja que agora um material pode ter mais de um endereco.
+  - Backend: `materiais[].enderecos` (lista) substitui os campos soltos `coluna/linha/andar/posicao/enderecoId/enderecoUpdatedAt` por material.
+  - Frontend: novo estado `selectedAddress` (endereco especifico selecionado no mapa); "Realocar" edita so aquele endereco; novo botao "Adicionar outro endereco" cria um endereco extra pro mesmo material; "Remover endereco" remove so o endereco especifico, nao todos do material.
+- Depois (fix da lista "Materiais para enderecar"):
+  - A lista (antes "Sem endereco") so mostrava material com **zero** enderecos; ao endereca-lo uma vez ele sumia da lista, dificultando endereca-lo numa segunda posicao (o proposito da migration 292). Corrigido: a lista passou a mostrar todo material com saldo > 0, com "Ja enderecado em N posicao(oes)" indicado por linha quando aplicavel; o botao de acao sempre cria mais um endereco.
+- Depois (selo de ocupacao por andar e busca em modo holofote):
+  - O pontinho de 3 cores fixas por andar (vago/parcial/ocupado, sem numero) virou um selo (`floorBadge`) mostrando a fracao real "ocupado/total", com fundo interpolado de claro a azul solido via `color-mix` conforme o percentual ocupado. Criada `floorOccupancyCounts` em `utils.ts` (substitui `floorOccupancyStatus`, que so devolvia 3 categorias).
+  - A busca por material (`Busca`) passou a apagar/dessaturar (`dimmedCell`) as celulas sem material correspondente enquanto ha texto digitado, e a celula com match ganha destaque mais forte (sombra + leve zoom), em vez de so uma borda azul sutil nas combinacoes.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/WarehouseMapConfigPageView.tsx`
+  - Responsavel por: configurar grid, prateleiras, pallets, andares, posicoes e salvar layout.
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/WarehouseAddressingMapPageView.tsx`
+  - Responsavel por: renderizar mapa, status de ocupacao, detalhe, busca, atribuicao/remocao manual e enderecamento em massa.
+- Caminho: `src/server/modules/warehouse-addressing/handlers.ts`
+  - Responsavel por: autenticar, autorizar, identificar centros fisicos elegiveis, listar configuracao/mapa (agrupando enderecos por material em `materiais[].enderecos`), delegar escritas para RPC (`handleWarehouseAddressPost` repassa `addressId` opcional para editar um endereco especifico; `handleWarehouseAddressDelete` roteia por `addressId` para remover um endereco especifico, ou por `coluna`+`linha` sem `addressId` para limpeza por celula), repassar `conflicts` na resposta de erro do save de configuracao e `handleWarehouseConfigHistoryGet` (historico paginado de `CONFIG_SAVE` com `createdByName` resolvido via `app_users`).
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/constants.ts`
+  - Responsavel por: limites de colunas, linhas, andares, posicoes por andar e lote.
+- Caminho: `supabase/migrations/288_create_warehouse_addressing_module.sql`
+  - Responsavel por: schema, RLS, permissoes, page keys, `warehouse_shelves.storage_type`, funcao `is_physical_warehouse_stock_center`, trigger de validacao e RPCs do enderecamento.
+- Caminho: `supabase/migrations/289_warehouse_addressing_cell_clear_and_conflicts.sql`
+  - Responsavel por: RPC `clear_warehouse_cell_addresses` (limpeza em lote por coluna+linha) e recriacao de `save_warehouse_map_config` com `conflicts` detalhado no bloqueio `ADDRESSES_OUTSIDE_NEW_LAYOUT`.
+- Caminho: `supabase/migrations/290_warehouse_map_config_history_snapshot.sql`
+  - Responsavel por: recriacao de `save_warehouse_map_config` para gravar snapshot `before`/`after` (colunas, linhas, prateleiras com andares) em `warehouse_address_history.details` a cada `CONFIG_SAVE`.
+- Caminho: `supabase/migrations/291_warehouse_address_history_action_index.sql`
+  - Responsavel por: indice composto `(tenant_id, map_id, action_type, created_at desc)` em `warehouse_address_history`, substituindo o indice sem `action_type`.
+- Caminho: `supabase/migrations/292_warehouse_addressing_multi_position.sql`
+  - Responsavel por: remover `warehouse_material_addresses_unique_material` e recriar `assign_warehouse_material_address` (com `p_address_id` opcional), `assign_warehouse_material_addresses_batch` (sem bloqueio de material repetido/ja enderecado) e `clear_warehouse_material_address` (identificado por `p_address_id`), permitindo o mesmo material em mais de uma posicao.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/enderecamento-almoxarifado/utils.ts`
+  - Responsavel por: gerar colunas/linhas, codigo de posicao, status de material/andar (baseado em saldo, nao em endereco), `floorOccupancyCounts` (conta ocupado/total por andar a partir da lista de enderecos, usado no selo de ocupacao), formatacao de quantidade e `summarizeConfigHistoryChanges` (resumo legivel do diff de historico).
+
+Servicos e integracoes externas
+- Nao ha integracao externa.
+- O modulo integra internamente com Supabase por rotas Next e RPC.
+
+Ajuda contextual
+- Para criar um mapa, primeiro cadastre o layout em `/configuracao-mapa-almoxarifado`.
+- Para atribuir materiais, acesse `/mapa-almoxarifado`, selecione o mesmo centro de estoque e use a lista `Sem endereco`.
+- Para lote, use `Enderecar em massa` na lista `Sem endereco`; revise a lista de material -> endereco antes de confirmar.
+- Para mover uma prateleira/baia/pallet de lugar: va em `/mapa-almoxarifado`, selecione a celula e use `Limpar posicao` para desenderecar de uma vez todos os materiais dali; so depois mexa no layout em `/configuracao-mapa-almoxarifado`.
+- Se salvar o layout falhar com a lista de "Materiais bloqueando o novo layout", use essa lista para saber exatamente quais materiais/posicoes precisam ser limpos ou realocados antes de tentar salvar de novo.
+- Se salvar o layout falhar com "A configuracao do mapa foi alterada por outro usuario", a tela ja recarrega sozinha a versao mais recente; so refaca as alteracoes desejadas e salve de novo.
+- Para ver quem alterou o layout e o que mudou, use o botao `Historico` em `/configuracao-mapa-almoxarifado`.
+- Para enderecar o mesmo material em mais de um lugar (estoque fisico dividido entre prateleiras): selecione a posicao ja ocupada pelo material e clique em "Adicionar outro endereco" no painel de detalhe; isso nao mexe no endereco existente, so cria mais um.
