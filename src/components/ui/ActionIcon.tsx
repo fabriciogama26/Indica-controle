@@ -1,4 +1,4 @@
-type ActionIconName = "details" | "edit" | "history" | "cancel" | "activate" | "exportCsv" | "transfer" | "address";
+type ActionIconName = "details" | "edit" | "history" | "cancel" | "activate" | "exportCsv" | "transfer" | "address" | "info";
 
 type ActionIconProps = {
   name: ActionIconName;
@@ -95,6 +95,14 @@ export function ActionIcon({ name, className }: ActionIconProps) {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
+        </svg>
+      );
+    case "info":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
+          <path d="M12 10.75v5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+          <circle cx="12" cy="7.8" r="1" fill="currentColor" />
         </svg>
       );
     default:

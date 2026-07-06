@@ -52,22 +52,29 @@ Filtros, auto-complete e listagem
     - Eixo Y: numero de operacoes, com rotulo `Operacoes` por extenso e na horizontal
     - Tamanho do ponto: saldo atual do material
     - Cor do ponto: faixa de quantidade movimentada, com legenda no grafico (`<= 10`, `11-20`, `21-30`, `31-40`, `41-50`, `51-100`, `101-200` e depois intervalos de 200 em 200)
+    - Faixas dinamicas acima da paleta fixa recebem cor deterministica propria; faixas como `1001-1200`, `2801-3000` e `12801-13000` nao reutilizam automaticamente a ultima cor da paleta.
   - `Materiais criticos e zerados`
     - Materiais com saldo menor ou igual ao limite critico
   - `Top materiais por saldo`
     - Materiais com maior saldo consolidado
   - `Materiais sem giro`
     - Faixas por ultima movimentacao conhecida
+    - Clique na barra/faixa abre modal com os materiais daquela faixa.
+    - O modal permite exportar os materiais exibidos em CSV pelo componente padrao `CsvExportButton`.
   - `Curva ABC do estoque`
     - Alternancia por botao entre `Valor` e `Quantidade`
     - Modo `Valor`: classificacao por `saldo x unit_price`
     - Modo `Quantidade`: classificacao por quantidade em estoque
+    - Clique na linha da classe `A`, `B` ou `C` abre modal com os materiais daquela classe.
+    - O modal permite exportar os materiais exibidos em CSV pelo componente padrao `CsvExportButton`.
   - `Evolucao de movimentacoes`
     - Quantidade mensal de operacoes realizadas por tipo
     - Cada combinacao `data da movimentacao + equipe + projeto + status` e contada uma unica vez no mes e tipo, mesmo quando possui varios materiais ou varias linhas do mesmo evento
     - O evento operacional tambem e persistido em `stock_transfers.operation_event_id` por `tenant_id + data da movimentacao + equipe + projeto + status`
     - A contagem da evolucao nao depende da hidratacao de `materials` quando nao ha filtro de material/tipo
     - O total de cada tipo e exibido diretamente acima da respectiva barra mensal
+    - O valor estimado mensal e exibido abaixo do mes e soma `quantidade movimentada x unit_price` dos itens validos do mes.
+    - Icone `i` ao lado do total de operacoes usa tooltip nativo do navegador para explicar a formula: soma de `quantidade movimentada x preco unitario do material`, respeitando filtros aplicados e excluindo estornos/movimentos estornados.
     - Nao soma quantidades de UMB diferentes no mesmo grafico
 - Cards:
   - Materiais
@@ -89,6 +96,11 @@ Boas praticas
 - Para evolucao temporal, contar operacoes distintas por `data + equipe + projeto + status`, sem usar a quantidade de itens ou transferencias como quantidade de operacoes.
 - `operation_event_id` persiste a mesma regra de negocio com `tenant + data + equipe + projeto + status`.
 - Excluir movimentacoes estornadas e movimentacoes de estorno dos agregados quando houver vinculo em `stock_transfer_reversals` ou `stock_transfer_item_reversals`.
+- Migracao recomendada para RPC:
+  - Consolidar em RPC/view materializada os agregados de saldos por material/UMB, criticidade, top saldo, giro, Curva ABC, evolucao mensal e dispersao.
+  - Manter no endpoint Next apenas autenticacao/permissao da pagina, normalizacao de filtros e chamada da RPC.
+  - A RPC deve receber `tenant_id`, periodo, centro, equipe, projeto, material, tipo e limite critico, aplicar filtros nativos no banco e excluir estornos pelo relacionamento de reversao.
+  - O ganho esperado e reduzir volume trafegado para Node e remover loops de agregacao em memoria do dashboard.
 
 Cancelamento e saldo
 --------------------
@@ -120,6 +132,35 @@ Atualizacao 2026-07-03 (2) - Correcao de truncamento silencioso em loadTransfers
   - Validado com consulta direta ao Supabase: 2026 tinha 1358 `stock_transfers` reais, mas a query anterior retornava apenas 1000; apos a correcao, os 1358 sao carregados e a contagem de Requisicao em 06/2026 sobe de 5 para 50 (05/2026, que ja estava dentro da janela de 1000 linhas, permanece em 71, confirmando que o calculo em si estava correto).
 - Impacto multi-tenant:
   - Sem mudanca de schema/RLS; a paginacao mantem o filtro por `tenant_id` existente em cada pagina.
+
+Atualizacao 2026-07-06 - Modais de detalhamento, cores dinamicas e valor mensal
+--------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dash-estoque/route.ts`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - Faixas dinamicas da dispersao acima do tamanho da paleta fixa reutilizavam a ultima cor, deixando faixas altas visualmente iguais.
+  - A Curva ABC exibia apenas os totais por classe.
+  - Materiais sem giro exibia apenas totais por faixa.
+  - Evolucao mensal exibia somente quantidade de operacoes por tipo.
+  - O endpoint calculava os agregados no Node, sem uma RPC consolidada especifica para o dashboard.
+- Depois:
+  - `buildScatterQuantityBands` passa a usar `getScatterQuantityPalette`; acima da paleta fixa, a cor e gerada por HSL deterministico e convertida para HEX, mantendo `fill` com transparencia.
+  - A API adiciona `materials` em cada linha da Curva ABC e em cada bucket de sem giro, com codigo, descricao, UMB, tipo, saldo, valor estimado, preco unitario e ultima movimentacao.
+  - Clique na linha da classe ABC abre modal com os materiais da classe e percentual individual da metrica ABC.
+  - Clique na barra/faixa de Materiais sem giro abre modal com os materiais da faixa e dias sem movimento.
+  - O modal de materiais passa a usar `CsvExportButton`, `buildCsvContent` e `downloadCsvFile` para exportar as linhas exibidas em CSV.
+  - `movementEvolution` passa a incluir `estimatedValue` mensal, calculado por `quantity * unit_price` dos movimentos validos, e o frontend exibe o valor abaixo do mes.
+  - O cabecalho da Evolucao recebe botao informativo `i` com tooltip nativo (`title`) explicando a formula do valor estimado mensal.
+  - O tooltip customizado foi removido para evitar duas caixas simultaneas e reduzir codigo/CSS.
+  - Documentada pendencia tecnica para migrar agregacoes do Dashboard Estoque para RPC/view materializada.
+- Impacto multi-tenant:
+  - Sem mudanca de schema, migration ou policy RLS.
+  - As consultas permanecem filtradas por `tenant_id` e pela permissao da pagina `dash-estoque`.
+  - O novo detalhe exibido em modal vem do mesmo payload ja escopado pelo endpoint autenticado.
 
 Atualizacao 2026-07-03 - Correcao de subcontagem na evolucao de movimentacoes
 ------------------------------------------------------------------------------
@@ -246,8 +287,11 @@ Constantes e configuracoes
     - `operationLabels`
     - `ScatterScale`
     - `evolutionKeys`
+    - `evolutionEstimatedValueHelp`
     - `DASH_IN_FILTER_CHUNK_SIZE`
     - periodo inicial do ano corrente
+- Caminho: `src/components/ui/ActionIcon.tsx`
+  - Responsavel por: icones compartilhados de acoes; inclui `info` para ajuda contextual.
 - Caminho: `supabase/migrations/186_create_stock_dashboard_page.sql`
   - Responsavel por: inserir/atualizar `app_pages`, `role_page_permissions` e `app_user_page_permissions` para `dash-estoque`.
 
@@ -267,6 +311,7 @@ Funcoes utilitarias relacionadas
     - `loadReversalSets`
     - `buildCriticalRows`
     - `buildTopBalanceRows`
+    - `buildMaterialDetail`
     - `buildIdleBuckets`
     - `buildAbcRows`
     - `buildEvolutionRows`
@@ -289,8 +334,19 @@ Funcoes utilitarias relacionadas
     - `scatterOffset`
     - `scatterQuantityPalette`
     - `buildScatterQuantityBands`
+    - `getScatterQuantityPalette`
     - `getScatterQuantityBand`
+    - `hslToHex`
+    - `MaterialDetailsModal`
+    - `openIdleMaterials`
+    - `openAbcMaterials`
+    - `exportMaterialModalRows`
+    - `formatFileNamePart`
+    - `normalizeTextForFileName`
+    - `evolutionEstimatedValueHelp`
     - `selectedScatterMaterialId`
+    - `materialModal`
+    - `isExportingMaterialModal`
     - `selectedScatterPoint`
     - `handleScatterOperationChange`
     - `hasLoadedInitialDashboard`
