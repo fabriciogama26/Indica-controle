@@ -49,6 +49,41 @@
   line-height: 1.25;
 }
 
+.projectUsageBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.projectUsageBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 0.63rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0;
+  user-select: none;
+}
+
+.projectUsageBadgeUsed {
+  background: linear-gradient(180deg, #2d75d8 0%, #1555b7 100%);
+  color: #ffffff;
+  border: 1px solid rgba(21, 85, 183, 0.2);
+  box-shadow: 0 2px 4px rgba(21, 85, 183, 0.18);
+}
+
+.projectUsageBadgeUnused {
+  background: #edf1f8;
+  color: #6a7892;
+  border: 1px solid rgba(106, 120, 146, 0.22);
+}
+
 .field input,
 .field select,
 .field textarea,

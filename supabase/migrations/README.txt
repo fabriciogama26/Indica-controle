@@ -852,3 +852,8 @@ Observacao
 - Recria `assign_warehouse_material_addresses_batch` removendo os bloqueios `DUPLICATE_BATCH_MATERIAL` e `MATERIAL_ALREADY_ADDRESSED` (mantem `DUPLICATE_BATCH_POSITION`/`POSITION_OCCUPIED`/`MATERIAL_WITHOUT_STOCK`).
 - Recria `clear_warehouse_material_address` para identificar a linha por `p_address_id` em vez de `p_material_id`.
 - Mantem EXECUTE restrito a `service_role` e sem alteracao de policies RLS.
+
+293_create_measurement_project_activity_indicators.sql
+- Cria `measurement_project_activity_indicators` para configurar, por tenant, quais codigos de atividades devem aparecer como chips de uso no cadastro da Medicao.
+- Adiciona RLS por tenant via `user_can_access_tenant`, indice por `tenant_id + is_active + sort_order + activity_code` e trigger de auditoria.
+- Faz seed inicial dos codigos `AHO717` e `AHO720` para tenants existentes, permitindo alterar/adicionar/remover codigos pela tabela sem mexer no frontend.
