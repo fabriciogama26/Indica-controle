@@ -39,6 +39,7 @@ import {
   fetchProgrammingActivitiesForSave,
   fetchProgrammingById,
   fetchProgrammingConflictPayload,
+  fetchProgrammingGroupStageMismatch,
   fetchProgrammingResponseItem,
   fetchProgrammingStageValidation,
 } from "./queries";
@@ -1168,6 +1169,23 @@ export async function transferTeamToProgramming(request: NextRequest) {
   });
 }
 
+function describeEtapaClassification(etapaNumber: number | null, etapaUnica: boolean, etapaFinal: boolean) {
+  if (etapaUnica) return "ETAPA UNICA";
+  if (etapaFinal) return "ETAPA FINAL";
+  if (etapaNumber !== null) return `ETAPA ${etapaNumber}`;
+  return "sem ETAPA";
+}
+
+function buildGroupStageMismatchMessage(
+  mismatches: Awaited<ReturnType<typeof fetchProgrammingGroupStageMismatch>>,
+) {
+  const details = mismatches
+    .map((item) => `${item.teamName} (${describeEtapaClassification(item.etapaNumber, item.etapaUnica, item.etapaFinal)})`)
+    .join(", ");
+
+  return `A ETAPA informada diverge de outra(s) equipe(s) ja ativa(s) para este projeto nesta data: ${details}. Equipes do mesmo projeto e data devem compartilhar a mesma classificacao de ETAPA para que o Estado Trabalho sincronize corretamente entre elas.`;
+}
+
 export async function saveProgrammingBatch(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para registrar programacao em lote.",
@@ -1350,6 +1368,28 @@ export async function saveProgrammingBatch(request: NextRequest) {
           { status: 409 },
         );
       }
+    }
+
+    const batchGroupStageMismatches = await fetchProgrammingGroupStageMismatch({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectId,
+      executionDate,
+      etapaNumber,
+      etapaUnica,
+      etapaFinal,
+      excludeTeamIds: teamIds,
+    });
+
+    if (batchGroupStageMismatches.length) {
+      return NextResponse.json(
+        {
+          reason: "PROGRAMMING_GROUP_STAGE_MISMATCH",
+          message: buildGroupStageMismatchMessage(batchGroupStageMismatches),
+          groupStageMismatchTeams: batchGroupStageMismatches,
+        } satisfies BatchCreateProgrammingResponse,
+        { status: 409 },
+      );
     }
 
     if (workCompletionStatusRaw) {
@@ -1752,6 +1792,29 @@ export async function saveProgramming(request: NextRequest, method: "POST" | "PU
         { status: 409 },
       );
     }
+  }
+
+  const groupStageMismatches = await fetchProgrammingGroupStageMismatch({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    projectId,
+    executionDate,
+    etapaNumber,
+    etapaUnica,
+    etapaFinal,
+    excludeProgrammingId: programmingId || null,
+    excludeTeamIds: [teamId],
+  });
+
+  if (groupStageMismatches.length) {
+    return NextResponse.json(
+      {
+        reason: "PROGRAMMING_GROUP_STAGE_MISMATCH",
+        message: buildGroupStageMismatchMessage(groupStageMismatches),
+        groupStageMismatchTeams: groupStageMismatches,
+      },
+      { status: 409 },
+    );
   }
 
   if (workCompletionStatusRaw && !workCompletionStatus) {

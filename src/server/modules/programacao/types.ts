@@ -427,11 +427,13 @@ export type BatchCreateProgrammingResponse = {
   success?: boolean;
   insertedCount?: number;
   message?: string;
+  reason?: string | null;
   warning?: string | null;
   enteredEtapaNumber?: number;
   hasConflict?: boolean;
   highestStage?: number;
   teams?: ProgrammingStageValidationTeamSummary[];
+  groupStageMismatchTeams?: ProgrammingGroupStageMismatchTeamSummary[];
 };
 
 export type BatchProgrammingRpcItem = {
@@ -493,6 +495,14 @@ export type ProgrammingStageValidationResponse = {
   highestStage: number;
   teams: ProgrammingStageValidationTeamSummary[];
   message: string;
+};
+
+export type ProgrammingGroupStageMismatchTeamSummary = {
+  teamId: string;
+  teamName: string;
+  etapaNumber: number | null;
+  etapaUnica: boolean;
+  etapaFinal: boolean;
 };
 
 export type CancelProgrammingRpcResult = {

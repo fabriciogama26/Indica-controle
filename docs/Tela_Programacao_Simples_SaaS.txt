@@ -2912,3 +2912,38 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: botoes de exportacao usavam botoes locais ou feedback apenas no texto do botao.
 - Depois: exportacoes usam `CsvExportButton`, herdando `ExportProgressModal`.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-05 - Bloqueio de ETAPA divergente entre equipes do mesmo Projeto + Data
+-------------------------------------------------------------------------------------------
+- Problema resolvido:
+  - Duas equipes do mesmo projeto + mesma data de execucao podiam ser salvas com classificacao de ETAPA diferente (ex.: uma com `etapa_unica = true`, outra com `etapa_number = 1`), pois nenhuma validacao comparava a ETAPA de uma equipe com a das demais equipes ja ativas no mesmo projeto/data.
+  - Isso fazia as duas equipes cairem em `programming_group_id` diferentes (migration `273_define_programming_group_id.sql`), o que impedia a sincronizacao automatica de `work_completion_status` (migration `283_sync_completed_work_status_by_programming_group.sql`): uma equipe podia ficar `CONCLUIDO` sem que a outra equipe da mesma execucao operacional herdasse o Estado Trabalho.
+  - Auditoria em producao (2026-07-05) encontrou 7 grupos de projeto+data com essa divergencia; 6 tinham a mesma assinatura (uma equipe `etapa_unica`/`CONCLUIDO` e outra presa em `etapa_number`/`etapa_final` com Estado Trabalho em branco) e foram corrigidos via UPDATE manual alinhando a ETAPA e forcando a resincronizacao. Um caso (`RC0323603632`, 2026-07-24) tinha 3 grupos com etapas sequenciais legitimas (1, 2, final) e foi deixado sem alteracao por representar etapas reais distintas, nao um erro de cadastro.
+  - Causa raiz identificada: os fluxos de `Copiar`, `Reprogramar` e `Transferir equipe` sempre preservam/herdam a ETAPA corretamente e foram descartados. O ponto de origem e o salvamento/edicao individual de uma programacao (`saveProgramming` em `src/server/modules/programacao/handlers.ts`), que so validava o historico de ETAPA da propria equipe (`fetchProgrammingStageValidation`), nunca comparando com outras equipes do mesmo projeto/data.
+- Solucao:
+  - Nova funcao `fetchProgrammingGroupStageMismatch` em `src/server/modules/programacao/queries.ts`: busca todas as programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`) do mesmo `tenant_id + project_id + execution_date` e classifica cada uma (`NUMERIC:etapa_number` / `UNIQUE` / `FINAL` / `OWN`, espelhando a logica de `resolve_project_programming_group_id` da migration 273); retorna as equipes cuja classificacao diverge da que esta sendo salva.
+  - `saveProgramming` (edicao/cadastro individual) e `saveProgrammingBatch` (cadastro em lote) passam a chamar essa funcao apos a validacao de historico de ETAPA existente e retornam HTTP 409 com `reason: "PROGRAMMING_GROUP_STAGE_MISMATCH"` e mensagem listando as equipes e etapas conflitantes quando ha divergencia.
+  - No frontend, a mensagem de erro (`data.message`) e exibida automaticamente pelo fluxo generico de erro ja existente em `ProgrammingSimplePageView.tsx` (`buildConflictFeedbackMessage` + `openAlertModal`), sem necessidade de um modal dedicado.
+- Mapa de Codigo (funcoes, hooks e constantes):
+  - Funcoes principais:
+    - Caminho: `src/server/modules/programacao/queries.ts`
+    - Funcao: `fetchProgrammingGroupStageMismatch` (usa auxiliares internas `classifyEtapa` e `sameEtapaClassification`)
+    - Responsavel por: detectar equipes ativas do mesmo projeto/data com classificacao de ETAPA diferente da que esta sendo salva.
+    - Caminho: `src/server/modules/programacao/handlers.ts`
+    - Funcoes: `saveProgramming`, `saveProgrammingBatch`, auxiliares `describeEtapaClassification` e `buildGroupStageMismatchMessage`
+    - Responsavel por: bloquear o salvamento (HTTP 409) quando `fetchProgrammingGroupStageMismatch` encontra divergencia, formatando a mensagem de erro.
+  - Constantes e configuracoes:
+    - Novo reason `PROGRAMMING_GROUP_STAGE_MISMATCH` em `src/server/modules/programacao/types.ts` (`BatchCreateProgrammingResponse.groupStageMismatchTeams`) e `src/modules/dashboard/programacao-simples/types.ts` (`SaveProgrammingResponse.groupStageMismatchTeams`, tipo `GroupStageMismatchTeamSummary`).
+- Comportamento antes/depois:
+  - Antes: era possivel salvar uma equipe com `etapa_unica`/`etapa_number`/`etapa_final` diferente de outra equipe ja ativa no mesmo projeto/data, sem aviso.
+  - Depois: o salvamento e bloqueado com mensagem explicita ("Equipes do mesmo projeto e data devem compartilhar a mesma classificacao de ETAPA...") ate que a ETAPA seja ajustada para bater com as equipes ja ativas.
+- Como validar:
+  - Programar a equipe A no projeto X na data D com `ETAPA UNICA`.
+  - Tentar programar a equipe B no mesmo projeto X, mesma data D, com `ETAPA 1` (numerica) — deve ser bloqueado com HTTP 409 e mensagem citando a equipe A e sua classificacao.
+  - Ajustar a equipe B para `ETAPA UNICA` e confirmar que o salvamento é aceito.
+- Impacto multi-tenant:
+  - A nova query filtra sempre por `tenant_id`; nenhuma alteracao de RLS ou schema foi necessaria (usa apenas colunas ja existentes).
+- Docs atualizadas:
+  - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
+  - `docs/Mapa_Regras_Programacao.md`
+  - `TASKS.md`

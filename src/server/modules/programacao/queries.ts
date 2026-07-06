@@ -426,6 +426,80 @@ export async function fetchProgrammingStageValidation(params: {
     .sort((left, right) => left.teamName.localeCompare(right.teamName));
 }
 
+function classifyEtapa(etapaNumber: number | null, etapaUnica: boolean, etapaFinal: boolean) {
+  if (etapaUnica) return { kind: "UNIQUE" as const };
+  if (etapaFinal) return { kind: "FINAL" as const };
+  if (etapaNumber !== null && etapaNumber >= 1) return { kind: "NUMERIC" as const, value: etapaNumber };
+  return { kind: "OWN" as const };
+}
+
+function sameEtapaClassification(
+  left: ReturnType<typeof classifyEtapa>,
+  right: ReturnType<typeof classifyEtapa>,
+) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "NUMERIC" && right.kind === "NUMERIC") return left.value === right.value;
+  return true;
+}
+
+export async function fetchProgrammingGroupStageMismatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+  executionDate: string;
+  etapaNumber: number | null;
+  etapaUnica: boolean;
+  etapaFinal: boolean;
+  excludeProgrammingId?: string | null;
+  excludeTeamIds?: string[];
+}) {
+  const { data, error } = await params.supabase
+    .from("project_programming")
+    .select("id, team_id, etapa_number, etapa_unica, etapa_final")
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .eq("execution_date", params.executionDate)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .returns<Array<{ id: string; team_id: string; etapa_number: number | null; etapa_unica: boolean | null; etapa_final: boolean | null }>>();
+
+  if (error || !data?.length) {
+    return [];
+  }
+
+  const enteredClassification = classifyEtapa(params.etapaNumber, params.etapaUnica, params.etapaFinal);
+  const excludeTeamIds = new Set(params.excludeTeamIds ?? []);
+
+  const mismatches = data.filter((row) => {
+    if (params.excludeProgrammingId && row.id === params.excludeProgrammingId) return false;
+    if (excludeTeamIds.has(row.team_id)) return false;
+
+    const rowClassification = classifyEtapa(row.etapa_number, Boolean(row.etapa_unica), Boolean(row.etapa_final));
+    return !sameEtapaClassification(enteredClassification, rowClassification);
+  });
+
+  if (!mismatches.length) {
+    return [];
+  }
+
+  const teamIds = Array.from(new Set(mismatches.map((item) => item.team_id)));
+  const { data: teamRows } = await params.supabase
+    .from("teams")
+    .select("id, name")
+    .eq("tenant_id", params.tenantId)
+    .in("id", teamIds)
+    .returns<Array<{ id: string; name: string }>>();
+
+  const teamNameMap = new Map((teamRows ?? []).map((item) => [item.id, normalizeText(item.name)]));
+
+  return mismatches.map((row) => ({
+    teamId: row.team_id,
+    teamName: teamNameMap.get(row.team_id) ?? row.team_id,
+    etapaNumber: row.etapa_number,
+    etapaUnica: Boolean(row.etapa_unica),
+    etapaFinal: Boolean(row.etapa_final),
+  }));
+}
+
 export async function fetchProgrammingById(
   supabase: SupabaseClient,
   tenantId: string,
