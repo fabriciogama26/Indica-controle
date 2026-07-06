@@ -113,6 +113,8 @@ Regra pratica de `programming_group_id`:
 | Editar Projeto, Data ou ETAPA | Recalcula o grupo |
 | Cancelar ou adiar sem nova data | Mantem o grupo historico |
 
+Validacao de coerencia (desde 2026-07-05): ao salvar/editar uma programacao individual (`saveProgramming`) ou cadastrar em lote (`saveProgrammingBatch`), o backend bloqueia (HTTP 409, `reason: PROGRAMMING_GROUP_STAGE_MISMATCH`) quando a classificacao de ETAPA informada diverge da classificacao de outra equipe ja ativa (`PROGRAMADA`/`REPROGRAMADA`) no mesmo `tenant_id + project_id + execution_date`. Isso impede que duas equipes do mesmo projeto/data caiam em `programming_group_id` diferentes sem intencao, o que travava a sincronizacao automatica de `work_completion_status` entre elas. Ver `fetchProgrammingGroupStageMismatch` em `src/server/modules/programacao/queries.ts`.
+
 ---
 
 ## Status Operacional

@@ -173,6 +173,14 @@ export type StageValidationResponse = {
   message?: string;
 };
 
+export type GroupStageMismatchTeamSummary = {
+  teamId: string;
+  teamName: string;
+  etapaNumber: number | null;
+  etapaUnica: boolean;
+  etapaFinal: boolean;
+};
+
 export type ActivityCatalogResponse = {
   items?: ActivityCatalogItem[];
   message?: string;
@@ -220,6 +228,7 @@ export type SaveProgrammingResponse = {
   hasConflict?: boolean;
   highestStage?: number;
   teams?: StageValidationTeamSummary[];
+  groupStageMismatchTeams?: GroupStageMismatchTeamSummary[];
 };
 
 export type CopyProgrammingToDatesTarget = {
