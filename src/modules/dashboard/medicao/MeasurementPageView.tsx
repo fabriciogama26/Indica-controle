@@ -104,6 +104,25 @@ type RateSuggestionResponse = {
   message?: string;
 };
 
+type ProjectActivityUsageItem = {
+  code: string;
+  used: boolean;
+  catalogFound: boolean;
+  lastOrder?: {
+    id: string;
+    orderNumber: string;
+    executionDate: string;
+    status: string;
+    updatedAt: string;
+  } | null;
+};
+
+type ProjectActivityUsageResponse = {
+  projectId?: string;
+  items?: ProjectActivityUsageItem[];
+  message?: string;
+};
+
 type MinimumBillingPreviewResponse = {
   applies?: boolean;
   amount?: number;
@@ -950,6 +969,8 @@ export function MeasurementPageView() {
   const [massImportResult, setMassImportResult] = useState<MassImportResultSummary | null>(null);
   const [isLoadingRateSuggestion, setIsLoadingRateSuggestion] = useState(false);
   const [rateSuggestionSource, setRateSuggestionSource] = useState<RateSuggestionSource | null>(null);
+  const [projectActivityUsage, setProjectActivityUsage] = useState<ProjectActivityUsageItem[]>([]);
+  const [isLoadingProjectActivityUsage, setIsLoadingProjectActivityUsage] = useState(false);
   const [minimumBillingPreview, setMinimumBillingPreview] = useState<MinimumBillingPreviewResponse | null>(null);
   const [isLoadingMinimumBillingPreview, setIsLoadingMinimumBillingPreview] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -1543,6 +1564,46 @@ export function MeasurementPageView() {
       ignore = true;
     };
   }, [accessToken, form.id, form.projectId]);
+
+  useEffect(() => {
+    if (!accessToken || !form.projectId) {
+      setProjectActivityUsage([]);
+      setIsLoadingProjectActivityUsage(false);
+      return;
+    }
+
+    let ignore = false;
+    async function loadProjectActivityUsage() {
+      setIsLoadingProjectActivityUsage(true);
+      setProjectActivityUsage([]);
+      try {
+        const response = await fetch(`/api/medicao/project-activity-usage?projectId=${form.projectId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => null)) as ProjectActivityUsageResponse | null;
+        if (!response.ok) {
+          throw new Error(data?.message ?? "Falha ao consultar uso das atividades do projeto.");
+        }
+        if (ignore) return;
+        setProjectActivityUsage(data?.items ?? []);
+      } catch (error) {
+        if (!ignore) {
+          setProjectActivityUsage([]);
+          setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao consultar uso das atividades do projeto." });
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingProjectActivityUsage(false);
+        }
+      }
+    }
+
+    void loadProjectActivityUsage();
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, form.projectId]);
 
   useEffect(() => {
     if (!filterDraft.projectId) return;
@@ -2795,6 +2856,26 @@ export function MeasurementPageView() {
               list="medicao-project-filter-list"
               placeholder="Digite o codigo do projeto"
             />
+            {form.projectId ? (
+              <div className={styles.projectUsageBadges} aria-label="Uso de atividades especiais no projeto selecionado">
+                {projectActivityUsage.map((usage) => {
+                  const isUsed = Boolean(usage?.used);
+                  const statusLabel = isLoadingProjectActivityUsage
+                    ? "consultando"
+                    : (isUsed ? "usada" : "nao usada");
+                  return (
+                    <span
+                      key={usage.code}
+                      className={`${styles.projectUsageBadge} ${isUsed ? styles.projectUsageBadgeUsed : styles.projectUsageBadgeUnused}`}
+                      title={`${usage.code}: ${statusLabel} neste projeto`}
+                      aria-label={`${usage.code}: ${statusLabel} neste projeto`}
+                    >
+                      {usage.code}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
           </label>
           <label className={styles.field}>
             <span>Equipe <span className="requiredMark">*</span></span>

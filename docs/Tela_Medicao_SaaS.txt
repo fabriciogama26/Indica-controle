@@ -18,6 +18,8 @@ Arquitetura
 - Estilo dedicado: `src/modules/dashboard/medicao/MeasurementPageView.module.css`
 - API da tela:
   - `src/app/api/medicao/route.ts`
+- Consulta de uso de atividades especiais por projeto:
+  - `src/app/api/medicao/project-activity-usage/route.ts`
 - Fonte complementar para selecao de origem (somente contexto da ordem):
   - `src/app/api/programacao/route.ts`
 - Catalogo de atividades proprio da Medicao:
@@ -41,6 +43,7 @@ Arquitetura
   - `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
   - `supabase/migrations/202_enforce_measurement_unique_project_team_date.sql`
   - `supabase/migrations/204_preserve_measurement_work_completion_snapshot.sql`
+  - `supabase/migrations/293_create_measurement_project_activity_indicators.sql`
 
 Cadastro
 --------
@@ -83,6 +86,8 @@ Cadastro
   - Cada item calcula `total_value` com base na formula da medicao.
   - A `Taxa` e unica por ordem de medicao; ao editar a taxa do cabecalho e salvar, o sistema reaplica a mesma taxa em todas as atividades da ordem e recalcula todos os itens.
   - No cadastro novo (`ordem sem id`), ao selecionar um projeto valido, a tela busca e sugere automaticamente a taxa da ultima medicao `COM_PRODUCAO` do mesmo projeto.
+  - Ao selecionar um projeto valido, a tela consulta os codigos ativos em `measurement_project_activity_indicators` e verifica se ja foram usados em ordens ativas/nao canceladas do mesmo tenant e projeto.
+  - O resultado aparece abaixo do campo `Projeto` como chips compactos exibindo somente o codigo da atividade; chip azul indica codigo ja usado, chip cinza indica nao usado.
   - A sugestao automatica de taxa tambem e aplicada quando `Tipo da medicao = Sem producao`; a ordem continua sem itens, mas o `manual_rate` salvo deixa de usar apenas a taxa tecnica `1`.
   - Quando nao existe historico de taxa para o projeto selecionado, o campo fica em preenchimento manual e a tela informa esse contexto ao usuario.
   - No modo de edicao, o botao `Cadastro em massa` nao aparece.
@@ -207,9 +212,40 @@ Atalhos
   - `GET /api/medicao/activities/catalog` (catalogo de atividades da medicao)
   - `GET /api/medicao/meta` (motivos de sem producao)
   - `GET /api/medicao/rate-suggestion` (sugestao de taxa por projeto para novo cadastro)
+  - `GET /api/medicao/project-activity-usage` (uso dos codigos configurados em `measurement_project_activity_indicators` por projeto selecionado)
 - Modelo cadastro em massa:
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
+
+Atualizacao 2026-07-06 (Indicadores configuraveis por codigo no cadastro)
+--------------------------------------------------------------------------
+- Arquivos alterados:
+  - `supabase/migrations/293_create_measurement_project_activity_indicators.sql`
+  - `src/app/api/medicao/project-activity-usage/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao/MeasurementPageView.module.css`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `ProjectActivityUsageResponse`
+  - `ProjectActivityUsageItem`
+  - `projectActivityUsage`
+  - `isLoadingProjectActivityUsage`
+  - Efeito `useEffect` de consulta por `form.projectId`
+  - Endpoint `GET /api/medicao/project-activity-usage`
+- Comportamento antes/depois:
+  - Antes: ao selecionar um projeto, a tela sugeria taxa por historico, mas nao informava se atividades especificas ja tinham sido usadas no projeto.
+  - Depois: ao selecionar um projeto, a tela consulta o backend e exibe chips com os codigos ativos em `measurement_project_activity_indicators`.
+  - Chip azul indica que existe item ativo em ordem de Medicao ativa/nao cancelada do mesmo projeto; chip cinza indica que nao ha uso encontrado para o codigo.
+  - O seed inicial configura `AHO717` e `AHO720`, mas novos codigos podem ser adicionados/removidos pela tabela sem alterar o frontend.
+- Impacto multi-tenant:
+  - O endpoint autentica o usuario via `resolveAuthenticatedAppUser`.
+  - Todas as consultas usam `tenant_id = appUser.tenant_id`.
+  - A validacao do projeto exige que o `projectId` pertenca ao tenant autenticado.
+  - A tabela `measurement_project_activity_indicators` possui RLS por tenant via `user_can_access_tenant`.
+  - A busca cruza `project_measurement_order_items` com `project_measurement_orders` filtrando tenant, projeto e status diferente de `CANCELADA`.
+- Observacao de performance:
+  - A consulta resolve os codigos ativos em `service_activities` e busca no banco com filtros nativos por tenant/projeto/atividade, sem usar a listagem geral da Medicao.
 
 Atualizacao 2026-06-30 (Paginacao real no banco)
 -------------------------------------------------
@@ -394,6 +430,8 @@ Funcoes principais
   - Responsavel por: carregar motivos ativos de `Sem producao` por tenant para a tela da Medicao.
 - Caminho: `src/app/api/medicao/rate-suggestion/route.ts`
   - Responsavel por: sugerir taxa por projeto no cadastro novo, com prioridade atual por historico da ultima medicao e fallback manual.
+- Caminho: `src/app/api/medicao/project-activity-usage/route.ts`
+  - Responsavel por: consultar os codigos ativos de `measurement_project_activity_indicators` e verificar se ja foram usados em ordens ativas/nao canceladas do projeto selecionado, sempre com filtro de tenant.
 - Caminho: `src/app/api/programacao/route.ts`
   - Responsavel por: fornecer contexto operacional da ordem (programacao/projeto/equipe/data).
 - Caminho: `src/app/api/medicao/activities/catalog/route.ts`
@@ -401,7 +439,7 @@ Funcoes principais
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
-  - Responsavel por: estados de formulario, filtros padrao, parse de numeros e formatadores.
+  - Responsavel por: estados de formulario, filtros padrao, chips de uso dos codigos configurados em `measurement_project_activity_indicators`, parse de numeros e formatadores.
 - Caminho: `supabase/migrations/112_create_measurement_order_module.sql`
   - Responsavel por: tabelas `project_measurement_orders`, `project_measurement_order_items`, `project_measurement_order_history`, policies RLS e RPCs do modulo.
 - Caminho: `supabase/migrations/114_create_measurement_activities_and_link_measurement_items.sql`
@@ -416,6 +454,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar `mva_quantity/worked_hours` em `project_measurement_order_items` e ajustar a RPC de save para calcular `quantity` por `MVA x Horas` quando informado.
 - Caminho: `supabase/migrations/268_backfill_no_production_measurement_rates.sql`
   - Responsavel por: corrigir `manual_rate` de ordens `SEM_PRODUCAO` antigas com taxa tecnica `1`, usando a ultima taxa `COM_PRODUCAO` valida do mesmo tenant/projeto e gravando historico.
+- Caminho: `supabase/migrations/293_create_measurement_project_activity_indicators.sql`
+  - Responsavel por: criar a tabela multi-tenant `measurement_project_activity_indicators`, com RLS e seed inicial dos codigos monitorados no cadastro da Medicao.
 - Caminho: `supabase/migrations/161_preserve_measurement_foreman_snapshots.sql`
   - Responsavel por: criar `team_foreman_history`, manter vigencia de encarregado por equipe e aplicar snapshot historico em `project_measurement_orders`.
 - Caminho: `supabase/migrations/162_backfill_measurement_foreman_snapshots.sql`
