@@ -2947,3 +2947,37 @@ Atualizacao 2026-07-05 - Bloqueio de ETAPA divergente entre equipes do mesmo Pro
   - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
   - `docs/Mapa_Regras_Programacao.md`
   - `TASKS.md`
+
+Atualizacao 2026-07-06 - Extracao ENEL com preenchimento de celulas vazias
+----------------------------------------------------------------------------
+- Problema resolvido:
+  - A `Extracao ENEL` padrao podia gerar celulas vazias em campos sem informacao, exigindo ajuste manual da planilha apos o download.
+- Solucao:
+  - Criado helper `fillBlankCsvCells` em `src/modules/dashboard/programacao-simples/exports.ts`.
+  - `buildEnelCsvContent` passa a aplicar o helper somente nas linhas do CSV da `Extracao ENEL`.
+  - Valores numericos continuam preservados, incluindo `0`; apenas strings vazias ou compostas so por espacos viram `-`.
+- Mapa de Codigo (funcoes, hooks e constantes):
+  - Funcoes utilitarias relacionadas:
+    - Caminho: `src/modules/dashboard/programacao-simples/exports.ts`
+    - Funcao: `fillBlankCsvCells`
+    - Responsavel por: normalizar celulas vazias de CSV para `-`, sem alterar numeros.
+  - Funcoes principais:
+    - Caminho: `src/modules/dashboard/programacao-simples/exports.ts`
+    - Funcao: `buildEnelCsvContent`
+    - Responsavel por: montar as linhas da `Extracao ENEL` padrao e aplicar preenchimento de celulas vazias.
+- Comportamento antes/depois:
+  - Antes: campos sem informacao saiam como celulas vazias no CSV ENEL.
+  - Depois: campos sem informacao saem como `-` no CSV ENEL.
+  - `Extracao ENEL NOVO` XLSB e CSV geral da lista nao foram alterados.
+- Como validar:
+  - Abrir Programacao Simples.
+  - Filtrar programacoes com campos opcionais em branco, como Apoio, Alimentador, PEP ou Observacao.
+  - Clicar em `Extracao ENEL`.
+  - Confirmar que o arquivo `programacao_enel_excel_YYYY-MM-DD.csv` mostra `-` nas celulas que antes ficariam vazias.
+- Impacto multi-tenant:
+  - Nenhuma query, RLS, migration, endpoint ou escopo de tenant alterado.
+  - Mudanca limitada ao CSV gerado no frontend com dados ja autorizados para o usuario.
+- Arquivos:
+  - `src/modules/dashboard/programacao-simples/exports.ts`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`

@@ -49,6 +49,16 @@ function buildCsvContent(header: CsvValue[], rows: CsvValue[][]) {
   return `\uFEFF${csvLines.join("\n")}`;
 }
 
+function fillBlankCsvCells(rows: CsvValue[][]) {
+  return rows.map((row) => row.map((cell) => {
+    if (typeof cell === "number") {
+      return cell;
+    }
+
+    return cell.trim() ? cell : "-";
+  }));
+}
+
 export function buildDeadlineCsvContent(params: {
   items: DeadlineExportItem[];
   deadlineWindowDays: number;
@@ -344,7 +354,7 @@ export function buildEnelCsvContent({ schedules, projectMap, teamMap }: ExportCo
     ];
   });
 
-  return buildCsvContent(header, rows);
+  return buildCsvContent(header, fillBlankCsvCells(rows));
 }
 
 function resolveFirstFilledText(
