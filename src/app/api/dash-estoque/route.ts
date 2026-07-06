@@ -95,6 +95,20 @@ type MaterialAggregate = {
   lastMovementAt: string | null;
 };
 
+type MaterialDetail = {
+  materialId: string;
+  materialCode: string;
+  description: string;
+  unit: string;
+  materialType: string;
+  unitPrice: number;
+  balanceQuantity: number;
+  estimatedValue: number;
+  lastMovementAt: string | null;
+  idleDays?: number | null;
+  abcPercentage?: number;
+};
+
 type MovementAggregate = {
   transferId: string;
   operationEventId: string;
@@ -106,6 +120,8 @@ type MovementAggregate = {
   unit: string;
   materialType: string;
   quantity: number;
+  unitPrice: number;
+  estimatedValue: number;
   entryDate: string;
   changedAt: string;
   stockCenterId: string | null;
@@ -639,32 +655,58 @@ function buildTopBalanceRows(items: MaterialAggregate[]) {
     }));
 }
 
+function buildMaterialDetail(item: MaterialAggregate, extra: Partial<Pick<MaterialDetail, "idleDays" | "abcPercentage">> = {}): MaterialDetail {
+  return {
+    materialId: item.materialId,
+    materialCode: item.materialCode,
+    description: item.description,
+    unit: item.unit,
+    materialType: item.materialType,
+    unitPrice: item.unitPrice,
+    balanceQuantity: item.balanceQuantity,
+    estimatedValue: item.estimatedValue,
+    lastMovementAt: item.lastMovementAt,
+    ...extra,
+  };
+}
+
 function buildIdleBuckets(items: MaterialAggregate[]) {
   const now = new Date();
   const buckets = [
-    { key: "ate30", label: "Ate 30 dias", minDays: 0, maxDays: 30, materialCount: 0, balanceQuantity: 0 },
-    { key: "31a60", label: "31 a 60 dias", minDays: 31, maxDays: 60, materialCount: 0, balanceQuantity: 0 },
-    { key: "61a90", label: "61 a 90 dias", minDays: 61, maxDays: 90, materialCount: 0, balanceQuantity: 0 },
-    { key: "mais90", label: "Mais de 90 dias", minDays: 91, maxDays: null, materialCount: 0, balanceQuantity: 0 },
-    { key: "semData", label: "Sem movimento", minDays: null, maxDays: null, materialCount: 0, balanceQuantity: 0 },
+    { key: "ate30", label: "Ate 30 dias", minDays: 0, maxDays: 30, materialCount: 0, balanceQuantity: 0, materials: [] as MaterialDetail[] },
+    { key: "31a60", label: "31 a 60 dias", minDays: 31, maxDays: 60, materialCount: 0, balanceQuantity: 0, materials: [] as MaterialDetail[] },
+    { key: "61a90", label: "61 a 90 dias", minDays: 61, maxDays: 90, materialCount: 0, balanceQuantity: 0, materials: [] as MaterialDetail[] },
+    { key: "mais90", label: "Mais de 90 dias", minDays: 91, maxDays: null, materialCount: 0, balanceQuantity: 0, materials: [] as MaterialDetail[] },
+    { key: "semData", label: "Sem movimento", minDays: null, maxDays: null, materialCount: 0, balanceQuantity: 0, materials: [] as MaterialDetail[] },
   ];
 
   for (const item of items) {
     let bucket = buckets[buckets.length - 1];
+    let idleDays: number | null = null;
     if (item.lastMovementAt) {
-      const days = Math.max(0, Math.floor((now.getTime() - new Date(item.lastMovementAt).getTime()) / 86400000));
-      bucket = buckets.find((candidate) => {
-        if (candidate.minDays === null) return false;
-        if (candidate.maxDays === null) return days >= candidate.minDays;
-        return days >= candidate.minDays && days <= candidate.maxDays;
-      }) ?? bucket;
+      const lastMovementTimestamp = toTimestamp(item.lastMovementAt);
+      if (lastMovementTimestamp > 0) {
+        idleDays = Math.max(0, Math.floor((now.getTime() - lastMovementTimestamp) / 86400000));
+        bucket = buckets.find((candidate) => {
+          if (candidate.minDays === null) return false;
+          if (candidate.maxDays === null) return idleDays !== null && idleDays >= candidate.minDays;
+          return idleDays !== null && idleDays >= candidate.minDays && idleDays <= candidate.maxDays;
+        }) ?? bucket;
+      }
     }
 
     bucket.materialCount += 1;
     bucket.balanceQuantity += item.balanceQuantity;
+    bucket.materials.push(buildMaterialDetail(item, { idleDays }));
   }
 
-  return buckets.map(({ key, label, materialCount, balanceQuantity }) => ({ key, label, materialCount, balanceQuantity }));
+  return buckets.map(({ key, label, materialCount, balanceQuantity, materials }) => ({
+    key,
+    label,
+    materialCount,
+    balanceQuantity,
+    materials: materials.sort((left, right) => left.materialCode.localeCompare(right.materialCode, "pt-BR")),
+  }));
 }
 
 function buildAbcRows(items: MaterialAggregate[], mode: "value" | "quantity" = "value") {
@@ -678,9 +720,9 @@ function buildAbcRows(items: MaterialAggregate[], mode: "value" | "quantity" = "
   const totalMetric = rankedItems.reduce((sum, item) => sum + item.abcMetric, 0);
   let cumulative = 0;
   const classes = new Map([
-    ["A", { className: "A", materialCount: 0, estimatedValue: 0, balanceQuantity: 0, metricValue: 0 }],
-    ["B", { className: "B", materialCount: 0, estimatedValue: 0, balanceQuantity: 0, metricValue: 0 }],
-    ["C", { className: "C", materialCount: 0, estimatedValue: 0, balanceQuantity: 0, metricValue: 0 }],
+    ["A", { className: "A" as const, materialCount: 0, estimatedValue: 0, balanceQuantity: 0, metricValue: 0, materials: [] as MaterialDetail[] }],
+    ["B", { className: "B" as const, materialCount: 0, estimatedValue: 0, balanceQuantity: 0, metricValue: 0, materials: [] as MaterialDetail[] }],
+    ["C", { className: "C" as const, materialCount: 0, estimatedValue: 0, balanceQuantity: 0, metricValue: 0, materials: [] as MaterialDetail[] }],
   ]);
 
   for (const item of rankedItems) {
@@ -692,6 +734,9 @@ function buildAbcRows(items: MaterialAggregate[], mode: "value" | "quantity" = "
     row.estimatedValue += item.estimatedValue;
     row.balanceQuantity += item.balanceQuantity;
     row.metricValue += item.abcMetric;
+    row.materials.push(buildMaterialDetail(item, {
+      abcPercentage: totalMetric > 0 ? (item.abcMetric / totalMetric) * 100 : 0,
+    }));
   }
 
   return Array.from(classes.values()).map((row) => ({
@@ -700,10 +745,11 @@ function buildAbcRows(items: MaterialAggregate[], mode: "value" | "quantity" = "
     estimatedValue: row.estimatedValue,
     balanceQuantity: row.balanceQuantity,
     percentage: totalMetric > 0 ? (row.metricValue / totalMetric) * 100 : 0,
+    materials: row.materials,
   }));
 }
 
-function buildEvolutionRows(events: OperationEventAggregate[], startDate: string, endDate: string) {
+function buildEvolutionRows(events: OperationEventAggregate[], movements: MovementAggregate[], startDate: string, endDate: string) {
   const keys = new Set<string>();
   let current = new Date(`${startDate.slice(0, 7)}-01T00:00:00.000Z`);
   const end = new Date(`${endDate.slice(0, 7)}-01T00:00:00.000Z`);
@@ -715,7 +761,7 @@ function buildEvolutionRows(events: OperationEventAggregate[], startDate: string
   const map = new Map(
     Array.from(keys).map((key) => [
       key,
-      { period: key, label: formatMonthLabel(key), entry: 0, exit: 0, transfer: 0, requisition: 0, return: 0, fieldReturn: 0 },
+      { period: key, label: formatMonthLabel(key), estimatedValue: 0, entry: 0, exit: 0, transfer: 0, requisition: 0, return: 0, fieldReturn: 0 },
     ]),
   );
 
@@ -733,6 +779,12 @@ function buildEvolutionRows(events: OperationEventAggregate[], startDate: string
     if (event.operationKind === "REQUISITION") row.requisition += 1;
     if (event.operationKind === "RETURN") row.return += 1;
     if (event.operationKind === "FIELD_RETURN") row.fieldReturn += 1;
+  }
+
+  for (const movement of movements) {
+    const row = map.get(monthKey(movement.entryDate));
+    if (!row) continue;
+    row.estimatedValue += Math.max(0, movement.estimatedValue);
   }
 
   return Array.from(map.values()).sort((left, right) => left.period.localeCompare(right.period));
@@ -934,6 +986,9 @@ export async function GET(request: NextRequest) {
           ? transfer.to_stock_center_id
           : null;
 
+      const quantity = numberValue(item.quantity);
+      const unitPrice = numberValue(material.unit_price);
+
       movements.push({
         transferId: transfer.id,
         operationEventId,
@@ -944,7 +999,9 @@ export async function GET(request: NextRequest) {
         description: material.descricao,
         unit: normalizeText(material.umb).toUpperCase() || "SEM UMB",
         materialType: normalizeText(material.tipo).toUpperCase() || "NAO INFORMADO",
-        quantity: numberValue(item.quantity),
+        quantity,
+        unitPrice,
+        estimatedValue: quantity * unitPrice,
         entryDate: transfer.entry_date,
         changedAt: transfer.updated_at ?? transfer.created_at,
         stockCenterId: movementStockCenterId,
@@ -1031,7 +1088,7 @@ export async function GET(request: NextRequest) {
       idleBuckets: buildIdleBuckets(materials),
       abcRows: buildAbcRows(materials),
       abcQuantityRows: buildAbcRows(materials, "quantity"),
-      movementEvolution: buildEvolutionRows(operationEvents, startDate, endDate),
+      movementEvolution: buildEvolutionRows(operationEvents, movements, startDate, endDate),
       scatterSummaryByUnit: buildScatterUnitSummary(movements),
       scatter: buildScatterRows(movements, balanceByMaterial),
     });

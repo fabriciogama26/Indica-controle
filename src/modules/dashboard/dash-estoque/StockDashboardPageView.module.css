@@ -288,12 +288,30 @@
   padding: 16px;
 }
 
-.columnGroup {
+.columnGroup,
+.columnGroupButton {
   min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+}
+
+.columnGroupButton {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.columnGroupButton:hover .columnTrack,
+.columnGroupButton:focus-visible .columnTrack {
+  outline: 2px solid #1f4ea3;
+  outline-offset: 2px;
 }
 
 .columnValue {
@@ -320,7 +338,8 @@
   background: #0f766e;
 }
 
-.columnGroup strong {
+.columnGroup strong,
+.columnGroupButton strong {
   min-height: 30px;
   color: #12376f;
   font-size: 11px;
@@ -328,7 +347,8 @@
   text-align: center;
 }
 
-.columnGroup span {
+.columnGroup span,
+.columnGroupButton span {
   color: #50658d;
   font-size: 11px;
   font-weight: 800;
@@ -442,6 +462,15 @@
 
 .compactTable tbody tr:nth-child(even) {
   background: #f8fbff;
+}
+
+.clickableTableRow {
+  cursor: pointer;
+}
+
+.clickableTableRow:hover td,
+.clickableTableRow:focus-visible td {
+  background: #eaf1ff;
 }
 
 .scatterRowActive td {
@@ -666,11 +695,59 @@
   text-align: center;
 }
 
+.evolutionPeriodLabel {
+  min-height: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.evolutionPeriodLabel span {
+  color: #50658d;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
 .movementTotal {
   color: #12376f;
   font-size: 12px;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.movementHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.infoButton {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8d5ea;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f4ea3;
+  cursor: pointer;
+}
+
+.infoButton:hover,
+.infoButton:focus-visible {
+  border-color: #1f4ea3;
+  outline: none;
+}
+
+.infoIcon {
+  width: 18px;
+  height: 18px;
 }
 
 .emptyChart,
@@ -730,6 +807,10 @@
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
 }
 
+.materialModal {
+  width: min(1080px, 96vw);
+}
+
 .modalHeader {
   display: flex;
   align-items: flex-start;
@@ -756,6 +837,31 @@
 .modalBody {
   overflow: auto;
   padding: 16px;
+}
+
+.materialModalSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #d8e1ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 10px 12px;
+}
+
+.materialModalSummary span {
+  color: #50658d;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.materialModalSummary strong {
+  color: #12376f;
+  font-size: 15px;
+  font-weight: 900;
 }
 
 @media (max-width: 1180px) {
@@ -802,9 +908,14 @@
   }
 
   .chartActions,
+  .movementHeaderActions,
   .modalHeader {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .movementHeaderActions {
+    align-items: flex-start;
   }
 
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
@@ -53,11 +54,26 @@ type TopBalanceMaterial = {
   balanceQuantity: number;
 };
 
+type MaterialDetail = {
+  materialId: string;
+  materialCode: string;
+  description: string;
+  unit: string;
+  materialType: string;
+  unitPrice: number;
+  balanceQuantity: number;
+  estimatedValue: number;
+  lastMovementAt: string | null;
+  idleDays?: number | null;
+  abcPercentage?: number;
+};
+
 type IdleBucket = {
   key: string;
   label: string;
   materialCount: number;
   balanceQuantity: number;
+  materials: MaterialDetail[];
 };
 
 type AbcRow = {
@@ -66,11 +82,13 @@ type AbcRow = {
   estimatedValue: number;
   balanceQuantity: number;
   percentage: number;
+  materials: MaterialDetail[];
 };
 
 type EvolutionRow = {
   period: string;
   label: string;
+  estimatedValue: number;
   entry: number;
   exit: number;
   transfer: number;
@@ -140,6 +158,13 @@ type ScatterQuantityBand = {
   stroke: string;
 };
 
+type MaterialModalState = {
+  title: string;
+  subtitle: string;
+  rows: MaterialDetail[];
+  showAbcPercentage?: boolean;
+} | null;
+
 const operationLabels: Record<ScatterOperation, string> = {
   REQUISITION: "Requisicao",
   RETURN: "Devolucao",
@@ -153,6 +178,9 @@ const evolutionKeys = [
   { key: "return", label: "Devolucao", color: "#059669" },
   { key: "fieldReturn", label: "Retorno campo", color: "#d97706" },
 ] as const;
+
+const evolutionEstimatedValueHelp =
+  "Valor estimado mensal = soma de (quantidade movimentada x preco unitario do material) dos itens validos do mes, respeitando os filtros aplicados e excluindo estornos/movimentos estornados.";
 
 const scatterQuantityPalette = [
   { color: "#64748b", stroke: "#334155" },
@@ -195,8 +223,29 @@ function formatPercent(value: number) {
   return `${formatDecimal(value)}%`;
 }
 
+function formatDate(value: string | null) {
+  if (!value) return "Sem movimento";
+  const normalized = value.slice(0, 10);
+  const [year, month, day] = normalized.split("-");
+  if (!year || !month || !day) return "Sem movimento";
+  return `${day}/${month}/${year}`;
+}
+
 function formatExportDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatFileNamePart(value: string) {
+  return normalizeTextForFileName(value).toLowerCase();
+}
+
+function normalizeTextForFileName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60) || "materiais";
 }
 
 function maxValue(values: number[]) {
@@ -224,6 +273,37 @@ function scatterOffset(seed: string, index: number, expanded: boolean) {
   };
 }
 
+function hslToHex(hue: number, saturation: number, lightness: number) {
+  const normalizedSaturation = saturation / 100;
+  const normalizedLightness = lightness / 100;
+  const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
+  const second = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const match = normalizedLightness - chroma / 2;
+  const [red, green, blue] =
+    hue < 60 ? [chroma, second, 0] :
+      hue < 120 ? [second, chroma, 0] :
+        hue < 180 ? [0, chroma, second] :
+          hue < 240 ? [0, second, chroma] :
+            hue < 300 ? [second, 0, chroma] :
+              [chroma, 0, second];
+
+  return `#${[red, green, blue]
+    .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function getScatterQuantityPalette(index: number) {
+  if (index < scatterQuantityPalette.length) return scatterQuantityPalette[index];
+
+  const hue = (index * 47) % 360;
+  const saturation = 66 + (index % 4) * 4;
+  const lightness = 36 + (index % 3) * 5;
+  return {
+    color: hslToHex(hue, saturation, lightness),
+    stroke: hslToHex(hue, Math.min(86, saturation + 8), Math.max(24, lightness - 10)),
+  };
+}
+
 function buildScatterQuantityBands(points: ScatterPoint[]) {
   const maxQuantity = maxValue(points.map((point) => point.quantity));
   const thresholds = [10, 20, 30, 40, 50, 100, 200];
@@ -233,7 +313,7 @@ function buildScatterQuantityBands(points: ScatterPoint[]) {
 
   return thresholds.map<ScatterQuantityBand>((upper, index) => {
     const minExclusive = index === 0 ? 0 : thresholds[index - 1];
-    const palette = scatterQuantityPalette[Math.min(index, scatterQuantityPalette.length - 1)];
+    const palette = getScatterQuantityPalette(index);
     return {
       minExclusive,
       maxInclusive: upper,
@@ -289,7 +369,7 @@ function BarList<T extends { materialId: string; materialCode: string; descripti
   );
 }
 
-function IdleChart({ rows }: { rows: IdleBucket[] }) {
+function IdleChart({ rows, onSelectBucket }: { rows: IdleBucket[]; onSelectBucket: (row: IdleBucket) => void }) {
   const max = maxValue(rows.map((row) => row.materialCount));
 
   return (
@@ -298,14 +378,20 @@ function IdleChart({ rows }: { rows: IdleBucket[] }) {
         rows.map((row) => {
           const height = Math.max(4, (row.materialCount / max) * 100);
           return (
-            <div key={row.key} className={styles.columnGroup}>
+            <button
+              key={row.key}
+              type="button"
+              className={styles.columnGroupButton}
+              onClick={() => onSelectBucket(row)}
+              aria-label={`Ver materiais da faixa ${row.label}`}
+            >
               <div className={styles.columnValue}>{row.materialCount}</div>
               <div className={styles.columnTrack}>
                 <div className={styles.columnFill} style={{ height: `${height}%` }} />
               </div>
               <strong>{row.label}</strong>
               <span>{formatDecimal(row.balanceQuantity)}</span>
-            </div>
+            </button>
           );
         })
       ) : (
@@ -315,7 +401,7 @@ function IdleChart({ rows }: { rows: IdleBucket[] }) {
   );
 }
 
-function AbcChart({ rows, mode }: { rows: AbcRow[]; mode: AbcMode }) {
+function AbcChart({ rows, mode, onSelectRow }: { rows: AbcRow[]; mode: AbcMode; onSelectRow: (row: AbcRow) => void }) {
   const total = rows.reduce((sum, row) => sum + (mode === "quantity" ? Math.max(0, row.balanceQuantity) : row.estimatedValue), 0);
   const metricLabel = mode === "quantity" ? "Quantidade" : "Valor";
 
@@ -344,7 +430,19 @@ function AbcChart({ rows, mode }: { rows: AbcRow[]; mode: AbcMode }) {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.className}>
+              <tr
+                key={row.className}
+                className={styles.clickableTableRow}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectRow(row)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectRow(row);
+                  }
+                }}
+              >
                 <td><strong>{row.className}</strong></td>
                 <td>{row.materialCount}</td>
                 <td>{mode === "quantity" ? formatDecimal(row.balanceQuantity) : formatCurrency(row.estimatedValue)}</td>
@@ -353,6 +451,90 @@ function AbcChart({ rows, mode }: { rows: AbcRow[]; mode: AbcMode }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function MaterialDetailsModal({
+  modal,
+  isExporting,
+  onClose,
+  onExport,
+}: {
+  modal: MaterialModalState;
+  isExporting: boolean;
+  onClose: () => void;
+  onExport: () => void;
+}) {
+  if (!modal) return null;
+
+  return (
+    <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-label={modal.title}>
+      <div className={`${styles.modal} ${styles.materialModal}`}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2>{modal.title}</h2>
+            <p>{modal.subtitle}</p>
+          </div>
+          <div className={styles.chartActions}>
+            <CsvExportButton
+              onClick={onExport}
+              disabled={!modal.rows.length || isExporting}
+              isLoading={isExporting}
+              className={styles.expandButton}
+              idleLabel="Exportar CSV"
+              loadingLabel="Exportando..."
+              modalMessage="Gerando CSV dos materiais do modal."
+            />
+            <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Fechar modal de materiais">
+              x
+            </button>
+          </div>
+        </div>
+        <div className={styles.modalBody}>
+          <div className={styles.materialModalSummary}>
+            <span>{modal.rows.length} materiais</span>
+            <strong>{formatCurrency(modal.rows.reduce((sum, row) => sum + row.estimatedValue, 0))}</strong>
+          </div>
+          <div className={styles.compactTableWrapper}>
+            <table className={styles.compactTable}>
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th>Descricao</th>
+                  <th>Tipo</th>
+                  <th>UMB</th>
+                  <th>Saldo</th>
+                  <th>Valor estimado</th>
+                  {modal.showAbcPercentage ? <th>% ABC</th> : null}
+                  <th>Ult. mov.</th>
+                  <th>Dias</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modal.rows.map((row) => (
+                  <tr key={row.materialId}>
+                    <td><strong>{row.materialCode}</strong></td>
+                    <td>{row.description}</td>
+                    <td>{row.materialType}</td>
+                    <td>{row.unit}</td>
+                    <td>{formatDecimal(row.balanceQuantity)}</td>
+                    <td>{formatCurrency(row.estimatedValue)}</td>
+                    {modal.showAbcPercentage ? <td>{formatPercent(row.abcPercentage ?? 0)}</td> : null}
+                    <td>{formatDate(row.lastMovementAt)}</td>
+                    <td>{row.idleDays == null ? "-" : formatDecimal(row.idleDays)}</td>
+                  </tr>
+                ))}
+                {!modal.rows.length ? (
+                  <tr>
+                    <td colSpan={modal.showAbcPercentage ? 9 : 8} className={styles.emptyRow}>Sem materiais.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -390,7 +572,10 @@ function EvolutionChart({ rows }: { rows: EvolutionRow[] }) {
                   </div>
                 ))}
               </div>
-              <strong>{row.label}</strong>
+              <div className={styles.evolutionPeriodLabel}>
+                <strong>{row.label}</strong>
+                <span>{formatCurrency(row.estimatedValue)}</span>
+              </div>
             </div>
           ))
         ) : (
@@ -577,6 +762,8 @@ export function StockDashboardPageView() {
   const [abcMode, setAbcMode] = useState<AbcMode>("value");
   const [isScatterExpanded, setIsScatterExpanded] = useState(false);
   const [selectedScatterMaterialId, setSelectedScatterMaterialId] = useState<string | null>(null);
+  const [materialModal, setMaterialModal] = useState<MaterialModalState>(null);
+  const [isExportingMaterialModal, setIsExportingMaterialModal] = useState(false);
   const [stockCenters, setStockCenters] = useState<StockCenterOption[]>([]);
   const [teams, setTeams] = useState<Option[]>([]);
   const [projects, setProjects] = useState<Option[]>([]);
@@ -632,6 +819,8 @@ export function StockDashboardPageView() {
       setMovementEvolution(payload.movementEvolution ?? []);
       setScatterSummaryByUnit(payload.scatterSummaryByUnit ?? []);
       setScatter(payload.scatter ?? []);
+      setMaterialModal(null);
+      setIsExportingMaterialModal(false);
       setFeedback({ type: "success", message: "Dashboard Estoque atualizado." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar Dashboard Estoque.";
@@ -690,6 +879,24 @@ export function StockDashboardPageView() {
     setSelectedScatterMaterialId(null);
   };
 
+  const openIdleMaterials = (row: IdleBucket) => {
+    setMaterialModal({
+      title: `Materiais sem giro | ${row.label}`,
+      subtitle: `${row.materialCount} materiais | saldo ${formatDecimal(row.balanceQuantity)}`,
+      rows: row.materials,
+    });
+  };
+
+  const openAbcMaterials = (row: AbcRow) => {
+    const metricLabel = abcMode === "value" ? formatCurrency(row.estimatedValue) : formatDecimal(row.balanceQuantity);
+    setMaterialModal({
+      title: `Curva ABC | Classe ${row.className}`,
+      subtitle: `${row.materialCount} materiais | ${metricLabel} | ${formatPercent(row.percentage)}`,
+      rows: row.materials,
+      showAbcPercentage: true,
+    });
+  };
+
   const exportScatterRows = async () => {
     if (!activeScatterRows.length || isExportingScatter) return;
 
@@ -716,6 +923,46 @@ export function StockDashboardPageView() {
     }
   };
 
+  const exportMaterialModalRows = async () => {
+    if (!materialModal?.rows.length || isExportingMaterialModal) return;
+
+    setIsExportingMaterialModal(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      const headers = [
+        "Material",
+        "Descricao",
+        "Tipo",
+        "UMB",
+        "Saldo",
+        "Preco unitario",
+        "Valor estimado",
+        ...(materialModal.showAbcPercentage ? ["% ABC"] : []),
+        "Ultima movimentacao",
+        "Dias sem giro",
+      ];
+      const csv = buildCsvContent(
+        headers,
+        materialModal.rows.map((row) => [
+          row.materialCode,
+          row.description,
+          row.materialType,
+          row.unit,
+          formatDecimal(row.balanceQuantity),
+          formatDecimal(row.unitPrice),
+          formatDecimal(row.estimatedValue),
+          ...(materialModal.showAbcPercentage ? [formatPercent(row.abcPercentage ?? 0)] : []),
+          formatDate(row.lastMovementAt),
+          row.idleDays == null ? "" : formatDecimal(row.idleDays),
+        ]),
+      );
+
+      downloadCsvFile(csv, `${formatFileNamePart(materialModal.title)}_${formatExportDate()}.csv`);
+    } finally {
+      setIsExportingMaterialModal(false);
+    }
+  };
+
   useEffect(() => {
     if (!session?.accessToken) {
       hasLoadedInitialDashboard.current = false;
@@ -736,6 +983,12 @@ export function StockDashboardPageView() {
         open={isExportingScatter}
         title="Gerando..."
         message="Gerando arquivo CSV."
+      />
+      <MaterialDetailsModal
+        modal={materialModal}
+        isExporting={isExportingMaterialModal}
+        onClose={() => setMaterialModal(null)}
+        onExport={() => void exportMaterialModalRows()}
       />
       {feedback ? (
         <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>
@@ -925,7 +1178,7 @@ export function StockDashboardPageView() {
               <p className={styles.cardSubtitle}>Faixas pela ultima movimentacao conhecida.</p>
             </div>
           </div>
-          <IdleChart rows={idleBuckets} />
+          <IdleChart rows={idleBuckets} onSelectBucket={openIdleMaterials} />
         </article>
 
         <article className={styles.card}>
@@ -953,7 +1206,7 @@ export function StockDashboardPageView() {
               </button>
             </div>
           </div>
-          <AbcChart rows={abcMode === "value" ? abcRows : abcQuantityRows} mode={abcMode} />
+          <AbcChart rows={abcMode === "value" ? abcRows : abcQuantityRows} mode={abcMode} onSelectRow={openAbcMaterials} />
         </article>
       </div>
 
@@ -963,8 +1216,18 @@ export function StockDashboardPageView() {
             <h2 className={styles.cardTitle}>Evolucao de movimentacoes</h2>
             <p className={styles.cardSubtitle}>Quantidade mensal de operacoes realizadas por tipo.</p>
           </div>
-          <div className={styles.movementTotal}>
-            {summary?.movementCount ?? 0} operacoes
+          <div className={styles.movementHeaderActions}>
+            <button
+              type="button"
+              className={styles.infoButton}
+              aria-label="Como o valor estimado mensal e calculado"
+              title={evolutionEstimatedValueHelp}
+            >
+              <ActionIcon name="info" className={styles.infoIcon} />
+            </button>
+            <div className={styles.movementTotal}>
+              {summary?.movementCount ?? 0} operacoes
+            </div>
           </div>
         </div>
         <EvolutionChart rows={movementEvolution} />
