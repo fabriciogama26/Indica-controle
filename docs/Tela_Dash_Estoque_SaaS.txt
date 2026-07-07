@@ -116,6 +116,23 @@ Cancelamento e saldo
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
 
+Atualizacao 2026-07-07 - Descricao do material na Dispersao de materiais
+--------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - O tooltip nativo (`<title>`) de cada ponto do grafico de Dispersao exibia apenas `materialCode`, sem a descricao do material.
+  - A lista lateral da Dispersao exibia somente o codigo do material na coluna `Material`, sem descricao, mesmo `ScatterPoint.description` ja vindo preenchido da API.
+- Depois:
+  - O tooltip do ponto passa a exibir `materialCode - description` antes dos demais dados (quantidade, operacoes, saldo).
+  - A coluna `Material` da lista lateral passa a exibir codigo e descricao truncada (`truncateLabel`) empilhados, com `title` completo no botao, seguindo o mesmo padrao visual ja usado em `BarList`.
+  - Novo estilo `.scatterRowButton strong/span` no CSS module para o layout em duas linhas.
+- Impacto multi-tenant:
+  - Nenhum; o campo `description` ja fazia parte do payload autenticado retornado por `GET /api/dash-estoque`, apenas nao era renderizado no frontend.
+
 Atualizacao 2026-07-03 (2) - Correcao de truncamento silencioso em loadTransfers
 ---------------------------------------------------------------------------------
 - Arquivos alterados:

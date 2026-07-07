@@ -670,7 +670,7 @@ function ScatterChart({
                     </text>
                   ) : null}
                   <title>
-                    {`${point.materialCode} | ${formatDecimal(point.quantity)} ${point.unit} | ${point.operationCount} operacoes | saldo ${formatDecimal(point.currentBalance)}`}
+                    {`${point.materialCode} - ${point.description} | ${formatDecimal(point.quantity)} ${point.unit} | ${point.operationCount} operacoes | saldo ${formatDecimal(point.currentBalance)}`}
                   </title>
                 </g>
               );
@@ -707,8 +707,14 @@ function ScatterChart({
                 className={selectedPoint?.materialId === point.materialId ? styles.scatterRowActive : undefined}
               >
                 <td>
-                  <button type="button" className={styles.scatterRowButton} onClick={() => onSelectPoint?.(point.materialId)}>
-                    {point.materialCode}
+                  <button
+                    type="button"
+                    className={styles.scatterRowButton}
+                    title={point.description}
+                    onClick={() => onSelectPoint?.(point.materialId)}
+                  >
+                    <strong>{point.materialCode}</strong>
+                    <span>{truncateLabel(point.description)}</span>
                   </button>
                 </td>
                 <td>{point.unit || "SEM UMB"}</td>

@@ -478,17 +478,35 @@
 }
 
 .scatterRowButton {
+  min-width: 0;
+  max-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   border: 0;
   background: transparent;
   color: #12376f;
   cursor: pointer;
   font: inherit;
-  font-weight: 900;
   padding: 0;
   text-align: left;
 }
 
-.scatterRowButton:hover {
+.scatterRowButton strong {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.scatterRowButton span {
+  overflow: hidden;
+  color: #50658d;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scatterRowButton:hover strong {
   color: #1f4ea3;
   text-decoration: underline;
 }
