@@ -50,6 +50,7 @@ type OrderIdRow = {
 type OrderProjectRow = {
   id: string;
   project_id: string;
+  ingresso_date?: string | null;
 };
 
 type MeasurementOrderProjectRow = OrderProjectRow & {
@@ -159,6 +160,11 @@ type ChartSegment = {
 type AsbuiltCoverageRange = {
   startDate: string | null;
   endDate: string | null;
+};
+
+type DateRange = {
+  startDate: string;
+  endDate: string;
 };
 
 type ChartIndicatorKey = "totalMeasurement" | "measurementAsbuilt" | "asbuilt" | "billing";
@@ -281,6 +287,24 @@ function normalizeBoolean(value: unknown) {
 function normalizeIsoDate(value: unknown) {
   const normalized = normalizeText(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeMonth(value: unknown) {
+  const normalized = normalizeText(value);
+  return /^\d{4}-\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function buildMonthRange(month: string | null): DateRange | null {
+  if (!month) return null;
+  const [yearText, monthText] = month.split("-");
+  const year = Number(yearText);
+  const monthIndex = Number(monthText);
+  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || monthIndex < 1 || monthIndex > 12) return null;
+  const endDate = new Date(Date.UTC(year, monthIndex, 0));
+  return {
+    startDate: `${month}-01`,
+    endDate: endDate.toISOString().slice(0, 10),
+  };
 }
 
 function formatDateLabel(value: string | null) {
@@ -548,6 +572,7 @@ async function loadOrderProjectRows(params: {
   tenantId: string;
   table: "project_measurement_orders" | "project_asbuilt_measurement_orders" | "project_billing_orders";
   projectIds: string[];
+  dateRange?: DateRange | null;
 }) {
   if (params.table === "project_asbuilt_measurement_orders") {
     return loadClosedAsbuiltOrderRows({
@@ -562,9 +587,12 @@ async function loadOrderProjectRows(params: {
 
   for (const projectIdChunk of chunk(projectIds, FILTER_CHUNK_SIZE)) {
     for (let from = 0; ; from += QUERY_PAGE_SIZE) {
+      const selectColumns = params.table === "project_billing_orders"
+        ? "id, project_id, ingresso_date"
+        : "id, project_id";
       let query = params.supabase
         .from(params.table)
-        .select("id, project_id")
+        .select(selectColumns)
         .eq("tenant_id", params.tenantId)
         .eq("is_active", true)
         .neq("status", "CANCELADA")
@@ -574,6 +602,12 @@ async function loadOrderProjectRows(params: {
 
       if (params.table === "project_measurement_orders") {
         query = query.eq("measurement_kind", "COM_PRODUCAO");
+      }
+
+      if (params.dateRange && params.table === "project_billing_orders") {
+        query = query
+          .gte("ingresso_date", params.dateRange.startDate)
+          .lte("ingresso_date", params.dateRange.endDate);
       }
 
       const { data, error } = await query.returns<OrderProjectRow[]>();
@@ -595,6 +629,7 @@ async function loadClosedAsbuiltOrderRows(params: {
   projectIds: string[];
   coverageEndDate?: string | null;
   coverageDateMode?: "exact" | "through";
+  dateRange?: DateRange | null;
 }) {
   const rows: AsbuiltOrderProjectRow[] = [];
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
@@ -613,6 +648,12 @@ async function loadClosedAsbuiltOrderRows(params: {
         query = query.lte("service_coverage_end_date", params.coverageEndDate);
       } else if (params.coverageEndDate) {
         query = query.eq("service_coverage_end_date", params.coverageEndDate);
+      }
+
+      if (params.dateRange) {
+        query = query
+          .gte("service_coverage_end_date", params.dateRange.startDate)
+          .lte("service_coverage_end_date", params.dateRange.endDate);
       }
 
       const { data, error } = await query
@@ -681,20 +722,29 @@ async function loadMeasurementOrderRows(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   projectIds: string[];
+  dateRange?: DateRange | null;
 }) {
   const rows: MeasurementOrderProjectRow[] = [];
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
 
   for (const projectIdChunk of chunk(projectIds, FILTER_CHUNK_SIZE)) {
     for (let from = 0; ; from += QUERY_PAGE_SIZE) {
-      const { data, error } = await params.supabase
+      let query = params.supabase
         .from("project_measurement_orders")
         .select("id, project_id, execution_date, manual_rate")
         .eq("tenant_id", params.tenantId)
         .eq("is_active", true)
         .neq("status", "CANCELADA")
         .eq("measurement_kind", "COM_PRODUCAO")
-        .in("project_id", projectIdChunk)
+        .in("project_id", projectIdChunk);
+
+      if (params.dateRange) {
+        query = query
+          .gte("execution_date", params.dateRange.startDate)
+          .lte("execution_date", params.dateRange.endDate);
+      }
+
+      const { data, error } = await query
         .order("execution_date", { ascending: true, nullsFirst: false })
         .order("id", { ascending: true })
         .range(from, from + QUERY_PAGE_SIZE - 1)
@@ -831,6 +881,7 @@ async function buildOperationalMeasurementCategoryCards(params: {
   projects: Array<{ id: string }>;
   asbuiltCoverageEndDate?: string | null;
   asbuiltCoverageRange?: AsbuiltCoverageRange;
+  operationalDateRange?: DateRange | null;
 }) {
   const projectIds = params.projects.map((project) => project.id);
   const [measurementOrders, asbuiltOrders, billingOrders] = await Promise.all([
@@ -838,18 +889,21 @@ async function buildOperationalMeasurementCategoryCards(params: {
       supabase: params.supabase,
       tenantId: params.tenantId,
       projectIds,
+      dateRange: params.operationalDateRange,
     }),
     loadClosedAsbuiltOrderRows({
       supabase: params.supabase,
       tenantId: params.tenantId,
       projectIds,
       coverageEndDate: params.asbuiltCoverageEndDate,
+      dateRange: params.operationalDateRange,
     }),
     loadOrderProjectRows({
       supabase: params.supabase,
       tenantId: params.tenantId,
       table: "project_billing_orders",
       projectIds,
+      dateRange: params.operationalDateRange,
     }),
   ]);
   const [measurementItems, asbuiltItems, billingItems] = await Promise.all([
@@ -955,6 +1009,7 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
   onlyProjectsWithAsbuilt?: boolean;
   asbuiltCoverageEndDate?: string | null;
   asbuiltCoverageRange?: AsbuiltCoverageRange;
+  operationalDateRange?: DateRange | null;
   operationalRate?: number | null;
 }) {
   const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
@@ -967,6 +1022,7 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
     supabase: params.supabase,
     tenantId: params.tenantId,
     projectIds,
+    dateRange: params.operationalDateRange,
   });
   const scopedMeasurementOrders = params.onlyProjectsWithAsbuilt
     ? measurementOrders.filter((order) => (
@@ -979,6 +1035,7 @@ async function buildOperationalMeasurementCategoryDetailRows(params: {
         tenantId: params.tenantId,
         projectIds,
         coverageEndDate: params.asbuiltCoverageEndDate,
+        dateRange: params.operationalDateRange,
       })).map((order) => order.project_id))
     : null;
   const filteredMeasurementOrders = asbuiltProjectIds
@@ -1057,6 +1114,7 @@ async function buildOperationalAsbuiltCategoryDetailRows(params: {
   categoryKey: string;
   asbuiltCoverageEndDate?: string | null;
   asbuiltCoverageRange?: AsbuiltCoverageRange;
+  operationalDateRange?: DateRange | null;
   operationalRate?: number | null;
 }) {
   const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
@@ -1070,7 +1128,15 @@ async function buildOperationalAsbuiltCategoryDetailRows(params: {
     tenantId: params.tenantId,
     projectIds,
     coverageEndDate: params.asbuiltCoverageEndDate,
+    dateRange: params.operationalDateRange,
   });
+  const asbuiltOrdersForCoverageRanges = params.operationalDateRange && !params.asbuiltCoverageEndDate
+    ? await loadClosedAsbuiltOrderRows({
+        supabase: params.supabase,
+        tenantId: params.tenantId,
+        projectIds,
+      })
+    : asbuiltOrders;
 
   const asbuiltItems = await loadCommercialItems({
     supabase: params.supabase,
@@ -1091,7 +1157,7 @@ async function buildOperationalAsbuiltCategoryDetailRows(params: {
   const previousCoverageByOrderId = new Map<string, string | null>();
   const latestCoverageByProject = new Map<string, string | null>();
 
-  for (const order of asbuiltOrders) {
+  for (const order of asbuiltOrdersForCoverageRanges) {
     previousCoverageByOrderId.set(order.id, latestCoverageByProject.get(order.project_id) ?? null);
     latestCoverageByProject.set(order.project_id, normalizeText(order.service_coverage_end_date) || null);
   }
@@ -1148,6 +1214,7 @@ async function buildOperationalBillingCategoryDetailRows(params: {
   tenantId: string;
   projects: Array<{ id: string; label: string; serviceCenter: string }>;
   categoryKey: string;
+  operationalDateRange?: DateRange | null;
   operationalRate?: number | null;
 }) {
   const category = OPERATIONAL_MEASUREMENT_CATEGORIES.find((item) => item.key === params.categoryKey);
@@ -1161,6 +1228,7 @@ async function buildOperationalBillingCategoryDetailRows(params: {
     tenantId: params.tenantId,
     table: "project_billing_orders",
     projectIds,
+    dateRange: params.operationalDateRange,
   });
 
   const billingItems = await loadCommercialItems({
@@ -2052,6 +2120,8 @@ export async function GET(request: NextRequest) {
   const operationalCategoryKey = normalizeText(request.nextUrl.searchParams.get("operationalCategoryKey"));
   const chartIndicatorKey = normalizeText(request.nextUrl.searchParams.get("chartIndicatorKey")) as ChartIndicatorKey;
   const asbuiltCoverageEndDate = normalizeIsoDate(request.nextUrl.searchParams.get("asbuiltCoverageEndDate"));
+  const operationalMonth = normalizeMonth(request.nextUrl.searchParams.get("operationalMonth"));
+  const operationalDateRange = buildMonthRange(operationalMonth);
   const operationalRate = normalizeRateFilter(request.nextUrl.searchParams.get("operationalRate"));
 
   try {
@@ -2102,6 +2172,7 @@ export async function GET(request: NextRequest) {
           tenantId,
           projects,
           categoryKey: operationalCategoryKey,
+          operationalDateRange,
           operationalRate,
         }),
         buildOperationalMeasurementCategoryDetailRows({
@@ -2112,6 +2183,7 @@ export async function GET(request: NextRequest) {
           onlyProjectsWithAsbuilt: true,
           asbuiltCoverageEndDate,
           asbuiltCoverageRange,
+          operationalDateRange,
           operationalRate,
         }),
         buildOperationalAsbuiltCategoryDetailRows({
@@ -2121,6 +2193,7 @@ export async function GET(request: NextRequest) {
           categoryKey: operationalCategoryKey,
           asbuiltCoverageEndDate,
           asbuiltCoverageRange,
+          operationalDateRange,
           operationalRate,
         }),
         buildOperationalBillingCategoryDetailRows({
@@ -2128,6 +2201,7 @@ export async function GET(request: NextRequest) {
           tenantId,
           projects,
           categoryKey: operationalCategoryKey,
+          operationalDateRange,
           operationalRate,
         }),
       ]);
@@ -2190,6 +2264,7 @@ export async function GET(request: NextRequest) {
               projects,
               asbuiltCoverageEndDate,
               asbuiltCoverageRange,
+              operationalDateRange,
             })
           : Promise.resolve(null),
       ]);

@@ -309,6 +309,12 @@ function formatAsbuiltRange(startDate: string | null, endDate: string | null) {
   return `${formatDate(startDate)} ate ${formatDate(endDate)}`;
 }
 
+function currentMonthValue() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${now.getFullYear()}-${month}`;
+}
+
 const chartHelpByKey: Record<string, string> = {
   totalMeasurement: "Soma de todas as medicoes com producao nos projetos filtrados.",
   measurementAsbuilt: "Soma da Medicao somente dos projetos que tambem possuem Medicao As Built.",
@@ -356,6 +362,7 @@ export function OperationalBillingDashboardPageView() {
   const [chartProjectSearch, setChartProjectSearch] = useState("");
   const [chartServiceCenterId, setChartServiceCenterId] = useState("");
   const [asbuiltCoverageEndDate, setAsbuiltCoverageEndDate] = useState("");
+  const [operationalMonth, setOperationalMonth] = useState(currentMonthValue);
   const [projectValueProjectSearch, setProjectValueProjectSearch] = useState("");
   const [projectValueServiceCenterId, setProjectValueServiceCenterId] = useState("");
   const [projectValueWorkCompletionStatus, setProjectValueWorkCompletionStatus] = useState("");
@@ -574,6 +581,7 @@ export function OperationalBillingDashboardPageView() {
     const params = new URLSearchParams();
     params.set("includeProjectValues", "true");
     params.set("includeOperationalCategoryCards", "true");
+    if (operationalMonth) params.set("operationalMonth", operationalMonth);
     if (asbuiltCoverageEndDate) params.set("asbuiltCoverageEndDate", asbuiltCoverageEndDate);
 
     setIsProjectValuesLoading(true);
@@ -600,7 +608,7 @@ export function OperationalBillingDashboardPageView() {
     } finally {
       setIsProjectValuesLoading(false);
     }
-  }, [asbuiltCoverageEndDate, logError, session?.accessToken]);
+  }, [asbuiltCoverageEndDate, logError, operationalMonth, session?.accessToken]);
 
   const loadDashboard = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -762,6 +770,7 @@ export function OperationalBillingDashboardPageView() {
         operationalCategoryKey: card.key,
       });
       if (coverageEndDate) params.set("asbuiltCoverageEndDate", coverageEndDate);
+      if (operationalMonth) params.set("operationalMonth", operationalMonth);
       if (rateFilter.trim()) params.set("operationalRate", rateFilter.trim());
 
       const response = await fetch(`/api/dash-operacional-faturamento?${params.toString()}`, {
@@ -785,7 +794,7 @@ export function OperationalBillingDashboardPageView() {
     } finally {
       setIsOperationalCategoryDetailLoading(false);
     }
-  }, [asbuiltCoverageEndDate, logError, operationalRateFilter, session?.accessToken]);
+  }, [asbuiltCoverageEndDate, logError, operationalMonth, operationalRateFilter, session?.accessToken]);
 
   function handleOperationalCategoryCoverageChange(value: string) {
     setAsbuiltCoverageEndDate(value);
@@ -1266,6 +1275,15 @@ export function OperationalBillingDashboardPageView() {
             </p>
           </div>
           <div className={styles.actions}>
+            <label className={styles.field}>
+              <span>Mes ativo</span>
+              <input
+                type="month"
+                value={operationalMonth}
+                onChange={(event) => setOperationalMonth(event.target.value)}
+                disabled={isProjectValuesLoading}
+              />
+            </label>
             <label className={styles.field}>
               <span>Servicos considerados ate</span>
               <select
