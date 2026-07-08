@@ -44,3 +44,32 @@ export type RequisitionListResponse = {
   items: RequisitionListRow[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 };
+
+export type RequisitionDetailItem = {
+  id: string;
+  materialId: string;
+  materialCode: string;
+  description: string;
+  quantityRequested: number;
+  quantityFulfilled: number | null;
+  itemStatus: string;
+  unfulfilledReasonCode: string | null;
+  serialNumber: string | null;
+  lotCode: string | null;
+};
+
+export type RequisitionDetail = {
+  request: {
+    id: string;
+    stockCenterId: string;
+    stockCenterName: string;
+    teamId: string;
+    teamName: string;
+    projectId: string;
+    projectCode: string;
+    requestDate: string;
+    status: string;
+    resultado: string | null;
+  };
+  items: RequisitionDetailItem[];
+};

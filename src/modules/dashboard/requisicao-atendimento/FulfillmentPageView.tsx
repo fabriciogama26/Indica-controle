@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
+import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import styles from "./FulfillmentPageView.module.css";
 import type {
   AdjustmentReason,
@@ -191,6 +193,23 @@ export function FulfillmentPageView() {
     [detail, token],
   );
 
+  const handleExportItems = useCallback(() => {
+    if (!detail) return;
+    const headers = ["Material", "Descricao", "Solicitado", "Saldo atual", "Serial", "LP"];
+    const rows = detail.items.map((item) => [
+      item.materialCode,
+      item.description,
+      item.quantityRequested,
+      item.currentBalance,
+      item.serialNumber ?? "",
+      item.lotCode ?? "",
+    ]);
+    downloadCsvFile(
+      buildCsvContent(headers, rows),
+      `requisicao_${detail.request.projectCode}_${detail.request.requestDate}.csv`,
+    );
+  }, [detail]);
+
   const handleAcceptAll = useCallback(() => {
     if (!detail) return;
     setDecisions((current) => {
@@ -291,6 +310,8 @@ export function FulfillmentPageView() {
                 <th>Projeto</th>
                 <th>Equipe</th>
                 <th>Centro</th>
+                <th>Solicitante</th>
+                <th>Atendente</th>
                 <th>Itens</th>
                 <th>Status</th>
                 <th />
@@ -303,6 +324,8 @@ export function FulfillmentPageView() {
                   <td>{row.projectCode}</td>
                   <td>{row.teamName}</td>
                   <td>{row.stockCenterName}</td>
+                  <td>{row.requestedByName ?? "-"}</td>
+                  <td>{row.claimedByName ?? "-"}</td>
                   <td>{row.itemCount}</td>
                   <td>
                     <span className={styles.statusChip}>{STATUS_LABEL[row.status] ?? row.status}</span>
@@ -331,9 +354,17 @@ export function FulfillmentPageView() {
                 Centro: {detail.request.stockCenterName} · Data: {detail.request.requestDate} · Solicitante: {detail.request.requestedByName ?? "-"}
               </p>
             </div>
-            <button type="button" className={styles.primaryButton} onClick={handleAcceptAll} disabled={isBusy}>
-              Aceitar tudo
-            </button>
+            <div className={styles.detailActions}>
+              <CsvExportButton
+                onClick={handleExportItems}
+                className={styles.secondaryButton}
+                showProgressModal={false}
+                idleLabel="Exportar Excel (CSV)"
+              />
+              <button type="button" className={styles.primaryButton} onClick={handleAcceptAll} disabled={isBusy}>
+                Aceitar tudo
+              </button>
+            </div>
           </div>
 
           <div className={styles.tableScroll}>
