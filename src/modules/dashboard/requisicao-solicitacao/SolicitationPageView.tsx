@@ -39,6 +39,7 @@ export function SolicitationPageView() {
   const [materialCode, setMaterialCode] = useState("");
   const [quantity, setQuantity] = useState("");
   const [items, setItems] = useState<RequisitionFormItem[]>([]);
+  const [centerMaterials, setCenterMaterials] = useState<RequisitionMeta["materials"]>([]);
 
   const [list, setList] = useState<RequisitionListRow[]>([]);
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; message: string } | null>(null);
@@ -86,6 +87,33 @@ export function SolicitationPageView() {
     void Promise.all([loadMeta(), loadList()]);
   }, [loadMeta, loadList]);
 
+  // Opcao B: o picker de material lista apenas os codigos que o centro selecionado carrega.
+  useEffect(() => {
+    if (!token || !stockCenterId) {
+      setCenterMaterials([]);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/stock-requisitions/materials?stockCenterId=${stockCenterId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          if (active) setCenterMaterials([]);
+          return;
+        }
+        const data = (await response.json()) as { materials?: RequisitionMeta["materials"] };
+        if (active) setCenterMaterials(data.materials ?? []);
+      } catch {
+        if (active) setCenterMaterials([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [stockCenterId, token]);
+
   const projectByCode = useMemo(() => {
     const map = new Map(
       meta.projects
@@ -97,12 +125,12 @@ export function SolicitationPageView() {
 
   const materialByCode = useMemo(() => {
     const map = new Map(
-      meta.materials
+      centerMaterials
         .filter((material) => Boolean(material.materialCode))
         .map((material) => [material.materialCode.toUpperCase(), material]),
     );
     return map;
-  }, [meta.materials]);
+  }, [centerMaterials]);
 
   const addItem = useCallback(() => {
     setFeedback(null);
@@ -211,7 +239,13 @@ export function SolicitationPageView() {
           <div className={styles.grid}>
             <label className={styles.field}>
               <span>Centro de estoque</span>
-              <select value={stockCenterId} onChange={(event) => setStockCenterId(event.target.value)}>
+              <select
+                value={stockCenterId}
+                onChange={(event) => {
+                  setStockCenterId(event.target.value);
+                  setMaterialCode("");
+                }}
+              >
                 <option value="">Selecione</option>
                 {meta.stockCenters.map((center) => (
                   <option key={center.id} value={center.id}>{center.name}</option>
@@ -249,9 +283,15 @@ export function SolicitationPageView() {
             <div className={styles.itemInputs}>
               <label className={styles.field}>
                 <span>Material (codigo)</span>
-                <input list="requisition-materials" value={materialCode} onChange={(event) => setMaterialCode(event.target.value)} placeholder="Codigo" />
+                <input
+                  list="requisition-materials"
+                  value={materialCode}
+                  onChange={(event) => setMaterialCode(event.target.value)}
+                  placeholder={stockCenterId ? "Codigo" : "Selecione o centro primeiro"}
+                  disabled={!stockCenterId}
+                />
                 <datalist id="requisition-materials">
-                  {meta.materials.map((material) => (
+                  {centerMaterials.map((material) => (
                     <option key={material.id} value={material.materialCode}>{material.description}</option>
                   ))}
                 </datalist>
