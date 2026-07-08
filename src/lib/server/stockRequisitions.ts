@@ -79,6 +79,19 @@ function normalizeResult(data: unknown) {
   return (data ?? {}) as StockRequisitionRpcResult;
 }
 
+// Detecta banco sem as migrations 294-296 aplicadas (RPC/tabela ausente) e devolve mensagem acionavel.
+function mapRpcInfraError(message: unknown) {
+  const normalized = String(message ?? "").toLowerCase();
+  if (
+    normalized.includes("could not find the function")
+    || normalized.includes("schema cache")
+    || (normalized.includes("stock_requisition") && (normalized.includes("does not exist") || normalized.includes("not exist")))
+  ) {
+    return "Recurso de requisicao ainda nao disponivel no banco. Aplique as migrations 294, 295 e 296 no Supabase e recarregue o schema cache.";
+  }
+  return "";
+}
+
 export async function createStockRequisitionViaRpc(
   supabase: SupabaseClient,
   payload: CreateStockRequisitionPayload,
@@ -96,7 +109,7 @@ export async function createStockRequisitionViaRpc(
   });
 
   if (error) {
-    return { ok: false, status: 500, reason: "RPC_ERROR", message: "Falha ao registrar a solicitacao.", details: error.message } as const;
+    return { ok: false, status: 500, reason: "RPC_ERROR", message: mapRpcInfraError(error.message) || "Falha ao registrar a solicitacao.", details: error.message } as const;
   }
 
   const result = normalizeResult(data);
@@ -127,7 +140,7 @@ export async function claimStockRequisitionViaRpc(
   });
 
   if (error) {
-    return { ok: false, status: 500, reason: "RPC_ERROR", message: "Falha ao assumir o pedido.", details: error.message } as const;
+    return { ok: false, status: 500, reason: "RPC_ERROR", message: mapRpcInfraError(error.message) || "Falha ao assumir o pedido.", details: error.message } as const;
   }
 
   const result = normalizeResult(data);
@@ -157,7 +170,7 @@ export async function releaseStockRequisitionClaimViaRpc(
   });
 
   if (error) {
-    return { ok: false, status: 500, reason: "RPC_ERROR", message: "Falha ao liberar o atendimento.", details: error.message } as const;
+    return { ok: false, status: 500, reason: "RPC_ERROR", message: mapRpcInfraError(error.message) || "Falha ao liberar o atendimento.", details: error.message } as const;
   }
 
   const result = normalizeResult(data);
@@ -187,7 +200,7 @@ export async function fulfillStockRequisitionViaRpc(
   });
 
   if (error) {
-    return { ok: false, status: 500, reason: "RPC_ERROR", message: "Falha ao atender a requisicao.", details: error.message } as const;
+    return { ok: false, status: 500, reason: "RPC_ERROR", message: mapRpcInfraError(error.message) || "Falha ao atender a requisicao.", details: error.message } as const;
   }
 
   const result = normalizeResult(data);
@@ -228,7 +241,7 @@ export async function cancelStockRequisitionViaRpc(
   });
 
   if (error) {
-    return { ok: false, status: 500, reason: "RPC_ERROR", message: "Falha ao cancelar o pedido.", details: error.message } as const;
+    return { ok: false, status: 500, reason: "RPC_ERROR", message: mapRpcInfraError(error.message) || "Falha ao cancelar o pedido.", details: error.message } as const;
   }
 
   const result = normalizeResult(data);
