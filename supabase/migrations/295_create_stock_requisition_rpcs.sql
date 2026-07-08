@@ -144,7 +144,7 @@ begin
 
     if not exists (
       select 1 from public.materials m
-      where m.id = v_material_id and m.tenant_id = p_tenant_id and m.ativo = true
+      where m.id = v_material_id and m.tenant_id = p_tenant_id and m.is_active = true
     ) then
       return jsonb_build_object('success', false, 'status', 400, 'reason', 'MATERIAL_NOT_FOUND',
         'message', 'Material nao encontrado ou inativo para este tenant.');
