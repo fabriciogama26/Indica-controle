@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./SolicitationPageView.module.css";
-import type { RequisitionFormItem, RequisitionListResponse, RequisitionListRow, RequisitionMeta } from "./types";
+import type { RequisitionDetail, RequisitionFormItem, RequisitionListResponse, RequisitionListRow, RequisitionMeta } from "./types";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendente",
@@ -17,6 +17,13 @@ const RESULT_LABEL: Record<string, string> = {
   TOTAL: "Atendida total",
   PARCIAL: "Atendida parcial",
   RECUSADO: "Recusada",
+};
+
+const ITEM_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Pendente",
+  ACCEPTED: "Aceito",
+  REDUCED: "Reduzido",
+  REJECTED: "Recusado",
 };
 
 const EMPTY_META: RequisitionMeta = { stockCenters: [], teams: [], projects: [], materials: [], adjustmentReasons: [] };
@@ -39,11 +46,14 @@ export function SolicitationPageView() {
   const [materialCode, setMaterialCode] = useState("");
   const [quantity, setQuantity] = useState("");
   const [items, setItems] = useState<RequisitionFormItem[]>([]);
+  const [centerMaterials, setCenterMaterials] = useState<RequisitionMeta["materials"]>([]);
 
   const [list, setList] = useState<RequisitionListRow[]>([]);
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [detailModal, setDetailModal] = useState<RequisitionDetail | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   const authHeaders = useMemo(
     () => (token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : undefined),
@@ -86,6 +96,33 @@ export function SolicitationPageView() {
     void Promise.all([loadMeta(), loadList()]);
   }, [loadMeta, loadList]);
 
+  // Opcao B: o picker de material lista apenas os codigos que o centro selecionado carrega.
+  useEffect(() => {
+    if (!token || !stockCenterId) {
+      setCenterMaterials([]);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/stock-requisitions/materials?stockCenterId=${stockCenterId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          if (active) setCenterMaterials([]);
+          return;
+        }
+        const data = (await response.json()) as { materials?: RequisitionMeta["materials"] };
+        if (active) setCenterMaterials(data.materials ?? []);
+      } catch {
+        if (active) setCenterMaterials([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [stockCenterId, token]);
+
   const projectByCode = useMemo(() => {
     const map = new Map(
       meta.projects
@@ -97,12 +134,12 @@ export function SolicitationPageView() {
 
   const materialByCode = useMemo(() => {
     const map = new Map(
-      meta.materials
+      centerMaterials
         .filter((material) => Boolean(material.materialCode))
         .map((material) => [material.materialCode.toUpperCase(), material]),
     );
     return map;
-  }, [meta.materials]);
+  }, [centerMaterials]);
 
   const addItem = useCallback(() => {
     setFeedback(null);
@@ -203,6 +240,59 @@ export function SolicitationPageView() {
     [authHeaders, loadList],
   );
 
+  const fetchDetail = useCallback(
+    async (requestId: string) => {
+      if (!token) return null;
+      const response = await fetch(`/api/stock-requisitions?id=${requestId}&page=solicitacao`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return null;
+      return (await response.json()) as RequisitionDetail;
+    },
+    [token],
+  );
+
+  const handleOpenDetail = useCallback(
+    async (requestId: string) => {
+      setIsDetailLoading(true);
+      try {
+        const detail = await fetchDetail(requestId);
+        if (detail) setDetailModal(detail);
+      } finally {
+        setIsDetailLoading(false);
+      }
+    },
+    [fetchDetail],
+  );
+
+  const handleDuplicate = useCallback(
+    async (requestId: string) => {
+      setFeedback(null);
+      const detail = await fetchDetail(requestId);
+      if (!detail) {
+        setFeedback({ type: "error", message: "Falha ao carregar o pedido para duplicar." });
+        return;
+      }
+      setStockCenterId(detail.request.stockCenterId);
+      setTeamId(detail.request.teamId);
+      setProjectQuery(detail.request.projectCode);
+      setRequestDate(today());
+      setItems(
+        detail.items.map((item) => ({
+          materialId: item.materialId,
+          materialCode: item.materialCode,
+          description: item.description,
+          quantity: String(item.quantityRequested),
+        })),
+      );
+      setMaterialCode("");
+      setDetailModal(null);
+      setFeedback({ type: "ok", message: "Itens copiados. Revise e registre a nova solicitacao." });
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [fetchDetail],
+  );
+
   return (
     <div className={styles.page}>
       <section className={styles.card}>
@@ -211,7 +301,13 @@ export function SolicitationPageView() {
           <div className={styles.grid}>
             <label className={styles.field}>
               <span>Centro de estoque</span>
-              <select value={stockCenterId} onChange={(event) => setStockCenterId(event.target.value)}>
+              <select
+                value={stockCenterId}
+                onChange={(event) => {
+                  setStockCenterId(event.target.value);
+                  setMaterialCode("");
+                }}
+              >
                 <option value="">Selecione</option>
                 {meta.stockCenters.map((center) => (
                   <option key={center.id} value={center.id}>{center.name}</option>
@@ -249,9 +345,15 @@ export function SolicitationPageView() {
             <div className={styles.itemInputs}>
               <label className={styles.field}>
                 <span>Material (codigo)</span>
-                <input list="requisition-materials" value={materialCode} onChange={(event) => setMaterialCode(event.target.value)} placeholder="Codigo" />
+                <input
+                  list="requisition-materials"
+                  value={materialCode}
+                  onChange={(event) => setMaterialCode(event.target.value)}
+                  placeholder={stockCenterId ? "Codigo" : "Selecione o centro primeiro"}
+                  disabled={!stockCenterId}
+                />
                 <datalist id="requisition-materials">
-                  {meta.materials.map((material) => (
+                  {centerMaterials.map((material) => (
                     <option key={material.id} value={material.materialCode}>{material.description}</option>
                   ))}
                 </datalist>
@@ -339,9 +441,15 @@ export function SolicitationPageView() {
                       {row.resultado ? ` - ${RESULT_LABEL[row.resultado] ?? row.resultado}` : ""}
                     </span>
                   </td>
-                  <td>
+                  <td className={styles.rowActions}>
+                    <button type="button" className={styles.linkAction} onClick={() => handleOpenDetail(row.id)} disabled={isDetailLoading}>
+                      Detalhes
+                    </button>
                     {row.status === "PENDING" ? (
                       <button type="button" className={styles.linkButton} onClick={() => handleCancel(row.id)}>Cancelar</button>
+                    ) : null}
+                    {row.status === "ENCERRADO" || row.status === "CANCELADO" ? (
+                      <button type="button" className={styles.linkAction} onClick={() => handleDuplicate(row.id)}>Duplicar</button>
                     ) : null}
                   </td>
                 </tr>
@@ -350,6 +458,58 @@ export function SolicitationPageView() {
           </table>
         )}
       </section>
+
+      {detailModal ? (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true" onClick={() => setDetailModal(null)}>
+          <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3 className={styles.cardTitle}>
+                  Pedido - {detailModal.request.projectCode} / {detailModal.request.teamName}
+                </h3>
+                <p className={styles.empty}>
+                  Centro: {detailModal.request.stockCenterName} · Data: {detailModal.request.requestDate} ·{" "}
+                  {STATUS_LABEL[detailModal.request.status] ?? detailModal.request.status}
+                  {detailModal.request.resultado ? ` - ${RESULT_LABEL[detailModal.request.resultado] ?? detailModal.request.resultado}` : ""}
+                </p>
+              </div>
+              <button type="button" className={styles.linkButton} onClick={() => setDetailModal(null)}>Fechar</button>
+            </div>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th>Descricao</th>
+                  <th>Solicitado</th>
+                  <th>Atendido</th>
+                  <th>Situacao</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailModal.items.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.materialCode}</td>
+                    <td>{item.description}</td>
+                    <td>{item.quantityRequested}</td>
+                    <td>{item.quantityFulfilled ?? "-"}</td>
+                    <td>
+                      {ITEM_STATUS_LABEL[item.itemStatus] ?? item.itemStatus}
+                      {item.unfulfilledReasonCode ? ` (${item.unfulfilledReasonCode})` : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {detailModal.request.status === "ENCERRADO" || detailModal.request.status === "CANCELADO" ? (
+              <div className={styles.actions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => handleDuplicate(detailModal.request.id)}>
+                  Duplicar em nova solicitacao
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -42,8 +42,19 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - `Projeto` e `Material` usam `input + datalist` (padrao das telas operacionais).
+- Picker de material por centro (Opcao B): o datalist de material lista apenas os codigos que o
+  centro selecionado carrega (todo material com registro de saldo no centro, mesmo zerado),
+  evitando codigo errado sem impedir pedido de reposicao. Endpoint `GET /api/stock-requisitions/
+  materials?stockCenterId=` (materiais ativos com linha em `stock_center_balances` do centro).
+  O campo `Material` fica desabilitado ate um centro ser selecionado; trocar de centro recarrega a
+  lista e limpa o codigo digitado.
 - Lista `Meus pedidos`: pedidos do proprio solicitante (`scope=mine`), com status e resultado.
-- Acao por linha: `Cancelar` (somente quando `status = PENDING`).
+- Acoes por linha:
+  - `Detalhes`: abre modal com os itens do pedido (Material, Descricao, Solicitado, Atendido,
+    Situacao do item + motivo quando houver).
+  - `Cancelar`: somente quando `status = PENDING`.
+  - `Duplicar`: em pedidos `ENCERRADO` ou `CANCELADO`; copia os itens e pre-preenche uma NOVA
+    solicitacao (o pedido original permanece intacto no historico; nao ha edicao in-place).
 
 Boas praticas
 -------------

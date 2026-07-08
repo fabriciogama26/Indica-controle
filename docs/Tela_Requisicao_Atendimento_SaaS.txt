@@ -27,8 +27,11 @@ Arquitetura
 Filtros, auto-complete e listagem
 ---------------------------------
 - Fila de pedidos com filtro de status (`Em aberto` = PENDING+EM_ATENDIMENTO por padrao, ou status especifico).
-- Colunas: data, projeto, equipe, centro, itens, status (com nome de quem assumiu em EM_ATENDIMENTO).
+- Colunas: data, projeto, equipe, centro, `Solicitante` (requested_by_name_snapshot), `Atendente`
+  (claimed_by_name_snapshot), itens, status.
 - Acao `Atender`: assume o pedido (claim) e abre o detalhe dos itens.
+- No detalhe, botao `Exportar Excel (CSV)` gera a lista de itens do pedido (Material, Descricao,
+  Solicitado, Saldo atual, Serial, LP) via `CsvExportButton`/`downloadCsvFile`.
 
 Atendimento (decisao por item)
 ------------------------------

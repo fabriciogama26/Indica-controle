@@ -144,7 +144,7 @@ begin
 
     if not exists (
       select 1 from public.materials m
-      where m.id = v_material_id and m.tenant_id = p_tenant_id and m.ativo = true
+      where m.id = v_material_id and m.tenant_id = p_tenant_id and m.is_active = true
     ) then
       return jsonb_build_object('success', false, 'status', 400, 'reason', 'MATERIAL_NOT_FOUND',
         'message', 'Material nao encontrado ou inativo para este tenant.');
@@ -529,7 +529,7 @@ begin
       -- Vincula o item do ledger ao item do pedido (rastreabilidade do estorno).
       select id into v_transfer_item_id
       from public.stock_transfer_items
-      where transfer_id = v_transfer_id and material_id = v_item.material_id
+      where stock_transfer_id = v_transfer_id and material_id = v_item.material_id
       order by created_at asc
       limit 1;
 
