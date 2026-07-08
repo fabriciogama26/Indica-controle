@@ -337,11 +337,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
+      console.error("[stock-requisitions POST] falha:", result.status, result.reason, result.details);
       return NextResponse.json({ message: result.message, reason: result.reason, details: result.details }, { status: result.status });
     }
 
     return NextResponse.json({ requestId: result.requestId, message: result.message }, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("[stock-requisitions POST] excecao:", error);
     return NextResponse.json({ message: "Falha ao registrar requisicao." }, { status: 500 });
   }
 }
