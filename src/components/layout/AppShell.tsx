@@ -49,6 +49,8 @@ const menuSections = [
       { href: "/posicao-trafo", label: "Rastreio de SERIAL", icon: "box" },
       { href: "/entrada", label: "Movimentacao de Estoque", icon: "arrow-down" },
       { href: "/saida", label: "Operacoes de Equipe", icon: "arrow-up" },
+      { href: "/requisicao-solicitacao", label: "Solicitacao de Requisicao", icon: "arrow-up" },
+      { href: "/requisicao-atendimento", label: "Atendimento de Requisicoes", icon: "box" },
       { href: "/estornos", label: "Estornos", icon: "box" },
       { href: "/consumo-projeto", label: "Consumo por Projeto", icon: "box" },
     ],
@@ -170,6 +172,14 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/saida": {
     title: "Operacoes de Equipe",
     subtitle: "Requisicoes e devolucoes entre o estoque proprio e as equipes.",
+  },
+  "/requisicao-solicitacao": {
+    title: "Solicitacao de Requisicao",
+    subtitle: "Abertura de pedidos de material para atendimento pelo almoxarifado.",
+  },
+  "/requisicao-atendimento": {
+    title: "Atendimento de Requisicoes",
+    subtitle: "Fila de pedidos para aceitar, reduzir ou recusar item a item.",
   },
   "/estornos": {
     title: "Estornos",

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { fulfillStockRequisitionViaRpc, StockRequisitionDecisionInput } from "@/lib/server/stockRequisitions";
+import { normalizeEntryType } from "@/lib/server/stockTransfers";
 
 const ATENDIMENTO_PAGE = "requisicao-atendimento";
 
@@ -42,10 +43,36 @@ export async function POST(request: NextRequest) {
         reasonCode: record.reasonCode ? String(record.reasonCode).trim() : null,
         serialNumber: record.serialNumber ? String(record.serialNumber).trim() : null,
         lotCode: record.lotCode ? String(record.lotCode).trim() : null,
-        entryType: record.entryType ? String(record.entryType).trim().toUpperCase() : "NOVO",
+        entryType: "NOVO",
         notes: record.notes ? String(record.notes) : null,
       };
     });
+
+    // entry_type e resolvido no servidor a partir de materials.tipo (nunca do cliente).
+    const itemIds = decisions.map((decision) => decision.itemId).filter(Boolean);
+    if (itemIds.length > 0) {
+      const itemsResult = await supabase
+        .from("stock_requisition_request_items")
+        .select("id, material_id")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("request_id", requestId)
+        .in("id", itemIds);
+      const itemMaterialMap = new Map(
+        (itemsResult.data ?? []).map((row: Record<string, unknown>) => [String(row.id), String(row.material_id)]),
+      );
+      const materialIds = Array.from(new Set(Array.from(itemMaterialMap.values())));
+      const materialsResult = materialIds.length
+        ? await supabase.from("materials").select("id, tipo").eq("tenant_id", appUser.tenant_id).in("id", materialIds)
+        : { data: [] as Array<Record<string, unknown>> };
+      const materialTipoMap = new Map(
+        (materialsResult.data ?? []).map((row: Record<string, unknown>) => [String(row.id), row.tipo]),
+      );
+      for (const decision of decisions) {
+        const materialId = itemMaterialMap.get(decision.itemId);
+        const tipo = materialId ? materialTipoMap.get(materialId) : null;
+        decision.entryType = normalizeEntryType(tipo) ?? "NOVO";
+      }
+    }
 
     const result = await fulfillStockRequisitionViaRpc(supabase, {
       tenantId: appUser.tenant_id,

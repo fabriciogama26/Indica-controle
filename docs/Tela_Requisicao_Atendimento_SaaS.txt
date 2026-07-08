@@ -1,0 +1,108 @@
+Tela: Atendimento de Requisicoes SaaS
+
+Visao geral
+-----------
+- Segunda etapa do fluxo de duas etapas de requisicao (solicitacao -> atendimento).
+- O almoxarife assume um pedido pendente e decide item a item: Aceitar, Reduzir ou Recusar.
+- Somente no atendimento o saldo se move: cada item atendido gera a REQUISITION real reusando
+  `save_team_stock_operation_record` (almoxarifado -> centro proprio da equipe).
+- O atendimento e atomico (tudo-ou-nada): se qualquer item falhar por saldo/serial, nada e gravado
+  e o pedido volta a PENDING.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/requisicao-atendimento/page.tsx`
+- View: `src/modules/dashboard/requisicao-atendimento/FulfillmentPageView.tsx`
+- Estilo: `src/modules/dashboard/requisicao-atendimento/FulfillmentPageView.module.css`
+- Tipos: `src/modules/dashboard/requisicao-atendimento/types.ts`
+- API (meta): `src/app/api/stock-requisitions/meta/route.ts`
+- API (lista/detalhe): `src/app/api/stock-requisitions/route.ts`
+- API (serial-options): `src/app/api/stock-requisitions/serial-options/route.ts`
+- API (claim/release): `src/app/api/stock-requisitions/claim/route.ts`
+- API (atender): `src/app/api/stock-requisitions/fulfill/route.ts`
+- API (cancelar): `src/app/api/stock-requisitions/cancel/route.ts`
+- Helper server: `src/lib/server/stockRequisitions.ts`
+- Banco: `supabase/migrations/294..296_*.sql`
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Fila de pedidos com filtro de status (`Em aberto` = PENDING+EM_ATENDIMENTO por padrao, ou status especifico).
+- Colunas: data, projeto, equipe, centro, itens, status (com nome de quem assumiu em EM_ATENDIMENTO).
+- Acao `Atender`: assume o pedido (claim) e abre o detalhe dos itens.
+
+Atendimento (decisao por item)
+------------------------------
+- Ao assumir, o pedido vai de `PENDING` para `EM_ATENDIMENTO` com `claimed_by`/`claim_expires_at`
+  (default 15 min). Enquanto assumido por outro e nao expirado, os demais nao atendem.
+- A tabela de itens mostra `quantidade solicitada` e o `saldo atual` (informativo; o oficial e validado
+  no backend ao confirmar).
+- Decisao exclusiva por linha (radio), nenhuma marcada por padrao:
+  - `Aceitar` -> atendida = solicitada. Para material serializado (TRAFO/RELIGADOR/CHAVE) exige selecionar
+    a unidade (Serial; + LP para TRAFO) do centro de origem, carregada por `serial-options`.
+  - `Reduzir` -> `0 < atendida < solicitada` + motivo do catalogo. Desabilitado para material serializado (unidade = 1).
+  - `Recusar` -> atendida = 0 + motivo do catalogo.
+- Motivo com `requires_notes` (ex.: `Outro`) exige observacao.
+- Botao `Aceitar tudo`: marca automaticamente apenas itens comuns com saldo suficiente; serializados/sem-saldo
+  permanecem manuais.
+- `Confirmar atendimento` fica bloqueado ate todas as linhas terem decisao valida e completa.
+- Acoes adicionais: `Liberar` (release da claim) e `Cancelar pedido`.
+
+Boas praticas
+-------------
+- Escrita somente via RPC transacional (`fulfill_stock_requisition_request`), atomica com rollback total.
+- `entry_type` (NOVO/SUCATA) e resolvido no backend a partir de `materials.tipo` (nunca do cliente).
+- Concorrencia protegida por claim + `for update` na RPC; segundo atendente recebe erro claro.
+- Escopo por `tenant_id` em todas as consultas; `requirePageAction` `update` para claim/fulfill/release e
+  `cancel` para cancelamento.
+
+Cancelamento e saldo (estorno pos-atendimento)
+----------------------------------------------
+- Pedido atendido e imutavel; o estorno ocorre somente em `Operacoes de Equipe` (`/saida`).
+- O atendimento carimba `stock_transfer_team_operations.operation_batch_id = pedido`, permitindo estorno
+  por item ou do atendimento inteiro via `reverse_team_stock_operation_batch_v2`.
+- O item do pedido guarda `resulting_transfer_item_id`; o detalhe exibe `isReversed` consultando
+  `stock_transfer_item_reversals` (somente leitura).
+- Regras herdadas do ledger: estorno devolve saldo da equipe para a BASE, serial volta via `trafo_instances`,
+  sem duplo estorno; `resultado_atendimento` do pedido nao e recalculado.
+
+Efeito de saldo (resultado)
+---------------------------
+- `TOTAL`: todos os itens atendidos com quantidade = solicitada.
+- `PARCIAL`: ao menos um item atendido (> 0) e pelo menos um reduzido ou recusado.
+- `RECUSADO`: todos os itens com quantidade = 0.
+- Falha de saldo por concorrencia nao vira parcial: rollback total e pedido volta a PENDING.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/requisicao-atendimento/FulfillmentPageView.tsx`
+  - Responsavel por: `loadList`, `loadReasons`, `handleAtender` (claim + detalhe), `loadDetail`,
+    `loadSerialOptions`, `setDecision`, `handleAcceptAll`, `allDecided`, `handleConfirm`,
+    `handleRelease`, `handleCancel`.
+- Caminho: `src/app/api/stock-requisitions/route.ts`
+  - Responsavel por: `GET` lista (`page=atendimento`) e detalhe (itens + saldo atual + status de estorno).
+- Caminho: `src/app/api/stock-requisitions/fulfill/route.ts`
+  - Responsavel por: resolver `entry_type` via `materials.tipo` e acionar `fulfill_stock_requisition_request`.
+- Caminho: `src/app/api/stock-requisitions/claim/route.ts`
+  - Responsavel por: `POST` claim e `DELETE` release (admin como supervisor).
+- Caminho: `src/app/api/stock-requisitions/serial-options/route.ts`
+  - Responsavel por: seriais/LPs disponiveis no centro principal via `trafo_instances`.
+- Caminho: `src/lib/server/stockRequisitions.ts`
+  - Responsavel por: `claim/release/fulfill/cancel` via RPC e `INSUFFICIENT_STOCK` detalhado.
+- Caminho: `supabase/migrations/295_create_stock_requisition_rpcs.sql`
+  - Responsavel por: `claim/release/fulfill/cancel_stock_requisition_request`.
+
+Constantes e configuracoes
+- `ATENDIMENTO_PAGE = "requisicao-atendimento"` nas rotas.
+- Claim default 15 min (`p_claim_minutes`) na RPC `claim_stock_requisition_request`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS por tenant.
+- RPCs de requisicao (EXECUTE service_role) e reuso de `save_team_stock_operation_record`.
+- Next.js Route Handlers (`/api/stock-requisitions/*`).
+
+Atualizacao 2026-07
+-------------------
+- Tela criada como etapa de atendimento do novo fluxo de Requisicao com Atendimento no Almoxarifado.
+- Permissoes: pagina `requisicao-atendimento` (claim/fulfill/release mapeados para action `update`; `cancel`),
+  nasce bloqueada para nao-admin.

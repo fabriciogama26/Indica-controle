@@ -82,6 +82,8 @@ const permissionCatalog = [
   { pageKey: "posicao-trafo", label: "Rastreio de SERIAL", path: "/posicao-trafo", section: "Almoxarifado" },
   { pageKey: "entrada", label: "Movimentacao de Estoque", path: "/entrada", section: "Almoxarifado" },
   { pageKey: "saida", label: "Operacoes de Equipe", path: "/saida", section: "Almoxarifado" },
+  { pageKey: "requisicao-solicitacao", label: "Solicitacao de Requisicao", path: "/requisicao-solicitacao", section: "Almoxarifado" },
+  { pageKey: "requisicao-atendimento", label: "Atendimento de Requisicoes", path: "/requisicao-atendimento", section: "Almoxarifado" },
   { pageKey: "estornos", label: "Estornos", path: "/estornos", section: "Almoxarifado" },
   { pageKey: "consumo-projeto", label: "Consumo por Projeto", path: "/consumo-projeto", section: "Almoxarifado" },
   { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },
