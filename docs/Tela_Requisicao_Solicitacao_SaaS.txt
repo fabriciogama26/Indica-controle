@@ -1,0 +1,86 @@
+Tela: Solicitacao de Requisicao SaaS
+
+Visao geral
+-----------
+- Primeira etapa do fluxo de duas etapas de requisicao de material (solicitacao -> atendimento).
+- O solicitante (usuario logado) abre um pedido de material para uma equipe/projeto; o pedido NAO movimenta saldo.
+- O saldo so e movimentado quando o almoxarife atende o pedido na tela `Atendimento de Requisicoes` (`/requisicao-atendimento`).
+- Complementa (nao substitui) `Operacoes de Equipe` (`/saida`), que continua para requisicao/devolucao direta imediata.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/requisicao-solicitacao/page.tsx`
+- View: `src/modules/dashboard/requisicao-solicitacao/SolicitationPageView.tsx`
+- Estilo: `src/modules/dashboard/requisicao-solicitacao/SolicitationPageView.module.css`
+- Tipos: `src/modules/dashboard/requisicao-solicitacao/types.ts`
+- API (meta): `src/app/api/stock-requisitions/meta/route.ts`
+- API (lista/criar): `src/app/api/stock-requisitions/route.ts`
+- API (cancelar): `src/app/api/stock-requisitions/cancel/route.ts`
+- Helper server: `src/lib/server/stockRequisitions.ts`
+- Banco (schema): `supabase/migrations/294_create_stock_requisition_module.sql`
+- Banco (RPCs): `supabase/migrations/295_create_stock_requisition_rpcs.sql`
+- Banco (pagina): `supabase/migrations/296_register_stock_requisition_pages.sql`
+
+Cadastro
+--------
+- Campos obrigatorios do cabecalho:
+  - `stockCenterId` (centro de estoque OWN, sem centro vinculado a equipe)
+  - `teamId` (equipe ativa com centro proprio)
+  - `projectId` (por codigo, via datalist)
+  - `requestDate` (nao futura)
+- Itens: `materialId` (por codigo, via datalist) + `quantity` (> 0). Sem serial na criacao.
+- Campo opcional: `notes`.
+- Regras (validadas no backend pela RPC `create_stock_requisition_request`):
+  - Pedido sem itens e bloqueado.
+  - Material nao pode repetir na mesma solicitacao.
+  - Duplicidade nivel item: o mesmo material nao pode estar em 2 pedidos em aberto
+    (`PENDING`/`EM_ATENDIMENTO`) para a mesma combinacao tenant+equipe+projeto+data.
+  - Centro/equipe/projeto/material precisam estar ativos no tenant.
+  - `requestDate` nao pode ser futura.
+- Sem edicao apos criado: para corrigir, Cancelar + novo pedido.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- `Projeto` e `Material` usam `input + datalist` (padrao das telas operacionais).
+- Lista `Meus pedidos`: pedidos do proprio solicitante (`scope=mine`), com status e resultado.
+- Acao por linha: `Cancelar` (somente quando `status = PENDING`).
+
+Boas praticas
+-------------
+- Escrita somente via RPC transacional (`create_stock_requisition_request`).
+- Todo o escopo filtrado por `tenant_id`; `requested_by` e o usuario logado, com snapshot do nome.
+- Carregar meta e lista em paralelo (`Promise.all`).
+
+Cancelamento e saldo
+--------------------
+- A solicitacao nao movimenta saldo; portanto cancelar um pedido em aberto nao gera estorno.
+- Cancelamento permitido ao solicitante (esta tela) e ao almoxarife (tela de atendimento).
+- Pedido atendido (ENCERRADO) e imutavel; correcao ocorre por estorno em `Operacoes de Equipe`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/requisicao-solicitacao/SolicitationPageView.tsx`
+  - Responsavel por: `loadMeta`, `loadList`, `addItem`, `removeItem`, `handleSubmit`, `handleCancel`.
+- Caminho: `src/app/api/stock-requisitions/route.ts`
+  - Responsavel por: `GET` (lista paginada `scope=mine` e detalhe por `id`) e `POST` (cria pedido). `PUT` retorna 409.
+- Caminho: `src/app/api/stock-requisitions/meta/route.ts`
+  - Responsavel por: centros OWN sem centro de equipe, equipes ativas, projetos, materiais ativos, motivos de ajuste.
+- Caminho: `src/lib/server/stockRequisitions.ts`
+  - Responsavel por: `createStockRequisitionViaRpc`, `cancelStockRequisitionViaRpc` e mapeamento de erros.
+- Caminho: `supabase/migrations/295_create_stock_requisition_rpcs.sql`
+  - Responsavel por: `create_stock_requisition_request` e `cancel_stock_requisition_request`.
+
+Constantes e configuracoes
+- `SOLICITACAO_PAGE = "requisicao-solicitacao"`, `DEFAULT_PAGE_SIZE = 20` em `route.ts`.
+- Estilos e estados de loading em `SolicitationPageView.module.css`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS por tenant.
+- RPCs `create_stock_requisition_request` e `cancel_stock_requisition_request` (EXECUTE service_role).
+- Next.js Route Handlers (`/api/stock-requisitions/*`).
+
+Atualizacao 2026-07
+-------------------
+- Tela criada como etapa de solicitacao do novo fluxo de Requisicao com Atendimento no Almoxarifado.
+- Permissoes: pagina `requisicao-solicitacao` (actions read/create/cancel), nasce bloqueada para nao-admin.

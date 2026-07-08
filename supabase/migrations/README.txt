@@ -857,3 +857,16 @@ Observacao
 - Cria `measurement_project_activity_indicators` para configurar, por tenant, quais codigos de atividades devem aparecer como chips de uso no cadastro da Medicao.
 - Adiciona RLS por tenant via `user_can_access_tenant`, indice por `tenant_id + is_active + sort_order + activity_code` e trigger de auditoria.
 - Faz seed inicial dos codigos `AHO717` e `AHO720` para tenants existentes, permitindo alterar/adicionar/remover codigos pela tabela sem mexer no frontend.
+
+294_create_stock_requisition_module.sql
+- Cria a base do fluxo de Requisicao com Atendimento no Almoxarifado: `stock_requisition_requests`, `stock_requisition_request_items` e o catalogo `stock_requisition_adjustment_reason_catalog` (motivos de Reduzir/Recusar).
+- Nao movimenta saldo; o atendimento (migration 295) gera a REQUISITION real reusando `save_team_stock_operation_record`.
+- Aplica RLS por tenant via `user_can_access_tenant` (somente SELECT; escrita apenas pelas RPCs), FKs compostas `(id, tenant_id)` para centro/equipe/projeto/material e indices por status/equipe/projeto/data.
+
+295_create_stock_requisition_rpcs.sql
+- Cria as RPCs transacionais `create_stock_requisition_request`, `claim_stock_requisition_request`, `release_stock_requisition_claim`, `fulfill_stock_requisition_request` e `cancel_stock_requisition_request`, mais o helper `stock_requisition_actor_allowed`.
+- `fulfill` e atomico (padrao begin/exception com rollback total): valida decisoes (Aceitar/Reduzir/Recusar), chama `save_team_stock_operation_record` por item, carimba `operation_batch_id = pedido` e vincula `resulting_transfer_item_id`.
+- Concorrencia por claim (`EM_ATENDIMENTO` + expiracao); duplicidade nivel item; EXECUTE restrito a `service_role`.
+
+296_register_stock_requisition_pages.sql
+- Cadastra as telas `requisicao-solicitacao` e `requisicao-atendimento` na secao `Almoxarifado` com `default_user_access = false` (nascem bloqueadas para nao-admin) e backfill de permissoes por role e por usuario.
