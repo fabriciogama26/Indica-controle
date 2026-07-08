@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
-      return NextResponse.json({ message: result.message, reason: result.reason }, { status: result.status });
+      return NextResponse.json({ message: result.message, reason: result.reason, details: result.details }, { status: result.status });
     }
 
     return NextResponse.json({ requestId: result.requestId, message: result.message }, { status: 201 });
