@@ -92,7 +92,11 @@ export function SolicitationPageView() {
   }, [meta.projects]);
 
   const materialByCode = useMemo(() => {
-    const map = new Map(meta.materials.map((material) => [material.code.toUpperCase(), material]));
+    const map = new Map(
+      meta.materials
+        .filter((material) => Boolean(material.materialCode))
+        .map((material) => [material.materialCode.toUpperCase(), material]),
+    );
     return map;
   }, [meta.materials]);
 
@@ -114,7 +118,7 @@ export function SolicitationPageView() {
     }
     setItems((current) => [
       ...current,
-      { materialId: material.id, materialCode: material.code, description: material.description, quantity: String(parsedQuantity) },
+      { materialId: material.id, materialCode: material.materialCode, description: material.description, quantity: String(parsedQuantity) },
     ]);
     setMaterialCode("");
     setQuantity("");
@@ -244,7 +248,7 @@ export function SolicitationPageView() {
                 <input list="requisition-materials" value={materialCode} onChange={(event) => setMaterialCode(event.target.value)} placeholder="Codigo" />
                 <datalist id="requisition-materials">
                   {meta.materials.map((material) => (
-                    <option key={material.id} value={material.code}>{material.description}</option>
+                    <option key={material.id} value={material.materialCode}>{material.description}</option>
                   ))}
                 </datalist>
               </label>
