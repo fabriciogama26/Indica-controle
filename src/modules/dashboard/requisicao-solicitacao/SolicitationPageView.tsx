@@ -220,7 +220,7 @@ export function SolicitationPageView() {
                 <option value="">Selecione</option>
                 {meta.teams.map((team) => (
                   <option key={team.id} value={team.id} disabled={!team.hasStockCenter}>
-                    {team.name}{team.hasStockCenter ? "" : " (sem centro proprio)"}
+                    {team.name}{team.foremanName ? ` - ${team.foremanName}` : ""}{team.hasStockCenter ? "" : " (sem centro proprio)"}
                   </option>
                 ))}
               </select>
