@@ -87,7 +87,11 @@ export function SolicitationPageView() {
   }, [loadMeta, loadList]);
 
   const projectByCode = useMemo(() => {
-    const map = new Map(meta.projects.map((project) => [project.projectCode.toUpperCase(), project]));
+    const map = new Map(
+      meta.projects
+        .filter((project) => Boolean(project.projectCode))
+        .map((project) => [project.projectCode.toUpperCase(), project]),
+    );
     return map;
   }, [meta.projects]);
 
