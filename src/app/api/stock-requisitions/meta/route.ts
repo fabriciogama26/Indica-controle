@@ -13,7 +13,13 @@ type TeamRow = {
   id: string;
   name: string;
   stock_center_id: string | null;
+  foreman_person_id: string | null;
   ativo: boolean;
+};
+
+type PersonRow = {
+  id: string;
+  nome: string;
 };
 
 type ProjectRow = {
@@ -61,7 +67,7 @@ export async function GET(request: NextRequest) {
         .returns<StockCenterRow[]>(),
       supabase
         .from("teams")
-        .select("id, name, stock_center_id, ativo")
+        .select("id, name, stock_center_id, foreman_person_id, ativo")
         .eq("tenant_id", appUser.tenant_id)
         .order("name", { ascending: true })
         .returns<TeamRow[]>(),
@@ -86,6 +92,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao carregar metadados das requisicoes." }, { status: 500 });
     }
 
+    const activeTeams = (teamsResult.data ?? []).filter((team) => Boolean(team.ativo));
+    const foremanIds = Array.from(
+      new Set(activeTeams.map((team) => String(team.foreman_person_id ?? "").trim()).filter(Boolean)),
+    );
+    const foremenResult = foremanIds.length
+      ? await supabase
+          .from("people")
+          .select("id, nome")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", foremanIds)
+          .returns<PersonRow[]>()
+      : { data: [] as PersonRow[], error: null };
+    const foremanMap = new Map((foremenResult.data ?? []).map((row) => [row.id, row.nome]));
+
     const teamStockCenterIds = new Set(
       (teamsResult.data ?? []).map((team) => String(team.stock_center_id ?? "").trim()).filter(Boolean),
     );
@@ -94,14 +114,15 @@ export async function GET(request: NextRequest) {
       stockCenters: (stockCentersResult.data ?? [])
         .filter((row) => !teamStockCenterIds.has(row.id))
         .map((row) => ({ id: row.id, name: row.name })),
-      teams: (teamsResult.data ?? [])
-        .filter((row) => Boolean(row.ativo))
-        .map((row) => ({
-          id: row.id,
-          name: row.name,
-          stockCenterId: row.stock_center_id,
-          hasStockCenter: Boolean(row.stock_center_id),
-        })),
+      teams: activeTeams.map((row) => ({
+        id: row.id,
+        name: row.name,
+        stockCenterId: row.stock_center_id,
+        hasStockCenter: Boolean(row.stock_center_id),
+        foremanName: row.foreman_person_id
+          ? String(foremanMap.get(row.foreman_person_id) ?? "").trim() || null
+          : null,
+      })),
       projects: (projectsResult.data ?? []).map((row) => ({ id: row.id, projectCode: row.sob })),
       materials: (materialsResult.data ?? []).map(toOperationalMaterialOption),
       adjustmentReasons: reasonsResult.error

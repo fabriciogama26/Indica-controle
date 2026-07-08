@@ -1,12 +1,11 @@
 export type RequisitionMetaStockCenter = { id: string; name: string };
-export type RequisitionMetaTeam = { id: string; name: string; stockCenterId: string | null; hasStockCenter: boolean };
+export type RequisitionMetaTeam = { id: string; name: string; stockCenterId: string | null; hasStockCenter: boolean; foremanName: string | null };
 export type RequisitionMetaProject = { id: string; projectCode: string };
 export type RequisitionMetaMaterial = {
   id: string;
-  code: string;
+  materialCode: string;
   description: string;
-  umb?: string;
-  tipo?: string;
+  materialType?: string;
   serialTrackingType?: string;
 };
 export type RequisitionAdjustmentReason = { code: string; label: string; requiresNotes: boolean };
