@@ -870,3 +870,7 @@ Observacao
 
 296_register_stock_requisition_pages.sql
 - Cadastra as telas `requisicao-solicitacao` e `requisicao-atendimento` na secao `Almoxarifado` com `default_user_access = false` (nascem bloqueadas para nao-admin) e backfill de permissoes por role e por usuario.
+
+297_create_saida_requisicao_permission.sql
+- Cria a permissao virtual `saida-requisicao` (nao navegavel; so na matriz de acesso) que controla, dentro de Operacoes de Equipe (`/saida`), quem pode fazer a operacao `REQUISITION`.
+- Nasce bloqueada para todos (`default_user_access = false`); perfis administrativos seguem liberados por bypass de `is_admin`. Devolucao e Retorno de campo continuam sob a permissao `saida`.

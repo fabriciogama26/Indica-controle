@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { fetchActiveOperationalMaterials, toOperationalMaterialOption } from "@/lib/server/materialCatalog";
+import { requirePageAction } from "@/lib/server/pageAuthorization";
 
 type StockCenterRow = {
   id: string;
@@ -53,6 +54,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+
+    const requisitionAuth = await requirePageAction({ context: resolution, pageKey: "saida-requisicao", action: "read" });
+    const canDirectRequisition = requisitionAuth.allowed;
 
     const [stockCentersResult, teamsResult, projectsResult, materialsResult, reversalReasonsResult] = await Promise.all([
       supabase
@@ -115,6 +119,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       fieldReturnOriginName: "CAMPO / INSTALADO",
+      canDirectRequisition,
       stockCenters: (stockCentersResult.data ?? [])
         .filter((row) => !teamStockCenterIds.has(row.id))
         .map((row) => ({

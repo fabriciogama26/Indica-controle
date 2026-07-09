@@ -1094,6 +1094,17 @@ export async function POST(request: NextRequest) {
 
     const payload = (await request.json().catch(() => ({}))) as TransferPayload;
     const operationKind = normalizeTeamOperationKind(payload.operationKind);
+
+    // Requisicao direta exige permissao propria (saida-requisicao); Devolucao/Retorno ficam sob 'saida'.
+    if (operationKind === "REQUISITION") {
+      const requisitionAuth = await requirePageAction({ context: resolution, pageKey: "saida-requisicao", action: "read" });
+      if (!requisitionAuth.allowed) {
+        return NextResponse.json(
+          { message: "Sem permissao para Requisicao direta. Use a tela de Solicitacao de Requisicao." },
+          { status: 403 },
+        );
+      }
+    }
     const stockCenterId = normalizeText(payload.stockCenterId);
     const teamId = normalizeText(payload.teamId);
     const projectId = normalizeText(payload.projectId);

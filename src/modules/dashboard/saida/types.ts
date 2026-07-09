@@ -41,6 +41,7 @@ export type MetaResponse = {
   materials?: MaterialOption[];
   reversalReasons?: ReversalReasonOption[];
   fieldReturnOriginName?: string;
+  canDirectRequisition?: boolean;
   message?: string;
 };
 
