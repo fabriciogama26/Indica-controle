@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { requirePageAction } from "@/lib/server/pageAuthorization";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -225,6 +226,18 @@ export async function POST(request: NextRequest) {
         { message: "Limite de importacao excedido. Maximo de 500 registros por requisicao." },
         { status: 400 },
       );
+    }
+
+    // Se o lote contiver qualquer Requisicao direta, exige a permissao propria (saida-requisicao).
+    const hasRequisition = entries.some((entry) => normalizeTeamOperationKind(entry.operationKind) === "REQUISITION");
+    if (hasRequisition) {
+      const requisitionAuth = await requirePageAction({ context: resolution, pageKey: "saida-requisicao", action: "read" });
+      if (!requisitionAuth.allowed) {
+        return NextResponse.json(
+          { message: "Sem permissao para Requisicao direta no cadastro em massa. Remova as linhas de REQUISICAO ou use a tela de Solicitacao de Requisicao." },
+          { status: 403 },
+        );
+      }
     }
 
     const { supabase, appUser } = resolution;

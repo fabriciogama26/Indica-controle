@@ -186,6 +186,7 @@ export function TeamStockOperationsPageView() {
   const [serialOptions, setSerialOptions] = useState<SerialOption[]>([]);
   const [reversalReasons, setReversalReasons] = useState<MetaResponse["reversalReasons"]>([]);
   const [fieldReturnOriginName, setFieldReturnOriginName] = useState("CAMPO / INSTALADO");
+  const [canDirectRequisition, setCanDirectRequisition] = useState(true);
 
   const [historyItems, setHistoryItems] = useState<TeamOperationListItem[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -402,6 +403,11 @@ export function TeamStockOperationsPageView() {
     setMaterials(data.materials ?? []);
     setReversalReasons(nextReversalReasons);
     setFieldReturnOriginName(String(data.fieldReturnOriginName ?? "CAMPO / INSTALADO"));
+    const allowRequisition = data.canDirectRequisition !== false;
+    setCanDirectRequisition(allowRequisition);
+    if (!allowRequisition) {
+      setForm((current) => (current.operationKind === "REQUISITION" ? { ...current, operationKind: "RETURN" } : current));
+    }
     setFeedback(null);
 
         if (!reversalReasonCode && nextReversalReasons.length > 0) {
@@ -1871,7 +1877,7 @@ export function TeamStockOperationsPageView() {
               onChange={(event) => handleOperationKindChange(event.target.value as TeamOperationKind)}
               disabled={isSubmitting}
             >
-              <option value="REQUISITION">Requisicao</option>
+              {canDirectRequisition ? <option value="REQUISITION">Requisicao</option> : null}
               <option value="RETURN">Devolucao</option>
               <option value="FIELD_RETURN">Retorno de campo</option>
             </select>

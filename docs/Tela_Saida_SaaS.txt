@@ -127,6 +127,21 @@ Filtros, auto-complete e listagem
   - `Historico`
   - `Estornar`
 
+Permissao por operacao (Requisicao direta)
+------------------------------------------
+- A operacao `Requisicao` exige a permissao propria `saida-requisicao` (migration 297); `Devolucao`
+  e `Retorno de campo` continuam sob a permissao `saida`.
+- `saida-requisicao` nasce bloqueada para todos (perfis administrativos seguem liberados por bypass
+  de `is_admin`). O admin concede na matriz de permissoes ("Requisicao direta (Operacoes de Equipe)").
+- Uso tipico: um solicitante recebe `requisicao-solicitacao` (tela de Solicitacao) + `saida`
+  (devolucao/retorno), sem `saida-requisicao` -> ele nao faz Requisicao direta, so solicita.
+- Enforcement:
+  - `GET /api/team-stock-operations/meta` retorna `canDirectRequisition`; a tela esconde a opcao
+    `Requisicao` do seletor do formulario quando falso (o filtro da lista mantem todas as opcoes).
+  - `POST /api/team-stock-operations` recusa `operationKind = REQUISITION` sem a permissao (403).
+  - `POST /api/team-stock-operations/import` recusa o lote que contiver qualquer linha `REQUISICAO`
+    sem a permissao (403).
+
 Boas praticas
 -------------
 - Manter todo o escopo filtrado por `tenant_id`.
