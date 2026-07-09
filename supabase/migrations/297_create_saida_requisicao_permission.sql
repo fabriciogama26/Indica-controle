@@ -6,11 +6,12 @@
 -- Nao e uma pagina navegavel (nao entra no menu nem em ROUTE_PAGE_KEYS); serve apenas como flag
 -- de permissao na matriz de acesso. Nasce BLOQUEADA para todos (default_user_access = false);
 -- perfis administrativos continuam liberados por bypass de is_admin no backend.
+-- Path proprio `/saida-requisicao` (nao navegavel) porque `app_pages.path` e unico e `/saida` ja existe.
 
 insert into public.app_pages (page_key, path, name, section, description, default_user_access)
 values (
   'saida-requisicao',
-  '/saida',
+  '/saida-requisicao',
   'Requisicao direta (Operacoes de Equipe)',
   'Almoxarifado',
   'Permite executar a operacao Requisicao dentro de Operacoes de Equipe. Sem esta permissao o usuario so faz Devolucao e Retorno de campo.',
