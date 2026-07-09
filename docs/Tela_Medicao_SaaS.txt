@@ -1176,3 +1176,26 @@ Atualizacao 2026-07 - Paginacao compartilhada e filtro padrao por mes
   - Antes/depois (paginacao): nenhuma mudanca de comportamento visivel; o rodape "Pagina X de Y | Total: Z" e os botoes Anterior/Proxima continuam identicos, agora vindos de um componente compartilhado usado tambem em outras telas (piloto: Equipes).
 - Impacto multi-tenant: nenhum (mudanca de UI e de valor padrao de filtro no cliente; a API continua exigindo `startDate`/`endDate` explicitos e aplicando o mesmo escopo de tenant).
 - Multi-tenant: sem mudanca adicional em API, query, schema, RLS ou permissao alem da rota server-side de exportacao ja documentada acima.
+
+Atualizacao 2026-07-09 - Observacao no CSV e detalhe da ordem
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/medicao/export/route.ts`
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Tipo `OrderDetail` da exportacao server-side
+  - Funcao `buildDetailsCsv`
+  - Funcao `fetchMeasurementOrderDetail`
+  - Constante `HISTORY_LIMIT`
+  - Funcao `loadHistory`
+- Comportamento antes/depois:
+  - Antes: o CSV `Detalhamento (CSV)` preenchia a coluna `Observacao` somente com a observacao do item, deixando vazio quando a observacao estava registrada no cabecalho da ordem.
+  - Depois: o CSV de detalhamento usa `notes` da ordem na primeira linha da ordem e nao repete a mesma observacao nas demais linhas.
+  - Antes: o modal `Detalhes` aguardava consultas independentes em sequencia apos localizar a ordem.
+  - Depois: itens, usuarios, match de programacao, centro de servico e composicao de equipe sao carregados em paralelo no backend.
+  - Depois: a query de historico da Medicao usa `.limit(50)`, alinhada ao padrao de performance para historicos exibidos em modal.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS ou permissoes.
+  - Todas as leituras continuam filtradas pelo `tenant_id` do usuario autenticado.

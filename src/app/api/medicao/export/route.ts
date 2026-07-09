@@ -69,6 +69,7 @@ type OrderDetail = {
   minimumBillingUnitValue: number;
   projectServiceCenter: string;
   updatedAt: string;
+  notes: string;
   items: OrderDetailItem[];
 };
 
@@ -307,9 +308,10 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
       observation: "",
     }];
 
-    return detailItems.map((item) => {
+    return detailItems.map((item, itemIndex) => {
       const itemRate = item.manualRate || detail.manualRate;
       const totalItem = item.totalValue || (item.voicePoint * item.quantity * itemRate * item.unitValue);
+      const observation = itemIndex === 0 ? (detail.notes || item.observation || "-") : "-";
       return [
         detail.orderNumber,
         summary?.projectCode ?? detail.projectId,
@@ -332,7 +334,7 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
         itemRate.toLocaleString("pt-BR"),
         formatCurrency(item.unitValue),
         formatCurrency(totalItem),
-        item.observation || "-",
+        observation,
         formatDateTime(detail.updatedAt),
       ];
     });
