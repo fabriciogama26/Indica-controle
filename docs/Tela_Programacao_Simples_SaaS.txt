@@ -2981,3 +2981,30 @@ Atualizacao 2026-07-06 - Extracao ENEL com preenchimento de celulas vazias
   - `src/modules/dashboard/programacao-simples/exports.ts`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
+
+Atualizacao 2026-07-09 - Filtro de Data execucao obedecido por todos os status
+-------------------------------------------------------------------------------
+- Problema resolvido:
+  - A lista da Programacao Simples ignorava o filtro de data para programacoes inativas (`CANCELADA`, `ADIADA` e `TRANSFERIDA`).
+  - Ao filtrar uma data especifica, linhas inativas de outras datas podiam continuar aparecendo na listagem.
+- Solucao:
+  - `filteredSchedules` passa a aplicar `Data inicial` + `Data final` antes dos demais filtros para todos os registros, sem excecao por status.
+- Mapa de Codigo (funcoes, hooks e constantes):
+  - Funcoes principais:
+    - Caminho: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+    - Funcao/estado: `filteredSchedules`
+    - Responsavel por: filtrar a lista exibida por data, projeto, municipio, equipe, status, Estado Trabalho e Tipo SGD.
+- Comportamento antes/depois:
+  - Antes: status inativos podiam aparecer fora do periodo filtrado.
+  - Depois: a lista obedece sempre o periodo informado em `Data inicial` e `Data final`.
+- Como validar:
+  - Abrir Programacao Simples.
+  - Informar a mesma data em `Data inicial` e `Data final`.
+  - Aplicar filtros e confirmar que a lista mostra apenas registros dessa data, inclusive quando houver registros `CANCELADA`, `ADIADA` ou `TRANSFERIDA` em outras datas.
+- Impacto multi-tenant:
+  - Nenhuma query, RLS, migration, endpoint ou escopo de tenant alterado.
+  - Mudanca limitada ao filtro frontend aplicado sobre dados ja carregados e autorizados.
+- Arquivos:
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `TASKS.md`
