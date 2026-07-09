@@ -555,8 +555,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const filteredSchedules = useMemo(() => {
     const filtered = schedules.filter((item) => {
       const displayStatus = getDisplayProgrammingStatus(item);
-      const shouldApplyDateFilter = !isInactiveProgrammingStatus(displayStatus);
-      if (shouldApplyDateFilter && !isDateInRange(item.date, activeFilters.startDate, activeFilters.endDate)) {
+      if (!isDateInRange(item.date, activeFilters.startDate, activeFilters.endDate)) {
         return false;
       }
 
