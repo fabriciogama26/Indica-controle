@@ -66,6 +66,18 @@ const chartStatusColors = {
 
 const BULLET_AXIS_PADDING_FACTOR = 1.12;
 
+function formatDashboardDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+function formatDashboardDateRange(startDate: string, endDate: string) {
+  if (startDate && endDate) return `${formatDashboardDate(startDate)} a ${formatDashboardDate(endDate)}`;
+  if (startDate) return `A partir de ${formatDashboardDate(startDate)}`;
+  if (endDate) return `Ate ${formatDashboardDate(endDate)}`;
+  return "";
+}
+
 function resolveMetaValue(row: MetaComparisonRow, mode: MetaMode) {
   if (mode === "standard") return row.standardMetaValue;
   if (mode === "worked") return row.workedMetaValue;
@@ -115,9 +127,11 @@ export function DashboardTeamsPageView() {
   const selectedCycleLabel = dashboard.cycles.find(
     (cycle) => cycle.cycleStart === dashboard.filters.cycleStart,
   )?.label ?? "Ciclo selecionado";
-  const teamPeriodLabel = dashboard.cycleWeeks.find((week) => week.id === teamWeekFilter)?.label ?? selectedCycleLabel;
-  const foremanPeriodLabel = dashboard.cycleWeeks.find((week) => week.id === foremanWeekFilter)?.label ?? selectedCycleLabel;
-  const supervisorPeriodLabel = dashboard.cycleWeeks.find((week) => week.id === supervisorWeekFilter)?.label ?? selectedCycleLabel;
+  const selectedDateRangeLabel = formatDashboardDateRange(dashboard.filters.startDate, dashboard.filters.endDate);
+  const selectedFilterLabel = selectedDateRangeLabel ? `${selectedCycleLabel} - ${selectedDateRangeLabel}` : selectedCycleLabel;
+  const teamPeriodLabel = dashboard.cycleWeeks.find((week) => week.id === teamWeekFilter)?.label ?? selectedFilterLabel;
+  const foremanPeriodLabel = dashboard.cycleWeeks.find((week) => week.id === foremanWeekFilter)?.label ?? selectedFilterLabel;
+  const supervisorPeriodLabel = dashboard.cycleWeeks.find((week) => week.id === supervisorWeekFilter)?.label ?? selectedFilterLabel;
   const primaryTeamMetaMode = teamMetaModes[0] ?? "cycle";
   const teamRankingRows = useMemo(
     () => [...selectedTeams].map((item) => {
@@ -477,6 +491,8 @@ export function DashboardTeamsPageView() {
         </div>
         <div className={styles.filterGrid}>
           <label className={styles.field}><span>Ciclo</span><select value={dashboard.draftFilters.cycleStart} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, cycleStart: event.target.value }))}><option value="">Ciclo mais recente</option>{dashboard.cycles.map((cycle) => <option key={cycle.cycleStart} value={cycle.cycleStart}>{cycle.label}</option>)}</select></label>
+          <label className={styles.field}><span>Data inicial</span><input type="date" value={dashboard.draftFilters.startDate} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} /></label>
+          <label className={styles.field}><span>Data final</span><input type="date" value={dashboard.draftFilters.endDate} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} /></label>
           <label className={styles.field}><span>Projeto (SOB)</span><input list="dashboard-equipes-projects" value={dashboard.draftFilters.project} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, project: event.target.value }))} placeholder="Todos" /><datalist id="dashboard-equipes-projects">{dashboard.projects.map((item) => <option key={item.id} value={item.label} />)}</datalist></label>
           <label className={styles.field}><span>MK / Equipe</span><select value={dashboard.draftFilters.teamId} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, teamId: event.target.value }))}><option value="">Todas</option>{dashboard.teams.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           <label className={styles.field}><span>Encarregado</span><select value={dashboard.draftFilters.foreman} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, foreman: event.target.value }))}><option value="">Todos</option>{dashboard.foremen.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>

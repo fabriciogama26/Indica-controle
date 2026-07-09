@@ -75,6 +75,8 @@ export type DashboardTeamsResponse = {
   message?: string;
   cycles?: DashboardTeamsCycle[];
   selectedCycleStart?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
   filters?: {
     projects: DashboardTeamsOption[];
     teams: DashboardTeamsOption[];
@@ -92,6 +94,8 @@ export type DashboardTeamsResponse = {
 
 export type DashboardTeamsFilters = {
   cycleStart: string;
+  startDate: string;
+  endDate: string;
   project: string;
   teamId: string;
   foreman: string;

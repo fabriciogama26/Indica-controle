@@ -260,6 +260,14 @@ function countBusinessDays(start: Date, end: Date) {
   return total;
 }
 
+function maxIsoDate(left: string, right: string) {
+  return left > right ? left : right;
+}
+
+function minIsoDate(left: string, right: string) {
+  return left < right ? left : right;
+}
+
 function buildCycleWeeks(cycleStart: string, cycleEnd: string): CycleWeek[] {
   const weeks: CycleWeek[] = [];
   let start = parseIsoDate(cycleStart);
@@ -635,14 +643,28 @@ export async function handleDashboardMeasurementGet(
     return true;
   });
   const cycleWeeks = buildCycleWeeks(selectedCycle.cycleStart, selectedCycle.cycleEnd);
+  const dashboardTeamsWindowStart = startDateFilter
+    ? maxIsoDate(selectedCycle.cycleStart, startDateFilter)
+    : selectedCycle.cycleStart;
+  const dashboardTeamsWindowEnd = endDateFilter
+    ? minIsoDate(selectedCycle.cycleEnd, endDateFilter)
+    : selectedCycle.cycleEnd;
+  const dashboardTeamsWindowIsValid = dashboardTeamsWindowStart <= dashboardTeamsWindowEnd;
 
   const hasPeriodFilter = Boolean(startDateFilter || endDateFilter);
   const periodOrders = hasPeriodFilter
-    ? validOrders.filter((order) => {
-        if (startDateFilter && order.execution_date < startDateFilter) return false;
-        if (endDateFilter && order.execution_date > endDateFilter) return false;
-        return true;
-      })
+    ? (isTeamsDashboard
+        ? (dashboardTeamsWindowIsValid
+            ? cycleOrders.filter((order) => (
+                order.execution_date >= dashboardTeamsWindowStart
+                && order.execution_date <= dashboardTeamsWindowEnd
+              ))
+            : [])
+        : validOrders.filter((order) => {
+            if (startDateFilter && order.execution_date < startDateFilter) return false;
+            if (endDateFilter && order.execution_date > endDateFilter) return false;
+            return true;
+          }))
     : cycleOrders;
   const periodMinimumBillingGuaranteeOrders = hasPeriodFilter
     ? validMinimumBillingGuaranteeOrders.filter((order) => {
@@ -679,7 +701,8 @@ export async function handleDashboardMeasurementGet(
     windowEndDate: periodWindowEndDate,
   });
 
-  const allVisibleTeamIds = Array.from(new Set([...cycleOrders, ...periodOrders, ...periodMinimumBillingGuaranteeOrders].map((order) => order.team_id).filter(Boolean)));
+  const optionSourceOrders = isTeamsDashboard ? periodOrders : cycleOrders;
+  const allVisibleTeamIds = Array.from(new Set([...optionSourceOrders, ...periodOrders, ...periodMinimumBillingGuaranteeOrders].map((order) => order.team_id).filter(Boolean)));
   const allTeamsResult = allVisibleTeamIds.length
     ? await resolution.supabase
         .from("teams")
@@ -810,21 +833,21 @@ export async function handleDashboardMeasurementGet(
   const personMap = new Map((peopleResult.data ?? []).map((person) => [person.id, normalizeText(person.nome)]));
 
   const projectOptions = Array.from(
-    new Map(cycleOrders.map((order) => [order.project_id, {
+    new Map(optionSourceOrders.map((order) => [order.project_id, {
       id: order.project_id,
       label: normalizeText(order.project_code_snapshot) || "Projeto sem codigo",
     }])).values(),
   ).sort((left, right) => left.label.localeCompare(right.label));
 
   const teamOptions = Array.from(
-    new Map(cycleOrders.map((order) => [order.team_id, {
+    new Map(optionSourceOrders.map((order) => [order.team_id, {
       id: order.team_id,
       label: normalizeText(order.team_name_snapshot) || "Equipe sem nome",
     }])).values(),
   ).sort((left, right) => left.label.localeCompare(right.label));
 
   const foremanOptions = Array.from(
-    new Set(cycleOrders.map((order) => normalizeText(order.foreman_name_snapshot)).filter(Boolean)),
+    new Set(optionSourceOrders.map((order) => normalizeText(order.foreman_name_snapshot)).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right));
 
   function resolveTeamSupervisorForDate(teamId: string, isoDate: string) {
@@ -866,14 +889,19 @@ export async function handleDashboardMeasurementGet(
           })),
         ...(teamSupervisorHistoryResult.data ?? [])
           .filter((entry) => Boolean(entry.supervisor_person_id))
-          .filter((entry) => periodOverlaps(entry.valid_from, entry.valid_to, selectedCycle.cycleStart, selectedCycle.cycleEnd))
+          .filter((entry) => periodOverlaps(
+            entry.valid_from,
+            entry.valid_to,
+            isTeamsDashboard ? dashboardTeamsWindowStart : selectedCycle.cycleStart,
+            isTeamsDashboard ? dashboardTeamsWindowEnd : selectedCycle.cycleEnd,
+          ))
           .map((entry) => ({
             id: entry.supervisor_person_id as string,
             label: personMap.get(entry.supervisor_person_id as string)
               || normalizeText(entry.supervisor_name_snapshot)
               || "Supervisor nao identificado",
           })),
-        ...cycleOrders
+        ...optionSourceOrders
           .map((order) => resolveTeamSupervisorForDate(order.team_id, order.execution_date))
           .filter((supervisor) => Boolean(supervisor.supervisorId))
           .map((supervisor) => ({
@@ -1201,14 +1229,29 @@ export async function handleDashboardMeasurementGet(
   const teamsProductionByWeek: Record<string, ReturnType<typeof calculatePerformanceWindow>["teams"]> = {};
   const teamForemenByWeek: Record<string, ReturnType<typeof calculatePerformanceWindow>["teamForemen"]> = {};
   const supervisorsProductionByWeek: Record<string, ReturnType<typeof calculatePerformanceWindow>["supervisors"]> = {};
+  const performanceOrders = isTeamsDashboard ? periodFilteredOrders : filteredOrders;
+  const performanceStartDate = isTeamsDashboard ? dashboardTeamsWindowStart : selectedCycle.cycleStart;
+  const performanceEndDate = isTeamsDashboard ? dashboardTeamsWindowEnd : selectedCycle.cycleEnd;
+  const performanceWorkdays = isTeamsDashboard
+    ? (dashboardTeamsWindowIsValid ? countBusinessDays(parseIsoDate(performanceStartDate), parseIsoDate(performanceEndDate)) : 0)
+    : workdays;
+  const performanceStandardWorkdays = isTeamsDashboard ? performanceWorkdays : defaultWorkdays;
   for (const week of cycleWeeks) {
-    const weekOrders = filteredOrders.filter((order) => order.execution_date >= week.startDate && order.execution_date <= week.endDate);
+    const weekStartDate = isTeamsDashboard ? maxIsoDate(week.startDate, dashboardTeamsWindowStart) : week.startDate;
+    const weekEndDate = isTeamsDashboard ? minIsoDate(week.endDate, dashboardTeamsWindowEnd) : week.endDate;
+    const weekHasValidRange = weekStartDate <= weekEndDate;
+    const weekWorkdays = isTeamsDashboard && weekHasValidRange
+      ? countBusinessDays(parseIsoDate(weekStartDate), parseIsoDate(weekEndDate))
+      : week.workdays;
+    const weekOrders = weekHasValidRange
+      ? performanceOrders.filter((order) => order.execution_date >= weekStartDate && order.execution_date <= weekEndDate)
+      : [];
     const weekPerformance = calculatePerformanceWindow(
       weekOrders,
-      week.workdays,
-      week.workdays,
-      week.startDate,
-      week.endDate,
+      weekWorkdays,
+      weekWorkdays,
+      weekStartDate,
+      weekEndDate,
     );
     teamsProductionByWeek[week.id] = weekPerformance.teams;
     teamForemenByWeek[week.id] = weekPerformance.teamForemen;
@@ -1216,18 +1259,18 @@ export async function handleDashboardMeasurementGet(
   }
 
   const cyclePerformance = calculatePerformanceWindow(
-    filteredOrders,
-    workdays,
-    defaultWorkdays,
-    selectedCycle.cycleStart,
-    selectedCycle.cycleEnd,
+    performanceOrders,
+    performanceWorkdays,
+    performanceStandardWorkdays,
+    performanceStartDate,
+    performanceEndDate,
   );
   const teamsProductionRows = cyclePerformance.teams;
   const teamForemenRows = cyclePerformance.teamForemen;
   const realizedValue = cyclePerformance.realizedValue;
-  const projectCount = new Set(filteredOrders.map((order) => order.project_id)).size;
+  const projectCount = new Set(performanceOrders.map((order) => order.project_id)).size;
   const averageTicketValue = projectCount > 0 ? realizedValue / projectCount : 0;
-  const averageServiceTicketValue = filteredOrders.length > 0 ? realizedValue / filteredOrders.length : 0;
+  const averageServiceTicketValue = performanceOrders.length > 0 ? realizedValue / performanceOrders.length : 0;
   const periodRealizedValue = periodFilteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0)
     + periodFilteredMinimumBillingGuaranteeOrders.reduce((sum, order) => sum + Number(order.minimum_billing_amount ?? 0), 0);
   const periodOrderCount = periodFilteredOrders.length + periodFilteredMinimumBillingGuaranteeOrders.length;
@@ -1238,17 +1281,23 @@ export async function handleDashboardMeasurementGet(
   const periodAverageTicketValue = periodProjectCount > 0 ? periodRealizedValue / periodProjectCount : 0;
   const periodAverageServiceTicketValue = periodOrderCount > 0 ? periodRealizedValue / periodOrderCount : 0;
   const supervisorsProductionRows = cyclePerformance.supervisors;
-  const percentage = cycleMetaValue > 0 ? (realizedValue / cycleMetaValue) * 100 : 0;
-  const executedWorkdays = new Set(filteredOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
+  const performanceMetaValue = isTeamsDashboard
+    ? teamsProductionRows.reduce((sum, team) => sum + team.metaValue, 0)
+    : cycleMetaValue;
+  const performanceStandardMetaValue = isTeamsDashboard
+    ? teamsProductionRows.reduce((sum, team) => sum + team.standardMetaValue, 0)
+    : standardCycleMetaValue;
+  const percentage = performanceMetaValue > 0 ? (realizedValue / performanceMetaValue) * 100 : 0;
+  const executedWorkdays = new Set(performanceOrders.map((order) => normalizeIsoDate(order.execution_date)).filter(Boolean)).size;
   const averageDailyValue = executedWorkdays > 0 ? realizedValue / executedWorkdays : 0;
   const workedObjectiveValue = teamsProductionRows.reduce((sum, team) => sum + team.workedMetaValue, 0);
   const workedDays = teamsProductionRows.length > 0
     ? Math.round(teamsProductionRows.reduce((sum, team) => sum + team.workedDays, 0) / teamsProductionRows.length)
     : 0;
   const objectiveDailyValue = executedWorkdays > 0 ? workedObjectiveValue / executedWorkdays : 0;
-  const forecastValue = averageDailyValue * workdays;
-  const forecastPercentage = cycleMetaValue > 0 ? (forecastValue / cycleMetaValue) * 100 : 0;
-  const forecastDifference = forecastValue - cycleMetaValue;
+  const forecastValue = averageDailyValue * performanceWorkdays;
+  const forecastPercentage = performanceMetaValue > 0 ? (forecastValue / performanceMetaValue) * 100 : 0;
+  const forecastDifference = forecastValue - performanceMetaValue;
 
   const payload = {
     cycles,
@@ -1264,12 +1313,12 @@ export async function handleDashboardMeasurementGet(
       supervisors: supervisorOptions,
     },
     summary: {
-      orderCount: filteredOrders.length,
+      orderCount: performanceOrders.length,
       realizedValue,
-      metaValue: cycleMetaValue,
+      metaValue: performanceMetaValue,
       percentage,
-      workdays,
-      defaultWorkdays,
+      workdays: performanceWorkdays,
+      defaultWorkdays: performanceStandardWorkdays,
       workedDays,
       executedWorkdays,
       averageDailyValue,
@@ -1300,13 +1349,13 @@ export async function handleDashboardMeasurementGet(
     cycleComparison: {
       label: selectedCycle.label,
       value: realizedValue,
-      meta: cycleMetaValue,
-      standardMeta: standardCycleMetaValue,
+      meta: performanceMetaValue,
+      standardMeta: performanceStandardMetaValue,
       workedMeta: workedObjectiveValue,
-      workdays,
-      defaultWorkdays,
+      workdays: performanceWorkdays,
+      defaultWorkdays: performanceStandardWorkdays,
       workedDays,
-      orderCount: filteredOrders.length,
+      orderCount: performanceOrders.length,
       projectCount,
       averageTicketValue,
       averageServiceTicketValue,

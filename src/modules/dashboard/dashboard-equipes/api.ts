@@ -7,6 +7,8 @@ export async function fetchDashboardTeams(params: {
 }) {
   const searchParams = new URLSearchParams();
   if (params.filters.cycleStart) searchParams.set("cycleStart", params.filters.cycleStart);
+  if (params.filters.startDate) searchParams.set("startDate", params.filters.startDate);
+  if (params.filters.endDate) searchParams.set("endDate", params.filters.endDate);
   if (params.filters.project.trim()) searchParams.set("project", params.filters.project.trim());
   if (params.filters.teamId) searchParams.set("teamId", params.filters.teamId);
   if (params.filters.foreman) searchParams.set("foreman", params.filters.foreman);
