@@ -3008,3 +3008,27 @@ Atualizacao 2026-07-09 - Filtro de Data execucao obedecido por todos os status
   - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
+
+Atualizacao 2026-07-09 - Planejamento de ETAPA automatica entre datas
+-----------------------------------------------------------------------
+- Contexto:
+  - A sugestao atual de ETAPA preenche o proximo numero com base no historico anterior, mas nao renumera etapas futuras.
+  - Quando uma nova programacao fica entre datas ja programadas, a validacao atual pode bloquear por existir etapa futura igual ou maior.
+- Melhoria planejada:
+  - Criar fluxo transacional para inserir/reprogramar uma programacao entre etapas numericas existentes.
+  - A nova linha receberia a ETAPA pela posicao cronologica e as etapas futuras afetadas seriam deslocadas em `+1`.
+  - O fluxo deve recalcular `programming_group_id`, registrar historico por linha afetada e respeitar tenant, `ETAPA UNICA`, `ETAPA FINAL`, `CONCLUIDO` e `ANTECIPADO`.
+- Status:
+  - Documentado em `docs/design_realtime_programacao_2026-07.md`, `docs/Mapa_Regras_Programacao.md` e `docs/Fluxo_Programacao.md`.
+  - Nao implementado no codigo atual.
+- Como validar agora:
+  - Conferir que a documentacao trata a funcionalidade como planejada.
+  - Confirmar que o item de implementacao permanece aberto em `TASKS.md`.
+- Impacto multi-tenant:
+  - Nenhuma query, RLS, migration, endpoint ou escopo de tenant alterado nesta etapa.
+- Arquivos:
+  - `docs/Tela_Programacao_Simples_SaaS.txt`
+  - `docs/design_realtime_programacao_2026-07.md`
+  - `docs/Mapa_Regras_Programacao.md`
+  - `docs/Fluxo_Programacao.md`
+  - `TASKS.md`

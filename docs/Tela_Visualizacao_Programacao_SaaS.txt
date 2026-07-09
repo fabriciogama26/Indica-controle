@@ -44,8 +44,9 @@ Filtros, auto-complete e listagem
     - `Extracao ENEL`
   - Todos os botoes de exportacao da lista possuem bloqueio de novo clique por `10` segundos.
   - Regra de status:
-    - `ADIADA` e `CANCELADA` aparecem na lista mesmo quando a data de execucao esta fora do periodo filtrado.
+    - A lista obedece sempre o periodo filtrado em `Data inicial` e `Data final`, inclusive para `ADIADA`, `CANCELADA`, `ANTECIPADA` e `TRANSFERIDA`.
 - Calendario semanal:
+  - Posicionado no topo da tela, acima do card de filtros.
   - Grade fixa de segunda a domingo, com linhas por equipe.
   - Cabecalho da linha de equipe exibe `Equipe`, `Encarregado` e `Base`.
   - Cada card representa uma programacao no dia.
@@ -163,6 +164,27 @@ Atualizacao 2026-07 - Permissao de consulta dedicada
       de consulta.
     - Depois: a leitura aceita `programacao-visualizacao/read`; usuarios sem nenhuma
       das duas permissoes continuam bloqueados.
+
+Atualizacao 2026-07-09 - Calendario semanal acima dos filtros
+--------------------------------------------------------------
+- Ajustada a ordem visual da tela de Visualizacao Programacao.
+- O `Calendario Semanal de Programacao` passa a ser renderizado no topo da tela,
+  antes do card `Filtros`.
+- A tela de cadastro (`/programacao-simples`) nao foi alterada visualmente; continua sem
+  calendario semanal.
+- Corrigida a documentacao da regra de filtro de data: a lista obedece sempre
+  `Data inicial` e `Data final`, inclusive para status inativos.
+- Mapeamento desta atualizacao:
+  - Arquivos alterados:
+    - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+    - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+    - `TASKS.md`
+  - Funcoes/hooks/constantes tocadas:
+    - `ProgrammingSimplePageView`
+    - Bloco JSX `ProgrammingWeeklyCalendarPanel`
+  - Comportamento antes/depois:
+    - Antes: calendario semanal ficava abaixo da lista/filtros na Visualizacao.
+    - Depois: calendario semanal aparece antes dos filtros.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

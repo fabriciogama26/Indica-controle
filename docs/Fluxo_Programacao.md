@@ -101,6 +101,8 @@ Regras de ETAPA:
 ### Ação: PROGRAMAR
 
 → Validar projeto, equipe, data, horário, ETAPA, campos obrigatórios e conflitos.
+→ Regra atual: se a ETAPA informada conflitar com etapa futura existente, bloquear e pedir ajuste manual.
+→ Regra planejada: se a data ficar entre duas ETAPAs numéricas existentes, calcular a nova ETAPA pela posição cronológica e deslocar as etapas futuras em `+1` dentro de uma RPC transacional.
 → Criar uma linha para cada equipe informada.
 → Status operacional inicial = `PROGRAMADA`.
 → Registrar histórico de criação.
@@ -150,6 +152,8 @@ Exemplos:
 
 → Exigir motivo da reprogramação.
 → Validar nova data, equipe, horário, ETAPA e conflitos.
+→ Regra atual: se a nova ETAPA quebrar a sequência existente, bloquear/alertar conforme validação vigente.
+→ Regra planejada: se a nova data reposicionar a programação entre etapas numéricas existentes, recalcular a ETAPA da linha e deslocar as etapas futuras afetadas na mesma transação.
 → Registrar alteração como reprogramação.
 → Status operacional do registro ativo passa a ser ou permanece `REPROGRAMADA`.
 → Registrar histórico como `RESCHEDULE`.
@@ -276,7 +280,45 @@ Não → Cancelar.
 
 ---
 
-# 4. Escopo da ação: linha individual ou grupo operacional
+# 4. Regra planejada: ETAPA automatica entre datas
+
+Esta regra ainda nao esta implementada no codigo atual.
+
+Use quando:
+
+* a programacao nova ou reprogramada usa ETAPA numerica;
+* a data de execucao fica entre etapas numericas ja existentes do mesmo projeto/escopo;
+* o projeto nao esta `CONCLUIDO`;
+* nao ha `ETAPA UNICA` nem `ETAPA FINAL` envolvida na renumeracao.
+
+Fluxo planejado:
+
+→ Aplicar lock por `tenant_id + project_id`.
+→ Localizar etapas numericas existentes em ordem de `execution_date`.
+→ Calcular a ETAPA correta para a nova data.
+→ Deslocar em `+1` as etapas futuras afetadas.
+→ Recalcular `programming_group_id` das linhas alteradas.
+→ Registrar historico para a nova programacao e para cada linha deslocada.
+→ Se qualquer validacao falhar, desfazer toda a operacao.
+
+Exemplo:
+
+```text
+08/07/2026 ETAPA 1
+10/07/2026 ETAPA 2
+20/07/2026 ETAPA 3
+
+Nova data 15/07/2026:
+
+08/07/2026 ETAPA 1
+10/07/2026 ETAPA 2
+15/07/2026 ETAPA 3
+20/07/2026 ETAPA 4
+```
+
+---
+
+# 5. Escopo da ação: linha individual ou grupo operacional
 
 Antes de Adiar ou Cancelar:
 
@@ -300,7 +342,7 @@ Regras:
 
 ---
 
-# 5. Copiar programação não é reprogramar
+# 6. Copiar programação não é reprogramar
 
 ## Ação: COPIAR PARA DATAS
 
@@ -357,7 +399,7 @@ ADIAR
 
 ---
 
-# 6. Adicionar equipe não é reprogramar
+# 7. Adicionar equipe não é reprogramar
 
 ## Ação: ADICIONAR EQUIPE
 
@@ -391,7 +433,7 @@ Fluxo:
 
 ---
 
-# 7. Fluxo de Estado Trabalho
+# 8. Fluxo de Estado Trabalho
 
 O Estado Trabalho não substitui o status operacional.
 
@@ -477,11 +519,12 @@ Se não houver um `CONCLUIDO` válido que justifique o status:
 
 ---
 
-# 8. Matriz de decisão rápida
+# 9. Matriz de decisão rápida
 
 | Situação                                                   | Ação correta                       | Resultado principal                      |
 | ---------------------------------------------------------- | ---------------------------------- | ---------------------------------------- |
 | Não existe programação anterior                            | Programar                          | Cria `PROGRAMADA`                        |
+| Nova data fica entre ETAPAs numericas existentes           | ETAPA automatica planejada         | Insere na posicao e desloca futuras      |
 | Ajuste sem mudar projeto, equipe, data, horário ou período | Editar                             | Atualiza linha ativa                     |
 | Mudou equipe, data, horário, período ou projeto            | Reprogramar                        | Salva motivo e usa `REPROGRAMADA`        |
 | Data futura só foi empurrada para frente                   | Adiar com nova data                | Origem `ADIADA` + destino `REPROGRAMADA` |
