@@ -2419,6 +2419,23 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         </>
       ) : null}
 
+      {isVisualizationMode ? (
+        <ProgrammingWeeklyCalendarPanel
+          weekStartDate={weekStartDate}
+          weekDates={weekDates}
+          calendarTeams={calendarTeams}
+          weeklyScheduleMap={weeklyScheduleMap}
+          projectMap={projectMap}
+          isLoadingList={isLoadingList}
+          onPreviousWeek={() => setWeekStartDate((current) => addDays(current, -7))}
+          onCurrentWeek={() => setWeekStartDate(startOfWeekMonday(today))}
+          onNextWeek={() => setWeekStartDate((current) => addDays(current, 7))}
+          onRefresh={() => void loadBoardData()}
+          onOpenDetails={setDetailsTarget}
+          onOpenHistory={(schedule) => void openHistory(schedule)}
+        />
+      ) : null}
+
       <article className={styles.card}>
         <h3 className={styles.cardTitle}>Filtros</h3>
         <div className={styles.filterGrid}>
@@ -2848,23 +2865,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
           </div>
         </div>
       </article>
-
-      {isVisualizationMode ? (
-        <ProgrammingWeeklyCalendarPanel
-          weekStartDate={weekStartDate}
-          weekDates={weekDates}
-          calendarTeams={calendarTeams}
-          weeklyScheduleMap={weeklyScheduleMap}
-          projectMap={projectMap}
-          isLoadingList={isLoadingList}
-          onPreviousWeek={() => setWeekStartDate((current) => addDays(current, -7))}
-          onCurrentWeek={() => setWeekStartDate(startOfWeekMonday(today))}
-          onNextWeek={() => setWeekStartDate((current) => addDays(current, 7))}
-          onRefresh={() => void loadBoardData()}
-          onOpenDetails={setDetailsTarget}
-          onOpenHistory={(schedule) => void openHistory(schedule)}
-        />
-      ) : null}
 
       <ProgrammingDetailsModal
         target={detailsTarget}
