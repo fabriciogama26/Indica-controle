@@ -55,6 +55,8 @@ Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros gerais planejados:
   - Ciclo
+  - Data inicial
+  - Data final
   - Projeto
   - MK/equipe
   - Encarregado
@@ -93,6 +95,12 @@ Filtros, auto-complete e listagem
 - Bloco `Supervisor no ciclo`:
   - sera movido integralmente para a nova tela
   - preserva tabela, semana local, base da meta, ranking, bullet, gap e modal de projetos
+- Recorte por data:
+  - `Data inicial` e `Data final` sao opcionais.
+  - Quando informadas, limitam os blocos operacionais ao intervalo dentro do ciclo selecionado.
+  - Datas fora do ciclo nao expandem o resultado para outro ciclo; o recorte fica na intersecao entre Ciclo e Data.
+  - As metas do Dashboard Equipes sao recalculadas pelos dias uteis do recorte filtrado.
+  - Os filtros locais de semana continuam disponiveis, mas as semanas respeitam o intervalo de data aplicado.
 
 Boas praticas
 -------------
@@ -398,3 +406,35 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: exportacoes de contribuicoes/projetos nao usavam o modal padrao.
 - Depois: a tela renderiza `ExportProgressModal` compartilhado durante a geracao dos CSVs.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-09 - Filtro por data no Dashboard Equipes
+--------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx`
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.module.css`
+  - `src/modules/dashboard/dashboard-equipes/types.ts`
+  - `src/modules/dashboard/dashboard-equipes/constants.ts`
+  - `src/modules/dashboard/dashboard-equipes/api.ts`
+  - `src/modules/dashboard/dashboard-equipes/hooks.ts`
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `DashboardTeamsPageView`
+  - `formatDashboardDate`
+  - `formatDashboardDateRange`
+  - `EMPTY_DASHBOARD_TEAMS_FILTERS`
+  - `fetchDashboardTeams`
+  - `useDashboardTeams`
+  - `handleDashboardMeasurementGet`
+  - `maxIsoDate`
+  - `minIsoDate`
+- Comportamento antes/depois:
+  - Antes: o Dashboard Equipes permitia filtrar por ciclo, projeto, MK/equipe, encarregado e supervisor, mas sempre calculava os blocos principais pelo ciclo completo.
+  - Depois: a tela possui `Data inicial` e `Data final`, envia `startDate`/`endDate` para a API e recalcula equipes, encarregados, supervisores, semanas e metas pelo recorte de data dentro do ciclo.
+  - Depois: datas fora do ciclo nao trazem dados de outro ciclo, mantendo a intersecao entre ciclo selecionado e intervalo informado.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, migration, RLS ou grants.
+  - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read`.
+  - Todas as consultas permanecem filtradas por `tenant_id` resolvido pela sessao autenticada.

@@ -70,6 +70,8 @@ export function useDashboardTeams() {
       const message = error instanceof Error ? error.message : "Falha ao carregar Dashboard Equipes.";
       await logError("Falha ao carregar Dashboard Equipes", error, {
         cycleStart: filters.cycleStart || null,
+        startDate: filters.startDate || null,
+        endDate: filters.endDate || null,
       });
       setErrorMessage(message);
     } finally {
