@@ -55,6 +55,49 @@ src/app/(dashboard)/programacao-simples/page.tsx
 
 **Em memória no cliente.** Todos os registros do range de datas já estão em `schedules` (estado local). `filteredSchedules` e `pagedSchedules` são derivados via `useMemo`. Mudar filtro ou página não gera nova chamada ao servidor.
 
+### A.6 Melhoria planejada: ETAPA automatica entre datas existentes
+
+**Status:** planejado, nao implementado neste design.
+
+Problema operacional:
+- A sugestao atual de ETAPA considera a maior ETAPA anterior a data escolhida e sugere `maior + 1`.
+- Quando ja existe ETAPA futura para o mesmo projeto/equipe/escopo, inserir uma programacao entre datas pode conflitar com a etapa futura.
+- Exemplo esperado:
+
+```text
+08/07/2026 -> ETAPA 1
+10/07/2026 -> ETAPA 2
+20/07/2026 -> ETAPA 3
+
+Inserir 15/07/2026 deve resultar em:
+
+08/07/2026 -> ETAPA 1
+10/07/2026 -> ETAPA 2
+15/07/2026 -> ETAPA 3
+20/07/2026 -> ETAPA 4
+```
+
+Regra planejada:
+- Criar uma RPC/migration transacional especifica para inserir ou reprogramar no meio da sequencia.
+- A operacao deve aplicar lock por `tenant_id + project_id` antes de calcular e deslocar etapas.
+- A nova programacao recebe a ETAPA calculada pela posicao da `execution_date`.
+- Programacoes numericas futuras do mesmo escopo devem ser deslocadas em `+1`.
+- Cada linha deslocada deve recalcular `programming_group_id`.
+- Cada mudanca de ETAPA deve gravar historico em `project_programming_history`.
+
+Restricoes obrigatorias:
+- Nao aplicar em `ETAPA UNICA` nem `ETAPA FINAL` sem decisao funcional explicita.
+- Nao mexer automaticamente em projeto com `Estado Trabalho = CONCLUIDO`.
+- Revalidar impacto em `ANTECIPADO`, porque ele depende de comparacao por `etapa_number`.
+- Nao executar renumeracao fora do tenant da sessao.
+- Nao fazer deslocamento no frontend; o frontend apenas solicita a operacao e recarrega o snapshot.
+
+Impacto no Realtime:
+- A renumeracao pode atualizar varias linhas em uma unica transacao.
+- O debounce de 500ms deve agrupar os eventos em um unico `fetchBoardSnapshot()`.
+- O payload de Broadcast deve tratar ETAPA como campo relevante completo: `etapaNumber`, `etapaUnica`, `etapaFinal` e `programmingGroupId`.
+- Antes de implementar a melhoria, revisar o trigger planejado para incluir `etapa_unica`, `etapa_final` e `programming_group_id` em `changedFields`, `oldState` e `newState`, nao apenas `etapa_number`.
+
 ---
 
 ## B. SQL completo da migration
@@ -960,6 +1003,21 @@ Se o Realtime estiver temporariamente indisponível, o `perform realtime.send(..
 ### H.4 Custo de performance do trigger
 
 O trigger `broadcast_project_programming_change` executa `realtime.send` que é uma chamada ao sistema Realtime dentro da transação. Em lotes grandes (ex: batch create de 50 registros), serão emitidos até 50 eventos. O debounce no frontend agrupa todos em 1 refetch. No banco, os 50 `realtime.send` são síncronos dentro da transação. Monitorar tempo de transação em operações batch após o deploy.
+
+### H.5 Renumeracao automatica de ETAPA
+
+A melhoria de ETAPA automatica deve ser tratada como feature de banco/API antes de qualquer ajuste de Realtime.
+
+Riscos principais:
+- Deslocar etapas futuras altera `etapa_number` e pode alterar `programming_group_id`.
+- Um unico insert/reprogramacao pode gerar varias atualizacoes de linhas futuras.
+- `CONCLUIDO -> ANTECIPADO` depende da ordenacao numerica de ETAPA.
+- `ETAPA UNICA` e `ETAPA FINAL` nao tem `etapa_number` e nao devem entrar na renumeracao numerica sem regra de negocio aprovada.
+
+Requisitos para compatibilizar com Realtime:
+- Incluir `etapa_unica`, `etapa_final` e `programming_group_id` como campos relevantes do broadcast.
+- Garantir que a renumeracao rode em uma unica transacao, para o refetch acionado pelo Realtime ler estado final consistente.
+- Validar o volume de eventos emitidos quando muitas etapas futuras forem deslocadas; o frontend deve continuar fazendo um unico refetch por debounce.
 
 ---
 

@@ -144,7 +144,9 @@ Regra de atividade:
    - ha equipe selecionada;
    - nao esta em modo edicao;
    - nao marcou `ETAPA UNICA` nem `ETAPA FINAL`.
-3. O usuario pode manter a sugestao ou editar manualmente.
+3. Regra atual: o usuario pode manter a sugestao ou editar manualmente.
+   - Se existir ETAPA futura igual ou maior para o mesmo projeto/equipe, a validacao atual bloqueia o salvamento.
+   - A renumeracao automatica de etapas futuras ainda nao esta implementada.
 4. Antes de salvar, o frontend valida campos obrigatorios, horario, documentos, quantidades, ETAPA e conflitos locais.
 5. API repete validacoes criticas.
 6. Backend salva via RPC full transacional.
@@ -180,6 +182,42 @@ Efeitos:
 - Usada para ordenacao logica da obra.
 - Usada na regra `CONCLUIDO -> ANTECIPADO`.
 - Usada na validacao de copia e adicao de equipe.
+
+### Melhoria planejada: ETAPA automatica entre datas
+
+Objetivo:
+- Permitir inserir ou reprogramar uma programacao entre duas datas ja programadas, reorganizando as etapas numericas futuras automaticamente.
+
+Exemplo:
+```text
+08/07/2026 -> ETAPA 1
+10/07/2026 -> ETAPA 2
+20/07/2026 -> ETAPA 3
+
+Inserir 15/07/2026:
+
+08/07/2026 -> ETAPA 1
+10/07/2026 -> ETAPA 2
+15/07/2026 -> ETAPA 3
+20/07/2026 -> ETAPA 4
+```
+
+Regra esperada:
+- Calcular a ETAPA pela posicao cronologica dentro do mesmo `tenant_id + project_id` e escopo definido.
+- Deslocar em `+1` as programacoes numericas futuras afetadas.
+- Recalcular `programming_group_id` das linhas deslocadas.
+- Registrar historico por linha alterada.
+- Executar tudo em RPC/migration transacional com lock por `tenant_id + project_id`.
+
+Restricoes:
+- Nao aplicar automaticamente em `ETAPA UNICA` ou `ETAPA FINAL` sem decisao funcional explicita.
+- Nao aplicar em projeto com `Estado Trabalho = CONCLUIDO`.
+- Revalidar impacto em `ANTECIPADO`.
+- Nao executar no frontend.
+
+Status:
+- Planejado e documentado.
+- Nao implementado no codigo atual.
 
 ### ETAPA UNICA
 
@@ -747,6 +785,7 @@ RLS:
 | Evento | Condicao | Resultado | Bloqueios principais |
 | --- | --- | --- | --- |
 | Cadastrar | Campos obrigatorios validos | Cria uma linha por equipe | Projeto `CONCLUIDO`, ETAPA invalida, equipe invalida, conflito horario |
+| Cadastrar/reprogramar entre datas existentes (planejado) | Data fica entre etapas numericas do mesmo projeto/escopo | Nova linha recebe ETAPA pela posicao e etapas futuras sao deslocadas | Projeto `CONCLUIDO`, ETAPA UNICA/FINAL, impacto em `ANTECIPADO`, conflito horario, concorrencia |
 | Editar sem mudar data/equipe/hora/periodo | Linha ativa | Atualiza linha; sincroniza campos operacionais por grupo operacional | Linha `ADIADA/CANCELADA`, snapshot de atividades incompleto, concorrencia |
 | Reprogramar por edicao | Mudou projeto/equipe/data/hora/periodo | Salva alteracao com motivo | Motivo ausente, projeto `CONCLUIDO`, conflito horario/etapa |
 | Salvar `CONCLUIDO` | Edicao com etapa numerica | Marca etapa e antecipa etapas futuras | Falha RPC antecipado, catalogo invalido |
@@ -893,6 +932,7 @@ Cadastro:
 - Tentar salvar ETAPA numerica junto com `ETAPA UNICA` ou `ETAPA FINAL`: deve bloquear.
 - Tentar salvar `ETAPA UNICA` junto com `ETAPA FINAL`: deve bloquear.
 - Copiar programacao valida com ETAPA destino numerica: deve concluir sem erro `project_programming_active_stage_valid_check`.
+- Quando a renumeracao automatica for implementada: inserir uma programacao numerica entre duas datas existentes e confirmar que as etapas futuras foram deslocadas em `+1`, com historico e `programming_group_id` recalculado.
 
 Edicao/reprogramacao:
 - Editar campos operacionais e verificar sincronizacao somente em outras equipes do mesmo `programming_group_id`.
@@ -901,6 +941,7 @@ Edicao/reprogramacao:
 - Tentar reprogramar pelo escopo `Todas as equipes deste grupo` e confirmar bloqueio ate existir RPC transacional propria.
 - Reprogramar para data passada e confirmar exigencia de observacao retroativa.
 - Reprogramar quebrando sequencia de ETAPAs e confirmar alerta com opcao de continuar.
+- Quando a renumeracao automatica for implementada: reprogramar uma etapa para data intermediaria e confirmar que a operacao inteira e atomica.
 - Tentar editar `ADIADA` ou `CANCELADA`: deve bloquear.
 - Tentar salvar sem ETAPA e sem flags: deve bloquear.
 
