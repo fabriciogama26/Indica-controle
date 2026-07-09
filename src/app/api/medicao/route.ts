@@ -277,6 +277,7 @@ type SetMeasurementStatusRpcResult = {
 };
 
 const SUPABASE_LIST_PAGE_SIZE = 1000;
+const HISTORY_LIMIT = 50;
 const MEASUREMENT_ORDER_SELECT = "id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at, minimum_billing_amount, minimum_billing_team_type_id, minimum_billing_team_type_name_snapshot, minimum_billing_score_target_id, minimum_billing_target_points, minimum_billing_unit_value_source_activity_id, minimum_billing_unit_value_group_snapshot, minimum_billing_unit_value, minimum_billing_calculated_at";
 
 type SupabasePageResult<T> = {
@@ -1179,23 +1180,46 @@ async function fetchMeasurementOrderDetail(params: {
     return null;
   }
 
-  const { data: items } = await params.supabase
-    .from("project_measurement_order_items")
-    .select("id, measurement_order_id, service_activity_id, programming_activity_id, project_activity_forecast_id, activity_code, activity_description, activity_unit, quantity, mva_quantity, worked_hours, voice_point, manual_rate, unit_value, total_value, observation, is_active, updated_at")
-    .eq("tenant_id", params.tenantId)
-    .eq("measurement_order_id", params.orderId)
-    .eq("is_active", true)
-    .order("activity_code", { ascending: true })
-    .returns<MeasurementOrderItemRow[]>();
-
   const userIds = [order.created_by, order.updated_by].filter((item): item is string => Boolean(item));
-  const userMap = await fetchAppUserMap({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    ids: Array.from(new Set(userIds)),
-  });
+  const [
+    itemsResult,
+    userMap,
+    programmingMatchMap,
+    projectServiceCenterMap,
+    teamCompositionContexts,
+  ] = await Promise.all([
+    params.supabase
+      .from("project_measurement_order_items")
+      .select("id, measurement_order_id, service_activity_id, programming_activity_id, project_activity_forecast_id, activity_code, activity_description, activity_unit, quantity, mva_quantity, worked_hours, voice_point, manual_rate, unit_value, total_value, observation, is_active, updated_at")
+      .eq("tenant_id", params.tenantId)
+      .eq("measurement_order_id", params.orderId)
+      .eq("is_active", true)
+      .order("activity_code", { ascending: true })
+      .returns<MeasurementOrderItemRow[]>(),
+    fetchAppUserMap({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      ids: Array.from(new Set(userIds)),
+    }),
+    loadProgrammingMatchMap({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      windowEndDate: params.windowEndDate ?? order.execution_date,
+      orders: [order],
+    }),
+    fetchProjectServiceCenterMap({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds: [order.project_id],
+    }),
+    fetchTeamCompositionContextSet({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      orders: [order],
+    }),
+  ]);
 
-  const normalizedItems = (items ?? []).map((item) => ({
+  const normalizedItems = (itemsResult.data ?? []).map((item) => ({
     id: item.id,
     activityId: item.service_activity_id,
     programmingActivityId: item.programming_activity_id,
@@ -1214,22 +1238,6 @@ async function fetchMeasurementOrderDetail(params: {
   }));
   const minimumBillingAmount = Number(order.minimum_billing_amount ?? 0);
 
-  const programmingMatchMap = await loadProgrammingMatchMap({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    windowEndDate: params.windowEndDate ?? order.execution_date,
-    orders: [order],
-  });
-  const projectServiceCenterMap = await fetchProjectServiceCenterMap({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    projectIds: [order.project_id],
-  });
-  const teamCompositionContexts = await fetchTeamCompositionContextSet({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    orders: [order],
-  });
   if (teamCompositionContexts.error) {
     return null;
   }
@@ -1297,6 +1305,7 @@ async function loadHistory(params: {
     .eq("tenant_id", params.tenantId)
     .eq("measurement_order_id", params.orderId)
     .order("created_at", { ascending: false })
+    .limit(HISTORY_LIMIT)
     .returns<MeasurementHistoryRow[]>();
 
   if (error) {
