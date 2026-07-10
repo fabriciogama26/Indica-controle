@@ -894,3 +894,8 @@ Observacao
 - Cria dinamicamente indices para foreign keys publicas que ainda nao possuem indice cobrindo as colunas da FK.
 - Fecha alertas INFO `unindexed_foreign_keys` do Supabase Advisor.
 - Nao remove indices marcados como `unused_index`; esses exigem auditoria manual de workload antes de qualquer drop.
+
+302_drop_redundant_unused_indexes_after_audit.sql
+- Remove somente dois indices `unused_index` confirmados como redundantes apos auditoria de 147 dias de estatisticas.
+- Droppa `idx_app_users_tenant_matricula`, coberto pelo unique `app_users_tenant_id_matricula_key`.
+- Droppa `idx_fk_team_composition_members_team_composition_membe_3b95065b`, coberto pelo indice composto em `(composition_id, tenant_id)`, mantendo os demais indices `unused_index` preservados.
