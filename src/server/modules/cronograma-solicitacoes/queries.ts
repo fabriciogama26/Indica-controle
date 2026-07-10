@@ -335,6 +335,82 @@ export function applySolicitacaoFilters<T>(query: T, ctx: FilterContext): T {
   return q as unknown as T;
 }
 
+// --- Tipo de Solicitacao padrao por usuario (pre-selecao) ---
+
+export async function fetchUserDefaultTipo(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("cronograma_user_tipo_default")
+    .select("default_tipo")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .maybeSingle<{ default_tipo: string }>();
+
+  return normalizeText(data?.default_tipo) || null;
+}
+
+export async function fetchTipoDefaultsWithUsers(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<Array<{ userId: string; userName: string; defaultTipo: string | null }>> {
+  const [usersResult, defaultsResult] = await Promise.all([
+    supabase
+      .from("app_users")
+      .select("id, display, login_name")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .order("display", { ascending: true })
+      .limit(2000)
+      .returns<Array<{ id: string; display: string | null; login_name: string | null }>>(),
+    supabase
+      .from("cronograma_user_tipo_default")
+      .select("user_id, default_tipo")
+      .eq("tenant_id", tenantId)
+      .returns<Array<{ user_id: string; default_tipo: string }>>(),
+  ]);
+
+  const defaultMap = new Map((defaultsResult.data ?? []).map((item) => [item.user_id, item.default_tipo]));
+
+  return (usersResult.data ?? []).map((user) => ({
+    userId: user.id,
+    userName: normalizeText(user.display) || normalizeText(user.login_name) || "Nao identificado",
+    defaultTipo: defaultMap.get(user.id) ?? null,
+  }));
+}
+
+export async function upsertUserDefaultTipo(
+  supabase: SupabaseClient,
+  params: { tenantId: string; userId: string; tipo: string; actorUserId: string },
+): Promise<void> {
+  await supabase
+    .from("cronograma_user_tipo_default")
+    .upsert(
+      {
+        tenant_id: params.tenantId,
+        user_id: params.userId,
+        default_tipo: params.tipo,
+        updated_by: params.actorUserId,
+        created_by: params.actorUserId,
+      },
+      { onConflict: "tenant_id,user_id" },
+    );
+}
+
+export async function deleteUserDefaultTipo(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+): Promise<void> {
+  await supabase
+    .from("cronograma_user_tipo_default")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId);
+}
+
 export async function insertHistory(
   supabase: SupabaseClient,
   params: {

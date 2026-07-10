@@ -3,6 +3,7 @@ import {
   CRONOGRAMA_ENDPOINT,
   CRONOGRAMA_ESTADO_ENDPOINT,
   CRONOGRAMA_META_ENDPOINT,
+  CRONOGRAMA_TIPO_DEFAULTS_ENDPOINT,
   CRONOGRAMA_VERIFY_ENDPOINT,
   PAGE_SIZE,
 } from "./constants";
@@ -12,6 +13,7 @@ import type {
   ListResponse,
   MetaResponse,
   SolicitacaoItem,
+  TipoDefaultsResponse,
 } from "./types";
 
 function authHeaders(token: string, json = false): HeadersInit {
@@ -121,4 +123,25 @@ export async function cancelSolicitacao(
     body: JSON.stringify({ id, motivo, expectedUpdatedAt }),
   });
   return parseJson<{ item: SolicitacaoItem }>(response, "Falha ao cancelar solicitacao.");
+}
+
+export async function fetchTipoDefaults(token: string): Promise<TipoDefaultsResponse> {
+  const response = await fetch(CRONOGRAMA_TIPO_DEFAULTS_ENDPOINT, {
+    cache: "no-store",
+    headers: authHeaders(token),
+  });
+  return parseJson<TipoDefaultsResponse>(response, "Falha ao carregar tipos padrao por usuario.");
+}
+
+export async function setTipoDefault(
+  token: string,
+  userId: string,
+  tipo: string,
+): Promise<{ userId: string; defaultTipo: string | null }> {
+  const response = await fetch(CRONOGRAMA_TIPO_DEFAULTS_ENDPOINT, {
+    method: "PUT",
+    headers: authHeaders(token, true),
+    body: JSON.stringify({ userId, tipo }),
+  });
+  return parseJson<{ userId: string; defaultTipo: string | null }>(response, "Falha ao salvar tipo padrao.");
 }

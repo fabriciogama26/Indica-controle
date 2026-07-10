@@ -69,6 +69,18 @@ export type MetaResponse = {
   responsaveis: ResponsavelOption[];
   projetos: ProjetoOption[];
   asbuiltProjetoIds: string[];
+  defaultTipo: string | null;
+  message?: string;
+};
+
+export type TipoDefaultUser = {
+  userId: string;
+  userName: string;
+  defaultTipo: string | null;
+};
+
+export type TipoDefaultsResponse = {
+  users: TipoDefaultUser[];
   message?: string;
 };
 

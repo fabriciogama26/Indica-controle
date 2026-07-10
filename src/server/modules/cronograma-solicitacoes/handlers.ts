@@ -18,10 +18,14 @@ import {
 } from "./normalizers";
 import {
   applySolicitacaoFilters,
+  deleteUserDefaultTipo,
   fetchAsbuiltEligibleProjectIds,
   fetchLatestProgrammingState,
   fetchLatestProgrammingStateMap,
   fetchPeopleNameMap,
+  fetchTipoDefaultsWithUsers,
+  fetchUserDefaultTipo,
+  upsertUserDefaultTipo,
   fetchPersonActive,
   fetchProjectLookup,
   fetchProjectLookupMap,
@@ -248,9 +252,12 @@ export async function getMeta(context: AuthenticatedAppUserContext): Promise<Nex
   const { supabase, appUser } = context;
   const tenantId = appUser.tenant_id;
 
+  // defaultTipo e por usuario, fora do cache por tenant.
+  const defaultTipo = await fetchUserDefaultTipo(supabase, tenantId, appUser.id);
+
   const cached = metaCache.get(tenantId);
   if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.payload);
+    return NextResponse.json({ ...(cached.payload as Record<string, unknown>), defaultTipo });
   }
 
   const [jobTitles, projects, asbuiltIds] = await Promise.all([
@@ -320,7 +327,46 @@ export async function getMeta(context: AuthenticatedAppUserContext): Promise<Nex
   };
 
   metaCache.set(tenantId, { expiresAt: Date.now() + META_CACHE_TTL_MS, payload });
-  return NextResponse.json(payload);
+  return NextResponse.json({ ...payload, defaultTipo });
+}
+
+export async function listTipoDefaults(context: AuthenticatedAppUserContext): Promise<NextResponse> {
+  const denied = await authorizeCronogramaAction(context, "read");
+  if (denied) return denied;
+  if (!context.role.isAdmin) {
+    return jsonError("Apenas administradores podem gerenciar o tipo padrao por usuario.", 403);
+  }
+
+  const users = await fetchTipoDefaultsWithUsers(context.supabase, context.appUser.tenant_id);
+  return NextResponse.json({ users });
+}
+
+export async function setTipoDefault(
+  context: AuthenticatedAppUserContext,
+  payload: { userId: string; tipo: string },
+): Promise<NextResponse> {
+  const denied = await authorizeCronogramaAction(context, "read");
+  if (denied) return denied;
+  if (!context.role.isAdmin) {
+    return jsonError("Apenas administradores podem gerenciar o tipo padrao por usuario.", 403);
+  }
+
+  const { supabase, appUser } = context;
+  const tenantId = appUser.tenant_id;
+  const userId = normalizeText(payload.userId);
+  const tipo = normalizeText(payload.tipo).toUpperCase();
+
+  if (!userId) return jsonError("Informe o usuario.", 422);
+
+  if (!tipo) {
+    await deleteUserDefaultTipo(supabase, tenantId, userId);
+    return NextResponse.json({ userId, defaultTipo: null });
+  }
+
+  if (!isTipoSolicitacao(tipo)) return jsonError("Tipo de solicitacao invalido.", 422);
+
+  await upsertUserDefaultTipo(supabase, { tenantId, userId, tipo, actorUserId: appUser.id });
+  return NextResponse.json({ userId, defaultTipo: tipo });
 }
 
 export async function getEstadoProgramacao(
