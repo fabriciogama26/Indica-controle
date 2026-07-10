@@ -899,3 +899,8 @@ Observacao
 - Remove somente dois indices `unused_index` confirmados como redundantes apos auditoria de 147 dias de estatisticas.
 - Droppa `idx_app_users_tenant_matricula`, coberto pelo unique `app_users_tenant_id_matricula_key`.
 - Droppa `idx_fk_team_composition_members_team_composition_membe_3b95065b`, coberto pelo indice composto em `(composition_id, tenant_id)`, mantendo os demais indices `unused_index` preservados.
+
+303_add_query_performance_indexes.sql
+- Adiciona indices compostos, sempre com `tenant_id` como prefixo, para achados objetivos do Query Performance/Index Advisor.
+- Cobre historico de Programacao por `action_type + programming_id + created_at`, Medicao por `execution_date + updated_at`, Projetos por `is_active + is_test + execution_deadline` e Materiais por `is_active + codigo + id`.
+- Substitui `idx_materials_tenant_active_codigo` por `idx_materials_tenant_active_codigo_id`, evitando duplicidade e cobrindo tambem a ordenacao secundaria por `id`.
