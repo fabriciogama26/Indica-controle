@@ -55,17 +55,17 @@ export async function fetchLatestProgrammingState(
 ): Promise<{ programmingId: string; executionDate: string; rawStatus: string; stateToken: string } | null> {
   const { data, error } = await supabase
     .from("project_programming")
-    .select("id, execution_date, etapa_number, work_completion_status, updated_at")
+    .select("id, execution_date, work_completion_status, updated_at")
     .eq("tenant_id", tenantId)
     .eq("project_id", projectId)
+    .neq("status", "CANCELADA")
+    .not("work_completion_status", "is", null)
     .order("execution_date", { ascending: false })
-    .order("etapa_number", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle<{
       id: string;
       execution_date: string;
-      etapa_number: number | null;
       work_completion_status: string | null;
       updated_at: string;
     }>();
@@ -90,22 +90,27 @@ export async function fetchLatestProgrammingStateMap(
   const result = new Map<string, { rawStatus: string; stateToken: string; programmingId: string }>();
   if (!uniqueIds.length) return result;
 
+  // Alinhado com a Medicao: ignora CANCELADA e exige Estado Trabalho preenchido;
+  // "ultimo" = maior execution_date, desempate por updated_at.
   const { data } = await supabase
     .from("project_programming")
-    .select("id, project_id, execution_date, etapa_number, work_completion_status, updated_at")
+    .select("id, project_id, execution_date, work_completion_status, updated_at")
     .eq("tenant_id", tenantId)
     .in("project_id", uniqueIds)
+    .neq("status", "CANCELADA")
+    .not("work_completion_status", "is", null)
     .order("project_id", { ascending: true })
     .order("execution_date", { ascending: false })
-    .order("etapa_number", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false })
     .limit(5000)
     .returns<Array<{ id: string; project_id: string; work_completion_status: string | null }>>();
 
   for (const row of data ?? []) {
     if (result.has(row.project_id)) continue;
+    const rawStatus = normalizeText(row.work_completion_status);
+    if (!rawStatus) continue;
     result.set(row.project_id, {
-      rawStatus: normalizeText(row.work_completion_status),
+      rawStatus,
       stateToken: normalizeWorkCompletionToken(row.work_completion_status),
       programmingId: row.id,
     });
