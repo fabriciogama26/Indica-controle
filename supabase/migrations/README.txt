@@ -874,3 +874,23 @@ Observacao
 297_create_saida_requisicao_permission.sql
 - Cria a permissao virtual `saida-requisicao` (nao navegavel; so na matriz de acesso) que controla, dentro de Operacoes de Equipe (`/saida`), quem pode fazer a operacao `REQUISITION`.
 - Nasce bloqueada para todos (`default_user_access = false`); perfis administrativos seguem liberados por bypass de `is_admin`. Devolucao e Retorno de campo continuam sob a permissao `saida`.
+
+298_harden_security_definer_execute_grants.sql
+- Revoga EXECUTE de `public`, `anon` e `authenticated` em RPCs `SECURITY DEFINER` apontadas pelo Supabase Advisor.
+- Mantem EXECUTE somente para `service_role`, alinhado ao padrao dos Route Handlers que validam bearer token, tenant e permissao antes da chamada.
+- Cobre Requisicao com Atendimento, Faturamento, Medicao Asbuilt e Permissoes.
+
+299_add_internal_rls_policies_for_system_tables.sql
+- Adiciona policies explicitas `service_role` para as tabelas internas `idempotency_requests` e `rate_limit_events`.
+- Fecha alertas INFO `RLS Enabled No Policy` do Supabase Advisor sem liberar acesso direto para `anon` ou `authenticated`.
+- Preserva uso interno por backend/RPC e revoga grants diretos de usuarios finais.
+
+300_fix_supabase_advisor_performance_warnings.sql
+- Otimiza policies RLS apontadas pelo Advisor: usa `(select auth.uid())` em `app_users` e `app_user_tenants`, e consolida SELECT de `app_users`.
+- Remove policies SELECT redundantes geradas a partir de antigas policies `FOR ALL` e separa escrita de Composicao de Equipe em INSERT/UPDATE.
+- Remove indices duplicados legados em `job_levels`, `job_title_types` e `project`.
+
+301_create_missing_foreign_key_indexes.sql
+- Cria dinamicamente indices para foreign keys publicas que ainda nao possuem indice cobrindo as colunas da FK.
+- Fecha alertas INFO `unindexed_foreign_keys` do Supabase Advisor.
+- Nao remove indices marcados como `unused_index`; esses exigem auditoria manual de workload antes de qualquer drop.

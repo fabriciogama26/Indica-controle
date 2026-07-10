@@ -238,6 +238,8 @@ Constantes e configuracoes
   - Responsavel por: cadastrar `mapa-programacao` e preencher permissoes ausentes por role/usuario sem sobrescrever configuracoes existentes, deixando usuarios nao administrativos bloqueados na matriz por usuario.
 - Caminho: `supabase/migrations/245_default_new_pages_inactive_for_users.sql`
   - Responsavel por: adicionar `app_pages.default_user_access`, ajustar o fallback do `mapa-programacao`, preencher permissoes ausentes para usuarios legados, criar triggers para novas telas e novos usuarios, e registrar que telas novas nascem inativas para usuarios comuns.
+- Caminho: `supabase/migrations/298_harden_security_definer_execute_grants.sql`
+  - Responsavel por: revogar EXECUTE direto de `public`, `anon` e `authenticated` em `save_user_permissions` e `user_has_page_action`; uso operacional permanece via backend com `service_role`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/context/AuthContext.tsx`
@@ -246,7 +248,8 @@ Funcoes utilitarias relacionadas
   - Responsavel por: registrar falhas da tela com tag `permissoes`.
 
 Servicos e integracoes externas
-- Supabase Postgres com RLS
+- Supabase Postgres com RLS.
+- RPCs de permissao `save_user_permissions` e `user_has_page_action` restritas a `service_role` pela migration 298.
 
 Ajuda contextual
 - Arquivos alterados/criados:
@@ -261,6 +264,7 @@ Ajuda contextual
   - `supabase/migrations/210_harden_function_search_path_and_rpc_execute.sql`
   - `supabase/migrations/215_repair_reversals_page_permissions.sql`
   - `supabase/migrations/245_default_new_pages_inactive_for_users.sql`
+  - `supabase/migrations/298_harden_security_definer_execute_grants.sql`
   - `src/app/api/app-users/[userId]/permissions/route.ts`
   - `src/app/api/app-users/[userId]/invite/route.ts`
   - `src/lib/server/pageAuthorization.ts`
@@ -298,6 +302,8 @@ Ajuda contextual
 - Estado atual: a migration `215` repara ambientes onde o cadastro de `estornos` nao acompanhou a publicacao do frontend.
 - Estado atual: a tela exibe os usuarios do tenant antes do formulario e permite selecionar qualquer linha para carregar as credenciais.
 - A busca de usuarios ja nao depende mais de dados mockados e usa apenas `login_name` e `matricula`.
+- Atualizacao 2026-07-10: migration 298 remove EXECUTE direto de `authenticated` nas RPCs de permissao
+  apontadas pelo Supabase Advisor; o Route Handler segue validando admin/tenant antes de chamar com `service_role`.
 - Antes: parte das tabelas de cadastro/permissao ainda usava policy `FOR ALL`, que tambem permitia caminho de `DELETE`.
 - Depois: as tabelas revisadas passaram a usar apenas `SELECT`, `INSERT` e `UPDATE`, com remocao explicita de qualquer policy `ALL/DELETE`.
 - Antes: o `next build` nao conseguia inferir com seguranca que o operador admin tinha `role_id` obrigatorio.

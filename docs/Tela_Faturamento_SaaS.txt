@@ -228,6 +228,8 @@ Constantes e configuracoes
   - Responsavel por: remover o `NOT NULL` legado de `paid_value` quando a `263` ja foi aplicada anteriormente.
 - Caminho: `supabase/migrations/265_fix_billing_paid_value_legacy_check.sql`
   - Responsavel por: remover a constraint legado de `paid_value` quando a `264` ja foi aplicada anteriormente.
+- Caminho: `supabase/migrations/298_harden_security_definer_execute_grants.sql`
+  - Responsavel por: remover EXECUTE direto de `public`, `anon` e `authenticated` em `save_project_billing_order`; chamada permanece via Route Handler com `service_role`.
 - Caminho: `src/hooks/useErrorLogger.ts`
   - Responsavel por: registrar propriedades extras de objetos `Error`, incluindo payloads de API e `dbError`, no contexto salvo por `log_error`.
 
@@ -238,6 +240,7 @@ Funcoes utilitarias relacionadas
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para autenticacao, usuario ativo e tenant ativo.
 - Supabase/Postgres com RLS e RPCs `SECURITY DEFINER` para escrita transacional.
+- RPC `save_project_billing_order` restrita a `service_role` pela migration 298.
 - `useErrorLogger("faturamento")` para registro de falhas da tela.
 
 Ajuda contextual
@@ -256,3 +259,10 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: detalhamento usava botao local sem o modal padrao.
 - Depois: detalhamento usa `CsvExportButton`, herdando `ExportProgressModal`.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-10 - Hardening de RPC:
+- Arquivo alterado: `supabase/migrations/298_harden_security_definer_execute_grants.sql`.
+- Funcao tocada: `save_project_billing_order`.
+- Antes: Supabase Advisor apontava EXECUTE por `authenticated` em funcao `SECURITY DEFINER`.
+- Depois: EXECUTE direto fica revogado para `public`, `anon` e `authenticated`; o backend chama com `service_role`.
+- Multi-tenant: mantem validacao de tenant no Route Handler e na RPC; reduz superficie de chamada direta via `/rpc`.
