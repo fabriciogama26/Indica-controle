@@ -874,3 +874,33 @@ Observacao
 297_create_saida_requisicao_permission.sql
 - Cria a permissao virtual `saida-requisicao` (nao navegavel; so na matriz de acesso) que controla, dentro de Operacoes de Equipe (`/saida`), quem pode fazer a operacao `REQUISITION`.
 - Nasce bloqueada para todos (`default_user_access = false`); perfis administrativos seguem liberados por bypass de `is_admin`. Devolucao e Retorno de campo continuam sob a permissao `saida`.
+
+298_harden_security_definer_execute_grants.sql
+- Revoga EXECUTE de `public`, `anon` e `authenticated` em RPCs `SECURITY DEFINER` apontadas pelo Supabase Advisor.
+- Mantem EXECUTE somente para `service_role`, alinhado ao padrao dos Route Handlers que validam bearer token, tenant e permissao antes da chamada.
+- Cobre Requisicao com Atendimento, Faturamento, Medicao Asbuilt e Permissoes.
+
+299_add_internal_rls_policies_for_system_tables.sql
+- Adiciona policies explicitas `service_role` para as tabelas internas `idempotency_requests` e `rate_limit_events`.
+- Fecha alertas INFO `RLS Enabled No Policy` do Supabase Advisor sem liberar acesso direto para `anon` ou `authenticated`.
+- Preserva uso interno por backend/RPC e revoga grants diretos de usuarios finais.
+
+300_fix_supabase_advisor_performance_warnings.sql
+- Otimiza policies RLS apontadas pelo Advisor: usa `(select auth.uid())` em `app_users` e `app_user_tenants`, e consolida SELECT de `app_users`.
+- Remove policies SELECT redundantes geradas a partir de antigas policies `FOR ALL` e separa escrita de Composicao de Equipe em INSERT/UPDATE.
+- Remove indices duplicados legados em `job_levels`, `job_title_types` e `project`.
+
+301_create_missing_foreign_key_indexes.sql
+- Cria dinamicamente indices para foreign keys publicas que ainda nao possuem indice cobrindo as colunas da FK.
+- Fecha alertas INFO `unindexed_foreign_keys` do Supabase Advisor.
+- Nao remove indices marcados como `unused_index`; esses exigem auditoria manual de workload antes de qualquer drop.
+
+302_drop_redundant_unused_indexes_after_audit.sql
+- Remove somente dois indices `unused_index` confirmados como redundantes apos auditoria de 147 dias de estatisticas.
+- Droppa `idx_app_users_tenant_matricula`, coberto pelo unique `app_users_tenant_id_matricula_key`.
+- Droppa `idx_fk_team_composition_members_team_composition_membe_3b95065b`, coberto pelo indice composto em `(composition_id, tenant_id)`, mantendo os demais indices `unused_index` preservados.
+
+303_add_query_performance_indexes.sql
+- Adiciona indices compostos, sempre com `tenant_id` como prefixo, para achados objetivos do Query Performance/Index Advisor.
+- Cobre historico de Programacao por `action_type + programming_id + created_at`, Medicao por `execution_date + updated_at`, Projetos por `is_active + is_test + execution_deadline` e Materiais por `is_active + codigo + id`.
+- Substitui `idx_materials_tenant_active_codigo` por `idx_materials_tenant_active_codigo_id`, evitando duplicidade e cobrindo tambem a ordenacao secundaria por `id`.

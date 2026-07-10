@@ -1,0 +1,80 @@
+Tela: Cronograma de Solicitacoes Tecnicas
+
+Visao geral
+- CRUD de pedidos tecnicos da operacao (Inspecao, As Built, Locacao) com controle de prazo (SLA).
+- Cada solicitacao referencia um projeto ja cadastrado; municipio, endereco e prioridade do projeto sao puxados automaticamente (somente leitura).
+- Status de negocio: Pendente, Concluido, Cancelado. Atrasado e derivado em tempo real (nao persistido).
+- Multi-tenant: todo registro pertence a um tenant_id; nenhuma consulta cruza tenants.
+
+Arquitetura
+- Pagina: src/app/(dashboard)/cronograma-solicitacoes/page.tsx -> CronogramaSolicitacoesPageView.
+- Frontend (modulo): src/modules/dashboard/cronograma-solicitacoes/
+  - CronogramaSolicitacoesPageView.tsx (tela: cards, filtros, grid, modal, acoes, export CSV client-side)
+  - api.ts (fetch com Bearer token), types.ts, constants.ts, index.ts, CronogramaSolicitacoesPageView.module.css
+- API (rotas finas): src/app/api/cronograma-solicitacoes/
+  - route.ts        -> GET lista paginada, POST criar, PUT editar
+  - meta/route.ts   -> GET catalogos (tipos, prioridades, status, responsaveis, projetos, ids elegiveis As Built) com cache 5 min
+  - estado-programacao/route.ts -> GET estado atual da Programacao do projeto (validacao do formulario)
+  - verify/route.ts -> POST concluir (botao Verificado)
+  - cancel/route.ts -> POST cancelar (com motivo)
+- Backend (regras): src/server/modules/cronograma-solicitacoes/
+  - handlers.ts (list, meta, estado, create, update, verify, cancel), queries.ts, normalizers.ts, types.ts, authorization.ts
+- Banco: supabase/migrations/304_create_cronograma_solicitacoes.sql
+  - tabelas cronograma_solicitacoes e cronograma_solicitacoes_history, RLS por tenant, indices, RPC get_cronograma_asbuilt_project_ids, seed de app_pages/permissoes.
+
+Cadastro
+- Campos: Projeto (autocomplete por codigo), Tipo, Prioridade, Data de Entrada, Data Limite, Responsavel, Observacoes, Justificativa (Alta).
+- Solicitante: usuario logado (automatico). Puxados do projeto: Municipio, Endereco, Prioridade do projeto.
+- Prazos (dias corridos, TZ America/Sao_Paulo): Baixa = Entrada + 10 (travado), Media = Entrada + 5 (travado), Alta = manual (>= Entrada) + justificativa obrigatoria.
+- Trava de estado da Programacao: somente As Built. So aceita projeto cujo estado atual seja CONCLUIDO ou PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO. Inspecao e Locacao aceitam qualquer projeto ativo.
+- Estado atual do projeto = ultima linha de project_programming por execution_date/etapa. A Data Limite nao e chave de consulta.
+- Normalizacao das grafias do catalogo: BENFICIO e BENEFICIO sao tratadas como o mesmo estado.
+- Duplicidade: constraint unica (tenant_id, projeto_id, data_entrada, tipo_solicitacao).
+
+Filtros, auto-complete e listagem
+- Filtros combinaveis (colunas indexadas): tipo, prioridade, status, responsavel, municipio, periodo de prazo, mais pesquisa (projeto/codigo/responsavel/solicitante) e ordenacao.
+- Status Atrasado e um predicado SQL: status = PENDENTE and data_limite < hoje (hoje em America/Sao_Paulo). Pendente no filtro = PENDENTE e data_limite >= hoje (sem dupla contagem com Atrasadas).
+- Cards agregados por predicado SQL (count/head): Total, Pendentes, Concluidas, Atrasadas, Vencendo Hoje, Vencendo em 3 dias.
+- Paginacao real via count + range. Autocomplete de As Built restrito aos ids elegiveis (RPC).
+- Exportacao Excel: CSV client-side (buildCsvContent + downloadCsvFile), somente a pagina filtrada atual.
+
+Boas praticas
+- meta separado da lista, com cache 5 min; frontend carrega meta e lista em paralelo.
+- Escrita direta com o client service-role, sempre com escopo .eq(tenant_id) e ator explicito (created_by/updated_by).
+- Historico registrado em toda operacao (CREATE, UPDATE, VERIFY, CANCEL).
+- Lock otimista por updated_at (expectedUpdatedAt) em edicao/verificacao/cancelamento.
+
+Cancelamento e conclusao
+- Verificado (Concluido): pelo criador do pedido ou admin/master; grava data_conclusao. So a partir de Pendente.
+- Cancelado: pelo criador ou admin/master; exige motivo. So a partir de Pendente.
+- Edicao permitida somente enquanto Pendente. Concluido e Cancelado sao imutaveis.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+- Funcoes principais
+  - listSolicitacoes / getMeta / getEstadoProgramacao / createSolicitacao / updateSolicitacao / verifySolicitacao / cancelSolicitacao
+    Caminho: src/server/modules/cronograma-solicitacoes/handlers.ts
+    Responsavel por: autorizacao por acao, validacao, montagem do item, agregacao de cards e escrita + historico.
+  - fetchLatestProgrammingState / fetchAsbuiltEligibleProjectIds / applySolicitacaoFilters / insertHistory
+    Caminho: src/server/modules/cronograma-solicitacoes/queries.ts
+    Responsavel por: acesso a dados, filtros nativos e RPC de elegibilidade As Built.
+  - authorizeCronogramaAction (pageKey cronograma-solicitacoes)
+    Caminho: src/server/modules/cronograma-solicitacoes/authorization.ts
+- Constantes e configuracoes
+  - TIPOS_SOLICITACAO, PRIORIDADES, STATUS_ARMAZENADOS, PRAZO_DIAS_POR_PRIORIDADE, ASBUILT_ESTADOS_PERMITIDOS
+    Caminho: src/server/modules/cronograma-solicitacoes/normalizers.ts
+- Funcoes utilitarias relacionadas
+  - businessToday, addDaysIso, diffDays, resolveDataLimite, resolveStatusEfetivo, normalizeWorkCompletionToken
+    Caminho: src/server/modules/cronograma-solicitacoes/normalizers.ts
+  - parsePagination, addChange, normalizeText (compartilhados): src/lib/server/apiHelpers.ts
+  - buildCsvContent, downloadCsvFile: src/lib/utils/csv.ts
+- Servicos e integracoes externas
+  - RPC get_cronograma_asbuilt_project_ids(tenant): ids de projetos elegiveis para As Built (estado atual CONCLUIDO/PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO).
+  - Views/tabelas: project_with_labels, project_programming, people, app_users, job_titles.
+
+Observacoes de implementacao (pendencias tecnicas)
+- Escrita usa o client service-role no handler (nao RPC security-definer). Reforca tenant scope no codigo; pode ser migrado para RPC no futuro sem mudar o contrato da tela.
+- A resolucao de estado do As Built usa project_programming.work_completion_status (texto). Tenants que so gravam work_completion_status_id (catalogo) podem precisar de ajuste na RPC/query.
+- Responsavel referencia public.people (cargo VISTORIADOR). Solicitante referencia public.app_users (usuario logado).
+
+Atualizacao 2026-07
+- Criacao inicial da tela e do modulo.

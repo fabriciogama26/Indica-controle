@@ -45,7 +45,7 @@ Não é um workflow com múltiplas transições — é um cadastro validado, com
 - **Prioridade** — Baixa / Média / Alta (ver 2.3).
 - **Data de Entrada** — digitada.
 - **Data Limite** — automática (Baixa/Média) ou manual (Alta).
-- **Responsável** — pessoas com cargo (`job_titles.code`) **LOCADOR** ou **INSPETOR** (confirmar códigos exatos no catálogo do tenant na implementação).
+- **Responsável** — pessoas com cargo (`job_titles.code`) **VISTORIADOR** (confirmar o código exato no catálogo do tenant na implementação).
 - **Solicitante** — usuário logado (automático).
 - **Observações** — texto livre.
 - **Justificativa da prioridade** — obrigatória quando Alta.
@@ -54,17 +54,25 @@ Não é um workflow com múltiplas transições — é um cadastro validado, com
 Município (`city_text`) · Endereço (`street`/`neighborhood`) · Prioridade do projeto (`priority_text`).
 
 ### 2.6 Status (somente 4)
-- **Pendente** — ao cadastrar (default).
-- **Concluído** — pelo criador do pedido; grava `data_conclusao` automaticamente.
-- **Cancelado** — pelo criador; exige motivo.
-- **Atrasado** — **derivado em runtime** (não persistido, sem job agendado): `hoje > data_limite` e status ∉ {Concluído, Cancelado}.
+- **Pendente** — default ao cadastrar; enquanto o botão de ação **"Verificado"** não for ativado.
+- **Concluído** — ao ativar o botão **"Verificado"**; grava `data_conclusao` automaticamente. Por criador do pedido ou admin/master.
+- **Cancelado** — ação própria; exige motivo. Por criador ou admin/master.
+- **Atrasado** — **derivado, nunca persistido e nunca calculado em Node**: expresso como **predicado SQL** `status = 'PENDENTE' AND data_limite < hoje`. Assim filtro por status, ordenação por status e o card "Atrasadas" vão direto ao banco (sem job, sem pós-filtro em memória).
+- **`hoje`** em todos os predicados de prazo = `(now() AT TIME ZONE 'America/Sao_Paulo')::date`. **Nunca** `current_date` (que é UTC no banco e erra por 1 dia perto da meia-noite).
+
+O botão **"Verificado"** é a ação que tira o pedido de Pendente e o marca como Concluído (verificado/atendido).
 
 Removidos do spec original: "Em andamento", "Aguardando informação" e o campo **Data de início** (não há transição que os alimente). **Sem anexos.**
 
-### 2.7 Duplicidade
+### 2.7 Ciclo de vida, edição e permissão
+- Edição disponível via **botão "Editar"**. Ao editar Data de Entrada com prioridade Baixa/Média, a Data Limite é recalculada (2.3).
+- Ações "Verificado" (conclui) e Cancelar (com motivo) pelo **criador do pedido ou admin/master**.
+- Se a edição trocar Tipo/Projeto e virar As Built, a trava de estado (2.1/2.2) re-roda no salvar, e a constraint de duplicidade (2.8) é revalidada.
+
+### 2.8 Duplicidade
 Constraint parcial/única no banco: `(tenant_id, projeto_id, data_entrada, tipo_solicitacao)`. Não permite dois pedidos do mesmo tipo, mesmo projeto e mesma data de entrada.
 
-### 2.8 Histórico
+### 2.9 Histórico
 Toda alteração grava usuário, data/hora, campo, valor anterior e novo — padrão `*_history` (jsonb `changes`), igual a `project_history`.
 
 ---
@@ -103,19 +111,23 @@ Toda alteração grava usuário, data/hora, campo, valor anterior e novo — pad
 `types.ts`, `normalizers.ts`, `selects.ts`, `queries.ts`, `handlers.ts`, `authorization.ts` (espelhar `projects/authorization.ts`).
 - Resolver de estado da Programação (item 2.2), reusando normalizador de medição.
 - Tabela de decisão Tipo × estado (só As Built trava).
-- Cálculo de prazos (2.3) com TZ fixa.
-- Derivação em runtime de Atrasado / Dias Restantes / Dias em Atraso na listagem.
+- Cálculo de prazos (2.3) com TZ fixa (`America/Sao_Paulo`).
+- Status efetivo (com Atrasado via predicado SQL — 2.6), Dias Restantes e Dias em Atraso **calculados no backend** e já presentes no payload da lista, para o CSV reusar o mesmo `GET` sem recalcular.
+- Autocomplete de As Built: filtro "estado atual = CONCLUIDO/PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO" resolvido via **RPC/consulta agregada** (uma query, sem N+1). Projeto sem programação fica fora do As Built.
 
 ### API `src/app/api/cronograma-solicitacoes/`
 - `route.ts`: `GET` lista paginada (`count + range`; filtros nativos indexados: tipo, prioridade, status, período de entrada, período de prazo, município, responsável; pesquisa por projeto/código/responsável/solicitante) + `POST/PUT`/status via RPC.
 - `meta/route.ts`: catálogos estáticos (tipos, prioridades, status, responsáveis, projetos p/ autocomplete) com cache TTL 5 min — separado da lista (padrão obrigatório).
 - `estado-programacao/route.ts` (ou querystring em `meta`): consulta live do estado do projeto para o formulário; **revalidada no `POST/PUT`**.
+- `export/route.ts`: exportação **CSV** (abre no Excel) seguindo o padrão de `src/app/api/medicao/export/route.ts` — reusa o `GET` da lista (mesmos filtros/pesquisa aplicados), gera CSV via `buildCsvContent` (`@/lib/utils/csv`) com `formatDate`/`formatDateTime` (`@/lib/utils/formatters`), auth por `resolveAuthenticatedAppUser` + `requirePageAction`. Colunas = as do grid (Projeto, Tipo, Prioridade, Data de Entrada, Data Limite, Dias Restantes/Atraso, Responsável, Solicitante, Estado da Programação, Status, Última Atualização).
+  - Exporta **somente a página filtrada atual** (mesmos filtros e mesma paginação que a lista está exibindo).
+  - Verificar que `buildCsvContent` emite **UTF-8 com BOM** e separador compatível com Excel pt-BR (senão acento quebra / coluna gruda) — mesmo comportamento de Medição.
 - Front carrega `meta` + `lista` em `Promise.all`.
 
 ### Front `src/modules/dashboard/cronograma-solicitacoes/`
 `CronogramaSolicitacoesPageView.tsx` + `components.tsx` + `constants.ts` + `exports.ts` (padrão `programacao-simples`). Página em `src/app/(dashboard)/cronograma-solicitacoes/page.tsx`.
-- Cards (Total, Pendentes, Concluídas, Atrasadas, Vencendo Hoje, Vencendo em 3 dias) — agregados no backend, não somados no Node.
-- Grid ordenável (Prazo, Prioridade, Projeto, Responsável, Status), filtros combináveis, cores por prioridade/status.
+- Cards (Total, Pendentes, Concluídas, Atrasadas, Vencendo Hoje, Vencendo em 3 dias) — agregados no backend por predicado SQL, não somados no Node. **Sem dupla contagem**: `Pendentes` = só no prazo (`PENDENTE AND data_limite >= hoje`); vencidas contam apenas em `Atrasadas`.
+- **Lista segue o padrão das demais telas** (ex.: Medição): cabeçalho com filtros combináveis, paginação real, grid ordenável (Prazo, Prioridade, Projeto, Responsável, Status), cores por prioridade/status e **botão "Exportar" (Excel)** chamando `export/route.ts` com os filtros correntes.
 - Autocomplete de projeto reusando endpoint de projetos, filtrado pelo Tipo.
 
 ### Permissões
@@ -137,6 +149,6 @@ Ordem recomendada: começar pela Fase 1 (o schema trava o resto).
 ---
 
 ## 6. A confirmar na implementação (dados, não regra)
-- Códigos exatos em `job_titles` para `LOCADOR` e `INSPETOR` no tenant.
+- Código exato em `job_titles` para `VISTORIADOR` no tenant.
 - Existência do código `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` (ou grafia legada) no `programming_work_completion_catalog` do tenant.
 - Origem canônica do Responsável: `people` vs `app_users` (o cadastro de pessoas é `people`; o vínculo de solicitante é `app_users`).

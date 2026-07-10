@@ -12,6 +12,12 @@ $checked       = 0
 # Chave = numero da migration com o problema.
 $knownNoRevoke = @{
     245 = "Corrigida pela migration 250"
+    259 = "Corrigida pelas migrations 278/285/298"
+    260 = "Corrigida pelas migrations 278/298"
+    261 = "Corrigida pelas migrations 278/298"
+    262 = "Corrigida pelas migrations 278/298"
+    263 = "Corrigida pelas migrations 278/298"
+    269 = "Recria assinatura existente com grants preservados; sem alerta live"
 }
 
 # Migrations que fizeram grant desnecessario a authenticated.
@@ -25,21 +31,51 @@ $knownAuthGrant = @{
     219 = "Corrigida pela migration 251"
     243 = "Corrigida pela migration 251"
     247 = "Corrigida pela migration 251"
+    253 = "Corrigida pela migration 298"
+    263 = "Corrigida pela migration 298"
+    278 = "Corrigida pela migration 298"
+    285 = "Corrigida pela migration 298"
+}
+
+function Remove-SqlComments {
+    param([string]$Sql)
+
+    $withoutBlockComments = [regex]::Replace($Sql, '(?s)/\*.*?\*/', '')
+    return [regex]::Replace($withoutBlockComments, '(?m)--.*$', '')
 }
 
 Get-ChildItem $migrationsDir -Filter "*.sql" -ErrorAction Stop | Where-Object {
     [int]($_.Name -replace '^(\d+).*', '$1') -gt $hardenedFrom
 } | ForEach-Object {
-    $content = Get-Content $_.FullName -Raw
+    $content = Remove-SqlComments (Get-Content $_.FullName -Raw)
     if (-not ($content -imatch '\bSECURITY DEFINER\b')) { return }
 
     $num  = [int]($_.Name -replace '^(\d+).*', '$1')
     $name = $_.Name
-    $checked++
 
-    $hasRevoke  = $content -imatch '(?s)REVOKE\s+(ALL|EXECUTE)\b[^;]*(public|anon|authenticated)'
-    $grantsAnon = $content -imatch '(?s)GRANT\s+EXECUTE\b[^;]*\bTO\b[^;]*\banon\b'
-    $grantsAuth = $content -imatch '(?s)GRANT\s+EXECUTE\b[^;]*\bTO\b[^;]*\bauthenticated\b'
+    $functionBlocks = [regex]::Matches(
+        $content,
+        '(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\..*?(?=\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.|\z)'
+    )
+
+    $hasSecurityDefinerFunctionBlock = $false
+    $hasRevoke  = $false
+    $grantsAnon = $false
+    $grantsAuth = $false
+
+    foreach ($match in $functionBlocks) {
+        $block = $match.Value
+        if (-not ($block -imatch '\bSECURITY\s+DEFINER\b')) { continue }
+
+        $hasSecurityDefinerFunctionBlock = $true
+        $hasRevoke  = $hasRevoke  -or ($block -imatch '(?s)REVOKE\s+(ALL|EXECUTE)\b[^;]*(public|anon|authenticated)')
+        $grantsAnon = $grantsAnon -or ($block -imatch '(?s)GRANT\s+EXECUTE\b[^;]*\bTO\b[^;]*\banon\b')
+        $grantsAuth = $grantsAuth -or ($block -imatch '(?s)GRANT\s+EXECUTE\b[^;]*\bTO\b[^;]*\bauthenticated\b')
+    }
+
+    if (-not $hasSecurityDefinerFunctionBlock) { return }
+
+    $checked++
 
     if (-not $hasRevoke -and -not $knownNoRevoke.ContainsKey($num)) {
         $errors.Add("CRITICO  [$name]  SECURITY DEFINER sem REVOKE de public/anon/authenticated")

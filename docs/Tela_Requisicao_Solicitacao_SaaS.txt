@@ -20,6 +20,7 @@ Arquitetura
 - Banco (schema): `supabase/migrations/294_create_stock_requisition_module.sql`
 - Banco (RPCs): `supabase/migrations/295_create_stock_requisition_rpcs.sql`
 - Banco (pagina): `supabase/migrations/296_register_stock_requisition_pages.sql`
+- Banco (hardening): `supabase/migrations/298_harden_security_definer_execute_grants.sql`
 
 Cadastro
 --------
@@ -95,3 +96,5 @@ Atualizacao 2026-07
 -------------------
 - Tela criada como etapa de solicitacao do novo fluxo de Requisicao com Atendimento no Almoxarifado.
 - Permissoes: pagina `requisicao-solicitacao` (actions read/create/cancel), nasce bloqueada para nao-admin.
+- Hardening: migration 298 revoga EXECUTE de `public`/`anon`/`authenticated` nas RPCs SECURITY DEFINER
+  de requisicao; chamadas continuam somente pelos Route Handlers com `service_role`.

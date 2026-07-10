@@ -22,7 +22,8 @@ Arquitetura
 - API (atender): `src/app/api/stock-requisitions/fulfill/route.ts`
 - API (cancelar): `src/app/api/stock-requisitions/cancel/route.ts`
 - Helper server: `src/lib/server/stockRequisitions.ts`
-- Banco: `supabase/migrations/294..296_*.sql`
+- Banco: `supabase/migrations/294..296_*.sql` e hardening em
+  `supabase/migrations/298_harden_security_definer_execute_grants.sql`
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -109,3 +110,5 @@ Atualizacao 2026-07
 - Tela criada como etapa de atendimento do novo fluxo de Requisicao com Atendimento no Almoxarifado.
 - Permissoes: pagina `requisicao-atendimento` (claim/fulfill/release mapeados para action `update`; `cancel`),
   nasce bloqueada para nao-admin.
+- Hardening: migration 298 fecha EXECUTE direto das RPCs SECURITY DEFINER para `public`, `anon` e
+  `authenticated`; o backend segue chamando via `service_role` apos validar usuario, tenant e permissao.

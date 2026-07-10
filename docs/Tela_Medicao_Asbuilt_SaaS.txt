@@ -276,6 +276,8 @@ Constantes e configuracoes
   - Responsavel por: permitir snapshots do mesmo projeto em cortes diferentes, criar unicidade parcial por projeto/data e atualizar trigger/RPC para bloquear somente a repeticao do mesmo corte.
 - Caminho: `supabase/migrations/285_fix_asbuilt_batch_import_coverage_date.sql`
   - Responsavel por: corrigir a RPC de importacao em massa de Medicao Asbuilt para repassar `serviceCoverageEndDate` ao salvar cada ordem, preservando o limite de 500 registros.
+- Caminho: `supabase/migrations/298_harden_security_definer_execute_grants.sql`
+  - Responsavel por: revogar EXECUTE direto de `public`, `anon` e `authenticated` em `save_project_asbuilt_measurement_order_batch_partial`; chamada permanece via Route Handler com `service_role`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/medicao-asbuilt/utils.ts`
@@ -284,6 +286,7 @@ Funcoes utilitarias relacionadas
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para autenticacao, usuario ativo e tenant ativo.
 - Supabase/Postgres com RLS e RPCs `SECURITY DEFINER` para escrita transacional.
+- RPC de importacao em massa restrita a `service_role` pela migration 298.
 - `useErrorLogger("medicao-asbuilt")` para registro de falhas da tela.
 
 Ajuda contextual
@@ -338,3 +341,10 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: detalhamento usava botao local sem o modal padrao.
 - Depois: detalhamento usa `CsvExportButton`, herdando `ExportProgressModal`.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-10 - Hardening de RPC:
+- Arquivo alterado: `supabase/migrations/298_harden_security_definer_execute_grants.sql`.
+- Funcao tocada: `save_project_asbuilt_measurement_order_batch_partial`.
+- Antes: Supabase Advisor apontava EXECUTE por `authenticated` em funcao `SECURITY DEFINER`.
+- Depois: EXECUTE direto fica revogado para `public`, `anon` e `authenticated`; importacao segue pelo backend com `service_role`.
+- Multi-tenant: escopo por tenant permanece no Route Handler e na RPC; reduz chamada direta via `/rpc`.

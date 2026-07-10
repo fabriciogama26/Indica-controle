@@ -28,6 +28,7 @@ const menuSections = [
     title: "Operacao",
     items: [
       { href: "/projetos", label: "Projetos", icon: "folder" },
+      { href: "/cronograma-solicitacoes", label: "Cronograma de Solicitacoes", icon: "calendar" },
       { href: "/locacao", label: "Locacao", icon: "briefcase" },
       { href: "/programacao-simples", label: "Programacao", icon: "calendar" },
       { href: "/programacao-visualizacao", label: "Visualizacao Programacao", icon: "calendar" },
@@ -116,6 +117,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/projetos": {
     title: "Projetos",
     subtitle: "Cadastro e acompanhamento dos projetos operacionais.",
+  },
+  "/cronograma-solicitacoes": {
+    title: "Cronograma de Solicitacoes",
+    subtitle: "Solicitacoes tecnicas (Inspecao, As Built, Locacao) com controle de prazo.",
   },
   "/locacao": {
     title: "Locacao",
