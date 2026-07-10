@@ -20,6 +20,7 @@ import {
   applySolicitacaoFilters,
   fetchAsbuiltEligibleProjectIds,
   fetchLatestProgrammingState,
+  fetchLatestProgrammingStateMap,
   fetchPeopleNameMap,
   fetchPersonActive,
   fetchProjectLookup,
@@ -61,12 +62,14 @@ function buildItem(
     projectMap: Map<string, ProjectLookupRow>;
     peopleMap: Map<string, string>;
     userMap: Map<string, string>;
+    estadoMap: Map<string, { rawStatus: string; stateToken: string; programmingId: string }>;
   },
   today: string,
 ): SolicitacaoItem {
   const project = maps.projectMap.get(row.projeto_id);
   const statusEfetivo = resolveStatusEfetivo(row.status, row.data_limite, today);
   const diasRestantes = resolveDiasRestantes(row.status, row.data_limite, today);
+  const estadoAtual = maps.estadoMap.get(row.projeto_id);
 
   return {
     id: row.id,
@@ -92,6 +95,7 @@ function buildItem(
     justificativaPrioridade: row.justificativa_prioridade,
     motivoCancelamento: row.motivo_cancelamento,
     estadoProgramacaoSnapshot: row.estado_programacao_snapshot,
+    estadoProgramacaoAtual: estadoAtual ? (estadoAtual.rawStatus || "-") : "A PROGRAMAR",
     programacaoId: row.programacao_id,
     createdByName: maps.userMap.get(row.created_by ?? "") ?? "Nao identificado",
     updatedByName: maps.userMap.get(row.updated_by ?? "") ?? "Nao identificado",
@@ -178,13 +182,14 @@ export async function listSolicitacoes(
   const peopleIds = pageRows.map((row) => row.responsavel_id);
   const userIds = pageRows.flatMap((row) => [row.solicitante_id, row.created_by, row.updated_by]).filter(Boolean) as string[];
 
-  const [projectMap, peopleMap, userMap] = await Promise.all([
+  const [projectMap, peopleMap, userMap, estadoMap] = await Promise.all([
     fetchProjectLookupMap(supabase, tenantId, projectIds),
     fetchPeopleNameMap(supabase, tenantId, peopleIds),
     fetchUserNameMap(supabase, tenantId, userIds),
+    fetchLatestProgrammingStateMap(supabase, tenantId, projectIds),
   ]);
 
-  const items = pageRows.map((row) => buildItem(row, { projectMap, peopleMap, userMap }, today));
+  const items = pageRows.map((row) => buildItem(row, { projectMap, peopleMap, userMap, estadoMap }, today));
 
   return NextResponse.json({
     items,
@@ -452,13 +457,14 @@ async function loadItemResponse(
   const tenantId = appUser.tenant_id;
   const today = businessToday();
 
-  const [projectMap, peopleMap, userMap] = await Promise.all([
+  const [projectMap, peopleMap, userMap, estadoMap] = await Promise.all([
     fetchProjectLookupMap(supabase, tenantId, [row.projeto_id]),
     fetchPeopleNameMap(supabase, tenantId, [row.responsavel_id]),
     fetchUserNameMap(supabase, tenantId, [row.solicitante_id, row.created_by ?? "", row.updated_by ?? ""].filter(Boolean)),
+    fetchLatestProgrammingStateMap(supabase, tenantId, [row.projeto_id]),
   ]);
 
-  return NextResponse.json({ item: buildItem(row, { projectMap, peopleMap, userMap }, today) });
+  return NextResponse.json({ item: buildItem(row, { projectMap, peopleMap, userMap, estadoMap }, today) });
 }
 
 export async function createSolicitacao(
