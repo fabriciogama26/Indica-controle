@@ -294,7 +294,7 @@ export async function getMeta(context: AuthenticatedAppUserContext): Promise<Nex
 
   const payload = {
     tipos: [
-      { value: "INSPECAO", label: "Inspecao" },
+      { value: "INSPECAO", label: "Fiscalizacao" },
       { value: "AS_BUILT", label: "As Built" },
       { value: "LOCACAO", label: "Locacao" },
     ],

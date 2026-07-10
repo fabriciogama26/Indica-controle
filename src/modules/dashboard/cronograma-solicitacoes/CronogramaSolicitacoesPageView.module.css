@@ -114,6 +114,15 @@
   font-size: 13px;
   color: #111827;
   background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .input { min-width: 160px; }
@@ -255,35 +264,83 @@
 
 .modal {
   background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  width: min(760px, 100%);
-  max-height: 90vh;
-  overflow-y: auto;
+  border-radius: 14px;
+  width: min(780px, 100%);
+  max-height: 92vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #eef0f3;
 }
 
 .modalTitle {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   color: #111827;
+}
+
+.modalSubtitle {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.modalClose {
+  background: none;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 6px;
+}
+
+.modalClose:hover {
+  color: #374151;
+  background: #f3f4f6;
+}
+
+.modalBody {
+  padding: 20px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid #eef0f3;
+  background: #fafbfc;
 }
 
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 14px 16px;
 }
 
 .formField {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   font-size: 12px;
-  color: #374151;
+  font-weight: 500;
+  color: #4b5563;
   position: relative;
 }
 
@@ -360,12 +417,6 @@
   background: #fef2f2;
   color: #991b1b;
   border: 1px solid #fecaca;
-}
-
-.modalActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 @media (max-width: 640px) {

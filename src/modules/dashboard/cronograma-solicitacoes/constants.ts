@@ -9,7 +9,7 @@ export const CRONOGRAMA_CANCEL_ENDPOINT = "/api/cronograma-solicitacoes/cancel";
 export const PAGE_SIZE = 20;
 
 export const TIPO_LABEL: Record<TipoSolicitacao, string> = {
-  INSPECAO: "Inspecao",
+  INSPECAO: "Fiscalizacao",
   AS_BUILT: "As Built",
   LOCACAO: "Locacao",
 };

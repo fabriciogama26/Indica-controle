@@ -514,13 +514,22 @@ export function CronogramaSolicitacoesPageView() {
       {formOpen && (
         <div className={styles.modalBackdrop} onClick={() => !saving && setFormOpen(false)}>
           <form className={styles.modal} onClick={(e) => e.stopPropagation()} onSubmit={submitForm}>
-            <h2 className={styles.modalTitle}>{form.id ? "Editar Solicitacao" : "Nova Solicitacao"}</h2>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 className={styles.modalTitle}>{form.id ? "Editar Solicitacao" : "Nova Solicitacao"}</h2>
+                <p className={styles.modalSubtitle}>Solicitacao tecnica com controle de prazo (SLA).</p>
+              </div>
+              <button type="button" className={styles.modalClose} onClick={() => !saving && setFormOpen(false)} aria-label="Fechar">
+                &times;
+              </button>
+            </div>
 
+            <div className={styles.modalBody}>
             <div className={styles.formGrid}>
               <label className={styles.formField}>
                 Tipo de Solicitacao
                 <select className={styles.select} value={form.tipo} onChange={(e) => changeTipo(e.target.value as TipoSolicitacao)}>
-                  <option value="INSPECAO">Inspecao</option>
+                  <option value="INSPECAO">Fiscalizacao</option>
                   <option value="AS_BUILT">As Built</option>
                   <option value="LOCACAO">Locacao</option>
                 </select>
@@ -606,8 +615,9 @@ export function CronogramaSolicitacoesPageView() {
             )}
 
             {formError && <div className={styles.alertError}>{formError}</div>}
+            </div>
 
-            <div className={styles.modalActions}>
+            <div className={styles.modalFooter}>
               <button type="button" className={styles.secondaryButton} onClick={() => setFormOpen(false)} disabled={saving}>Cancelar</button>
               <button type="submit" className={styles.primaryButton} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
             </div>
