@@ -199,24 +199,61 @@
 
 .actionsCell {
   white-space: nowrap;
-  display: flex;
+}
+
+.tableActions {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
 }
 
-.linkButton,
-.linkOk,
-.linkDanger {
-  background: none;
-  border: none;
+.actionButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 0;
+  transition: transform 0.12s ease, filter 0.12s ease;
 }
 
-.linkButton { color: #2563eb; }
-.linkOk { color: #16a34a; }
-.linkDanger { color: #dc2626; }
+.actionButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.actionButton:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.97);
+}
+
+.actionButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.actionView {
+  color: #1d77b8;
+  background: #dce8f5;
+}
+
+.actionEdit {
+  color: #2a86bd;
+  background: #dce8f5;
+}
+
+.actionActivate {
+  color: #1f8d45;
+  background: #e3f4e9;
+}
+
+.actionCancel {
+  color: #c62828;
+  background: #fbe4e4;
+}
 
 .pager {
   display: flex;
@@ -419,8 +456,44 @@
   border: 1px solid #fecaca;
 }
 
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 18px;
+  margin: 0;
+}
+
+.detailGrid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detailWide {
+  grid-column: 1 / -1;
+}
+
+.detailGrid dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+.detailGrid dd {
+  margin: 0;
+  font-size: 13px;
+  color: #1f2937;
+  word-break: break-word;
+}
+
 @media (max-width: 640px) {
   .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailGrid {
     grid-template-columns: 1fr;
   }
 }

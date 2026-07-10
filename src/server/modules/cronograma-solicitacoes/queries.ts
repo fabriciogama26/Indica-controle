@@ -80,6 +80,40 @@ export async function fetchLatestProgrammingState(
   };
 }
 
+// Estado atual (ultimo Estado Trabalho) por projeto, para uma pagina da lista.
+export async function fetchLatestProgrammingStateMap(
+  supabase: SupabaseClient,
+  tenantId: string,
+  projectIds: string[],
+): Promise<Map<string, { rawStatus: string; stateToken: string; programmingId: string }>> {
+  const uniqueIds = Array.from(new Set(projectIds.filter(Boolean)));
+  const result = new Map<string, { rawStatus: string; stateToken: string; programmingId: string }>();
+  if (!uniqueIds.length) return result;
+
+  const { data } = await supabase
+    .from("project_programming")
+    .select("id, project_id, execution_date, etapa_number, work_completion_status, updated_at")
+    .eq("tenant_id", tenantId)
+    .in("project_id", uniqueIds)
+    .order("project_id", { ascending: true })
+    .order("execution_date", { ascending: false })
+    .order("etapa_number", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false })
+    .limit(5000)
+    .returns<Array<{ id: string; project_id: string; work_completion_status: string | null }>>();
+
+  for (const row of data ?? []) {
+    if (result.has(row.project_id)) continue;
+    result.set(row.project_id, {
+      rawStatus: normalizeText(row.work_completion_status),
+      stateToken: normalizeWorkCompletionToken(row.work_completion_status),
+      programmingId: row.id,
+    });
+  }
+
+  return result;
+}
+
 export async function fetchAsbuiltEligibleProjectIds(
   supabase: SupabaseClient,
   tenantId: string,

@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { ActionIcon } from "@/components/ui/ActionIcon";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import styles from "./CronogramaSolicitacoesPageView.module.css";
@@ -99,6 +100,7 @@ export function CronogramaSolicitacoesPageView() {
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  const [detailsItem, setDetailsItem] = useState<SolicitacaoItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [formError, setFormError] = useState<string | null>(null);
@@ -346,7 +348,7 @@ export function CronogramaSolicitacoesPageView() {
       item.responsavelNome,
       item.solicitanteNome,
       item.projetoMunicipio,
-      item.estadoProgramacaoSnapshot ?? "",
+      item.estadoProgramacaoAtual,
       STATUS_LABEL[item.statusEfetivo],
       formatDateTime(item.updatedAt),
     ]);
@@ -449,7 +451,7 @@ export function CronogramaSolicitacoesPageView() {
               <th>Prazo</th>
               <th>Dias</th>
               <th>Responsavel</th>
-              <th>Estado Prog.</th>
+              <th>Ultimo Estado Prog.</th>
               <th>Status</th>
               <th>Atualizado</th>
               <th>Acoes</th>
@@ -480,22 +482,58 @@ export function CronogramaSolicitacoesPageView() {
                       : "-"}
                 </td>
                 <td>{item.responsavelNome}</td>
-                <td>{item.estadoProgramacaoSnapshot ?? "-"}</td>
+                <td>
+                  {item.estadoProgramacaoAtual === "A PROGRAMAR"
+                    ? <span className={styles.muted}>A PROGRAMAR</span>
+                    : item.estadoProgramacaoAtual}
+                </td>
                 <td><span className={`${styles.badge} ${statusClass(item.statusEfetivo)}`}>{STATUS_LABEL[item.statusEfetivo]}</span></td>
                 <td>
                   {formatDateTime(item.updatedAt)}
                   <div className={styles.muted}>{item.updatedByName}</div>
                 </td>
                 <td className={styles.actionsCell}>
-                  {item.status === "PENDENTE" ? (
-                    <>
-                      <button type="button" className={styles.linkButton} onClick={() => openEdit(item)}>Editar</button>
-                      <button type="button" className={styles.linkOk} onClick={() => handleVerify(item)}>Verificado</button>
-                      <button type="button" className={styles.linkDanger} onClick={() => handleCancel(item)}>Cancelar</button>
-                    </>
-                  ) : (
-                    <span className={styles.muted}>{item.status === "CONCLUIDO" ? "Concluido" : "Cancelado"}</span>
-                  )}
+                  <div className={styles.tableActions}>
+                    <button
+                      type="button"
+                      className={`${styles.actionButton} ${styles.actionView}`}
+                      onClick={() => setDetailsItem(item)}
+                      title="Detalhes"
+                      aria-label="Ver detalhes"
+                    >
+                      <ActionIcon name="details" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.actionButton} ${styles.actionEdit}`}
+                      onClick={() => openEdit(item)}
+                      title="Editar"
+                      aria-label="Editar"
+                      disabled={item.status !== "PENDENTE"}
+                    >
+                      <ActionIcon name="edit" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.actionButton} ${styles.actionActivate}`}
+                      onClick={() => handleVerify(item)}
+                      title="Verificado (concluir)"
+                      aria-label="Verificado"
+                      disabled={item.status !== "PENDENTE"}
+                    >
+                      <ActionIcon name="activate" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.actionButton} ${styles.actionCancel}`}
+                      onClick={() => handleCancel(item)}
+                      title="Cancelar"
+                      aria-label="Cancelar"
+                      disabled={item.status !== "PENDENTE"}
+                    >
+                      <ActionIcon name="cancel" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -622,6 +660,64 @@ export function CronogramaSolicitacoesPageView() {
               <button type="submit" className={styles.primaryButton} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {detailsItem && (
+        <div className={styles.modalBackdrop} onClick={() => setDetailsItem(null)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 className={styles.modalTitle}>Detalhes da Solicitacao</h2>
+                <p className={styles.modalSubtitle}>{TIPO_LABEL[detailsItem.tipo]} - {detailsItem.projetoCodigo}</p>
+              </div>
+              <button type="button" className={styles.modalClose} onClick={() => setDetailsItem(null)} aria-label="Fechar">
+                &times;
+              </button>
+            </div>
+            <div className={styles.modalBody}>
+              <dl className={styles.detailGrid}>
+                <div><dt>Projeto</dt><dd>{detailsItem.projetoCodigo}</dd></div>
+                <div><dt>Municipio</dt><dd>{detailsItem.projetoMunicipio || "-"}</dd></div>
+                <div className={styles.detailWide}><dt>Endereco</dt><dd>{detailsItem.projetoEndereco || "-"}</dd></div>
+                <div><dt>Prioridade do Projeto</dt><dd>{detailsItem.projetoPrioridade || "-"}</dd></div>
+                <div><dt>Tipo</dt><dd>{TIPO_LABEL[detailsItem.tipo]}</dd></div>
+                <div><dt>Prioridade</dt><dd>{PRIORIDADE_LABEL[detailsItem.prioridade]}</dd></div>
+                <div><dt>Status</dt><dd>{STATUS_LABEL[detailsItem.statusEfetivo]}</dd></div>
+                <div><dt>Estado da Programacao</dt><dd>{detailsItem.estadoProgramacaoAtual}</dd></div>
+                <div><dt>Data de Entrada</dt><dd>{formatDate(detailsItem.dataEntrada)}</dd></div>
+                <div><dt>Data Limite</dt><dd>{formatDate(detailsItem.dataLimite)}</dd></div>
+                <div><dt>Data de Conclusao</dt><dd>{detailsItem.dataConclusao ? formatDate(detailsItem.dataConclusao) : "-"}</dd></div>
+                <div>
+                  <dt>Dias</dt>
+                  <dd>
+                    {detailsItem.statusEfetivo === "ATRASADO"
+                      ? `${detailsItem.diasAtraso} em atraso`
+                      : detailsItem.diasRestantes !== null
+                        ? `${detailsItem.diasRestantes} restante(s)`
+                        : "-"}
+                  </dd>
+                </div>
+                <div><dt>Responsavel</dt><dd>{detailsItem.responsavelNome}</dd></div>
+                <div><dt>Solicitante</dt><dd>{detailsItem.solicitanteNome}</dd></div>
+                <div className={styles.detailWide}><dt>Observacoes</dt><dd>{detailsItem.observacao || "-"}</dd></div>
+                {detailsItem.prioridade === "ALTA" && (
+                  <div className={styles.detailWide}><dt>Justificativa da Prioridade</dt><dd>{detailsItem.justificativaPrioridade || "-"}</dd></div>
+                )}
+                {detailsItem.status === "CANCELADO" && (
+                  <div className={styles.detailWide}><dt>Motivo do Cancelamento</dt><dd>{detailsItem.motivoCancelamento || "-"}</dd></div>
+                )}
+                {detailsItem.estadoProgramacaoSnapshot && (
+                  <div className={styles.detailWide}><dt>Estado no cadastro (snapshot)</dt><dd>{detailsItem.estadoProgramacaoSnapshot}</dd></div>
+                )}
+                <div className={styles.detailWide}><dt>Criado por</dt><dd>{detailsItem.createdByName} - {formatDateTime(detailsItem.createdAt)}</dd></div>
+                <div className={styles.detailWide}><dt>Atualizado por</dt><dd>{detailsItem.updatedByName} - {formatDateTime(detailsItem.updatedAt)}</dd></div>
+              </dl>
+            </div>
+            <div className={styles.modalFooter}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setDetailsItem(null)}>Fechar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
