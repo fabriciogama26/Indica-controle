@@ -28,6 +28,7 @@ export type SolicitacaoItem = {
   motivoCancelamento: string | null;
   estadoProgramacaoSnapshot: string | null;
   estadoProgramacaoAtual: string;
+  prazoObra: string | null;
   programacaoId: string | null;
   createdByName: string;
   updatedByName: string;

@@ -8,7 +8,7 @@ import {
 } from "./normalizers";
 import type { ListFilters, ProjectLookupRow, SolicitacaoRow } from "./types";
 
-const PROJECT_LOOKUP_SELECT = "id, sob, city_text, street, neighborhood, priority_text, is_active";
+const PROJECT_LOOKUP_SELECT = "id, sob, city_text, street, neighborhood, priority_text, execution_deadline, is_active";
 
 export const SOLICITACAO_SELECT =
   "id, tenant_id, projeto_id, projeto_codigo, tipo_solicitacao, prioridade, data_entrada, data_limite, data_conclusao, status, responsavel_id, solicitante_id, observacao, justificativa_prioridade, motivo_cancelamento, estado_programacao_snapshot, programacao_id, created_by, updated_by, created_at, updated_at";

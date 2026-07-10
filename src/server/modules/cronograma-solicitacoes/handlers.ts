@@ -100,6 +100,7 @@ function buildItem(
     motivoCancelamento: row.motivo_cancelamento,
     estadoProgramacaoSnapshot: row.estado_programacao_snapshot,
     estadoProgramacaoAtual: estadoAtual ? (estadoAtual.rawStatus || "-") : "A PROGRAMAR",
+    prazoObra: project?.execution_deadline ?? null,
     programacaoId: row.programacao_id,
     createdByName: maps.userMap.get(row.created_by ?? "") ?? "Nao identificado",
     updatedByName: maps.userMap.get(row.updated_by ?? "") ?? "Nao identificado",

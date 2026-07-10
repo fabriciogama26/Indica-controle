@@ -376,6 +376,7 @@ export function CronogramaSolicitacoesPageView() {
       "Solicitante",
       "Municipio",
       "Estado da Programacao",
+      "Prazo da Obra",
       "Status",
       "Ultima Atualizacao",
     ];
@@ -391,6 +392,7 @@ export function CronogramaSolicitacoesPageView() {
       item.solicitanteNome,
       item.projetoMunicipio,
       item.estadoProgramacaoAtual,
+      item.prazoObra ? formatDate(item.prazoObra) : "",
       STATUS_LABEL[item.statusEfetivo],
       formatDateTime(item.updatedAt),
     ]);
@@ -499,6 +501,7 @@ export function CronogramaSolicitacoesPageView() {
               <th>Dias</th>
               <th>Responsavel</th>
               <th>Ultimo Estado Prog.</th>
+              <th>Prazo da Obra</th>
               <th>Status</th>
               <th>Atualizado</th>
               <th>Acoes</th>
@@ -506,10 +509,10 @@ export function CronogramaSolicitacoesPageView() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={11} className={styles.emptyCell}>Carregando...</td></tr>
+              <tr><td colSpan={12} className={styles.emptyCell}>Carregando...</td></tr>
             )}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={11} className={styles.emptyCell}>Nenhuma solicitacao encontrada.</td></tr>
+              <tr><td colSpan={12} className={styles.emptyCell}>Nenhuma solicitacao encontrada.</td></tr>
             )}
             {!loading && items.map((item) => (
               <tr key={item.id}>
@@ -534,6 +537,7 @@ export function CronogramaSolicitacoesPageView() {
                     ? <span className={styles.muted}>A PROGRAMAR</span>
                     : item.estadoProgramacaoAtual}
                 </td>
+                <td>{item.prazoObra ? formatDate(item.prazoObra) : "-"}</td>
                 <td><span className={`${styles.badge} ${statusClass(item.statusEfetivo)}`}>{STATUS_LABEL[item.statusEfetivo]}</span></td>
                 <td>
                   {formatDateTime(item.updatedAt)}
@@ -732,6 +736,7 @@ export function CronogramaSolicitacoesPageView() {
                 <div><dt>Prioridade</dt><dd>{PRIORIDADE_LABEL[detailsItem.prioridade]}</dd></div>
                 <div><dt>Status</dt><dd>{STATUS_LABEL[detailsItem.statusEfetivo]}</dd></div>
                 <div><dt>Estado da Programacao</dt><dd>{detailsItem.estadoProgramacaoAtual}</dd></div>
+                <div><dt>Prazo da Obra</dt><dd>{detailsItem.prazoObra ? formatDate(detailsItem.prazoObra) : "-"}</dd></div>
                 <div><dt>Data de Entrada</dt><dd>{formatDate(detailsItem.dataEntrada)}</dd></div>
                 <div><dt>Data Limite</dt><dd>{formatDate(detailsItem.dataLimite)}</dd></div>
                 <div><dt>Data de Conclusao</dt><dd>{detailsItem.dataConclusao ? formatDate(detailsItem.dataConclusao) : "-"}</dd></div>
