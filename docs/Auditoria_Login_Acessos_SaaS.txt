@@ -1,0 +1,100 @@
+Auditoria: Login e Controle de Acessos (quem conectou, quando)
+
+Visao geral
+-----------
+- O sistema ja registra eventos de login e logout no backend, mas nao existe nenhuma tela, endpoint de listagem ou componente que exiba "quem conectou, quando" para consulta por um usuario do SaaS.
+- O registro e feito em uma tabela propria (`public.login_audit`), nao usa os campos nativos do Supabase Auth (`auth.users.last_sign_in_at`).
+- Documento gerado a partir de investigacao read-only do codigo em 2026-07-11, sem alteracao de comportamento.
+
+Arquitetura
+-----------
+- Tabela: `public.login_audit` (colunas: `tenant_id`, `user_id`, `matricula`, `login_name`, `device_imei`, `source`, `status`, `reason`, `event_type`, `event_at`, `session_ref`, `created_at`, mais colunas de auditoria padrao `created_by/updated_by/updated_at`).
+- Migration base: `supabase/migrations/000_create_auth_and_audit_tables.sql` (cria `login_audit` e policy `login_audit_tenant_select` restrita ao proprio tenant).
+- Migration `supabase/migrations/015_add_audit_columns.sql`: acrescenta trigger `trg_login_audit_audit` reaproveitando `apply_audit_fields()`.
+- Migration `supabase/migrations/016_add_login_name_to_auth_tables.sql`: acrescenta `login_name` (identificador de login web/mobile) em `app_users`, `login_audit` e `app_error_logs`.
+- Migration `supabase/migrations/019_login_audit_event_log.sql`: refatora `login_audit` de "uma linha por sessao com login_at/logout_at" para modelo de eventos imutaveis: cada LOGIN e cada LOGOUT vira uma linha separada, com `event_type` (`LOGIN`/`LOGOUT`), `event_at` e `session_ref` (uuid que correlaciona o par login/logout da mesma sessao). Indices: `idx_login_audit_session_ref`, `idx_login_audit_user_event_at`, `idx_login_audit_event_type_event_at`.
+- Migration `supabase/migrations/017_sync_auth_users_to_app_users.sql`: sincroniza `auth.users -> public.app_users` via trigger; o Supabase Auth nativo e usado apenas como provedor de senha/token, nao como fonte de auditoria de login.
+- Tabelas relacionadas: `public.app_users` (cadastro proprio do usuario da aplicacao) e `public.imei_whitelist` (controle de dispositivo por IMEI usado no fluxo mobile).
+- Edge Function login web: `supabase/functions/auth-login-web/index.ts`.
+- Edge Function logout: `supabase/functions/logout/index.ts`.
+- Edge Function login mobile/legado: `supabase/functions/login_matricula/index.ts`.
+- Frontend: `src/modules/auth/login/LoginPageView.tsx`, `src/services/auth/auth.service.ts`, `src/context/AuthContext.tsx`.
+
+Cadastro
+--------
+- Nao se aplica (nao ha tela de cadastro; os registros sao gerados automaticamente pelo backend a cada tentativa de login/logout).
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Nao existe. Nenhum endpoint HTTP nem componente React consulta `login_audit` para exibicao. As unicas leituras da tabela sao feitas pelas proprias Edge Functions de login/logout, para resolver `session_ref` e evitar logout duplicado.
+
+Boas praticas
+-------------
+- RLS habilitado em `login_audit`; policy `login_audit_tenant_select` restringe leitura ao proprio `tenant_id`.
+- Login remoto e logout web geram duas linhas em `login_audit`, uma para `LOGIN` e outra para `LOGOUT`, correlacionadas por `session_ref`.
+- Falhas de login (usuario nao encontrado, inativo, senha invalida) tambem sao gravadas com `status: 'FAILED'` e `reason` (`USER_NOT_FOUND`, `INACTIVE`, `AUTH_INVALID`).
+- Logout registra `reason` (`USER_LOGOUT`, `IDLE_TIMEOUT`, `TOKEN_EXPIRED`).
+- O fluxo mobile (`login_matricula`) ainda grava no modelo de colunas anterior a migration 019 (`logged_in_at`, sem `event_type`/`session_ref` explicitos) — desatualizado em relacao ao fluxo web.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica.
+
+Fluxo completo (login -> registro -> consumo)
+----------------------------------------------
+1. Frontend (`LoginPageView.tsx`) chama `remoteLogin` em `auth.service.ts`, que aciona a Edge Function `auth-login-web`.
+2. `auth-login-web`: resolve `login_name -> email` em `app_users`; aplica rate limit via RPC `rate_limit_check_and_hit`; em qualquer falha grava linha `FAILED` em `login_audit`; em sucesso, autentica via Supabase Auth nativo, gera `session_ref = crypto.randomUUID()` e insere evento `LOGIN`.
+3. `auth.service.ts` persiste a sessao no `localStorage` (`persistSession`), incluindo `loginAuditId` e `sessionRef`.
+4. `AuthContext.tsx` mantem o estado de sessao, controla timeout de inatividade (`NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`) e trata token expirado.
+5. Logout (manual, por inatividade ou token expirado) chama a Edge Function `logout`, que resolve o `session_ref` correspondente, evita duplicar logout se ja existir, e insere evento `LOGOUT` com o `reason` apropriado.
+6. Nenhuma etapa posterior le esses eventos para exibicao; o consumo termina no proprio par LOGIN/LOGOUT.
+
+Gap identificado (achado da auditoria)
+---------------------------------------
+- Nao existe endpoint de leitura (`GET`) nem tela que liste "quem conectou, quando" a partir de `login_audit`.
+- Nenhuma tela de cadastro (`Pessoas`, `Permissoes`) exibe "ultimo acesso" por usuario.
+- Se o objetivo futuro for criar essa visibilidade, o caminho natural e: novo endpoint (ex.: `GET /api/auth/login-audit` ou RPC Supabase) lendo `public.login_audit` filtrado por `tenant_id` (RLS ja restringe por tenant) + nova pagina em `src/modules/dashboard/...PageView.tsx` + doc `docs/Tela_Log_Acessos_SaaS.txt`. Nao implementado nesta tarefa (escopo desta task foi somente documentar o estado atual).
+
+Atalhos
+-------
+- Nao se aplica (sem tela associada).
+
+Atualizacao 2026-07
+--------------------
+- Documento criado a partir de investigacao read-only solicitada pelo usuario para confirmar e mapear o controle de login existente.
+- Nenhum arquivo de codigo foi alterado nesta tarefa.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `supabase/functions/auth-login-web/index.ts`
+  - Responsavel por: validar login web, gravar `login_audit` (LOGIN/FAILED) e gerar `session_ref`.
+- Caminho: `supabase/functions/logout/index.ts`
+  - Responsavel por: resolver `session_ref` ativo e gravar evento `LOGOUT` com motivo.
+- Caminho: `supabase/functions/login_matricula/index.ts`
+  - Responsavel por: login mobile por matricula + senha + IMEI, validando `imei_whitelist` e gravando `login_audit` no modelo legado.
+- Caminho: `src/services/auth/auth.service.ts`
+  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `clearPersistedSession`, `persistSession`, `hydrateSessionAccess`, preservando `loginAuditId`/`sessionRef`.
+- Caminho: `src/context/AuthContext.tsx`
+  - Responsavel por: hidratar sessao, expirar por inatividade/token expirado, disparar logout no backend.
+
+Constantes e configuracoes
+- Caminho: `supabase/migrations/019_login_audit_event_log.sql`
+  - Responsavel por: modelo de eventos (`event_type`, `event_at`, `session_ref`) e indices de consulta por sessao/usuario/tipo.
+- Caminho: `supabase/migrations/000_create_auth_and_audit_tables.sql`
+  - Responsavel por: criacao da tabela `login_audit` e policy RLS `login_audit_tenant_select`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/hooks/useAuth.ts`
+  - Responsavel por: acesso ao contexto de autenticacao.
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver usuario autenticado (`resolveAuthenticatedAppUser`), sem expor dados de `login_audit`.
+
+Servicos e integracoes externas
+- Edge Function: `supabase/functions/auth-login-web/index.ts`
+- Edge Function: `supabase/functions/logout/index.ts`
+- Edge Function: `supabase/functions/login_matricula/index.ts`
+- Supabase Auth nativo (apenas como provedor de senha/token, nao como fonte de auditoria).
+
+Ajuda contextual
+- Nao ha ajuda contextual associada; nao existe tela para o usuario final consultar este dado hoje.

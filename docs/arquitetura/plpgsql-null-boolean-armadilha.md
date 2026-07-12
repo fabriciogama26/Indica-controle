@@ -1,5 +1,7 @@
 # Armadilha: boolean NULL em PL/pgSQL em triggers
 
+> **As regras canônicas vivem em [`guias/guia_sql.md`](../../guias/guia_sql.md).** Este arquivo é mantido como referência complementar — contém o incidente completo (migrations 279→282) e o script de diagnóstico. Em caso de divergência entre este arquivo e `guias/guia_sql.md`, o guia prevalece; atualize este arquivo na mesma tarefa que atualizar a regra.
+
 ## O problema
 
 Em PostgreSQL, qualquer comparação envolvendo `NULL` retorna `NULL` — não `FALSE`:
