@@ -92,8 +92,7 @@ src/app/(app)/ordens/page.tsx; src/server/services/ordens.ts;
 componente de filtros existente mais próximo (reutilizar padrão).
 </arquivos_a_inspecionar>
 <guias_obrigatorios>
-guia_backend.md, guia_frontend.md, guia_ui.md, guia_supabase.md,
-guia_testes.md.
+guia_backend.md, guia_frontend.md, guia_supabase.md, guia_validacao.md.
 </guias_obrigatorios>
 <regras_de_negocio>
 Filtro respeita o tenant atual; status inválido na URL cai no padrão "todos".
@@ -106,14 +105,16 @@ no banco, não em memória.
 1. Localizar filtro semelhante existente e reutilizar o padrão.
 2. Adicionar parâmetro de status ao service com validação.
 3. Ligar o componente de filtro à URL (searchParams).
-4. Criar/ajustar teste do service.
+4. Rodar o checklist de guia_validacao.md antes do PR.
 </plano_de_execucao>
 <criterios_de_aceite>
 Filtrar por cada status retorna apenas ordens daquele status e do tenant;
 URL compartilhada reproduz o filtro; status inválido não quebra a página.
 </criterios_de_aceite>
 <validacoes>
-Testes relacionados; typecheck; lint; build.
+npx tsc --noEmit; npm run lint; npm run build; verificação manual do
+caminho feliz e do status inválido (sem suíte de testes automatizada
+neste projeto — ver guia_validacao.md).
 </validacoes>
 <documentacao>
 Atualizar doc TXT da tela de ordens se o uso mudou.
