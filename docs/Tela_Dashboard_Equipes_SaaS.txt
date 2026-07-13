@@ -100,6 +100,7 @@ Filtros, auto-complete e listagem
   - Quando informadas, limitam os blocos operacionais ao intervalo dentro do ciclo selecionado.
   - Datas fora do ciclo nao expandem o resultado para outro ciclo; o recorte fica na intersecao entre Ciclo e Data.
   - As metas do Dashboard Equipes sao recalculadas pelos dias uteis do recorte filtrado.
+  - Se o recorte filtrado nao tiver dias uteis mas possuir medicoes com producao, a meta usa as datas reais de producao do recorte para evitar meta zerada em trabalho de fim de semana.
   - Os filtros locais de semana continuam disponiveis, mas as semanas respeitam o intervalo de data aplicado.
 
 Boas praticas
@@ -438,3 +439,17 @@ Atualizacao 2026-07-09 - Filtro por data no Dashboard Equipes
   - Sem alteracao de schema, migration, RLS ou grants.
   - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read`.
   - Todas as consultas permanecem filtradas por `tenant_id` resolvido pela sessao autenticada.
+
+Atualizacao 2026-07-13 - Meta em recorte sem dia util
+------------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/team-performance/calculations.ts`
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+- Comportamento antes/depois:
+  - Antes: um recorte do Dashboard Equipes contendo somente fim de semana com producao ficava com `Meta ciclo` zerada, exibindo ranking de atingimento como `0,0%`.
+  - Depois: quando o recorte nao possui dias uteis mas possui medicoes `COM_PRODUCAO`, o backend usa as datas reais de producao como base de dias da meta, mantendo o comportamento por dias uteis nos recortes normais.
+  - Depois: a consulta inicial do endpoint de equipes usa a intersecao entre ciclo e datas informadas, evitando carregar dados fora do recorte operacional.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, migration, RLS ou grants.
+  - A regra continua aplicada apos autenticacao, permissao `dashboard-equipes/read` e filtros por `tenant_id`.

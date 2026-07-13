@@ -260,6 +260,18 @@ function countBusinessDays(start: Date, end: Date) {
   return total;
 }
 
+function countDistinctExecutionDates(orders: MeasurementOrderRow[], startDate: string, endDate: string) {
+  return new Set(orders
+    .map((order) => normalizeIsoDate(order.execution_date))
+    .filter((date): date is string => Boolean(date))
+    .filter((date) => date >= startDate && date <= endDate)).size;
+}
+
+function resolvePerformanceWorkdays(orders: MeasurementOrderRow[], startDate: string, endDate: string) {
+  const businessDays = countBusinessDays(parseIsoDate(startDate), parseIsoDate(endDate));
+  return businessDays > 0 ? businessDays : countDistinctExecutionDates(orders, startDate, endDate);
+}
+
 function maxIsoDate(left: string, right: string) {
   return left > right ? left : right;
 }
@@ -520,8 +532,12 @@ export async function handleDashboardMeasurementGet(
   const resolvedCycleEndRef = addMonths(parseIsoDate(resolvedCycleStart), 1);
   resolvedCycleEndRef.setUTCDate(20);
   const resolvedCycleEnd = toIsoDate(resolvedCycleEndRef);
-  const windowStart = [resolvedCycleStart, startDateFilter].filter((d): d is string => Boolean(d)).sort()[0] ?? resolvedCycleStart;
-  const windowEnd = [resolvedCycleEnd, endDateFilter].filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? resolvedCycleEnd;
+  const windowStart = isTeamsDashboard
+    ? (startDateFilter ? maxIsoDate(resolvedCycleStart, startDateFilter) : resolvedCycleStart)
+    : [resolvedCycleStart, startDateFilter].filter((d): d is string => Boolean(d)).sort()[0] ?? resolvedCycleStart;
+  const windowEnd = isTeamsDashboard
+    ? (endDateFilter ? minIsoDate(resolvedCycleEnd, endDateFilter) : resolvedCycleEnd)
+    : [resolvedCycleEnd, endDateFilter].filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? resolvedCycleEnd;
 
   const [cyclesDiscoveryResult, ordersResult] = await Promise.all([
     resolution.supabase
@@ -1233,7 +1249,7 @@ export async function handleDashboardMeasurementGet(
   const performanceStartDate = isTeamsDashboard ? dashboardTeamsWindowStart : selectedCycle.cycleStart;
   const performanceEndDate = isTeamsDashboard ? dashboardTeamsWindowEnd : selectedCycle.cycleEnd;
   const performanceWorkdays = isTeamsDashboard
-    ? (dashboardTeamsWindowIsValid ? countBusinessDays(parseIsoDate(performanceStartDate), parseIsoDate(performanceEndDate)) : 0)
+    ? (dashboardTeamsWindowIsValid ? resolvePerformanceWorkdays(performanceOrders, performanceStartDate, performanceEndDate) : 0)
     : workdays;
   const performanceStandardWorkdays = isTeamsDashboard ? performanceWorkdays : defaultWorkdays;
   for (const week of cycleWeeks) {
@@ -1241,7 +1257,11 @@ export async function handleDashboardMeasurementGet(
     const weekEndDate = isTeamsDashboard ? minIsoDate(week.endDate, dashboardTeamsWindowEnd) : week.endDate;
     const weekHasValidRange = weekStartDate <= weekEndDate;
     const weekWorkdays = isTeamsDashboard && weekHasValidRange
-      ? countBusinessDays(parseIsoDate(weekStartDate), parseIsoDate(weekEndDate))
+      ? resolvePerformanceWorkdays(
+          performanceOrders.filter((order) => order.execution_date >= weekStartDate && order.execution_date <= weekEndDate),
+          weekStartDate,
+          weekEndDate,
+        )
       : week.workdays;
     const weekOrders = weekHasValidRange
       ? performanceOrders.filter((order) => order.execution_date >= weekStartDate && order.execution_date <= weekEndDate)
