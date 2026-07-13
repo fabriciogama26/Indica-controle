@@ -76,6 +76,17 @@ function listBusinessDayIsoDates(startDate: string, endDate: string) {
   return dates;
 }
 
+function listOrderExecutionDates(input: TeamPerformanceWindowInput) {
+  return Array.from(new Set(input.orders.map((order) => order.executionDate)))
+    .filter((date) => date >= input.startDate && date <= input.endDate)
+    .sort();
+}
+
+function listMetaBaseDates(input: TeamPerformanceWindowInput) {
+  const businessDays = listBusinessDayIsoDates(input.startDate, input.endDate);
+  return businessDays.length ? businessDays : listOrderExecutionDates(input);
+}
+
 function addProjectProduction(
   target: Map<string, TeamPerformanceProjectDetail>,
   order: TeamPerformanceOrder,
@@ -106,11 +117,11 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
   function calculateTeamMeta(teamId: string, metaWorkdays: number) {
     if (metaWorkdays <= 0) return 0;
 
-    const businessDays = listBusinessDayIsoDates(input.startDate, input.endDate);
-    if (!businessDays.length) return 0;
+    const metaBaseDates = listMetaBaseDates(input);
+    if (!metaBaseDates.length) return 0;
 
-    const dayWeight = metaWorkdays / businessDays.length;
-    return businessDays.reduce((total, isoDate) => {
+    const dayWeight = metaWorkdays / metaBaseDates.length;
+    return metaBaseDates.reduce((total, isoDate) => {
       const teamTypeId = input.resolveTeamTypeId(teamId, isoDate);
       return total + (teamTypeId ? input.getDailyMetaByTeamType(teamTypeId) * dayWeight : 0);
     }, 0);
@@ -119,11 +130,11 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
   function calculateTeamMetaForDates(teamId: string, dates: Set<string>, metaWorkdays: number) {
     if (metaWorkdays <= 0 || dates.size === 0) return 0;
 
-    const businessDays = listBusinessDayIsoDates(input.startDate, input.endDate);
-    if (!businessDays.length) return 0;
+    const metaBaseDates = listMetaBaseDates(input);
+    if (!metaBaseDates.length) return 0;
 
-    const dayWeight = metaWorkdays / businessDays.length;
-    return businessDays.reduce((total, isoDate) => {
+    const dayWeight = metaWorkdays / metaBaseDates.length;
+    return metaBaseDates.reduce((total, isoDate) => {
       if (!dates.has(isoDate)) return total;
 
       const teamTypeId = input.resolveTeamTypeId(teamId, isoDate);
@@ -200,10 +211,10 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
 
 function createSupervisorMap(input: TeamPerformanceWindowInput) {
   const map = new Map<string, SupervisorAggregate>();
-  const businessDays = listBusinessDayIsoDates(input.startDate, input.endDate);
+  const metaBaseDates = listMetaBaseDates(input);
 
   for (const team of input.potentialSupervisorTeams) {
-    for (const isoDate of businessDays) {
+    for (const isoDate of metaBaseDates) {
       const assignment = input.resolveTeamSupervisor(team.id, isoDate);
       if (!assignment.supervisorId) continue;
       if (input.supervisorIdFilter && assignment.supervisorId !== input.supervisorIdFilter) continue;
