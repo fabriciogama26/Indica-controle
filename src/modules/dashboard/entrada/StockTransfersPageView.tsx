@@ -230,7 +230,7 @@ type FilterState = {
   reversalStatus: "TODOS" | "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
 };
 
-const HISTORY_PAGE_SIZE = 15;
+const HISTORY_PAGE_SIZE = 20;
 const HISTORY_EXPORT_PAGE_SIZE = 100;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   movementType: "Operacao",
