@@ -116,6 +116,12 @@ export function CronogramaSolicitacoesPageView() {
   const [defaultUsers, setDefaultUsers] = useState<TipoDefaultUser[]>([]);
   const [defaultsLoading, setDefaultsLoading] = useState(false);
 
+  const [today, setToday] = useState("");
+  const [verifyTarget, setVerifyTarget] = useState<SolicitacaoItem | null>(null);
+  const [verifyDate, setVerifyDate] = useState("");
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifySaving, setVerifySaving] = useState(false);
+
   const asbuiltSet = useMemo(() => new Set(meta?.asbuiltProjetoIds ?? []), [meta]);
   const projectMap = useMemo(() => {
     const map = new Map<string, ProjetoOption>();
@@ -142,6 +148,7 @@ export function CronogramaSolicitacoesPageView() {
       setItems(data.items);
       setSummary(data.summary);
       setPagination(data.pagination);
+      setToday(data.today);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar solicitacoes.");
     } finally {
@@ -334,15 +341,40 @@ export function CronogramaSolicitacoesPageView() {
     }
   };
 
-  const handleVerify = async (item: SolicitacaoItem) => {
-    if (!token) return;
-    if (!window.confirm(`Marcar a solicitacao do projeto ${item.projetoCodigo} como Verificado (Concluido)?`)) return;
+  const openVerify = (item: SolicitacaoItem) => {
+    setVerifyTarget(item);
+    setVerifyDate(today || new Date().toISOString().slice(0, 10));
+    setVerifyError(null);
+  };
+
+  const submitVerify = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!token || !verifyTarget) return;
+    setVerifyError(null);
+
+    if (!verifyDate) {
+      setVerifyError("Informe a Data de Conclusao.");
+      return;
+    }
+    if (today && verifyDate > today) {
+      setVerifyError("A Data de Conclusao nao pode ser futura.");
+      return;
+    }
+    if (verifyDate < verifyTarget.dataEntrada) {
+      setVerifyError("A Data de Conclusao nao pode ser anterior a Data de Entrada.");
+      return;
+    }
+
+    setVerifySaving(true);
     try {
-      await verifySolicitacao(token, item.id, item.updatedAt);
+      await verifySolicitacao(token, verifyTarget.id, verifyTarget.updatedAt, verifyDate);
+      setVerifyTarget(null);
       setFeedback("Solicitacao verificada.");
       await loadList();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao verificar solicitacao.");
+      setVerifyError(err instanceof Error ? err.message : "Falha ao verificar solicitacao.");
+    } finally {
+      setVerifySaving(false);
     }
   };
 
@@ -567,7 +599,7 @@ export function CronogramaSolicitacoesPageView() {
                     <button
                       type="button"
                       className={`${styles.actionButton} ${styles.actionActivate}`}
-                      onClick={() => handleVerify(item)}
+                      onClick={() => openVerify(item)}
                       title="Verificado (concluir)"
                       aria-label="Verificado"
                       disabled={item.status !== "PENDENTE"}
@@ -812,6 +844,61 @@ export function CronogramaSolicitacoesPageView() {
               <button type="button" className={styles.secondaryButton} onClick={() => setDefaultsOpen(false)}>Fechar</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {verifyTarget && (
+        <div className={styles.modalBackdrop} onClick={() => !verifySaving && setVerifyTarget(null)}>
+          <form className={styles.modal} onClick={(e) => e.stopPropagation()} onSubmit={submitVerify}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 className={styles.modalTitle}>Concluir Solicitacao</h2>
+                <p className={styles.modalSubtitle}>
+                  {TIPO_LABEL[verifyTarget.tipo]} - {verifyTarget.projetoCodigo}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.modalClose}
+                onClick={() => !verifySaving && setVerifyTarget(null)}
+                aria-label="Fechar"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <label className={styles.formField}>
+                Data de Conclusao
+                <input
+                  type="date"
+                  className={styles.input}
+                  value={verifyDate}
+                  min={verifyTarget.dataEntrada}
+                  max={today || undefined}
+                  onChange={(e) => setVerifyDate(e.target.value)}
+                />
+              </label>
+              <div className={styles.muted}>
+                Informe a data real da conclusao. Por padrao vem a data de hoje, mas voce pode ajustar.
+              </div>
+              {verifyError && <div className={styles.alertError}>{verifyError}</div>}
+            </div>
+
+            <div className={styles.modalFooter}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setVerifyTarget(null)}
+                disabled={verifySaving}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className={styles.primaryButton} disabled={verifySaving}>
+                {verifySaving ? "Concluindo..." : "Confirmar conclusao"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

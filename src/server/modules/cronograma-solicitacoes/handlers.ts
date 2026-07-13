@@ -678,7 +678,7 @@ function canManageStatus(context: AuthenticatedAppUserContext, row: SolicitacaoR
 
 export async function verifySolicitacao(
   context: AuthenticatedAppUserContext,
-  payload: { id: string; expectedUpdatedAt: string | null },
+  payload: { id: string; expectedUpdatedAt: string | null; dataConclusao?: string | null },
 ): Promise<NextResponse> {
   const denied = await authorizeCronogramaAction(context, "update");
   if (denied) return denied;
@@ -700,11 +700,25 @@ export async function verifySolicitacao(
     return jsonError("Esta solicitacao foi alterada por outro usuario. Recarregue e tente novamente.", 409);
   }
 
+  // Data de Conclusao informada pelo usuario (nem sempre e o dia do clique). Default: hoje.
+  const today = businessToday();
+  const dataConclusao = normalizeNullableText(payload.dataConclusao) ?? today;
+
+  if (!isIsoDate(dataConclusao)) {
+    return jsonError("Data de conclusao invalida.", 422);
+  }
+  if (dataConclusao > today) {
+    return jsonError("A Data de Conclusao nao pode ser futura.", 422);
+  }
+  if (dataConclusao < current.data_entrada) {
+    return jsonError("A Data de Conclusao nao pode ser anterior a Data de Entrada.", 422);
+  }
+
   const { data: updated, error } = await supabase
     .from("cronograma_solicitacoes")
     .update({
       status: "CONCLUIDO",
-      data_conclusao: businessToday(),
+      data_conclusao: dataConclusao,
       updated_by: appUser.id,
     })
     .eq("tenant_id", tenantId)
@@ -720,7 +734,10 @@ export async function verifySolicitacao(
     tenantId,
     solicitacaoId: updated.id,
     changeType: "VERIFY",
-    changes: { status: { from: current.status, to: "CONCLUIDO" } },
+    changes: {
+      status: { from: current.status, to: "CONCLUIDO" },
+      dataConclusao: { from: null, to: dataConclusao },
+    },
     reason: null,
     actorUserId: appUser.id,
   });
