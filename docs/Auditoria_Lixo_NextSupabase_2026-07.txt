@@ -1,0 +1,278 @@
+Auditoria de "Lixo" - Next.js + TypeScript + Supabase + Vercel
+================================================================
+Data: 2026-07-11
+Guia aplicado: GUIA_IA_AUDITORIA_LIXO_NEXT_SUPABASE.md (referencia 11/07/2026)
+Escopo: repositorio completo, com foco em governanca de arquivos, src/ e configuracao.
+Alteracoes realizadas nesta auditoria: NENHUMA. Apenas leitura, busca e registro.
+
+------------------------------------------------------------
+RESUMO EXECUTIVO
+------------------------------------------------------------
+O codigo em `src/` esta limpo nos criterios automatizados do guia (sem `console.log`,
+sem `@ts-ignore`/`@ts-nocheck`, sem `select('*')`, sem `catch` vazio, sem arquivos
+`*-old/backup/copia/final`, sem arquivo >1MB). Isso reflete as auditorias anteriores
+ja registradas em `docs/Auditoria_Completa_SaaS.txt` e nas regras do AGENTS.md.
+
+O achado real desta rodada nao e "codigo morto", e sim um problema de governanca de
+arquivos de regra: os proprios arquivos que instruem a IA (AGENTS.md e os complementos
+mais recentes da pasta `verificação/`) nao estao versionados no Git, um deles referencia
+um arquivo (`REGRA_DE_NEGOCIO.md`) que nao existe no disco, e ha um backup de credenciais
+reais (`.env.backup_supabase`) e um backup manual de 15MB (`Backup/`) soltos na raiz do
+projeto. Nenhum desses itens vaza para o Git hoje (estao no `.gitignore`), mas o proprio
+guia classifica isso como risco: "Git e o backup oficial" deixa de valer quando o backup
+oficial das regras de IA é so uma copia local.
+
+------------------------------------------------------------
+ACHADOS CRITICOS
+------------------------------------------------------------
+Nenhum achado classificado como CRITICO nesta rodada (nao ha vazamento de tenant,
+service_role exposto no client, RLS desativada ou segredo commitado no Git encontrados
+nas buscas realizadas).
+
+------------------------------------------------------------
+ACHADOS ALTOS
+------------------------------------------------------------
+
+[A1] AGENTS.md nunca foi commitado no Git
+Arquivo: AGENTS.md (raiz)
+Categoria: governanca / risco de continuidade
+Evidencia:
+- `.gitignore` lista `AGENTS.md` na secao "# Database" (linha ~29 do .gitignore),
+  junto com `CLAUDE.md`, `REGRA_DE_NEGOCIO.md`, `estrutura_saas_multitenant.md`,
+  `GUIA_DEPLOY_EDGE_FUNCTIONS_SUPABASE.md`, `GUIA_DOCKER_SUPABASE_VERIFICAR_E_REPARAR.md`,
+  `Recuperar.txt`.
+- `git ls-files | grep AGENTS.md` nao retorna nada; `git status --ignored` mostra
+  `AGENTS.md` como `!!` (ignorado/nao rastreado).
+- O arquivo existe localmente (27 KB, modificado em 19/06/2026) e e citado pelo proprio
+  CLAUDE.md como prioridade maxima de regras.
+Impacto: se o repositorio for clonado em outra maquina, outro colaborador ou um agente
+de CI/CD roda sem nenhuma das regras obrigatorias descritas no AGENTS.md (RLS, RPC
+transacional, checklist de tela, etc.), porque o arquivo simplesmente nao existe la.
+Risco da remocao: nao aplicavel (achado nao propoe remocao, propoe versionamento).
+Confianca: alta.
+Recomendacao: remover `AGENTS.md` do `.gitignore` e commitar o arquivo. Se a intencao
+for manter regras "so locais" por conter informacao sensivel, isso nao parece ser o
+caso aqui (o conteudo e puramente normativo).
+
+[A2] CLAUDE.md referencia REGRA_DE_NEGOCIO.md, que nao existe no repositorio
+Arquivo: CLAUDE.md:9 e CLAUDE.md:18 (`4. REGRA_DE_NEGOCIO.md` na ordem de prioridade)
+Categoria: documentacao quebrada / referencia morta
+Evidencia:
+- `ls REGRA_DE_NEGOCIO.md` -> "No such file or directory" (nem sequer existe local,
+  nao e so um caso de "existe local mas nao commitado").
+- O arquivo tambem esta listado no `.gitignore`, o que sugere que um dia existiu ou
+  era esperado, mas foi removido/nunca criado.
+Impacto: qualquer instrucao ao Codex/Claude que dependa da ordem de prioridade
+"CLAUDE.md > docs > solicitacao > REGRA_DE_NEGOCIO.md > estrutura_saas_multitenant.md"
+tem um elo inexistente. Regras de negocio podem estar implicitas apenas no codigo,
+sem documento formal de referencia.
+Risco da remocao: nao aplicavel.
+Confianca: alta.
+Recomendacao: criar `REGRA_DE_NEGOCIO.md` com o conteudo real de regras de negocio (se
+ainda nao existir em nenhum outro lugar), ou remover a referencia do CLAUDE.md/AGENTS.md
+se as regras de negocio ja vivem inteiramente em `docs/*.txt` e `estrutura_saas_multitenant.md`.
+
+[A3] Parte da pasta verificação/ (leitura obrigatoria por AGENTS.md) nao esta versionada
+Arquivo: `verificação/11_front_ui.md`, `verificação/12_trafego_egress.md`,
+`verificação/crc/*.md` (auth.md, programacao.md, dashboard_medicao.md,
+enderecamento_almoxarifado.md, permissoes.md, 00_template.md)
+Categoria: governanca / risco de continuidade
+Evidencia:
+- `git ls-files | grep verifica` so retorna `01_integridade_dados.md` ate
+  `10_operacional.md` (10 arquivos). `11_front_ui.md`, `12_trafego_egress.md` e toda a
+  subpasta `crc/` aparecem como `!!` em `git status --ignored`.
+- O commit `4cb78ec` ("fortalecer verificações, criar CRCs...") descreve textualmente
+  a criacao desses arquivos como parte da entrega, mas o diff real do commit nao os
+  contem (a pasta inteira `verificação/` foi adicionada ao `.gitignore` depois dos 10
+  primeiros arquivos, entao os criados depois nunca entraram no Git).
+- AGENTS.md (`## Protocolo obrigatorio de uso da pasta verificacao`) exige ler o CRC
+  do modulo antes de qualquer alteracao (`crc/programacao.md`, `crc/auth.md`, etc.).
+Impacto: os CRCs de modulos criticos (Programacao, Auth, Dashboard Medicao,
+Enderecamento/Almoxarifado, Permissoes) e as regras de front-end/trafego mais recentes
+existem apenas nesta maquina. Perda do arquivo local = perda de contexto obrigatorio
+para qualquer IA/dev que trabalhe nesses modulos depois.
+Risco da remocao: nao aplicavel.
+Confianca: alta.
+Recomendacao: mesma acao do achado A1 - versionar `verificação/` (ou ao menos os
+arquivos `11_front_ui.md`, `12_trafego_egress.md` e `crc/*`) e ajustar o `.gitignore`
+que atualmente ignora a pasta inteira via `verificação/`.
+
+[A4] Backup de credenciais reais na raiz do projeto
+Arquivo: `.env.backup_supabase`
+Categoria: seguranca / segredo em disco
+Evidencia:
+- Nao esta commitado (`.env.*` esta no `.gitignore`, incluindo esta variante),
+  confirmado por `git status --ignored` (`!!`).
+- Contem 15 chaves, entre elas `SUPABASE_SERVICE_ROLE_KEY`, `DB_PASSWORD`,
+  `PGPASSWORD`, `SUPABASE_ACCESS_TOKEN_BACKUP`, `SUPABASE_LEGACY_KEY`, `CRON_SECRET`
+  (nomes de chave lidos, valores nao foram impressos nesta auditoria).
+Impacto: nao ha vazamento via Git hoje, mas um arquivo de segredo completo (service
+role + senha de banco) sentado sem criptografia na raiz do projeto aumenta a
+superficie de risco (zip do projeto, backup de disco, antivirus cloud-scan, `git add -A`
+acidental caso a regra do `.gitignore` mude).
+Risco da remocao: alto se removido sem cuidado (pode ser o unico backup dessas
+credenciais). Nao remover sem confirmar com o usuario onde essas credenciais estao
+guardadas oficialmente (cofre de senhas, Vercel/Supabase dashboard).
+Confianca: alta.
+Recomendacao: mover para um cofre de segredos (1Password, Vault, Supabase dashboard)
+e apagar a copia em texto puro do disco do projeto, ou ao menos tirar da raiz do
+repositorio para uma pasta fora do working tree.
+
+------------------------------------------------------------
+ACHADOS MEDIOS
+------------------------------------------------------------
+
+[M1] Pasta Backup/ de 15MB dentro do repositorio
+Arquivo: `Backup/2026-06-13/{functions_published,project_config,storage}`, `Backup/logs`
+Categoria: organizacao de repositorio
+Evidencia: `du -sh Backup` = 15M; ignorado via `.gitignore` (`Backup/`), portanto nao
+polui o Git, mas ocupa a pasta de trabalho do projeto.
+Impacto: o proprio guia (secao 4.3) recomenda que backups manuais dentro de `src`/raiz
+do projeto nao substituam Git/branch/tag/commit como mecanismo de backup. Aqui o backup
+e de artefatos de infraestrutura (Edge Functions publicadas, config, storage), nao de
+codigo, entao o risco e mais operacional (fica dificil saber se e o backup mais recente,
+se e testado, se tem retencao definida) do que de vazamento.
+Risco da remocao: medio - confirmar se ha rotina de backup formal (Supabase, storage
+externo) antes de remover ou mover.
+Confianca: media.
+Recomendacao: mover para um local de backup fora do diretorio do projeto (storage
+dedicado) e documentar a rotina real de backup/retencao.
+
+[M2] Guias de operacao (deploy/docker) fora do controle de versao
+Arquivo: `GUIA_DEPLOY_EDGE_FUNCTIONS_SUPABASE.md`, `GUIA_DOCKER_SUPABASE_VERIFICAR_E_REPARAR.md`
+Categoria: documentacao / governanca
+Evidencia: ambos listados no `.gitignore` na mesma secao "# Database" que AGENTS.md;
+`git status --ignored` confirma `!!`.
+Impacto: menor que A1/A3 porque sao guias operacionais, nao regras de comportamento da
+IA, mas ainda assim sao conhecimento institucional (como fazer deploy de Edge Functions,
+como reparar o Docker do Supabase local) que some se a maquina local for perdida.
+Risco da remocao: nao aplicavel.
+Confianca: media (nao ha como confirmar se o conteudo e sensivel sem abrir o arquivo
+por completo; o guia pede para nao presumir, entao classifico como "precisa validacao"
+antes de decidir versionar).
+Recomendacao: revisar o conteudo; se nao houver segredo embutido, versionar junto com A1.
+
+[M3] `Recuperar.txt` referenciado no `.gitignore` mas inexistente
+Arquivo: `.gitignore` (entrada `Recuperar.txt`)
+Categoria: configuracao redundante
+Evidencia: `ls Recuperar.txt` -> arquivo nao existe em lugar nenhum do disco.
+Impacto: nenhum impacto funcional (regra do `.gitignore` sem efeito), mas e sinal de
+entrada morta que pode confundir quem le o `.gitignore` tentando entender o que ele
+protege.
+Risco da remocao: baixo.
+Confianca: alta.
+Recomendacao: remover a linha do `.gitignore` ou criar o arquivo se ele ainda for
+esperado por algum fluxo.
+
+[M4] Dependencias com defasagem de versao (npm outdated)
+Categoria: dependencias
+Evidencia (`npm outdated`):
+- `@supabase/supabase-js`: 2.98.0 instalado vs 2.110.2 disponivel (~12 minor atras).
+- `next`: 16.1.6 (igual ao "wanted", mas 16.2.10 e o latest).
+- `react`/`react-dom`: 19.2.3 vs 19.2.7.
+- `eslint`: 9.39.4 vs 9.39.5 (latest major 10.7.0 nao avaliado aqui).
+- `@types/node`: 20.19.37 vs 20.19.43 (latest major 26.1.1 fora do escopo do Node 20
+  usado pelo projeto).
+Impacto: nao ha CVE especifica identificada nesta auditoria (nao foi rodado `npm audit`
+por ser uma acao que pode sugerir `--force`, fora do escopo autorizado); o risco e de
+correcoes de bug/seguranca do SDK Supabase ficarem 12 versoes atras.
+Risco da remocao: nao aplicavel (atualizacao, nao remocao).
+Confianca: alta (dados diretos do `npm outdated`).
+Recomendacao: seguir a "Rotina de dependencias" do CLAUDE.md (rodar `npm outdated`
+mensalmente); seria o momento de agendar a atualizacao de `@supabase/supabase-js` em
+commit isolado, com build+typecheck depois.
+
+------------------------------------------------------------
+ACHADOS BAIXOS
+------------------------------------------------------------
+
+[B1] Falsos positivos do padrao `TODO|FIXME|HACK|XXX` neste projeto
+Categoria: ruido de ferramenta / nota metodologica
+Evidencia: 146 ocorrencias em 33 arquivos de `src/`, mas a amostra verificada (ex.:
+`CurrentStockPageView.tsx`) mostra que todas as ocorrencias sao o token de negocio
+`"TODOS"` (filtro "Todos" em portugues: `operationKind: "TODOS"`, `option value="TODOS"`),
+nao comentarios de pendencia (`// TODO`).
+Impacto: nenhum - e apenas uma nota para auditorias futuras nao perderem tempo com esse
+padrao neste codebase sem ajustar a regex (ex.: exigir `//\s*TODO` ou `\bTODO\b` com
+checagem de contexto de comentario).
+Confianca: alta.
+Recomendacao: nenhuma acao no codigo; ajustar o padrao de busca em auditorias futuras.
+
+------------------------------------------------------------
+SEGURO PARA REMOVER
+------------------------------------------------------------
+- [M3] Linha `Recuperar.txt` no `.gitignore` (entrada morta, arquivo nunca existiu).
+
+------------------------------------------------------------
+PRECISA DE VALIDACAO
+------------------------------------------------------------
+- [A4] Local definitivo de guarda das credenciais em `.env.backup_supabase` antes de
+  apagar a copia em disco.
+- [M1] Rotina formal de backup/retencao antes de mover ou apagar `Backup/`.
+- [M2] Conteudo de `GUIA_DEPLOY_EDGE_FUNCTIONS_SUPABASE.md` e
+  `GUIA_DOCKER_SUPABASE_VERIFICAR_E_REPARAR.md` antes de decidir versionar.
+- [M4] Testar `@supabase/supabase-js` 2.110.2 em branch isolada (changelog entre 2.98
+  e 2.110 nao foi lido nesta auditoria).
+
+------------------------------------------------------------
+NAO REMOVER / NAO ALTERAR SEM CONFIRMACAO EXPLICITA
+------------------------------------------------------------
+- AGENTS.md, verificação/*, CLAUDE.md, estrutura_saas_multitenant.md: conteudo normativo
+  vivo, nenhuma acao de remocao proposta - a acao proposta e o oposto (versionar).
+- Migrations, RLS, RPCs, testes: fora do escopo desta rodada, nada encontrado que os
+  classifique como lixo.
+- `.env`, `.env.backup_supabase`: nao apagar antes de confirmar onde as credenciais
+  reais estao guardadas (achado A4).
+
+------------------------------------------------------------
+PLANO DE CORRECAO (em commits pequenos, um assunto por commit)
+------------------------------------------------------------
+1. Ajustar `.gitignore`: remover `AGENTS.md`, `verificação/` (ou refinar para nao
+   cobrir arquivos normativos) e a linha morta `Recuperar.txt`; commitar
+   `AGENTS.md` + os arquivos pendentes de `verificação/` (11, 12, `crc/*`).
+2. Decidir e registrar o destino oficial de `REGRA_DE_NEGOCIO.md` (criar o arquivo ou
+   remover a referencia em CLAUDE.md/AGENTS.md).
+3. Mover `.env.backup_supabase` para fora do projeto/para um cofre de segredos.
+4. Mover `Backup/` para um local de backup fora do repositorio de trabalho.
+5. Atualizar `@supabase/supabase-js` (e demais patches) em commit isolado, com
+   `npx tsc --noEmit`, `npm run lint` e `npm run build` antes/depois.
+Nenhum desses passos foi executado nesta auditoria - todos exigem confirmacao do
+usuario, conforme regra final do CLAUDE.md/AGENTS.md.
+
+------------------------------------------------------------
+COMANDOS DE VALIDACAO USADOS NESTA AUDITORIA
+------------------------------------------------------------
+git status --ignored --porcelain
+git ls-files | grep -i verifica
+git log --oneline -- AGENTS.md estrutura_saas_multitenant.md REGRA_DE_NEGOCIO.md ...
+du -sh Backup
+grep -o '^[A-Z_]*=' .env.backup_supabase   (somente nomes de chave, sem valores)
+rg "console\.log|debugger" src/
+rg "@ts-ignore|@ts-nocheck" src/
+rg "\.select\(['\"]\*['\"]\)" src/
+rg "catch\s*\(\s*\w*\s*\)\s*\{\s*\}" src/
+rg "x-tenant-id" src/
+rg "TODO|FIXME|HACK|XXX" src/
+find src -size +1M / find . -size +5M (fora node_modules/Backup/.git)
+npm outdated
+
+------------------------------------------------------------
+RISCOS DE REGRESSAO
+------------------------------------------------------------
+- Nenhuma alteracao de codigo foi feita nesta auditoria, entao nao ha risco de
+  regressao funcional imediato.
+- O maior risco identificado e de continuidade/processo: se a maquina local for
+  perdida hoje, o proximo clone do repositorio perde AGENTS.md, parte de
+  `verificação/` (CRCs de Programacao, Auth, Dashboard Medicao, Enderecamento,
+  Permissoes) e os guias de deploy/docker - ou seja, perde regras que hoje sao
+  tratadas como obrigatorias para qualquer IA que trabalhe no projeto.
+
+------------------------------------------------------------
+VERIFICACAO PONTUAL POSITIVA (nao e achado, e confirmacao de bom padrao)
+------------------------------------------------------------
+`x-tenant-id` (4 ocorrencias em `src/`) e enviado pelo frontend, mas
+`resolveAuthenticatedAppUser` (`src/lib/server/appUsersAdmin.ts:156-244`) nunca confia
+nele diretamente: o valor recebido so vira `activeTenantId` apos ser conferido contra
+`availableTenantIds`, que vem de `app_user_tenants` filtrado por `user_id` do token
+autenticado (linha 234-244). Isso e exatamente o modelo esperado pela secao 15/31 do
+guia (header carrega contexto, nao prova autorizacao).

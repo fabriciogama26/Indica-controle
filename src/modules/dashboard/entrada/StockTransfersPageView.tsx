@@ -230,7 +230,7 @@ type FilterState = {
   reversalStatus: "TODOS" | "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
 };
 
-const HISTORY_PAGE_SIZE = 15;
+const HISTORY_PAGE_SIZE = 20;
 const HISTORY_EXPORT_PAGE_SIZE = 100;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   movementType: "Operacao",
@@ -570,6 +570,7 @@ export function StockTransfersPageView() {
 
   const [historyItems, setHistoryItems] = useState<TransferListItem[]>([]);
   const [historyPageInfo, setHistoryPageInfo] = useState<PageInfo | null>(null);
+  const historyPageInfoRef = useRef<PageInfo | null>(null);
   const [filterDraft, setFilterDraft] = useState<FilterState>(INITIAL_FILTERS);
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [detailItem, setDetailItem] = useState<TransferListItem | null>(null);
@@ -728,26 +729,32 @@ export function StockTransfersPageView() {
       setMaterials(data.materials ?? []);
       const fetchedReversalReasons = data.reversalReasons ?? [];
       setReversalReasons(fetchedReversalReasons);
-      if (!reversalReasonCode && fetchedReversalReasons.length > 0) {
-        setReversalReasonCode(fetchedReversalReasons[0].code);
+      if (fetchedReversalReasons.length > 0) {
+        setReversalReasonCode((current) => current || fetchedReversalReasons[0].code);
       }
     } catch {
       setFeedback({ type: "error", message: "Falha ao carregar metadados da movimentacao de estoque." });
     } finally {
       setIsLoadingMeta(false);
     }
-  }, [reversalReasonCode, session?.accessToken]);
+  }, [session?.accessToken]);
 
   const loadHistory = useCallback(async (direction: "initial" | "older" | "newer" = "initial") => {
     if (!session?.accessToken) {
       return;
     }
 
+    const pageInfo = historyPageInfoRef.current;
     const cursor = direction === "older"
-      ? historyPageInfo?.oldestCursor
+      ? pageInfo?.oldestCursor
       : direction === "newer"
-        ? historyPageInfo?.newestCursor
+        ? pageInfo?.newestCursor
         : null;
+
+    const applyPageInfo = (next: PageInfo | null) => {
+      historyPageInfoRef.current = next;
+      setHistoryPageInfo(next);
+    };
 
     setIsLoadingHistory(true);
     try {
@@ -764,23 +771,22 @@ export function StockTransfersPageView() {
       if (!response.ok) {
         setFeedback({ type: "error", message: data.message ?? "Falha ao carregar movimentacoes de estoque." });
         setHistoryItems([]);
-        setHistoryPageInfo(null);
+        applyPageInfo(null);
         return;
       }
 
       setHistoryItems(data.history ?? []);
-      setHistoryPageInfo(data.pageInfo ?? null);
+      applyPageInfo(data.pageInfo ?? null);
     } catch {
       setFeedback({ type: "error", message: "Falha ao carregar movimentacoes de estoque." });
       setHistoryItems([]);
-      setHistoryPageInfo(null);
+      applyPageInfo(null);
     } finally {
       setIsLoadingHistory(false);
     }
   }, [
     buildHistoryListParams,
     filters,
-    historyPageInfo,
     session?.accessToken,
   ]);
 

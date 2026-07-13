@@ -1,0 +1,697 @@
+# Regras obrigatórias para o Codex neste repositório
+
+## Prioridade
+Estas instruções têm prioridade máxima.
+Em caso de conflito, siga esta ordem:
+1. Este AGENTS.md
+2. Documentação do repositório
+3. Ler sempre docs\Auditoria_Completa_SaaS.txt e analisar
+4. Solicitação do usuário
+5. Sempre leia a pasta verificação e todos os arquivos .md nela
+
+O Codex NÃO deve ignorar estas regras.
+
+---
+
+## Regra geral de comportamento
+- Sempre leia este AGENTS.md antes de qualquer ação.
+- Não criar, editar ou sugerir README.md fora do padrão definido abaixo.
+- Se o README existente não seguir o padrão, ele DEVE ser ajustado.
+- Não inventar comandos, tecnologias ou fluxos que não existam no projeto.
+- Se faltar informação, perguntar antes de completar.
+
+---
+
+## Padrão OBRIGATÓRIO de README.md
+
+Toda criação ou modificação de README.md DEVE seguir **exatamente** esta estrutura e ordem:
+
+# Nome do Projeto
+
+Descrição curta e objetiva do propósito do projeto.
+
+---
+
+## Visão geral
+- Problema resolvido
+- Solução proposta
+- Contexto de uso
+
+---
+
+## Tecnologias
+Lista objetiva das tecnologias principais.
+
+---
+
+## Requisitos
+Pré-requisitos necessários para rodar o projeto.
+
+---
+
+## Como rodar o projeto
+
+### Ambiente de desenvolvimento
+Passo a passo com comandos reais e testados.
+
+---
+
+### Build / Produção
+Incluir somente se aplicável.
+
+---
+
+## Variáveis de ambiente
+Lista explícita das variáveis obrigatórias, sem valores fictícios.
+
+---
+
+## Estrutura de pastas
+Visão resumida e fiel da organização do projeto.
+
+---
+
+## Estrutura completa de pastas
+Visão completa de cada arquivo. Tem que expandir cada pasta e dizer os arquivos e oque faz
+
+---
+
+## Verificação de dados em(caso exista):
+D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
+
+## Fluxo principal
+Descrever o caminho principal de uso do sistema (happy path).
+
+---
+
+## Testes
+- Comandos para rodar testes, ou
+- Declaração explícita de que não existem testes automatizados.
+
+---
+
+## Troubleshooting
+Lista de erros comuns com causa e solução.
+
+---
+
+## Status do projeto
+Declarar claramente:
+🟢 Em produção  
+🟡 Em desenvolvimento  
+🔴 Descontinuado  
+
+---
+
+## Licença
+Tipo de licença do projeto.
+
+---
+
+## Regras de escrita
+- Linguagem técnica, direta e objetiva.
+- Proibido texto promocional ou marketing.
+- Proibido floreio, storytelling ou exagero.
+- Usar exemplos em bloco de código quando aplicável.
+- Preferir listas a parágrafos longos.
+
+---
+
+## Fluxo de alteração de código
+Antes de modificar código:
+1. Explicar em até 3 bullets o que será feito.
+
+Depois da modificação:
+1. Explicar o que mudou.
+2. Explicar como validar (build, test, run).
+
+---
+
+## Documentação complementar
+- Se uma mudança impactar uso, instalação ou configuração, o README DEVE ser atualizado.
+- Se criar feature relevante, sugerir atualização de CHANGELOG.md.
+
+---
+
+## Rotina de dependencias (obrigatorio)
+- Rodar `npm outdated` mensalmente e registrar as pendencias antes de atualizar.
+
+---
+
+
+## Regra final (não negociável)
+Se alguma instrução deste AGENTS.md não puder ser cumprida, o Codex DEVE:
+1. Parar
+2. Explicar o motivo
+3. Pedir instruções adicionais
+
+Nunca assumir.
+
+## Regra da Task
+Atualize o arquivo TASKS.md com base no estado atual do código.
+
+
+# Regras obrigatórias para o Codex (SaaS Multi-tenant)
+
+## Prioridade
+Ordem de prioridade:
+1) Este AGENTS.md
+2) /docs e documentação do repositório
+3) Solicitação do usuário
+
+Em caso de conflito, pare e peça orientação.
+
+---
+
+## Regra final (não negociável): confirmação antes do "fim"
+Antes de concluir qualquer entrega (especialmente mudanças em código/docs), o Codex DEVE:
+1) Mostrar um resumo do que vai mudar (checklist)
+2) Mostrar o texto do commit sugerido (detalhado e mapeado)
+3) Perguntar: **"Confirma que posso aplicar/fechar essas mudanças?"**
+E só então finalizar.
+
+---
+
+## Multi-tenant: regras de segurança e dados
+### Escopo de tenant
+- Todo dado de negócio deve estar vinculado a `account_owner_id` (ou equivalente do projeto).
+- Nenhuma query pode “vazar” dados entre tenants.
+- Onde existir RLS (ex.: Supabase/Postgres), sempre assumir **RLS ON** e validar políticas.
+
+### Regras de acesso
+- Usuário comum: acesso SOMENTE ao tenant dele.
+- Usuário master/admin (se existir): acesso controlado (via função `is_master()`/role/claim do JWT).
+- Preferir RPC security-definer para catálogos compartilhados/segurança (quando fizer sentido).
+
+### Mudanças em banco
+- Toda alteração de schema deve:
+  - Ter migration versionada
+  - Considerar impacto em RLS, índices e performance
+  - Incluir fallback/backfill quando necessário
+
+### Auditoria / logs
+- Mudanças sensíveis (estoque, entradas/saídas, acidentes, permissões) devem gerar log/auditoria.
+- Erros de tela devem ser registrados com “tag” do módulo (ex.: `useErrorLogger('<modulo>')`).
+
+### Regra obrigatória para fluxos operacionais críticos (padrão Programacao)
+Sempre que o Codex alterar fluxos como `Programacao`, `Locacao`, `Entrada`, `Saida`, `Medicao` ou qualquer tela que grave operação de negócio com impacto operacional, ele DEVE aplicar estas regras:
+
+- Separar operação principal de efeito colateral.
+- Operação principal deve ser transacional no banco sempre que possível.
+- Não usar fallback que permita gravação parcial entre campos base e campos complementares quando o fluxo exigir consistência operacional.
+- Histórico de negócio essencial deve ficar dentro da mesma transação da operação principal.
+- Refresh de tela, revalidação, recálculo visual, cache, websocket e notificação devem ficar fora da transação.
+- Se o commit ocorrer e a atualização visual falhar depois, a resposta deve indicar sucesso com aviso, e não erro falso.
+- Preferir que a API retorne o registro final salvo no response, evitando depender de “salvar e depois buscar novamente” para confirmar sucesso.
+- Quando houver concorrência:
+  - validar por `expectedUpdatedAt` ou `version`
+  - retornar `409 Conflict`
+  - incluir no payload, sempre que possível:
+    - registro atual
+    - `currentUpdatedAt`
+    - `updatedBy`
+    - campos em conflito/mudados
+- Em telas operacionais, a UX deve tratar conflito de forma utilizável, com mensagem objetiva e ação para recarregar dados.
+- Em lote:
+  - a gravação deve ser atômica por transação/RPC quando a regra de negócio exigir consistência total
+  - se qualquer item falhar, o lote inteiro deve fazer rollback
+- Evitar “salvou no banco, mas respondeu erro” por falha posterior de histórico, reload ou visualização.
+- Se uma operação crítica ainda depender de passos pós-save fora da transação, o Codex DEVE apontar isso explicitamente como lacuna de integridade.
+
+---
+
+## Padrão OBRIGATÓRIO de README.md
+Quando criar/editar README.md, seguir exatamente esta ordem:
+
+# Nome do Projeto
+Descrição curta e objetiva.
+
+## Visão geral
+## Tecnologias
+## Requisitos
+## Como rodar o projeto
+### Ambiente de desenvolvimento
+### Build / Produção (se aplicável)
+## Variáveis de ambiente
+## Estrutura de pastas
+## Estrutura completa de pastas
+## Verificacao de dados em (caso exista):
+D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
+## Fluxo principal
+## Testes
+## Troubleshooting
+## Status do projeto
+## Licença
+
+Regras:
+- Direto, técnico, sem marketing.
+- Não inventar comandos/fluxos: buscar em package.json/Makefile/scripts antes.
+- Exemplos sempre em bloco de código.
+
+---
+
+## Docs obrigatórias (pasta /docs): padrão TXT mapeado
+Sempre que:
+- Criar/alterar tela (page)
+- Alterar controller/hook/service/util relacionado a uma tela
+- Alterar regras de negócio relevantes (validação, cancelamento, saldo, permissões)
+O Codex DEVE criar/atualizar um arquivo em `/docs/<Tela>.txt` seguindo o MESMO padrão do modelo anexado (Estrutura + títulos + separadores). Referência: Entradas.txt.
+
+### Estrutura obrigatória do TXT
+- "Tela: <Nome>"
+- "Visao geral"
+- "Arquitetura"
+- "Cadastro" (quando houver)
+- "Filtros, auto-complete e listagem" (quando houver)
+- "Boas praticas"
+- "Cancelamento e saldo" (quando houver)
+- "Atalhos" (quando houver)
+- "Atualizacao YYYY-MM" (quando aplicável)
+- "Mapa de Codigo (funcoes, hooks e constantes)"
+  - Funcoes principais (com Caminho e Responsavel por)
+
+## Padrão OBRIGATÓRIO de README.md
+Quando criar/editar README.md, seguir exatamente esta ordem:
+
+# Nome do Projeto
+Descrição curta e objetiva.
+
+## Visão geral
+## Tecnologias
+## Requisitos
+## Como rodar o projeto
+### Ambiente de desenvolvimento
+### Build / Produção (se aplicável)
+## Variáveis de ambiente
+## Estrutura de pastas
+## Estrutura completa de pastas
+## Verificacao de dados em (caso exista):
+D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
+## Fluxo principal
+## Testes
+## Troubleshooting
+## Status do projeto
+## Licença
+
+Regras:
+- Direto, técnico, sem marketing.
+- Não inventar comandos/fluxos: buscar em package.json/Makefile/scripts antes.
+- Exemplos sempre em bloco de código.
+
+---
+
+## Docs obrigatórias (pasta /docs): padrão TXT mapeado
+Sempre que:
+- Criar/alterar tela (page)
+- Alterar controller/hook/service/util relacionado a uma tela
+- Alterar regras de negócio relevantes (validação, cancelamento, saldo, permissões)
+O Codex DEVE criar/atualizar um arquivo em `/docs/<Tela>.txt` seguindo o MESMO padrão do modelo anexado (Estrutura + títulos + separadores). Referência: Entradas.txt.
+
+### Estrutura obrigatória do TXT
+- "Tela: <Nome>"
+- "Visao geral"
+- "Arquitetura"
+- "Cadastro" (quando houver)
+- "Filtros, auto-complete e listagem" (quando houver)
+- "Boas praticas"
+- "Cancelamento e saldo" (quando houver)
+- "Atalhos" (quando houver)
+- "Atualizacao YYYY-MM" (quando aplicável)
+- "Mapa de Codigo (funcoes, hooks e constantes)"
+  - Funcoes principais (com Caminho e Responsavel por)
+  - Constantes e configuracoes
+  - Funcoes utilitarias relacionadas
+  - Servicos e integracoes externas
+  - Ajuda contextual (se existir)
+
+### Regra de mapeamento
+No TXT, o Codex DEVE mapear:
+- arquivos alterados/criados
+- funções/hooks/constantes tocadas
+- comportamento antes/depois (se mudou)
+
+---
+
+## Commit: texto obrigatório (detalhado e mapeado)
+O Codex SEMPRE deve sugerir um commit message + corpo detalhado SOMENTE NO FINAL.
+
+### Formato recomendado
+- Linha 1 (título): `type(scope): resumo curto`
+  Tipos: feat, fix, refactor, docs, chore, test
+- Corpo (obrigatório), incluindo:
+  - **O que foi feito** (bullets)
+  - **Arquivos tocados** (lista)
+  - **Mapeamento por módulo/tela** (o que mudou em cada parte)
+  - **Como validar** (comandos e passos)
+  - **Impacto multi-tenant** (RLS/tenant scope/segurança) quando aplicável
+  - **Docs atualizadas** (qual /docs/<Tela>.txt foi criado/alterado)
+
+Exemplo de corpo:
+- O que foi feito:
+  - ...
+- Arquivos:
+  - src/...
+- Mapeamento:
+  - Tela X: ...
+  - Service Y: ...
+- Como validar:
+  - ...
+- Multi-tenant:
+  - ...
+- Docs:
+  - docs/X.txt atualizado
+
+---
+
+## Padrão OBRIGATÓRIO de estrutura de tela (baseado na auditoria 2026-03)
+
+Toda tela nova ou refatorada DEVE seguir esta organização de arquivos e regras. Referência completa: `docs/Auditoria_Completa_SaaS.txt`.
+
+### Estrutura de arquivos por módulo
+```
+src/modules/dashboard/<nome-tela>/
+  types.ts              - tipos (FormState, FilterState, *Item, *Response)
+  constants.ts          - constantes (PAGE_SIZE, FIELD_LABELS, DOCUMENT_KEYS)
+  utils.ts              - utilitários específicos da tela
+  <NomeTela>PageView.tsx         - componente principal (meta: máx. 800-1000 linhas)
+  <NomeTela>PageView.module.css  - estilos
+```
+
+### Regras obrigatorias de monolito modular verdadeiro
+- Pasta por modulo nao basta. Um modulo so e considerado modular quando tambem preserva fronteira de dependencia.
+- Tudo que for regra, contrato, validacao, hook, service, api local, componente especifico, utilitario especifico e estilo de uma feature deve ficar dentro da pasta da propria feature.
+- Estrutura recomendada para modulos grandes:
+```
+src/modules/dashboard/<nome-tela>/
+  api/
+  components/
+  hooks/
+  validators/
+  constants/
+  types/
+  services/
+  utils/
+  styles/
+  index.ts
+```
+- Estrutura minima aceita para modulos menores:
+```
+src/modules/dashboard/<nome-tela>/
+  api.ts
+  hooks.ts
+  validators.ts
+  constants.ts
+  types.ts
+  utils.ts
+  <NomeTela>PageView.tsx
+  <NomeTela>PageView.module.css
+  index.ts
+```
+- Feature nao pode importar regra de negocio de feature irma. Ex.: `programacao-simples` nao deve importar diretamente `modules/estoque/*`, `modules/acidentes/*`, `modules/compras/*`, `modules/financeiro/*` ou equivalentes.
+- Se duas features precisarem se comunicar, usar contrato explicito em camada neutra (`core`, `server/modules`, service bus, API/RPC ou shared realmente generico), sem puxar implementacao interna de outro dominio.
+- Toda feature deve expor uma fachada publica (`index.ts` ou `exports.ts`, conforme padrao definido no modulo). O restante do sistema deve importar pela raiz do modulo, nao pescando arquivos internos.
+- Se o modulo ja usa `exports.ts` para outra finalidade (ex.: montagem de arquivos CSV/Excel), criar `index.ts` como fachada publica para evitar confusao.
+- `shared`, `lib`, `utils`, `services` e `helpers` globais so podem conter infraestrutura ou utilitarios universais: cliente Supabase, auth helpers, logger, permission middleware, formatador generico de data/numero, toaster e UI atoms.
+- Proibido colocar regra de dominio em camada global. Regra de Programacao, Estoque, Compras, Dashboard, Acidentes ou qualquer dominio deve ficar no modulo dono ou em modulo de dominio server-side claramente nomeado.
+- Backend/side nested tambem deve respeitar a fronteira modular. Em API Node ou Next API, rotas podem ficar em `src/app/api/<rota>`, mas a regra interna deve delegar para modulo server-side, por exemplo:
+```
+src/server/modules/<dominio>/
+  controller.ts
+  service.ts
+  repository.ts
+  validator.ts
+  dto.ts
+```
+- Em revisoes e refatoracoes, verificar imports do modulo. Import de infraestrutura compartilhada e permitido; import de dominio irmao e sinal de acoplamento indevido.
+
+### Imports compartilhados obrigatórios
+Usar `src/lib/utils/` para funções duplicadas. Proibido copiar essas funções no PageView:
+- `src/lib/utils/formatters.ts` → `formatDate`, `formatDateTime`, `toIsoDate`
+- `src/lib/utils/csv.ts` → `downloadCsvFile`
+- `src/lib/utils/parsers.ts` → `parseNonNegativeInteger`, `parsePositiveNumber`
+
+### Checklist de qualidade por tela (verificar antes de PR)
+- [ ] **Concorrência**: `expectedUpdatedAt` exigido no PATCH/PUT.
+- [ ] **Conflito**: retorno 409 com `currentRecord`, `currentUpdatedAt`, `updatedBy`, `changedFields`.
+- [ ] **Save transacional**: RPC `save_*_full` para operações com efeitos colaterais.
+- [ ] **Lote atômico**: rollback total se qualquer item falhar.
+- [ ] **Histórico na transação**: registro de CREATE/UPDATE dentro da RPC, não pós-commit.
+- [ ] **Feedback de filtro**: aviso quando registro salvo está fora dos filtros ativos.
+- [ ] **Modal de alerta**: erros de validação em modal, não apenas mensagem no topo.
+- [ ] **Exportação com cooldown**: trava de 10s entre exportações.
+- [ ] **Docs TXT**: `/docs/Tela_<Nome>_SaaS.txt` criado/atualizado.
+- [ ] **useErrorLogger**: integrado com tag do módulo.
+- [ ] **Sem funções duplicadas**: imports de `src/lib/utils/` em vez de copiar.
+
+---
+
+## Padrão OBRIGATÓRIO de README.md
+Quando criar/editar README.md, seguir exatamente esta ordem:
+
+# Nome do Projeto
+Descrição curta e objetiva.
+
+## Visão geral
+## Tecnologias
+## Requisitos
+## Como rodar o projeto
+### Ambiente de desenvolvimento
+### Build / Produção (se aplicável)
+## Variáveis de ambiente
+## Estrutura de pastas
+## Estrutura completa de pastas
+## Verificacao de dados em (caso exista):
+D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
+## Fluxo principal
+## Testes
+## Troubleshooting
+## Status do projeto
+## Licença
+
+Regras:
+- Direto, técnico, sem marketing.
+- Não inventar comandos/fluxos: buscar em package.json/Makefile/scripts antes.
+- Exemplos sempre em bloco de código.
+
+---
+
+## Fluxo de alteração (obrigatório)
+Antes de mudar código:
+- Plano em até 3 bullets.
+
+Depois:
+- Resumo do que mudou.
+- Como validar.
+- Texto do commit (detalhado e mapeado).
+- Perguntar confirmação do usuário para encerrar.
+
+---
+
+## Padrao obrigatorio de integridade por tela - auditoria 2026-06
+
+Toda tela nova ou alterada que leia/grave dados de negocio DEVE cumprir:
+
+### Autorizacao server-side
+- Toda rota/API/Edge Function deve validar `page_key` e acao no servidor.
+- Esconder menu ou bloquear botao no frontend nao e autorizacao.
+- Rotas com service role devem executar o guard antes de qualquer SELECT/RPC/escrita.
+- Padronizar acoes: `read`, `create`, `update`, `cancel`, `reverse`, `import`, `export`.
+
+### Escrita e RLS
+- Tabela operacional critica nao deve aceitar INSERT/UPDATE direto de `authenticated`
+  quando a regra exige API/RPC.
+- RLS de tenant continua obrigatorio para SELECT e como defesa adicional.
+- RPC `SECURITY DEFINER` deve:
+  - ser executavel somente por `service_role`; ou
+  - validar `auth.uid()`, usuario ativo, tenant permitido e page/action internamente.
+- Proibido aceitar `tenant_id`, `actor_user_id`, role ou auditoria do cliente como fonte
+  de verdade.
+- Toda migration posterior a um hardening de grants deve repetir/verificar o padrao;
+  nao reabrir EXECUTE de authenticated sem justificativa e teste.
+
+### Relacoes multi-tenant
+- Relacoes entre tabelas de negocio devem impedir referencia cruzada entre tenants.
+- Preferir UNIQUE `(tenant_id, id)` na entidade pai e FK composta
+  `(tenant_id, parent_id) -> parent(tenant_id, id)`.
+- FK apenas por `id` nao e suficiente quando a tabela filha possui tenant proprio.
+- Toda migration deve testar insert/update com parent de outro tenant.
+
+### Transacao completa
+- Valor final, campos complementares, historico essencial e snapshots obrigatorios devem
+  ser gravados na mesma RPC/transacao.
+- Proibido salvar inteiro e corrigir decimal depois do commit.
+- Proibido atualizar registro e adicionar historico essencial em chamada posterior.
+- Efeito pos-commit so pode ser visual/cache/notificacao e deve retornar sucesso com aviso.
+- A RPC deve retornar o registro final e o `updated_at` final.
+
+### Concorrencia de criacao e edicao
+- PUT/PATCH exige `expectedUpdatedAt` ou `version`.
+- INSERT com regra de exclusividade deve ser protegido no banco contra corrida.
+- Verificacao `SELECT` antes de `INSERT` sem lock/constraint nao e suficiente.
+- Usar unique/exclusion constraint ou advisory transaction lock com chave deterministica.
+- Conflito deve retornar 409 com registro atual, versao, autor e campos alterados.
+
+### Idempotencia e replay
+- POST/PUT/PATCH critico e importacao em massa devem aceitar idempotency key.
+- Persistir chave por tenant + usuario + rota + hash do request.
+- Retry deve devolver o resultado original, sem repetir a operacao.
+- Definir expiracao e impedir reutilizacao da mesma chave com payload diferente.
+
+### Importacao em massa
+- Declarar no contrato se o lote e atomico total ou parcial.
+- Atomico total: uma RPC/transacao para o arquivo/lote inteiro e rollback integral.
+- Parcial: resposta por linha/projeto, sem responder erro global depois de commits parciais.
+- Validar limite de arquivo/linhas, tipo real, duplicidade, tenant, permissao, rate limit
+  e idempotencia.
+- Edge Functions devem reutilizar `_shared` para auth, CORS, tenant, parser e erros.
+
+### Auditoria de tabelas por tela
+- Antes de criar tabela nova, mapear:
+  - tabela principal;
+  - itens/filhos;
+  - historico;
+  - catalogos;
+  - lote/importacao;
+  - idempotencia;
+  - auditoria de tentativa/resultado.
+- Nao criar tabela duplicada quando tabela generica atende com contrato claro.
+- Se uma tabela esperada estiver vazia em producao, investigar regra, persistencia e
+  necessidade de backfill antes de concluir que ela e desnecessaria.
+
+### Verificacao Supabase
+- Confirmar que o projeto ligado pelo Supabase CLI corresponde ao ambiente auditado.
+- Nunca aplicar migration, repair, reset ou link automaticamente em projeto divergente.
+- Executar `supabase migration list --linked` e `supabase db lint --linked` somente depois
+  de validar o project ref sem expor credenciais.
+- Divergencia entre migrations locais, historico remoto e schema real bloqueia deploy.
+
+### Duplicacao e tamanho
+- Rodar detector de clones em auditorias estruturais.
+- Extrair utilitarios universais para `src/lib/utils/`.
+- Extrair infraestrutura de Edge Functions para `supabase/edge_functions/_shared/`.
+- PageView acima de 1000 linhas e route/controller acima de 1500 linhas exigem plano de
+  modularizacao registrado no TXT da tela.
+- Duplicacao de regra de negocio deve ser removida antes de duplicacao apenas visual.
+
+Referencia:
+- `docs/Auditoria_Programacao_Integridade_Supabase_2026-06.txt`
+
+---
+
+## Protocolo obrigatorio de uso da pasta verificacao
+
+Antes de qualquer PR ou entrega de codigo, o Codex DEVE:
+1. Ler todos os arquivos da pasta `verificacao/` relevantes para a mudanca.
+2. Marcar explicitamente no checklist de cada arquivo quais itens foram verificados.
+3. Se algum item do checklist NAO se aplicar, justificar brevemente.
+4. Se houver CRC do modulo afetado em `verificacao/crc/`, ler antes de qualquer alteracao.
+
+### Mapa de arquivos de verificacao
+
+| Arquivo | Quando ler |
+|---|---|
+| `01_integridade_dados.md` | Qualquer escrita em banco |
+| `02_regras_negocio.md` | Qualquer mudanca de fluxo operacional |
+| `03_seguranca.md` | Qualquer rota nova ou mudanca de auth/permissao |
+| `04_multi_tenant.md` | Qualquer query ou escrita que envolva tenant_id |
+| `05_consistencia.md` | Qualquer mudanca de tipos, nomes de campo ou schema |
+| `06_performance.md` | Qualquer query, limite, cache ou endpoint de lista |
+| `07_codigo_duplicado.md` | Qualquer funcao que pareca existir em outro lugar |
+| `08_tratamento_erros.md` | Qualquer try/catch, resposta de erro ou validacao |
+| `09_auditoria.md` | Qualquer operacao que altere dado critico |
+| `10_operacional.md` | Antes de deploy ou mudanca de ambiente |
+| `11_front_ui.md` | Qualquer PageView, hook ou componente de listagem |
+| `12_trafego_egress.md` | Qualquer endpoint que retorne lista ou dashboard |
+| `crc/[modulo].md` | Antes de alterar qualquer arquivo do modulo listado |
+
+---
+
+## Regras obrigatorias de performance e trafego (auditoria 2026-06)
+
+### Banco de dados
+
+- Proibido `.select("*")` — sempre listar as colunas necessarias.
+- Proibido `.limit(50000)` ou superior em qualquer rota de listagem. Esse valor indica que a logica deve virar RPC de agregacao no banco.
+- `.limit()` acima de 1.000 exige justificativa documentada no TXT da tela.
+- Filtros aplicados no banco, nunca no JavaScript sobre lista completa (`data.filter(...)`).
+- Toda coluna nova usada como filtro frequente exige migration com indice antes de PR.
+- Dashboard que retorna dados brutos quando o front exibe apenas totais e percentuais DEVE ser transformado em RPC SQL.
+- Verificacao SELECT antes de INSERT para unicidade nao e suficiente — usar UNIQUE constraint ou exclusion constraint no banco.
+
+### Auth e cliente Supabase
+
+- `getSupabaseAdmin()` deve usar singleton — nao criar novo cliente a cada request.
+- `resolveAuthenticatedAppUser` deve ter cache por token com TTL maximo de 60s para reduzir queries de auth repetidas.
+- Proibido chamar `supabase.auth.getUser()` ou `/api/auth/session-access` dentro de componentes — usar `useAuth()`.
+
+### API Routes
+
+- Queries independentes dentro da mesma rota devem ser paralelas (`Promise.all`).
+- Dados de catalogo (raramente alterados) devem usar `unstable_cache` com revalidate de 5-10 minutos.
+- Dados operacionais (programacao, medicao, saldo) NAO devem usar cache.
+- Toda rota que retorna lista grande deve logar o tamanho da resposta se acima de 100KB.
+- Resposta de conflito (409) deve incluir: `currentRecord`, `currentUpdatedAt`, `updatedBy`, `changedFields`.
+
+### Front-end
+
+- Filtro de periodo padrao obrigatorio em todas as telas de listagem (mes atual ou ultimos 30 dias).
+- Debounce minimo de 300ms em campos de busca texto que disparam request.
+- `useEffect` nao pode ter objeto ou array inline como dependencia (recriado a cada render → loop).
+- Listas com mais de 50 itens exigem paginacao ou carregamento progressivo.
+- `refetchOnWindowFocus: false` em queries de dados operacionais (mudam por acao do usuario, nao por tempo).
+
+### Limites de tamanho de arquivo
+
+- `PageView.tsx` acima de 1.000 linhas exige plano de modularizacao.
+- Route Handler (`route.ts`) ou controller acima de 1.500 linhas exige plano de divisao.
+- `programacao/route.ts` esta em 4.519 linhas — CRITICO, requer plano de modularizacao antes de novas features.
+
+---
+
+## Checklist de qualidade completo por tela (verificar antes de PR)
+
+### Integridade e concorrencia
+- [ ] `expectedUpdatedAt` exigido no PATCH/PUT.
+- [ ] Conflito retorna 409 com `currentRecord`, `currentUpdatedAt`, `updatedBy`, `changedFields`.
+- [ ] Save transacional: RPC para operacoes com efeitos colaterais.
+- [ ] Lote atomico: rollback total se qualquer item falhar.
+- [ ] Historico na mesma transacao da operacao principal.
+
+### Seguranca e autorizacao
+- [ ] Toda rota valida `page_key` e `action` no servidor.
+- [ ] Nenhuma rota aceita `tenant_id` do body como fonte de verdade.
+- [ ] RPC SECURITY DEFINER executavel apenas por `service_role` ou valida auth internamente.
+- [ ] Tabela operacional critica nao aceita INSERT/UPDATE direto de `authenticated`.
+
+### Performance e trafego
+- [ ] Nenhum `.select("*")`.
+- [ ] Nenhum `.limit()` acima de 1.000 sem paginacao ou RPC de agregacao.
+- [ ] Filtros aplicados no banco, nao no JavaScript.
+- [ ] Queries independentes sao paralelas (`Promise.all`).
+- [ ] Colunas de filtro frequente tem indice documentado.
+- [ ] Dashboard retorna resumo (RPC), nao dados brutos.
+- [ ] Log de tamanho de resposta adicionado se endpoint retorna lista.
+- [ ] Catalogo usa cache (`unstable_cache`). Dado operacional NAO usa cache.
+
+### Front-end e UI
+- [ ] Filtro de periodo padrao definido (mes atual ou ultimos 30 dias).
+- [ ] Debounce em campos de busca texto (300ms minimo).
+- [ ] `useAuth()` centralizado — nao chama auth fora do contexto.
+- [ ] `useEffect` sem dependencias inline (objetos/arrays).
+- [ ] Listas com > 50 itens tem paginacao.
+- [ ] Exportacao tem cooldown de 10s.
+- [ ] PageView abaixo de 1.000 linhas.
+- [ ] Erros registrados com `useErrorLogger("modulo")`.
+- [ ] Funcoes de formatacao importadas de `src/lib/utils/`, nao copiadas.
+
+### Documentacao e rastreabilidade
+- [ ] `/docs/<Tela>.txt` criado ou atualizado.
+- [ ] CRC em `verificacao/crc/<modulo>.md` atualizado se houver mudanca estrutural.
+- [ ] `useErrorLogger` integrado com tag do modulo.
+- [ ] Sem funcoes duplicadas: imports de `src/lib/utils/` em vez de copiar.
+
+Referencia adicional:
+- `verificacao/06_performance.md` — regras detalhadas com exemplos de codigo
+- `verificacao/11_front_ui.md` — regras de front-end e UI
+- `verificacao/12_trafego_egress.md` — regras de trafego, egress e sobreposicao de dados
+- `verificacao/crc/` — CRCs dos modulos principais
