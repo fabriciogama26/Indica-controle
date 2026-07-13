@@ -30,6 +30,7 @@ Cadastro
 - Estado atual do projeto = ultima linha de project_programming por execution_date/etapa. A Data Limite nao e chave de consulta.
 - Normalizacao das grafias do catalogo: BENFICIO e BENEFICIO sao tratadas como o mesmo estado.
 - Duplicidade: constraint unica (tenant_id, projeto_id, data_entrada, tipo_solicitacao).
+- Tipo padrao por usuario (pre-selecao): um admin define, por usuario, o Tipo que ja vem selecionado ao abrir Nova Solicitacao. E apenas pre-selecao (o usuario pode trocar). Gerenciado no modal "Tipo padrao por usuario" (botao visivel so para admin/master). Tabela cronograma_user_tipo_default (migration 306); meta retorna defaultTipo do usuario logado (fora do cache por tenant).
 
 Filtros, auto-complete e listagem
 - Filtros combinaveis (colunas indexadas): tipo, prioridade, status, responsavel, municipio, periodo de prazo, mais pesquisa (projeto/codigo/responsavel/solicitante) e ordenacao.

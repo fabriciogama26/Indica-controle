@@ -5,6 +5,7 @@ export const CRONOGRAMA_META_ENDPOINT = "/api/cronograma-solicitacoes/meta";
 export const CRONOGRAMA_ESTADO_ENDPOINT = "/api/cronograma-solicitacoes/estado-programacao";
 export const CRONOGRAMA_VERIFY_ENDPOINT = "/api/cronograma-solicitacoes/verify";
 export const CRONOGRAMA_CANCEL_ENDPOINT = "/api/cronograma-solicitacoes/cancel";
+export const CRONOGRAMA_TIPO_DEFAULTS_ENDPOINT = "/api/cronograma-solicitacoes/tipo-defaults";
 
 export const PAGE_SIZE = 20;
 

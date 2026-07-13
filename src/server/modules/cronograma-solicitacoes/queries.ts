@@ -8,7 +8,7 @@ import {
 } from "./normalizers";
 import type { ListFilters, ProjectLookupRow, SolicitacaoRow } from "./types";
 
-const PROJECT_LOOKUP_SELECT = "id, sob, city_text, street, neighborhood, priority_text, is_active";
+const PROJECT_LOOKUP_SELECT = "id, sob, city_text, street, neighborhood, priority_text, execution_deadline, is_active";
 
 export const SOLICITACAO_SELECT =
   "id, tenant_id, projeto_id, projeto_codigo, tipo_solicitacao, prioridade, data_entrada, data_limite, data_conclusao, status, responsavel_id, solicitante_id, observacao, justificativa_prioridade, motivo_cancelamento, estado_programacao_snapshot, programacao_id, created_by, updated_by, created_at, updated_at";
@@ -55,17 +55,17 @@ export async function fetchLatestProgrammingState(
 ): Promise<{ programmingId: string; executionDate: string; rawStatus: string; stateToken: string } | null> {
   const { data, error } = await supabase
     .from("project_programming")
-    .select("id, execution_date, etapa_number, work_completion_status, updated_at")
+    .select("id, execution_date, work_completion_status, updated_at")
     .eq("tenant_id", tenantId)
     .eq("project_id", projectId)
+    .neq("status", "CANCELADA")
+    .not("work_completion_status", "is", null)
     .order("execution_date", { ascending: false })
-    .order("etapa_number", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle<{
       id: string;
       execution_date: string;
-      etapa_number: number | null;
       work_completion_status: string | null;
       updated_at: string;
     }>();
@@ -90,25 +90,39 @@ export async function fetchLatestProgrammingStateMap(
   const result = new Map<string, { rawStatus: string; stateToken: string; programmingId: string }>();
   if (!uniqueIds.length) return result;
 
+  // Presenca de programacao (nao-cancelada) marca o projeto no mapa -> exibe estado ou "-".
+  // Ausencia total de programacao (projeto fora do mapa) -> "A PROGRAMAR".
+  // rawStatus guarda o ultimo Estado Trabalho preenchido (ordena execution_date/updated_at desc).
   const { data } = await supabase
     .from("project_programming")
-    .select("id, project_id, execution_date, etapa_number, work_completion_status, updated_at")
+    .select("id, project_id, execution_date, work_completion_status, updated_at")
     .eq("tenant_id", tenantId)
     .in("project_id", uniqueIds)
+    .neq("status", "CANCELADA")
     .order("project_id", { ascending: true })
     .order("execution_date", { ascending: false })
-    .order("etapa_number", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false })
     .limit(5000)
     .returns<Array<{ id: string; project_id: string; work_completion_status: string | null }>>();
 
   for (const row of data ?? []) {
-    if (result.has(row.project_id)) continue;
-    result.set(row.project_id, {
-      rawStatus: normalizeText(row.work_completion_status),
-      stateToken: normalizeWorkCompletionToken(row.work_completion_status),
-      programmingId: row.id,
-    });
+    const rawStatus = normalizeText(row.work_completion_status);
+    const existing = result.get(row.project_id);
+    if (!existing) {
+      // primeira linha do projeto (a mais recente): registra presenca; estado pode vir vazio.
+      result.set(row.project_id, {
+        rawStatus,
+        stateToken: normalizeWorkCompletionToken(row.work_completion_status),
+        programmingId: row.id,
+      });
+    } else if (!existing.rawStatus && rawStatus) {
+      // ja tinha presenca sem estado; uma linha anterior tem estado preenchido -> usa o ultimo preenchido.
+      result.set(row.project_id, {
+        rawStatus,
+        stateToken: normalizeWorkCompletionToken(row.work_completion_status),
+        programmingId: row.id,
+      });
+    }
   }
 
   return result;
@@ -319,6 +333,82 @@ export function applySolicitacaoFilters<T>(query: T, ctx: FilterContext): T {
   }
 
   return q as unknown as T;
+}
+
+// --- Tipo de Solicitacao padrao por usuario (pre-selecao) ---
+
+export async function fetchUserDefaultTipo(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("cronograma_user_tipo_default")
+    .select("default_tipo")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .maybeSingle<{ default_tipo: string }>();
+
+  return normalizeText(data?.default_tipo) || null;
+}
+
+export async function fetchTipoDefaultsWithUsers(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<Array<{ userId: string; userName: string; defaultTipo: string | null }>> {
+  const [usersResult, defaultsResult] = await Promise.all([
+    supabase
+      .from("app_users")
+      .select("id, display, login_name")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .order("display", { ascending: true })
+      .limit(2000)
+      .returns<Array<{ id: string; display: string | null; login_name: string | null }>>(),
+    supabase
+      .from("cronograma_user_tipo_default")
+      .select("user_id, default_tipo")
+      .eq("tenant_id", tenantId)
+      .returns<Array<{ user_id: string; default_tipo: string }>>(),
+  ]);
+
+  const defaultMap = new Map((defaultsResult.data ?? []).map((item) => [item.user_id, item.default_tipo]));
+
+  return (usersResult.data ?? []).map((user) => ({
+    userId: user.id,
+    userName: normalizeText(user.display) || normalizeText(user.login_name) || "Nao identificado",
+    defaultTipo: defaultMap.get(user.id) ?? null,
+  }));
+}
+
+export async function upsertUserDefaultTipo(
+  supabase: SupabaseClient,
+  params: { tenantId: string; userId: string; tipo: string; actorUserId: string },
+): Promise<void> {
+  await supabase
+    .from("cronograma_user_tipo_default")
+    .upsert(
+      {
+        tenant_id: params.tenantId,
+        user_id: params.userId,
+        default_tipo: params.tipo,
+        updated_by: params.actorUserId,
+        created_by: params.actorUserId,
+      },
+      { onConflict: "tenant_id,user_id" },
+    );
+}
+
+export async function deleteUserDefaultTipo(
+  supabase: SupabaseClient,
+  tenantId: string,
+  userId: string,
+): Promise<void> {
+  await supabase
+    .from("cronograma_user_tipo_default")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId);
 }
 
 export async function insertHistory(

@@ -49,6 +49,7 @@ export type SolicitacaoItem = {
   motivoCancelamento: string | null;
   estadoProgramacaoSnapshot: string | null;
   estadoProgramacaoAtual: string;
+  prazoObra: string | null;
   programacaoId: string | null;
   createdByName: string;
   updatedByName: string;
@@ -102,5 +103,6 @@ export type ProjectLookupRow = {
   street: string | null;
   neighborhood: string | null;
   priority_text: string | null;
+  execution_deadline: string | null;
   is_active: boolean;
 };

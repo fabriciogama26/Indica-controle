@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { isAdminRole } from "@/lib/auth/authorization";
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
@@ -12,7 +13,9 @@ import {
   fetchEstadoProgramacao,
   fetchList,
   fetchMeta,
+  fetchTipoDefaults,
   saveSolicitacao,
+  setTipoDefault,
   verifySolicitacao,
 } from "./api";
 import {
@@ -30,6 +33,7 @@ import type {
   ProjetoOption,
   SolicitacaoItem,
   SolicitacaoSummary,
+  TipoDefaultUser,
   TipoSolicitacao,
 } from "./types";
 
@@ -89,6 +93,7 @@ function statusClass(status: string): string {
 export function CronogramaSolicitacoesPageView() {
   const { session } = useAuth();
   const token = session?.accessToken ?? "";
+  const isAdmin = isAdminRole(session?.user.role);
 
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [items, setItems] = useState<SolicitacaoItem[]>([]);
@@ -106,6 +111,10 @@ export function CronogramaSolicitacoesPageView() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [estadoInfo, setEstadoInfo] = useState<{ allowed: boolean; message: string | null; estado: string } | null>(null);
+
+  const [defaultsOpen, setDefaultsOpen] = useState(false);
+  const [defaultUsers, setDefaultUsers] = useState<TipoDefaultUser[]>([]);
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
 
   const asbuiltSet = useMemo(() => new Set(meta?.asbuiltProjetoIds ?? []), [meta]);
   const projectMap = useMemo(() => {
@@ -192,10 +201,43 @@ export function CronogramaSolicitacoesPageView() {
   );
 
   const openCreate = () => {
-    setForm(emptyForm());
+    const base = emptyForm();
+    const dflt = meta?.defaultTipo;
+    if (dflt === "INSPECAO" || dflt === "AS_BUILT" || dflt === "LOCACAO") {
+      base.tipo = dflt;
+    }
+    setForm(base);
     setEstadoInfo(null);
     setFormError(null);
     setFormOpen(true);
+  };
+
+  const openDefaults = async () => {
+    if (!token) return;
+    setDefaultsOpen(true);
+    setDefaultsLoading(true);
+    try {
+      const data = await fetchTipoDefaults(token);
+      setDefaultUsers(data.users);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar tipos padrao por usuario.");
+      setDefaultsOpen(false);
+    } finally {
+      setDefaultsLoading(false);
+    }
+  };
+
+  const changeDefault = async (userId: string, tipo: string) => {
+    if (!token) return;
+    try {
+      const res = await setTipoDefault(token, userId, tipo);
+      setDefaultUsers((prev) => prev.map((u) => (u.userId === userId ? { ...u, defaultTipo: res.defaultTipo } : u)));
+      if (userId === session?.user.userId) {
+        setMeta((prev) => (prev ? { ...prev, defaultTipo: res.defaultTipo } : prev));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao salvar tipo padrao.");
+    }
   };
 
   const openEdit = (item: SolicitacaoItem) => {
@@ -334,6 +376,7 @@ export function CronogramaSolicitacoesPageView() {
       "Solicitante",
       "Municipio",
       "Estado da Programacao",
+      "Prazo da Obra",
       "Status",
       "Ultima Atualizacao",
     ];
@@ -349,6 +392,7 @@ export function CronogramaSolicitacoesPageView() {
       item.solicitanteNome,
       item.projetoMunicipio,
       item.estadoProgramacaoAtual,
+      item.prazoObra ? formatDate(item.prazoObra) : "",
       STATUS_LABEL[item.statusEfetivo],
       formatDateTime(item.updatedAt),
     ]);
@@ -373,6 +417,11 @@ export function CronogramaSolicitacoesPageView() {
           <p className={styles.subtitle}>Inspecao, As Built e Locacao com controle de prazo (SLA).</p>
         </div>
         <div className={styles.headerActions}>
+          {isAdmin && (
+            <button type="button" className={styles.secondaryButton} onClick={openDefaults}>
+              Tipo padrao por usuario
+            </button>
+          )}
           <button type="button" className={styles.secondaryButton} onClick={exportCsv} disabled={!items.length}>
             Exportar Excel (CSV)
           </button>
@@ -452,6 +501,7 @@ export function CronogramaSolicitacoesPageView() {
               <th>Dias</th>
               <th>Responsavel</th>
               <th>Ultimo Estado Prog.</th>
+              <th>Prazo da Obra</th>
               <th>Status</th>
               <th>Atualizado</th>
               <th>Acoes</th>
@@ -459,10 +509,10 @@ export function CronogramaSolicitacoesPageView() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={11} className={styles.emptyCell}>Carregando...</td></tr>
+              <tr><td colSpan={12} className={styles.emptyCell}>Carregando...</td></tr>
             )}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={11} className={styles.emptyCell}>Nenhuma solicitacao encontrada.</td></tr>
+              <tr><td colSpan={12} className={styles.emptyCell}>Nenhuma solicitacao encontrada.</td></tr>
             )}
             {!loading && items.map((item) => (
               <tr key={item.id}>
@@ -487,6 +537,7 @@ export function CronogramaSolicitacoesPageView() {
                     ? <span className={styles.muted}>A PROGRAMAR</span>
                     : item.estadoProgramacaoAtual}
                 </td>
+                <td>{item.prazoObra ? formatDate(item.prazoObra) : "-"}</td>
                 <td><span className={`${styles.badge} ${statusClass(item.statusEfetivo)}`}>{STATUS_LABEL[item.statusEfetivo]}</span></td>
                 <td>
                   {formatDateTime(item.updatedAt)}
@@ -685,6 +736,7 @@ export function CronogramaSolicitacoesPageView() {
                 <div><dt>Prioridade</dt><dd>{PRIORIDADE_LABEL[detailsItem.prioridade]}</dd></div>
                 <div><dt>Status</dt><dd>{STATUS_LABEL[detailsItem.statusEfetivo]}</dd></div>
                 <div><dt>Estado da Programacao</dt><dd>{detailsItem.estadoProgramacaoAtual}</dd></div>
+                <div><dt>Prazo da Obra</dt><dd>{detailsItem.prazoObra ? formatDate(detailsItem.prazoObra) : "-"}</dd></div>
                 <div><dt>Data de Entrada</dt><dd>{formatDate(detailsItem.dataEntrada)}</dd></div>
                 <div><dt>Data Limite</dt><dd>{formatDate(detailsItem.dataLimite)}</dd></div>
                 <div><dt>Data de Conclusao</dt><dd>{detailsItem.dataConclusao ? formatDate(detailsItem.dataConclusao) : "-"}</dd></div>
@@ -716,6 +768,48 @@ export function CronogramaSolicitacoesPageView() {
             </div>
             <div className={styles.modalFooter}>
               <button type="button" className={styles.secondaryButton} onClick={() => setDetailsItem(null)}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {defaultsOpen && (
+        <div className={styles.modalBackdrop} onClick={() => setDefaultsOpen(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 className={styles.modalTitle}>Tipo padrao por usuario</h2>
+                <p className={styles.modalSubtitle}>Define o tipo ja selecionado ao abrir Nova Solicitacao. O usuario ainda pode trocar.</p>
+              </div>
+              <button type="button" className={styles.modalClose} onClick={() => setDefaultsOpen(false)} aria-label="Fechar">
+                &times;
+              </button>
+            </div>
+            <div className={styles.modalBody}>
+              {defaultsLoading && <div className={styles.muted}>Carregando...</div>}
+              {!defaultsLoading && defaultUsers.length === 0 && <div className={styles.muted}>Nenhum usuario.</div>}
+              {!defaultsLoading && defaultUsers.length > 0 && (
+                <div className={styles.defaultsList}>
+                  {defaultUsers.map((u) => (
+                    <div key={u.userId} className={styles.defaultsRow}>
+                      <span>{u.userName}</span>
+                      <select
+                        className={styles.select}
+                        value={u.defaultTipo ?? ""}
+                        onChange={(e) => changeDefault(u.userId, e.target.value)}
+                      >
+                        <option value="">(Nenhum)</option>
+                        <option value="INSPECAO">Fiscalizacao</option>
+                        <option value="AS_BUILT">As Built</option>
+                        <option value="LOCACAO">Locacao</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className={styles.modalFooter}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setDefaultsOpen(false)}>Fechar</button>
             </div>
           </div>
         </div>
