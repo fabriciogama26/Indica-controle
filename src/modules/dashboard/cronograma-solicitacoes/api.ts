@@ -102,11 +102,12 @@ export async function verifySolicitacao(
   token: string,
   id: string,
   expectedUpdatedAt: string | null,
+  dataConclusao: string | null,
 ): Promise<{ item: SolicitacaoItem }> {
   const response = await fetch(CRONOGRAMA_VERIFY_ENDPOINT, {
     method: "POST",
     headers: authHeaders(token, true),
-    body: JSON.stringify({ id, expectedUpdatedAt }),
+    body: JSON.stringify({ id, expectedUpdatedAt, dataConclusao }),
   });
   return parseJson<{ item: SolicitacaoItem }>(response, "Falha ao verificar solicitacao.");
 }

@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = (await request.json().catch(() => null)) as
-    | { id?: string; expectedUpdatedAt?: string | null }
+    | { id?: string; expectedUpdatedAt?: string | null; dataConclusao?: string | null }
     | null;
   if (!payload || !payload.id) {
     return NextResponse.json({ message: "Corpo da requisicao invalido." }, { status: 400 });
@@ -22,5 +22,6 @@ export async function POST(request: NextRequest) {
   return verifySolicitacao(resolution, {
     id: payload.id,
     expectedUpdatedAt: payload.expectedUpdatedAt ?? null,
+    dataConclusao: payload.dataConclusao ?? null,
   });
 }
