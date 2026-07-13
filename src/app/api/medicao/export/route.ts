@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { buildCsvContent } from "@/lib/utils/csv";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
@@ -110,6 +110,15 @@ function formatDecimal(value: number, digits = 2) {
   return Number(value ?? 0).toLocaleString("pt-BR", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
+  });
+}
+
+function formatMoneyCsvValue(value: number, digits = 2) {
+  const numericValue = Number(value ?? 0);
+  return (Number.isFinite(numericValue) ? numericValue : 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
   });
 }
 
@@ -255,7 +264,7 @@ function buildSummaryCsv(orders: OrderItem[], labelMap: Map<string, string>) {
       "Programacao",
       "Status execucao",
       "Itens",
-      "Valor total",
+      "Valor total (R$)",
       "Status",
       "Atualizado em",
     ],
@@ -272,7 +281,7 @@ function buildSummaryCsv(orders: OrderItem[], labelMap: Map<string, string>) {
       programmingMatchLabel(order.programmingMatchStatus),
       executionStatusLabel(order, labelMap),
       String(order.itemCount),
-      formatCurrency(Number(order.totalAmount ?? 0)),
+      formatMoneyCsvValue(Number(order.totalAmount ?? 0)),
       order.status,
       formatDateTime(order.updatedAt),
     ]),
@@ -332,8 +341,8 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
         item.workedHours ? item.workedHours.toLocaleString("pt-BR") : "-",
         item.quantity ? item.quantity.toLocaleString("pt-BR") : "0",
         itemRate.toLocaleString("pt-BR"),
-        formatCurrency(item.unitValue),
-        formatCurrency(totalItem),
+        formatMoneyCsvValue(item.unitValue),
+        formatMoneyCsvValue(totalItem),
         observation,
         formatDateTime(detail.updatedAt),
       ];
@@ -361,8 +370,8 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
       "Horas",
       "Quantidade",
       "Taxa manual",
-      "Valor unitario",
-      "Total item",
+      "Valor unitario (R$)",
+      "Total item (R$)",
       "Observacao",
       "Atualizado em",
     ],
@@ -372,7 +381,7 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
 
 function buildScoreCsv(orders: OrderItem[]) {
   return buildCsvContent(
-    ["Tipo", "Nome", "Data", "Projeto", "Pontos", "Valor", "Status", "Compensatorio"],
+    ["Tipo", "Nome", "Data", "Projeto", "Pontos", "Valor (R$)", "Status", "Compensatorio"],
     orders.map((order) => {
       const points = Number(order.scorePoints ?? 0);
       const pointTarget = Number(order.pointTarget ?? 0);
@@ -386,7 +395,7 @@ function buildScoreCsv(orders: OrderItem[]) {
         formatDate(order.executionDate),
         order.projectCode,
         formatDecimal(points),
-        formatCurrency(totalAmount),
+        formatMoneyCsvValue(totalAmount),
         scoreStatus,
         compensatory,
       ];
