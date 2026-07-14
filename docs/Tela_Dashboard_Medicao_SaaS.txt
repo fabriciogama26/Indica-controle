@@ -96,6 +96,7 @@ Filtros, auto-complete e listagem
 - O bloco anual exibe cards de `Meta acumulada`, `Previsao acumulada`, `Medicao acumulada` e `Atingimento`; a legenda do grafico fica abaixo do card `Meta acumulada`.
 - O modal ampliado de `Evolucao anual por ciclo` tambem exibe os cards acumulados, a legenda, o grafico e a tabela de detalhamento.
 - A tabela `Detalhamento dos ciclos` exibe inicialmente Ciclo, Meta, Previsao, Medicao, `% Medicao`, Diferenca da meta, Equipes/Ciclo, Projetos e Status, com numeros alinhados a direita, primeira coluna e cabecalho fixos, diferencas coloridas e status em badge.
+- A coluna `Equipes/Ciclo` usa a soma de `Equipes medida` cadastradas na Meta do ciclo, nao a quantidade de equipes que tiveram medicao lancada.
 - Ciclos totalmente zerados nao aparecem no grafico nem na tabela anual.
 - Se o ciclo nao possuir meta cadastrada na tela Meta, a tabela anual mostra `Sem meta` e usa meta zero para calculo visual.
 - O grafico anual respeita os filtros gerais de Projeto e Status execucao, mantendo todas as leituras filtradas por tenant.
