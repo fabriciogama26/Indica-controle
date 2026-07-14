@@ -53,6 +53,24 @@ type CycleComparison = {
   percentage: number;
 };
 
+type AnnualCycleComparison = {
+  cycleStart: string;
+  cycleEnd: string;
+  label: string;
+  measuredValue: number;
+  forecastValue: number;
+  metaValue: number;
+  measuredPercentage: number;
+  forecastPercentage: number;
+  measuredDifference: number;
+  forecastDifference: number;
+  executedWorkdays: number;
+  workdays: number;
+  orderCount: number;
+  projectCount: number;
+  hasMeta: boolean;
+};
+
 type PeriodSummary = {
   realizedValue: number;
   orderCount: number;
@@ -91,9 +109,11 @@ type DashboardResponse = {
   periodCompletionChart?: CompletionChartItem[];
   periodSummary?: PeriodSummary | null;
   cycleComparison?: CycleComparison | null;
+  annualYear?: number;
+  annualCycleComparison?: AnnualCycleComparison[];
 };
 
-type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | null;
+type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | "annual" | null;
 type MetaMode = "cycle" | "standard" | "worked";
 
 type ProjectDetailModal = {
@@ -139,9 +159,36 @@ function formatCurrency(value: number, compact = false) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function formatCompactCurrency(value: number) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const sign = safeValue < 0 ? "- " : "";
+  const absoluteValue = Math.abs(safeValue);
+  const numberFormat = new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: absoluteValue >= 1_000_000 ? 2 : 1,
+  });
+
+  if (absoluteValue >= 1_000_000) {
+    return `${sign}R$ ${numberFormat.format(absoluteValue / 1_000_000)} mi`;
+  }
+
+  if (absoluteValue >= 1_000) {
+    return `${sign}R$ ${numberFormat.format(absoluteValue / 1_000)} mil`;
+  }
+
+  return `${sign}${formatCurrency(absoluteValue)}`;
+}
+
 function formatPercent(value: number) {
   return `${(Number.isFinite(value) ? value : 0).toLocaleString("pt-BR", {
     minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+function formatPercentOneDecimal(value: number) {
+  return `${(Number.isFinite(value) ? value : 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })}%`;
 }
@@ -170,12 +217,24 @@ function formatDatePtBr(value: string | null | undefined) {
   return `${day}/${month}/${year}`;
 }
 
+function formatCycleAxisLabel(value: string) {
+  const [year, month] = value.split("-");
+  const monthIndex = Number(month) - 1;
+  const monthLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  if (!year || monthIndex < 0 || monthIndex > 11) return value;
+  return `${monthLabels[monthIndex]}/${year.slice(2)}`;
+}
+
 function getCurrentYearPeriod() {
   const year = new Date().getFullYear();
   return {
     start: `${year}-01-01`,
     end: `${year}-12-31`,
   };
+}
+
+function getCurrentYear() {
+  return new Date().getFullYear();
 }
 
 function resolveCycleMetaValue(cycle: CycleComparison, mode: MetaMode) {
@@ -218,15 +277,19 @@ export function DashboardMeasurementPageView() {
   const [selectedCycleStart, setSelectedCycleStart] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
   const [completionStatus, setCompletionStatus] = useState("TODOS");
+  const [annualYear, setAnnualYear] = useState(() => getCurrentYear());
   const [cycleDraft, setCycleDraft] = useState("");
   const [projectSearchDraft, setProjectSearchDraft] = useState("");
   const [completionStatusDraft, setCompletionStatusDraft] = useState("TODOS");
+  const [annualYearDraft, setAnnualYearDraft] = useState(() => getCurrentYear());
   const [cycleMetaMode, setCycleMetaMode] = useState<MetaMode>("cycle");
   const [expandedChart, setExpandedChart] = useState<ExpandedChart>(null);
   const [cycleCompletionChart, setCycleCompletionChart] = useState<CompletionChartItem[]>([]);
   const [periodCompletionChart, setPeriodCompletionChart] = useState<CompletionChartItem[]>([]);
   const [periodSummary, setPeriodSummary] = useState<PeriodSummary | null>(null);
   const [cycleComparison, setCycleComparison] = useState<CycleComparison | null>(null);
+  const [annualCycleComparison, setAnnualCycleComparison] = useState<AnnualCycleComparison[]>([]);
+  const [annualTooltipIndex, setAnnualTooltipIndex] = useState<number | null>(null);
   const [projectDetailModal, setProjectDetailModal] = useState<ProjectDetailModal>(null);
   const [isExportingProjectDetails, setIsExportingProjectDetails] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -240,6 +303,7 @@ export function DashboardMeasurementPageView() {
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
     if (selectedCycleStart) params.set("cycleStart", selectedCycleStart);
+    params.set("year", String(annualYear));
     if (projectSearch.trim()) params.set("project", projectSearch.trim());
     if (completionStatus !== "TODOS") params.set("completionStatus", completionStatus);
 
@@ -268,6 +332,11 @@ export function DashboardMeasurementPageView() {
       setPeriodCompletionChart(data.periodCompletionChart ?? data.completionChart ?? []);
       setPeriodSummary(data.periodSummary ?? null);
       setCycleComparison(data.cycleComparison ?? null);
+      setAnnualCycleComparison(data.annualCycleComparison ?? []);
+      if (data.annualYear) {
+        setAnnualYear(data.annualYear);
+        setAnnualYearDraft(data.annualYear);
+      }
       const nextStartDate = data.startDate || "";
       const nextEndDate = data.endDate || "";
       const nextSelectedCycleStart = data.selectedCycleStart || "";
@@ -288,7 +357,7 @@ export function DashboardMeasurementPageView() {
     } finally {
       setIsLoading(false);
     }
-  }, [completionStatus, endDate, logError, projectSearch, selectedCycleStart, session?.accessToken, startDate]);
+  }, [annualYear, completionStatus, endDate, logError, projectSearch, selectedCycleStart, session?.accessToken, startDate]);
 
   useEffect(() => {
     if (suppressNextAutoLoadRef.current) {
@@ -302,6 +371,10 @@ export function DashboardMeasurementPageView() {
     setCycleDraft(selectedCycleStart);
   }, [selectedCycleStart]);
 
+  useEffect(() => {
+    setAnnualYearDraft(annualYear);
+  }, [annualYear]);
+
   const cycleMax = useMemo(
     () => maxValue([
       cycleComparison?.value ?? 0,
@@ -310,6 +383,27 @@ export function DashboardMeasurementPageView() {
     ]),
     [cycleComparison, cycleMetaMode],
   );
+  const visibleAnnualCycleComparison = useMemo(
+    () => annualCycleComparison.filter((item) => (
+      item.metaValue > 0
+      || item.forecastValue > 0
+      || item.measuredValue > 0
+      || item.orderCount > 0
+      || item.projectCount > 0
+    )),
+    [annualCycleComparison],
+  );
+  const annualTotals = useMemo(() => {
+    const metaValue = visibleAnnualCycleComparison.reduce((sum, item) => sum + item.metaValue, 0);
+    const forecastValue = visibleAnnualCycleComparison.reduce((sum, item) => sum + item.forecastValue, 0);
+    const measuredValue = visibleAnnualCycleComparison.reduce((sum, item) => sum + item.measuredValue, 0);
+    return {
+      metaValue,
+      forecastValue,
+      measuredValue,
+      attainment: metaValue > 0 ? (measuredValue / metaValue) * 100 : 0,
+    };
+  }, [visibleAnnualCycleComparison]);
   const selectedCycleLabel = cycleComparison?.label ?? "Ciclo selecionado";
 
   function openChart(chart: Exclude<ExpandedChart, null>) {
@@ -332,6 +426,15 @@ export function DashboardMeasurementPageView() {
     setProjectSearch(nextProjectSearch);
     setProjectSearchDraft(nextProjectSearch);
     setCompletionStatus(completionStatusDraft);
+  }
+
+  function applyAnnualYearFilter() {
+    if (annualYear === annualYearDraft) {
+      void loadDashboard();
+      return;
+    }
+
+    setAnnualYear(annualYearDraft);
   }
 
   function applyPeriodFilter() {
@@ -500,12 +603,204 @@ export function DashboardMeasurementPageView() {
     );
   }
 
+  function renderAnnualCycleChart(isExpanded = false) {
+    const chartData = visibleAnnualCycleComparison;
+    if (!chartData.length) {
+      return <div className={styles.emptyChart}>Nenhum ciclo encontrado para o ano selecionado.</div>;
+    }
+
+    const annualMax = maxValue(chartData.flatMap((item) => [
+      item.measuredValue,
+      item.forecastValue,
+      item.metaValue,
+    ]));
+    const chartWidth = Math.max(760, chartData.length * 102);
+    const chartHeight = isExpanded ? 500 : 330;
+    const margin = { top: 34, right: 34, bottom: 54, left: 48 };
+    const plotWidth = chartWidth - margin.left - margin.right;
+    const plotHeight = chartHeight - margin.top - margin.bottom;
+    const step = chartData.length > 1 ? plotWidth / (chartData.length - 1) : plotWidth;
+    const barWidth = 30;
+    const maxMeasuredValue = Math.max(...chartData.map((item) => item.measuredValue));
+    const hoveredItem = annualTooltipIndex !== null ? chartData[annualTooltipIndex] : null;
+    const xAt = (index: number) => (chartData.length > 1 ? margin.left + (step * index) : margin.left + (plotWidth / 2));
+    const yAt = (value: number) => margin.top + plotHeight - ((Number(value) || 0) / annualMax) * plotHeight;
+    const linePath = (key: "metaValue" | "forecastValue") => chartData
+      .map((item, index) => `${index === 0 ? "M" : "L"} ${xAt(index)} ${yAt(item[key])}`)
+      .join(" ");
+    const tooltipLeft = hoveredItem && annualTooltipIndex !== null
+      ? Math.min(Math.max(xAt(annualTooltipIndex), 120), chartWidth - 120)
+      : 0;
+
+    return (
+      <div className={styles.annualChartScroller}>
+        <div
+          className={`${styles.annualChart} ${isExpanded ? styles.annualChartExpanded : ""}`}
+          style={{ width: chartWidth }}
+          onMouseLeave={() => setAnnualTooltipIndex(null)}
+        >
+          {hoveredItem ? (
+            <div
+              className={styles.annualTooltip}
+              style={{ left: tooltipLeft, top: 8 }}
+            >
+              <strong>Ciclo {formatDatePtBr(hoveredItem.cycleStart)} a {formatDatePtBr(hoveredItem.cycleEnd)}</strong>
+              <span>Meta: {formatCompactCurrency(hoveredItem.metaValue)}</span>
+              <span>Previsao: {formatCompactCurrency(hoveredItem.forecastValue)}</span>
+              <span>Medicao: {formatCompactCurrency(hoveredItem.measuredValue)}</span>
+              <span>Atingimento: {formatPercentOneDecimal(hoveredItem.measuredPercentage)}</span>
+            </div>
+          ) : null}
+          <svg
+            className={styles.annualSvg}
+            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+            role="img"
+            aria-label="Grafico anual combinado de Meta ciclo, Previsao e Medicao"
+          >
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+              const y = margin.top + plotHeight - (plotHeight * ratio);
+              return (
+                <line
+                  key={ratio}
+                  x1={margin.left}
+                  x2={chartWidth - margin.right}
+                  y1={y}
+                  y2={y}
+                  className={styles.annualGridLine}
+                />
+              );
+            })}
+            {chartData.map((item, index) => {
+              const barHeight = item.measuredValue > 0 ? Math.max(4, margin.top + plotHeight - yAt(item.measuredValue)) : 0;
+              const showMeasurementLabel = item.measuredValue > 0 && item.measuredValue === maxMeasuredValue;
+              return (
+                <g key={item.cycleStart}>
+                  <rect
+                    x={xAt(index) - (barWidth / 2)}
+                    y={margin.top + plotHeight - barHeight}
+                    width={barWidth}
+                    height={barHeight}
+                    rx="4"
+                    className={styles.annualMeasurementBar}
+                  />
+                  {showMeasurementLabel ? (
+                    <text
+                      x={xAt(index)}
+                      y={Math.max(14, margin.top + plotHeight - barHeight - 8)}
+                      className={styles.annualMeasurementLabel}
+                      textAnchor="middle"
+                    >
+                      {formatCompactCurrency(item.measuredValue)}
+                    </text>
+                  ) : null}
+                  <text
+                    x={xAt(index)}
+                    y={chartHeight - 18}
+                    className={styles.annualAxisLabel}
+                    textAnchor="middle"
+                  >
+                    {formatCycleAxisLabel(item.cycleEnd)}
+                  </text>
+                </g>
+              );
+            })}
+            <path d={linePath("metaValue")} className={styles.annualMetaLine} />
+            <path d={linePath("forecastValue")} className={styles.annualForecastLine} />
+            {chartData.map((item, index) => (
+              <g key={`${item.cycleStart}-points`}>
+                {item.metaValue > 0 ? <circle cx={xAt(index)} cy={yAt(item.metaValue)} r="4" className={styles.annualMetaPoint} /> : null}
+                {item.forecastValue > 0 ? <circle cx={xAt(index)} cy={yAt(item.forecastValue)} r="4" className={styles.annualForecastPoint} /> : null}
+              </g>
+            ))}
+            <line
+              x1={margin.left}
+              x2={chartWidth - margin.right}
+              y1={margin.top + plotHeight}
+              y2={margin.top + plotHeight}
+              className={styles.annualAxisLine}
+            />
+            {chartData.map((item, index) => {
+              const overlayWidth = chartData.length > 1 ? step : plotWidth;
+              return (
+                <rect
+                  key={`${item.cycleStart}-hover`}
+                  x={xAt(index) - (overlayWidth / 2)}
+                  y={margin.top}
+                  width={overlayWidth}
+                  height={plotHeight + 34}
+                  className={styles.annualHoverArea}
+                  onMouseEnter={() => setAnnualTooltipIndex(index)}
+                  onFocus={() => setAnnualTooltipIndex(index)}
+                />
+              );
+            })}
+          </svg>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAnnualCycleTable() {
+    return (
+      <div className={`${styles.tableWrapper} ${styles.annualTableWrapper}`}>
+        <table className={`${styles.table} ${styles.annualTable}`}>
+          <thead>
+            <tr>
+              <th>Ciclo</th>
+              <th>Meta</th>
+              <th>Previsao</th>
+              <th>Medicao</th>
+              <th>% Medicao</th>
+              <th>Diferenca da meta</th>
+              <th>Projetos</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleAnnualCycleComparison.length ? (
+              visibleAnnualCycleComparison.map((item) => {
+                const measuredDifferenceClass = item.measuredDifference < 0
+                  ? styles.differenceNegative
+                  : item.measuredDifference > 0
+                    ? styles.differencePositive
+                    : undefined;
+
+                return (
+                  <tr key={item.cycleStart}>
+                    <td>{item.label}</td>
+                    <td className={styles.numericCell}>{formatCompactCurrency(item.metaValue)}</td>
+                    <td className={styles.numericCell}>{formatCompactCurrency(item.forecastValue)}</td>
+                    <td className={styles.numericCell}>{formatCompactCurrency(item.measuredValue)}</td>
+                    <td className={styles.numericCell}>{formatPercentOneDecimal(item.measuredPercentage)}</td>
+                    <td className={`${styles.numericCell} ${measuredDifferenceClass ?? ""}`}>{formatCompactCurrency(item.measuredDifference)}</td>
+                    <td className={styles.numericCell}>{item.projectCount}</td>
+                    <td>
+                      <span className={item.hasMeta ? styles.statusBadgeSuccess : styles.statusBadgeWarning}>
+                        {item.hasMeta ? "Cadastrada" : "Sem meta"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={8} className={styles.emptyRow}>Nenhum ciclo encontrado para o ano selecionado.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   const expandedTitle = expandedChart === "completionCycle"
     ? "Concluidos X parciais no ciclo"
     : expandedChart === "completionPeriod"
       ? "Visao geral por periodo"
     : expandedChart === "cycle"
       ? "Ciclo da medicao"
+    : expandedChart === "annual"
+      ? "Evolucao anual por ciclo"
       : "";
 
   return (
@@ -573,6 +868,7 @@ export function DashboardMeasurementPageView() {
                 <option value="PENDENCIA">Pendencias</option>
               </select>
             </label>
+
         </div>
       </article>
 
@@ -763,6 +1059,63 @@ export function DashboardMeasurementPageView() {
         </div>
 
         {renderCycleChart()}
+      </article>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Evolucao anual por ciclo</h2>
+            <p className={styles.cardSubtitle}>Comparativo de Meta ciclo, Previsao e Medicao em todos os ciclos do ano selecionado.</p>
+          </div>
+          <div className={styles.chartActions}>
+            <label className={styles.inlineDate}>
+              <span>Ano</span>
+              <input
+                type="number"
+                min="2000"
+                max="2100"
+                step="1"
+                value={annualYearDraft}
+                onChange={(event) => setAnnualYearDraft(Number(event.target.value) || getCurrentYear())}
+                disabled={isLoading}
+              />
+            </label>
+            <button type="button" className={styles.secondaryButton} onClick={applyAnnualYearFilter} disabled={isLoading}>
+              Filtrar ano
+            </button>
+            <div className={styles.panelLegend}>
+              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineOrangeDashed}`} />Meta ciclo</span>
+              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineGreen}`} />Previsao</span>
+              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendBlue}`} />Medicao</span>
+            </div>
+            {renderExpandButton("annual", "Evolucao anual por ciclo")}
+          </div>
+        </div>
+
+        <div className={styles.annualMetricGrid}>
+          <div className={styles.metric}>
+            <span>Meta acumulada</span>
+            <strong>{formatCompactCurrency(annualTotals.metaValue)}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Previsao acumulada</span>
+            <strong>{formatCompactCurrency(annualTotals.forecastValue)}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Medicao acumulada</span>
+            <strong>{formatCompactCurrency(annualTotals.measuredValue)}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Atingimento</span>
+            <strong>{formatPercentOneDecimal(annualTotals.attainment)}</strong>
+          </div>
+        </div>
+
+        {renderAnnualCycleChart()}
+        <div className={styles.sectionHeader}>
+          <h3>Detalhamento dos ciclos</h3>
+        </div>
+        {renderAnnualCycleTable()}
       </article>
 
       {/*
@@ -1103,6 +1456,12 @@ export function DashboardMeasurementPageView() {
                 </>
               ) : null}
               {expandedChart === "cycle" ? renderCycleChart(true) : null}
+              {expandedChart === "annual" ? (
+                <>
+                  {renderAnnualCycleChart(true)}
+                  {renderAnnualCycleTable()}
+                </>
+              ) : null}
               {/*
               As expansoes de encarregado e supervisor pertencem ao Dashboard Equipes.
               {expandedChart === "foremanRanking" ? renderForemanRanking(true) : null}
