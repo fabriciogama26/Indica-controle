@@ -1,5 +1,7 @@
 # Padrão de Performance — Backend
 
+> **As regras canônicas vivem em [`guias/guia_backend.md`](../../guias/guia_backend.md).** Este arquivo é mantido como referência complementar — contém os exemplos de código completos e o histórico de aplicação por tela que o guia resume. Em caso de divergência entre este arquivo e `guias/guia_backend.md`, o guia prevalece; atualize este arquivo na mesma tarefa que atualizar a regra.
+
 Referência detalhada do `CLAUDE.md`/`AGENTS.md` (seção "Padrão de Performance — Backend"). Toda tela ou endpoint novo que liste, pagine ou agregue dados deve seguir os padrões abaixo. Os padrões foram extraídos das correções aplicadas em Medição, Medição As Built e Programação (2026-06).
 
 ---
