@@ -94,7 +94,7 @@ Filtros, auto-complete e listagem
 - O eixo horizontal do grafico anual usa abreviacao `Jan/26`, `Fev/26`, etc.; o ciclo completo fica disponivel no tooltip.
 - Os valores do grafico anual aparecem no tooltip ao passar o mouse; as barras de Medicao com valor positivo exibem rotulo fixo e valores zero nao geram rotulos visuais.
 - O bloco anual exibe cards de `Meta acumulada`, `Previsao acumulada`, `Medicao acumulada` e `Atingimento`.
-- A tabela `Detalhamento dos ciclos` exibe inicialmente Ciclo, Meta, Previsao, Medicao, `% Medicao`, Diferenca da meta, Projetos e Status, com numeros alinhados a direita, primeira coluna e cabecalho fixos, diferencas coloridas e status em badge.
+- A tabela `Detalhamento dos ciclos` exibe inicialmente Ciclo, Meta, Previsao, Medicao, `% Medicao`, Diferenca da meta, Equipes/Ciclo, Projetos e Status, com numeros alinhados a direita, primeira coluna e cabecalho fixos, diferencas coloridas e status em badge.
 - Ciclos totalmente zerados nao aparecem no grafico nem na tabela anual.
 - Se o ciclo nao possuir meta cadastrada na tela Meta, a tabela anual mostra `Sem meta` e usa meta zero para calculo visual.
 - O grafico anual respeita os filtros gerais de Projeto e Status execucao, mantendo todas as leituras filtradas por tenant.

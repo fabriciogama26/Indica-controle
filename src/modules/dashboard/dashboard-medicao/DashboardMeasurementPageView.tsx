@@ -68,6 +68,7 @@ type AnnualCycleComparison = {
   workdays: number;
   orderCount: number;
   projectCount: number;
+  teamCount: number;
   hasMeta: boolean;
 };
 
@@ -751,6 +752,7 @@ export function DashboardMeasurementPageView() {
               <th>Medicao</th>
               <th>% Medicao</th>
               <th>Diferenca da meta</th>
+              <th>Equipes/Ciclo</th>
               <th>Projetos</th>
               <th>Status</th>
             </tr>
@@ -772,6 +774,7 @@ export function DashboardMeasurementPageView() {
                     <td className={styles.numericCell}>{formatCompactCurrency(item.measuredValue)}</td>
                     <td className={styles.numericCell}>{formatPercentOneDecimal(item.measuredPercentage)}</td>
                     <td className={`${styles.numericCell} ${measuredDifferenceClass ?? ""}`}>{formatCompactCurrency(item.measuredDifference)}</td>
+                    <td className={styles.numericCell}>{item.teamCount}</td>
                     <td className={styles.numericCell}>{item.projectCount}</td>
                     <td>
                       <span className={item.hasMeta ? styles.statusBadgeSuccess : styles.statusBadgeWarning}>
@@ -783,7 +786,7 @@ export function DashboardMeasurementPageView() {
               })
             ) : (
               <tr>
-                <td colSpan={8} className={styles.emptyRow}>Nenhum ciclo encontrado para o ano selecionado.</td>
+                <td colSpan={9} className={styles.emptyRow}>Nenhum ciclo encontrado para o ano selecionado.</td>
               </tr>
             )}
           </tbody>
@@ -1082,11 +1085,6 @@ export function DashboardMeasurementPageView() {
             <button type="button" className={styles.secondaryButton} onClick={applyAnnualYearFilter} disabled={isLoading}>
               Filtrar ano
             </button>
-            <div className={styles.panelLegend}>
-              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineOrangeDashed}`} />Meta ciclo</span>
-              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineGreen}`} />Previsao</span>
-              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendBlue}`} />Medicao</span>
-            </div>
             {renderExpandButton("annual", "Evolucao anual por ciclo")}
           </div>
         </div>
@@ -1095,6 +1093,11 @@ export function DashboardMeasurementPageView() {
           <div className={styles.metric}>
             <span>Meta acumulada</span>
             <strong>{formatCompactCurrency(annualTotals.metaValue)}</strong>
+            <div className={styles.annualMetricLegend}>
+              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineOrangeDashed}`} />Meta ciclo</span>
+              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineGreen}`} />Previsao</span>
+              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendBlue}`} />Medicao</span>
+            </div>
           </div>
           <div className={styles.metric}>
             <span>Previsao acumulada</span>
