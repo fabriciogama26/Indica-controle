@@ -343,6 +343,7 @@ function buildDetailedCsv(compositions: CompositionItem[]) {
   const header = [
     "Data",
     "PROJETOS",
+    "Equipe",
     "Situacao",
     "Setor",
     "Matrícula",
@@ -359,6 +360,7 @@ function buildDetailedCsv(compositions: CompositionItem[]) {
     composition.members.map((member) => [
       formatOperationalDate(composition.compositionDate),
       composition.projectCode,
+      composition.teamName,
       workStatusLabel(composition.workStatus),
       composition.sector,
       member.matriculation ?? "",

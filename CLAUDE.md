@@ -8,6 +8,7 @@ Em caso de conflito, siga esta ordem:
 3. Solicitação do usuário
 4. REGRA_DE_NEGOCIO.md
 5. estrutura_saas_multitenant.md
+6. Estrutura_de_commit.md
 
 O Codex NÃO deve ignorar estas regras.
 
