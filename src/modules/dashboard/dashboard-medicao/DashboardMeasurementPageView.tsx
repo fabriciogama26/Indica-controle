@@ -621,7 +621,6 @@ export function DashboardMeasurementPageView() {
     const plotHeight = chartHeight - margin.top - margin.bottom;
     const step = chartData.length > 1 ? plotWidth / (chartData.length - 1) : plotWidth;
     const barWidth = 30;
-    const maxMeasuredValue = Math.max(...chartData.map((item) => item.measuredValue));
     const hoveredItem = annualTooltipIndex !== null ? chartData[annualTooltipIndex] : null;
     const xAt = (index: number) => (chartData.length > 1 ? margin.left + (step * index) : margin.left + (plotWidth / 2));
     const yAt = (value: number) => margin.top + plotHeight - ((Number(value) || 0) / annualMax) * plotHeight;
@@ -672,7 +671,7 @@ export function DashboardMeasurementPageView() {
             })}
             {chartData.map((item, index) => {
               const barHeight = item.measuredValue > 0 ? Math.max(4, margin.top + plotHeight - yAt(item.measuredValue)) : 0;
-              const showMeasurementLabel = item.measuredValue > 0 && item.measuredValue === maxMeasuredValue;
+              const showMeasurementLabel = item.measuredValue > 0;
               return (
                 <g key={item.cycleStart}>
                   <rect
