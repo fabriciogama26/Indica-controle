@@ -795,6 +795,36 @@ export function DashboardMeasurementPageView() {
     );
   }
 
+  function renderAnnualMetricCards() {
+    return (
+      <div className={styles.annualMetricGrid}>
+        <div className={styles.annualMetricWithLegend}>
+          <div className={`${styles.metric} ${styles.annualMetric}`}>
+            <span>Meta acumulada</span>
+            <strong>{formatCompactCurrency(annualTotals.metaValue)}</strong>
+          </div>
+          <div className={styles.annualMetricLegend}>
+            <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineOrangeDashed}`} />Meta ciclo</span>
+            <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineGreen}`} />Previsao</span>
+            <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendBlue}`} />Medicao</span>
+          </div>
+        </div>
+        <div className={`${styles.metric} ${styles.annualMetric}`}>
+          <span>Previsao acumulada</span>
+          <strong>{formatCompactCurrency(annualTotals.forecastValue)}</strong>
+        </div>
+        <div className={`${styles.metric} ${styles.annualMetric}`}>
+          <span>Medicao acumulada</span>
+          <strong>{formatCompactCurrency(annualTotals.measuredValue)}</strong>
+        </div>
+        <div className={`${styles.metric} ${styles.annualMetric}`}>
+          <span>Atingimento</span>
+          <strong>{formatPercentOneDecimal(annualTotals.attainment)}</strong>
+        </div>
+      </div>
+    );
+  }
+
   const expandedTitle = expandedChart === "completionCycle"
     ? "Concluidos X parciais no ciclo"
     : expandedChart === "completionPeriod"
@@ -1089,29 +1119,7 @@ export function DashboardMeasurementPageView() {
           </div>
         </div>
 
-        <div className={styles.annualMetricGrid}>
-          <div className={styles.metric}>
-            <span>Meta acumulada</span>
-            <strong>{formatCompactCurrency(annualTotals.metaValue)}</strong>
-            <div className={styles.annualMetricLegend}>
-              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineOrangeDashed}`} />Meta ciclo</span>
-              <span className={styles.legendItem}><span className={`${styles.legendLine} ${styles.legendLineGreen}`} />Previsao</span>
-              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendBlue}`} />Medicao</span>
-            </div>
-          </div>
-          <div className={styles.metric}>
-            <span>Previsao acumulada</span>
-            <strong>{formatCompactCurrency(annualTotals.forecastValue)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Medicao acumulada</span>
-            <strong>{formatCompactCurrency(annualTotals.measuredValue)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Atingimento</span>
-            <strong>{formatPercentOneDecimal(annualTotals.attainment)}</strong>
-          </div>
-        </div>
+        {renderAnnualMetricCards()}
 
         {renderAnnualCycleChart()}
         <div className={styles.sectionHeader}>
@@ -1460,7 +1468,11 @@ export function DashboardMeasurementPageView() {
               {expandedChart === "cycle" ? renderCycleChart(true) : null}
               {expandedChart === "annual" ? (
                 <>
+                  {renderAnnualMetricCards()}
                   {renderAnnualCycleChart(true)}
+                  <div className={styles.sectionHeader}>
+                    <h3>Detalhamento dos ciclos</h3>
+                  </div>
                   {renderAnnualCycleTable()}
                 </>
               ) : null}
