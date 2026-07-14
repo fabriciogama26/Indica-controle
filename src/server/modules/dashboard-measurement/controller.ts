@@ -120,6 +120,7 @@ type CycleTargetItemRow = {
   cycle_goal: number | string;
   standard_cycle_goal: number | string | null;
   worked_cycle_goal: number | string | null;
+  measured_team_count?: number | string | null;
 };
 
 type ProgrammingCompletionRow = {
@@ -1132,7 +1133,7 @@ export async function handleDashboardMeasurementGet(
   const annualTargetItemsResult = annualCycleIds.length
     ? await resolution.supabase
         .from("measurement_cycle_target_items")
-        .select("team_type_id, daily_value, daily_goal, cycle_goal, standard_cycle_goal, worked_cycle_goal, cycle_id")
+        .select("team_type_id, daily_value, daily_goal, cycle_goal, standard_cycle_goal, worked_cycle_goal, measured_team_count, cycle_id")
         .eq("tenant_id", tenantId)
         .in("cycle_id", annualCycleIds)
         .returns<(CycleTargetItemRow & { cycle_id: string })[]>()
@@ -1463,6 +1464,7 @@ export async function handleDashboardMeasurementGet(
         const cycleRecord = annualCycleRecordByStart.get(cycle.cycleStart) ?? null;
         const annualTargets = cycleRecord ? annualTargetItemsByCycleId.get(cycleRecord.id) ?? [] : [];
         const metaValue = annualTargets.reduce((sum, item) => sum + Number(item.cycle_goal ?? 0), 0);
+        const measuredTeamCount = annualTargets.reduce((sum, item) => sum + Number(item.measured_team_count ?? 0), 0);
         const cycleWorkdays = Number(cycleRecord?.workdays ?? countBusinessDays(parseIsoDate(cycle.cycleStart), parseIsoDate(cycle.cycleEnd)));
         const forecast = executedWorkdaysInCycle > 0 ? (measuredValue / executedWorkdaysInCycle) * cycleWorkdays : 0;
 
@@ -1481,7 +1483,7 @@ export async function handleDashboardMeasurementGet(
           workdays: cycleWorkdays,
           orderCount: cycleOrdersInYear.length,
           projectCount: new Set(cycleOrdersInYear.map((order) => order.project_id)).size,
-          teamCount: new Set(cycleOrdersInYear.map((order) => order.team_id).filter(Boolean)).size,
+          teamCount: measuredTeamCount,
           hasMeta: Boolean(cycleRecord),
         };
       });
