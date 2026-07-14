@@ -86,6 +86,18 @@ Filtros, auto-complete e listagem
   - Meta ciclo
   - Meta ciclo padrao
   - Meta ciclo trabalhado
+- O bloco `Evolucao anual por ciclo` exibe os ciclos operacionais com dados do ano selecionado, comparando `Meta ciclo`, `Previsao` e `Medicao`.
+- O ano do grafico anual e definido no proprio bloco `Evolucao anual por ciclo`, aplicado pelo botao `Filtrar ano`.
+- O grafico anual considera ciclos que encerram no ano selecionado, de janeiro a dezembro, mantendo a regra operacional 21 a 20.
+- A `Previsao` anual de cada ciclo usa `Valor medido / Dias trabalhados x Dias uteis da meta`.
+- O grafico anual e combinado: Medicao em barras azuis, Meta ciclo em linha laranja tracejada e Previsao em linha verde.
+- O eixo horizontal do grafico anual usa abreviacao `Jan/26`, `Fev/26`, etc.; o ciclo completo fica disponivel no tooltip.
+- Os valores do grafico anual aparecem no tooltip ao passar o mouse; valores zero nao geram rotulos visuais.
+- O bloco anual exibe cards de `Meta acumulada`, `Previsao acumulada`, `Medicao acumulada` e `Atingimento`.
+- A tabela `Detalhamento dos ciclos` exibe inicialmente Ciclo, Meta, Previsao, Medicao, `% Medicao`, Diferenca da meta, Projetos e Status, com numeros alinhados a direita, primeira coluna e cabecalho fixos, diferencas coloridas e status em badge.
+- Ciclos totalmente zerados nao aparecem no grafico nem na tabela anual.
+- Se o ciclo nao possuir meta cadastrada na tela Meta, a tabela anual mostra `Sem meta` e usa meta zero para calculo visual.
+- O grafico anual respeita os filtros gerais de Projeto e Status execucao, mantendo todas as leituras filtradas por tenant.
 - O grafico de ciclo exibe a barra `Projecao de fechamento` entre `Valor` e a meta selecionada.
 - A projecao de fechamento usa `Valor realizado / Dias trabalhados * Dias da meta selecionada`.
 - Quando a meta selecionada for `Meta ciclo trabalhado`, a tela oculta a `Projecao de fechamento`, pois essa meta usa `Média Dias trabalhados` por equipe e nao deve ser misturada com os dias distintos do ciclo.

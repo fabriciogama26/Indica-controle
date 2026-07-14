@@ -144,6 +144,24 @@ type CycleWeek = {
   workdays: number;
 };
 
+type AnnualCycleComparison = {
+  cycleStart: string;
+  cycleEnd: string;
+  label: string;
+  measuredValue: number;
+  forecastValue: number;
+  metaValue: number;
+  measuredPercentage: number;
+  forecastPercentage: number;
+  measuredDifference: number;
+  forecastDifference: number;
+  executedWorkdays: number;
+  workdays: number;
+  orderCount: number;
+  projectCount: number;
+  hasMeta: boolean;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -312,6 +330,27 @@ function buildCycleFromMeasurementDate(value: string) {
     cycleEnd: toIsoDate(end),
     label: formatCycleLabel(start, end),
   };
+}
+
+function normalizeYear(value: unknown) {
+  const normalized = Number(normalizeText(value));
+  if (!Number.isInteger(normalized) || normalized < 2000 || normalized > 2100) return null;
+  return normalized;
+}
+
+function buildAnnualCycles(year: number) {
+  const cycles: ReturnType<typeof buildCycleFromMeasurementDate>[] = [];
+  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+    const end = createUtcDate(year, monthIndex, 20);
+    const start = addMonths(end, -1);
+    start.setUTCDate(21);
+    cycles.push({
+      cycleStart: toIsoDate(start),
+      cycleEnd: toIsoDate(end),
+      label: formatCycleLabel(start, end),
+    });
+  }
+  return cycles;
 }
 
 function formatPeriodLabel(period: string) {
@@ -525,6 +564,10 @@ export async function handleDashboardMeasurementGet(
   const foremanFilter = normalizeText(request.nextUrl.searchParams.get("foreman"));
   const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
   const completionFilter = normalizeText(request.nextUrl.searchParams.get("completionStatus")).toUpperCase();
+  const annualYear = normalizeYear(request.nextUrl.searchParams.get("year")) ?? new Date().getUTCFullYear();
+  const annualCycles = buildAnnualCycles(annualYear);
+  const annualRangeStart = annualCycles[0]?.cycleStart ?? `${annualYear}-01-01`;
+  const annualRangeEnd = annualCycles[annualCycles.length - 1]?.cycleEnd ?? `${annualYear}-12-31`;
 
   // Resolve the data window from params before any DB query so the main queries are bounded by date.
   // Discovery query (dates only) runs in parallel to build the full cycles list for the selector.
@@ -539,7 +582,7 @@ export async function handleDashboardMeasurementGet(
     ? (endDateFilter ? minIsoDate(resolvedCycleEnd, endDateFilter) : resolvedCycleEnd)
     : [resolvedCycleEnd, endDateFilter].filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? resolvedCycleEnd;
 
-  const [cyclesDiscoveryResult, ordersResult] = await Promise.all([
+  const [cyclesDiscoveryResult, ordersResult, annualOrdersResult] = await Promise.all([
     resolution.supabase
       .from("project_measurement_orders")
       .select("execution_date")
@@ -562,6 +605,20 @@ export async function handleDashboardMeasurementGet(
       .order("execution_date", { ascending: false })
       .limit(2000)
       .returns<MeasurementOrderRow[]>(),
+    isTeamsDashboard
+      ? { data: [] as MeasurementOrderRow[], error: null }
+      : resolution.supabase
+          .from("project_measurement_orders")
+          .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .eq("measurement_kind", "COM_PRODUCAO")
+          .neq("status", "CANCELADA")
+          .gte("execution_date", annualRangeStart)
+          .lte("execution_date", annualRangeEnd)
+          .order("execution_date", { ascending: false })
+          .limit(5000)
+          .returns<MeasurementOrderRow[]>(),
   ]);
 
   if (cyclesDiscoveryResult.error) {
@@ -573,6 +630,10 @@ export async function handleDashboardMeasurementGet(
 
   if (ordersError) {
     return NextResponse.json({ message: "Falha ao carregar medicoes para dashboard." }, { status: 500 });
+  }
+
+  if (annualOrdersResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar medicoes anuais para dashboard." }, { status: 500 });
   }
 
   const minimumBillingGuaranteeResult = isTeamsDashboard
@@ -600,10 +661,13 @@ export async function handleDashboardMeasurementGet(
   const projectMetaMap = await fetchProjectMetaMap({
     supabase: resolution.supabase,
     tenantId,
-    projectIds: [...(orders ?? []), ...(minimumBillingGuaranteeOrders ?? [])].map((item) => item.project_id),
+    projectIds: [...(orders ?? []), ...(annualOrdersResult.data ?? []), ...(minimumBillingGuaranteeOrders ?? [])].map((item) => item.project_id),
   });
 
   const validOrders = (orders ?? [])
+    .filter((order) => normalizeIsoDate(order.execution_date))
+    .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
+  const annualValidOrders = (annualOrdersResult.data ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
   const validMinimumBillingGuaranteeOrders = (minimumBillingGuaranteeOrders ?? [])
@@ -644,6 +708,8 @@ export async function handleDashboardMeasurementGet(
       periodCompletionChart: [],
       periodSummary: null,
       cycleComparison: null,
+      annualYear,
+      annualCycleComparison: [],
       teamsProduction: [],
       teamsProductionByWeek: {},
       teamForemen: [],
@@ -695,8 +761,8 @@ export async function handleDashboardMeasurementGet(
 
   const cycleWindowEndDate = selectedCycle.cycleEnd;
   const periodWindowEndDate = endDateFilter ?? resolveWindowEndDate(periodOrders, selectedCycle.cycleEnd);
-  const completionOrders = [...cycleOrders, ...periodOrders];
-  const completionTimelineEndDate = [cycleWindowEndDate, periodWindowEndDate].sort()[1] ?? selectedCycle.cycleEnd;
+  const completionOrders = [...cycleOrders, ...periodOrders, ...annualValidOrders];
+  const completionTimelineEndDate = [cycleWindowEndDate, periodWindowEndDate, annualRangeEnd].sort()[2] ?? selectedCycle.cycleEnd;
   const projectCompletionTimeline = isTeamsDashboard
     ? new Map<string, ProgrammingCompletionTimelineItem[]>()
     : await fetchProjectCompletionTimeline({
@@ -716,6 +782,15 @@ export async function handleDashboardMeasurementGet(
     orders: periodOrders,
     windowEndDate: periodWindowEndDate,
   });
+  const annualOrderCompletionMap = new Map<string, string>();
+  for (const order of annualValidOrders) {
+    const orderCycle = annualCycles.find((cycle) => order.execution_date >= cycle.cycleStart && order.execution_date <= cycle.cycleEnd);
+    const projectCompletion = orderCycle
+      ? resolveProjectCompletionAtWindowEnd(projectCompletionTimeline, order.project_id, orderCycle.cycleEnd)
+      : null;
+    const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
+    annualOrderCompletionMap.set(order.id, projectCompletion ?? (snapshot !== "NAO_INFORMADO" ? snapshot : "NAO_INFORMADO"));
+  }
 
   const optionSourceOrders = isTeamsDashboard ? periodOrders : cycleOrders;
   const allVisibleTeamIds = Array.from(new Set([...optionSourceOrders, ...periodOrders, ...periodMinimumBillingGuaranteeOrders].map((order) => order.team_id).filter(Boolean)));
@@ -963,6 +1038,23 @@ export async function handleDashboardMeasurementGet(
     ) return false;
     return true;
   });
+  const annualFilteredOrders = annualValidOrders.filter((order) => {
+    if (projectIdFilter && order.project_id !== projectIdFilter) return false;
+    if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
+    if (teamIdFilter && order.team_id !== teamIdFilter) return false;
+    if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
+    if (
+      (
+        completionFilter === "CONCLUIDO"
+        || completionFilter === "PARCIAL"
+        || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
+        || completionFilter === "PENDENCIA"
+      )
+      && annualOrderCompletionMap.get(order.id) !== completionFilter
+    ) return false;
+    return true;
+  });
   const periodFilteredMinimumBillingGuaranteeOrders = periodMinimumBillingGuaranteeOrders.filter((order) => {
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
@@ -978,7 +1070,7 @@ export async function handleDashboardMeasurementGet(
     return true;
   });
 
-  const orderIds = Array.from(new Set([...filteredOrders, ...periodFilteredOrders].map((order) => order.id)));
+  const orderIds = Array.from(new Set([...filteredOrders, ...periodFilteredOrders, ...annualFilteredOrders].map((order) => order.id)));
   const { data: items, error: itemsError } = await fetchMeasurementOrderItems({
     supabase: resolution.supabase,
     tenantId,
@@ -1018,6 +1110,35 @@ export async function handleDashboardMeasurementGet(
 
   if (targetItemsResult.error) {
     return NextResponse.json({ message: "Falha ao carregar metas do ciclo." }, { status: 500 });
+  }
+
+  const annualCycleStarts = annualCycles.map((cycle) => cycle.cycleStart);
+  const annualCycleRecordsResult = isTeamsDashboard
+    ? { data: [] as CycleWorkdaysRow[], error: null }
+    : await resolution.supabase
+        .from("measurement_cycle_workdays")
+        .select("id, cycle_start, cycle_end, workdays, default_workdays")
+        .eq("tenant_id", tenantId)
+        .in("cycle_start", annualCycleStarts)
+        .returns<CycleWorkdaysRow[]>();
+
+  if (annualCycleRecordsResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar metas anuais do dashboard." }, { status: 500 });
+  }
+
+  const annualCycleRecords = annualCycleRecordsResult.data ?? [];
+  const annualCycleIds = annualCycleRecords.map((cycle) => cycle.id);
+  const annualTargetItemsResult = annualCycleIds.length
+    ? await resolution.supabase
+        .from("measurement_cycle_target_items")
+        .select("team_type_id, daily_value, daily_goal, cycle_goal, standard_cycle_goal, worked_cycle_goal, cycle_id")
+        .eq("tenant_id", tenantId)
+        .in("cycle_id", annualCycleIds)
+        .returns<(CycleTargetItemRow & { cycle_id: string })[]>()
+    : { data: [] as (CycleTargetItemRow & { cycle_id: string })[], error: null };
+
+  if (annualTargetItemsResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar itens de metas anuais do dashboard." }, { status: 500 });
   }
 
   const dailyMetaByTeamType = new Map((targetItemsResult.data ?? []).map((item) => [item.team_type_id, Number(item.daily_value ?? 0)]));
@@ -1318,10 +1439,55 @@ export async function handleDashboardMeasurementGet(
   const forecastValue = averageDailyValue * performanceWorkdays;
   const forecastPercentage = performanceMetaValue > 0 ? (forecastValue / performanceMetaValue) * 100 : 0;
   const forecastDifference = forecastValue - performanceMetaValue;
+  const annualCycleRecordByStart = new Map((annualCycleRecordsResult.data ?? []).map((cycle) => [cycle.cycle_start, cycle]));
+  const annualTargetItemsByCycleId = new Map<string, (CycleTargetItemRow & { cycle_id: string })[]>();
+  for (const item of annualTargetItemsResult.data ?? []) {
+    const current = annualTargetItemsByCycleId.get(item.cycle_id) ?? [];
+    current.push(item);
+    annualTargetItemsByCycleId.set(item.cycle_id, current);
+  }
+  const annualCycleComparison: AnnualCycleComparison[] = isTeamsDashboard
+    ? []
+    : annualCycles.map((cycle) => {
+        const cycleOrdersInYear = annualFilteredOrders.filter((order) => (
+          order.execution_date >= cycle.cycleStart
+          && order.execution_date <= cycle.cycleEnd
+        ));
+        const measuredValue = cycleOrdersInYear.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
+        const executedWorkdaysInCycle = new Set(
+          cycleOrdersInYear
+            .map((order) => normalizeIsoDate(order.execution_date))
+            .filter((date): date is string => Boolean(date)),
+        ).size;
+        const cycleRecord = annualCycleRecordByStart.get(cycle.cycleStart) ?? null;
+        const annualTargets = cycleRecord ? annualTargetItemsByCycleId.get(cycleRecord.id) ?? [] : [];
+        const metaValue = annualTargets.reduce((sum, item) => sum + Number(item.cycle_goal ?? 0), 0);
+        const cycleWorkdays = Number(cycleRecord?.workdays ?? countBusinessDays(parseIsoDate(cycle.cycleStart), parseIsoDate(cycle.cycleEnd)));
+        const forecast = executedWorkdaysInCycle > 0 ? (measuredValue / executedWorkdaysInCycle) * cycleWorkdays : 0;
+
+        return {
+          cycleStart: cycle.cycleStart,
+          cycleEnd: cycle.cycleEnd,
+          label: cycle.label,
+          measuredValue,
+          forecastValue: forecast,
+          metaValue,
+          measuredPercentage: metaValue > 0 ? (measuredValue / metaValue) * 100 : 0,
+          forecastPercentage: metaValue > 0 ? (forecast / metaValue) * 100 : 0,
+          measuredDifference: measuredValue - metaValue,
+          forecastDifference: forecast - metaValue,
+          executedWorkdays: executedWorkdaysInCycle,
+          workdays: cycleWorkdays,
+          orderCount: cycleOrdersInYear.length,
+          projectCount: new Set(cycleOrdersInYear.map((order) => order.project_id)).size,
+          hasMeta: Boolean(cycleRecord),
+        };
+      });
 
   const payload = {
     cycles,
     periods,
+    annualYear,
     selectedPeriod: selectedCycle.cycleEnd.slice(0, 7),
     startDate: startDateFilter,
     endDate: endDateFilter,
@@ -1389,6 +1555,7 @@ export async function handleDashboardMeasurementGet(
       forecastDifference,
       percentage,
     },
+    annualCycleComparison,
     cycleWeeks,
     teamsProduction: teamsProductionRows,
     teamsProductionByWeek,

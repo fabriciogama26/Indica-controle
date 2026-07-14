@@ -141,6 +141,13 @@
   font-size: 18px;
 }
 
+.annualMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .metric {
   min-height: 78px;
   display: flex;
@@ -395,12 +402,26 @@
   background: #0f172a;
 }
 
+.legendLineOrangeDashed {
+  width: 18px;
+  background: repeating-linear-gradient(90deg, #f07f2f 0 5px, transparent 5px 8px);
+}
+
+.legendLineGreen {
+  width: 18px;
+  background: #17a884;
+}
+
 .legendBlue {
   background: #4b77c7;
 }
 
 .legendOrange {
   background: #f07f2f;
+}
+
+.legendGreen {
+  background: #17a884;
 }
 
 .checkboxGroup {
@@ -489,6 +510,222 @@
   gap: 120px;
   border-top: 0;
   padding: 36px 16px 16px;
+}
+
+.annualChart {
+  position: relative;
+  min-height: 330px;
+}
+
+.annualChartExpanded {
+  min-height: 500px;
+}
+
+.annualChartScroller {
+  overflow-x: auto;
+  border-top: 1px solid #edf1f8;
+}
+
+.annualSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.annualGridLine {
+  stroke: #e6edf7;
+  stroke-width: 1;
+}
+
+.annualAxisLine {
+  stroke: #cfd8e8;
+  stroke-width: 1;
+}
+
+.annualMeasurementBar {
+  fill: #4b77c7;
+}
+
+.annualMetaLine,
+.annualForecastLine {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.annualMetaLine {
+  stroke: #f07f2f;
+  stroke-dasharray: 8 7;
+}
+
+.annualForecastLine {
+  stroke: #17a884;
+}
+
+.annualMetaPoint {
+  fill: #ffffff;
+  stroke: #f07f2f;
+  stroke-width: 2;
+}
+
+.annualForecastPoint {
+  fill: #ffffff;
+  stroke: #17a884;
+  stroke-width: 2;
+}
+
+.annualAxisLabel {
+  fill: #39496c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.annualMeasurementLabel {
+  fill: #002b7f;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.annualHoverArea {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.annualTooltip {
+  position: absolute;
+  z-index: 3;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transform: translateX(-50%);
+  border: 1px solid #c8d4ea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(16, 37, 78, 0.16);
+  padding: 10px 12px;
+  color: #001f5b;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.annualTooltip strong {
+  color: #002b7f;
+}
+
+.sectionHeader {
+  margin: 14px 0 8px;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  color: #002b7f;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.emptyChart {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid #edf1f8;
+  color: #60708f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.annualTableWrapper {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.annualTable {
+  min-width: 980px;
+}
+
+.annualTable th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.annualTable th:not(:first-child) {
+  text-align: right;
+}
+
+.annualTable th:first-child,
+.annualTable td:first-child {
+  position: sticky;
+  left: 0;
+}
+
+.annualTable th:first-child {
+  z-index: 5;
+}
+
+.annualTable td:first-child {
+  z-index: 2;
+  min-width: 250px;
+  background: #ffffff;
+  font-weight: 800;
+}
+
+.annualTable tbody tr:nth-child(even) td:first-child {
+  background: #f8fbff;
+}
+
+.annualTable td {
+  height: 46px;
+}
+
+.numericCell {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.differencePositive,
+.differenceNegative {
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.differencePositive {
+  color: #047857 !important;
+  background: #dcfce7;
+}
+
+.differenceNegative {
+  color: #b91c1c !important;
+  background: #fee2e2;
+}
+
+.statusBadgeSuccess,
+.statusBadgeWarning {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.statusBadgeSuccess {
+  color: #047857;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+}
+
+.statusBadgeWarning {
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
 }
 
 .verticalBarGroup,
@@ -770,6 +1007,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .annualMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .foremanVisualTop,
   .supervisorVisualTop {
     grid-template-columns: 1fr;
@@ -788,7 +1029,8 @@
   .periodFields,
   .summaryGrid,
   .cycleMetricGrid,
-  .periodMetricGrid {
+  .periodMetricGrid,
+  .annualMetricGrid {
     grid-template-columns: 1fr;
   }
 
