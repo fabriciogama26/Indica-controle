@@ -159,6 +159,7 @@ type AnnualCycleComparison = {
   workdays: number;
   orderCount: number;
   projectCount: number;
+  teamCount: number;
   hasMeta: boolean;
 };
 
@@ -1480,6 +1481,7 @@ export async function handleDashboardMeasurementGet(
           workdays: cycleWorkdays,
           orderCount: cycleOrdersInYear.length,
           projectCount: new Set(cycleOrdersInYear.map((order) => order.project_id)).size,
+          teamCount: new Set(cycleOrdersInYear.map((order) => order.team_id).filter(Boolean)).size,
           hasMeta: Boolean(cycleRecord),
         };
       });

@@ -172,6 +172,19 @@
   color: #002b7f;
 }
 
+.annualMetricLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-top: 2px;
+}
+
+.annualMetricLegend span {
+  text-transform: none;
+  font-size: 10px;
+  color: #31456f;
+}
+
 .chartActions {
   display: flex;
   align-items: flex-end;
