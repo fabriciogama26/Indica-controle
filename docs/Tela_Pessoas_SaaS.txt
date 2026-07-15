@@ -71,6 +71,8 @@ Filtros, auto-complete e listagem
 - Filtros:
   - `Nome`
   - `Matricula`
+  - `CPF`
+  - `Telefone`
   - `Cargo`
   - `Tipo` (dependente de cargo no filtro)
   - `Nivel`
@@ -145,6 +147,10 @@ Atualizacao 2026-05
 - CPF passou a ser unico por tenant, com protecao adicional para `CPF + Matricula`.
 - Criado campo opcional `Telefone` em Pessoas, com exibicao na lista/detalhe/exportacao e suporte no cadastro em massa.
 - `Tipo` passou a ser obrigatorio somente para cargos `Encarregado de Turma`, `Ajudante de Eletricista` e `Eletricista de Construção`.
+
+Atualizacao 2026-07
+-------------------
+- Filtros da lista de Pessoas passam a incluir `CPF` e `Telefone`, enviados pelo frontend para `GET /api/people` e aplicados na paginacao server-side.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------

@@ -74,6 +74,8 @@ type PersonFormState = {
 type PersonFilterState = {
   name: string;
   matriculation: string;
+  cpf: string;
+  phone: string;
   jobTitleId: string;
   jobTitleTypeId: string;
   jobLevel: string;
@@ -168,6 +170,8 @@ const INITIAL_FORM: PersonFormState = {
 const INITIAL_FILTERS: PersonFilterState = {
   name: "",
   matriculation: "",
+  cpf: "",
+  phone: "",
   jobTitleId: "",
   jobTitleTypeId: "",
   jobLevel: "",
@@ -252,6 +256,12 @@ function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SI
   }
   if (filters.matriculation.trim()) {
     params.set("matriculation", normalizeMatriculation(filters.matriculation));
+  }
+  if (filters.cpf.trim()) {
+    params.set("cpf", normalizeCpf(filters.cpf));
+  }
+  if (filters.phone.trim()) {
+    params.set("phone", normalizePhone(filters.phone));
   }
   if (filters.jobTitleId.trim()) {
     params.set("jobTitleId", filters.jobTitleId.trim());
@@ -1395,6 +1405,26 @@ export function PeoplePageView() {
               value={filterDraft.matriculation}
               onChange={(event) => updateFilterField("matriculation", event.target.value)}
               placeholder="Filtrar por matricula"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>CPF</span>
+            <input
+              type="text"
+              value={filterDraft.cpf}
+              onChange={(event) => updateFilterField("cpf", event.target.value)}
+              placeholder="Filtrar por CPF"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Telefone</span>
+            <input
+              type="text"
+              value={filterDraft.phone}
+              onChange={(event) => updateFilterField("phone", event.target.value)}
+              placeholder="Filtrar por telefone"
             />
           </label>
 
