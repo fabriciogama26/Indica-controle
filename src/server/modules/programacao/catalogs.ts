@@ -55,6 +55,7 @@ export async function fetchProjects(supabase: SupabaseClient, tenantId: string) 
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .eq("is_test", false)
+    .eq("is_third_party", false)
     .order("execution_deadline", { ascending: true })
     .returns<BoardProjectBaseRow[]>();
 
@@ -62,6 +63,7 @@ export async function fetchProjects(supabase: SupabaseClient, tenantId: string) 
     const result = (primary.data ?? []).map((item) => ({
       ...item,
       is_test: Boolean(item.is_test),
+      is_third_party: Boolean(item.is_third_party),
     })) as BoardProjectRow[];
     _boardProjectsCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
     return result;
@@ -86,6 +88,7 @@ export async function fetchProjects(supabase: SupabaseClient, tenantId: string) 
   const result = (fallback.data ?? []).map((item) => ({
     ...item,
     is_test: false,
+    is_third_party: false,
   })) as BoardProjectRow[];
   _boardProjectsCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
   return result;

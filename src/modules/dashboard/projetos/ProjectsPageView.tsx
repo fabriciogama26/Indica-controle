@@ -35,6 +35,7 @@ type ProjectItem = {
   isActive: boolean;
   isTest: boolean;
   isWithdrawn: boolean;
+  isThirdParty: boolean;
   hasLocacao: boolean;
   cancellationReason: string | null;
   canceledAt: string | null;
@@ -72,6 +73,7 @@ type FormState = {
   observation: string;
   isTest: boolean;
   isWithdrawn: boolean;
+  isThirdParty: boolean;
 };
 
 type FilterState = {
@@ -259,6 +261,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   isActive: "Status",
   isTest: "Obra de teste",
   isWithdrawn: "Retirado da carteira",
+  isThirdParty: "Terceiros",
   cancellationReason: "Motivo do cancelamento",
   canceledAt: "Data do cancelamento",
   activationReason: "Motivo da ativacao",
@@ -283,6 +286,7 @@ const INITIAL_FORM: FormState = {
   observation: "",
   isTest: false,
   isWithdrawn: false,
+  isThirdParty: false,
 };
 
 const INITIAL_FILTERS: FilterState = {
@@ -432,6 +436,7 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     "Status",
     "Obra de teste",
     "Retirado da carteira",
+    "Terceiros",
     "Registrado por",
     "Registrado em",
     "Atualizado por",
@@ -459,6 +464,7 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     project.isActive ? "Ativo" : "Inativo",
     project.isTest ? "Sim" : "Nao",
     project.isWithdrawn ? "Sim" : "Nao",
+    project.isThirdParty ? "Sim" : "Nao",
     formatAuditActor(project.createdByName),
     formatDateTime(project.createdAt),
     formatAuditActor(project.updatedByName),
@@ -649,6 +655,7 @@ function toFormState(project: ProjectItem): FormState {
     observation: project.observation ?? "",
     isTest: Boolean(project.isTest),
     isWithdrawn: Boolean(project.isWithdrawn),
+    isThirdParty: Boolean(project.isThirdParty),
   };
 }
 
@@ -666,7 +673,7 @@ function formatHistoryValue(field: string, value: string | null) {
     return value === "true" ? "Ativo" : "Inativo";
   }
 
-  if (field === "isTest" || field === "isWithdrawn") {
+  if (field === "isTest" || field === "isWithdrawn" || field === "isThirdParty") {
     return value === "true" ? "Sim" : "Nao";
   }
 
@@ -2664,9 +2671,18 @@ export function ProjectsPageView() {
                     />
                     <span>RETIRADO DA CARTEIRA</span>
                   </div>
+                  <div className={styles.checkboxControl}>
+                    <input
+                      id="project-is-third-party"
+                      type="checkbox"
+                      checked={form.isThirdParty}
+                      onChange={(event) => updateFormField("isThirdParty", event.target.checked)}
+                    />
+                    <span>TERCEIROS</span>
+                  </div>
                 </div>
                 <small className={styles.checkboxHelp}>
-                  Obras de teste continuam editaveis e obras retiradas da carteira nao entram nos cards de carteira.
+                  Obras de teste, retiradas da carteira e terceiros continuam editaveis; terceiros ficam disponiveis para saida de material.
                 </small>
               </label>
 
@@ -3044,6 +3060,7 @@ export function ProjectsPageView() {
                           {!project.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                           {project.isTest ? <span className={styles.testTag}>Teste</span> : null}
                           {project.isWithdrawn ? <span className={styles.withdrawnTag}>Retirado</span> : null}
+                          {project.isThirdParty ? <span className={styles.thirdPartyTag}>Terceiros</span> : null}
                         </div>
                       </td>
                       <td>{project.serviceCenter}</td>
@@ -3738,6 +3755,7 @@ export function ProjectsPageView() {
                 <div><strong>Status:</strong> {detailProject.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Obra de teste:</strong> {detailProject.isTest ? "Sim" : "Nao"}</div>
                 <div><strong>Retirado da carteira:</strong> {detailProject.isWithdrawn ? "Sim" : "Nao"}</div>
+                <div><strong>Terceiros:</strong> {detailProject.isThirdParty ? "Sim" : "Nao"}</div>
                 <div><strong>Prioridade:</strong> {detailProject.priority}</div>
                 <div><strong>Centro de Servico:</strong> {detailProject.serviceCenter}</div>
                 <div><strong>Parceira:</strong> {detailProject.partner}</div>

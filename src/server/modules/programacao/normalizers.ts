@@ -33,7 +33,8 @@ export function isMissingRpcFunctionError(errorMessage: string, functionName: st
 }
 
 export function isMissingProjectTestColumn(message: string) {
-  return normalizeText(message).toLowerCase().includes("is_test");
+  const normalized = normalizeText(message).toLowerCase();
+  return normalized.includes("is_test") || normalized.includes("is_third_party");
 }
 
 export function isNegativeNumericLikeText(value: string | null) {

@@ -105,4 +105,5 @@ export type ProjectLookupRow = {
   priority_text: string | null;
   execution_deadline: string | null;
   is_active: boolean;
+  is_third_party?: boolean | null;
 };

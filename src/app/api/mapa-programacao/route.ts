@@ -37,6 +37,7 @@ type ProjectRow = {
   is_active: boolean | null;
   is_test?: boolean | null;
   is_withdrawn?: boolean | null;
+  is_third_party?: boolean | null;
 };
 
 type ProgrammingRow = {
@@ -358,6 +359,7 @@ async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
     "is_active",
     "is_test",
     "is_withdrawn",
+    "is_third_party",
   ].join(", ");
 
   const primary = await supabase
@@ -367,6 +369,7 @@ async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
     .eq("is_active", true)
     .eq("is_test", false)
     .eq("is_withdrawn", false)
+    .eq("is_third_party", false)
     .order("sob", { ascending: true })
     .returns<ProjectRow[]>();
 
@@ -391,6 +394,7 @@ async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
       ...item,
       is_test: false,
       is_withdrawn: false,
+      is_third_party: false,
     }))
     .filter((project) => !isEmergencyServiceType(project.service_type_text));
 }

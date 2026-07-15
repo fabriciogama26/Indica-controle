@@ -17,6 +17,7 @@ type ProjectRow = {
   is_active: boolean | null;
   is_test: boolean | null;
   is_withdrawn: boolean | null;
+  is_third_party: boolean | null;
 };
 
 type ProjectServiceTypeRow = {
@@ -228,7 +229,7 @@ async function loadMeta(context: AuthenticatedAppUserContext) {
   const [projectsResult, teamsResult, serviceTypesResult, activitiesResult] = await Promise.all([
     context.supabase
       .from("project_with_labels")
-      .select("id, sob, service_center_text, service_type, service_type_text, is_active, is_test, is_withdrawn")
+      .select("id, sob, service_center_text, service_type, service_type_text, is_active, is_test, is_withdrawn, is_third_party")
       .eq("tenant_id", context.appUser.tenant_id)
       .eq("is_active", true)
       .order("sob", { ascending: true })
@@ -282,7 +283,7 @@ async function loadMeta(context: AuthenticatedAppUserContext) {
 
   return NextResponse.json({
     projects: (projectsResult.data ?? [])
-      .filter((item) => !item.is_test && !item.is_withdrawn)
+      .filter((item) => !item.is_test && !item.is_withdrawn && !item.is_third_party)
       .map((item) => ({
         id: item.id,
         label: normalizeText(item.sob) || item.id,
@@ -319,7 +320,7 @@ async function fetchEligibleProjects(params: {
   const result = await fetchPagedSupabaseRows<ProjectRow>((from, to) => {
     let query = params.supabase
       .from("project_with_labels")
-      .select("id, sob, service_center_text, service_type, service_type_text, is_active, is_test, is_withdrawn")
+      .select("id, sob, service_center_text, service_type, service_type_text, is_active, is_test, is_withdrawn, is_third_party")
       .eq("tenant_id", params.tenantId)
       .eq("is_active", true);
 
@@ -334,7 +335,7 @@ async function fetchEligibleProjects(params: {
 
   return {
     ...result,
-    data: result.data.filter((item) => !item.is_test && !item.is_withdrawn),
+    data: result.data.filter((item) => !item.is_test && !item.is_withdrawn && !item.is_third_party),
   };
 }
 

@@ -8,7 +8,7 @@ import {
 } from "./normalizers";
 import type { ListFilters, ProjectLookupRow, SolicitacaoRow } from "./types";
 
-const PROJECT_LOOKUP_SELECT = "id, sob, city_text, street, neighborhood, priority_text, execution_deadline, is_active";
+const PROJECT_LOOKUP_SELECT = "id, sob, city_text, street, neighborhood, priority_text, execution_deadline, is_active, is_third_party";
 
 export const SOLICITACAO_SELECT =
   "id, tenant_id, projeto_id, projeto_codigo, tipo_solicitacao, prioridade, data_entrada, data_limite, data_conclusao, status, responsavel_id, solicitante_id, observacao, justificativa_prioridade, motivo_cancelamento, estado_programacao_snapshot, programacao_id, created_by, updated_by, created_at, updated_at";
@@ -25,7 +25,7 @@ export async function fetchProjectLookup(
     .eq("id", projectId)
     .maybeSingle<ProjectLookupRow>();
 
-  if (error || !data) return null;
+  if (error || !data || data.is_third_party) return null;
   return data;
 }
 
@@ -41,6 +41,7 @@ export async function fetchProjectLookupMap(
     .from("project_with_labels")
     .select(PROJECT_LOOKUP_SELECT)
     .eq("tenant_id", tenantId)
+    .eq("is_third_party", false)
     .in("id", uniqueIds)
     .returns<ProjectLookupRow[]>();
 
@@ -226,6 +227,7 @@ export async function resolveProjectIdsByCity(
     .from("project_with_labels")
     .select("id")
     .eq("tenant_id", tenantId)
+    .eq("is_third_party", false)
     .eq("city_text", normalized)
     .returns<Array<{ id: string }>>();
 
@@ -251,6 +253,7 @@ export async function resolveSearchIds(
       .from("project_with_labels")
       .select("id")
       .eq("tenant_id", tenantId)
+      .eq("is_third_party", false)
       .ilike("sob", `%${clean}%`)
       .limit(100)
       .returns<Array<{ id: string }>>(),

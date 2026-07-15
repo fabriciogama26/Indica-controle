@@ -44,6 +44,7 @@ type ProjectRow = {
   is_active: boolean;
   is_test: boolean;
   is_withdrawn: boolean;
+  is_third_party: boolean;
   has_locacao: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
@@ -54,11 +55,12 @@ type ProjectRow = {
   updated_at: string;
 };
 
-type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob" | "is_test" | "is_withdrawn"> & {
+type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob" | "is_test" | "is_withdrawn" | "is_third_party"> & {
   has_locacao?: boolean | null;
   fob?: string | null;
   is_test?: boolean | null;
   is_withdrawn?: boolean | null;
+  is_third_party?: boolean | null;
 };
 
 type ProjectListSummary = {
@@ -112,6 +114,7 @@ type CreateProjectPayload = {
   observation?: string | null;
   isTest?: boolean;
   isWithdrawn?: boolean;
+  isThirdParty?: boolean;
 };
 
 type UpdateProjectPayload = CreateProjectPayload & {
@@ -158,6 +161,7 @@ type ProjectInput = {
   observation: string | null;
   isTest: boolean;
   isWithdrawn: boolean;
+  isThirdParty: boolean;
 };
 
 type ProjectWorkCompletionStatusFilter = "TODOS" | "NAO_INFORMADO" | string;
@@ -515,6 +519,7 @@ function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput
     observation: normalizeNullableText(payload.observation),
     isTest: normalizeBoolean(payload.isTest),
     isWithdrawn: normalizeBoolean(payload.isWithdrawn),
+    isThirdParty: normalizeBoolean(payload.isThirdParty),
   };
 }
 
@@ -611,9 +616,9 @@ function buildUserLoginNameMap(users: ProjectUserRow[]) {
 }
 
 const PROJECT_SELECT_WITH_LOCATION =
-  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, is_withdrawn, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
+  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, is_withdrawn, is_third_party, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
-const PROJECT_SELECT_WITH_TEST =
+const PROJECT_SELECT_WITH_WITHDRAWN =
   "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
 const PROJECT_SELECT_LEGACY =
@@ -626,6 +631,7 @@ function isMissingOptionalProjectColumns(message: string) {
     || normalized.includes("fob")
     || normalized.includes("is_test")
     || normalized.includes("is_withdrawn")
+    || normalized.includes("is_third_party")
   );
 }
 
@@ -644,6 +650,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
         fob: normalizeNullableText(primary.data.fob),
         is_test: Boolean(primary.data.is_test),
         is_withdrawn: Boolean(primary.data.is_withdrawn),
+        is_third_party: Boolean(primary.data.is_third_party),
         has_locacao: Boolean(primary.data.has_locacao),
       } as ProjectRow,
       error: null,
@@ -656,7 +663,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
 
   const withTest = await supabase
     .from("project_with_labels")
-    .select(PROJECT_SELECT_WITH_TEST)
+    .select(PROJECT_SELECT_WITH_WITHDRAWN)
     .eq("tenant_id", tenantId)
     .eq("id", projectId)
     .maybeSingle<ProjectBaseRow>();
@@ -668,6 +675,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
         fob: normalizeNullableText(withTest.data.fob),
         is_test: Boolean(withTest.data.is_test),
         is_withdrawn: false,
+        is_third_party: false,
         has_locacao: Boolean(withTest.data.has_locacao),
       } as ProjectRow,
       error: null,
@@ -695,6 +703,7 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
       fob: null,
       is_test: false,
       is_withdrawn: false,
+      is_third_party: false,
       has_locacao: false,
     } as ProjectRow,
     error: null,
@@ -763,6 +772,7 @@ async function fetchProjectsPageCompat(params: {
         fob: normalizeNullableText(item.fob),
         is_test: Boolean(item.is_test),
         is_withdrawn: Boolean(item.is_withdrawn),
+        is_third_party: Boolean(item.is_third_party),
         has_locacao: Boolean(item.has_locacao),
       })) as ProjectRow[],
       count: primary.count ?? 0,
@@ -774,7 +784,7 @@ async function fetchProjectsPageCompat(params: {
     return { data: [] as ProjectRow[], count: 0, error: primary.error };
   }
 
-  const withTest = await runQuery(PROJECT_SELECT_WITH_TEST);
+  const withTest = await runQuery(PROJECT_SELECT_WITH_WITHDRAWN);
   if (!withTest.error) {
     const withTestRows = (withTest.data ?? []) as unknown as ProjectBaseRow[];
     return {
@@ -783,6 +793,7 @@ async function fetchProjectsPageCompat(params: {
         fob: normalizeNullableText(item.fob),
         is_test: Boolean(item.is_test),
         is_withdrawn: false,
+        is_third_party: false,
         has_locacao: Boolean(item.has_locacao),
       })) as ProjectRow[],
       count: withTest.count ?? 0,
@@ -806,6 +817,7 @@ async function fetchProjectsPageCompat(params: {
       fob: null,
       is_test: false,
       is_withdrawn: false,
+      is_third_party: false,
       has_locacao: false,
     })) as ProjectRow[],
     count: fallback.count ?? 0,
@@ -837,6 +849,7 @@ async function fetchProjectsSummaryCompat(params: {
       .eq("tenant_id", params.tenantId)
       .eq("is_test", false)
       .eq("is_withdrawn", false)
+      .eq("is_third_party", false)
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
 
@@ -1225,6 +1238,7 @@ function buildProjectWritePayload(
     observation: input.observation,
     is_test: input.isTest,
     is_withdrawn: input.isWithdrawn,
+    is_third_party: input.isThirdParty,
   };
 }
 
@@ -1250,6 +1264,7 @@ function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, loo
   addChange(changes, "partner", current.partner_text, lookups.partner.name);
   addChange(changes, "isTest", current.is_test, input.isTest);
   addChange(changes, "isWithdrawn", current.is_withdrawn, input.isWithdrawn);
+  addChange(changes, "isThirdParty", current.is_third_party, input.isThirdParty);
 
   return changes;
 }
@@ -1297,6 +1312,7 @@ async function saveProjectViaRpc(params: {
     p_observation: params.payload.observation,
     p_is_test: params.payload.is_test,
     p_is_withdrawn: params.payload.is_withdrawn,
+    p_is_third_party: params.payload.is_third_party,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   };
@@ -1306,23 +1322,35 @@ async function saveProjectViaRpc(params: {
 
   let { data, error } = await executeSaveProjectRpc(rpcPayload);
   if (error && isMissingRpcSignatureError(error.message, "save_project_record")) {
-    const withoutWithdrawnPayload = Object.fromEntries(
-      Object.entries(rpcPayload).filter(([key]) => key !== "p_is_withdrawn"),
+    const withoutThirdPartyPayload = Object.fromEntries(
+      Object.entries(rpcPayload).filter(([key]) => key !== "p_is_third_party"),
     );
 
-    const withoutWithdrawnAttempt = await executeSaveProjectRpc(withoutWithdrawnPayload);
-    if (!withoutWithdrawnAttempt.error) {
-      data = withoutWithdrawnAttempt.data;
+    const withoutThirdPartyAttempt = await executeSaveProjectRpc(withoutThirdPartyPayload);
+    if (!withoutThirdPartyAttempt.error) {
+      data = withoutThirdPartyAttempt.data;
       error = null;
     } else {
-      const legacyPayload = Object.fromEntries(
-        Object.entries(rpcPayload).filter(([key]) => key !== "p_fob" && key !== "p_is_test" && key !== "p_is_withdrawn"),
+      const withoutWithdrawnPayload = Object.fromEntries(
+        Object.entries(rpcPayload).filter(([key]) => key !== "p_is_withdrawn" && key !== "p_is_third_party"),
       );
 
-      const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
-      if (!legacyAttempt.error) {
-        data = legacyAttempt.data;
+      const withoutWithdrawnAttempt = await executeSaveProjectRpc(withoutWithdrawnPayload);
+      if (!withoutWithdrawnAttempt.error) {
+        data = withoutWithdrawnAttempt.data;
         error = null;
+      } else {
+        const legacyPayload = Object.fromEntries(
+          Object.entries(rpcPayload).filter(
+            ([key]) => key !== "p_fob" && key !== "p_is_test" && key !== "p_is_withdrawn" && key !== "p_is_third_party",
+          ),
+        );
+
+        const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
+        if (!legacyAttempt.error) {
+          data = legacyAttempt.data;
+          error = null;
+        }
       }
     }
   }
@@ -1578,6 +1606,7 @@ export async function GET(request: NextRequest) {
         isActive: Boolean(item.is_active),
         isTest: Boolean(item.is_test),
         isWithdrawn: Boolean(item.is_withdrawn),
+        isThirdParty: Boolean(item.is_third_party),
         hasLocacao: Boolean(item.has_locacao),
         cancellationReason: item.cancellation_reason,
         canceledAt: item.canceled_at,

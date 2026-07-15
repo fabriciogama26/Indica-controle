@@ -48,6 +48,7 @@ type ProjectRow = {
   id: string;
   sob: string;
   service_center_text: string | null;
+  is_third_party?: boolean | null;
 };
 
 type CompositionProjectRow = {
@@ -375,9 +376,10 @@ async function fetchProjectsByIds(supabase: SupabaseClient, tenantId: string, pr
 
   const { data, error } = await supabase
     .from("project_with_labels")
-    .select("id, sob, service_center_text")
+    .select("id, sob, service_center_text, is_third_party")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
+    .eq("is_third_party", false)
     .in("id", uniqueProjectIds)
     .returns<ProjectRow[]>();
 

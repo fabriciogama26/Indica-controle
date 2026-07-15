@@ -387,6 +387,16 @@
   border: 1px solid #edc77e;
 }
 
+.thirdPartyTag {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #0f4b65;
+  background: #def7ff;
+  border: 1px solid #8bd3e8;
+}
+
 .inactiveRow {
   background: rgba(170, 183, 210, 0.1);
 }
