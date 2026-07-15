@@ -270,12 +270,13 @@ export async function getMeta(context: AuthenticatedAppUserContext): Promise<Nex
       .returns<Array<{ id: string; code: string | null }>>(),
     supabase
       .from("project_with_labels")
-      .select("id, sob, city_text, street, neighborhood, priority_text")
+      .select("id, sob, city_text, street, neighborhood, priority_text, is_third_party")
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
+      .eq("is_third_party", false)
       .order("sob", { ascending: true })
       .limit(5000)
-      .returns<Array<{ id: string; sob: string; city_text: string | null; street: string | null; neighborhood: string | null; priority_text: string | null }>>(),
+      .returns<Array<{ id: string; sob: string; city_text: string | null; street: string | null; neighborhood: string | null; priority_text: string | null; is_third_party?: boolean | null }>>(),
     fetchAsbuiltEligibleProjectIds(supabase, tenantId),
   ]);
 

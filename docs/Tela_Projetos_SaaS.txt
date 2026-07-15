@@ -68,6 +68,7 @@ Cadastro
   - `Observacao`
   - `Obra de teste` (checkbox para excluir da carteira e das consolidacoes de medicao)
   - `RETIRADO DA CARTEIRA` (checkbox para excluir dos cards de carteira sem tratar como obra de teste)
+  - `TERCEIROS` (checkbox para registrar obras de outra empresa apenas para rastrear saida de material)
 - `Centro de Servico` e preenchido automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
 - `Parceira` nao aparece no frontend; o backend preenche automaticamente com `contract.name` do tenant ativo.
 - `Valor estimado` aceita digitacao monetaria em formato brasileiro (`22.035,33`) e formatos compactos equivalentes (`22.03533`, `22035,33`), normalizando para numero decimal antes de salvar em `project.estimated_value numeric(14,2)`.
@@ -151,8 +152,9 @@ Filtros, auto-complete e listagem
 - Coluna `Registrado por` exibida com `app_users.login_name` do `created_by`.
 - Coluna de data na lista padronizada como `Registrado em` (com base em `created_at`).
 - Bloco `Status da Carteira de Projetos` adicionado no topo da tela (acima de `Cadastro de Projeto`) com 2 cards:
-  - `Total de projetos` (todos os `SOB` unicos ativos retornados pelos filtros atuais, excluindo obras de teste e obras retiradas da carteira).
-  - `Concluidas` (projetos ativos por `SOB` unico com `Estado Trabalho = CONCLUIDO` na `Programacao`, excluindo obras de teste e obras retiradas da carteira; nao soma por equipe).
+  - `Total de projetos` (todos os `SOB` unicos ativos retornados pelos filtros atuais, excluindo obras de teste, obras retiradas da carteira e obras de terceiros).
+  - `Concluidas` (projetos ativos por `SOB` unico com `Estado Trabalho = CONCLUIDO` na `Programacao`, excluindo obras de teste, retiradas da carteira e terceiros; nao soma por equipe).
+- Obras marcadas como `TERCEIROS` permanecem disponiveis para fluxos de material, mas ficam fora de Programacao, Mapa de Programacao, Medicao, Dashboards de producao, Faturamento, Locacao, APR, Composicao de Equipe, Cronograma de Solicitacoes e Apuracao de Fator Minimo.
 - Chamadas autenticadas da tela usam `cache: no-store` para evitar exibir dados de sessao antiga apos troca de usuario.
 - Quando a aba `Materiais previstos` esta ativa, os blocos de `Filtros` e `Lista de Projetos` ficam ocultos e a tela mostra:
   - `Filtros de Materiais Previstos` (codigo, descricao, tipo).

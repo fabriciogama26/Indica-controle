@@ -124,6 +124,7 @@ type TeamCompositionContextRow = {
 type ProjectTestRow = {
   id: string;
   is_test: boolean | null;
+  is_third_party?: boolean | null;
 };
 
 type ProjectServiceCenterRow = {
@@ -872,7 +873,8 @@ function measurementModuleMigrationHint(message: string | undefined) {
 }
 
 function isMissingProjectTestColumn(message: string | undefined) {
-  return normalizeText(message).toLowerCase().includes("is_test");
+  const normalized = normalizeText(message).toLowerCase();
+  return normalized.includes("is_test") || normalized.includes("is_third_party");
 }
 
 async function fetchProjectIsTestMap(params: {
@@ -887,13 +889,13 @@ async function fetchProjectIsTestMap(params: {
   const uniqueProjectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
   const primary = await params.supabase
     .from("project")
-    .select("id, is_test")
+    .select("id, is_test, is_third_party")
     .eq("tenant_id", params.tenantId)
     .in("id", uniqueProjectIds)
     .returns<ProjectTestRow[]>();
 
   if (!primary.error) {
-    return new Map((primary.data ?? []).map((item) => [item.id, Boolean(item.is_test)]));
+    return new Map((primary.data ?? []).map((item) => [item.id, Boolean(item.is_test) || Boolean(item.is_third_party)]));
   }
 
   if (!isMissingProjectTestColumn(primary.error.message)) {

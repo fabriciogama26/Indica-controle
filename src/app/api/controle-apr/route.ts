@@ -33,6 +33,7 @@ type ProjectRow = {
   sob: string;
   service_description: string | null;
   service_type_text: string | null;
+  is_third_party?: boolean | null;
 };
 
 type TeamRow = {
@@ -116,9 +117,10 @@ async function loadMeta(
   const [projectsResult, teamsResult] = await Promise.all([
     supabase
       .from("project_with_labels")
-      .select("id, sob, service_description, service_type_text")
+      .select("id, sob, service_description, service_type_text, is_third_party")
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
+      .eq("is_third_party", false)
       .order("sob", { ascending: true })
       .returns<ProjectRow[]>(),
     supabase

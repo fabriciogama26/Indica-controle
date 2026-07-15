@@ -13,6 +13,7 @@ type ProjectRow = {
   is_active: boolean | null;
   is_test?: boolean | null;
   is_withdrawn?: boolean | null;
+  is_third_party?: boolean | null;
 };
 
 type ActivityRow = {
@@ -503,7 +504,7 @@ async function loadProjects(supabase: AuthenticatedAppUserContext["supabase"], t
   for (let from = 0; ; from += QUERY_PAGE_SIZE) {
     const { data, error } = await supabase
       .from("project_with_labels")
-      .select("id, sob, service_center, service_center_text, service_type, service_type_text, is_active, is_test, is_withdrawn")
+      .select("id, sob, service_center, service_center_text, service_type, service_type_text, is_active, is_test, is_withdrawn, is_third_party")
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("sob", { ascending: true })
@@ -520,7 +521,7 @@ async function loadProjects(supabase: AuthenticatedAppUserContext["supabase"], t
   }
 
   return rows
-    .filter((project) => !project.is_test && !project.is_withdrawn)
+    .filter((project) => !project.is_test && !project.is_withdrawn && !project.is_third_party)
     .map((project) => ({
       id: project.id,
       label: normalizeText(project.sob) || project.id,

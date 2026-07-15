@@ -287,6 +287,9 @@ async function loadActiveProjectIdSet(params: {
       .select("id")
       .eq("tenant_id", params.tenantId)
       .eq("is_active", true)
+      .eq("is_test", false)
+      .eq("is_withdrawn", false)
+      .eq("is_third_party", false)
       .in("id", projectIdChunk)
       .returns<ActiveProjectRow[]>();
 

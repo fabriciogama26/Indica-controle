@@ -5,6 +5,7 @@ type LocationProjectRow = {
   sob: string;
   city_text: string | null;
   is_active: boolean;
+  is_third_party?: boolean | null;
   has_locacao?: boolean;
 };
 
@@ -145,7 +146,7 @@ export async function resolveLocationProject(
 ) {
   const { data, error } = await supabase
     .from("project_with_labels")
-    .select("id, sob, city_text, is_active")
+    .select("id, sob, city_text, is_active, is_third_party")
     .eq("tenant_id", tenantId)
     .eq("id", projectId)
     .maybeSingle<LocationProjectRow>();
@@ -178,6 +179,14 @@ export async function ensureActiveLocationProject(params: {
       ok: false,
       status: 409,
       message: params.inactiveMessage,
+    } as const;
+  }
+
+  if (project.is_third_party) {
+    return {
+      ok: false,
+      status: 409,
+      message: "Projeto de terceiros nao pode receber locacao.",
     } as const;
   }
 

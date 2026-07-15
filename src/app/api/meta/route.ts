@@ -44,6 +44,7 @@ type MeasurementOrderDateRow = {
 type ProjectTestRow = {
   id: string;
   is_test: boolean | null;
+  is_third_party?: boolean | null;
 };
 
 type TargetRow = {
@@ -258,7 +259,7 @@ async function fetchProjectIsTestMap(params: {
 
   const { data, error } = await params.supabase
     .from("project")
-    .select("id, is_test")
+    .select("id, is_test, is_third_party")
     .eq("tenant_id", params.tenantId)
     .in("id", uniqueProjectIds)
     .returns<ProjectTestRow[]>();
@@ -267,7 +268,7 @@ async function fetchProjectIsTestMap(params: {
     return new Map<string, boolean>();
   }
 
-  return new Map((data ?? []).map((item) => [item.id, Boolean(item.is_test)]));
+  return new Map((data ?? []).map((item) => [item.id, Boolean(item.is_test) || Boolean(item.is_third_party)]));
 }
 
 function resolveAppUserName(user: AppUserRow | undefined) {

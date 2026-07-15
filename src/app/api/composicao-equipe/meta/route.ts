@@ -6,6 +6,7 @@ type ProjectRow = {
   id: string;
   sob: string;
   service_center_text: string | null;
+  is_third_party?: boolean | null;
 };
 
 type TeamRow = {
@@ -64,9 +65,10 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       supabase
         .from("project_with_labels")
-        .select("id, sob, service_center_text")
+        .select("id, sob, service_center_text, is_third_party")
         .eq("tenant_id", appUser.tenant_id)
         .eq("is_active", true)
+        .eq("is_third_party", false)
         .order("sob", { ascending: true })
         .limit(5000)
         .returns<ProjectRow[]>(),

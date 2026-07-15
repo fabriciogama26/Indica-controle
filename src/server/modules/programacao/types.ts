@@ -16,10 +16,12 @@ export type BoardProjectRow = {
   has_locacao: boolean | null;
   is_active: boolean;
   is_test: boolean;
+  is_third_party: boolean;
 };
 
-export type BoardProjectBaseRow = Omit<BoardProjectRow, "is_test"> & {
+export type BoardProjectBaseRow = Omit<BoardProjectRow, "is_test" | "is_third_party"> & {
   is_test?: boolean | null;
+  is_third_party?: boolean | null;
 };
 
 export type TeamRow = {

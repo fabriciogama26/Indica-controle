@@ -7,6 +7,7 @@ type ProjectMetaRow = {
   sob: string;
   city_text: string | null;
   is_active: boolean;
+  is_third_party?: boolean | null;
   updated_at: string;
   has_locacao?: boolean | null;
 };
@@ -54,8 +55,9 @@ export async function GET(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const { data, error } = await supabase
       .from("project_with_labels")
-      .select("id, sob, city_text, is_active, updated_at, has_locacao")
+      .select("id, sob, city_text, is_active, is_third_party, updated_at, has_locacao")
       .eq("tenant_id", appUser.tenant_id)
+      .eq("is_third_party", false)
       .order("updated_at", { ascending: false })
       .limit(5000)
       .returns<ProjectMetaRow[]>();

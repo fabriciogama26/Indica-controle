@@ -34,6 +34,7 @@ type MeasurementOrderItemRow = {
 type ProjectTestRow = {
   id: string;
   is_test: boolean | null;
+  is_third_party?: boolean | null;
   service_center: string | null;
 };
 
@@ -44,6 +45,7 @@ type ProjectServiceCenterRow = {
 
 type ProjectMeta = {
   isTest: boolean;
+  isThirdParty: boolean;
   serviceCenterId: string | null;
   serviceCenterName: string;
 };
@@ -370,7 +372,7 @@ async function fetchProjectMetaMap(params: {
 
   const { data, error } = await params.supabase
     .from("project")
-    .select("id, is_test, service_center")
+    .select("id, is_test, is_third_party, service_center")
     .eq("tenant_id", params.tenantId)
     .in("id", projectIds)
     .returns<ProjectTestRow[]>();
@@ -392,6 +394,7 @@ async function fetchProjectMetaMap(params: {
     item.id,
     {
       isTest: Boolean(item.is_test),
+      isThirdParty: Boolean(item.is_third_party),
       serviceCenterId: item.service_center,
       serviceCenterName: item.service_center ? serviceCenterMap.get(item.service_center) || "Centro nao identificado" : "Centro nao informado",
     },
@@ -668,13 +671,22 @@ export async function handleDashboardMeasurementGet(
 
   const validOrders = (orders ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
-    .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
+    .filter((order) => {
+      const projectMeta = projectMetaMap.get(order.project_id);
+      return !projectMeta?.isTest && !projectMeta?.isThirdParty;
+    });
   const annualValidOrders = (annualOrdersResult.data ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
-    .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
+    .filter((order) => {
+      const projectMeta = projectMetaMap.get(order.project_id);
+      return !projectMeta?.isTest && !projectMeta?.isThirdParty;
+    });
   const validMinimumBillingGuaranteeOrders = (minimumBillingGuaranteeOrders ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
-    .filter((order) => !projectMetaMap.get(order.project_id)?.isTest);
+    .filter((order) => {
+      const projectMeta = projectMetaMap.get(order.project_id);
+      return !projectMeta?.isTest && !projectMeta?.isThirdParty;
+    });
 
   const cycleMap = new Map<string, ReturnType<typeof buildCycleFromMeasurementDate>>();
   for (const row of cyclesDiscoveryResult.data ?? []) {
