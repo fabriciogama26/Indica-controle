@@ -12,7 +12,6 @@ import {
   buildNameMap,
   buildUserDisplayMap,
   buildUserLoginNameMap,
-  formatComparableValue,
   normalizeHistoryChanges,
   normalizeNullableText,
   normalizeText,
@@ -120,6 +119,8 @@ type PeopleListFilters = {
   tenantId: string;
   name: string;
   matriculation: string;
+  cpf: string;
+  phone: string;
   jobTitleId: string;
   jobTitleTypeId: string;
   jobLevel: string;
@@ -913,6 +914,14 @@ async function listPeople(params: {
       : query.ilike("matriculation", `%${filters.matriculation}%`);
   }
 
+  if (filters.cpf) {
+    query = query.ilike("cpf", `%${filters.cpf}%`);
+  }
+
+  if (filters.phone) {
+    query = query.ilike("phone", `%${filters.phone}%`);
+  }
+
   if (filters.jobTitleId) {
     query = query.eq("job_title_id", filters.jobTitleId);
   }
@@ -1023,6 +1032,8 @@ export async function GET(request: NextRequest) {
 
     const name = normalizeText(params.get("name"));
     const matriculation = normalizeMatriculation(params.get("matriculation"));
+    const cpf = normalizeCpf(params.get("cpf"));
+    const phone = normalizePhone(params.get("phone"));
     const jobTitleId = normalizeText(params.get("jobTitleId"));
     const jobTitleTypeId = normalizeText(params.get("jobTitleTypeId"));
     const jobLevel = normalizeText(params.get("jobLevel"));
@@ -1033,6 +1044,8 @@ export async function GET(request: NextRequest) {
       tenantId: appUser.tenant_id,
       name,
       matriculation,
+      cpf,
+      phone,
       jobTitleId,
       jobTitleTypeId,
       jobLevel,
