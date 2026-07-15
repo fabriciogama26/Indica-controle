@@ -757,9 +757,8 @@ async function fetchProjectsPageCompat(params: {
     }
 
     return query
-      .order("is_active", { ascending: false })
-      .order("execution_deadline", { ascending: true })
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .range(params.from, params.to);
   };
 

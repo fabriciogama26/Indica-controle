@@ -151,6 +151,7 @@ Filtros, auto-complete e listagem
 - Colunas `Prioridade` e `Responsavel Contratada` removidas da lista.
 - Coluna `Registrado por` exibida com `app_users.login_name` do `created_by`.
 - Coluna de data na lista padronizada como `Registrado em` (com base em `created_at`).
+- Lista principal ordenada por `Registrado em` decrescente, exibindo os ultimos projetos registrados primeiro.
 - Bloco `Status da Carteira de Projetos` adicionado no topo da tela (acima de `Cadastro de Projeto`) com 2 cards:
   - `Total de projetos` (todos os `SOB` unicos ativos retornados pelos filtros atuais, excluindo obras de teste, obras retiradas da carteira e obras de terceiros).
   - `Concluidas` (projetos ativos por `SOB` unico com `Estado Trabalho = CONCLUIDO` na `Programacao`, excluindo obras de teste, retiradas da carteira e terceiros; nao soma por equipe).
