@@ -1,0 +1,31 @@
+Correção direta (faz isso)
+
+Roda no CMD:
+
+setx PATH "%PATH%;C:\Users\operador\AppData\Local\Programs\Git\cmd"
+⚠️ Depois disso
+
+👉 FECHA o VS Code inteiro
+👉 Abre de novo
+👉 Abre o terminal
+
+Testa:
+
+git --version
+
+_______________________
+
+Cenário 1 — Você NÃO tem nada importante local
+
+(quer só alinhar com o GitHub)
+
+git fetch origin
+git reset --hard origin/main
+
+✔ Vai:
+
+Atualizar tudo
+
+Apagar qualquer alteração local
+
+Deixar igual ao GitHub

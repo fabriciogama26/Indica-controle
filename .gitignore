@@ -37,17 +37,5 @@ supabase/.temp
 # Keys
 *.pem
 
-# Database
-AGENTS.md
-CLAUDE.md
-REGRA_DE_NEGOCIO.md
-GUIA_DEPLOY_EDGE_FUNCTIONS_SUPABASE.md
-GUIA_DOCKER_SUPABASE_VERIFICAR_E_REPARAR.md
-Recuperar.txt
-estrutura_saas_multitenant.md
-
-# Misc
-verificação/
-
 # Backups
 Backup/

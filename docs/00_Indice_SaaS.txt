@@ -8,6 +8,7 @@ Arquivos principais para nova task
 - docs/Arquitetura_SaaS.txt
 - docs/Backend_Contratos_SaaS.txt
 - docs/Tela_Login_SaaS.txt
+- docs/Auditoria_Login_Acessos_SaaS.txt
 - docs/Tela_Permissoes_SaaS.txt
 - docs/Layout_Principal_SaaS.txt
 - docs/Tela_Home_SaaS.txt
@@ -68,3 +69,4 @@ Estado atual resumido
 - Tela de Rastreio de SERIAL implementada com consulta em `trafo_instances`
 - Modulos ainda em placeholder: parte de `Cadastro Base`
 - Backend minimo de login web mapeado no Supabase
+- Auditoria de login/logout (`login_audit`) mapeada em docs/Auditoria_Login_Acessos_SaaS.txt; sem tela/endpoint de leitura ainda

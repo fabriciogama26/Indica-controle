@@ -189,6 +189,12 @@ async function loadRowsInChunks<T>(
   return { data: rows, error: null };
 }
 
+// Above this many IDs an IN/NOT IN filter makes the PostgREST query too large to send.
+const IN_FILTER_MAX_IDS = 200;
+// Rows read per block when exclusions are applied in memory, and how many blocks to read at most.
+const TRANSFER_FETCH_BLOCK_SIZE = 200;
+const MAX_TRANSFER_FETCH_BLOCKS = 10;
+
 type PageInfo = {
   hasOlder: boolean;
   hasNewer: boolean;
@@ -606,91 +612,111 @@ async function loadTransferList(request: NextRequest) {
 
   const ascending = direction === "newer";
 
-  let transfersQuery = supabase
-    .from("stock_transfers")
-    .select(
-      "id, movement_type, operation_purpose, from_stock_center_id, to_stock_center_id, project_id, direct_purchase, entry_date, entry_type, balance_correction_reason, notes, created_at, updated_at, created_by, updated_by",
-    )
-    .eq("tenant_id", appUser.tenant_id)
-    .order("entry_date", { ascending })
-    .order("id", { ascending });
-
-  if (startDate) transfersQuery = transfersQuery.gte("entry_date", startDate);
-  if (endDate) transfersQuery = transfersQuery.lte("entry_date", endDate);
-  if (movementType) transfersQuery = transfersQuery.eq("movement_type", movementType);
-  if (operationPurposeFilter === "NORMAL" || operationPurposeFilter === "BALANCE_CORRECTION") {
-    transfersQuery = transfersQuery.eq("operation_purpose", operationPurposeFilter);
-  }
-  if (entryType) transfersQuery = transfersQuery.eq("entry_type", entryType);
-
-  if (preloadedProjectIds !== null && preloadedProjectIds.length > 0) {
-    transfersQuery = transfersQuery.in("project_id", preloadedProjectIds);
+  // Exclusion sets above IN_FILTER_MAX_IDS cannot go into the SQL query without blowing up its
+  // size, so they are applied in memory. The fetch loop below compensates by reading further
+  // blocks until the page is actually full.
+  const excludedIds = new Set<string>();
+  if (teamOpIds && teamOpIds.size > IN_FILTER_MAX_IDS) {
+    for (const id of teamOpIds) excludedIds.add(id);
   }
   if (materialFilterResult !== null && materialFilterResult.transferIds.length > 0) {
     transfersQuery = transfersQuery.in("id", materialFilterResult.transferIds);
   }
 
-  if (reversalSets) {
-    if (reversalStatus === "ESTORNADAS") {
-      const ids = [...reversalSets.originalIds].slice(0, 200);
-      transfersQuery = transfersQuery.in("id", ids);
-    } else if (reversalStatus === "ESTORNOS") {
-      const ids = [...reversalSets.reversalIds].slice(0, 200);
-      transfersQuery = transfersQuery.in("id", ids);
-    } else if (reversalStatus === "NAO_ESTORNADAS") {
-      const allReversalIds = [...new Set([...reversalSets.originalIds, ...reversalSets.reversalIds])];
-      if (allReversalIds.length > 0 && allReversalIds.length <= 200) {
-        transfersQuery = transfersQuery.not("id", "in", `(${allReversalIds.join(",")})`);
+  const buildTransfersQuery = (cursor: { entryDate: string; id: string } | null, limit: number) => {
+    let query = supabase
+      .from("stock_transfers")
+      .select(
+        "id, movement_type, operation_purpose, from_stock_center_id, to_stock_center_id, project_id, direct_purchase, entry_date, entry_type, balance_correction_reason, notes, created_at, updated_at, created_by, updated_by",
+      )
+      .eq("tenant_id", appUser.tenant_id)
+      .order("entry_date", { ascending })
+      .order("id", { ascending });
+
+    if (startDate) query = query.gte("entry_date", startDate);
+    if (endDate) query = query.lte("entry_date", endDate);
+    if (movementType) query = query.eq("movement_type", movementType);
+    if (operationPurposeFilter === "NORMAL" || operationPurposeFilter === "BALANCE_CORRECTION") {
+      query = query.eq("operation_purpose", operationPurposeFilter);
+    }
+    if (entryType) query = query.eq("entry_type", entryType);
+
+    if (preloadedProjectIds !== null && preloadedProjectIds.length > 0) {
+      query = query.in("project_id", preloadedProjectIds);
+    }
+    if (materialTransferIds !== null && materialTransferIds.length > 0) {
+      query = query.in("id", materialTransferIds);
+    }
+
+    if (reversalSets) {
+      if (reversalStatus === "ESTORNADAS") {
+        query = query.in("id", [...reversalSets.originalIds].slice(0, IN_FILTER_MAX_IDS));
+      } else if (reversalStatus === "ESTORNOS") {
+        query = query.in("id", [...reversalSets.reversalIds].slice(0, IN_FILTER_MAX_IDS));
+      } else if (reversalStatus === "NAO_ESTORNADAS") {
+        const allReversalIds = [...new Set([...reversalSets.originalIds, ...reversalSets.reversalIds])];
+        if (allReversalIds.length > 0 && allReversalIds.length <= IN_FILTER_MAX_IDS) {
+          query = query.not("id", "in", `(${allReversalIds.join(",")})`);
+        }
       }
     }
-  }
 
-  if (teamOpIds && teamOpIds.size > 0 && teamOpIds.size <= 200) {
-    transfersQuery = transfersQuery.not("id", "in", `(${[...teamOpIds].join(",")})`);
-  }
+    if (teamOpIds && teamOpIds.size > 0 && teamOpIds.size <= IN_FILTER_MAX_IDS) {
+      query = query.not("id", "in", `(${[...teamOpIds].join(",")})`);
+    }
 
-  if (cursorDate && cursorId) {
-    if (direction === "older") {
-      transfersQuery = transfersQuery.or(
-        `entry_date.lt.${cursorDate},and(entry_date.eq.${cursorDate},id.lt.${cursorId})`,
-      );
-    } else if (direction === "newer") {
-      transfersQuery = transfersQuery.or(
-        `entry_date.gt.${cursorDate},and(entry_date.eq.${cursorDate},id.gt.${cursorId})`,
-      );
+    if (cursor) {
+      query = ascending
+        ? query.or(`entry_date.gt.${cursor.entryDate},and(entry_date.eq.${cursor.entryDate},id.gt.${cursor.id})`)
+        : query.or(`entry_date.lt.${cursor.entryDate},and(entry_date.eq.${cursor.entryDate},id.lt.${cursor.id})`);
+    }
+
+    return query.limit(limit).returns<StockTransferHeaderRow[]>();
+  };
+
+  // Read blocks until pageSize + 1 transfers survive the in-memory exclusion, so the page is
+  // always full and hasOlder/hasNewer reflect what the user can actually reach.
+  const collected: StockTransferHeaderRow[] = [];
+  let blockCursor = cursorDate && cursorId && direction !== "initial"
+    ? { entryDate: cursorDate, id: cursorId }
+    : null;
+  let exhausted = false;
+
+  for (let block = 0; block < MAX_TRANSFER_FETCH_BLOCKS && collected.length <= pageSize; block += 1) {
+    const blockSize = excludedIds.size > 0 ? TRANSFER_FETCH_BLOCK_SIZE : pageSize + 1;
+    const { data: blockRows, error: transfersError } = await buildTransfersQuery(blockCursor, blockSize);
+
+    if (transfersError) {
+      return NextResponse.json({ message: "Falha ao carregar movimentacoes de estoque." }, { status: 500 });
+    }
+
+    if (!blockRows?.length) {
+      exhausted = true;
+      break;
+    }
+
+    for (const row of blockRows) {
+      if (!excludedIds.has(row.id)) collected.push(row);
+    }
+
+    const lastRow = blockRows[blockRows.length - 1];
+    blockCursor = { entryDate: lastRow.entry_date, id: lastRow.id };
+
+    if (blockRows.length < blockSize) {
+      exhausted = true;
+      break;
     }
   }
 
-  transfersQuery = transfersQuery.limit(pageSize + 1);
-
-  const { data: rawTransfers, error: transfersError } = await transfersQuery.returns<StockTransferHeaderRow[]>();
-
-  if (transfersError) {
-    return NextResponse.json({ message: "Falha ao carregar movimentacoes de estoque." }, { status: 500 });
-  }
-
-  if (!rawTransfers?.length) {
+  if (collected.length === 0) {
     return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
   }
 
-  const hasMore = rawTransfers.length > pageSize;
-  let pageTransfers = rawTransfers.slice(0, pageSize);
+  const hasMore = collected.length > pageSize || !exhausted;
+  let pageTransfers = collected.slice(0, pageSize);
   if (direction === "newer") pageTransfers = [...pageTransfers].reverse();
 
-  // Post-filter for large team op exclusion sets (> 200 IDs)
-  if (teamOpIds && teamOpIds.size > 200) {
-    pageTransfers = pageTransfers.filter((t) => !teamOpIds.has(t.id));
-  }
-
-  // Post-filter NAO_ESTORNADAS for large reversal sets (> 200 IDs)
-  if (reversalSets && reversalStatus === "NAO_ESTORNADAS") {
-    const allReversalIds = new Set([...reversalSets.originalIds, ...reversalSets.reversalIds]);
-    if (allReversalIds.size > 200) {
-      pageTransfers = pageTransfers.filter((t) => !allReversalIds.has(t.id));
-    }
-  }
-
-  const hasOlder = direction === "initial" ? hasMore : direction === "older" ? hasMore : true;
+  const hasOlder = direction === "newer" ? true : hasMore;
   const hasNewer = direction === "newer" ? hasMore : direction === "older" ? true : false;
 
   const newestTransfer = pageTransfers[0] ?? null;
