@@ -309,6 +309,7 @@ Filtros, auto-complete e listagem
   - `Responsaveis Enel` = `Responsavel Distribuidora` do Projeto.
   - `Gestor de campo` = `Gestor de campo Distribuidora` do Projeto.
   - `ENCARREGADO` = nomes dos encarregados do grupo consolidado, separados por ` / `.
+  - `Data limite` = `executionDeadline` do Projeto cadastrado, formatado em `dd/mm/aaaa`. Fica na coluna `P`, logo apos `Apoio` (coluna `O`), e desloca as colunas seguintes uma posicao para a direita. Projeto sem data limite exporta `-`.
   - `Logradouro`, `Bairro`, `Municipio` = campos do Projeto.
   - `Tipo de SGD` = selecao do formulario da Programacao.
     - `AREA_LIVRE` em `Tipo de SGD` nao preenche `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT`.
