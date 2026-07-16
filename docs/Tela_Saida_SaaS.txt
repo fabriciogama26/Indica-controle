@@ -141,6 +141,12 @@ Permissao por operacao (Requisicao direta)
   - `POST /api/team-stock-operations` recusa `operationKind = REQUISITION` sem a permissao (403).
   - `POST /api/team-stock-operations/import` recusa o lote que contiver qualquer linha `REQUISICAO`
     sem a permissao (403).
+- Escopo do bloqueio: sem `saida-requisicao` o usuario perde SOMENTE a operacao `Requisicao`.
+  `Devolucao` e `Retorno de campo` seguem liberados pela permissao `saida`.
+- Default do formulario: `INITIAL_FORM.operationKind` e `REQUISITION`. Quando `canDirectRequisition`
+  e falso, tanto a carga do meta quanto `resetForm()` forcam `RETURN`, porque a opcao `Requisicao`
+  nao existe no seletor e o form ficaria com um valor invisivel ao usuario (o select exibiria
+  `Devolucao` enquanto o estado enviaria `REQUISITION`, gerando 403 em todas as operacoes seguintes).
 
 Boas praticas
 -------------
@@ -687,3 +693,33 @@ Atualizacao 2026-06-30 (Performance: filtros no banco e limite no historico)
   - Abrir historico de uma operacao e verificar que o modal exibe as entradas de historico.
   - DevTools: `GET /api/team-stock-operations` deve retornar `pagination.total` correto.
 - Multi-tenant: sem impacto em RLS; todos os filtros incluem `tenant_id`.
+
+Atualizacao 2026-07-16 (Correcao: bloqueio de Requisicao direta afetava Devolucao e Retorno de campo)
+-----------------------------------------------------------------------------------------------------
+- Causa:
+  - `INITIAL_FORM.operationKind` e `REQUISITION` em `src/modules/dashboard/saida/constants.ts`.
+  - A carga do meta ja corrigia o valor para `RETURN` quando `canDirectRequisition` era falso, mas
+    `resetForm()` reaplicava `INITIAL_FORM` inteiro apos cada save bem sucedido.
+  - Como o seletor nao renderiza a opcao `Requisicao` sem a permissao, o `<select>` passava a exibir
+    `Devolucao` enquanto o estado do formulario continuava `REQUISITION`.
+  - Resultado: a partir da segunda operacao o usuario sem `saida-requisicao` recebia 403
+    ("Sem permissao para Requisicao direta") tambem ao tentar Devolucao e Retorno de campo.
+- Correcao:
+  - `resetForm()` passa a respeitar `canDirectRequisition`: `operationKind: canDirectRequisition ? INITIAL_FORM.operationKind : "RETURN"`.
+  - O estado do formulario nunca mais fica com um valor que o seletor nao exibe.
+- Comportamento antes/depois:
+  - Antes: sem `saida-requisicao`, a primeira operacao funcionava e as seguintes eram bloqueadas.
+  - Depois: sem `saida-requisicao`, somente a operacao `Requisicao` fica indisponivel; `Devolucao` e
+    `Retorno de campo` funcionam de forma ilimitada.
+- Mapa de Codigo:
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+    - `resetForm()`: default de `operationKind` derivado de `canDirectRequisition`.
+- Multi-tenant:
+  - Sem mudanca de schema, RLS ou permissao. O enforcement do backend
+    (`requirePageAction` com `saida-requisicao`) continua identico; a correcao e apenas de estado da UI.
+- Como validar:
+  - `npx tsc --noEmit`
+  - Na matriz de permissoes, deixar um usuario nao admin com `saida` marcado e `Requisicao direta (Operacoes de Equipe)` desmarcado.
+  - Logar com esse usuario em `/saida`: o seletor `Operacao` deve mostrar apenas `Devolucao` e `Retorno de campo`.
+  - Salvar uma `Devolucao`, aguardar o reset do formulario e salvar uma segunda `Devolucao` / `Retorno de campo`:
+    ambas devem concluir sem 403.

@@ -605,6 +605,9 @@ export function TeamStockOperationsPageView() {
   function resetForm() {
     setForm({
       ...INITIAL_FORM,
+      // Sem permissao de Requisicao direta o select nao renderiza a opcao REQUISITION;
+      // manter o default do INITIAL_FORM deixaria o form em REQUISITION e bloquearia Devolucao/Retorno.
+      operationKind: canDirectRequisition ? INITIAL_FORM.operationKind : "RETURN",
       entryDate: toIsoDate(new Date()),
     });
   }
