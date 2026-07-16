@@ -133,6 +133,10 @@ Filtros, auto-complete e listagem
   - `Todas`
   - `Movimentacao normal`
   - `Correcao de saldo`
+- A lista aplica os filtros no nivel da linha retornada, nao apenas no cabecalho/lote da movimentacao.
+- Quando uma mesma movimentacao contem varios materiais, o filtro `Material (codigo)` retorna somente as linhas dos materiais cujo codigo corresponde ao filtro.
+- Os filtros de periodo, operacao, finalidade, projeto, material, tipo e estorno sao revalidados depois do enriquecimento da linha, evitando exibir itens associados ao mesmo lote que nao atendem ao filtro solicitado.
+- O filtro de estorno considera tanto vinculos integrais em `stock_transfer_reversals` quanto estornos por item em `stock_transfer_item_reversals`.
 - Ordem das colunas da lista:
   - Centro DE
   - Centro PARA
@@ -489,6 +493,34 @@ Ajuda contextual
   - `TRANSFER_ITEM_MISMATCH`: item nao pertence a movimentacao selecionada.
   - `TEAM_OPERATION_REVERSAL_REQUIRES_TEAM_FLOW`: linha deve ser estornada em `Operacoes de Equipe`.
 - Arquivos tocados: `src/lib/server/stockTransfers.ts`, `src/app/api/stock-transfers/reversal/route.ts`, `src/modules/dashboard/entrada/StockTransfersPageView.tsx`, `docs/Tela_Entrada_SaaS.txt` e `TASKS.md`.
+
+Atualizacao 2026-07 - Filtros especificos por linha
+----------------------------------------------------
+- Causa:
+  - a listagem pre-filtrava `stock_transfers` por material/projeto/status, mas depois carregava todos os itens das movimentacoes encontradas;
+  - quando uma movimentacao tinha mais de um material, uma busca por `Material (codigo)` podia exibir linhas de outros codigos do mesmo lote;
+  - o filtro de estorno dependia principalmente dos vinculos integrais e precisava considerar tambem `stock_transfer_item_reversals`.
+- Correcao:
+  - `preloadMaterialTransferIds` passou a retornar `transferIds` e `materialIds`;
+  - a consulta de `stock_transfer_items` aplica `.in("material_id", materialIds)` quando o filtro de material esta ativo;
+  - `loadTransferList` executa `rowMatchesListFilters` apos montar a linha enriquecida, garantindo que a resposta contenha apenas linhas que atendem aos filtros solicitados.
+- Campos cobertos pelo filtro final por linha:
+  - `Data inicial`
+  - `Data final`
+  - `Operacao`
+  - `Finalidade`
+  - `Projeto`
+  - `Material (codigo)`
+  - `Tipo`
+  - `Estorno`
+- Comportamento antes/depois:
+  - Antes: filtro por material podia trazer outro material da mesma movimentacao.
+  - Depois: a lista mostra somente o que foi pedido no filtro ativo.
+- Arquivo alterado:
+  - `src/app/api/stock-transfers/route.ts`
+- Validacao:
+  - `cmd /c npx tsc --noEmit`
+  - `cmd /c npm run lint`
 
 Atualizacao 2026-06 - Auditoria de integridade
 -----------------------------------------------

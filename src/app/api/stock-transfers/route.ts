@@ -84,10 +84,6 @@ type StockTransferItemReversalRow = {
   created_at: string;
 };
 
-type TeamStockOperationRow = {
-  transfer_id: string;
-};
-
 type TeamStockCenterRow = {
   stock_center_id: string | null;
 };
@@ -214,7 +210,7 @@ async function preloadMaterialTransferIds(
   supabase: SupabaseClient,
   tenantId: string,
   materialCode: string,
-): Promise<string[]> {
+): Promise<{ transferIds: string[]; materialIds: string[] }> {
   const { data: materials } = await supabase
     .from("materials")
     .select("id")
@@ -223,7 +219,7 @@ async function preloadMaterialTransferIds(
     .limit(100)
     .returns<{ id: string }[]>();
 
-  if (!materials?.length) return [];
+  if (!materials?.length) return { transferIds: [], materialIds: [] };
 
   const materialIds = materials.map((m: { id: string }) => m.id);
   const result = await loadRowsInChunks<{ stock_transfer_id: string }>(
@@ -237,7 +233,10 @@ async function preloadMaterialTransferIds(
       .returns<{ stock_transfer_id: string }[]>(),
   );
 
-  return Array.from(new Set((result.data ?? []).map((r) => r.stock_transfer_id))).slice(0, 200);
+  return {
+    transferIds: Array.from(new Set((result.data ?? []).map((r) => r.stock_transfer_id))).slice(0, 200),
+    materialIds,
+  };
 }
 
 async function preloadProjectIdsForCode(
@@ -260,16 +259,29 @@ async function preloadTransferReversalSets(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<{ originalIds: Set<string>; reversalIds: Set<string> }> {
-  const { data } = await supabase
-    .from("stock_transfer_reversals")
-    .select("original_stock_transfer_id, reversal_stock_transfer_id")
-    .eq("tenant_id", tenantId)
-    .limit(10000)
-    .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>();
+  const [transferReversalsResult, itemReversalsResult] = await Promise.all([
+    supabase
+      .from("stock_transfer_reversals")
+      .select("original_stock_transfer_id, reversal_stock_transfer_id")
+      .eq("tenant_id", tenantId)
+      .limit(10000)
+      .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>(),
+    supabase
+      .from("stock_transfer_item_reversals")
+      .select("original_stock_transfer_id, reversal_stock_transfer_id")
+      .eq("tenant_id", tenantId)
+      .limit(10000)
+      .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>(),
+  ]);
+
+  const rows = [
+    ...(transferReversalsResult.data ?? []),
+    ...(itemReversalsResult.data ?? []),
+  ];
 
   return {
-    originalIds: new Set((data ?? []).map((r) => r.original_stock_transfer_id)),
-    reversalIds: new Set((data ?? []).map((r) => r.reversal_stock_transfer_id)),
+    originalIds: new Set(rows.map((r) => r.original_stock_transfer_id)),
+    reversalIds: new Set(rows.map((r) => r.reversal_stock_transfer_id)),
   };
 }
 
@@ -305,6 +317,49 @@ function normalizeOperationPurpose(value: unknown) {
     return normalized as "NORMAL" | "BALANCE_CORRECTION";
   }
   return "NORMAL" as const;
+}
+
+function rowMatchesListFilters(params: {
+  row: TransferListItem;
+  startDate: string | null;
+  endDate: string | null;
+  movementType: ReturnType<typeof normalizeMovementType>;
+  operationPurposeFilter: string;
+  entryType: ReturnType<typeof normalizeEntryType>;
+  projectCodeFilter: string;
+  materialCodeFilter: string;
+  reversalStatus: ReturnType<typeof normalizeReversalStatus>;
+}) {
+  const {
+    row,
+    startDate,
+    endDate,
+    movementType,
+    operationPurposeFilter,
+    entryType,
+    projectCodeFilter,
+    materialCodeFilter,
+    reversalStatus,
+  } = params;
+
+  if (startDate && row.entryDate < startDate) return false;
+  if (endDate && row.entryDate > endDate) return false;
+  if (movementType && row.movementType !== movementType) return false;
+  if (
+    (operationPurposeFilter === "NORMAL" || operationPurposeFilter === "BALANCE_CORRECTION")
+    && row.operationPurpose !== operationPurposeFilter
+  ) {
+    return false;
+  }
+  if (entryType && row.entryType !== entryType) return false;
+  if (projectCodeFilter && !normalizeCodeFilter(row.projectCode).includes(projectCodeFilter)) return false;
+  if (materialCodeFilter && !normalizeCodeFilter(row.materialCode).includes(materialCodeFilter)) return false;
+
+  if (reversalStatus === "ESTORNADAS") return row.isReversed && !row.isReversal;
+  if (reversalStatus === "ESTORNOS") return row.isReversal;
+  if (reversalStatus === "NAO_ESTORNADAS") return !row.isReversed && !row.isReversal;
+
+  return true;
 }
 
 function toIsoDate(value: Date) {
@@ -520,7 +575,7 @@ async function loadTransferList(request: NextRequest) {
   const needsTeamOpExclusion = !movementType || movementType === "TRANSFER";
   const needsReversalSets = reversalStatus !== "TODOS";
 
-  const [materialTransferIds, preloadedProjectIds, reversalSets, teamOpIds] = await Promise.all([
+  const [materialFilterResult, preloadedProjectIds, reversalSets, teamOpIds] = await Promise.all([
     materialCodeFilter
       ? preloadMaterialTransferIds(supabase, appUser.tenant_id, materialCodeFilter)
       : Promise.resolve(null),
@@ -536,7 +591,7 @@ async function loadTransferList(request: NextRequest) {
   ]);
 
   // Short-circuit on empty pre-filter results
-  if (materialCodeFilter && materialTransferIds !== null && materialTransferIds.length === 0) {
+  if (materialCodeFilter && materialFilterResult !== null && materialFilterResult.transferIds.length === 0) {
     return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
   }
   if (projectCodeFilter && preloadedProjectIds !== null && preloadedProjectIds.length === 0) {
@@ -571,8 +626,8 @@ async function loadTransferList(request: NextRequest) {
   if (preloadedProjectIds !== null && preloadedProjectIds.length > 0) {
     transfersQuery = transfersQuery.in("project_id", preloadedProjectIds);
   }
-  if (materialTransferIds !== null && materialTransferIds.length > 0) {
-    transfersQuery = transfersQuery.in("id", materialTransferIds);
+  if (materialFilterResult !== null && materialFilterResult.transferIds.length > 0) {
+    transfersQuery = transfersQuery.in("id", materialFilterResult.transferIds);
   }
 
   if (reversalSets) {
@@ -657,12 +712,19 @@ async function loadTransferList(request: NextRequest) {
   // Load items only for this page of transfers
   const { data: itemRows, error: itemsError } = await loadRowsInChunks<StockTransferItemRow>(
     transferIds,
-    (chunk) => supabase
-      .from("stock_transfer_items")
-      .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
-      .eq("tenant_id", appUser.tenant_id)
-      .in("stock_transfer_id", chunk)
-      .returns<StockTransferItemRow[]>(),
+    (chunk) => {
+      let itemsQuery = supabase
+        .from("stock_transfer_items")
+        .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("stock_transfer_id", chunk);
+
+      if (materialFilterResult?.materialIds.length) {
+        itemsQuery = itemsQuery.in("material_id", materialFilterResult.materialIds);
+      }
+
+      return itemsQuery.returns<StockTransferItemRow[]>();
+    },
   );
 
   if (itemsError) {
@@ -902,7 +964,21 @@ async function loadTransferList(request: NextRequest) {
     ];
   });
 
-  return NextResponse.json({ history: allRows, pageInfo });
+  const filteredRows = allRows.filter((row) =>
+    rowMatchesListFilters({
+      row,
+      startDate,
+      endDate,
+      movementType,
+      operationPurposeFilter,
+      entryType,
+      projectCodeFilter,
+      materialCodeFilter,
+      reversalStatus,
+    }),
+  );
+
+  return NextResponse.json({ history: filteredRows, pageInfo });
 }
 
 async function loadTransferEditHistory(request: NextRequest) {
