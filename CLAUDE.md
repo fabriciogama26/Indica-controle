@@ -181,10 +181,18 @@ Não há script `test` — até uma suíte automatizada existir, validação de 
 
 ## 10. Documentação
 
-- Toda tela criada/alterada atualiza `docs/Tela_<Nome>_SaaS.txt` (padrão em `guias/guia_documentacao.md`).
-- `TASKS.md` é atualizado ao final de toda tarefa.
-- `verificacao/crc/<modulo>.md` é atualizado se houve mudança estrutural no módulo.
-- README segue exatamente o padrão de `guias/guia_documentacao.md`.
+## Padrão de permissão granular por operação (obrigatório)
+Aplica-se quando uma permissão/flag bloqueia apenas PARTE das operações de uma tela, e não a tela inteira (ex.: `saida-requisicao` dentro de Operacoes de Equipe).
+
+1. Backend: o `requirePageAction` da permissão específica fica DENTRO do `if` da operação bloqueada, nunca no topo da rota. As demais operações continuam sob a permissão da tela.
+2. Frontend: se a opção bloqueada some de um `select`/lista, TODOS os caminhos que escrevem esse estado devem respeitar a mesma flag — estado inicial, `resetForm()` pós-save, cancelar, limpar filtros. Nunca deixar o estado guardar um valor que a UI não renderiza: o select exibe outra coisa, o submit envia o valor invisível e o backend recusa a operação errada.
+3. Validar sempre o caminho longo, não só a carga da tela: executar UMA operação permitida, deixar o formulário resetar e executar OUTRA. Esse tipo de bug só aparece na segunda.
+4. Documentar em `/docs/<Tela>.txt` o escopo exato do bloqueio: o que fica indisponível e, explicitamente, o que continua liberado.
+
+---
+
+## Padrão OBRIGATÓRIO de README.md
+Quando criar/editar README.md, seguir exatamente esta ordem:
 
 ## 11. Comunicação e entrega
 
