@@ -639,27 +639,44 @@ Atualizacao 2026-06 - Correcao do agrupamento do cadastro em massa
 Atualizacao 2026-06 - Regra de serial em Operacoes de Equipe
 ------------------------------------------------------------
 Visao geral
-- Operacoes de Equipe continuam exigindo unidade identificada para todo material rastreavel por serial.
-- A pendencia criada na Movimentacao de Estoque representa estoque fisico sem serial identificado e nao pode sair para equipe.
+- Operacoes de Equipe continuam exigindo `Serial` para todo material rastreavel.
+- A pendencia criada na Movimentacao de Estoque representa estoque fisico sem serial identificado.
+- Para `RELIGADOR` e `CHAVE`, quando o usuario informa um serial que ainda nao existe em `trafo_instances`, a RPC pode identificar a unidade no ato consumindo saldo pendente de `stock_serial_pending_balances`.
+- `TRAFO` permanece fora da flexibilizacao e continua exigindo unidade previamente registrada no centro de origem com `Serial + LP`.
 
 Cadastro
 - `REQUISITION`, `RETURN` e `FIELD_RETURN` rejeitam item rastreavel sem `serialNumber`.
 - `TRAFO` continua exigindo `Serial + LP`.
-- `RELIGADOR` e `CHAVE` tambem exigem serial quando usados em Operacoes de Equipe, mesmo que o material aceite pendencia na Entrada/Transferencia fisica.
+- `RELIGADOR` e `CHAVE` tambem exigem serial quando usados em Operacoes de Equipe, mas o serial pode ser novo quando houver quantidade pendente suficiente no centro de origem, projeto e tipo.
+- O autocomplete continua listando unidades ja identificadas no centro de origem, mas `RELIGADOR`/`CHAVE` podem receber digitacao manual do serial para consumir pendencia.
 
 Arquitetura
 - A migration `247_allow_pending_serial_identification.sql` reforca `save_team_stock_operation_record` para rejeitar item rastreavel sem serial antes da gravacao.
-- A tela e as APIs existentes seguem usando `trafo_instances` para listar e validar apenas unidades identificadas no centro de origem real.
+- A migration `308_identify_pending_serial_in_team_operations.sql` republica `save_team_stock_operation_record` para:
+  - validar todos os itens rastreaveis sem efeito colateral;
+  - identificar `RELIGADOR`/`CHAVE` pendente via `identify_pending_serial_tracked_unit` quando a unidade ainda nao existe no centro de origem;
+  - executar identificacao + `save_stock_transfer_record` em subtransacao, evitando consumir pendencia se o save da operacao falhar;
+  - preservar `TRAFO` com validacao de unidade existente no centro de origem.
+- A tela e as APIs continuam usando `trafo_instances` para listar unidades ja identificadas e `stock_center_balances` para validar saldo fisico agregado.
 
 Comportamento antes/depois
 - Antes: a regra funcional ja exigia serial para material rastreavel na tela.
-- Depois: a regra fica tambem protegida no banco contra chamadas diretas da RPC com item sem serial.
+- Depois da migration `247`: a regra ficou protegida no banco contra chamadas diretas da RPC com item sem serial, mas `RELIGADOR`/`CHAVE` sem unidade identificada ainda eram bloqueados.
+- Depois da migration `308`: `RELIGADOR`/`CHAVE` com saldo pendente podem ser identificados no ato da operacao de equipe; sem saldo pendente suficiente, a operacao continua bloqueada.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 - `supabase/migrations/247_allow_pending_serial_identification.sql`
   - `save_team_stock_operation_record`: prevalidacao de `p_items` para bloquear material rastreavel sem serial.
+- `supabase/migrations/308_identify_pending_serial_in_team_operations.sql`
+  - `save_team_stock_operation_record`: identifica pendencia de serial para `RELIGADOR`/`CHAVE` antes de salvar Requisicao/Devolucao.
+- `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `ensureSourceStockAvailability`: `TRAFO` continua validando unidade em `serial-options`; `RELIGADOR`/`CHAVE` validam saldo agregado e deixam a RPC identificar pendencia quando necessario.
+- `src/app/api/team-stock-operations/import/route.ts`
+  - importacao CSV aceita `RELIGADOR`/`CHAVE` com serial informado ainda nao listado em `trafo_instances`, desde que o saldo de origem seja suficiente.
+- `src/lib/server/teamStockOperations.ts`
+  - mensagens operacionais para pendencia insuficiente ou identificacao nao permitida.
 - `docs/Tela_Saida_SaaS.txt`
-  - documenta que pendencia de serial nao e requisitavel por equipe.
+  - documenta identificacao de pendencia durante Operacoes de Equipe.
 
 Atualizacao 2026-06 (correcao de brechas de permissao de pagina)
 -----------------------------------------------------------------

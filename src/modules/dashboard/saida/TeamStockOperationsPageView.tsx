@@ -749,6 +749,7 @@ export function TeamStockOperationsPageView() {
         serialNumber: normalizeText(form.serialNumber) || null,
         lotCode: normalizeText(form.lotCode) || (requiresLotCode(selectedMaterial.serialTrackingType) ? null : "-"),
         isTransformer: true,
+        serialTrackingType: selectedMaterial.serialTrackingType,
       });
 
       if (!sourceAvailability.ok) {
@@ -774,7 +775,7 @@ export function TeamStockOperationsPageView() {
       if (item.isTransformer || isSerialTrackedMaterial(selectedMaterial.serialTrackingType)) {
         return item.materialId === form.materialId
           && normalizeText(item.serialNumber).toUpperCase() === normalizedSerial.toUpperCase()
-        && normalizeText(item.lotCode || "-").toUpperCase() === (requiresLotCode(selectedMaterial.serialTrackingType) ? normalizedLot.toUpperCase() : "-");
+          && normalizeText(item.lotCode || "-").toUpperCase() === (requiresLotCode(selectedMaterial.serialTrackingType) ? normalizedLot.toUpperCase() : "-");
       }
 
       return item.materialId === form.materialId;
@@ -862,6 +863,7 @@ export function TeamStockOperationsPageView() {
     serialNumber: string | null;
     lotCode: string | null;
     isTransformer: boolean;
+    serialTrackingType: TeamOperationFormItem["serialTrackingType"];
   }) {
     if (!accessToken) {
       return { ok: false, message: "Sessao invalida para validar a operacao." } as const;
@@ -890,7 +892,7 @@ export function TeamStockOperationsPageView() {
       if (!response.ok) {
         return {
           ok: false,
-      message: data.message ?? "Falha ao validar a unidade por serial para retorno de campo.",
+          message: data.message ?? "Falha ao validar a unidade por serial para retorno de campo.",
         } as const;
       }
 
@@ -914,7 +916,7 @@ export function TeamStockOperationsPageView() {
       return { ok: false, message: "Selecione um centro de origem valido antes de salvar." } as const;
     }
 
-    if (params.isTransformer) {
+    if (params.isTransformer && requiresLotCode(params.serialTrackingType)) {
       const searchParams = new URLSearchParams();
       searchParams.set("operationKind", form.operationKind);
       searchParams.set("stockCenterId", form.stockCenterId);
@@ -1076,6 +1078,7 @@ export function TeamStockOperationsPageView() {
           serialNumber: normalizeText(item.serialNumber) || null,
           lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
           isTransformer: item.isTransformer,
+          serialTrackingType: item.serialTrackingType,
         });
         if (!sourceAvailability.ok) {
           sourceAvailabilityErrors.push(sourceAvailability.message);
@@ -2030,7 +2033,13 @@ export function TeamStockOperationsPageView() {
                   onChange={(event) => handleSerialNumberChange(event.target.value)}
                   list={requiresTransformerFields && form.operationKind !== "FIELD_RETURN" ? "saida-serial-list" : undefined}
                   disabled={isSubmitting || !requiresTransformerFields}
-                  placeholder={requiresTransformerFields && form.operationKind !== "FIELD_RETURN" ? "Digite para selecionar do estoque" : ""}
+                  placeholder={
+                    requiresTransformerFields && form.operationKind !== "FIELD_RETURN"
+                      ? requiresLotFields
+                        ? "Digite para selecionar do estoque"
+                        : "Digite o serial da unidade"
+                      : ""
+                  }
                 />
                 {requiresTransformerFields && form.operationKind !== "FIELD_RETURN" ? (
                   <small className={styles.fieldHint}>
@@ -2038,7 +2047,9 @@ export function TeamStockOperationsPageView() {
                       ? "Carregando seriais disponiveis..."
                       : matchedSerialOption
                         ? `Selecionado no estoque de origem: ${sourceStockCenterName}.`
-                        : "Use um serial listado no estoque de origem."}
+                        : requiresLotFields
+                          ? "Use um serial listado no estoque de origem."
+                          : "Se o serial nao estiver listado, ele sera identificado a partir do saldo pendente disponivel."}
                   </small>
                 ) : null}
               </label>
