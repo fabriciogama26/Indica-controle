@@ -619,9 +619,6 @@ async function loadTransferList(request: NextRequest) {
   if (teamOpIds && teamOpIds.size > IN_FILTER_MAX_IDS) {
     for (const id of teamOpIds) excludedIds.add(id);
   }
-  if (materialFilterResult !== null && materialFilterResult.transferIds.length > 0) {
-    transfersQuery = transfersQuery.in("id", materialFilterResult.transferIds);
-  }
 
   const buildTransfersQuery = (cursor: { entryDate: string; id: string } | null, limit: number) => {
     let query = supabase
@@ -644,8 +641,8 @@ async function loadTransferList(request: NextRequest) {
     if (preloadedProjectIds !== null && preloadedProjectIds.length > 0) {
       query = query.in("project_id", preloadedProjectIds);
     }
-    if (materialTransferIds !== null && materialTransferIds.length > 0) {
-      query = query.in("id", materialTransferIds);
+    if (materialFilterResult !== null && materialFilterResult.transferIds.length > 0) {
+      query = query.in("id", materialFilterResult.transferIds);
     }
 
     if (reversalSets) {
