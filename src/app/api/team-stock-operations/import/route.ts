@@ -519,6 +519,7 @@ export async function POST(request: NextRequest) {
       if (entry.isTransformer) {
         const unitKey = makeTrafoKey(item.materialId, item.serialNumber ?? null, item.lotCode ?? null);
         const currentStockCenterId = projectedTrafoPositions.get(unitKey) ?? null;
+        const requiresRegisteredUnit = requiresLotCode(entry.serialTrackingType);
 
         if (entry.operationKind === "FIELD_RETURN") {
           if (currentStockCenterId !== null) {
@@ -534,7 +535,19 @@ export async function POST(request: NextRequest) {
           }
 
           projectedTrafoPositions.set(unitKey, entry.destinationStockCenterId);
-        } else if (currentStockCenterId !== entry.sourceStockCenterId) {
+        } else if (currentStockCenterId === entry.sourceStockCenterId) {
+          projectedTrafoPositions.set(unitKey, entry.destinationStockCenterId);
+        } else if (currentStockCenterId !== null) {
+          issues.push(
+            makeIssue(
+              entry.rowNumber,
+              "serial",
+              `${item.serialNumber ?? ""}/${item.lotCode ?? ""}`,
+              `A unidade por serial informada nao esta no estoque de origem (${entry.sourceStockCenterName}). Confira Material, Serial${requiresLotCode(entry.serialTrackingType) ? " e LP" : ""}.`,
+            ),
+          );
+          continue;
+        } else if (requiresRegisteredUnit) {
           issues.push(
             makeIssue(
               entry.rowNumber,

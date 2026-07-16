@@ -107,6 +107,14 @@ function mapTeamOperationErrorMessage(reason: string) {
       return "Nao foi possivel preparar o centro tecnico CAMPO / INSTALADO.";
     case "TEAM_OPERATION_REQUIRED_FIELDS":
       return "Centro de estoque e equipe sao obrigatorios para a operacao.";
+    case "PENDING_SERIAL_INSUFFICIENT_BALANCE":
+      return "Nao existe saldo pendente de serial suficiente no centro de origem para identificar esta unidade.";
+    case "PENDING_SERIAL_NOT_ALLOWED":
+      return "Este material nao aceita identificacao de serial pendente para Operacoes de Equipe.";
+    case "PENDING_SERIAL_INVALID_ENTRY_TYPE":
+      return "Tipo do material deve ser NOVO ou SUCATA para identificar o serial pendente.";
+    case "PENDING_SERIAL_REQUIRED_FIELDS":
+      return "Material, centro, tipo e serial sao obrigatorios para identificar a pendencia.";
     case "ITEM_ALREADY_REVERSED":
       return "Este item da operacao de equipe ja foi estornado.";
     case "FULL_TRANSFER_ALREADY_REVERSED":

@@ -904,3 +904,9 @@ Observacao
 - Adiciona indices compostos, sempre com `tenant_id` como prefixo, para achados objetivos do Query Performance/Index Advisor.
 - Cobre historico de Programacao por `action_type + programming_id + created_at`, Medicao por `execution_date + updated_at`, Projetos por `is_active + is_test + execution_deadline` e Materiais por `is_active + codigo + id`.
 - Substitui `idx_materials_tenant_active_codigo` por `idx_materials_tenant_active_codigo_id`, evitando duplicidade e cobrindo tambem a ordenacao secundaria por `id`.
+
+308_identify_pending_serial_in_team_operations.sql
+- Republica `save_team_stock_operation_record` para identificar `RELIGADOR`/`CHAVE` pendente durante `REQUISITION`/`RETURN`.
+- Quando o serial informado ainda nao existe em `trafo_instances`, a RPC consome uma unidade de `stock_serial_pending_balances` via `identify_pending_serial_tracked_unit` no centro de origem, projeto e tipo da operacao.
+- Executa identificacao + `save_stock_transfer_record` em subtransacao; se a gravacao falhar, a pendencia nao fica consumida.
+- Mantem `TRAFO` exigindo unidade previamente registrada com `Serial + LP` e nao altera RLS/schema.
