@@ -77,6 +77,7 @@ Filtros, auto-complete e listagem
 - A tabela de categorias usa `service_activities.type_service` e `types_service_activities.name` para agrupar os codigos exibidos no resultado filtrado.
 - A tabela de categorias e calculada a partir das mesmas linhas finais exibidas em `Codigos por origem`.
 - A tabela `Resumo por categoria` possui exportacao CSV propria.
+- O subtitulo do bloco `Resumo por categoria` exibe `Projeto | Centro de servico` do projeto selecionado, no mesmo formato de `Codigos por origem`, e exibe `Selecione Centro de servico e Projeto.` quando nao ha projeto selecionado.
 - As exportacoes CSV incluem o numero do Projeto (SOB) e o Centro de servico em todas as linhas.
 - As colunas de valor nas exportacoes CSV saem formatadas como moeda (`R$`).
 - O nome dos arquivos CSV inclui o numero do Projeto (SOB), por exemplo `dash_operacional_faturamento_categorias_A044811036.csv`.
@@ -436,3 +437,16 @@ Ajuda contextual
   - Ajuste posterior: `Projetos por valor` passa a ter checkboxes `Ocultar Medicao zerada` e `Ocultar Asbuilt zerado`, removendo do resultado filtrado as linhas com valor `0` na respectiva origem.
   - Ajuste posterior: `Projetos por valor` passa a ter checkboxes `Somente Medicao zerada` e `Somente Asbuilt zerado`, incompativeis com o filtro `Ocultar` da mesma origem.
   - Atualizacao 2026-07-04: `OperationalBillingDashboardPageView.tsx` adiciona `runCsvExport` e `isExporting`; exportacoes de tabela, categorias, projetos por valor e modal de indicador exibem `ExportProgressModal`. Sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-17 (projeto/centro no Resumo por categoria)
+--------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - `docs/Tela_Dash_Operacional_Faturamento_SaaS.txt`
+- Funcoes/hooks/constantes tocadas:
+  - subtitulo do card `Resumo por categoria` (reuso do memo `selectedProject`)
+- Comportamento antes/depois:
+  - Antes: o subtitulo exibia o texto fixo `Quantidade e valor por categoria dos codigos do projeto selecionado.`, sem identificar qual projeto/centro estava filtrado.
+  - Depois: o subtitulo exibe `Projeto | Centro de servico` igual a `Codigos por origem`, com fallback `Selecione Centro de servico e Projeto.` quando nenhum projeto esta selecionado.
+- Impacto multi-tenant:
+  - Sem alteracao de API, query, schema, RLS ou permissao; usa dado ja carregado na tela.
