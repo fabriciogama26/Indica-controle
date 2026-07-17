@@ -1587,7 +1587,7 @@ export function OperationalBillingDashboardPageView() {
           <div>
             <h2 className={styles.cardTitle}>Resumo por categoria</h2>
             <p className={styles.cardSubtitle}>
-              Quantidade e valor por categoria dos codigos do projeto selecionado.
+              {selectedProject ? `${selectedProject.label} | ${selectedProject.serviceCenter}` : "Selecione Centro de servico e Projeto."}
             </p>
           </div>
           <div className={styles.tableActions}>
