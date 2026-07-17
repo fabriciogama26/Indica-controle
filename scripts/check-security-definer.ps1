@@ -35,6 +35,8 @@ $knownAuthGrant = @{
     263 = "Corrigida pela migration 298"
     278 = "Corrigida pela migration 298"
     285 = "Corrigida pela migration 298"
+    307 = "Corrigida pela migration 309"
+    308 = "Corrigida pela migration 309"
 }
 
 function Remove-SqlComments {

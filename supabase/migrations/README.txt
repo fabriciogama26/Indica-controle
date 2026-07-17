@@ -910,3 +910,8 @@ Observacao
 - Quando o serial informado ainda nao existe em `trafo_instances`, a RPC consome uma unidade de `stock_serial_pending_balances` via `identify_pending_serial_tracked_unit` no centro de origem, projeto e tipo da operacao.
 - Executa identificacao + `save_stock_transfer_record` em subtransacao; se a gravacao falhar, a pendencia nao fica consumida.
 - Mantem `TRAFO` exigindo unidade previamente registrada com `Serial + LP` e nao altera RLS/schema.
+
+309_restrict_admin_rpc_execute_to_service_role.sql
+- Revoga EXECUTE de `anon` e `authenticated` em `save_project_record` e `save_team_stock_operation_record`, que regrediram nas migrations 307 e 308.
+- Usa varredura dinamica (padrao das migrations 210/251) para cobrir qualquer assinatura remanescente e valida ao final que nenhuma funcao `SECURITY DEFINER` continua executavel por `anon`/`authenticated`.
+- Mantem uso pelo backend via `service_role`; nao cria/altera policies RLS nem adiciona permissao `DELETE`.
