@@ -615,16 +615,13 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     const start = (page - 1) * PAGE_SIZE;
     return filteredSchedules.slice(start, start + PAGE_SIZE);
   }, [filteredSchedules, page]);
-  const calendarTeams = useMemo(() => {
-    const selectedTeams = activeFilters.teamId
-      ? teams.filter((team) => team.id === activeFilters.teamId)
-      : teams;
-
-    return [...selectedTeams].sort((left, right) => left.name.localeCompare(right.name));
-  }, [activeFilters.teamId, teams]);
+  const calendarTeams = useMemo(
+    () => [...teams].sort((left, right) => left.name.localeCompare(right.name)),
+    [teams],
+  );
   const weeklySchedules = useMemo(
-    () => filteredSchedules.filter((item) => isDateInRange(item.date, weekStartDate, weekEndDate)),
-    [filteredSchedules, weekEndDate, weekStartDate],
+    () => schedules.filter((item) => isDateInRange(item.date, weekStartDate, weekEndDate)),
+    [schedules, weekEndDate, weekStartDate],
   );
   const weeklyScheduleMap = useMemo(() => {
     const scheduleMap = new Map<string, ScheduleItem[]>();
@@ -2197,7 +2194,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
     setFeedback(null);
     setActiveFilters(filterDraft);
-    setWeekStartDate(startOfWeekMonday(filterDraft.startDate));
   }
 
   function clearFilters() {
@@ -2214,7 +2210,6 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
     };
     setFilterDraft(reset);
     setActiveFilters(reset);
-    setWeekStartDate(startOfWeekMonday(reset.startDate));
     setFeedback(null);
   }
 
