@@ -47,6 +47,11 @@ Filtros, auto-complete e listagem
     - A lista obedece sempre o periodo filtrado em `Data inicial` e `Data final`, inclusive para `ADIADA`, `CANCELADA`, `ANTECIPADA` e `TRANSFERIDA`.
 - Calendario semanal:
   - Posicionado no topo da tela, acima do card de filtros.
+  - Independente do card `Filtros`: nao obedece `Data inicial`/`Data final`, `Projeto`,
+    `Municipio`, `Equipe`, `Status`, `Estado Trabalho` nem `Tipo SGD`. Exibe sempre todas
+    as programacoes da semana navegada, com uma linha para cada equipe do tenant.
+  - A semana exibida muda somente pelos botoes `Anterior`, `Semana atual` e `Proxima`.
+    Aplicar ou limpar filtros nao move a semana.
   - Grade fixa de segunda a domingo, com linhas por equipe.
   - Cabecalho da linha de equipe exibe `Equipe`, `Encarregado` e `Base`.
   - Cada card representa uma programacao no dia.
@@ -185,6 +190,30 @@ Atualizacao 2026-07-09 - Calendario semanal acima dos filtros
   - Comportamento antes/depois:
     - Antes: calendario semanal ficava abaixo da lista/filtros na Visualizacao.
     - Depois: calendario semanal aparece antes dos filtros.
+
+Atualizacao 2026-07-17 - Calendario semanal desacoplado dos filtros
+-------------------------------------------------------------------
+- O `Calendario Semanal de Programacao` deixa de ser afetado pelo card `Filtros`.
+- A lista continua obedecendo todos os filtros, sem alteracao.
+- Mapeamento desta atualizacao:
+  - Arquivos alterados:
+    - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+    - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+    - `TASKS.md`
+  - Funcoes/hooks/constantes tocadas:
+    - `weeklySchedules`
+    - `calendarTeams`
+    - `applyFilters`
+    - `clearFilters`
+  - Comportamento antes/depois:
+    - Antes: `weeklySchedules` derivava de `filteredSchedules`, entao os cards sumiam
+      quando o periodo filtrado nao cobria a semana ou quando havia filtro de projeto,
+      municipio, status, estado trabalho ou tipo SGD; `calendarTeams` escondia as linhas
+      das demais equipes; aplicar/limpar filtros movia a semana para a data inicial.
+    - Depois: `weeklySchedules` deriva de `schedules` recortado apenas pelo intervalo da
+      semana; `calendarTeams` lista todas as equipes; a semana so muda pela navegacao.
+  - Observacao: `fetchBoardSnapshot` ja busca a uniao entre o periodo filtrado e o periodo
+    da semana, entao o calendario continua com dados mesmo com filtro fora da semana.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
