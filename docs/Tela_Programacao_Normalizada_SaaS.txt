@@ -1,0 +1,323 @@
+Tela: Programacao (Normalizada) SaaS
+
+Visao geral
+-----------
+- Tela nova de Programacao, criada ao lado da tela atual (`programacao-simples`), sobre um
+  schema normalizado: a etapa (`programming`) e o pai; equipe (`programming_team`),
+  atividade (`programming_activity`) e documento (`programming_document`) sao filhas.
+  Elimina a duplicacao de campos por equipe que hoje exige triggers de sincronizacao em
+  cima de `project_programming` (migrations 267, 273, 275-282).
+- Fonte da verdade do desenho: `docs/planejamento/Spec_Nova_Programacao_Modelo_Normalizado.md`.
+- `programacao-simples` continua intocada e em producao; nenhum dado foi migrado para o
+  schema novo nesta entrega (tabelas nascem vazias).
+- Classificacao de etapa (Unica/N/Final) e derivada da posicao por data, nunca digitada.
+- Pendencia e o Estado Trabalho `PENDENCIA`: uma programacao criada apos a etapa final ja
+  ter passado a data de hoje, fora da numeracao, sem mover a final.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/programacao-normalizada/page.tsx`
+- View: `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`
+- Estilo: `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`
+- Modulo frontend: `types.ts`, `constants.ts`, `utils.ts`, `validators.ts`, `api.ts`,
+  `hooks.ts`, `components.tsx`, `index.ts` (fachada publica)
+- API (plano + historico): `src/app/api/programacao-normalizada/route.ts`
+- API (catalogo): `src/app/api/programacao-normalizada/meta/route.ts`
+- Server module: `src/server/modules/programacao-normalizada/{types,selects,queries,catalogs,normalizers,rpc,handlers}.ts`
+- Banco (schema): `supabase/migrations/310_create_programming_normalized_module.sql`
+- Banco (RPCs): `supabase/migrations/311_create_programming_normalized_rpcs.sql`
+- Banco (pagina/permissao): `supabase/migrations/312_register_programming_normalized_page.sql`
+- page_key: `programacao-normalizada` (nasce com `default_user_access = false`, liberado
+  por permissao explicita — mesmo padrao de Requisicao com Atendimento).
+
+Cadastro
+--------
+- Selecionar/buscar projeto (SOB) mostra o plano de etapas existente ou o formulario de
+  primeiras etapas, se o projeto ainda nao tem plano.
+- Campo obrigatorio por etapa: `executionDate` (uma etapa por projeto+data — bloqueado por
+  `UNIQUE (tenant_id, project_id, execution_date)` no banco).
+- Campos de cadastro por etapa (herdados da ultima etapa ao abrir "Nova etapa", com
+  override manual antes de salvar): periodo, hora inicio/termino, desligamento
+  inicio/fim, alimentador, Ponto Eletrico (campo `campoEletrico` internamente — label
+  corrigido de "Campo eletrico"), clientes afetados, tipo de SGD, No EQ, apoio,
+  poste/estrutura/trafo/rede (quantidade), descricao do servico, anotacao, equipes.
+- Campos obrigatorios (validados no front antes de habilitar `Salvar`, marcados com `*`
+  vermelho no formulario): data de execucao, periodo, hora inicio, hora termino, tipo de
+  SGD, No EQ, Ponto Eletrico, descricao do servico. Equipe(s) NAO e obrigatorio (etapa
+  pode nascer sem equipe alocada — `isFormReadyToSave` em `validators.ts`).
+- Periodo ajusta a hora termino automaticamente ao mudar (Integral = 17:00, Parcial =
+  12:00 — mesmo comportamento de `programacao-simples`); hora inicio fica livre.
+- Equipe: uma etapa pode ter zero, uma ou N equipes (`programming_team`); zero equipe e
+  permitido (etapa planejada, sem alocar ainda).
+- `Editar` muda cadastro/equipes mas NAO a data da etapa (para mudar a data, usar `Adiar`).
+- `Nova etapa a partir desta` (icone de duplicar no card da etapa): preenche o formulario
+  inteiro com o cadastro da etapa clicada (periodo, horario, SGD, No EQ, quantidades,
+  equipes) e deixa so a data em branco; salvar cria uma etapa nova e a classificacao se
+  reacomoda sozinha.
+- Guarda: projeto com uma etapa ativa em Estado Trabalho `CONCLUIDO` bloqueia inserir,
+  editar, adicionar equipe, adiar e cancelar ate a etapa concluida ser reaberta.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Busca de projeto por SOB/municipio com debounce de 300ms (`PROJECT_SEARCH_DEBOUNCE_MS`).
+- Filtro padrao da lista: primeiro dia do mes ativo ate 90 dias para frente. `Limpar
+  filtros` retorna para a mesma janela, para nao abrir a tela restrita apenas ao mes
+  corrente.
+- O plano do projeto selecionado carrega em uma unica chamada (`GET
+  /api/programacao-normalizada?projectId=...`), usando embedding do PostgREST
+  (`programming_team`/`programming_activity`/`programming_document` na mesma query da
+  etapa) em vez de joins manuais no Node.
+- Lista: UMA linha-pai por projeto/SOB, sem duplicar o projeto na pagina exibida. A
+  linha-pai mostra seta de expandir/recolher, coluna `Id` (UUID do projeto, so nessa
+  linha — nao repete por etapa, monoespacado/truncado, oculto em telas <=960px),
+  Projeto (SOB) como texto puro, quantidade de etapas, quantidade de equipes distintas
+  em etapas ativas do projeto (`COUNT(DISTINCT team_id)` sobre `programming_team.status
+  = ATIVA`) e o botao `Abrir plano`. Status, Estado do trabalho e Data nao aparecem na
+  linha-pai porque sao atributos de etapa.
+- A seta da linha-pai expande/recolhe as etapas inline, para consulta rapida sem sair da
+  lista. O botao `Abrir plano` e a unica interacao da linha-pai que navega para a tela
+  cheia do plano do projeto.
+- Nivel expandido: uma linha por etapa do projeto, ordenada por `execution_date`
+  crescente. Colunas: Data, Etapa (badge Unica/Etapa N/Final/Pendencia), Equipes
+  (chips de `programming_team` da etapa), Status (badge somente leitura), Estado do
+  trabalho (select editavel quando permitido) e Acoes. A classificacao exibida e a que ja
+  esta gravada na linha; nunca recalculada no front.
+- A lista NAO recarrega sozinha ao voltar do plano de um projeto (`ProjectPlanView`) —
+  `onBack` agora chama `reloadList()` explicitamente, senao a lista ficava mostrando o
+  snapshot de antes de criar/editar etapas naquele projeto (etapa nova nao aparecia,
+  classificacao das etapas existentes ficava desatualizada).
+- Alem do badge de classificacao (Unica/Etapa N/Final), a lista tem DUAS colunas
+  independentes de estado (nao colapsadas em uma so):
+  - `Status` (agenda): somente leitura, aplicado automaticamente pelo sistema —
+    Programada (verde), Reprogramada (azul, muda a data), Adiada/Cancelada (cinza,
+    botao dedicado), Antecipada (apagado, cascata do Concluir de uma etapa anterior).
+    Nunca editavel direto.
+  - `Estado do trabalho` (execucao): UNICO eixo editavel pelo usuario, via select na
+    propria linha — Em branco (cinza), Parcial planejado/Parcial nao planejado
+    (amarelo), Beneficio atingido (azul), Pendencia (vermelho, tambem manual alem de
+    automatico em etapa retroativa), Concluido (verde). `Antecipado` (apagado) fica de
+    fora do select — e automatico, acompanha sempre o Status Antecipada.
+  - Selecionar `Concluido` no select reusa a mesma RPC/guard da acao `Concluir` (bloqueia
+    se outra etapa do projeto ja estiver concluida, antecipa as seguintes); sair de
+    Concluido para qualquer outro valor reabre primeiro (mesma RPC de `Reabrir`) e so
+    depois aplica o valor escolhido — nunca confia no que o Reabrir restaurou sozinho.
+  - Os dois eixos sao independentes (uma etapa Programada pode estar Em branco ou
+    Parcial); o unico par acoplado e automatico e Antecipada+Antecipado.
+  - Nova RPC `set_project_programming_work_completion_status` (migration 314) cobre os
+    5 valores que nao tinham nenhum caminho de escrita antes (em branco/
+    PARCIAL_PLANEJADO/PARCIAL_NAO_PLANEJADO/BENEFICIO_ATINGIDO/PENDENCIA manual).
+    Bug corrigido em `316_fix_work_completion_status_reclassify_gap.sql` (pendente de
+    aplicacao): a 314 original nao chamava `reclassify_project_programming_stages` ao
+    final (unica RPC de escrita do modulo que nao chamava) — ao entrar/sair de
+    PENDENCIA manualmente, a classificacao (`etapa_number`/`etapa_unica`/`etapa_final`)
+    da propria etapa ficava congelada com o valor anterior a transicao ate a proxima
+    escrita alheia no mesmo projeto disparar reclassify por outro caminho, podendo
+    exibir numero/Final desatualizado. 316 zera a classificacao ao entrar em PENDENCIA
+    e chama reclassify sempre ao final, mesmo padrao das demais RPCs de escrita.
+- Botoes essenciais por etapa: `Editar`, `Adicionar equipe`, `Remover equipe`, `Adiar`,
+  `Cancelar`, `Concluir`/`Reabrir`, `Detalhes`, `Historico`, `Nova etapa a partir desta`
+  (duplicar). Icones em botao redondo colorido (`.actionButton` + `.action<Tipo>`), mesmo
+  padrao de `programacao-simples`/Faturamento/Asbuilt — nao mais texto ou icone flat.
+- Fora do escopo desta entrega (deferido, nao construido): `Copiar programacao` (opcional
+  no spec), importacao em massa por Excel (secao 16 do spec, tratada como melhoria
+  futura), e view de compatibilidade para Mapa/Visualizacao de Programacao (essas telas
+  continuam lendo `project_programming`).
+
+Exportacao
+----------
+- 3 botoes acima da lista (`Exportar Excel (CSV)`, `Extracao ENEL`, `Extracao ENEL NOVO`),
+  mesmo padrao visual/cooldown de `programacao-simples` (`CsvExportButton`,
+  `useExportCooldown`, 10s de cooldown por grupo — CSV tem cooldown proprio, ENEL/ENEL
+  NOVO compartilham um segundo cooldown).
+- Exporta TODAS as etapas que batem no filtro atual (nao so a pagina exibida em tela):
+  o clique dispara uma segunda chamada a `GET /api/programacao-normalizada?forExport=1`
+  que ignora a paginacao de tela e busca ate `STAGE_LIST_EXPORT_MAX_ROWS` (5000) linhas.
+- `Exportar Excel (CSV)`: 30 colunas (`buildProgrammingCsvContent` em `exports.ts`) —
+  1 linha por etapa (nao por equipe, diferente de `programacao-simples`), com as equipes
+  ativas da etapa juntadas em uma celula.
+- `Extracao ENEL`/`Extracao ENEL NOVO`: portados de `programacao-simples/exports.ts`,
+  adaptados ao modelo normalizado — como 1 etapa ja representa 1 projeto+data, NAO ha
+  reagrupamento por projeto+data (a etapa ja e o grupo); os dados agregados por equipe
+  (encarregado, estrutura, placa) sao calculados direto sobre `stage.teams`. `ENEL NOVO`
+  gera `.xlsb` via `xlsx` (import dinamico), exclui Tipo de Servico `EMERGENCIAL`.
+- Colunas sem equivalente no modelo novo (ex.: campos de rede/equipamento/poste
+  detalhados do ENEL NOVO, que ja vinham em branco tambem em `programacao-simples`) ficam
+  em branco — nao sao dado perdido, sao campos que a legada ja preenchia manualmente
+  pos-exportacao.
+- Projeto expoe agora `base`/`serviceType`/`priority`/`partner`/`utilityResponsible`/
+  `utilityFieldManager`/`street`/`district`/`serviceName` (antes so `city`/`serviceCenter`)
+  — necessarios para as colunas do ENEL/ENEL NOVO.
+
+Boas praticas
+-------------
+- Toda escrita passa por RPC `SECURITY DEFINER` chamada pelo backend com `service_role`;
+  nenhuma policy de INSERT/UPDATE/DELETE existe para `authenticated` nas tabelas novas.
+- `reclassify_project_programming_stages` roda como ultimo passo de toda RPC de escrita
+  que muda o conjunto ativo de etapas (criar, editar equipe, adiar, cancelar, concluir,
+  reabrir, e desde a 316 tambem mudar Estado do trabalho manualmente) e valida a
+  invariante de classificacao antes de retornar; se nao fechar, a transacao inteira
+  sofre rollback. O cursor de reclassify exclui `PENDENCIA` de proposito (etapa
+  pendente nao entra na sequencia numerica) — por isso toda RPC que muda uma etapa
+  de/para PENDENCIA precisa zerar a classificacao dela na mesma escrita, ja que
+  reclassify nunca volta a selecionar essa linha para limpar sozinho.
+- Conflito de agenda por equipe (`programming_team_schedule_conflict`) e checado antes de
+  qualquer escrita, nunca depois — nenhuma RPC deixa gravacao parcial em caso de conflito.
+- `expectedUpdatedAt` obrigatorio em toda edicao/adiamento/cancelamento/conclusao/reabertura
+  (concorrencia otimista, conflito retorna 409).
+- Catalogos (`programming_sgd_types`, `programming_eq_catalog`,
+  `programming_work_completion_catalog`, `programming_reason_catalog`,
+  `programming_support_items`, `service_activities`) sao reaproveitados sem alteracao
+  estrutural do modelo antigo. `BENEFICIO_ATINGIDO` foi adicionado como codigo novo no
+  catalogo de Estado Trabalho — o codigo com typo (`PARCIAL_PLANEJADO_BENFICIO_ATINGIDO`)
+  usado por `programacao-simples` nao foi tocado.
+
+Cancelamento e saldo
+---------------------
+- `Cancelar`/`Adiar` agem sempre no nivel da etapa (grupo); nao ha operacao "individual de
+  equipe" nesta entrega (equivalente a mover equipe entre etapas fica fora do escopo).
+- `Adiar` cria uma nova etapa na data futura (status `REPROGRAMADA`, `copied_from_id`
+  apontando para a etapa antiga) e marca a etapa antiga como `ADIADA`; equipes ativas sao
+  copiadas para a etapa nova apos checagem de conflito.
+- `Cancelar` marca a etapa como `CANCELADA`, limpa Estado Trabalho e libera a agenda das
+  equipes (o filtro de conflito considera apenas etapas `PROGRAMADA`/`REPROGRAMADA`).
+- `Concluir` marca Estado Trabalho `CONCLUIDO` e antecipa (por `execution_date` posterior,
+  nao por numero) todas as etapas ativas nao-pendentes seguintes; `Reabrir` reverte.
+- Maximo uma etapa `CONCLUIDO` ativa por projeto.
+
+Atalhos
+-------
+- Rota: `/programacao-normalizada`.
+- Secao no menu: `Operacao`, ao lado de `Programacao` (`programacao-simples`).
+- Tela irma (dado legado, nao migrado): `/programacao-simples`.
+
+Atualizacao 2026-07
+--------------------
+- Antes: nao existia.
+- Depois: tela nova completa (schema + RPCs + backend + frontend + pagina/permissao),
+  operando em tabelas proprias vazias, sem tocar `project_programming`/`programacao-simples`.
+- Migration `310_create_programming_normalized_module.sql`: cria `programming`,
+  `programming_team`, `programming_activity`, `programming_document`,
+  `programming_history`; RLS select-only; indices por tenant; seed do codigo
+  `BENEFICIO_ATINGIDO` no catalogo de Estado Trabalho.
+- Migration `311_create_programming_normalized_rpcs.sql`: cria
+  `reclassify_project_programming_stages`, `save_project_programming_stage`,
+  `add_project_programming_team`, `remove_project_programming_team`,
+  `postpone_project_programming_stage`, `cancel_project_programming_stage`,
+  `mark_project_programming_completed_and_anticipate`,
+  `reopen_project_programming_completed` e helpers
+  (`append_programming_history_record`, `programming_project_has_active_completion`,
+  `programming_team_schedule_conflict`); grants restritos a `service_role`.
+- Migration `312_register_programming_normalized_page.sql`: cadastra
+  `programacao-normalizada` em `app_pages` (bloqueada por padrao) e faz backfill de
+  `role_page_permissions`/`app_user_page_permissions`.
+- Simplificacoes conscientes em relacao ao texto literal do spec: `save_project_programming_plan`
+  e `insert_project_programming_stage` viraram uma RPC so
+  (`save_project_programming_stage`); `Copiar programacao para datas` nao entrou nesta
+  entrega.
+- Validacao: `npx tsc --noEmit`, `npm run lint`, `npm run build` — todos limpos nos
+  arquivos novos. Teste manual completo (roteiro em
+  `docs/planejamento/Plano de teste manual — Nova tela de Programação.md`) ainda pendente
+  de execucao (tabelas vazias, sem dado real para validar).
+
+Atualizacao 2026-07-19
+-----------------------
+- Correcao (bug pre-existente desde a M3): `fetchProjects` lia `project.city`/
+  `project.service_center` da TABELA `project` direto — desde a migration 038 esses viraram
+  FK uuid (`project_municipalities`/`project_service_centers`), entao o filtro de
+  Municipio e o datalist de SOB mostravam uuid cru em vez do nome. Corrigido lendo da view
+  `project_with_labels` (mesma fonte que `programacao` legado usa), que resolve os FKs
+  para `*_text`. Projeto passou a expor tambem `base`/`serviceType`/`priority`/`partner`/
+  `utilityResponsible`/`utilityFieldManager`/`street`/`district`/`serviceName`.
+- Historico da etapa: reescrito para o padrao de `programacao-simples` — acao com label
+  legivel (`getHistoryActionLabel`), nome de quem alterou (`changed_by_name`, resolvido
+  via join com `app_users`, antes inexistente), diff De/Para por campo alterado
+  (`getHistoryFieldLabel`/`formatHistoryChangeValue`), paginacao de 5 por pagina
+  (`HISTORY_PAGE_SIZE`). Limitacao conhecida: as RPCs de `UPDATE_STAGE` ainda nao
+  calculam o diff campo a campo (`changes` fica `{}`) — o card aparece com "Nenhum campo
+  alterado nesse evento." ate essa RPC ganhar o calculo do diff.
+- Validacao obrigatoria: `isFormReadyToSave` passou a exigir periodo, hora inicio, hora
+  termino, tipo de SGD, No EQ e descricao do servico (antes so validava projeto+data);
+  equipe continua opcional.
+- Modais (Detalhes/Historico/Adiar/Cancelar/Adicionar equipe) e botoes de acao (lista e
+  card da etapa) reescritos para o padrao visual/estrutural de `programacao-simples`
+  (card branco 18px, botao redondo colorido por acao) — antes usavam um design proprio
+  (flat, cores neutras).
+- Lista (`GET /api/programacao-normalizada` sem `projectId`) passou a usar o mesmo select
+  completo do plano por projeto (`PROGRAMMING_STAGE_SELECT_WITH_CHILDREN`), reaproveitando
+  `mapStageRowToDto` — antes usava um select thin proprio (`STAGE_LIST_SELECT`, removido).
+  Isso alimenta tanto a exportacao quanto uma futura tela de detalhe mais rica na lista.
+- Exportacao (secao dedicada acima): 3 exports novos, portados de `programacao-simples`.
+- Lista: coluna unica "Estado" separada em `Status` (agenda, so leitura) e `Estado do
+  trabalho` (execucao, select editavel) — ver secao "Filtros, auto-complete e listagem"
+  acima para o detalhe de cores/regra. Nova migration `314_add_programming_set_work_completion_status_rpc.sql`
+  com a RPC `set_project_programming_work_completion_status` (unico caminho de escrita
+  para os 5 valores manuais; CONCLUIDO/ANTECIPADO continuam so via Concluir/Reabrir).
+- Lista da Programacao Normalizada reorganizada para o comportamento final de linha-pai:
+  uma linha por SOB, projeto como texto puro, seta expandindo etapas inline e botao
+  `Abrir plano` separado para navegar ao plano cheio. A contagem de equipes da linha-pai
+  usa equipes distintas entre etapas ativas, sem somar repeticoes da mesma equipe.
+- Filtro padrao alterado de mes corrente para primeiro dia do mes ativo + 90 dias para
+  frente. A query da lista deixou de selecionar/ordenar por `project.sob` via embed do
+  PostgREST e passou a buscar somente `programming` + filhas, ordenando por colunas
+  nativas (`project_id`, `execution_date`), evitando que falha no relacionamento retorne
+  lista vazia mesmo quando ha etapas no periodo.
+- Validacao: `npx tsc --noEmit`, `npm run lint`, `npm run build` — limpos (fora do
+  `Backup/` local, pre-existente e nao relacionado). Sem teste manual em navegador nesta
+  rodada (sem dado real nas tabelas ainda). Migration 314 pendente de aplicacao no
+  Supabase (revisar SQL antes).
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`
+  - Responsavel por: selecao/busca de projeto, formulario de etapa (criar/editar com
+    heranca da ultima etapa), lista de etapas, modais de adiar/cancelar/historico/detalhes.
+- Caminho: `src/modules/dashboard/programacao-normalizada/listComponents.tsx`
+  - Responsavel por: filtros da lista, entrada por SOB e tabela agrupada por linha-pai
+    de projeto/SOB, com expansao inline das etapas e botao separado `Abrir plano`.
+- Caminho: `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`
+  - Responsavel por: layout responsivo da linha-pai, subtabela expandida das etapas,
+    chips de equipes e acoes da lista.
+- Caminho: `src/modules/dashboard/programacao-normalizada/hooks.ts`
+  - Responsavel por: `useProgrammingMeta`, `useProgrammingPlan`, `useHistoryModal`,
+    `useProgrammingStageActions` (save/addTeam/removeTeam/postpone/cancel/complete/reopen).
+- Caminho: `src/app/api/programacao-normalizada/route.ts`
+  - Responsavel por: `GET` (plano por projeto ou historico por etapa), `POST`
+    (criar etapa / adicionar equipe), `PUT` (editar etapa), `PATCH`
+    (adiar/cancelar/concluir/reabrir/remover equipe).
+- Caminho: `src/server/modules/programacao-normalizada/handlers.ts`
+  - Responsavel por: `requirePageAction` por acao, parsing/normalizacao de payload,
+    chamada da RPC e resposta padronizada (`success`/`reason`/`message`).
+- Caminho: `src/server/modules/programacao-normalizada/rpc.ts`
+  - Responsavel por: wrappers de `supabase.rpc(...)` para as 7 RPCs de escrita, com
+    deteccao de RPC ausente (`isMissingRpcFunctionError`).
+- Caminho: `supabase/migrations/311_create_programming_normalized_rpcs.sql`
+  - Responsavel por: `reclassify_project_programming_stages` (classificacao automatica),
+    RPCs de escrita e hardening de grants (`service_role` apenas).
+- Caminho: `src/modules/dashboard/programacao-normalizada/exports.ts`
+  - Responsavel por: `buildProgrammingCsvContent`, `buildEnelCsvContent`,
+    `buildEnelNovoWorkbookData` — geracao dos 3 exports da lista, portados de
+    `programacao-simples/exports.ts` e adaptados ao modelo normalizado.
+- Caminho: `src/server/modules/programacao-normalizada/queries.ts`
+  - Responsavel por: `fetchProgrammingStageList` (lista cross-projeto paginada/filtrada,
+    select completo), `fetchAppUsersByIds` (resolve nome de autor para etapa/historico).
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/programacao-normalizada/constants.ts`
+  - Responsavel por: `PROJECT_SEARCH_DEBOUNCE_MS`, `HISTORY_PAGE_SIZE`,
+    `createInitialForm`, `STAGE_STATUS_LABELS`, `WORK_COMPLETION_LABELS`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/programacao-normalizada/utils.ts`
+  - Responsavel por: `getStageClassificationLabel`, `getStageStatusLabel`,
+    `getWorkCompletionLabel`, `sortStagesByDate`, `findActiveCompletedStage`.
+- Caminho: `src/modules/dashboard/programacao-normalizada/validators.ts`
+  - Responsavel por: `buildReasonText`, `isReasonSelectionValid`, `isFormReadyToSave`,
+    `isTimeRangeValid` (previa nao autoritativa no cliente).
+- Caminho: `src/lib/utils/formatters.ts`
+  - Responsavel por: `formatDate`, `formatDateTime` (reaproveitados, nao duplicados).
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- RPCs `SECURITY DEFINER` da migration 311.
+- Next.js Route Handlers (`/api/programacao-normalizada/*`).

@@ -1,0 +1,1026 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  font-weight: 400;
+}
+
+.page h2,
+.page h3,
+.page h4 {
+  font-weight: 500;
+  margin: 0;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.feedback {
+  padding: 0.65rem 1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  border: 0.5px solid var(--color-border);
+}
+
+.feedbackSuccess {
+  background: #eaf6ee;
+  color: #1e7a34;
+  border-color: #bfe3c9;
+}
+
+.feedbackError {
+  background: #fdecea;
+  color: #a3251f;
+  border-color: #f3c4c0;
+}
+
+.emptyHint {
+  color: var(--color-text-soft);
+  font-size: 0.85rem;
+}
+
+.linkButton {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
+
+/* Card padrao (mesmo tratamento visual de programacao-simples/medicao) */
+.card,
+.entryCard,
+.filtersCard,
+.formCard,
+.stageCard,
+.panelCard,
+.listCard {
+  border-radius: 24px;
+  border: 1px solid rgba(20, 41, 97, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 38px rgba(15, 32, 74, 0.08);
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+}
+
+.cardTitle {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.2rem;
+}
+
+.tableHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tableActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.entryInputRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.entryInputIcon {
+  color: var(--color-text-soft);
+  display: inline-flex;
+}
+
+.entryInputRow input {
+  flex: 1;
+}
+
+/* Filtros */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  background: #fff;
+  color: #17347a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chipActive {
+  background: linear-gradient(180deg, #17347a 0%, #2750a3 100%);
+  border-color: transparent;
+  color: #f7fbff;
+}
+
+.filterGrid,
+.filtersRow {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dateRangeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+}
+
+.dateRangeRow .field {
+  flex: 0 0 170px;
+}
+
+.shortcutRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  padding-bottom: 11px;
+}
+
+.shortcutButton {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  background: rgba(37, 74, 156, 0.06);
+  color: #17347a;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.shortcutButton:hover {
+  background: rgba(37, 74, 156, 0.14);
+}
+
+.multiSelect {
+  position: relative;
+}
+
+.multiSelectTrigger {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #fff;
+  color: #1b294c;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.multiSelectPanel {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  border-radius: 14px;
+  padding: 0.5rem;
+  min-width: 280px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 18px 38px rgba(15, 32, 74, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.multiSelectOption {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.multiSelectOption:hover {
+  background: rgba(23, 52, 122, 0.06);
+}
+
+.multiSelectOption input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: #17347a;
+}
+
+.multiSelectOptionText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.multiSelectOptionTeam {
+  font-weight: 600;
+  color: #1b294c;
+  white-space: nowrap;
+}
+
+.multiSelectOptionForeman {
+  font-size: 0.75rem;
+  color: var(--color-text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filtersSummary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Campos genericos */
+.field {
+  display: grid;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.field span {
+  color: #17347a;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #1b294c;
+  padding: 11px 14px;
+  font-size: 0.9rem;
+}
+
+.fieldFullRow {
+  grid-column: 1 / -1;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  border: 0.5px solid var(--color-border);
+}
+
+.badgeAccent {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  border-color: transparent;
+}
+
+.badgeWarning {
+  background: #fdf0d5;
+  color: #8a5a00;
+  border-color: transparent;
+}
+
+.badgeDanger {
+  background: #fdecea;
+  color: var(--color-danger);
+  border-color: transparent;
+}
+
+.badgeSuccess {
+  background: #e3f5e8;
+  color: #1e7a34;
+  border-color: transparent;
+}
+
+.badgeMuted {
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+}
+
+/* Lista */
+.listTable {
+  display: flex;
+  flex-direction: column;
+  border: 0.5px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-surface-strong);
+}
+
+.listGroup {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 0.5px solid var(--color-border);
+}
+
+.listGroup:last-child {
+  border-bottom: none;
+}
+
+.listRow {
+  display: grid;
+  grid-template-columns: 1.5rem 1.3fr 0.9fr 0.8fr 0.9fr 0.9fr 1.3fr 1.2fr;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.88rem;
+}
+
+.projectRow {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) minmax(0, 1.3fr) 0.7fr 0.8fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.88rem;
+}
+
+.projectIdText {
+  color: var(--color-text-soft);
+  font-size: 0.75rem;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectCodeText {
+  color: var(--color-text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.stageRows {
+  display: grid;
+  border-top: 0.5px solid var(--color-border);
+  background: #fbfcff;
+}
+
+.stageRow {
+  display: grid;
+  grid-template-columns: 0.8fr 0.75fr minmax(180px, 1.4fr) 0.8fr 1.1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem 0.6rem 2.9rem;
+  border-bottom: 0.5px solid rgba(23, 52, 122, 0.08);
+  font-size: 0.85rem;
+}
+
+.stageRow:last-child {
+  border-bottom: none;
+}
+
+.stageHeaderRow {
+  background: rgba(23, 52, 122, 0.04);
+  color: var(--color-text-soft);
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.stageTeamsCell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.workCompletionSelect {
+  padding: 0.2rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  font-size: 0.82rem;
+  max-width: 100%;
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.listHeaderRow {
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.listActionsHeader {
+  text-align: right;
+}
+
+.expandButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-soft);
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+.expandButton:disabled {
+  visibility: hidden;
+}
+
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Botoes de acao em icone: mesmo padrao redondo colorido da tela Programacao simples
+   (ProgrammingSimplePageView.module.css .actionButton/.actionView/.actionEdit/...). */
+.actionButton {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.actionButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.actionButton:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.97);
+}
+
+.actionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.actionView {
+  color: #1d77b8;
+  background: #dce8f5;
+}
+
+.actionEdit {
+  color: #2a86bd;
+  background: #dce8f5;
+}
+
+.actionHistory {
+  color: #2a86bd;
+  background: #dce8f5;
+}
+
+.actionPostpone {
+  color: #8a6d00;
+  background: #fff1c7;
+}
+
+.actionCopy {
+  color: #136f63;
+  background: #dff4ef;
+}
+
+.actionCancel {
+  color: #c62828;
+  background: #dce8f5;
+}
+
+.actionComplete {
+  color: #1f8d45;
+  background: #dce8f5;
+}
+
+.iconSmall {
+  width: 1rem;
+  height: 1rem;
+}
+
+.teamChipsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0 0.9rem 0.75rem 2.9rem;
+}
+
+.teamChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 0.5px solid var(--color-border);
+  font-size: 0.78rem;
+  color: var(--color-text-soft);
+}
+
+.teamChip small {
+  color: var(--color-text-soft);
+  font-size: 0.72rem;
+}
+
+.teamChip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.teamChip button:hover {
+  color: var(--color-danger);
+}
+
+/* Plano do projeto */
+.planHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.dateAddRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.dateAddRow input {
+  flex: 1;
+  max-width: 220px;
+}
+
+.additionalDatesList {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.additionalDateRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.additionalDateRow input {
+  max-width: 220px;
+}
+
+.teamChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.stageList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.formSection {
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 18px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  background: linear-gradient(180deg, rgba(247, 250, 255, 0.96) 0%, rgba(255, 255, 255, 0.98) 100%);
+}
+
+.sectionHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.sectionHeader h4 {
+  margin: 0;
+  color: #17347a;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.sectionHeader p {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 0.84rem;
+}
+
+.teamSelectionCard {
+  border: 1px solid rgba(23, 52, 122, 0.16);
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  background: #fbfcff;
+}
+
+.teamSelectionHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.teamList {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.teamOption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border-radius: 10px;
+  padding: 8px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #ffffff;
+}
+
+.teamOption strong {
+  color: #17347a;
+}
+
+.teamOptionMeta {
+  display: grid;
+  gap: 2px;
+}
+
+.teamOption small {
+  display: block;
+  color: var(--color-text-soft);
+}
+
+.activityComposer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.activitiesList {
+  display: grid;
+  gap: 8px;
+}
+
+.activityRow {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 110px 70px auto;
+  align-items: center;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.activityRow strong {
+  color: #17347a;
+  display: block;
+}
+
+.activityRow small {
+  display: block;
+  color: var(--color-text-soft);
+}
+
+.documentsGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.documentCard {
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.buttonPrimary,
+.buttonSecondary,
+.buttonDanger {
+  border-radius: 14px;
+  min-height: 44px;
+  padding: 0 18px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.85rem;
+  border: 1px solid transparent;
+}
+
+.openPlanButton {
+  border-radius: 10px;
+  min-height: 36px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.78rem;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  background: rgba(37, 74, 156, 0.1);
+  color: #17347a;
+  white-space: nowrap;
+}
+
+.openPlanButton:hover {
+  background: rgba(37, 74, 156, 0.16);
+}
+
+.buttonPrimary {
+  background: linear-gradient(180deg, #17347a 0%, #2750a3 100%);
+  color: #f7fbff;
+  box-shadow: 0 12px 24px rgba(23, 52, 122, 0.2);
+}
+
+.buttonSecondary {
+  background: rgba(37, 74, 156, 0.1);
+  color: #17347a;
+  border-color: rgba(23, 52, 122, 0.15);
+}
+
+.buttonDanger {
+  background: #c62828;
+  color: #ffffff;
+  border-color: #b71c1c;
+}
+
+.buttonPrimary:disabled,
+.buttonSecondary:disabled,
+.buttonDanger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Modais: mesmo padrao visual da tela Programacao simples
+   (ProgrammingSimplePageView.module.css .modalOverlay/.modalCard/...). */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 22, 47, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 60;
+}
+
+.modalCard {
+  width: min(900px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  box-shadow: 0 22px 48px rgba(16, 35, 77, 0.3);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.modalHeader h4 {
+  margin: 0;
+  color: #17347a;
+}
+
+.modalCloseButton {
+  border: 1px solid rgba(23, 52, 122, 0.2);
+  background: #ffffff;
+  color: #17347a;
+  border-radius: 12px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modalTitleBlock {
+  display: grid;
+  gap: 2px;
+}
+
+.modalSubtitle {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.84rem;
+}
+
+.modalBody {
+  display: grid;
+  gap: 14px;
+}
+
+.historyList {
+  display: grid;
+  gap: 10px;
+}
+
+.historyCard {
+  border: 1px solid rgba(23, 52, 122, 0.14);
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.historyCardHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.84rem;
+  color: #5b6a85;
+}
+
+.historyChanges {
+  display: grid;
+  gap: 8px;
+}
+
+.historyChangeItem {
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fbfcff;
+  display: grid;
+  gap: 3px;
+  color: #1f2f54;
+  font-size: 0.88rem;
+}
+
+.historyPagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #5b6a85;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.detailGrid span {
+  color: #1f2f54;
+}
+
+@media (max-width: 720px) {
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 960px) {
+  .listRow {
+    grid-template-columns: 1.2rem 1.2fr 0.9fr 0.8fr 1fr;
+  }
+
+  .projectRow {
+    grid-template-columns: 1.2rem minmax(0, 1.4fr) 0.7fr 0.8fr auto;
+  }
+
+  .stageRow {
+    grid-template-columns: 0.8fr 0.75fr minmax(160px, 1.3fr) 0.8fr auto;
+  }
+
+  .listRow > span:nth-child(6),
+  .listHeaderRow > span:nth-child(6),
+  .listRow > span:nth-child(7),
+  .listHeaderRow > span:nth-child(7),
+  .stageRow > span:nth-child(5),
+  .stageHeaderRow > span:nth-child(5),
+  .projectRow > span:nth-child(2) {
+    display: none;
+  }
+
+  .board {
+    grid-template-columns: 1fr;
+  }
+
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .listTable {
+    border: none;
+    background: transparent;
+    gap: 0.6rem;
+    display: flex;
+  }
+
+  .listHeaderRow {
+    display: none;
+  }
+
+  .listGroup {
+    border: 0.5px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-surface-strong);
+  }
+
+  .listRow {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .projectRow,
+  .stageRow {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 0.75rem;
+  }
+
+  .stageRows {
+    border-top: 0.5px solid var(--color-border);
+  }
+
+  .stageHeaderRow {
+    display: none;
+  }
+
+  .rowActions {
+    justify-content: flex-start;
+  }
+}

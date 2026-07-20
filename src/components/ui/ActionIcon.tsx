@@ -1,4 +1,4 @@
-type ActionIconName = "details" | "edit" | "history" | "cancel" | "activate" | "exportCsv" | "transfer" | "address" | "info";
+type ActionIconName = "details" | "edit" | "history" | "cancel" | "activate" | "exportCsv" | "transfer" | "address" | "info" | "addTeam" | "postpone" | "duplicate";
 
 type ActionIconProps = {
   name: ActionIconName;
@@ -90,6 +90,51 @@ export function ActionIcon({ name, className }: ActionIconProps) {
           />
           <path
             d="m16.5 13 2.5 2.5-2.5 2.5M8 3.75 5 5.5 8 7.25"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "addTeam":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <path
+            d="M15.5 6.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M4.5 20a7.5 7.5 0 0 1 15 0M18.5 8.5v5M16 11h5"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "postpone":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <path
+            d="M12 6v6l3.5 2"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      );
+    case "duplicate":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <path d="M8 7.5h9.5v11H8z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          <path
+            d="M5 15.5V4.5h9.5M11 11h3.5M11 14h2"
             stroke="currentColor"
             strokeWidth="1.7"
             strokeLinecap="round"

@@ -65,6 +65,12 @@ const permissionCatalog = [
   { pageKey: "locacao", label: "Locacao", path: "/locacao", section: "Operacao" },
   { pageKey: "programacao-simples", label: "Programacao", path: "/programacao-simples", section: "Operacao" },
   {
+    pageKey: "programacao-normalizada",
+    label: "Programacao (Normalizada)",
+    path: "/programacao-normalizada",
+    section: "Operacao",
+  },
+  {
     pageKey: "programacao-visualizacao",
     label: "Visualizacao Programacao",
     path: "/programacao-visualizacao",
