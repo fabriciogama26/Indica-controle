@@ -2,6 +2,11 @@
 
 Documento de planejamento gerado em 2026-07-07. Não é o TXT oficial de tela (`docs/Tela_Programacao_Simples_SaaS.txt`) — este arquivo existe para alinhar a decisão de arquitetura antes de qualquer migration/código ser escrito. Quando (e se) a implementação avançar, o TXT oficial e `Mapa_Regras_Programacao.md` devem ser atualizados como sempre.
 
+**Atualização 2026-07-18**: este rascunho foi superado por
+`Spec_Nova_Programacao_Modelo_Normalizado.md`, que já foi implementado como tela nova
+(`/programacao-normalizada`, ao lado de `programacao-simples`). Ver
+`docs/Tela_Programacao_Normalizada_SaaS.txt` para o estado real do código.
+
 Duas frentes, tratadas como fases independentes:
 
 - **Fase 1**: separar cabeçalho (grupo operacional) da alocação por equipe, permitindo criar a programação sem equipe.

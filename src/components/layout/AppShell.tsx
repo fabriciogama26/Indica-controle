@@ -31,6 +31,7 @@ const menuSections = [
       { href: "/cronograma-solicitacoes", label: "Cronograma de Solicitacoes", icon: "calendar" },
       { href: "/locacao", label: "Locacao", icon: "briefcase" },
       { href: "/programacao-simples", label: "Programacao", icon: "calendar" },
+      { href: "/programacao-normalizada", label: "Programacao (Normalizada)", icon: "calendar" },
       { href: "/programacao-visualizacao", label: "Visualizacao Programacao", icon: "calendar" },
       { href: "/mapa-programacao", label: "Mapa de Programacao", icon: "calendar" },
       { href: "/composicao-equipe", label: "Composicao de Equipe", icon: "users" },
@@ -129,6 +130,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/programacao-simples": {
     title: "Programacao",
     subtitle: "Cadastro da programacao para multiplas equipes.",
+  },
+  "/programacao-normalizada": {
+    title: "Programacao (Normalizada)",
+    subtitle: "Plano de etapas do projeto no modelo normalizado — em avaliacao ao lado da tela atual.",
   },
   "/programacao-visualizacao": {
     title: "Visualizacao Programacao",
