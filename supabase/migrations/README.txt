@@ -915,3 +915,9 @@ Observacao
 - Revoga EXECUTE de `anon` e `authenticated` em `save_project_record` e `save_team_stock_operation_record`, que regrediram nas migrations 307 e 308.
 - Usa varredura dinamica (padrao das migrations 210/251) para cobrir qualquer assinatura remanescente e valida ao final que nenhuma funcao `SECURITY DEFINER` continua executavel por `anon`/`authenticated`.
 - Mantem uso pelo backend via `service_role`; nao cria/altera policies RLS nem adiciona permissao `DELETE`.
+
+318_allow_generic_pending_serial_identification.sql
+- Recria `identify_pending_serial_tracked_unit` para permitir que `CHAVE`/`RELIGADOR` em Operacoes de Equipe consumam pendencia geral do centro (`project_id = null`) quando nao houver pendencia especifica do projeto.
+- A prioridade continua sendo pendencia do mesmo projeto; o fallback so entra para estoque fisico geral de centro.
+- A unidade criada/reativada em `trafo_instances` preserva `last_project_id` como o projeto da operacao, mantendo rastreio operacional.
+- Mantem `SECURITY DEFINER` com EXECUTE apenas para `service_role`.
