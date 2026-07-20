@@ -663,12 +663,15 @@ Comportamento antes/depois
 - Antes: a regra funcional ja exigia serial para material rastreavel na tela.
 - Depois da migration `247`: a regra ficou protegida no banco contra chamadas diretas da RPC com item sem serial, mas `RELIGADOR`/`CHAVE` sem unidade identificada ainda eram bloqueados.
 - Depois da migration `308`: `RELIGADOR`/`CHAVE` com saldo pendente podem ser identificados no ato da operacao de equipe; sem saldo pendente suficiente, a operacao continua bloqueada.
+- Depois da migration `318`: a identificacao tenta consumir primeiro a pendencia do mesmo projeto da operacao e, se ela nao existir, consome pendencia geral do centro (`project_id = null`). A unidade identificada continua ficando vinculada ao projeto da operacao em `trafo_instances.last_project_id`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 - `supabase/migrations/247_allow_pending_serial_identification.sql`
   - `save_team_stock_operation_record`: prevalidacao de `p_items` para bloquear material rastreavel sem serial.
 - `supabase/migrations/308_identify_pending_serial_in_team_operations.sql`
   - `save_team_stock_operation_record`: identifica pendencia de serial para `RELIGADOR`/`CHAVE` antes de salvar Requisicao/Devolucao.
+- `supabase/migrations/318_allow_generic_pending_serial_identification.sql`
+  - `identify_pending_serial_tracked_unit`: usa pendencia geral do centro como fallback quando nao ha pendencia especifica do projeto.
 - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
   - `ensureSourceStockAvailability`: `TRAFO` continua validando unidade em `serial-options`; `RELIGADOR`/`CHAVE` validam saldo agregado e deixam a RPC identificar pendencia quando necessario.
 - `src/app/api/team-stock-operations/import/route.ts`
