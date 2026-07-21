@@ -11,8 +11,14 @@ Visao geral
 - `programacao-simples` continua intocada e em producao; nenhum dado foi migrado para o
   schema novo nesta entrega (tabelas nascem vazias).
 - Classificacao de etapa (Unica/N/Final) e derivada da posicao por data, nunca digitada.
-- Pendencia e o Estado Trabalho `PENDENCIA`: uma programacao criada apos a etapa final ja
-  ter passado a data de hoje, fora da numeracao, sem mover a final.
+- Pendencia (modelo FINAL, migration 318 — supersede a 317): virou a flag booleana
+  `is_pendencia`, ortogonal a tudo. NAO e status nem Estado do trabalho ('PENDENCIA' saiu
+  dos dois). Quando ligada, a coluna Status exibe "Pendencia" (vermelho) por cima do status
+  de agenda gravado por baixo; nao toca a coluna Etapa, o Estado do trabalho nem a numeracao
+  (reclassify volta a numerar so PROGRAMADA/REPROGRAMADA com data). Checkbox em dois lugares:
+  no formulario "Nova etapa" (cria a etapa ja com is_pendencia=true, o que ACIONA a excecao
+  da trava de projeto concluido) e no card da etapa (toggle liga/desliga via RPC). Ver secoes
+  4.2/6/9/10 da spec e "Decisoes registradas" no fim deste doc.
 
 Arquitetura
 -----------
@@ -78,7 +84,7 @@ Filtros, auto-complete e listagem
   lista. O botao `Abrir plano` e a unica interacao da linha-pai que navega para a tela
   cheia do plano do projeto.
 - Nivel expandido: uma linha por etapa do projeto, ordenada por `execution_date`
-  crescente. Colunas: Data, Etapa (badge Unica/Etapa N/Final/Pendencia), Equipes
+  crescente. Colunas: Data, Etapa (badge Unica/Etapa N/Final — NUNCA Pendencia; ver 317), Equipes
   (chips de `programming_team` da etapa), Status (badge somente leitura), Estado do
   trabalho (select editavel quando permitido) e Acoes. A classificacao exibida e a que ja
   esta gravada na linha; nunca recalculada no front.
@@ -89,31 +95,28 @@ Filtros, auto-complete e listagem
 - Alem do badge de classificacao (Unica/Etapa N/Final), a lista tem DUAS colunas
   independentes de estado (nao colapsadas em uma so):
   - `Status` (agenda): somente leitura, aplicado automaticamente pelo sistema —
-    Programada (verde), Reprogramada (azul, muda a data), Adiada/Cancelada (cinza,
-    botao dedicado), Antecipada (apagado, cascata do Concluir de uma etapa anterior).
-    Nunca editavel direto.
+    Programada (verde), Reprogramada (azul, remarcada via Adiar), Adiada/Cancelada (cinza,
+    botao dedicado; Adiada = "em espera", sem data), Antecipada (apagado, cascata do Concluir
+    de uma etapa anterior). Quando a flag is_pendencia esta ligada, exibe "Pendencia"
+    (vermelho) por cima do status de agenda (migration 318). Nunca editavel direto.
   - `Estado do trabalho` (execucao): UNICO eixo editavel pelo usuario, via select na
     propria linha — Em branco (cinza), Parcial planejado/Parcial nao planejado
-    (amarelo), Beneficio atingido (azul), Pendencia (vermelho, tambem manual alem de
-    automatico em etapa retroativa), Concluido (verde). `Antecipado` (apagado) fica de
-    fora do select — e automatico, acompanha sempre o Status Antecipada.
+    (amarelo), Beneficio atingido (azul), Concluido (verde). `Antecipado` (apagado) fica de
+    fora do select — e automatico, acompanha sempre o Status Antecipada. PENDENCIA saiu do
+    Estado do trabalho (virou a flag is_pendencia — migration 318).
   - Selecionar `Concluido` no select reusa a mesma RPC/guard da acao `Concluir` (bloqueia
-    se outra etapa do projeto ja estiver concluida, antecipa as seguintes); sair de
-    Concluido para qualquer outro valor reabre primeiro (mesma RPC de `Reabrir`) e so
+    se outra etapa NAO-pendencia do projeto ja estiver concluida, antecipa as seguintes);
+    sair de Concluido para qualquer outro valor reabre primeiro (mesma RPC de `Reabrir`) e so
     depois aplica o valor escolhido — nunca confia no que o Reabrir restaurou sozinho.
-  - Os dois eixos sao independentes (uma etapa Programada pode estar Em branco ou
-    Parcial); o unico par acoplado e automatico e Antecipada+Antecipado.
-  - Nova RPC `set_project_programming_work_completion_status` (migration 314) cobre os
-    5 valores que nao tinham nenhum caminho de escrita antes (em branco/
-    PARCIAL_PLANEJADO/PARCIAL_NAO_PLANEJADO/BENEFICIO_ATINGIDO/PENDENCIA manual).
-    Bug corrigido em `316_fix_work_completion_status_reclassify_gap.sql` (pendente de
-    aplicacao): a 314 original nao chamava `reclassify_project_programming_stages` ao
-    final (unica RPC de escrita do modulo que nao chamava) — ao entrar/sair de
-    PENDENCIA manualmente, a classificacao (`etapa_number`/`etapa_unica`/`etapa_final`)
-    da propria etapa ficava congelada com o valor anterior a transicao ate a proxima
-    escrita alheia no mesmo projeto disparar reclassify por outro caminho, podendo
-    exibir numero/Final desatualizado. 316 zera a classificacao ao entrar em PENDENCIA
-    e chama reclassify sempre ao final, mesmo padrao das demais RPCs de escrita.
+  - Os dois eixos sao independentes; o unico par acoplado automatico e Antecipada+Antecipado.
+    A flag is_pendencia e um TERCEIRO eixo ortogonal (so reflete na exibicao do Status).
+  - Historico das migrations 314/316/317 (pendencia como status/estado espelhado) foi
+    SUPERSEDIDO pela 318: pendencia deixou de ser status/Estado do trabalho e virou a flag
+    is_pendencia. reclassify voltou a numerar so PROGRAMADA/REPROGRAMADA com data; o espelho
+    status<->estado da 317 foi removido. `set_project_programming_work_completion_status`
+    hoje cobre em branco/PARCIAL_PLANEJADO/PARCIAL_NAO_PLANEJADO/BENEFICIO_ATINGIDO (sem
+    PENDENCIA). A flag e escrita por `set_project_programming_pendencia_flag` (toggle do card)
+    e no INSERT de `save_project_programming_stage` (checkbox do formulario).
 - Botoes essenciais por etapa: `Editar`, `Adicionar equipe`, `Remover equipe`, `Adiar`,
   `Cancelar`, `Concluir`/`Reabrir`, `Detalhes`, `Historico`, `Nova etapa a partir desta`
   (duplicar). Icones em botao redondo colorido (`.actionButton` + `.action<Tipo>`), mesmo
@@ -154,12 +157,15 @@ Boas praticas
   nenhuma policy de INSERT/UPDATE/DELETE existe para `authenticated` nas tabelas novas.
 - `reclassify_project_programming_stages` roda como ultimo passo de toda RPC de escrita
   que muda o conjunto ativo de etapas (criar, editar equipe, adiar, cancelar, concluir,
-  reabrir, e desde a 316 tambem mudar Estado do trabalho manualmente) e valida a
-  invariante de classificacao antes de retornar; se nao fechar, a transacao inteira
-  sofre rollback. O cursor de reclassify exclui `PENDENCIA` de proposito (etapa
-  pendente nao entra na sequencia numerica) — por isso toda RPC que muda uma etapa
-  de/para PENDENCIA precisa zerar a classificacao dela na mesma escrita, ja que
-  reclassify nunca volta a selecionar essa linha para limpar sozinho.
+  reabrir, mudar Estado do trabalho manualmente) e valida a invariante de classificacao
+  antes de retornar; se nao fechar, a transacao inteira sofre rollback.
+- Migration 318 (pendencia como flag): o reclassify numera so
+  `status in (PROGRAMADA, REPROGRAMADA)` COM `execution_date not null` (etapa em espera fica
+  fora da numeracao). A flag is_pendencia e ortogonal e nao entra no reclassify. O espelho
+  status<->estado que a 317 tinha adicionado foi REMOVIDO (nao existe mais status/estado
+  PENDENCIA). Nova RPC `set_project_programming_pendencia_flag` faz o toggle da flag; a trava
+  de projeto concluido (`programming_project_has_active_completion`) passou a ignorar
+  is_pendencia.
 - Conflito de agenda por equipe (`programming_team_schedule_conflict`) e checado antes de
   qualquer escrita, nunca depois — nenhuma RPC deixa gravacao parcial em caso de conflito.
 - `expectedUpdatedAt` obrigatorio em toda edicao/adiamento/cancelamento/conclusao/reabertura
@@ -175,14 +181,26 @@ Cancelamento e saldo
 ---------------------
 - `Cancelar`/`Adiar` agem sempre no nivel da etapa (grupo); nao ha operacao "individual de
   equipe" nesta entrega (equivalente a mover equipe entre etapas fica fora do escopo).
-- `Adiar` cria uma nova etapa na data futura (status `REPROGRAMADA`, `copied_from_id`
-  apontando para a etapa antiga) e marca a etapa antiga como `ADIADA`; equipes ativas sao
-  copiadas para a etapa nova apos checagem de conflito.
+- `Adiar` (migration 318) atua IN-PLACE na propria etapa (nao cria mais linha nova) com duas
+  rotas: "Nova data" -> execution_date=nova, status `REPROGRAMADA`; "Deixar em espera" ->
+  execution_date=NULL, status `ADIADA` (etapa sem data, fora da numeracao). Dar data depois a
+  uma etapa em espera -> `REPROGRAMADA`. A data De/Para vai para o historico. O editor comum
+  mantem a data travada; remarcar e sempre pelo Adiar. Conflito de agenda so na rota com data.
+  Nota: etapa em espera (execution_date NULL) nao aparece na LISTA cross-projeto (filtrada por
+  intervalo de data); e gerenciada pelo plano do projeto (ProjectPlanView).
 - `Cancelar` marca a etapa como `CANCELADA`, limpa Estado Trabalho e libera a agenda das
-  equipes (o filtro de conflito considera apenas etapas `PROGRAMADA`/`REPROGRAMADA`).
+  equipes (o filtro de conflito considera apenas etapas `PROGRAMADA`/`REPROGRAMADA`). Aceita
+  tambem etapa em espera (`ADIADA`).
 - `Concluir` marca Estado Trabalho `CONCLUIDO` e antecipa (por `execution_date` posterior,
-  nao por numero) todas as etapas ativas nao-pendentes seguintes; `Reabrir` reverte.
-- Maximo uma etapa `CONCLUIDO` ativa por projeto.
+  nao por numero) todas as etapas ativas nao-pendencia seguintes; `Reabrir` reverte. Concluir
+  uma etapa is_pendencia e PERMITIDO mesmo com o projeto ja concluido, nao antecipa nada e a
+  flag fica (rastreio).
+- Maximo uma etapa `CONCLUIDO` NAO-pendencia ativa por projeto
+  (`programming_project_has_active_completion` ignora is_pendencia — uma pendencia concluida
+  nao tranca o projeto).
+- Excecao da trava de concluido (migration 318): projeto com etapa CONCLUIDO ativa bloqueia
+  inserir/editar/adicionar equipe/adiar/cancelar, EXCETO quando a etapa e/nasce is_pendencia
+  (criar pendencia pelo formulario nao exige reabrir o projeto).
 
 Atalhos
 -------
@@ -316,6 +334,25 @@ Funcoes utilitarias relacionadas
     `isTimeRangeValid` (previa nao autoritativa no cliente).
 - Caminho: `src/lib/utils/formatters.ts`
   - Responsavel por: `formatDate`, `formatDateTime` (reaproveitados, nao duplicados).
+
+Decisoes registradas
+--------------------
+- PENDENCIA — modelo FINAL (migration 318, supersede 314/316/317): virou a flag booleana
+  is_pendencia, ortogonal a status/Estado do trabalho/numeracao. Nao ha mais status nem
+  Estado do trabalho PENDENCIA. Checkbox no formulario "Nova etapa" (nasce is_pendencia=true,
+  aciona a excecao da trava de concluido) e toggle no card. A coluna Status exibe "Pendencia"
+  quando a flag esta ligada.
+- ADIAR — modelo in-place, duas rotas (decisao do usuario 2026-07-20): "Nova data" remarca
+  (REPROGRAMADA); "Deixar em espera" tira a data (ADIADA, execution_date NULL). Dar data a
+  uma etapa em espera -> REPROGRAMADA. execution_date virou anulavel; UNIQUE(tenant, project,
+  data) virou indice parcial WHERE data IS NOT NULL; etapa sem data fica fora da numeracao; a
+  data De/Para vai para o historico. O editor comum mantem a data travada.
+- CONCLUIR UMA PENDENCIA — RESOLVIDO (migration 318): permitido mesmo com o projeto ja
+  concluido; nao antecipa nada; is_pendencia fica (rastreio) e Concluido prevalece na
+  exibicao. O antigo bloqueio PENDENCIA_NOT_ANTICIPATING foi removido (nao ha mais Estado do
+  trabalho PENDENCIA).
+- REPROGRAMADA por edicao de data no editor — permanece NAO implementado: remarcar e sempre
+  pelo Adiar (o editor mantem a data travada, `DATE_CHANGE_NOT_ALLOWED`).
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS.

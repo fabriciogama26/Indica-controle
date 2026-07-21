@@ -60,7 +60,7 @@ export function createInitialForm(executionDate: string): FormState {
     projectId: "",
     projectSearch: "",
     executionDate,
-    additionalExecutionDates: [],
+    isPendencia: false,
     teamIds: [],
     teamSearch: "",
     serviceDescription: "",
@@ -92,6 +92,11 @@ export function createInitialForm(executionDate: string): FormState {
   };
 }
 
+// Rotulo unico da flag is_pendencia (spec 4.2): pendencia deixou de ser status/
+// Estado do trabalho e virou checkbox; a coluna Status exibe este selo quando a
+// flag esta ligada, sobre o status de agenda gravado por baixo.
+export const PENDENCIA_STATUS_LABEL = "Pendencia";
+
 export const STAGE_STATUS_LABELS: Record<string, string> = {
   PROGRAMADA: "Programada",
   REPROGRAMADA: "Reprogramada",
@@ -106,7 +111,6 @@ export const WORK_COMPLETION_LABELS: Record<string, string> = {
   BENEFICIO_ATINGIDO: "Beneficio atingido",
   CONCLUIDO: "Concluido",
   ANTECIPADO: "Antecipado",
-  PENDENCIA: "Pendencia",
 };
 
 // Opcoes do select editavel de "Estado do trabalho" na lista/card. ANTECIPADO
@@ -118,7 +122,6 @@ export const WORK_COMPLETION_SELECT_OPTIONS: Array<{ value: string; label: strin
   { value: "PARCIAL_PLANEJADO", label: "Parcial planejado" },
   { value: "PARCIAL_NAO_PLANEJADO", label: "Parcial nao planejado" },
   { value: "BENEFICIO_ATINGIDO", label: "Beneficio atingido" },
-  { value: "PENDENCIA", label: "Pendencia" },
   { value: "CONCLUIDO", label: "Concluido" },
 ];
 
@@ -137,6 +140,8 @@ export const HISTORY_ACTION_LABELS: Record<string, string> = {
   RESTORE_ANTICIPATED_STAGE: "Restauracao de antecipada",
   REOPEN_STAGE: "Reabertura",
   RECLASSIFY_STAGE: "Reclassificacao",
+  SET_WORK_COMPLETION_STATUS: "Estado do trabalho",
+  SET_PENDENCIA_FLAG: "Pendencia",
 };
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
@@ -161,6 +166,7 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   note: "Anotacao",
   status: "Status",
   workCompletionStatus: "Estado Trabalho",
+  isPendencia: "Pendencia",
   newProgrammingId: "Nova etapa (adiamento)",
   sourceProgrammingId: "Etapa de origem",
   anticipatedById: "Etapa que antecipou",

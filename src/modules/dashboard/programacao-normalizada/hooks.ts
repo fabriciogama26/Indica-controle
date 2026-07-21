@@ -14,6 +14,7 @@ import {
   removeProgrammingTeam,
   reopenProgrammingStage,
   saveProgrammingStage,
+  setProgrammingPendenciaFlag,
   setProgrammingWorkCompletionStatus,
   type SaveStageRequestBody,
 } from "./api";
@@ -265,10 +266,18 @@ export function useProgrammingStageActions(params: {
     );
   }
 
-  async function postpone(programmingId: string, newExecutionDate: string, reason: string, expectedUpdatedAt: string) {
+  // newExecutionDate null = "deixar em espera" (ADIADA sem data); com data = remarcar.
+  async function postpone(programmingId: string, newExecutionDate: string | null, reason: string, expectedUpdatedAt: string) {
     if (!accessToken) return { ok: false as const, data: null };
     return runAction<ActionResponse>("postpone_stage", { programmingId }, () =>
       postponeProgrammingStage({ accessToken, programmingId, newExecutionDate, reason, expectedUpdatedAt }),
+    );
+  }
+
+  async function togglePendencia(programmingId: string, isPendencia: boolean, expectedUpdatedAt: string) {
+    if (!accessToken) return { ok: false as const, data: null };
+    return runAction<ActionResponse>("toggle_pendencia", { programmingId, isPendencia }, () =>
+      setProgrammingPendenciaFlag({ accessToken, programmingId, isPendencia, expectedUpdatedAt }),
     );
   }
 
@@ -320,5 +329,5 @@ export function useProgrammingStageActions(params: {
     return setWorkCompletionStatus(stage.id, nextValue, stage.updatedAt);
   }
 
-  return { isSubmitting, saveStage, addTeam, removeTeam, postpone, cancel, complete, reopen, setWorkCompletionStatus, changeWorkCompletionStatus };
+  return { isSubmitting, saveStage, addTeam, removeTeam, postpone, togglePendencia, cancel, complete, reopen, setWorkCompletionStatus, changeWorkCompletionStatus };
 }

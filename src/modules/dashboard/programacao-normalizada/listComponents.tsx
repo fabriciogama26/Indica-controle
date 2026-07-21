@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 
-import { DATE_RANGE_SHORTCUTS, LIST_SEARCH_DEBOUNCE_MS, STATUS_CHIP_OPTIONS, WORK_COMPLETION_SELECT_OPTIONS } from "./constants";
+import { DATE_RANGE_SHORTCUTS, LIST_SEARCH_DEBOUNCE_MS, PENDENCIA_STATUS_LABEL, STATUS_CHIP_OPTIONS, WORK_COMPLETION_SELECT_OPTIONS } from "./constants";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { formatDate, getStageClassificationLabel, getStageStatusLabel, getWorkCompletionLabel, isActiveStageStatus } from "./utils";
 import type { StageListFilters, StageListItem, TeamItem } from "./types";
@@ -27,14 +27,15 @@ function SearchIcon(props: { className?: string }) {
 
 export function ClassificationBadge(props: { stage: Pick<StageListItem, "etapaUnica" | "etapaFinal" | "etapaNumber" | "workCompletionStatus" | "status"> }) {
   const { stage } = props;
+  // Coluna Etapa segue a classificacao, nunca a pendencia (spec 3.2): uma etapa
+  // em pendencia continua Etapa N/Final com a mesma cor das demais. A pendencia
+  // se mostra nas colunas Status e Estado do trabalho.
   const label = getStageClassificationLabel(stage);
-  const variant = stage.workCompletionStatus === "PENDENCIA"
-    ? styles.badgePendencia
-    : !isActiveStageStatus(stage.status)
-      ? styles.badgeMuted
-      : stage.etapaFinal
-        ? styles.badgeWarning
-        : styles.badgeAccent;
+  const variant = !isActiveStageStatus(stage.status)
+    ? styles.badgeMuted
+    : stage.etapaFinal
+      ? styles.badgeWarning
+      : styles.badgeAccent;
 
   return <span className={`${styles.badge} ${variant}`}>{label}</span>;
 }
@@ -43,8 +44,14 @@ export function ClassificationBadge(props: { stage: Pick<StageListItem, "etapaUn
 // sistema (nunca editado direto pelo usuario â€” Programada/Reprogramada vem do
 // cadastro/edicao de data, Adiada/Cancelada dos botoes, Antecipada da cascata
 // de Concluir).
-export function StatusBadge(props: { status: string }) {
-  const { status } = props;
+export function StatusBadge(props: { status: string; isPendencia: boolean }) {
+  const { status, isPendencia } = props;
+  // Pendencia (flag) prevalece na exibicao do Status, em vermelho, sobre o
+  // status de agenda gravado por baixo (spec 3.2/4.2).
+  if (isPendencia) {
+    return <span className={`${styles.badge} ${styles.badgeDanger}`}>{PENDENCIA_STATUS_LABEL}</span>;
+  }
+
   const label = getStageStatusLabel(status);
   const variant = status === "PROGRAMADA"
     ? styles.badgeSuccess
@@ -59,7 +66,6 @@ function getWorkCompletionBadgeVariant(workCompletionStatus: string | null) {
   if (workCompletionStatus === "PARCIAL_PLANEJADO" || workCompletionStatus === "PARCIAL_NAO_PLANEJADO") return styles.badgeWarning;
   if (workCompletionStatus === "BENEFICIO_ATINGIDO") return styles.badgeAccent;
   if (workCompletionStatus === "CONCLUIDO") return styles.badgeSuccess;
-  if (workCompletionStatus === "PENDENCIA") return styles.badgeDanger;
   return styles.badgeMuted; // em branco, ANTECIPADO (apagado)
 }
 
@@ -299,7 +305,7 @@ function buildProjectGroups(items: StageListItem[]) {
 
   const groups = Array.from(groupMap.values());
   for (const group of groups) {
-    group.stages.sort((first, second) => first.executionDate.localeCompare(second.executionDate));
+    group.stages.sort((first, second) => (first.executionDate ?? "9999").localeCompare(second.executionDate ?? "9999"));
     const activeTeamIds = new Set<string>();
 
     for (const stage of group.stages) {
@@ -384,7 +390,7 @@ export function StageListTable(props: {
       try {
         const stages = await fetchProjectStages(projectId);
         if (!isStillCurrent()) return;
-        setExpandedStages([...stages].sort((first, second) => first.executionDate.localeCompare(second.executionDate)));
+        setExpandedStages([...stages].sort((first, second) => (first.executionDate ?? "9999").localeCompare(second.executionDate ?? "9999")));
       } catch {
         if (!isStillCurrent()) return;
         setExpandError("Falha ao carregar o plano completo do projeto. Mostrando so as etapas do filtro atual.");
@@ -520,7 +526,7 @@ export function StageListTable(props: {
 
                   return (
                     <div key={stage.id} className={styles.stageRow} role="row">
-                      <span>{formatDate(stage.executionDate)}</span>
+                      <span>{stage.executionDate ? formatDate(stage.executionDate) : "Em espera"}</span>
                       <span>
                         <ClassificationBadge stage={stage} />
                       </span>
@@ -544,7 +550,7 @@ export function StageListTable(props: {
                         )}
                       </span>
                       <span>
-                        <StatusBadge status={stage.status} />
+                        <StatusBadge status={stage.status} isPendencia={stage.isPendencia} />
                       </span>
                       <span>
                         <WorkCompletionCell stage={stage} isSubmitting={isSubmitting} onChange={onChangeWorkCompletionStatus} />

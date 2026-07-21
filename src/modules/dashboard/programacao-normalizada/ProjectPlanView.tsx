@@ -35,7 +35,7 @@ function buildFormFromStage(stage: ProgrammingStage, params: { executionDate: st
     projectId: stage.projectId,
     projectSearch: "",
     executionDate: params.executionDate,
-    additionalExecutionDates: [],
+    isPendencia: false,
     teamIds: stage.teams.filter((team) => team.status === "ATIVA").map((team) => team.teamId),
     teamSearch: "",
     serviceDescription: stage.serviceDescription,
@@ -83,6 +83,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
 
   const [postponeTarget, setPostponeTarget] = useState<ProgrammingStage | null>(null);
+  const [postponeMode, setPostponeMode] = useState<"DATE" | "HOLD">("DATE");
   const [postponeDate, setPostponeDate] = useState("");
   const [postponeReasonCode, setPostponeReasonCode] = useState("");
   const [postponeReasonNotes, setPostponeReasonNotes] = useState("");
@@ -106,7 +107,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
   function startEdit(stage: ProgrammingStage) {
     setEditingStageId(stage.id);
-    setForm(buildFormFromStage(stage, { executionDate: stage.executionDate }));
+    setForm(buildFormFromStage(stage, { executionDate: stage.executionDate ?? "" }));
   }
 
   // "Nova etapa a partir desta": herda todo o cadastro, so a data fica em branco.
@@ -162,6 +163,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       trafoQty: form.trafoQty,
       redeQty: form.redeQty,
       note: form.note,
+      isPendencia: form.isPendencia,
       activities: form.activities.map((item) => ({ catalogId: item.catalogId, quantity: item.quantity })),
       documents: form.documents,
     };
@@ -176,24 +178,21 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       return;
     }
 
-    // Varias datas na mesma submissao (secao 9 do spec: primeiras etapas de um
-    // plano novo) reaproveitam o mesmo cadastro; salvas uma a uma e em ordem,
-    // porque a pendencia/classificacao de cada data depende do reclassify da
-    // anterior ja ter rodado.
-    const dates = Array.from(
-      new Set([form.executionDate, ...form.additionalExecutionDates].map((date) => date.trim()).filter(Boolean)),
-    );
+    // Uma etapa por submissao (uma data = uma etapa). Datas adicionais entram
+    // pelo botao "Nova etapa a partir desta", que reabre este editor herdando o
+    // cadastro da etapa selecionada.
+    const date = form.executionDate.trim();
+    if (!date) return;
 
-    for (const date of dates) {
-      const result = await actions.saveStage({ ...baseFields, executionDate: date }, false);
-      if (!result.ok) return;
-    }
+    const result = await actions.saveStage({ ...baseFields, executionDate: date }, false);
+    if (!result.ok) return;
 
     cancelEdit();
   }
 
   function openPostponeModal(stage: ProgrammingStage) {
     setPostponeTarget(stage);
+    setPostponeMode("DATE");
     setPostponeDate("");
     setPostponeReasonCode("");
     setPostponeReasonNotes("");
@@ -204,7 +203,11 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
     const reasonLabel = buildReasonText(reasonOptions, postponeReasonCode, postponeReasonNotes);
     if (!reasonLabel) return;
 
-    const result = await actions.postpone(postponeTarget.id, postponeDate, reasonLabel, postponeTarget.updatedAt);
+    // Rota "em espera" envia data null (ADIADA sem data); "nova data" remarca (REPROGRAMADA).
+    const newDate = postponeMode === "HOLD" ? null : postponeDate;
+    if (postponeMode === "DATE" && !newDate) return;
+
+    const result = await actions.postpone(postponeTarget.id, newDate, reasonLabel, postponeTarget.updatedAt);
     if (result.ok) setPostponeTarget(null);
   }
 
@@ -244,7 +247,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
       {activeCompletedStage ? (
         <div className={`${styles.feedback} ${styles.feedbackError}`}>
-          Projeto concluido em {activeCompletedStage.executionDate}. Reabra a etapa concluida antes de inserir, editar, adicionar equipe, adiar ou cancelar.
+          Projeto concluido em {activeCompletedStage.executionDate}. Reabra a etapa concluida antes de inserir, editar, adicionar equipe, adiar ou cancelar — exceto criar uma etapa de Pendencia (marque a checkbox no formulario), que e permitida sem reabrir.
         </div>
       ) : null}
 
@@ -293,6 +296,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
               onCancel={() => openCancelModal(stage)}
               onComplete={() => actions.complete(stage.id, stage.updatedAt)}
               onReopen={() => actions.reopen(stage.id, stage.updatedAt)}
+              onTogglePendencia={(next) => actions.togglePendencia(stage.id, next, stage.updatedAt)}
               onDetails={() => setDetailsTarget(stage)}
               onHistory={() => historyModal.openHistory(stage)}
             />
@@ -302,6 +306,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
       <PostponeModal
         isOpen={Boolean(postponeTarget)}
+        mode={postponeMode}
         newDate={postponeDate}
         reasonCode={postponeReasonCode}
         reasonNotes={postponeReasonNotes}
@@ -309,6 +314,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         isSubmitting={actions.isSubmitting}
         onClose={() => setPostponeTarget(null)}
         onConfirm={confirmPostpone}
+        onModeChange={setPostponeMode}
         onNewDateChange={setPostponeDate}
         onReasonCodeChange={setPostponeReasonCode}
         onReasonNotesChange={setPostponeReasonNotes}

@@ -116,12 +116,13 @@ export type ProgrammingDocumentRow = {
 export type ProgrammingStageRow = {
   id: string;
   project_id: string;
-  execution_date: string;
+  execution_date: string | null;
   etapa_number: number | null;
   etapa_unica: boolean;
   etapa_final: boolean;
   status: ProgrammingStatus;
   work_completion_status: string | null;
+  is_pendencia: boolean;
   service_description: string | null;
   period: ProgrammingPeriod | null;
   start_time: string | null;
@@ -218,6 +219,7 @@ export type SaveProgrammingStagePayload = {
   redeQty?: number | string;
   note?: string;
   historyReason?: string;
+  isPendencia?: boolean;
   activities?: Array<{ catalogId?: string; quantity?: number | string }>;
   documents?: Partial<Record<Lowercase<ProgrammingDocumentType>, {
     number?: string;
@@ -238,8 +240,15 @@ export type RemoveTeamPayload = {
 
 export type PostponeStagePayload = {
   programmingId?: string;
-  newExecutionDate?: string;
+  // Ausente/null = "deixar em espera" (ADIADA sem data); com data = remarcar (REPROGRAMADA).
+  newExecutionDate?: string | null;
   reason?: string;
+  expectedUpdatedAt?: string;
+};
+
+export type SetPendenciaFlagPayload = {
+  programmingId?: string;
+  isPendencia?: boolean;
   expectedUpdatedAt?: string;
 };
 

@@ -31,6 +31,7 @@ export function ProgrammingNormalizedPageView() {
   const [filters, setFilters] = useState(() => createDefaultListFilters(today));
 
   const [postponeTarget, setPostponeTarget] = useState<StageListItem | null>(null);
+  const [postponeMode, setPostponeMode] = useState<"DATE" | "HOLD">("DATE");
   const [postponeDate, setPostponeDate] = useState("");
   const [postponeReasonCode, setPostponeReasonCode] = useState("");
   const [postponeReasonNotes, setPostponeReasonNotes] = useState("");
@@ -206,7 +207,10 @@ export function ProgrammingNormalizedPageView() {
     const reasonLabel = buildReasonText(reasonOptions, postponeReasonCode, postponeReasonNotes);
     if (!reasonLabel) return;
 
-    const result = await actions.postpone(postponeTarget.id, postponeDate, reasonLabel, postponeTarget.updatedAt);
+    const newDate = postponeMode === "HOLD" ? null : postponeDate;
+    if (postponeMode === "DATE" && !newDate) return;
+
+    const result = await actions.postpone(postponeTarget.id, newDate, reasonLabel, postponeTarget.updatedAt);
     if (result.ok) setPostponeTarget(null);
   }
 
@@ -291,6 +295,7 @@ export function ProgrammingNormalizedPageView() {
         onAddTeam={(stage) => setAddTeamTarget(stage)}
         onPostpone={(stage) => {
           setPostponeTarget(stage);
+          setPostponeMode("DATE");
           setPostponeDate("");
           setPostponeReasonCode("");
           setPostponeReasonNotes("");
@@ -329,6 +334,7 @@ export function ProgrammingNormalizedPageView() {
 
       <PostponeModal
         isOpen={Boolean(postponeTarget)}
+        mode={postponeMode}
         newDate={postponeDate}
         reasonCode={postponeReasonCode}
         reasonNotes={postponeReasonNotes}
@@ -336,6 +342,7 @@ export function ProgrammingNormalizedPageView() {
         isSubmitting={actions.isSubmitting}
         onClose={() => setPostponeTarget(null)}
         onConfirm={confirmPostpone}
+        onModeChange={setPostponeMode}
         onNewDateChange={setPostponeDate}
         onReasonCodeChange={setPostponeReasonCode}
         onReasonNotesChange={setPostponeReasonNotes}

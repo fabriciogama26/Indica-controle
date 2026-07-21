@@ -595,36 +595,42 @@
   gap: 0.5rem 1rem;
 }
 
-.dateAddRow {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.dateAddRow input {
-  flex: 1;
-  max-width: 220px;
-}
-
-.additionalDatesList {
-  display: grid;
-  gap: 0.4rem;
-}
-
-.additionalDateRow {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.additionalDateRow input {
-  max-width: 220px;
-}
-
 .teamChips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+.pendenciaToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text-soft);
+  cursor: pointer;
+}
+
+.pendenciaToggle input {
+  width: auto;
+  margin: 0;
+}
+
+.radioRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.radioRow label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.radioRow input {
+  width: auto;
+  margin: 0;
 }
 
 .stageList {
