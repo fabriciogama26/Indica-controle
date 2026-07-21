@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import {
   addProgrammingTeam,
   cancelProgrammingStage,
+  changeCompletedStageWorkStatus,
   completeProgrammingStage,
   fetchActivityCatalog,
   fetchProgrammingMeta,
@@ -309,25 +310,30 @@ export function useProgrammingStageActions(params: {
     );
   }
 
-  // "Estado do trabalho" no select da lista/card: Concluido sempre reusa a acao
-  // Concluir (guarda de unico ativo + antecipacao em cascata); sair de Concluido
-  // para qualquer outro valor reabre primeiro (restaura antecipadas), depois
-  // aplica o valor escolhido explicitamente — nunca confia no que o Reabrir
-  // restaurou sozinho.
+  // Sair de CONCLUIDO num unico commit transacional (achado 4): reabre, restaura
+  // as antecipadas e aplica o novo estado numa so RPC — nunca deixa o projeto
+  // reaberto sem o estado por falha entre duas chamadas.
+  async function changeCompletedWorkStatus(programmingId: string, newWorkCompletionStatus: string | null, expectedUpdatedAt: string) {
+    if (!accessToken) return { ok: false as const, data: null };
+    return runAction<ActionResponse>("change_completed_work_status", { programmingId, newWorkCompletionStatus }, () =>
+      changeCompletedStageWorkStatus({ accessToken, programmingId, newWorkCompletionStatus, expectedUpdatedAt }),
+    );
+  }
+
+  // "Estado do trabalho" no select da lista/card: Concluido reusa a acao Concluir
+  // (guarda de unico ativo + antecipacao); sair de Concluido usa a RPC unica
+  // change_completed_stage_work_status (reabre + aplica o novo estado atomicamente).
   async function changeWorkCompletionStatus(stage: Pick<StageListItem, "id" | "workCompletionStatus" | "updatedAt">, nextValue: string | null) {
     if (nextValue === "CONCLUIDO") {
       return complete(stage.id, stage.updatedAt);
     }
 
     if (stage.workCompletionStatus === "CONCLUIDO") {
-      const reopenResult = await reopen(stage.id, stage.updatedAt);
-      if (!reopenResult.ok) return reopenResult;
-      const reopenedUpdatedAt = reopenResult.data?.updatedAt ?? stage.updatedAt;
-      return setWorkCompletionStatus(stage.id, nextValue, reopenedUpdatedAt);
+      return changeCompletedWorkStatus(stage.id, nextValue, stage.updatedAt);
     }
 
     return setWorkCompletionStatus(stage.id, nextValue, stage.updatedAt);
   }
 
-  return { isSubmitting, saveStage, addTeam, removeTeam, postpone, togglePendencia, cancel, complete, reopen, setWorkCompletionStatus, changeWorkCompletionStatus };
+  return { isSubmitting, saveStage, addTeam, removeTeam, postpone, togglePendencia, cancel, complete, reopen, setWorkCompletionStatus, changeCompletedWorkStatus, changeWorkCompletionStatus };
 }

@@ -6,7 +6,7 @@ import { CsvExportButton } from "@/components/ui/CsvExportButton";
 
 import { DATE_RANGE_SHORTCUTS, LIST_SEARCH_DEBOUNCE_MS, PENDENCIA_STATUS_LABEL, STATUS_CHIP_OPTIONS, WORK_COMPLETION_SELECT_OPTIONS } from "./constants";
 import styles from "./ProgrammingNormalizedPageView.module.css";
-import { formatDate, getStageClassificationLabel, getStageStatusLabel, getWorkCompletionLabel, isActiveStageStatus } from "./utils";
+import { formatDate, getStageClassificationLabel, getStageStatusLabel, getWorkCompletionLabel, isActiveStageStatus, isPendenciaPrimary } from "./utils";
 import type { StageListFilters, StageListItem, TeamItem } from "./types";
 
 type ProjectListGroup = {
@@ -44,11 +44,11 @@ export function ClassificationBadge(props: { stage: Pick<StageListItem, "etapaUn
 // sistema (nunca editado direto pelo usuario â€” Programada/Reprogramada vem do
 // cadastro/edicao de data, Adiada/Cancelada dos botoes, Antecipada da cascata
 // de Concluir).
-export function StatusBadge(props: { status: string; isPendencia: boolean }) {
-  const { status, isPendencia } = props;
-  // Pendencia (flag) prevalece na exibicao do Status, em vermelho, sobre o
-  // status de agenda gravado por baixo (spec 3.2/4.2).
-  if (isPendencia) {
+export function StatusBadge(props: { status: string; isPendencia: boolean; workCompletionStatus: string | null }) {
+  const { status, isPendencia, workCompletionStatus } = props;
+  // Pendencia so prevalece quando ABERTA (ativa e nao concluida). Em terminal/
+  // concluida, mostra o status real e a pendencia vira marcador secundario.
+  if (isPendenciaPrimary({ isPendencia, status, workCompletionStatus })) {
     return <span className={`${styles.badge} ${styles.badgeDanger}`}>{PENDENCIA_STATUS_LABEL}</span>;
   }
 
@@ -59,7 +59,12 @@ export function StatusBadge(props: { status: string; isPendencia: boolean }) {
       ? styles.badgeAccent
       : styles.badgeMuted; // ADIADA, CANCELADA, ANTECIPADA (apagado/neutro)
 
-  return <span className={`${styles.badge} ${variant}`}>{label}</span>;
+  return (
+    <>
+      <span className={`${styles.badge} ${variant}`}>{label}</span>
+      {isPendencia ? <span className={`${styles.badge} ${styles.badgeMuted}`} title="Etapa marcada como pendencia">Pend.</span> : null}
+    </>
+  );
 }
 
 function getWorkCompletionBadgeVariant(workCompletionStatus: string | null) {
@@ -550,7 +555,7 @@ export function StageListTable(props: {
                         )}
                       </span>
                       <span>
-                        <StatusBadge status={stage.status} isPendencia={stage.isPendencia} />
+                        <StatusBadge status={stage.status} isPendencia={stage.isPendencia} workCompletionStatus={stage.workCompletionStatus} />
                       </span>
                       <span>
                         <WorkCompletionCell stage={stage} isSubmitting={isSubmitting} onChange={onChangeWorkCompletionStatus} />

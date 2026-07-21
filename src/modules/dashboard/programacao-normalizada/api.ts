@@ -210,6 +210,27 @@ export async function postponeProgrammingStage(params: {
   return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
 }
 
+// Sair de CONCLUIDO atomicamente (reabre + aplica novo estado num so commit).
+export async function changeCompletedStageWorkStatus(params: {
+  accessToken: string;
+  programmingId: string;
+  newWorkCompletionStatus: string | null;
+  expectedUpdatedAt: string;
+}) {
+  const response = await fetch("/api/programacao-normalizada", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(params.accessToken) },
+    body: JSON.stringify({
+      action: "CHANGE_COMPLETED_WORK_STATUS",
+      programmingId: params.programmingId,
+      newWorkCompletionStatus: params.newWorkCompletionStatus,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+    }),
+  });
+
+  return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
+}
+
 export async function setProgrammingPendenciaFlag(params: {
   accessToken: string;
   programmingId: string;

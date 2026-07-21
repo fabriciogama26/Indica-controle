@@ -45,8 +45,39 @@ async function resolveStageIdsByTeamIds(params: { supabase: SupabaseClient; tena
   return Array.from(new Set((data ?? []).map((item) => item.programming_id)));
 }
 
-// Select completo (mesmo da etapa/plano) para a lista tambem servir de fonte
-// para os exports (CSV/ENEL/ENEL NOVO) sem uma segunda query por etapa.
+// Aplica o chip de status de forma identica no passo 1 (RPC, no banco) e no
+// passo 2 (etapas dos projetos da pagina). Mantido em um lugar so para os dois
+// passos nunca divergirem.
+function applyStatusChipToStageQuery<Q extends {
+  in(column: string, values: string[]): Q;
+  eq(column: string, value: string | boolean): Q;
+  lt(column: string, value: string): Q;
+  or(filters: string): Q;
+}>(query: Q, statusChip: ProgrammingStageListFilters["statusChip"], todayIso: string): Q {
+  if (statusChip === "PROGRAMADAS") {
+    return query.in("status", ["PROGRAMADA", "REPROGRAMADA"]);
+  }
+  if (statusChip === "PENDENCIAS") {
+    // "Pendencias abertas" (achado 8): flag ligada E ativa E nao concluida.
+    return query
+      .eq("is_pendencia", true)
+      .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+      .or("work_completion_status.is.null,work_completion_status.neq.CONCLUIDO");
+  }
+  if (statusChip === "ATRASADAS") {
+    return query.in("status", ["PROGRAMADA", "REPROGRAMADA"]).lt("execution_date", todayIso);
+  }
+  if (statusChip === "ADIADAS") {
+    return query.eq("status", "ADIADA");
+  }
+  return query;
+}
+
+// Lista cross-projeto paginada POR PROJETO (achado 14): o passo 1 pagina os
+// project_id distintos que batem nos filtros (RPC programming_list_project_page,
+// no banco); o passo 2 busca TODAS as etapas (matching) dos projetos da pagina,
+// para nunca partir um projeto entre paginas e nao ter contador parcial.
+// O select completo tambem serve de fonte para os exports (CSV/ENEL/ENEL NOVO).
 export async function fetchProgrammingStageList(params: {
   supabase: SupabaseClient;
   filters: ProgrammingStageListFilters;
@@ -68,48 +99,58 @@ export async function fetchProgrammingStageList(params: {
     return { rows: [] as ProgrammingStageRow[], total: 0 };
   }
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  // Passo 1: projetos distintos (paginados) + total de projetos.
+  const { data: projectPage, error: projectError } = await supabase.rpc("programming_list_project_page", {
+    p_tenant_id: filters.tenantId,
+    p_date_from: filters.dateFrom,
+    p_date_to: filters.dateTo,
+    p_project_ids: projectIdsFromSearch,
+    p_stage_ids: stageIdsFromTeamFilter,
+    p_status_chip: filters.statusChip,
+    p_today: todayIso,
+    p_page: filters.page,
+    p_page_size: filters.pageSize,
+  });
+
+  if (projectError) {
+    throw new Error(`Falha ao paginar projetos da Programacao Normalizada: ${projectError.message}`);
+  }
+
+  const projectRows = (projectPage ?? []) as Array<{ project_id: string; total_count: number }>;
+  const total = projectRows.length ? Number(projectRows[0].total_count) : 0;
+  const pageProjectIds = projectRows.map((row) => row.project_id);
+
+  if (!pageProjectIds.length) {
+    return { rows: [] as ProgrammingStageRow[], total };
+  }
+
+  // Passo 2: todas as etapas (matching) dos projetos da pagina.
   let query = supabase
     .from("programming")
-    .select(PROGRAMMING_STAGE_SELECT_WITH_CHILDREN, { count: "exact" })
+    .select(PROGRAMMING_STAGE_SELECT_WITH_CHILDREN)
     .eq("tenant_id", filters.tenantId)
     .gte("execution_date", filters.dateFrom)
-    .lte("execution_date", filters.dateTo);
-
-  if (projectIdsFromSearch !== null) {
-    query = query.in("project_id", projectIdsFromSearch);
-  }
+    .lte("execution_date", filters.dateTo)
+    .in("project_id", pageProjectIds);
 
   if (stageIdsFromTeamFilter !== null) {
     query = query.in("id", stageIdsFromTeamFilter);
   }
 
-  if (filters.statusChip === "PROGRAMADAS") {
-    query = query.in("status", ["PROGRAMADA", "REPROGRAMADA"]);
-  } else if (filters.statusChip === "PENDENCIAS") {
-    query = query.eq("is_pendencia", true);
-  } else if (filters.statusChip === "ATRASADAS") {
-    const todayIso = new Date().toISOString().slice(0, 10);
-    query = query.in("status", ["PROGRAMADA", "REPROGRAMADA"]).lt("execution_date", todayIso);
-  } else if (filters.statusChip === "ADIADAS") {
-    query = query.eq("status", "ADIADA");
-  }
+  query = applyStatusChipToStageQuery(query, filters.statusChip, todayIso);
 
-  const from = (filters.page - 1) * filters.pageSize;
-  const to = from + filters.pageSize - 1;
-
-  // A lista agrupa por projeto no frontend. Aqui a ordenacao fica em colunas
-  // nativas da tabela para evitar que falha de order por embed esconda etapas.
-  const { data, error, count } = await query
+  const { data, error } = await query
     .order("project_id", { ascending: true })
     .order("execution_date", { ascending: true })
-    .range(from, to)
     .returns<ProgrammingStageRow[]>();
 
   if (error) {
     throw new Error(`Falha ao carregar lista da Programacao Normalizada: ${error.message}`);
   }
 
-  return { rows: data ?? [], total: count ?? 0 };
+  return { rows: data ?? [], total };
 }
 
 export async function fetchProgrammingPlanForProject(params: {

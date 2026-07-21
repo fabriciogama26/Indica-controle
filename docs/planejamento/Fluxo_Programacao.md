@@ -1,644 +1,266 @@
-# Fluxograma de Regra de Negócio — Tela de Programação
+# Fluxograma de Regra de Negócio — Programação Normalizada
 
-## 1. Camadas de status
+Reescrito em 2026-07-21 para o modelo NORMALIZADO (tela `Programação (Normalizada)`,
+`/programacao-normalizada`, migrations 310–318). Supersede o fluxo anterior, que descrevia o
+modelo legado (`programacao-simples`: `project_programming`, `programming_group_id`, ETAPA
+digitada, copiar, reprogramar por edição). A tela legada mantém seu próprio fluxo.
 
-A programação possui duas camadas independentes:
+Fonte de desenho: `docs/planejamento/Spec_Nova_Programacao_Modelo_Normalizado.md` e
+`docs/planejamento/Mapa_Regras_Programacao.md`.
 
-### Status operacional da programação
+---
 
+## 1. Camadas (três eixos independentes + a flag)
+
+A etapa (`programming`) é o pai; as equipes (`programming_team`) são filhas.
+
+### Eixo 1 — Status operacional (agenda da etapa)
 * `PROGRAMADA`
 * `REPROGRAMADA`
-* `ADIADA`
+* `ADIADA` (inclui "em espera", sem data)
 * `CANCELADA`
+* `ANTECIPADA`
 
-### Estado Trabalho
+### Eixo 2 — Estado Trabalho (execução do serviço)
+* em branco (a fazer)
+* `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `BENEFICIO_ATINGIDO`
+* `CONCLUIDO` (único que encerra o projeto)
+* `ANTECIPADO` (automático)
 
-* Estado normal/não concluído conforme catálogo
-* `CONCLUIDO`
-* `ANTECIPADO`
+### Eixo 3 — Participação da equipe (`programming_team.status`)
+* `ATIVA`, `REMOVIDA`, `TRANSFERIDA`
 
-O Status operacional informa o que aconteceu com a agenda.
+### Flag ortogonal — `is_pendencia` (bool)
+* Não é status nem Estado Trabalho. Quando `true`, a coluna Status exibe "Pendência"
+  (vermelho) por cima do status de agenda; não afeta Etapa, Estado Trabalho nem numeração.
 
-O Estado Trabalho informa a situação da execução do serviço.
-
----
-
-# 2. Fluxo inicial comum a qualquer ação
-
-**Início**
-→ Usuário abre a tela de Programação
-→ Seleciona projeto, data, equipe, horários, ETAPA e demais campos
-→ Sistema identifica se é cadastro, edição, adiamento, cancelamento, cópia, adição de equipe ou atualização de Estado Trabalho.
-
-Antes de salvar qualquer ação, validar:
-
-→ Usuário possui permissão para a ação?
-
-* Não → bloquear.
-* Sim → continuar.
-
-→ Projeto pertence ao tenant ativo?
-
-* Não → bloquear.
-* Sim → continuar.
-
-→ Equipe, catálogos e programação pertencem ao tenant ativo?
-
-* Não → bloquear.
-* Sim → continuar.
-
-→ Projeto está `CONCLUIDO`?
-
-* Sim → bloquear cadastro, edição, adiamento, cancelamento, cópia e adição de equipe.
-* Não → continuar.
-
-→ Linha está `ADIADA` ou `CANCELADA`?
-
-* Sim → bloquear edição direta.
-* Não → continuar.
-
-→ Dados obrigatórios estão preenchidos?
-
-* Não → bloquear e informar os campos pendentes.
-* Sim → continuar.
-
-→ ETAPA está válida?
-
-* Não → bloquear.
-* Sim → continuar.
-
-Regras de ETAPA:
-
-* ETAPA numérica deve ser maior que zero.
-* Não pode existir ETAPA numérica junto com `ETAPA ÚNICA`.
-* Não pode existir ETAPA numérica junto com `ETAPA FINAL`.
-* `ETAPA ÚNICA` e `ETAPA FINAL` não podem coexistir.
-* Conflitos de ETAPA precisam ser validados por projeto, equipe, data e grupo aplicável.
-
-→ Horários são válidos?
-
-* Não → bloquear.
-* Sim → continuar.
-
-→ Existe conflito de agenda para equipe, data e horário?
-
-* Sim → bloquear e informar conflito.
-* Não → continuar.
-
-→ Registro foi alterado por outro usuário desde que a tela foi aberta?
-
-* Sim → bloquear, pedir recarga e não gravar alteração parcial.
-* Não → executar a ação.
+O Status informa o que aconteceu com a agenda. O Estado Trabalho informa a execução. A
+classificação de etapa (`Única`/`N`/`Final`) é DERIVADA por data, nunca digitada.
 
 ---
 
-# 3. Decisão principal: qual ação o usuário está realizando?
+## 2. Fluxo inicial comum a qualquer ação de escrita
 
-## A. Não existe programação anterior
+**Início** → Usuário abre a tela → seleciona projeto e (conforme a ação) data, equipe,
+horários, campos. O backend identifica a ação e valida, na RPC transacional com lock por
+projeto:
 
-→ Usuário está criando uma programação nova.
+→ Usuário tem permissão para a ação? Não → bloquear.
+→ Projeto pertence ao tenant ativo? Não → bloquear.
+→ Equipe/catálogos pertencem ao tenant ativo? Não → bloquear.
+→ Projeto tem etapa `CONCLUIDO` ativa (não-pendência)?
+  * Sim → bloquear inserir/editar/adicionar equipe/adiar/cancelar,
+    **EXCETO** quando a etapa em questão é `is_pendencia` (criar/gerir pendência não exige
+    reabrir o projeto).
+  * Não → continuar.
+→ A etapa alvo está em status editável para a ação? (ex.: só ativas recebem equipe/estado)
+  * Não → bloquear.
+→ Dados obrigatórios preenchidos? Não → bloquear e informar campos.
+→ Horários válidos? Não → bloquear.
+→ Existe conflito de agenda para a equipe/data/horário? Sim → bloquear (transacional, sem
+  gravação parcial).
+→ `expectedUpdatedAt` bate (registro não alterado por outro usuário)? Não → 409, pedir recarga.
+→ Executa a ação → chama `reclassify_project_programming_stages` no final → grava histórico.
 
-### Ação: PROGRAMAR
-
-→ Validar projeto, equipe, data, horário, ETAPA, campos obrigatórios e conflitos.
-→ Regra atual: se a ETAPA informada conflitar com etapa futura existente, bloquear e pedir ajuste manual.
-→ Regra planejada: se a data ficar entre duas ETAPAs numéricas existentes, calcular a nova ETAPA pela posição cronológica e deslocar as etapas futuras em `+1` dentro de uma RPC transacional.
-→ Criar uma linha para cada equipe informada.
-→ Status operacional inicial = `PROGRAMADA`.
-→ Registrar histórico de criação.
-→ Fim.
-
----
-
-## B. Existe programação ativa e o usuário alterou apenas campos operacionais
-
-Exemplos:
-
-* corrigir observação;
-* alterar algum campo de SGD;
-* alterar ponto elétrico;
-* ajustar Nº EQ;
-* atualizar campos que não alteram data, equipe, horário, período ou projeto.
-
-### Ação: EDITAR
-
-→ Linha precisa estar ativa, ou seja, não pode estar `ADIADA` nem `CANCELADA`.
-→ Validar dados e conflitos aplicáveis.
-→ Salvar atualização.
-→ Manter o status operacional existente.
-
-Regras importantes:
-
-* Alguns campos operacionais podem sincronizar com outras equipes do mesmo `programming_group_id`.
-* A alteração de ETAPA é individual da linha; não deve ser propagada automaticamente para todas as equipes do grupo.
-* Registrar histórico como `UPDATE`.
-
-→ Fim.
+Não há validação de ETAPA digitada: a classificação é recalculada pelo sistema.
 
 ---
 
-## C. Existe programação ativa e mudou projeto, equipe, data, horário ou período
+## 3. Ação: PROGRAMAR (criar etapa)
 
-Exemplos:
-
-* programação era dia 10 e precisa ir para o dia 15;
-* programação era para a Equipe 01 e precisa ir para a Equipe 03;
-* horário mudou;
-* período mudou;
-* projeto mudou;
-* data já chegou ou passou e a programação precisa ser refeita.
-
-### Ação: REPROGRAMAR
-
-→ Exigir motivo da reprogramação.
-→ Validar nova data, equipe, horário, ETAPA e conflitos.
-→ Regra atual: se a nova ETAPA quebrar a sequência existente, bloquear/alertar conforme validação vigente.
-→ Regra planejada: se a nova data reposicionar a programação entre etapas numéricas existentes, recalcular a ETAPA da linha e deslocar as etapas futuras afetadas na mesma transação.
-→ Registrar alteração como reprogramação.
-→ Status operacional do registro ativo passa a ser ou permanece `REPROGRAMADA`.
-→ Registrar histórico como `RESCHEDULE`.
-
-### Regra principal
-
-Use **REPROGRAMAR** quando a programação precisa ser refeita ou ajustada e não se enquadra como simples adiamento.
-
-Especialmente:
-
-* quando a data original já chegou;
-* quando a data original já passou;
-* quando for necessário mover a programação para trás;
-* quando houver mudança de equipe;
-* quando houver mudança de horário;
-* quando houver mudança de período;
-* quando houver mudança de projeto;
-* quando o usuário não quer apenas “empurrar para frente”, mas redefinir a programação.
-
-→ Fim.
+* Uma etapa por `(projeto, data)`. Campo obrigatório: `execution_date`.
+* Checkbox **Pendência** no formulário "Nova etapa": cria a etapa já com `is_pendencia = true`
+  — é o que ACIONA a exceção da trava de projeto concluído.
+* Uma etapa por submissão. Datas adicionais entram por "Nova etapa a partir desta" (herda o
+  cadastro, só a data fica em branco).
+* Nasce `status = PROGRAMADA`, `work_completion_status` em branco.
+* `reclassify` recalcula a classificação (1ª etapa → Única; a partir da 2ª a anterior deixa de
+  ser Única; maior data → Final).
 
 ---
 
-## D. A programação ainda está ativa e só será empurrada para frente
+## 4. Ação: EDITAR (cadastro/equipes, NÃO a data)
 
-Pergunta:
-
-→ A programação não será cancelada, apenas ocorrerá em uma nova data futura?
-
-* Não → avaliar Cancelar ou Reprogramar.
-* Sim → seguir para Adiar.
-
-### Ação: ADIAR SEM NOVA DATA
-
-Use quando:
-
-* a programação não será executada na data atual;
-* ainda não existe uma nova data definida;
-* é necessário retirar a linha da agenda ativa e preservar o motivo.
-
-Fluxo:
-
-→ Exigir motivo.
-→ Definir escopo: somente a linha ou todo o grupo operacional.
-→ Marcar origem como `ADIADA`.
-→ Registrar histórico como `ADIADA`.
-→ Não criar nova programação.
-→ Fim.
+* Edita descrição, horários, quantidades, documentos, atividades, equipes.
+* **Não muda a data** (`DATE_CHANGE_NOT_ALLOWED`). Para remarcar, use Adiar.
+* Editar campos operacionais **não** muda o status nem a classificação.
+* `is_pendencia` não é editado por aqui — o card tem o toggle próprio.
 
 ---
 
-### Ação: ADIAR COM NOVA DATA
+## 5. Ação: ADIAR (in-place, duas rotas)
 
-Use quando:
+O editor comum mantém a data travada; remarcar é sempre pelo Adiar. A RPC atua IN-PLACE na
+própria etapa (não cria linha nova).
 
-* a programação ainda será executada;
-* a nova data já está definida;
-* a nova data é futura;
-* a nova data é posterior à origem;
-* o objetivo é somente postergar a execução.
+### Rota "Nova data" (remarcar)
+* Exige motivo e data posterior à atual (se a etapa tinha data). Checa conflito de agenda.
+* Resultado: `execution_date = nova`, `status = REPROGRAMADA`, Estado Trabalho volta a branco.
+* Dispara `reclassify` (a posição pode mudar).
 
-Fluxo:
+### Rota "Deixar em espera" (sem data)
+* Exige motivo. Resultado: `execution_date = NULL`, `status = ADIADA`, Estado Trabalho em branco.
+* A etapa sai da numeração e não ocupa agenda (sem data). **Não aparece na lista cross-projeto**
+  (filtrada por intervalo de data) — só no plano do projeto.
 
-→ Exigir motivo.
-→ Validar nova data.
-→ Nova data é igual ou anterior à origem?
+### Dar data a uma etapa em espera
+* Aplicar Adiar > Nova data sobre uma etapa `ADIADA` sem data → `REPROGRAMADA` (volta à numeração).
 
-* Sim → bloquear adiamento. Usar Reprogramar quando a necessidade for redefinir a programação.
-* Não → continuar.
-
-→ Validar conflito da nova data, equipe e horário.
-
-* Existe conflito → bloquear toda a operação. Nenhuma origem pode ficar adiada sem que a nova programação seja criada.
-* Não existe conflito → continuar.
-
-→ Marcar programação original como `ADIADA`.
-→ Criar nova programação vinculada à origem.
-→ Nova linha recebe status operacional `REPROGRAMADA`.
-→ Preservar os dados operacionais aplicáveis.
-→ Preservar `ETAPA FINAL`, quando existir na origem.
-→ Registrar motivo, origem, destino, usuário e histórico.
-→ Fim.
-
-### Regra prática
-
-```text
-Data futura foi apenas postergada?
-→ ADIAR
-
-Data já chegou/passou ou a mudança altera o planejamento de forma ampla?
-→ REPROGRAMAR
-```
+A mudança de data De/Para vai para o histórico. Exceção da trava de concluído vale para etapa
+`is_pendencia`.
 
 ---
 
-## E. A programação não será mais executada
+## 6. Ação: CANCELAR
 
-Pergunta:
-
-→ O serviço deixa de existir nesta programação e não haverá nova data vinculada agora?
-
-* Sim → Cancelar.
-* Não → Adiar ou Reprogramar.
-
-### Ação: CANCELAR
-
-→ Exigir motivo.
-→ Definir escopo: linha individual ou grupo operacional.
-→ Validar concorrência.
-→ Marcar linha ou grupo como `CANCELADA`.
-→ Não criar nova linha.
-→ Registrar histórico como `CANCELADA`.
-→ Fim.
-
-### Regra prática
-
-```text
-O serviço ainda vai acontecer?
-Sim → Adiar ou Reprogramar.
-
-O serviço não vai mais acontecer neste planejamento?
-Não → Cancelar.
-```
+* Exige motivo. Marca `status = CANCELADA`, limpa Estado Trabalho, grava motivo/data/usuário.
+* Aceita etapa ativa e em espera (`ADIADA`). Libera a agenda das equipes. Dispara `reclassify`.
+* Exceção da trava de concluído para etapa `is_pendencia`.
 
 ---
 
-# 4. Regra planejada: ETAPA automatica entre datas
+## 7. Ação: ADICIONAR / REMOVER EQUIPE
 
-Esta regra ainda nao esta implementada no codigo atual.
-
-Use quando:
-
-* a programacao nova ou reprogramada usa ETAPA numerica;
-* a data de execucao fica entre etapas numericas ja existentes do mesmo projeto/escopo;
-* o projeto nao esta `CONCLUIDO`;
-* nao ha `ETAPA UNICA` nem `ETAPA FINAL` envolvida na renumeracao.
-
-Fluxo planejado:
-
-→ Aplicar lock por `tenant_id + project_id`.
-→ Localizar etapas numericas existentes em ordem de `execution_date`.
-→ Calcular a ETAPA correta para a nova data.
-→ Deslocar em `+1` as etapas futuras afetadas.
-→ Recalcular `programming_group_id` das linhas alteradas.
-→ Registrar historico para a nova programacao e para cada linha deslocada.
-→ Se qualquer validacao falhar, desfazer toda a operacao.
-
-Exemplo:
-
-```text
-08/07/2026 ETAPA 1
-10/07/2026 ETAPA 2
-20/07/2026 ETAPA 3
-
-Nova data 15/07/2026:
-
-08/07/2026 ETAPA 1
-10/07/2026 ETAPA 2
-15/07/2026 ETAPA 3
-20/07/2026 ETAPA 4
-```
+* **Adicionar**: só em etapa ativa; equipe do tenant e ativa; não duplicada; sem conflito de
+  agenda. Cria `programming_team` `ATIVA`. Não altera o status da etapa.
+* **Remover**: marca a alocação `REMOVIDA`, libera a agenda. Remover a última deixa a etapa sem
+  equipe (não cancela a etapa).
+* Exceção da trava de concluído (adicionar) para etapa `is_pendencia`.
 
 ---
 
-# 5. Escopo da ação: linha individual ou grupo operacional
+## 8. Ação: TOGGLE PENDÊNCIA (card)
 
-Antes de Adiar ou Cancelar:
-
-→ Usuário escolheu agir apenas na linha?
-
-* Sim → afetar somente a programação selecionada.
-* Não → verificar se a ação será aplicada ao grupo operacional.
-
-O grupo é identificado por:
-
-```text
-programming_group_id
-```
-
-Regras:
-
-* Não cancelar ou adiar automaticamente todas as linhas do mesmo projeto e mesma data.
-* Se existirem ETAPAs diferentes para o mesmo projeto e data, a ação deve atingir somente o grupo da linha escolhida.
-* Em adiamento de grupo, se houver conflito em uma única equipe, toda a operação deve falhar.
-* Não pode existir adiamento parcial: ou todas as origens são adiadas e todos os destinos criados, ou nada é salvo.
+* Liga/desliga `is_pendencia` de uma etapa existente e ativa
+  (`set_project_programming_pendencia_flag`).
+* Ligar exibe "Pendência" no Status; desligar volta ao status de agenda.
+* **Desligar é bloqueado** (409) se o projeto tiver um CONCLUIDO ativo não-pendência — reabra a
+  etapa concluída antes (migration 321). Evita trazer a etapa de volta como comum sem reabrir.
+* Não toca Etapa, Estado Trabalho nem numeração.
 
 ---
 
-# 6. Copiar programação não é reprogramar
+## 9. Fluxo de Estado Trabalho
 
-## Ação: COPIAR PARA DATAS
+### Estado comum (parcial / benefício)
+* `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `BENEFICIO_ATINGIDO` são manuais
+  (`set_project_programming_work_completion_status`). Só em etapa ativa e não antecipada.
+* `BENEFICIO_ATINGIDO` é informativo: não antecipa, não bloqueia, não encerra.
+* Exceção da trava de concluído para etapa `is_pendencia`.
 
-Use quando:
+### Salvar CONCLUIDO (concluir)
+* Só um `CONCLUIDO` **não-pendência** ativo por projeto.
+* **Exige ao menos uma equipe ativa** (migration 322): planejamento pode ficar sem equipe, mas
+  concluir não. No card, o botão Concluir fica desabilitado sem equipe.
+* Marca `CONCLUIDO`; etapas ativas **não-pendência** com `execution_date` posterior viram
+  `ANTECIPADA` + `ANTECIPADO`, guardando `previous_*`. A concluída vira a Final.
+* **Concluir uma pendência** é permitido mesmo com o projeto já concluído: não antecipa nada, a
+  flag `is_pendencia` fica (rastreio), `CONCLUIDO` prevalece na exibição.
+* Não é possível remover a **última** equipe ativa de uma etapa concluída (reabra antes).
 
-* a programação original continua existindo;
-* deseja-se gerar novas programações adicionais;
-* a origem possui ETAPA numérica;
-* os destinos representam etapas posteriores.
+### Sair de CONCLUIDO (para parcial/em branco)
+* Uma única RPC transacional `change_completed_stage_work_status` (migration 322): reabre,
+  restaura as antecipadas e aplica o novo estado num só commit — nunca deixa o projeto reaberto
+  sem o estado por falha entre duas chamadas.
 
-Fluxo:
+### ANTECIPADO
+* Nunca é escolhido à mão — é consequência automática do CONCLUIDO anterior (por data).
 
-→ Origem possui ETAPA numérica?
-
-* Não → bloquear.
-
-→ Origem é `ETAPA ÚNICA` ou `ETAPA FINAL`?
-
-* Sim → bloquear cópia.
-* Não → continuar.
-
-→ Data destino é posterior à data origem?
-
-* Não → bloquear.
-* Sim → continuar.
-
-→ ETAPA destino é maior que a ETAPA origem?
-
-* Não → bloquear.
-* Sim → continuar.
-
-→ Há conflito de agenda ou ETAPA em qualquer destino?
-
-* Sim → bloquear todo o lote.
-* Não → criar cópias.
-
-→ Criar novas programações por data/equipe.
-→ Manter origem ativa.
-→ Registrar histórico como `COPY`.
-→ Fim.
-
-### Diferença entre copiar e reprogramar
-
-```text
-COPIAR
-= origem permanece e novas programações são criadas.
-
-REPROGRAMAR
-= programação existente é alterada porque o plano mudou.
-
-ADIAR
-= origem deixa de ser ativa e é substituída por nova data futura.
-```
+### Reabrir CONCLUIDO
+* Restaura as etapas antecipadas por esta conclusão ao estado anterior e recalcula.
 
 ---
 
-# 7. Adicionar equipe não é reprogramar
+## 10. Matriz de decisão rápida
 
-## Ação: ADICIONAR EQUIPE
+| Situação | Ação correta | Resultado principal |
+| --- | --- | --- |
+| Não existe etapa ainda | Programar | Cria `PROGRAMADA`; classificação recalculada |
+| Voltar para matar uma sobra num projeto concluído | Programar com checkbox Pendência | Cria etapa `is_pendencia` sem reabrir o projeto |
+| Ajuste de cadastro/equipes (sem data) | Editar | Atualiza a etapa; status/classificação inalterados |
+| Empurrar a etapa para uma data futura | Adiar > Nova data | `REPROGRAMADA` (mesma linha), recalcula |
+| Parar sem data definida | Adiar > Deixar em espera | `ADIADA` sem data, fora da numeração |
+| Definir data de uma etapa em espera | Adiar > Nova data | Volta a `REPROGRAMADA` e à numeração |
+| Serviço não acontecerá mais | Cancelar | `CANCELADA`, Estado Trabalho limpo |
+| Incluir/retirar equipe | Adicionar/Remover equipe | Cria/`REMOVIDA` `programming_team` |
+| Marcar/rastrear pendência | Toggle Pendência (card) | Alterna `is_pendencia` (só reflete no Status) |
+| Serviço parcial | Estado Trabalho `PARCIAL_*`/`BENEFICIO_ATINGIDO` | Manual; não encerra |
+| Serviço concluído | Concluir (`CONCLUIDO`) | Antecipa etapas futuras não-pendência |
+| Concluir uma pendência | Concluir | `CONCLUIDO`, sem antecipar, flag fica |
+| Etapa antecipada por conclusão anterior | `ANTECIPADO` automático | Não é manual |
 
-Use quando:
-
-* a programação continua válida;
-* é necessário incluir mais uma equipe na mesma execução/grupo.
-
-Fluxo:
-
-→ Linha de origem está ativa?
-
-* Não → bloquear.
-
-→ Projeto está concluído?
-
-* Sim → bloquear.
-* Não → continuar.
-
-→ Equipe já existe no mesmo `programming_group_id`?
-
-* Sim → bloquear.
-* Não → continuar.
-
-→ Validar conflito de agenda e ETAPA.
-→ Criar linha irmã para a nova equipe.
-→ Usar o mesmo `programming_group_id`.
-→ Registrar a origem em `copied_from_programming_id`, quando aplicável.
-→ Registrar histórico `ADD_TEAM`.
-→ Fim.
+Ações que NÃO existem neste modelo: Reprogramar por edição (a data fica travada no editor;
+remarcar é via Adiar) e Copiar para datas (fora do escopo desta entrega).
 
 ---
 
-# 8. Fluxo de Estado Trabalho
-
-O Estado Trabalho não substitui o status operacional.
-
-Exemplo:
-
-```text
-Status operacional: REPROGRAMADA
-Estado Trabalho: CONCLUIDO
-```
-
-são informações diferentes.
-
-## Salvar Estado Trabalho comum
-
-→ Usuário altera apenas Estado Trabalho.
-→ Validar se a programação está ativa.
-→ Validar catálogo de Estado Trabalho.
-→ Salvar novo Estado Trabalho.
-→ Atualizar equipes vinculadas conforme a regra de sincronização aplicável.
-→ Registrar histórico.
-→ Fim.
-
----
-
-## Salvar CONCLUIDO
-
-→ Usuário seleciona `CONCLUIDO`.
-
-→ A linha possui ETAPA numérica válida?
-
-* Não → aplicar a regra específica permitida para ETAPA ÚNICA/FINAL ou bloquear conforme a validação vigente.
-* Sim → continuar.
-
-→ Existe outro `CONCLUIDO` incompatível para o projeto?
-
-* Sim → bloquear.
-* Não → continuar.
-
-→ Salvar Estado Trabalho = `CONCLUIDO`.
-→ Localizar ETAPAs futuras do mesmo projeto.
-→ Marcar ETAPAs futuras como `ANTECIPADO`.
-→ Registrar em cada antecipação:
-
-* `anticipated_by_programming_id`;
-* data/hora da antecipação;
-* Estado Trabalho anterior.
-
-→ Aplicar guarda de projeto concluído.
-→ Bloquear novas ações operacionais enquanto o projeto estiver concluído.
-→ Fim.
-
----
-
-## Salvar ANTECIPADO
-
-`ANTECIPADO` não deve ser selecionado manualmente.
-
-Ele só pode existir quando:
-
-→ houve um `CONCLUIDO` anterior válido;
-→ a programação antecipada foi vinculada ao registro que gerou a antecipação.
-
-Se não houver um `CONCLUIDO` válido que justifique o status:
-
-→ bloquear gravação, edição, cópia ou tentativa de manter `ANTECIPADO`.
-
----
-
-## Reabrir CONCLUIDO
-
-→ Usuário altera `CONCLUIDO` para outro Estado Trabalho.
-
-→ Existe outro `CONCLUIDO` válido mantendo a antecipação?
-
-* Sim → manter as linhas `ANTECIPADO` vinculadas à outra conclusão válida.
-* Não → restaurar somente as linhas antecipadas por esta conclusão.
-
-→ Restaurar o Estado Trabalho anterior registrado em cada linha antecipada.
-→ Limpar ou ajustar o vínculo de antecipação correspondente.
-→ Reavaliar a guarda de projeto concluído.
-→ Registrar histórico.
-→ Fim.
-
----
-
-# 9. Matriz de decisão rápida
-
-| Situação                                                   | Ação correta                       | Resultado principal                      |
-| ---------------------------------------------------------- | ---------------------------------- | ---------------------------------------- |
-| Não existe programação anterior                            | Programar                          | Cria `PROGRAMADA`                        |
-| Nova data fica entre ETAPAs numericas existentes           | ETAPA automatica planejada         | Insere na posicao e desloca futuras      |
-| Ajuste sem mudar projeto, equipe, data, horário ou período | Editar                             | Atualiza linha ativa                     |
-| Mudou equipe, data, horário, período ou projeto            | Reprogramar                        | Salva motivo e usa `REPROGRAMADA`        |
-| Data futura só foi empurrada para frente                   | Adiar com nova data                | Origem `ADIADA` + destino `REPROGRAMADA` |
-| Nova data ainda não está definida                          | Adiar sem nova data                | Origem `ADIADA`                          |
-| Data já chegou/passou e precisa ser refeita                | Reprogramar                        | Ajusta com motivo                        |
-| Serviço não acontecerá mais                                | Cancelar                           | Linha/grupo `CANCELADA`                  |
-| Precisa gerar novas datas e manter origem                  | Copiar                             | Cria novas linhas                        |
-| Precisa apenas incluir outra equipe                        | Adicionar equipe                   | Cria linha irmã                          |
-| Serviço foi concluído                                      | Salvar Estado Trabalho `CONCLUIDO` | Pode antecipar ETAPAs futuras            |
-| ETAPA futura ficou antecipada por conclusão anterior       | `ANTECIPADO` automático            | Não pode ser manual                      |
-
+## 11. Fluxograma — ações principais
 
 ```mermaid
 flowchart TD
     A[Usuário abre Programação] --> B{Qual ação?}
 
-    B -->|Novo cadastro| C[Validar projeto, equipe, data, horário, ETAPA e campos]
-    C --> C1{Projeto concluído ou conflito?}
+    B -->|Programar| C[Validar tenant, permissão, obrigatórios, horários, conflito]
+    C --> C1{Projeto concluído e etapa NÃO é pendência?}
     C1 -->|Sim| X[Bloquear e informar motivo]
-    C1 -->|Não| C2[Criar programação]
-    C2 --> C3[Status operacional: PROGRAMADA]
-    C3 --> H[Registrar histórico]
+    C1 -->|Não| C2[Criar etapa PROGRAMADA<br/>is_pendencia conforme checkbox]
+    C2 --> R[reclassify: recalcula Única/N/Final]
+    R --> H[Registrar histórico]
     H --> Z[Fim]
 
-    B -->|Editar campos operacionais| D{Linha está ativa?}
-    D -->|ADIADA ou CANCELADA| X
-    D -->|Sim| D1{Mudou projeto, equipe, data, horário ou período?}
-    D1 -->|Não| D2[Atualizar campos permitidos]
-    D2 --> H
+    B -->|Editar| D{Etapa ativa?}
+    D -->|ADIADA/CANCELADA/ANTECIPADA| X
+    D -->|Sim| D1[Atualizar cadastro/equipes<br/>NÃO muda a data]
+    D1 --> R
 
-    D1 -->|Sim| E[REPROGRAMAR]
-    E --> E1[Exigir motivo]
-    E1 --> E2[Validar nova data, equipe, horário, ETAPA e conflito]
-    E2 --> E3{Validações aprovadas?}
-    E3 -->|Não| X
-    E3 -->|Sim| E4[Salvar reprogramação]
-    E4 --> E5[Status: REPROGRAMADA]
-    E5 --> H
-
-    B -->|Adiar| F{Nova data já foi definida?}
-
-    F -->|Não| F1[Exigir motivo]
-    F1 --> F2[Definir linha ou programming_group_id]
-    F2 --> F3[Origem vira ADIADA]
-    F3 --> H
-
-    F -->|Sim| G{Nova data é futura e posterior à origem?}
-    G -->|Não| G1[Não adiar]
-    G1 --> E
-
-    G -->|Sim| G2[Exigir motivo e definir escopo]
-    G2 --> G3[Validar conflito em todos os destinos]
-    G3 -->|Existe conflito| X
-    G3 -->|Sem conflito| G4[Origem vira ADIADA]
-    G4 --> G5[Criar nova linha vinculada]
-    G5 --> G6[Nova linha vira REPROGRAMADA]
-    G6 --> G7[Preservar dados e ETAPA FINAL quando aplicável]
-    G7 --> H
+    B -->|Adiar| F{Nova data ou em espera?}
+    F -->|Nova data| F1[Exigir motivo + data posterior]
+    F1 --> F2[Validar conflito na nova data]
+    F2 -->|Conflito| X
+    F2 -->|OK| F3[MESMA linha: data=nova, status=REPROGRAMADA,<br/>Estado Trabalho em branco]
+    F3 --> R
+    F -->|Em espera| F4[Exigir motivo]
+    F4 --> F5[MESMA linha: data=NULL, status=ADIADA,<br/>Estado Trabalho em branco]
+    F5 --> R
 
     B -->|Cancelar| I[Exigir motivo]
-    I --> I1[Definir linha ou programming_group_id]
-    I1 --> I2[Marcar origem/grupo como CANCELADA]
-    I2 --> H
+    I --> I1[status=CANCELADA, Estado Trabalho limpo,<br/>libera agenda]
+    I1 --> R
 
-    B -->|Copiar para datas| J{Origem tem ETAPA numérica?}
-    J -->|Não ou ETAPA ÚNICA/FINAL| X
-    J -->|Sim| J1{Destinos são futuros e ETAPA maior?}
-    J1 -->|Não| X
-    J1 -->|Sim| J2[Validar conflito de todos os destinos]
-    J2 -->|Existe conflito| X
-    J2 -->|Sem conflito| J3[Criar novas programações]
-    J3 --> J4[Origem permanece ativa]
-    J4 --> H
+    B -->|Adicionar equipe| K{Etapa ativa e sem conflito?}
+    K -->|Não| X
+    K -->|Sim| K1[Cria programming_team ATIVA]
+    K1 --> R
 
-    B -->|Adicionar equipe| K{Equipe já existe no grupo?}
-    K -->|Sim| X
-    K -->|Não| K1[Validar conflito]
-    K1 --> K2[Criar linha irmã no mesmo programming_group_id]
-    K2 --> H
+    B -->|Toggle pendência| P{Etapa ativa?}
+    P -->|Não| X
+    P -->|Sim| P1[Alterna is_pendencia]
+    P1 --> R
 ```
+
+## 12. Fluxograma — Estado Trabalho e conclusão
+
 ```mermaid
 flowchart TD
-    A[Usuário altera Estado Trabalho] --> B{Programação está ativa?}
+    A[Usuário altera Estado Trabalho] --> B{Etapa ativa e não antecipada?}
+    B -->|Não| X[Bloquear]
+    B -->|Sim| G{Projeto concluído e etapa NÃO é pendência?}
+    G -->|Sim| X
+    G -->|Não| C{Novo estado é CONCLUIDO?}
 
-    B -->|Não: ADIADA ou CANCELADA| X[Bloquear]
-    B -->|Sim| C{Novo estado é CONCLUIDO?}
+    C -->|Não| E[Salvar PARCIAL_*/BENEFICIO_ATINGIDO/em branco]
+    E --> R[reclassify] --> F[Histórico] --> Z[Fim]
 
-    C -->|Não| D{Novo estado é ANTECIPADO?}
-    D -->|Não| E[Salvar Estado Trabalho]
-    E --> F[Registrar histórico]
-    F --> Z[Fim]
+    C -->|Sim| J{A etapa é is_pendencia?}
+    J -->|Sim| K1[Salvar CONCLUIDO na pendência<br/>sem antecipar; flag permanece]
+    K1 --> R
+    J -->|Não| J1{Já existe CONCLUIDO não-pendência no projeto?}
+    J1 -->|Sim| X
+    J1 -->|Não| K2[Salvar CONCLUIDO]
+    K2 --> L[Antecipar etapas ativas não-pendência<br/>com data posterior: ANTECIPADA + ANTECIPADO]
+    L --> M[Gravar anticipated_by_id e previous_*]
+    M --> R
 
-    D -->|Sim| G{Existe CONCLUIDO anterior válido que justifique?}
-    G -->|Não| X
-    G -->|Sim| H[Manter ANTECIPADO com vínculo de origem]
-    H --> F
-
-    C -->|Sim| I{ETAPA e regra de conclusão são válidas?}
-    I -->|Não| X
-    I -->|Sim| J{Existe CONCLUIDO incompatível no projeto?}
-    J -->|Sim| X
-    J -->|Não| K[Salvar CONCLUIDO]
-
-    K --> L[Localizar ETAPAs futuras]
-    L --> M[Marcar ETAPAs futuras como ANTECIPADO]
-    M --> N[Gravar anticipated_by_programming_id]
-    N --> O[Gravar previous_work_completion_status]
-    O --> P[Aplicar guarda de projeto concluído]
-    P --> F
-
-    Q[Usuário reabre CONCLUIDO] --> R{Existe outro CONCLUIDO válido?}
-    R -->|Sim| S[Manter antecipações justificadas pelo outro CONCLUIDO]
-    R -->|Não| T[Restaurar somente linhas antecipadas por esta conclusão]
-    S --> U[Salvar e registrar histórico]
-    T --> U
-    U --> Z
+    Q[Usuário reabre CONCLUIDO] --> T[Restaurar etapas antecipadas por esta conclusão]
+    T --> R
 ```

@@ -6,6 +6,7 @@ import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorizati
 import {
   addProgrammingTeamViaRpc,
   cancelProgrammingStageViaRpc,
+  changeCompletedStageWorkStatusViaRpc,
   completeProgrammingStageViaRpc,
   postponeProgrammingStageViaRpc,
   reopenProgrammingStageViaRpc,
@@ -32,6 +33,7 @@ import type {
   PostponeStagePayload,
   RemoveTeamPayload,
   ReopenStagePayload,
+  ChangeCompletedWorkStatusPayload,
   SaveProgrammingStagePayload,
   SetPendenciaFlagPayload,
   SetWorkCompletionStatusPayload,
@@ -483,6 +485,51 @@ export async function setProgrammingWorkCompletionStatus(request: NextRequest, p
     actorUserId: resolution.appUser.id,
     programmingId,
     workCompletionStatus,
+    expectedUpdatedAt,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { message: result.message, reason: result.reason ?? null, currentUpdatedAt: "currentUpdatedAt" in result ? result.currentUpdatedAt ?? null : null },
+      { status: result.status },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    programmingId: result.programmingId,
+    updatedAt: result.updatedAt,
+    message: result.message,
+  });
+}
+
+export async function changeCompletedStageWorkStatus(request: NextRequest, payload: ChangeCompletedWorkStatusPayload) {
+  const resolution = await authenticate(request, "Sessao invalida para alterar Estado do trabalho.");
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
+  if (authorizationError) return authorizationError;
+
+  const programmingId = normalizeText(payload?.programmingId);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+  const newWorkCompletionStatus = normalizeNullableText(payload?.newWorkCompletionStatus);
+
+  if (!programmingId) {
+    return NextResponse.json({ message: "Informe a etapa a alterar." }, { status: 400 });
+  }
+
+  if (!expectedUpdatedAt) {
+    return NextResponse.json({ message: "Atualize a etapa antes de mudar o Estado do trabalho." }, { status: 409 });
+  }
+
+  const result = await changeCompletedStageWorkStatusViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId,
+    newWorkCompletionStatus,
     expectedUpdatedAt,
   });
 

@@ -66,10 +66,18 @@ export function getStageStatusLabel(status: string) {
   return STAGE_STATUS_LABELS[status] ?? status;
 }
 
-// Coluna Status (spec 3.2): a flag is_pendencia mostra "Pendencia" por cima do
-// status de agenda; sem a flag, exibe o status normal.
-export function getStageStatusDisplayLabel(stage: { status: string; isPendencia: boolean }) {
-  if (stage.isPendencia) return PENDENCIA_STATUS_LABEL;
+// Pendencia so PREVALECE como status quando a etapa esta aberta: ativa
+// (PROGRAMADA/REPROGRAMADA) E nao concluida. Em estado terminal (ADIADA/
+// CANCELADA/ANTECIPADA) ou concluida, o status real prevalece e a pendencia vira
+// so um marcador secundario de rastreio (achado 8 da auditoria).
+export function isPendenciaPrimary(stage: { isPendencia: boolean; status: string; workCompletionStatus: string | null }) {
+  return stage.isPendencia && isActiveStageStatus(stage.status) && stage.workCompletionStatus !== "CONCLUIDO";
+}
+
+// Coluna Status (spec 3.2): "Pendencia" so quando e pendencia aberta; senao o
+// status de agenda real.
+export function getStageStatusDisplayLabel(stage: { status: string; isPendencia: boolean; workCompletionStatus: string | null }) {
+  if (isPendenciaPrimary(stage)) return PENDENCIA_STATUS_LABEL;
   return getStageStatusLabel(stage.status);
 }
 
