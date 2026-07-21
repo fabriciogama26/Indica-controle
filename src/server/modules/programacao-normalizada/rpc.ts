@@ -213,6 +213,41 @@ export async function postponeProgrammingStageViaRpc(params: {
   };
 }
 
+// Sair de CONCLUIDO atomicamente (reabre + restaura antecipadas + aplica novo
+// estado num so commit). Substitui o par reopen+set do front (achado 4).
+export async function changeCompletedStageWorkStatusViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  newWorkCompletionStatus: string | null;
+  expectedUpdatedAt?: string | null;
+}) {
+  const rpcName = "change_completed_stage_work_status";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_new_work_completion_status: params.newWorkCompletionStatus,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) return missingRpcResult(rpcName);
+    return failedRpcResult(rpcName, error.message);
+  }
+
+  const result = (data ?? {}) as ProgrammingRpcResult;
+  if (result.success !== true || !result.programming_id) return failedResultFromPayload(result);
+
+  return {
+    ok: true as const,
+    programmingId: result.programming_id,
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Estado do trabalho atualizado com sucesso.",
+  };
+}
+
 export async function setProgrammingPendenciaFlagViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;

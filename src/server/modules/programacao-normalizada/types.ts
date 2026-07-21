@@ -274,6 +274,12 @@ export type SetWorkCompletionStatusPayload = {
   expectedUpdatedAt?: string;
 };
 
+export type ChangeCompletedWorkStatusPayload = {
+  programmingId?: string;
+  newWorkCompletionStatus?: string | null;
+  expectedUpdatedAt?: string;
+};
+
 export type ProgrammingRpcResult = {
   success?: boolean;
   status?: number;

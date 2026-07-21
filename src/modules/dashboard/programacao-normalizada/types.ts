@@ -175,6 +175,7 @@ export type StageListResponse = {
   pageSize?: number;
   dateFrom?: string;
   dateTo?: string;
+  truncated?: boolean;
   message?: string;
 };
 

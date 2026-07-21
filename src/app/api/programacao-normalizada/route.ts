@@ -7,6 +7,7 @@ import {
   addProgrammingTeam,
   authorizeProgrammingNormalizadaAction,
   cancelProgrammingStage,
+  changeCompletedStageWorkStatus,
   completeProgrammingStage,
   getProgrammingHistoryResponse,
   postponeProgrammingStage,
@@ -106,7 +107,12 @@ async function getProgrammingStageListResponse(request: NextRequest, resolution:
     };
   });
 
-  return NextResponse.json({ list, total, page, pageSize, dateFrom, dateTo });
+  // Truncamento (achado 13): no export (page 1, pageSize = teto) a lista pagina
+  // por PROJETO. Se ha mais projetos que o teto, o export saiu parcial.
+  const returnedProjectCount = new Set(list.map((item) => item.projectId)).size;
+  const truncated = isExportRequest && total > returnedProjectCount;
+
+  return NextResponse.json({ list, total, page, pageSize, dateFrom, dateTo, truncated });
 }
 
 function mapStageRowToDto(
@@ -291,6 +297,7 @@ export async function PATCH(request: NextRequest) {
   if (action === "COMPLETE") return completeProgrammingStage(request, payload ?? {});
   if (action === "REOPEN") return reopenProgrammingStage(request, payload ?? {});
   if (action === "SET_WORK_COMPLETION_STATUS") return setProgrammingWorkCompletionStatus(request, payload ?? {});
+  if (action === "CHANGE_COMPLETED_WORK_STATUS") return changeCompletedStageWorkStatus(request, payload ?? {});
   if (action === "SET_PENDENCIA") return setProgrammingPendenciaFlag(request, payload ?? {});
 
   return NextResponse.json({ message: "Acao invalida." }, { status: 400 });

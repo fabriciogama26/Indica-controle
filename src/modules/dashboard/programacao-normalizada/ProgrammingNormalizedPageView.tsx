@@ -65,9 +65,9 @@ export function ProgrammingNormalizedPageView() {
   const totalPages = Math.max(1, Math.ceil(total / STAGE_LIST_PAGE_SIZE));
 
   async function fetchAllFilteredStages() {
-    if (!accessToken) return [] as StageListItem[];
+    if (!accessToken) return { stages: [] as StageListItem[], truncated: false };
     const data = await fetchProgrammingStageList({ accessToken, filters, page: 1, pageSize: 1, forExport: true });
-    return data.list ?? [];
+    return { stages: data.list ?? [], truncated: data.truncated === true };
   }
 
   const fetchProjectStages = useCallback(
@@ -99,7 +99,7 @@ export function ProgrammingNormalizedPageView() {
 
     setIsExportingCsv(true);
     try {
-      const stages = await fetchAllFilteredStages();
+      const { stages, truncated } = await fetchAllFilteredStages();
       if (!stages.length) {
         setFeedback({ type: "error", message: "Nenhuma etapa encontrada para exportar com os filtros atuais." });
         return;
@@ -108,6 +108,9 @@ export function ProgrammingNormalizedPageView() {
       const csv = buildProgrammingCsvContent(buildExportContext(stages));
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_normalizada_${exportDate}.csv`);
+      if (truncated) {
+        setFeedback({ type: "error", message: "Exportacao parcial: ha mais projetos que o limite. Restrinja o periodo ou os filtros e exporte de novo." });
+      }
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao exportar programacao em CSV." });
       await logError("Falha ao exportar programacao normalizada em CSV.", error, { operation: "export_programming_csv" });
@@ -124,7 +127,7 @@ export function ProgrammingNormalizedPageView() {
 
     setIsExportingEnel(true);
     try {
-      const stages = await fetchAllFilteredStages();
+      const { stages, truncated } = await fetchAllFilteredStages();
       if (!stages.length) {
         setFeedback({ type: "error", message: "Nenhuma etapa encontrada para exportar no layout ENEL." });
         return;
@@ -133,6 +136,9 @@ export function ProgrammingNormalizedPageView() {
       const csv = buildEnelCsvContent(buildExportContext(stages));
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_normalizada_enel_${exportDate}.csv`);
+      if (truncated) {
+        setFeedback({ type: "error", message: "Exportacao parcial: ha mais projetos que o limite. Restrinja o periodo ou os filtros e exporte de novo." });
+      }
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao gerar extracao ENEL." });
       await logError("Falha ao gerar extracao ENEL (programacao normalizada).", error, { operation: "export_enel_csv" });
@@ -149,7 +155,7 @@ export function ProgrammingNormalizedPageView() {
 
     setIsExportingEnelNovo(true);
     try {
-      const stages = await fetchAllFilteredStages();
+      const { stages, truncated } = await fetchAllFilteredStages();
       const workbookData = buildEnelNovoWorkbookData(buildExportContext(stages));
 
       if (!workbookData.eligibleCount) {
@@ -169,6 +175,9 @@ export function ProgrammingNormalizedPageView() {
       link.download = "PROGRAMACAO_NORMALIZADA.xlsb";
       link.click();
       URL.revokeObjectURL(url);
+      if (truncated) {
+        setFeedback({ type: "error", message: "Exportacao parcial: ha mais projetos que o limite. Restrinja o periodo ou os filtros e exporte de novo." });
+      }
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao gerar EXTRACAO ENEL NOVO." });
       await logError("Falha ao gerar EXTRACAO ENEL NOVO (programacao normalizada).", error, { operation: "export_enel_novo_xlsb" });

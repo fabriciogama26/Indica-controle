@@ -1,1007 +1,475 @@
-# Mapa de Regras de Negocio - Programacao
+# Mapa de Regras de Negocio - Programacao Normalizada
 
-Documento gerado em 2026-06-26.
+Documento reescrito em 2026-07-21 para o modelo NORMALIZADO (tela `Programacao (Normalizada)`).
+Supersede o mapa anterior, que descrevia o modelo legado (`programacao-simples`, tabela
+`project_programming` com `programming_group_id`, ETAPA digitada e triggers de sincronizacao).
 
 Escopo:
-- Tela `Programacao` atual: `/programacao-simples`.
-- Tela de consulta: `/programacao-visualizacao`, usando a mesma view em modo visualizacao.
-- API principal: `/api/programacao`.
-- Banco esperado com migrations ate `282_fix_completed_group_integrity_null_boolean.sql`.
+- Tela: `/programacao-normalizada`.
+- API principal: `/api/programacao-normalizada` (+ `/meta`).
+- Server module: `src/server/modules/programacao-normalizada/*`.
+- Frontend module: `src/modules/dashboard/programacao-normalizada/*`.
+- Banco: migrations `310`–`318` (`programming`, `programming_team`, `programming_activity`,
+  `programming_document`, `programming_history` + RPCs).
+- Fonte de desenho: `docs/planejamento/Spec_Nova_Programacao_Modelo_Normalizado.md`
+  (secoes 2, 3.1, 3.2, 4, 4.2, 5, 6, 8, 9, 10).
+
+A tela legada `programacao-simples` continua em producao com suas proprias regras (documentadas
+em `docs/Tela_Programacao_Simples_SaaS.txt`); este mapa NAO se aplica a ela.
 
 ---
 
 ## Resumo Executivo
 
-A Programacao controla agendas operacionais por `tenant_id`, `project_id`, `team_id` e `execution_date`.
+A Programacao Normalizada controla o PLANO de um projeto: a sequencia de ETAPAS, uma por data.
+A etapa (`programming`) e o pai; as equipes (`programming_team`) sao filhas dela, junto de
+atividades e documentos.
+
+Diferencas estruturais em relacao ao modelo legado:
+- NAO ha `programming_group_id`: a etapa (`programming.id`) e o grupo. Some a checagem
+  `PROGRAMMING_GROUP_STAGE_MISMATCH` e a sincronizacao por trigger entre equipes irmas.
+- Uma linha por `(tenant_id, project_id, execution_date)` — nao mais uma linha por equipe.
+  Campos operacionais/documentos existem UMA vez na etapa; as equipes compartilham por serem
+  filhas.
+- Classificacao de etapa (`Unica`/`N`/`Final`) e DERIVADA da posicao por data, nunca digitada.
 
 Regras centrais:
-- Uma programacao ativa tem status operacional `PROGRAMADA` ou `REPROGRAMADA`.
-- Uma programacao interrompida tem status `ADIADA` ou `CANCELADA`.
-- Uma programacao encerrada por conclusao antecipada do projeto tem status `ANTECIPADA`.
-- Uma linha de equipe transferida para outra programacao tem status interno `TRANSFERIDA`.
-- `TRANSFERIDA` nao altera o status das demais equipes do grupo/programacao de origem.
-- O grupo operacional e definido por `programming_group_id`.
-- `programming_group_id` representa:
-  - ETAPA numerica: mesmo `tenant_id + project_id + execution_date + etapa_number`.
-  - ETAPA UNICA: mesmo `tenant_id + project_id + execution_date + etapa_unica`.
-  - ETAPA FINAL: mesmo `tenant_id + project_id + execution_date + etapa_final`.
-  - Sem etapa: grupo proprio por registro.
-- `programming_group_id` e controlado pelo banco:
-  - nao e informado pelo cliente;
-  - nao pode ser alterado diretamente;
-  - e calculado/recalculado por trigger quando Projeto, Data ou ETAPA mudam;
-  - e preservado ao adicionar equipe no mesmo grupo;
-  - e recriado quando uma programacao e copiada ou adiada para outra data.
-- Toda programacao ativa deve estar em exatamente um estado de ETAPA:
-  - `etapa_number > 0`, `etapa_unica = false`, `etapa_final = false`;
-  - `etapa_number = null`, `etapa_unica = true`, `etapa_final = false`;
-  - `etapa_number = null`, `etapa_unica = false`, `etapa_final = true`.
-- Combinacoes como ETAPA 0, ETAPA negativa, ETAPA numerica com flag, `ETAPA UNICA + ETAPA FINAL` ou nenhuma ETAPA ativa sao bloqueadas no banco.
-- `Estado Trabalho = CONCLUIDO` representa conclusao do projeto inteiro, independentemente da equipe/linha que registrou a conclusao.
-- Um projeto pode ter no maximo um `programming_group_id` ativo com `Estado Trabalho = CONCLUIDO` por `tenant_id + project_id`.
-- Dentro do mesmo `programming_group_id`, varias equipes ativas podem ficar `CONCLUIDO`, pois representam a mesma execucao operacional.
-- A guarda de grupo para `CONCLUIDO` deve agir somente quando a linha entra efetivamente em `CONCLUIDO` de forma canonica (texto ou UUID), ou quando uma linha `CONCLUIDO` passa a ficar ativa/em novo grupo. Edicoes operacionais comuns de uma linha que ja era `CONCLUIDO` no mesmo grupo nao devem ser bloqueadas.
-- `Estado Trabalho = CONCLUIDO` bloqueia novas programacoes, copias, inclusao de equipe, adiamento e cancelamento ate reabrir o projeto por uma edicao/acao permitida.
-- Ao salvar uma etapa como `CONCLUIDO`, etapas futuras ativas do mesmo projeto podem ser encerradas operacionalmente como `ANTECIPADA` com `Estado Trabalho = ANTECIPADO`.
-- `ANTECIPADA` nao conta como programacao ativa, nao bloqueia agenda da equipe e nao deve aparecer como servico pendente.
-- Ao retirar o unico `CONCLUIDO`, cada programacao `ANTECIPADO` vinculada a ele volta ao `previous_work_completion_status` e ao status operacional anterior.
-- Se a base ainda tiver dado legado inconsistente com outro `CONCLUIDO` anterior valido, a reabertura pode reatribuir o `anticipated_by_programming_id`; isso e tolerancia de saneamento, nao fluxo operacional normal.
-- Adiamento com nova data transforma a origem em `ADIADA` e cria nova linha `REPROGRAMADA`.
-- Cancelamento transforma a linha, ou grupo escolhido, em `CANCELADA`.
-- Copia para outras datas exige origem com ETAPA numerica e destino com ETAPA maior.
-- As escritas sensiveis devem passar por API/RPC com `tenant_id` derivado da sessao.
+- Tres eixos independentes: `programming.status` (agenda), `programming.work_completion_status`
+  (execucao) e `programming_team.status` (participacao da equipe).
+- Uma etapa ativa tem status de agenda `PROGRAMADA` ou `REPROGRAMADA`.
+- Uma etapa interrompida tem `ADIADA` (inclui "em espera", sem data) ou `CANCELADA`.
+- Uma etapa encerrada por conclusao antecipada tem `ANTECIPADA` + `work_completion_status = ANTECIPADO`.
+- Pendencia NAO e status nem Estado Trabalho: e a flag booleana `is_pendencia`, ortogonal a tudo
+  (so reflete na exibicao do Status). Migration 318 (supersede 314/316/317).
+- Classificacao de etapa (numeracao) e derivada por RPC sobre as etapas numeraveis do projeto
+  (`PROGRAMADA`/`REPROGRAMADA` com `execution_date` nao nulo), dense rank por data.
+- So `work_completion_status = CONCLUIDO` encerra o projeto. Maximo um CONCLUIDO NAO-pendencia
+  ativo por projeto.
+- Projeto com CONCLUIDO ativo bloqueia inserir/editar/adicionar equipe/adiar/cancelar, EXCETO
+  operacoes sobre uma etapa `is_pendencia` (criar/gerir pendencia nao exige reabrir).
+- Escritas sensiveis passam por RPC `SECURITY DEFINER` chamada pelo backend com `service_role`;
+  `tenant_id` vem sempre da sessao, nunca do cliente.
 
 ---
 
 ## Entidades e Campos Principais
 
-Tabela principal:
-- `project_programming`
+### `programming` (a etapa / o "pai") — uma linha por `(tenant_id, project_id, execution_date)`
 
-Campos de identidade:
-- `tenant_id`: escopo multi-tenant obrigatorio.
-- `project_id`: obra/projeto.
-- `team_id`: equipe.
-- `execution_date`: data de execucao.
+Identidade e concorrencia:
+- `id`, `tenant_id`, `project_id`.
+- `execution_date` (date, ANULAVEL desde 318 — etapa "em espera" nao tem data).
+- `updated_at` (para `expectedUpdatedAt`).
 
-Status operacional:
-- `status`: `PROGRAMADA`, `REPROGRAMADA`, `ADIADA`, `CANCELADA`, `ANTECIPADA`, `TRANSFERIDA`.
-- `is_active`: legado/apoio visual; a regra atual usa principalmente `status`.
-- `cancellation_reason`: motivo de cancelamento/adiamento.
-- `canceled_at`: data/hora da interrupcao.
-- `canceled_by`: usuario que interrompeu.
+Classificacao derivada (escrita SO por `reclassify_project_programming_stages`):
+- `etapa_number` (int), `etapa_unica` (bool), `etapa_final` (bool).
 
-Etapa:
-- `etapa_number`: etapa numerica.
-- `etapa_unica`: etapa especial unica.
-- `etapa_final`: etapa especial final.
+Eixo 1 — status de agenda:
+- `status`: `PROGRAMADA`, `REPROGRAMADA`, `ADIADA`, `CANCELADA`, `ANTECIPADA`.
+  (NAO existe `PENDENCIA` como status.)
 
-Estado Trabalho:
-- `work_completion_status`: estado operacional da obra na programacao.
-- Catalogo: `programming_work_completion_catalog`.
-- `previous_operational_status`: status operacional anterior de uma linha encerrada como `ANTECIPADA`, usado para restaurar a agenda quando o `CONCLUIDO` for reaberto.
+Eixo 2 — Estado Trabalho (execucao):
+- `work_completion_status`: catalogo por tenant (`programming_work_completion_catalog`).
+  Valores: em branco, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `BENEFICIO_ATINGIDO`,
+  `CONCLUIDO`, `ANTECIPADO` (automatico). (NAO existe `PENDENCIA` no Estado Trabalho.)
+
+Flag independente:
+- `is_pendencia` (bool, default false): checkbox ortogonal. Quando true E a etapa esta ABERTA
+  (ativa e nao concluida), a coluna Status exibe "Pendencia" (vermelho); em estado terminal
+  (ADIADA/CANCELADA/ANTECIPADA) ou concluida, o status real prevalece e a pendencia vira so um
+  marcador secundario "Pend." (achado 8). Nao afeta Etapa, Estado Trabalho nem
+  numeracao.
+
+Cadastro operacional (por etapa):
+- `service_description`, `period`, `start_time`, `end_time`, `expected_minutes`,
+  `outage_start_time`, `outage_end_time`, `feeder`, `campo_eletrico`, `affected_customers`,
+  `sgd_type_id`, `electrical_eq_catalog_id` (No EQ), `support`, `support_item_id`,
+  `poste_qty`, `estrutura_qty`, `trafo_qty`, `rede_qty`, `note`.
 
 Rastreio:
-- `project_programming_history`: historico operacional oficial da Programacao.
-- `copied_from_programming_id`: origem usada em copia/adicao de equipe.
-- `copy_batch_id`: lote de copia quando aplicavel.
+- `resolve_pendencia_de_id` (FK -> `programming`, opcional), `copied_from_id`, `copy_batch_id`,
+  `anticipated_by_id`, `anticipated_at`, `previous_work_completion_status`,
+  `previous_operational_status`, `cancellation_reason`, `canceled_at`, `canceled_by`.
 
-Campos operacionais sincronizados por grupo operacional:
-- `feeder`
-- `campo_eletrico`
-- `electrical_eq_catalog_id`
-- `sgd_type_id`
-- `affected_customers`
-- `outage_start_time`
-- `outage_end_time`
-- `support`
-- `support_item_id`
-- `poste_qty`
-- `estrutura_qty`
-- `trafo_qty`
-- `rede_qty`
+Constraints/indices relevantes:
+- `programming_status_check`: `status in (PROGRAMADA, REPROGRAMADA, ADIADA, CANCELADA, ANTECIPADA)`.
+- Nao-negatividade: `programming_quantities_non_negative_check` (poste/estrutura/trafo/rede, 310) e
+  `affected_customers`/`expected_minutes >= 0` (migration 325, NOT VALID). Coerencia de desligamento
+  (fim x inicio) fica no app — desligamento pode virar a meia-noite.
+- Unicidade `(tenant_id, project_id, execution_date)` e indice PARCIAL
+  `WHERE execution_date IS NOT NULL` (duas etapas "em espera" nao colidem).
+- Invariante de classificacao validada em runtime no fim do `reclassify` (equivalente a guarda
+  da migration 275 legada).
 
-Regra pratica de `programming_group_id`:
+### `programming_team` (a filha) — enxuta
 
-| Acao | Regra do grupo |
-| --- | --- |
-| Cadastro com varias equipes | Todas recebem o mesmo grupo quando compartilham Projeto + Data + classificacao de ETAPA |
-| Adicionar equipe | Recebe o grupo da linha modelo |
-| Copia para nova data/ETAPA | Cria novo grupo para cada combinacao Data + ETAPA |
-| Adiamento individual com nova data | Cria novo grupo na linha `REPROGRAMADA` |
-| Adiamento de grupo com nova data | Todas as novas linhas recebem o mesmo novo grupo quando compartilham Data + ETAPA |
-| Editar Projeto, Data ou ETAPA | Recalcula o grupo |
-| Cancelar ou adiar sem nova data | Mantem o grupo historico |
+- `id`, `programming_id` (FK), `tenant_id`, `team_id`.
+- `status`: `ATIVA`, `REMOVIDA`, `TRANSFERIDA`.
+- `added_from_id` (origem em copia/adicao), `updated_at`.
 
-Validacao de coerencia (desde 2026-07-05): ao salvar/editar uma programacao individual (`saveProgramming`) ou cadastrar em lote (`saveProgrammingBatch`), o backend bloqueia (HTTP 409, `reason: PROGRAMMING_GROUP_STAGE_MISMATCH`) quando a classificacao de ETAPA informada diverge da classificacao de outra equipe ja ativa (`PROGRAMADA`/`REPROGRAMADA`) no mesmo `tenant_id + project_id + execution_date`. Isso impede que duas equipes do mesmo projeto/data caiam em `programming_group_id` diferentes sem intencao, o que travava a sincronizacao automatica de `work_completion_status` entre elas. Ver `fetchProgrammingGroupStageMismatch` em `src/server/modules/programacao/queries.ts`.
+### `programming_activity` / `programming_document`
+
+- Filhas da etapa (nao replicadas por equipe). Documento por tipo: `SGD`, `PI`, `PEP`
+  (unico por `(programming_id, document_type)`).
+
+### `programming_history`
+
+- Historico oficial por etapa (e por equipe quando faz sentido, via `programming_team_id`).
 
 ---
 
-## Status Operacional
+## Os Tres Eixos (nao confundir)
 
-| Status | Significado | Acoes permitidas | Efeitos principais |
+1. `programming.status` — agenda da etapa: o que aconteceu com a data.
+2. `programming.work_completion_status` — execucao da etapa: situacao do servico.
+3. `programming_team.status` — participacao da equipe: se esta alocada.
+
+Escopo de acao:
+- `Adiar`/`Cancelar` agem no `status` da ETAPA (grupo).
+- Remover/transferir equipe age na PARTICIPACAO (`programming_team.status` ->
+  `REMOVIDA`/`TRANSFERIDA`), sem tocar no status da etapa.
+
+Combinacoes validas de status x Estado Trabalho:
+- `PROGRAMADA`/`REPROGRAMADA` (ativas): em branco, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`,
+  `BENEFICIO_ATINGIDO`, `CONCLUIDO`.
+- `ADIADA`/`CANCELADA`: Estado Trabalho em branco (limpo na acao).
+- `ANTECIPADA`: apenas `ANTECIPADO` (par obrigatorio, gerado por conclusao anterior).
+
+Par acoplado automatico unico: `ANTECIPADA` + `ANTECIPADO`.
+A flag `is_pendencia` e um terceiro eixo ortogonal (so reflete no Status exibido).
+
+---
+
+## Classificacao Automatica de Etapa
+
+Escopo: uma etapa por `(projeto, data)`.
+
+Conjunto NUMERAVEL = etapas do projeto no calendario: `status in (PROGRAMADA, REPROGRAMADA)`
+COM `execution_date IS NOT NULL`. Ordenadas por `execution_date`:
+
+```
+N = etapas numeraveis do projeto
+N == 0 -> nada
+N == 1 -> UNICA           (number=null, unica=true,  final=false)
+N >= 2 -> maior data e FINAL (number=null, unica=false, final=true)
+          as N-1 anteriores sao numericas 1..N-1 por ordem de data
+```
+
+- Numeracao e absoluta e por projeto (dense rank comeca em 1, sem buracos), calculada sobre todas
+  as etapas numeraveis (nao so as visiveis num filtro). Uma lista filtrada por data pode mostrar
+  "Etapa 8" legitimamente — nao ajustar a numeracao ao filtro.
+- A flag `is_pendencia` NAO afeta a numeracao: a etapa conta pela data como qualquer
+  PROGRAMADA/REPROGRAMADA.
+- Etapa "em espera" (`ADIADA`, `execution_date IS NULL`) e etapas `CANCELADA`/`ANTECIPADA` ficam
+  FORA da numeracao (classificacao zerada).
+- Gatilhos do recalculo (mesma transacao da acao): criar, editar equipe, adiar, cancelar,
+  concluir, reabrir, mudar Estado Trabalho, togglar pendencia. Todas as RPCs de escrita chamam
+  `reclassify_project_programming_stages` no final.
+- A `FINAL` migra automaticamente para a maior data numeravel apos qualquer mudanca do conjunto
+  ativo. Nao ha ETAPA digitada/sugerida — tudo derivado.
+
+---
+
+## Estado Trabalho (catalogo por comportamento)
+
+| Valor | Encerra? | Numera? | Observacao |
 | --- | --- | --- | --- |
-| `PROGRAMADA` | Agenda ativa original | Editar, copiar, adicionar equipe, adiar, cancelar | Aparece na lista/calendario como ativa. |
-| `REPROGRAMADA` | Agenda ativa resultante de reprogramacao/adiamento/copia conforme fluxo | Editar, copiar, adicionar equipe, adiar, cancelar | Tambem conta como ativa. |
-| `ADIADA` | Agenda interrompida por adiamento | Detalhes/historico; sem edicao operacional | Guarda motivo/data de interrupcao. Pode ter nova linha `REPROGRAMADA` vinculada. `Estado Trabalho` deve ficar em branco. |
-| `CANCELADA` | Agenda cancelada | Detalhes/historico; sem edicao operacional | Guarda motivo/data de cancelamento. `Estado Trabalho` deve ficar em branco. |
-| `ANTECIPADA` | Agenda encerrada porque o projeto foi concluido antes da data futura | Detalhes/historico; sem edicao operacional | Libera a equipe e mantem rastreio em `work_completion_status = ANTECIPADO`. |
-| `TRANSFERIDA` | Linha da equipe movida para outra programacao | Detalhes/historico; sem edicao operacional | Libera a equipe na origem, mantem motivo/data/usuario e cria nova linha ativa no destino. |
+| em branco | nao | sim | etapa a fazer (default na criacao) |
+| `PARCIAL_PLANEJADO` | nao | sim | fez tudo que planejou para a ida |
+| `PARCIAL_NAO_PLANEJADO` | nao | sim | sobrou trabalho |
+| `BENEFICIO_ATINGIDO` | nao | sim | energizavel; informativo; nao antecipa, nao bloqueia, nao conta em "um por projeto" |
+| `CONCLUIDO` | SIM | sim | unico que encerra o projeto |
+| `ANTECIPADO` | (consequencia) | — | automatico, gerado quando um CONCLUIDO anterior antecipa (por data) |
 
-Regra de atividade:
-- Ativas: `PROGRAMADA`, `REPROGRAMADA`.
-- Inativas/interrompidas: `ADIADA`, `CANCELADA`, `ANTECIPADA`, `TRANSFERIDA`.
-- No Mapa de Programacao, `TRANSFERIDA` nao entra como `Canceladas/adiadas`; o rastreio fica em tabela propria baseada no historico `TRANSFER_TEAM`.
-
----
-
-## Fluxo Principal de Cadastro
-
-1. Usuario seleciona projeto, data, periodo, horario, equipe(s), ETAPA, tipo de SGD, numero/tipo do N EQ e demais campos.
-2. Frontend sugere automaticamente a proxima ETAPA apenas no cadastro novo, quando:
-   - ha projeto;
-   - ha data;
-   - ha equipe selecionada;
-   - nao esta em modo edicao;
-   - nao marcou `ETAPA UNICA` nem `ETAPA FINAL`.
-3. Regra atual: o usuario pode manter a sugestao ou editar manualmente.
-   - Se existir ETAPA futura igual ou maior para o mesmo projeto/equipe, a validacao atual bloqueia o salvamento.
-   - A renumeracao automatica de etapas futuras ainda nao esta implementada.
-4. Antes de salvar, o frontend valida campos obrigatorios, horario, documentos, quantidades, ETAPA e conflitos locais.
-5. API repete validacoes criticas.
-6. Backend salva via RPC full transacional.
-7. Cada equipe selecionada gera uma programacao independente.
-8. Historico e registrado em `project_programming_history`.
-
-Campos obrigatorios no cadastro/edicao ativa:
-- Projeto.
-- Equipe(s).
-- Data execucao.
-- Periodo.
-- Hora inicio.
-- Hora termino.
-- Tipo de SGD.
-- N EQ - Numero.
-- N EQ - Tipo.
-- ETAPA numerica, exceto quando `ETAPA UNICA` ou `ETAPA FINAL` estiver marcada.
+- Quem preenche: em branco e automatico na criacao; `PARCIAL_*`/`BENEFICIO_ATINGIDO` sao manuais
+  (RPC `set_project_programming_work_completion_status`); `CONCLUIDO` via acao `Concluir`
+  (`mark_...completed_and_anticipate`); `ANTECIPADO` e o unico 100% automatico.
+- `PENDENCIA` saiu do catalogo de Estado Trabalho (virou a flag `is_pendencia`). O select da lista
+  oferece: em branco, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `BENEFICIO_ATINGIDO`,
+  `CONCLUIDO`.
+- Sair de `CONCLUIDO` para outro valor pelo select reabre primeiro (mesma RPC de `Reabrir`,
+  restaura antecipadas) e so depois aplica o valor escolhido.
 
 ---
 
-## Regra de ETAPA
+## Pendencia (flag `is_pendencia`) — modelo 318
 
-### ETAPA Numerica
+Pendencia deixou de ser classificacao, status e Estado Trabalho (modelos 314/316/317 superados).
+Virou uma checkbox booleana, ortogonal a tudo, para rastreio e para liberar a excecao da trava.
 
-Regras:
-- Deve ser inteiro maior que zero.
-- E obrigatoria para programacao ativa quando `ETAPA UNICA` e `ETAPA FINAL` estao desmarcadas.
-- Nao pode conflitar com historico do mesmo projeto/equipe.
-- Nao pode ser igual ou menor do que etapa ja existente na validacao de conflito.
-- Copia para outras datas exige destino com ETAPA maior que a origem.
-
-Efeitos:
-- Usada para ordenacao logica da obra.
-- Usada na regra `CONCLUIDO -> ANTECIPADO`.
-- Usada na validacao de copia e adicao de equipe.
-
-### Melhoria planejada: ETAPA automatica entre datas
-
-Objetivo:
-- Permitir inserir ou reprogramar uma programacao entre duas datas ja programadas, reorganizando as etapas numericas futuras automaticamente.
-
-Exemplo:
-```text
-08/07/2026 -> ETAPA 1
-10/07/2026 -> ETAPA 2
-20/07/2026 -> ETAPA 3
-
-Inserir 15/07/2026:
-
-08/07/2026 -> ETAPA 1
-10/07/2026 -> ETAPA 2
-15/07/2026 -> ETAPA 3
-20/07/2026 -> ETAPA 4
-```
-
-Regra esperada:
-- Calcular a ETAPA pela posicao cronologica dentro do mesmo `tenant_id + project_id` e escopo definido.
-- Deslocar em `+1` as programacoes numericas futuras afetadas.
-- Recalcular `programming_group_id` das linhas deslocadas.
-- Registrar historico por linha alterada.
-- Executar tudo em RPC/migration transacional com lock por `tenant_id + project_id`.
-
-Restricoes:
-- Nao aplicar automaticamente em `ETAPA UNICA` ou `ETAPA FINAL` sem decisao funcional explicita.
-- Nao aplicar em projeto com `Estado Trabalho = CONCLUIDO`.
-- Revalidar impacto em `ANTECIPADO`.
-- Nao executar no frontend.
-
-Status:
-- Planejado e documentado.
-- Nao implementado no codigo atual.
-
-### ETAPA UNICA
-
-Regras:
-- Mutuamente exclusiva com `ETAPA FINAL`.
-- Nao usa `etapa_number`.
-- Bloqueia a acao `Copiar programacao`.
-- Deve ser preservada no adiamento.
-
-Efeitos:
-- Exportacoes exibem `ETAPA UNICA` no campo de informacao de etapa.
-- A programacao continua valida mesmo com `etapa_number = null`.
-
-### ETAPA FINAL
-
-Regras:
-- Mutuamente exclusiva com `ETAPA UNICA`.
-- Nao usa `etapa_number`.
-- Bloqueia a acao `Copiar programacao`.
-- Deve ser preservada no adiamento.
-
-Efeitos:
-- Exportacoes exibem `ETAPA FINAL` no campo de informacao de etapa.
-- A programacao continua valida mesmo com `etapa_number = null`.
-
-### Guarda de Banco
-
-Constraint/trigger:
-- Nome logico atual do erro: `project_programming_active_stage_valid_check`
-- Migration `269`: criou o CHECK imediato e fez backfill das programacoes ativas antigas sem etapa.
-- Migration `270`: substitui o CHECK imediato por constraint trigger diferida.
-- Migration `271`: ajusta a funcao diferida para validar a linha final persistida, nao o `NEW` antigo do evento enfileirado.
-- Migration `275`: endurece a validacao diferida para exigir exatamente uma classificacao valida de ETAPA.
-- Funcao: `enforce_project_programming_active_stage_required`
-- Trigger atual: `project_programming_active_stage_valid_check`
-
-Regra:
-```sql
-status not in ('PROGRAMADA', 'REPROGRAMADA')
-or (
-  etapa_number > 0
-  and coalesce(etapa_unica, false) = false
-  and coalesce(etapa_final, false) = false
-)
-or (
-  etapa_number is null
-  and coalesce(etapa_unica, false) = true
-  and coalesce(etapa_final, false) = false
-)
-or (
-  etapa_number is null
-  and coalesce(etapa_unica, false) = false
-  and coalesce(etapa_final, false) = true
-)
-```
-
-Objetivo:
-- Impedir novas programacoes ativas sem ETAPA valida ou com combinacao invalida de ETAPA, inclusive por escrita direta ou RPC.
-- Validar a regra no fim da transacao para permitir que as RPCs full criem a linha base e preencham `etapa_number`, `etapa_unica` ou `etapa_final` antes do commit.
+- Marcar `is_pendencia = true` -> a coluna Status exibe "Pendencia" (vermelho) SE a etapa estiver
+  aberta (ativa e nao concluida); em terminal/concluida o status real prevalece (ver linha 77-78,
+  achado 8). O status de agenda
+  (`PROGRAMADA`/`REPROGRAMADA`) continua gravado por baixo; desmarcar volta a exibi-lo.
+- NAO toca a coluna Etapa (mantem Etapa N/Final/Unica), o Estado Trabalho nem a numeracao.
+- Dois pontos de escrita:
+  - Formulario "Nova etapa": checkbox cria a etapa ja com `is_pendencia = true` (INSERT do
+    `save_project_programming_stage`, parametro `p_is_pendencia`). E isso que ACIONA a excecao da
+    trava de projeto concluido.
+  - Card da etapa: toggle liga/desliga via `set_project_programming_pendencia_flag`
+    (etapa existente; so status ativo).
+- Excecao da trava de CONCLUIDO: `programming_project_has_active_completion` IGNORA etapas
+  `is_pendencia` (uma pendencia concluida nao tranca o projeto). save/add_team/postpone/cancel/
+  set_wcs liberam a operacao quando a etapa e `is_pendencia`, sem reabrir o projeto.
+- Guarda no DESLIGAR (migration 321): desmarcar `is_pendencia` (`true->false`) e BLOQUEADO
+  (409 `PROJECT_COMPLETED_REQUIRES_REOPEN`) enquanto o projeto tiver um CONCLUIDO ativo
+  nao-pendencia — senao a etapa voltaria como comum num projeto concluido, ou criaria um
+  segundo CONCLUIDO comum. Defesa em profundidade: indice unico parcial
+  `programming_one_active_completion_per_project` (um CONCLUIDO ativo nao-pendencia por projeto).
+- Concluir uma pendencia e PERMITIDO mesmo com o projeto ja concluido; nao antecipa nada; a flag
+  fica (rastreio) e `CONCLUIDO` prevalece na exibicao.
+- Vinculo opcional `resolve_pendencia_de_id` (liga a pendencia a etapa parcial que a originou)
+  permanece disponivel para rastreio, sem RPC dedicada que o escreva nesta entrega.
 
 ---
 
-## Estado Trabalho
+## Antecipacao (por data, nao por numero)
 
-Campo:
-- `project_programming.work_completion_status`
+Ao salvar `CONCLUIDO` na etapa X (`mark_project_programming_completed_and_anticipate`), na mesma
+transacao:
+1. Etapas ativas NAO-pendencia do projeto com `execution_date > X.execution_date` ->
+   `status = ANTECIPADA`, `work_completion_status = ANTECIPADO`, `anticipated_by_id = X`,
+   guardando `previous_work_completion_status` e `previous_operational_status`.
+2. `reclassify` (X passa a ser a ultima ativa -> FINAL).
+3. Maximo um `CONCLUIDO` NAO-pendencia ativo por projeto. Concluir uma pendencia nao dispara
+   antecipacao nem entra nessa regra.
 
-Catalogo:
-- `programming_work_completion_catalog`
-
-Valores relevantes no fluxo atual:
-- `PARCIAL_PLANEJADO`
-- `PARCIAL_NAO_PLANEJADO`
-- `CONCLUIDO`
-- `ANTECIPADO`
-- `NAO_INFORMADO` apenas como filtro visual, nao como status salvo.
-
-Valor legado:
-- `PARCIAL` nao e codigo ativo nem valor salvo. Payload ou dado legado com `PARCIAL` e normalizado para `PARCIAL_NAO_PLANEJADO`.
-
-### Cadastro/Copia/Adicao
-
-Ao criar uma nova programacao:
-1. Backend salva `work_completion_status = null`.
-2. Nao existe preenchimento automatico por ultimo status do projeto.
-3. Nao existe fallback automatico para `PARCIAL`.
-4. O preenchimento de `Estado Trabalho` ocorre apenas por edicao/acao explicita do usuario.
-
-Ao copiar ou adicionar equipe:
-1. Se a linha modelo possui `work_completion_status`, o backend valida o codigo no catalogo ativo do tenant e copia esse valor.
-2. Se a linha modelo nao possui `work_completion_status`, a nova linha tambem fica sem `Estado Trabalho`.
-3. Fluxo normal nao copia projeto ja `CONCLUIDO`; portanto origem `ANTECIPADA`/`ANTECIPADO` fica bloqueada pela conclusao global.
-4. A validacao transacional de `ANTECIPADO` permanece no banco apenas como protecao para dado legado, importacao administrativa ou correcao interna.
-
-### Bloqueio por CONCLUIDO
-
-Decisao funcional:
-- `CONCLUIDO` e status de conclusao do projeto inteiro.
-- Um grupo operacional marcado como `CONCLUIDO` trava novas operacoes desse projeto ate reabertura explicita.
-- `CONCLUIDO` e propagado somente para outras programacoes ativas do mesmo `programming_group_id`.
-- Uma linha so pode receber `CONCLUIDO` se nao existir outro `programming_group_id` ativo do mesmo projeto ja concluido.
-- A sincronizacao generica de Estado Trabalho usa `programming_group_id` e ignora apenas `ANTECIPADO`.
-
-Quando existe programacao do projeto com `Estado Trabalho = CONCLUIDO`:
-- Bloqueia novo cadastro.
-- Bloqueia copia para outras datas.
-- Bloqueia adicionar equipe.
-- Bloqueia adiar.
-- Bloqueia cancelar.
-- Permite edicao apenas quando a propria programacao concluida esta sendo editada para trocar o Estado Trabalho para valor diferente de `CONCLUIDO`.
-
-Mensagem esperada:
-- "Este projeto possui Estado Trabalho CONCLUIDO..."
-
-### Salvar CONCLUIDO
-
-Quando uma edicao salva `work_completion_status = CONCLUIDO` e a programacao tem `etapa_number`:
-1. Programacao editada fica `CONCLUIDO`.
-2. Banco permite outras linhas ativas no mesmo `programming_group_id` e bloqueia apenas outro grupo operacional ativo ja concluido no mesmo projeto.
-3. Backend chama `mark_project_programming_future_stages_anticipated`.
-4. Etapas futuras ativas do mesmo projeto, com `etapa_number` maior, podem receber `ANTECIPADO`.
-5. Cada linha antecipada grava `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
-6. Historico operacional e registrado.
-
-Restricoes de `ANTECIPADO`:
-- Nao aparece no seletor manual de Estado Trabalho.
-- Nao pode ser enviado por cadastro novo ou edicao livre.
-- Exige `ETAPA` numerica.
-- Exige `CONCLUIDO` anterior valido no mesmo tenant/projeto, com `etapa_number` menor.
-- Copia/adicao de equipe que parte de uma linha `ANTECIPADO` deve preservar `ANTECIPADO` apenas quando encontrar novamente o `CONCLUIDO` anterior que justifica o estado, na mesma transacao.
-
-### Reabrir CONCLUIDO
-
-Quando o usuario troca uma programacao de `CONCLUIDO` para outro Estado Trabalho:
-1. API valida que o novo status nao e concluido.
-2. Salva via RPC transacional de Estado Trabalho.
-3. Trigger de banco localiza linhas com `anticipated_by_programming_id` igual a programacao reaberta.
-4. Para cada linha afetada, o banco procura outro `CONCLUIDO` anterior valido do mesmo tenant/projeto, com `etapa_number` menor.
-5. Se encontrar, a linha continua `ANTECIPADO` e `anticipated_by_programming_id` passa para a conclusao anterior mais proxima.
-6. Se nao encontrar, a linha volta para `previous_work_completion_status` e limpa `anticipated_by_programming_id`, `anticipated_at` e `previous_work_completion_status`.
-7. Linhas antecipadas por outro `CONCLUIDO` nao sao alteradas.
-8. Atualiza visualizacao da linha.
-
-### Interrompidas e CONCLUIDO
-
-Regras:
-- Programacao `ADIADA` ou `CANCELADA` deve manter `Estado Trabalho` em branco (`work_completion_status` e `work_completion_status_id` nulos).
-- Banco possui trigger/guarda para limpar automaticamente qualquer `Estado Trabalho` em `ADIADA`/`CANCELADA`.
-- `ANTECIPADA` e a excecao: usa `status = ANTECIPADA` com `Estado Trabalho = ANTECIPADO` para rastrear conclusao antecipada.
-- Tambem bloqueia nova transicao para `ADIADA`/`CANCELADA` quando o projeto ou a propria linha ja possui `CONCLUIDO`.
+`reopen_project_programming_completed` reverte: restaura as antecipadas por X ao estado anterior e
+recalcula.
 
 ---
 
-## Reprogramacao por Edicao
+## Adiamento (in-place, duas rotas) — modelo 318
 
-Uma edicao vira reprogramacao quando muda ao menos um destes campos:
-- Projeto.
-- Equipe.
-- Data.
-- Hora inicio.
-- Hora termino.
-- Periodo.
+`postpone_project_programming_stage` atua IN-PLACE na propria etapa (nao cria mais linha nova).
+O editor comum mantem a data TRAVADA (`DATE_CHANGE_NOT_ALLOWED`); remarcar e sempre pelo Adiar.
 
-Regras:
-- Exige motivo de reprogramacao.
-- Motivo precisa vir do catalogo `programming_reason_catalog`.
-- Se o motivo exigir observacao, observacao complementar e obrigatoria.
-- Motivo final precisa ter no minimo 10 caracteres quando enviado ao backend.
-- Usa controle de concorrencia por `expectedUpdatedAt`.
-- Nao permite editar programacao `ADIADA` ou `CANCELADA`.
-- Se a programacao atual possui atividades incompletas no snapshot, o frontend e o backend bloqueiam o save.
+- Rota "Nova data" (`p_new_execution_date` preenchido): `execution_date = nova`,
+  `status = REPROGRAMADA`. Exige data posterior a atual (se a etapa tinha data). Checa conflito de
+  agenda por equipe na nova data.
+- Rota "Deixar em espera" (`p_new_execution_date` NULL): `execution_date = NULL`,
+  `status = ADIADA`. Etapa sai da numeracao; nao ocupa agenda (sem data).
+- Dar data a uma etapa em espera (`ADIADA` sem data) -> `REPROGRAMADA` (mesma RPC, rota Nova data).
+- Motivo obrigatorio nas duas rotas. A mudanca de data De/Para vai para o historico
+  (`POSTPONE_STAGE`).
+- Estado Trabalho volta a branco ao adiar/remarcar (migration 326; obrigatorio para `ADIADA` — ver
+  linha 135).
+- Aceita entrada `PROGRAMADA`/`REPROGRAMADA` (remarcar/por em espera) e `ADIADA` (dar data).
+- Excecao da trava de concluido para etapa `is_pendencia`.
 
-Efeitos:
-- Salva via RPC full.
-- Historico registra alteracoes como `UPDATE` ou `RESCHEDULE`, conforme a RPC.
-- Se a alteracao resultar em `CONCLUIDO`, dispara regra de `ANTECIPADO`.
-
----
-
-## Adiamento
-
-Acao:
-- Botao `Adiar`.
-
-Disponibilidade:
-- Apenas programacoes ativas (`PROGRAMADA`/`REPROGRAMADA`).
-- Bloqueado quando o projeto possui `Estado Trabalho = CONCLUIDO`.
-- Exige catalogo de motivos disponivel.
-
-Escopos:
-- `group`: todas as equipes ativas do mesmo `programming_group_id`.
-- `individual`: apenas a equipe selecionada.
-
-Atomicidade:
-- Adiamento em grupo, com ou sem nova data, e uma unica operacao transacional.
-- Se qualquer linha do `programming_group_id` falhar por conflito, concorrencia ou validacao, nenhuma origem fica `ADIADA` e nenhuma linha `REPROGRAMADA` nova permanece criada.
-
-### Adiamento sem nova data
-
-Regra:
-- Marca a programacao, ou grupo, como `ADIADA`.
-- Nao cria nova linha.
-
-Efeitos:
-- `status = ADIADA`.
-- `is_active = false` quando aplicavel.
-- Grava `cancellation_reason`.
-- Grava `canceled_at`.
-- Grava `canceled_by`.
-- Registra historico operacional.
-
-### Adiamento com nova data
-
-Regra:
-- Nova data precisa ser posterior a data atual.
-- No escopo individual, nova data e obrigatoria.
-- No escopo grupo, nova data e opcional.
-
-Efeitos:
-1. Origem vira `ADIADA`.
-2. Nova programacao e criada com status `REPROGRAMADA`.
-3. Nova linha preserva os campos operacionais da origem.
-4. Nova linha preserva `etapa_number`, `etapa_unica` e `etapa_final`.
-5. `work_completion_status` da nova linha e zerado no adiamento individual pela RPC atual.
-6. Historico vincula origem e nova programacao.
-
-Fluxo:
-```mermaid
-flowchart TD
-  A[Programacao ativa] --> B{Adiar com nova data?}
-  B -->|Nao| C[Origem vira ADIADA]
-  B -->|Sim| D[Origem vira ADIADA]
-  D --> E[Nova linha criada]
-  E --> F[Status REPROGRAMADA]
-  F --> G[Preserva ETAPA numerica ou ETAPA UNICA/FINAL]
-```
+Observacao de exibicao: etapa em espera (data NULL) NAO aparece na lista cross-projeto (filtrada
+por intervalo de data); e gerenciada pelo plano do projeto (`ProjectPlanView`).
 
 ---
 
 ## Cancelamento
 
-Acao:
-- Botao `Cancelar`.
-
-Disponibilidade:
-- Apenas programacoes ativas.
-- Bloqueado quando o projeto possui `Estado Trabalho = CONCLUIDO`.
-- Exige motivo do catalogo.
-
-Escopos:
-- `individual`: cancela apenas a equipe selecionada.
-- `group`: cancela todas as equipes ativas do mesmo `programming_group_id`.
-
-Atomicidade:
-- Cancelamento de grupo e uma unica operacao transacional.
-- Se qualquer linha do `programming_group_id` falhar por concorrencia ou validacao, nenhuma linha do grupo fica parcialmente `CANCELADA`.
-
-Efeitos:
-- `status = CANCELADA`.
-- `is_active = false` quando aplicavel.
-- Grava motivo.
-- Grava data/hora e usuario.
-- Registra historico operacional.
-- Se uma programacao estava em edicao, a edicao e encerrada.
-
-Fluxo:
-```mermaid
-flowchart TD
-  A[Programacao ativa] --> B{Escopo}
-  B -->|Individual| C[Somente linha selecionada]
-  B -->|Grupo| D[Ativas do mesmo programming_group_id]
-  C --> E[Status CANCELADA]
-  D --> E
-  E --> F[Historico + motivo]
-```
+`cancel_project_programming_stage`:
+- `status = CANCELADA`, limpa `work_completion_status`, grava `cancellation_reason`/`canceled_at`/
+  `canceled_by`, e chama `reclassify`.
+- Aceita etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) e em espera (`ADIADA`).
+- Motivo obrigatorio. Libera a agenda das equipes (o filtro de conflito so considera etapas
+  `PROGRAMADA`/`REPROGRAMADA`).
+- Excecao da trava de concluido para etapa `is_pendencia`.
 
 ---
 
-## Copiar Programacao para Outras Datas
+## Conflito de Agenda por Equipe
 
-Acao:
-- Botao `Copiar programacao`.
-
-Disponibilidade:
-- Apenas programacoes ativas.
-- Origem precisa ter `etapa_number` numerico.
-- Bloqueado para `ETAPA UNICA`.
-- Bloqueado para `ETAPA FINAL`.
-- Bloqueado para origem sem `etapa_number`.
-- Bloqueado se projeto possui `Estado Trabalho = CONCLUIDO`, sem excecao para origem `ANTECIPADO`.
-
-Regras do modal:
-- Cada linha exige Data destino, ETAPA e ao menos uma equipe.
-- Data destino deve ser posterior a data original.
-- Datas destino nao podem repetir.
-- ETAPAs destino nao podem repetir.
-- ETAPA destino deve ser maior que ETAPA origem.
-- Equipes selecionadas precisam estar ativas e pertencer ao tenant.
-
-Validacoes do backend:
-- Sessao e permissao `create`.
-- Concorrencia por `expectedUpdatedAt`.
-- Origem ativa.
-- Origem com ETAPA numerica.
-- Projeto sem `CONCLUIDO`.
-- Equipes ativas por tenant.
-- Conflito de etapa por projeto/equipe.
-- Conflito de agenda por equipe/data/horario.
-- Estado Trabalho copiado somente da propria linha modelo, quando preenchido.
-- Protecao interna: se algum fluxo administrativo/legado tentar gravar `ANTECIPADO`, o banco exige rastreio e `CONCLUIDO` anterior valido.
-
-Efeitos:
-- Cria uma nova programacao para cada par `Data destino + Equipe`.
-- Se a equipe ja existia no grupo de origem, usa a propria linha dessa equipe como modelo.
-- Se a equipe nao existia no grupo de origem, usa a linha clicada como modelo.
-- Destinos sempre usam ETAPA numerica informada.
-- `etapa_unica = false`.
-- `etapa_final = false`.
-- Grava `copied_from_programming_id`.
-- Historico registra `COPY_TO_DATES`.
-
-Rollback:
-- A copia para multiplas datas/equipes usa uma unica RPC transacional.
-- Se qualquer destino/equipe falhar, nenhuma linha nova, vinculo de lote ou historico do lote permanece gravado.
-- E proibido criar registros e depois cancelar para tentar desfazer copia parcial.
-
-Fluxo:
-```mermaid
-flowchart TD
-  A[Origem ativa com ETAPA numerica] --> B[Usuario informa datas, etapas e equipes]
-  B --> C{Validacoes}
-  C -->|Falha| D[Bloqueia e mostra erro]
-  C -->|Ok| E[RPC transacional COPY_TO_DATES]
-  E --> F{Algum destino falhou?}
-  F -->|Sim| G[Rollback total]
-  F -->|Nao| H[Linhas + lote + historico]
-```
+`programming_team_schedule_conflict`:
+- Uma equipe nao pode ter duas alocacoes ativas com horario sobreposto na mesma data, em qualquer
+  projeto do tenant.
+- So contam: `programming_team.status = ATIVA` em etapa `status in (PROGRAMADA, REPROGRAMADA)`.
+  `REMOVIDA`/`TRANSFERIDA`/`ADIADA`/`CANCELADA`/`ANTECIPADA` liberam a agenda.
+- Sobreposicao: `inicio_A < termino_B` e `inicio_B < termino_A`. Encostar nao conta (08–12 seguido
+  de 12–17 passa).
+- Rodada em todo ponto que aloca equipe numa data: criar plano com equipes, adicionar equipe,
+  adiar com nova data. Data retroativa nao e excecao. Falhou em qualquer equipe -> operacao inteira
+  falha (transacional, sem gravacao parcial).
 
 ---
 
-## Adicionar Equipe
+## Fluxo de Cadastro (ciente do plano)
 
-Acao:
-- Botao `Adicionar equipe`.
-
-Disponibilidade:
-- Apenas programacoes ativas.
-- Desabilitado quando todas as equipes ativas do tenant ja existem no grupo.
-- Bloqueado se projeto possui `Estado Trabalho = CONCLUIDO`.
-
-Regra de grupo:
-- Grupo base: mesmo `programming_group_id`.
-- A migration 273 deriva e persiste o grupo por ETAPA numerica, ETAPA UNICA, ETAPA FINAL ou grupo proprio quando nao ha etapa.
-
-Validacoes:
-- Programacao modelo existe e esta ativa.
-- Controle de concorrencia por `expectedUpdatedAt`.
-- Equipe alvo ativa e do mesmo tenant.
-- Equipe alvo ainda nao existe no grupo.
-- Sem conflito de horario.
-- Sem conflito de etapa no historico da equipe.
-- Estado Trabalho da linha modelo precisa estar ativo no catalogo quando estiver preenchido; se estiver vazio, a nova linha tambem fica sem Estado Trabalho.
-
-Efeitos:
-- Cria nova programacao para a equipe escolhida.
-- Mantem a programacao original intacta.
-- Copia os dados da programacao modelo.
-- Grava `copied_from_programming_id`.
-- Historico registra metadata `ADD_TEAM`.
+- Um ponto de entrada: ao selecionar o projeto, o formulario mostra o plano existente ou o
+  formulario de primeiras etapas.
+- Uma etapa por submissao (uma data = uma etapa). Datas adicionais entram pelo botao
+  "Nova etapa a partir desta", que reabre o editor herdando o cadastro da etapa clicada (so a data
+  fica em branco). O botao legado "+ Adicionar data" (varias datas numa submissao) foi removido.
+- Guarda: projeto com etapa `CONCLUIDO` ativa bloqueia inserir/editar o plano ate reabrir, EXCETO
+  criar uma etapa com `is_pendencia = true` (checkbox marcada no formulario Nova etapa).
+- Checagem em duas camadas: previa no cliente (nao autoritativa) + validacao no save via RPC
+  transacional com lock por projeto (`pg_advisory_xact_lock`).
+- Heranca template+override completa (spec §9, "aplicar as etapas nao alteradas") ainda NAO foi
+  implementada; o formulario herda o cadastro da ultima etapa ao abrir uma nova.
 
 ---
 
-## Sincronizacao Automatica por Grupo Operacional
+## RPCs (todas `SECURITY DEFINER`, `service_role` apenas)
 
-Origem:
-- Migration `267_sync_programming_operational_fields_by_project_date.sql`, substituida no escopo pela migration `273_define_programming_group_id.sql`.
+| RPC | Papel |
+| --- | --- |
+| `reclassify_project_programming_stages` | Coracao: renumera (dense rank por data) e valida a invariante. Ultimo passo de toda escrita. |
+| `save_project_programming_stage` | Cria/edita a etapa (cadastro + equipes + atividades + documentos). `p_is_pendencia` grava a flag so no INSERT. Excecao da trava para pendencia. |
+| `add_project_programming_team` | Adiciona equipe (checa conflito). Excecao da trava para pendencia. |
+| `remove_project_programming_team` | Marca equipe `REMOVIDA`; libera agenda; historico `REMOVE_TEAM`. |
+| `postpone_project_programming_stage` | Adiar in-place, duas rotas (nova data/em espera). |
+| `cancel_project_programming_stage` | Cancela a etapa; limpa Estado Trabalho. |
+| `mark_project_programming_completed_and_anticipate` | Conclui e antecipa por `execution_date` posterior; concluir pendencia permitido (sem antecipar). Exige >= 1 equipe ativa (migration 322, achado 5). |
+| `reopen_project_programming_completed` | Restaura antecipadas e recalcula (reabre para em branco). |
+| `change_completed_stage_work_status` | Sai de CONCLUIDO atomicamente: reabre + restaura antecipadas + aplica novo estado (`PARCIAL_*`/`BENEFICIO_ATINGIDO`/em branco) num so commit (migration 322, achado 4). |
+| `set_project_programming_work_completion_status` | Estado Trabalho manual (em branco/`PARCIAL_*`/`BENEFICIO_ATINGIDO`) para etapa NAO concluida. |
+| `remove_project_programming_team` (guard) | Nao remove a ultima equipe ativa de uma etapa concluida (migration 322, achado 5). |
+| `set_project_programming_pendencia_flag` | Toggle da flag `is_pendencia` (card). Bloqueia `true->false` se houver CONCLUIDO ativo nao-pendencia no projeto (migration 321). |
+| `programming_team_schedule_conflict` | Conflito de agenda por equipe (tenant-wide). |
+| `programming_project_has_active_completion` | Guarda de projeto CONCLUIDO (ignora `is_pendencia`). |
+| `programming_list_project_page` | Pagina os `project_id` distintos da lista (filtros + chip) + total (migration 323, achado 14). |
+| `append_programming_history_record` | Helper de historico. |
 
-Quando dispara:
-- Em edicao de uma programacao ativa via wrapper full.
+Concorrencia: `expectedUpdatedAt` obrigatorio em editar/adiar/cancelar/concluir/reabrir/toggle/
+set-estado. Conflito retorna HTTP 409.
 
-Atomicidade:
-- Sincronizacao operacional do grupo e parte da transacao de salvamento da linha origem.
-- Se qualquer linha do `programming_group_id` falhar ao sincronizar ou registrar historico, a edicao principal faz rollback e nenhuma linha fica parcialmente sincronizada.
-
-Escopo:
-- Mesmo `tenant_id`.
-- Mesmo `programming_group_id`.
-- Status ativo: `PROGRAMADA` ou `REPROGRAMADA`.
-- Exclui a propria linha origem.
-
-Campos sincronizados:
-- Alimentador.
-- N EQ - Numero.
-- N EQ - Tipo.
-- Tipo de SGD.
-- Numero de Clientes Afetados.
-- Inicio de desligamento.
-- Termino de desligamento.
-- Apoio.
-- Item de apoio.
-- POSTE.
-- ESTRUTURA.
-- TRAFO.
-- REDE.
-
-Campos que nao sincronizam:
-- ETAPA.
-- Equipe.
-- Data.
-- Horario.
-- Status operacional.
-- Estado Trabalho.
-- Atividades.
-
-Efeitos:
-- Atualiza linhas irmas ativas.
-- Registra historico por linha afetada.
-- `related_programming_id` aponta para a origem da sincronizacao.
-
----
-
-## Documentos e Extracoes
-
-Documentos:
-- `SGD`
-- `PI`
-- `PEP`
-
-Regras:
-- Data de pedido nao pode ser maior que data aprovada.
-- Documentos sao persistidos junto com a programacao.
-- Em alguns fluxos documentados, alteracoes de documentos podem replicar para equipes ativas do mesmo Projeto + Data; para equipes LV, tambem pode alcancar programacoes ativas do mesmo projeto em ate 7 dias. Esta regra de documentos e historica e nao define o grupo operacional de cancelamento, adiamento, sincronizacao operacional ou adicao de equipe.
-
-Exportacoes:
-- CSV da lista filtrada.
-- `ENEL-EXCEL`.
-- `Extracao ENEL NOVO`.
-
-Regras de ETAPA nas exportacoes:
-- `ETAPA FINAL` tem prioridade visual sobre `ETAPA UNICA`.
-- Depois vem `ETAPA UNICA`.
-- Depois vem `x ETAPA` numerica.
-
-Regra de STATUS na `Extracao ENEL NOVO`:
-- Usa status operacional:
-  - `PROGRAMADO`
-  - `REPROGRAMADA`
-  - `ADIADO`
-  - `CANCELADO`
-- Nao usa `Estado Trabalho` para preencher a coluna `STATUS`.
+Concorrencia (migration 320): um trigger `BEFORE UPDATE` (`tg_programming_set_updated_at`) carimba
+`updated_at = now()` em `programming`/`programming_team`/`programming_activity`/`programming_document`
+a cada UPDATE, inclusive nas alteracoes indiretas do reclassify. Antes da 320 o `updated_at` ficava
+congelado no valor do INSERT e o `expectedUpdatedAt` nunca detectava conflito (bug corrigido).
 
 ---
 
 ## Filtros e Listagem
 
-Filtros principais:
-- Data inicial.
-- Data final.
-- Projeto.
-- Municipio.
-- Equipe.
-- Status.
-- Estado Trabalho.
-- Tipo SGD.
-
-Lista:
-- Data execucao.
-- Projeto.
-- Equipe.
-- Base.
-- Horario.
-- Registrado por.
-- Status.
-- Estado Trabalho.
-- Atualizado em.
-- Acoes.
-
-Ordenacao:
-- `execution_date` decrescente.
-- Em empate, cadastro mais recente primeiro.
-
-Modo visualizacao:
-- Usa a mesma view da Programacao Simples.
-- Acoes de escrita ficam ocultas/bloqueadas.
+- Lista cross-projeto paginada POR PROJETO (migration 323, achado 14): a RPC
+  `programming_list_project_page` retorna os `project_id` distintos (filtrados/ordenados/paginados)
+  + total de projetos; o servidor busca todas as etapas dos projetos da pagina. Nunca parte um
+  projeto entre paginas nem gera contador parcial. `pageSize` conta PROJETOS. Agrupada por projeto
+  no frontend; ordenada por `project_id` + `execution_date`.
+- Chips de status: `TODAS`, `PROGRAMADAS` (`status in PROGRAMADA/REPROGRAMADA`),
+  `PENDENCIAS` ("pendencias abertas": `is_pendencia = true` E `status in (PROGRAMADA, REPROGRAMADA)`
+  E `work_completion_status IS DISTINCT FROM 'CONCLUIDO'`), `ATRASADAS` (ativas + `execution_date < hoje`),
+  `ADIADAS` (`status = ADIADA`).
+- A lista filtra por intervalo de data (`gte/lte execution_date`); etapas em espera (data NULL)
+  nao aparecem nela — so no plano do projeto.
+- Exports (CSV/ENEL/ENEL NOVO) usam a mesma consulta da lista (teto de 5000 projetos por export);
+  classificacao exibida e a gravada, nunca recalculada no front. Se houver mais projetos que o teto,
+  a resposta traz `truncated=true` e o front avisa "Exportacao parcial: restrinja o periodo/filtros"
+  (migration/achado 13).
 
 ---
 
 ## Permissoes
 
-Page key:
-- `programacao-simples`
-- `programacao-visualizacao`
-
-Acoes server-side:
-- `read`: consultar.
-- `create`: cadastrar/copiar/adicionar equipe.
-- `update`: editar/adiar/salvar Estado Trabalho.
-- `cancel`: cancelar.
-
-Regras:
-- A API sempre resolve usuario autenticado.
-- Usuario inativo e bloqueado.
-- Permissao e validada server-side antes de operar.
-- Tenant vem da sessao (`appUser.tenant_id`), nao do payload do cliente.
+- `page_key`: `programacao-normalizada` (nasce `default_user_access = false`, liberada por
+  permissao explicita).
+- Acoes autorizadas por `requirePageAction`: `read` (GET), `create` (POST novo), `update`
+  (PUT/adicionar/remover equipe/adiar/concluir/reabrir/set-estado/toggle-pendencia), `cancel`
+  (cancelamento).
 
 ---
 
 ## Auditoria e Historico
 
-Tabela oficial:
-- `project_programming_history`
-
-Acoes comuns:
-- `CREATE`
-- `BATCH_CREATE`
-- `UPDATE`
-- `RESCHEDULE`
-- `ADIADA`
-- `CANCELADA`
-- `COPY`
-- `ADD_TEAM` via metadata.
-
-Conteudos gravados:
-- Status antes/depois.
-- Data antes/depois.
-- Equipe antes/depois.
-- Horarios antes/depois.
-- ETAPA antes/depois.
-- Motivo.
-- Metadata de origem.
-- Usuario.
-
-Logs de erro:
-- Frontend usa `useErrorLogger("programacao_simples")`.
-- Falhas relevantes registram contexto seguro, sem depender de dados livres sensiveis.
+- Toda RPC de escrita grava em `programming_history` via `append_programming_history_record`.
+- Acoes: `CREATE_STAGE`, `UPDATE_STAGE`, `ADD_TEAM`, `REMOVE_TEAM`, `POSTPONE_STAGE`,
+  `CANCEL_STAGE`, `ANTICIPATE_STAGE`, `COMPLETE_STAGE`, `RESTORE_ANTICIPATED_STAGE`, `REOPEN_STAGE`,
+  `RECLASSIFY_STAGE`, `SET_WORK_COMPLETION_STATUS`, `CHANGE_COMPLETED_WORK_STATUS`, `SET_PENDENCIA_FLAG`.
+- Mudancas registram De/Para por campo (ex.: `executionDate` no adiamento, `isPendencia` no toggle,
+  `workCompletionStatus` na troca de estado). A edicao de cadastro (`UPDATE_STAGE`) tambem grava o
+  diff De/Para de todos os campos escalares alterados (migration 324, achado 12) — antes gravava
+  `changes = {}` (so "houve edicao").
 
 ---
 
 ## Regras Multi-tenant e Seguranca
 
-Obrigatorio em toda leitura/escrita:
-- Filtrar por `tenant_id`.
-- Validar equipe dentro do tenant.
-- Validar projeto dentro do tenant.
-- Validar catalogos dentro do tenant.
-- Validar programacao por `tenant_id + id`.
-
-RPCs:
-- Fluxos sensiveis usam RPC security-definer.
-- Chamada ocorre server-side com service role quando necessario.
-- Cliente autenticado nao deve executar RPC sensivel diretamente.
-
-Concorrencia:
-- Edicao, cancelamento, adiamento, copia e adicao de equipe usam `expectedUpdatedAt`.
-- Se registro mudou, API retorna conflito e pede recarga.
-
-RLS:
-- Assumir RLS ligado.
-- Operacoes server-side preservam escopo por `tenant_id`.
+- Toda entidade carrega `tenant_id`; toda query filtra por tenant no servidor.
+- RLS ativa como ultima barreira; policies de INSERT/UPDATE/DELETE NAO existem para `authenticated`
+  nas tabelas novas — escrita so por `service_role` via RPC.
+- `tenant_id` vem sempre da sessao (`resolveAuthenticatedAppUser`), nunca do payload.
+- Hardening de grants reaplicado em cada migration (revoke public/anon/authenticated, grant
+  service_role) para as RPCs recriadas.
 
 ---
 
 ## Matriz de Eventos
 
-| Evento | Condicao | Resultado | Bloqueios principais |
-| --- | --- | --- | --- |
-| Cadastrar | Campos obrigatorios validos | Cria uma linha por equipe | Projeto `CONCLUIDO`, ETAPA invalida, equipe invalida, conflito horario |
-| Cadastrar/reprogramar entre datas existentes (planejado) | Data fica entre etapas numericas do mesmo projeto/escopo | Nova linha recebe ETAPA pela posicao e etapas futuras sao deslocadas | Projeto `CONCLUIDO`, ETAPA UNICA/FINAL, impacto em `ANTECIPADO`, conflito horario, concorrencia |
-| Editar sem mudar data/equipe/hora/periodo | Linha ativa | Atualiza linha; sincroniza campos operacionais por grupo operacional | Linha `ADIADA/CANCELADA`, snapshot de atividades incompleto, concorrencia |
-| Reprogramar por edicao | Mudou projeto/equipe/data/hora/periodo | Salva alteracao com motivo | Motivo ausente, projeto `CONCLUIDO`, conflito horario/etapa |
-| Salvar `CONCLUIDO` | Edicao com etapa numerica | Marca etapa e antecipa etapas futuras | Falha RPC antecipado, catalogo invalido |
-| Reabrir `CONCLUIDO` | Trocar para status diferente | Salva status e revalida `ANTECIPADO`: reatribui para outro `CONCLUIDO` anterior valido ou restaura o estado anterior | Tentar salvar outro `CONCLUIDO`, linha cancelada/adiada |
-| Adiar sem data | Linha ativa | Origem vira `ADIADA` | Projeto `CONCLUIDO`, motivo ausente, concorrencia |
-| Adiar com data | Linha ativa e data futura | Origem `ADIADA`, nova linha `REPROGRAMADA` | Data igual/anterior, projeto `CONCLUIDO`, conflito |
-| Cancelar | Linha ativa | Linha/grupo vira `CANCELADA` | Projeto `CONCLUIDO`, motivo ausente, concorrencia |
-| Copiar para datas | Origem ativa com ETAPA numerica | Cria destinos por data/equipe | ETAPA UNICA/FINAL, destino <= origem, conflito agenda/etapa |
-| Adicionar equipe | Linha ativa | Cria linha irma para nova equipe | Equipe ja no grupo, conflito horario/etapa, projeto `CONCLUIDO` |
-| Transferir equipe | Linha ativa | Marca origem como `TRANSFERIDA` e cria linha ativa no destino | Origem/destino iguais, mesmo grupo, destino inativo, equipe ja no destino, projeto destino `CONCLUIDO`, conflito horario |
+| Evento | status | work_completion_status | is_pendencia | Classificacao |
+| --- | --- | --- | --- | --- |
+| Criar etapa | `PROGRAMADA` | em branco | conforme checkbox | recalculada |
+| Criar etapa como pendencia | `PROGRAMADA` | em branco | true | recalculada |
+| Marcar Estado Trabalho parcial | inalterado | `PARCIAL_*`/`BENEFICIO_ATINGIDO` | inalterado | inalterada |
+| Concluir etapa | inalterado (segue ativa) | `CONCLUIDO` | inalterado | vira FINAL; antecipa posteriores |
+| Concluir uma pendencia | inalterado | `CONCLUIDO` | permanece true | sem antecipacao |
+| Antecipada (cascata) | `ANTECIPADA` | `ANTECIPADO` | false | fora da numeracao |
+| Reabrir CONCLUIDO | restaura | restaura antecipadas | — | recalculada |
+| Adiar > nova data | `REPROGRAMADA` | em branco | inalterado | recalculada |
+| Adiar > em espera | `ADIADA` (data NULL) | em branco | inalterado | fora da numeracao |
+| Dar data a etapa em espera | `REPROGRAMADA` | inalterado | inalterado | recalculada |
+| Cancelar | `CANCELADA` | em branco | inalterado | fora da numeracao |
+| Togglar pendencia | inalterado | inalterado | alterna | inalterada |
+| Remover equipe | inalterado | inalterado | inalterado | inalterada |
 
 ---
 
 ## Mapa de Codigo
 
-Frontend:
-- `src/app/(dashboard)/programacao-simples/page.tsx`
-  - Rota de cadastro.
-- `src/app/(dashboard)/programacao-visualizacao/page.tsx`
-  - Rota de visualizacao.
-- `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
-  - View principal, formulario, filtros, lista, submit, edicao.
-- `src/modules/dashboard/programacao-simples/hooks.ts`
-  - Hooks de ETAPA, cancelamento, adiamento, copia para datas.
-- `src/modules/dashboard/programacao-simples/components.tsx`
-  - Modais e componentes de formulario/lista.
-- `src/modules/dashboard/programacao-simples/validators.ts`
-  - Filtros e validacoes locais.
-- `src/modules/dashboard/programacao-simples/api.ts`
-  - Chamadas HTTP da tela.
-- `src/modules/dashboard/programacao-simples/exports.ts`
-  - Exportacoes CSV/ENEL.
-- `src/modules/dashboard/programacao-simples/utils.ts`
-  - Formatacao, normalizacao e helpers visuais.
-
-API:
-- `src/app/api/programacao/route.ts`
-  - Router HTTP fino: GET, POST, PUT, PATCH.
-- `src/server/modules/programacao/handlers.ts`
-  - Regras de negocio server-side: save, batch, copy, add team, Estado Trabalho.
-- `src/server/modules/programacao/rpc.ts`
-  - Chamadas e wrappers de RPC.
-- `src/server/modules/programacao/queries.ts`
-  - Leituras de programacao, historico, atividades, conflito e etapa.
-- `src/server/modules/programacao/catalogs.ts`
-  - Catalogos com cache por tenant.
-- `src/server/modules/programacao/normalizers.ts`
-  - Normalizacao de status, datas, textos, payloads.
-- `src/server/modules/programacao/types.ts`
-  - Contratos TypeScript da API e RPC.
-- `src/server/modules/programacao/selects.ts`
-  - Select principal de `project_programming`.
-
-Banco e migrations relevantes:
-- `082_create_programming_batch_create_rpc.sql`
-  - Cadastro em lote.
-- `094_add_programming_stage_and_completion_fields.sql`
-  - ETAPA e Estado Trabalho.
-- `101_create_project_programming_history.sql`
-  - Historico proprio.
-- `102_use_programming_history_only_and_physical_rescheduled_status.sql`
-  - `REPROGRAMADA` fisico.
-- `106_move_programming_save_history_into_full_rpcs.sql`
-  - Historico dentro do save transacional.
-- `135_create_programming_reason_catalog.sql`
-  - Motivos padronizados.
-- `155_create_programming_work_completion_catalog.sql`
-  - Catalogo de Estado Trabalho.
-- `217_copy_programming_to_multiple_dates.sql`
-  - Copia por datas.
-- `229_save_programming_work_completion_status_transactional.sql`
-  - Salvamento transacional de Estado Trabalho.
-- `246_postpone_programming_by_project_date.sql`
-  - Adiamento por Projeto + Data, substituido pela regra de `programming_group_id` na migration 273.
-- `248_cancel_programming_by_project_date.sql`
-  - Cancelamento por Projeto + Data, substituido pela regra de `programming_group_id` na migration 273.
-- `255_add_anticipated_work_completion_status.sql`
-  - `ANTECIPADO`.
-- `258_guard_interrupted_programming_completed_work_status.sql`
-  - Guarda contra interrompida concluida.
-- `267_sync_programming_operational_fields_by_project_date.sql`
-  - Sincronizacao de campos operacionais por Projeto + Data, substituida pela regra de `programming_group_id` na migration 273.
-- `269_guard_programming_stage_on_active_records.sql`
-  - Guarda de ETAPA obrigatoria e preservacao de flags especiais no adiamento.
-- `270_defer_active_programming_stage_guard.sql`
-  - Troca o CHECK imediato de ETAPA ativa por constraint trigger diferida, mantendo a regra final sem quebrar RPCs full transacionais.
-- `271_fix_deferred_programming_stage_guard_current_row.sql`
-  - Faz a trigger diferida consultar a linha final em `project_programming`, evitando falso bloqueio quando a RPC full insere sem ETAPA e atualiza ETAPA/flags antes do commit.
-- `273_define_programming_group_id.sql`
-  - Cria `project_programming.programming_group_id`.
-  - Faz backfill por `tenant_id + project_id + execution_date + ETAPA numerica`, `ETAPA UNICA`, `ETAPA FINAL` ou grupo proprio para historicos sem etapa.
-  - Recria cancelamento, adiamento e sincronizacao operacional para filtrar por `programming_group_id`.
-- `274_transactional_copy_programming_to_dates_selected_teams.sql`
-  - Recria `copy_project_programming_to_dates` para aceitar `teamIds` por data destino.
-  - Move a copia selecionada para uma unica transacao no banco.
-  - Remove a compensacao antiga de criar linhas e cancelar depois em caso de falha parcial.
-- `275_harden_programming_stage_state_integrity.sql`
-  - Endurece a constraint trigger diferida de ETAPA ativa.
-  - Bloqueia qualquer escrita direta, RPC, importacao ou edicao que tente salvar programacao ativa fora dos tres estados validos de ETAPA.
-  - Executa auditoria bloqueante antes de aplicar a regra e mostra exemplos quando dados ativos ja estao invalidos.
-- `276_fix_anticipated_reopen_copy_and_group_ownership.sql`
-  - Garante no banco no maximo um `CONCLUIDO` ativo por `tenant_id + project_id`.
-  - Saneia duplicados legados de `CONCLUIDO` ativo antes de criar o indice unico, mantendo como canônico o registro mais recente por `updated_at`, `execution_date`, `etapa_number`, `created_at` e `id`.
-  - Limpa `work_completion_status`/`work_completion_status_id` dos duplicados nao canonicos e registra historico operacional.
-  - Forca constraints diferidas a executarem antes do `CREATE INDEX`, evitando erro de eventos de trigger pendentes.
-  - Encerra operacionalmente linhas `ANTECIPADO` como `ANTECIPADA`, liberando agenda da equipe.
-  - Revalida `ANTECIPADO` ao reabrir `CONCLUIDO`; reatribuicao para outro `CONCLUIDO` fica apenas como tolerancia a dado legado inconsistente.
-  - Bloqueia copia para data anterior ou igual a origem com patch idempotente da RPC, sem depender de localizar textualmente a trava de projeto `CONCLUIDO`.
-  - Remove a excecao que permitia copia normal de origem `ANTECIPADO` em projeto ja concluido.
-  - Impede alteracao direta de `programming_group_id` e recalcula somente quando Projeto, Data ou ETAPA mudam.
-- `277_normalize_partial_and_completed_work_status.sql`
-  - Normaliza `PARCIAL` legado para `PARCIAL_NAO_PLANEJADO` em texto e UUID.
-  - Mantem ativos apenas os codigos canonicos `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO`, `CONCLUIDO` e `ANTECIPADO`.
-  - Recria o trigger de sincronismo de `work_completion_status`/`work_completion_status_id` para aceitar somente catalogo ativo.
-  - Recria a sincronizacao de Estado Trabalho para usar `programming_group_id` e nao propagar `CONCLUIDO`/`ANTECIPADO`.
-  - Bloqueia `CONCLUIDO` quando houver outra linha ativa no mesmo `programming_group_id`.
-- `278_harden_security_rpc_search_path.sql`
-  - Corrige `search_path` de funcoes sensiveis.
-  - Revoga `anon` de RPCs criticas.
-  - Adiciona validacao de chamador por `auth.uid()` e guard de admin em `save_user_permissions`.
-- `279_harden_completed_group_integrity_transition.sql`
-  - Ajusta o trigger de sincronismo texto/UUID para respeitar limpeza explicita, remove trigger legado duplicado quando existir.
-  - Ajusta a guarda `enforce_completed_work_status_group_integrity` para comparar estado canonico anterior e novo (texto e UUID), evitando falso bloqueio em edicoes comuns quando a linha ja era tecnicamente `CONCLUIDO`.
-  - Bypass 1: se o grupo nao mudou e a linha ja era CONCLUIDO, nao bloqueia.
-- `280_fix_completed_group_integrity_on_reprogram.sql`
-  - Bypass 2 inicial: compara valores brutos de `work_completion_status` e `work_completion_status_id` entre OLD e NEW. Insuficiente quando o trigger de sync preenche UUID de NULL.
-- `281_fix_completed_group_bypass_canonical_code.sql`
-  - Bypass 2 corrigido: compara codigos canonicos resolvidos (`v_old_canonical`/`v_new_canonical`) em vez de valores brutos, resistindo a sync que muda UUID sem mudar o estado.
-- `282_fix_completed_group_integrity_null_boolean.sql`
-  - Corrige armadilha de boolean NULL em PL/pgSQL: quando `work_completion_status` e `work_completion_status_id` sao ambos NULL, a expressao booleana avaliava para NULL (nao FALSE), impedindo o early-return e causando exception falsa.
-  - Fix: `COALESCE(..., false)` em todas as atribuicoes de `v_new_is_completed`, `v_old_is_completed` e `v_was_same_active_completed_group`.
-  - Regra de prevencao documentada em `docs/arquitetura/plpgsql-null-boolean-armadilha.md`.
+- Banco:
+  - `310_create_programming_normalized_module.sql` — schema + RLS select-only + indices + seed
+    `BENEFICIO_ATINGIDO`.
+  - `311_create_programming_normalized_rpcs.sql` — RPCs base.
+  - `312_register_programming_normalized_page.sql` — pagina/permissao.
+  - `313_add_documents_and_activities_to_save_stage.sql` — documentos/atividades no save.
+  - `314_add_programming_set_work_completion_status_rpc.sql` — Estado Trabalho manual.
+  - `315_migrate_legacy_programming_data.sql` — migracao do dado legado.
+  - `316_fix_work_completion_status_reclassify_gap.sql` — SUPERSEDIDA pela 318.
+  - `317_apply_revised_pendencia_model.sql` — pendencia como status espelhado; SUPERSEDIDA pela 318.
+  - `318_pendencia_as_boolean_flag.sql` — pendencia como flag + Adiar in-place + excecao da trava.
+- Server: `src/server/modules/programacao-normalizada/{selects,queries,catalogs,normalizers,rpc,handlers,types}.ts`.
+- API: `src/app/api/programacao-normalizada/route.ts` (+ `/meta`).
+- Front: `src/modules/dashboard/programacao-normalizada/{types,constants,utils,validators,api,hooks,components,listComponents,ProjectPlanView,ProgrammingNormalizedPageView,exports}.*`.
 
 ---
 
 ## Checklist de Validacao Manual
 
-Cadastro:
-- Criar programacao com ETAPA numerica.
-- Criar programacao com `ETAPA UNICA`.
-- Criar programacao com `ETAPA FINAL`.
-- Tentar criar sem ETAPA e sem flags: deve bloquear.
-- Tentar criar/editar como ETAPA 0 ou ETAPA negativa: deve bloquear.
-- Tentar salvar ETAPA numerica junto com `ETAPA UNICA` ou `ETAPA FINAL`: deve bloquear.
-- Tentar salvar `ETAPA UNICA` junto com `ETAPA FINAL`: deve bloquear.
-- Copiar programacao valida com ETAPA destino numerica: deve concluir sem erro `project_programming_active_stage_valid_check`.
-- Quando a renumeracao automatica for implementada: inserir uma programacao numerica entre duas datas existentes e confirmar que as etapas futuras foram deslocadas em `+1`, com historico e `programming_group_id` recalculado.
+Classificacao:
+- 1 etapa -> Unica; 7 etapas -> 1..6 + Final.
+- Cancelar/adiar do meio renumera fechando o buraco; Final segue a maior data numeravel.
+- Etapa em espera (data NULL) fica fora da numeracao.
+- `is_pendencia` nao muda Etapa N/Final/Unica.
 
-Edicao/reprogramacao:
-- Editar campos operacionais e verificar sincronizacao somente em outras equipes do mesmo `programming_group_id`.
-- Reprogramar mudando data e confirmar exigencia de motivo.
-- Reprogramar pelo botao de linha com escopo `Somente esta equipe` e confirmar que a propria linha muda para `REPROGRAMADA`.
-- Tentar reprogramar pelo escopo `Todas as equipes deste grupo` e confirmar bloqueio ate existir RPC transacional propria.
-- Reprogramar para data passada e confirmar exigencia de observacao retroativa.
-- Reprogramar quebrando sequencia de ETAPAs e confirmar alerta com opcao de continuar.
-- Quando a renumeracao automatica for implementada: reprogramar uma etapa para data intermediaria e confirmar que a operacao inteira e atomica.
-- Tentar editar `ADIADA` ou `CANCELADA`: deve bloquear.
-- Tentar salvar sem ETAPA e sem flags: deve bloquear.
+Pendencia (318):
+- Checkbox no formulario cria etapa com Pendencia; Status mostra "Pendencia" (vermelho), Etapa
+  segue Etapa N/Final.
+- Toggle no card liga/desliga; desligar volta a exibir o status de agenda.
+- Criar etapa Pendencia num projeto CONCLUIDO e permitido sem reabrir; etapa comum continua
+  bloqueada.
+- Concluir uma pendencia e permitido, nao antecipa, flag fica.
 
-Estado Trabalho:
-- Salvar `CONCLUIDO` em etapa numerica e verificar etapas futuras `ANTECIPADO`.
-- Rodar a migration 276 em base com duplicados legados de `CONCLUIDO` e confirmar que apenas um registro ativo por projeto manteve `CONCLUIDO`.
-- Verificar no historico das linhas duplicadas saneadas a acao `DEDUPLICATE_ACTIVE_PROJECT_COMPLETED_WORK_STATUS`.
-- Conferir em uma linha `ANTECIPADO` os campos `status = ANTECIPADA`, `is_active = false`, `anticipated_by_programming_id`, `anticipated_at`, `previous_work_completion_status` e `previous_operational_status`.
-- Tentar salvar `CONCLUIDO` em outro grupo operacional ativo do mesmo projeto: deve bloquear por `tenant_id + project_id + programming_group_id`.
-- Tentar salvar `CONCLUIDO` em linha com outra equipe ativa no mesmo `programming_group_id`: deve salvar e sincronizar `CONCLUIDO` para as linhas irmas do grupo.
-- Editar KM/quantidades/documentos de uma linha que ja era canonicamente `CONCLUIDO` no mesmo `programming_group_id`: nao deve bloquear pela guarda de transicao para `CONCLUIDO`.
-- Simular divergencia tecnica com `work_completion_status` nulo e `work_completion_status_id` apontando para `CONCLUIDO`; editar campo operacional e confirmar que a trigger nao trata a sincronizacao como nova conclusao.
-- Limpar explicitamente Estado Trabalho e confirmar que texto e UUID ficam nulos, sem restaurar o UUID anterior.
-- Editar campos operacionais (ex.: REDE, POSTE) em linha com Estado Trabalho vazio (NULL) que tenha irmaos ativos no mesmo grupo e confirmar que a gravacao nao cai em "Estado Trabalho CONCLUIDO nao pode ser salvo..." — regressao coberta pela migration 282.
-- Trocar o unico `CONCLUIDO` para outro status e verificar restauracao das linhas `ANTECIPADA` para `previous_work_completion_status` e `previous_operational_status`.
-- Confirmar que linha `ANTECIPADA` nao bloqueia conflito de horario da equipe na data futura.
-- Tentar adiar/cancelar/copiar/adicionar equipe em projeto `CONCLUIDO`: deve bloquear.
-- Rodar a migration 277 e confirmar que nao existe `PARCIAL` em `project_programming` nem item `PARCIAL` ativo no catalogo.
-- Confirmar que `PARCIAL` legado aparece visualmente como `Parcial nao planejado` no historico.
+Adiar (318):
+- "Nova data" -> `REPROGRAMADA` (mesma linha, data nova); historico com De/Para.
+- "Deixar em espera" -> `ADIADA` sem data; some da lista cross-projeto, aparece no plano.
+- Dar data a uma etapa em espera -> `REPROGRAMADA`.
 
-Grupo:
-- Editar Data ou ETAPA e confirmar que `programming_group_id` foi recalculado.
-- Tentar alterar diretamente apenas `programming_group_id` e confirmar que o banco preserva o grupo original.
-- Adicionar equipe e confirmar que ela recebeu exatamente o mesmo `programming_group_id`.
-- Copiar para duas datas e confirmar que cada Data + ETAPA recebeu grupo proprio.
+Eixos e Estado Trabalho:
+- `ADIADA`/`CANCELADA` limpam Estado Trabalho.
+- `BENEFICIO_ATINGIDO` nao antecipa, nao bloqueia, nao encerra.
+- So um `CONCLUIDO` NAO-pendencia ativo por projeto; antecipacao pega a FINAL (por data).
 
-Adiamento:
-- Adiar sem nova data: origem vira `ADIADA`.
-- Adiar com nova data: origem vira `ADIADA`, nova linha vira `REPROGRAMADA`.
-- Adiar origem `ETAPA FINAL`: nova linha preserva `etapa_final = true`.
-- Adiar grupo com mesmo projeto/data e ETAPAs diferentes: deve afetar somente o `programming_group_id` da linha clicada.
-- Forcar conflito em uma equipe durante adiamento em grupo e confirmar que nenhuma origem foi adiada e nenhuma nova linha foi criada.
+Equipe e agenda:
+- Mesma equipe, mesma data, horario sobreposto, projetos diferentes -> bloqueia.
+- Horarios encostados (08–12 / 12–17) -> aceita.
+- Remover equipe libera a agenda; remover a ultima deixa a etapa sem equipe (nao cancela).
 
-Cancelamento:
-- Cancelar individual.
-- Cancelar grupo.
-- Cancelar grupo com mesmo projeto/data e ETAPAs diferentes: deve afetar somente o `programming_group_id` da linha clicada.
-- Verificar motivo, historico e concorrencia.
-
-Copia:
-- Copiar origem numerica para datas futuras com ETAPAs maiores.
-- Tentar copiar `ETAPA UNICA`/`ETAPA FINAL`: deve bloquear.
-- Tentar destino com ETAPA menor/igual: deve bloquear.
-- Tentar copiar para data anterior ou igual a origem: deve bloquear.
-- Tentar equipe com conflito de agenda: deve bloquear.
-- Tentar copiar linha `ANTECIPADA`/`ANTECIPADO` de projeto concluido: deve bloquear pelo `CONCLUIDO` global.
-- Em copia com varias datas/equipes, forcar conflito de horario em uma unica equipe e confirmar que nenhuma linha nova foi criada e nenhum lote parcial ficou salvo.
-
-Adicionar equipe:
-- Adicionar equipe ainda ausente do grupo.
-- Tentar adicionar equipe ja presente: deve bloquear/desabilitar.
-- Confirmar que a duplicidade de equipe e validada dentro do mesmo `programming_group_id`, nao apenas por Projeto + Data.
-- Verificar `copied_from_programming_id`.
+Seguranca:
+- `npm run db:security-check` para grants de RPC `SECURITY DEFINER`.
+- Nenhuma escrita direta por `authenticated`; tudo por `service_role` via RPC.
 
 ---
 
 ## Observacoes Operacionais
 
-- Este mapa descreve a regra esperada do codigo e das migrations versionadas no repositorio.
-- Ambientes que nao aplicaram as migrations mais recentes podem ter comportamento diferente.
-- Antes de diagnosticar dado inconsistente, confirmar a migration listada em `supabase/migrations`.
-- Para dados em branco/legados, preferir auditoria read-only antes de backfill.
-- Mudancas futuras em Programacao devem atualizar este mapa, `docs/Tela_Programacao_Simples_SaaS.txt` e `TASKS.md`.
+- Este mapa cobre so o modelo normalizado. Regras do legado `programacao-simples` seguem em
+  `docs/Tela_Programacao_Simples_SaaS.txt`.
+- Pendencias de desenho ainda abertas (spec §9/§16): heranca template+override completa,
+  importacao em massa por Excel, copiar/transferir equipe e escrita de `resolve_pendencia_de_id`.
+- Divergencia guia x codigo deve ser reportada, nunca resolvida em silencio (CLAUDE.md secao 12).

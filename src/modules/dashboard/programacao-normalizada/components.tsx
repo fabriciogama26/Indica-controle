@@ -16,6 +16,7 @@ import {
   getStageStatusLabel,
   getWorkCompletionLabel,
   isActiveStageStatus,
+  isPendenciaPrimary,
 } from "./utils";
 import type {
   ActivityCatalogItem,
@@ -92,7 +93,8 @@ export function StageCard(props: {
       <div className={styles.stageHeader}>
         <div>
           <strong>{stage.executionDate ? formatDate(stage.executionDate) : "Em espera"}</strong> — <StageBadge stage={stage} />{" "}
-          <span className={`${styles.badge} ${stage.isPendencia ? styles.badgeDanger : ""}`}>{getStageStatusDisplayLabel(stage)}</span>{" "}
+          <span className={`${styles.badge} ${isPendenciaPrimary(stage) ? styles.badgeDanger : ""}`}>{getStageStatusDisplayLabel(stage)}</span>{" "}
+          {stage.isPendencia && !isPendenciaPrimary(stage) ? <span className={styles.badge} title="Etapa marcada como pendencia">Pend.</span> : null}{" "}
           <span className={styles.badge}>{getWorkCompletionLabel(stage.workCompletionStatus)}</span>
         </div>
         <div className={styles.rowActions}>
@@ -137,9 +139,9 @@ export function StageCard(props: {
               <button
                 type="button"
                 className={`${styles.actionButton} ${styles.actionComplete}`}
-                title="Concluir"
+                title={activeTeamIds.size === 0 ? "Aloque ao menos uma equipe antes de concluir" : "Concluir"}
                 onClick={onComplete}
-                disabled={isSubmitting}
+                disabled={isSubmitting || activeTeamIds.size === 0}
               >
                 <ActionIcon name="activate" />
               </button>

@@ -172,8 +172,7 @@ Gatilhos do recálculo (todos na mesma transação da ação):
 
 Criar etapa (inclusive a 1ª → única; a partir da 2ª a anterior deixa de ser única).
 Cancelar/adiar etapa (fecha o buraco: numéricas renumeram, FINAL migra para a nova última data numerável; N→1 vira única).
-Inserir/adicionar data enquanto a final ainda não passou (hoje ≤ data da final): comportamento normal — data posterior vira a nova final; data anterior renumera.
-Programar data quando a final já passou (hoje > data da final): entra como PENDENCIA (Estado Trabalho), fora da numeração; a final não muda (ver 4.2).
+Inserir/adicionar data (independente de a final já ter passado): comportamento normal — data posterior vira a nova final; data anterior renumera. NÃO há mais o caso especial de "data após a final vira PENDENCIA" — pendência é a flag `is_pendencia` (ver 4.2, modelo 318), ortogonal e sem efeito na numeração.
 Concluir (antecipa a cauda numerável → sai do ativo → a concluída vira a última numerável = final).
 Reabrir (restaura a cauda → volta ao número anterior; a final volta para a maior data numerável).
 6. Antecipação (por data, não por número)
@@ -188,16 +187,29 @@ Enquanto existir CONCLUIDO ativo: bloquear criar/copiar/inserir etapa, adicionar
 
 Reabrir CONCLUIDO reverte: restaura as antecipadas por X ao estado anterior e recalcula.
 
-7. Pendência
+7. Pendência (modelo FINAL — migration 318, supersede D2)
 
-Decisão (D2): pendência é o Estado Trabalho PENDENCIA, mantido como no banco (não vira derivação nem some do catálogo). Ver a semântica em 4.2: é uma programação para uma data após a etapa final, fora da numeração, sem mover a final.
+REVISÃO: o texto antigo desta seção (pendência = Estado Trabalho PENDENCIA, "data após a
+final", fora da numeração) foi SUPERSEDIDO. Pendência é a flag booleana `is_pendencia` (ver
+4.2): não é status nem Estado Trabalho, participa normalmente da numeração e só reflete na
+coluna Status. Não existe mais `PENDENCIA` no catálogo de Estado Trabalho nem no conjunto de
+status.
 
-Quando o programador programa uma data depois da final, o Estado Trabalho já entra como PENDENCIA.
-A pendência fecha quando essa programação é concluída (Estado Trabalho → CONCLUIDO na própria pendência), ou conforme o resultado da execução.
-Vínculo opcional resolve_pendencia_de_id: liga a pendência à etapa parcial que a originou, quando fizer sentido, para rastreio. Não é obrigatório (no dado atual, quase nenhuma pendência tem esse vínculo).
-Lista "pendências a matar" = programações em PENDENCIA ainda não concluídas.
+- A flag é ligada no formulário "Nova etapa" (nasce is_pendencia=true, aciona a exceção da
+  trava de concluído) ou pelo toggle no card (`set_project_programming_pendencia_flag`).
+- Concluir uma etapa `is_pendencia` é permitido mesmo com o projeto concluído; não antecipa; a
+  flag permanece (rastreio) e CONCLUIDO prevalece na exibição.
+- Desligar a flag (`true→false`) é bloqueado enquanto o projeto tiver um CONCLUIDO ativo
+  não-pendência (evita trazer a etapa de volta como comum sem reabrir, ou criar dois CONCLUIDO
+  comuns).
+- Vínculo opcional `resolve_pendencia_de_id`: liga a pendência à etapa parcial que a originou,
+  para rastreio. Ainda sem RPC dedicada que o escreva.
+- Filtro "pendências abertas" recomendado: `is_pendencia = true` E `status in
+  (PROGRAMADA, REPROGRAMADA)` E `work_completion_status <> CONCLUIDO` (uma pendência cancelada/
+  concluída não é uma pendência "a matar").
 
-Isso é diferente do filtro derivado "a fazer/atrasada" (ativa + data), que continua existindo para a agenda. São listas com propósitos distintos.
+Isso é diferente do filtro derivado "a fazer/atrasada" (ativa + data), que continua existindo
+para a agenda. São listas com propósitos distintos.
 
 8. Conflito de agenda por equipe
 

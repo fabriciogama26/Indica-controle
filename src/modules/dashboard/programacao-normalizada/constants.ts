@@ -15,7 +15,7 @@ export const STAGE_LIST_PAGE_SIZE = 50;
 export const STATUS_CHIP_OPTIONS: Array<{ value: StageListStatusChip; label: string }> = [
   { value: "TODAS", label: "Todas" },
   { value: "PROGRAMADAS", label: "Programadas" },
-  { value: "PENDENCIAS", label: "Pendencias" },
+  { value: "PENDENCIAS", label: "Pendencias abertas" },
   { value: "ATRASADAS", label: "Atrasadas" },
   { value: "ADIADAS", label: "Adiadas" },
 ];
@@ -141,6 +141,7 @@ export const HISTORY_ACTION_LABELS: Record<string, string> = {
   REOPEN_STAGE: "Reabertura",
   RECLASSIFY_STAGE: "Reclassificacao",
   SET_WORK_COMPLETION_STATUS: "Estado do trabalho",
+  CHANGE_COMPLETED_WORK_STATUS: "Saida de Concluido",
   SET_PENDENCIA_FLAG: "Pendencia",
 };
 
