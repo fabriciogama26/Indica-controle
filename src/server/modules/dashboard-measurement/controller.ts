@@ -574,30 +574,75 @@ export async function handleDashboardMeasurementGet(
   const annualRangeStart = annualCycles[0]?.cycleStart ?? `${annualYear}-01-01`;
   const annualRangeEnd = annualCycles[annualCycles.length - 1]?.cycleEnd ?? `${annualYear}-12-31`;
 
-  // Resolve the data window from params before any DB query so the main queries are bounded by date.
-  // Discovery query (dates only) runs in parallel to build the full cycles list for the selector.
-  const resolvedCycleStart = selectedCycleStart ?? toIsoDate(resolveCycleStart(new Date()));
-  const resolvedCycleEndRef = addMonths(parseIsoDate(resolvedCycleStart), 1);
-  resolvedCycleEndRef.setUTCDate(20);
-  const resolvedCycleEnd = toIsoDate(resolvedCycleEndRef);
-  const windowStart = isTeamsDashboard
-    ? (startDateFilter ? maxIsoDate(resolvedCycleStart, startDateFilter) : resolvedCycleStart)
-    : [resolvedCycleStart, startDateFilter].filter((d): d is string => Boolean(d)).sort()[0] ?? resolvedCycleStart;
-  const windowEnd = isTeamsDashboard
-    ? (endDateFilter ? minIsoDate(resolvedCycleEnd, endDateFilter) : resolvedCycleEnd)
-    : [resolvedCycleEnd, endDateFilter].filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? resolvedCycleEnd;
+  const cyclesDiscoveryResult = await resolution.supabase
+    .from("project_measurement_orders")
+    .select("execution_date")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .eq("measurement_kind", "COM_PRODUCAO")
+    .neq("status", "CANCELADA")
+    .order("execution_date", { ascending: false })
+    .limit(3000)
+    .returns<{ execution_date: string }[]>();
 
-  const [cyclesDiscoveryResult, ordersResult, annualOrdersResult] = await Promise.all([
-    resolution.supabase
-      .from("project_measurement_orders")
-      .select("execution_date")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .eq("measurement_kind", "COM_PRODUCAO")
-      .neq("status", "CANCELADA")
-      .order("execution_date", { ascending: false })
-      .limit(3000)
-      .returns<{ execution_date: string }[]>(),
+  if (cyclesDiscoveryResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar historico de ciclos." }, { status: 500 });
+  }
+
+  const cycleMap = new Map<string, ReturnType<typeof buildCycleFromMeasurementDate>>();
+  for (const row of cyclesDiscoveryResult.data ?? []) {
+    const executionDate = normalizeIsoDate(row.execution_date);
+    if (!executionDate) continue;
+    const cycle = buildCycleFromMeasurementDate(executionDate);
+    if (!cycleMap.has(cycle.cycleStart)) {
+      cycleMap.set(cycle.cycleStart, cycle);
+    }
+  }
+  // Ensure the explicitly requested cycle always appears in the selector even if outside the discovery window.
+  if (selectedCycleStart && !cycleMap.has(selectedCycleStart)) {
+    cycleMap.set(selectedCycleStart, buildCycleFromMeasurementDate(selectedCycleStart));
+  }
+
+  const cycles = Array.from(cycleMap.values()).sort((left, right) => right.cycleStart.localeCompare(left.cycleStart));
+  const periods = Array.from(new Set(cycles.map((cycle) => cycle.cycleEnd.slice(0, 7))))
+    .sort((left, right) => right.localeCompare(left))
+    .map((period) => ({ id: period, label: formatPeriodLabel(period) }));
+  const selectedCycle = cycles.find((cycle) => cycle.cycleStart === selectedCycleStart) ?? cycles[0] ?? null;
+  if (!selectedCycle) {
+    return NextResponse.json({
+      cycles: [],
+      periods: [],
+      selectedPeriod: null,
+      startDate: null,
+      endDate: null,
+      selectedCycleStart: null,
+      filters: { projects: [], teams: [], foremen: [], supervisors: [] },
+      summary: null,
+      completionChart: [],
+      cycleCompletionChart: [],
+      periodCompletionChart: [],
+      periodSummary: null,
+      cycleComparison: null,
+      annualYear,
+      annualCycleComparison: [],
+      teamsProduction: [],
+      teamsProductionByWeek: {},
+      teamForemen: [],
+      teamForemenByWeek: {},
+      cycleWeeks: [],
+      supervisorsProduction: [],
+      supervisorsProductionByWeek: {},
+    });
+  }
+
+  const windowStart = isTeamsDashboard
+    ? (startDateFilter ? maxIsoDate(selectedCycle.cycleStart, startDateFilter) : selectedCycle.cycleStart)
+    : [selectedCycle.cycleStart, startDateFilter].filter((d): d is string => Boolean(d)).sort()[0] ?? selectedCycle.cycleStart;
+  const windowEnd = isTeamsDashboard
+    ? (endDateFilter ? minIsoDate(selectedCycle.cycleEnd, endDateFilter) : selectedCycle.cycleEnd)
+    : [selectedCycle.cycleEnd, endDateFilter].filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? selectedCycle.cycleEnd;
+
+  const [ordersResult, annualOrdersResult] = await Promise.all([
     resolution.supabase
       .from("project_measurement_orders")
       .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
@@ -625,10 +670,6 @@ export async function handleDashboardMeasurementGet(
           .limit(5000)
           .returns<MeasurementOrderRow[]>(),
   ]);
-
-  if (cyclesDiscoveryResult.error) {
-    return NextResponse.json({ message: "Falha ao carregar historico de ciclos." }, { status: 500 });
-  }
 
   const orders = ordersResult.data;
   const ordersError = ordersResult.error;
@@ -687,52 +728,6 @@ export async function handleDashboardMeasurementGet(
       const projectMeta = projectMetaMap.get(order.project_id);
       return !projectMeta?.isTest && !projectMeta?.isThirdParty;
     });
-
-  const cycleMap = new Map<string, ReturnType<typeof buildCycleFromMeasurementDate>>();
-  for (const row of cyclesDiscoveryResult.data ?? []) {
-    const executionDate = normalizeIsoDate(row.execution_date);
-    if (!executionDate) continue;
-    const cycle = buildCycleFromMeasurementDate(executionDate);
-    if (!cycleMap.has(cycle.cycleStart)) {
-      cycleMap.set(cycle.cycleStart, cycle);
-    }
-  }
-  // Ensure the explicitly requested cycle always appears in the selector even if outside the discovery window
-  if (selectedCycleStart && !cycleMap.has(selectedCycleStart)) {
-    cycleMap.set(selectedCycleStart, buildCycleFromMeasurementDate(selectedCycleStart));
-  }
-
-  const cycles = Array.from(cycleMap.values()).sort((left, right) => right.cycleStart.localeCompare(left.cycleStart));
-  const periods = Array.from(new Set(cycles.map((cycle) => cycle.cycleEnd.slice(0, 7))))
-    .sort((left, right) => right.localeCompare(left))
-    .map((period) => ({ id: period, label: formatPeriodLabel(period) }));
-  const selectedCycle = cycles.find((cycle) => cycle.cycleStart === selectedCycleStart) ?? cycles[0] ?? null;
-  if (!selectedCycle) {
-    return NextResponse.json({
-      cycles: [],
-      periods: [],
-      selectedPeriod: null,
-      startDate: null,
-      endDate: null,
-      selectedCycleStart: null,
-      filters: { projects: [], teams: [], foremen: [], supervisors: [] },
-      summary: null,
-      completionChart: [],
-      cycleCompletionChart: [],
-      periodCompletionChart: [],
-      periodSummary: null,
-      cycleComparison: null,
-      annualYear,
-      annualCycleComparison: [],
-      teamsProduction: [],
-      teamsProductionByWeek: {},
-      teamForemen: [],
-      teamForemenByWeek: {},
-      cycleWeeks: [],
-      supervisorsProduction: [],
-      supervisorsProductionByWeek: {},
-    });
-  }
 
   const cycleOrders = validOrders.filter((order) => {
     if (order.execution_date < selectedCycle.cycleStart || order.execution_date > selectedCycle.cycleEnd) return false;

@@ -453,3 +453,23 @@ Atualizacao 2026-07-13 - Meta em recorte sem dia util
 - Impacto multi-tenant:
   - Sem alteracao de schema, migration, RLS ou grants.
   - A regra continua aplicada apos autenticacao, permissao `dashboard-equipes/read` e filtros por `tenant_id`.
+
+Atualizacao 2026-07-21 - Carga inicial do ciclo
+------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `docs/Tela_Dashboard_Equipes_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `handleDashboardMeasurementGet`
+  - `buildCycleFromMeasurementDate`
+  - `maxIsoDate`
+  - `minIsoDate`
+- Comportamento antes/depois:
+  - Antes: a primeira abertura sem `cycleStart` podia consultar ordens do ciclo corrente antes de resolver o ciclo mais recente do historico. Se o ciclo corrente ainda nao tivesse medicoes, o Dashboard Equipes carregava tabelas vazias mesmo existindo ciclo anterior com dados.
+  - Depois: o controller resolve o ciclo selecionado pelo historico antes das consultas principais. A primeira chamada sem `cycleStart` ja usa o ciclo mais recente retornado no seletor.
+  - Datas informadas continuam limitadas a intersecao entre o ciclo selecionado e `Data inicial`/`Data final`.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, migration, RLS ou grants.
+  - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read`.
+  - Todas as consultas continuam filtradas por `tenant_id` resolvido pela sessao autenticada.
