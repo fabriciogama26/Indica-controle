@@ -96,12 +96,13 @@ export type StageDocument = {
 export type ProgrammingStage = {
   id: string;
   projectId: string;
-  executionDate: string;
+  executionDate: string | null;
   etapaNumber: number | null;
   etapaUnica: boolean;
   etapaFinal: boolean;
   status: ProgrammingStageStatus;
   workCompletionStatus: string | null;
+  isPendencia: boolean;
   serviceDescription: string;
   period: ProgrammingPeriod | null;
   startTime: string | null;
@@ -179,7 +180,7 @@ export type StageListResponse = {
 
 export type HistoryModalTarget = {
   id: string;
-  executionDate: string;
+  executionDate: string | null;
 };
 
 export type HistoryItem = {
@@ -225,7 +226,7 @@ export type FormState = {
   projectId: string;
   projectSearch: string;
   executionDate: string;
-  additionalExecutionDates: string[];
+  isPendencia: boolean;
   teamIds: string[];
   teamSearch: string;
   serviceDescription: string;

@@ -12,6 +12,7 @@ import {
   getHistoryActionLabel,
   getHistoryFieldLabel,
   getStageClassificationLabel,
+  getStageStatusDisplayLabel,
   getStageStatusLabel,
   getWorkCompletionLabel,
   isActiveStageStatus,
@@ -33,18 +34,18 @@ import type {
 
 export function StageBadge(props: { stage: ProgrammingStage }) {
   const { stage } = props;
+  // Badge de classificacao (coluna Etapa, spec 3.2): segue a posicao, nunca a
+  // pendencia. Uma etapa em pendencia continua Etapa N/Final aqui.
   const classification = getStageClassificationLabel(stage);
   const variant = !isActiveStageStatus(stage.status)
     ? styles.badgeCancelada
-    : stage.workCompletionStatus === "PENDENCIA"
-      ? styles.badgePendencia
-      : stage.workCompletionStatus === "CONCLUIDO"
-        ? styles.badgeConcluido
-        : stage.etapaFinal
-          ? styles.badgeFinal
-          : stage.etapaUnica
-            ? styles.badgeUnica
-            : "";
+    : stage.workCompletionStatus === "CONCLUIDO"
+      ? styles.badgeConcluido
+      : stage.etapaFinal
+        ? styles.badgeFinal
+        : stage.etapaUnica
+          ? styles.badgeUnica
+          : "";
 
   return <span className={`${styles.badge} ${variant}`}>{classification}</span>;
 }
@@ -60,6 +61,7 @@ export function StageCard(props: {
   onCancel: () => void;
   onComplete: () => void;
   onReopen: () => void;
+  onTogglePendencia: (next: boolean) => void;
   onDetails: () => void;
   onHistory: () => void;
   isSubmitting: boolean;
@@ -75,6 +77,7 @@ export function StageCard(props: {
     onCancel,
     onComplete,
     onReopen,
+    onTogglePendencia,
     onDetails,
     onHistory,
     isSubmitting,
@@ -88,8 +91,8 @@ export function StageCard(props: {
     <article className={styles.stageCard}>
       <div className={styles.stageHeader}>
         <div>
-          <strong>{formatDate(stage.executionDate)}</strong> — <StageBadge stage={stage} />{" "}
-          <span className={styles.badge}>{getStageStatusLabel(stage.status)}</span>{" "}
+          <strong>{stage.executionDate ? formatDate(stage.executionDate) : "Em espera"}</strong> — <StageBadge stage={stage} />{" "}
+          <span className={`${styles.badge} ${stage.isPendencia ? styles.badgeDanger : ""}`}>{getStageStatusDisplayLabel(stage)}</span>{" "}
           <span className={styles.badge}>{getWorkCompletionLabel(stage.workCompletionStatus)}</span>
         </div>
         <div className={styles.rowActions}>
@@ -177,6 +180,18 @@ export function StageCard(props: {
         {!stage.teams.some((team) => team.status === "ATIVA") ? <span className={styles.emptyHint}>Sem equipe alocada.</span> : null}
       </div>
 
+      {isActive ? (
+        <label className={styles.pendenciaToggle}>
+          <input
+            type="checkbox"
+            checked={stage.isPendencia}
+            onChange={(event) => onTogglePendencia(event.target.checked)}
+            disabled={isSubmitting}
+          />
+          <span>Pendencia</span>
+        </label>
+      ) : null}
+
       {isActive && !isCompleted && availableTeams.length ? (
         <div className={styles.field}>
           <label htmlFor={`add-team-${stage.id}`}><span>Adicionar equipe</span></label>
@@ -201,8 +216,12 @@ export function StageCard(props: {
   );
 }
 
+// Adiar tem duas rotas (spec 3.1/10): "Nova data" remarca a etapa (REPROGRAMADA)
+// e "Deixar em espera" tira a data (ADIADA). O motivo e obrigatorio nas duas; a
+// data so na rota de remarcar.
 export function PostponeModal(props: {
   isOpen: boolean;
+  mode: "DATE" | "HOLD";
   newDate: string;
   reasonCode: string;
   reasonNotes: string;
@@ -210,14 +229,17 @@ export function PostponeModal(props: {
   isSubmitting: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  onModeChange: (value: "DATE" | "HOLD") => void;
   onNewDateChange: (value: string) => void;
   onReasonCodeChange: (value: string) => void;
   onReasonNotesChange: (value: string) => void;
 }) {
-  const { isOpen, newDate, reasonCode, reasonNotes, reasonOptions, isSubmitting, onClose, onConfirm, onNewDateChange, onReasonCodeChange, onReasonNotesChange } = props;
+  const { isOpen, mode, newDate, reasonCode, reasonNotes, reasonOptions, isSubmitting, onClose, onConfirm, onModeChange, onNewDateChange, onReasonCodeChange, onReasonNotesChange } = props;
   if (!isOpen) return null;
 
   const selectedReason = reasonOptions.find((item) => item.code === reasonCode);
+  const reasonValid = isReasonSelectionValid(reasonOptions, reasonCode, reasonNotes);
+  const canConfirm = mode === "HOLD" ? reasonValid : Boolean(newDate) && reasonValid;
 
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
@@ -227,10 +249,25 @@ export function PostponeModal(props: {
           <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>Fechar</button>
         </header>
         <div className={styles.modalBody}>
-          <label className={styles.field}>
-            <span>Nova data</span>
-            <input type="date" value={newDate} onChange={(event) => onNewDateChange(event.target.value)} disabled={isSubmitting} />
-          </label>
+          <div className={styles.field}>
+            <span>Como adiar</span>
+            <div className={styles.radioRow}>
+              <label>
+                <input type="radio" name="postpone-mode" checked={mode === "DATE"} onChange={() => onModeChange("DATE")} disabled={isSubmitting} />
+                <span>Nova data (remarcar)</span>
+              </label>
+              <label>
+                <input type="radio" name="postpone-mode" checked={mode === "HOLD"} onChange={() => onModeChange("HOLD")} disabled={isSubmitting} />
+                <span>Deixar em espera (sem data)</span>
+              </label>
+            </div>
+          </div>
+          {mode === "DATE" ? (
+            <label className={styles.field}>
+              <span>Nova data</span>
+              <input type="date" value={newDate} onChange={(event) => onNewDateChange(event.target.value)} disabled={isSubmitting} />
+            </label>
+          ) : null}
           <label className={styles.field}>
             <span>Motivo</span>
             <select value={reasonCode} onChange={(event) => onReasonCodeChange(event.target.value)} disabled={isSubmitting}>
@@ -250,9 +287,9 @@ export function PostponeModal(props: {
             type="button"
             className={styles.buttonPrimary}
             onClick={onConfirm}
-            disabled={isSubmitting || !newDate || !isReasonSelectionValid(reasonOptions, reasonCode, reasonNotes)}
+            disabled={isSubmitting || !canConfirm}
           >
-            Confirmar adiamento
+            {mode === "HOLD" ? "Deixar em espera" : "Confirmar remarcacao"}
           </button>
         </div>
       </article>
@@ -333,7 +370,7 @@ export function HistoryModal(props: {
         <header className={styles.modalHeader}>
           <div className={styles.modalTitleBlock}>
             <h4>Historico da etapa</h4>
-            <p className={styles.modalSubtitle}>Etapa de {formatDate(target.executionDate)} | ID: {target.id}</p>
+            <p className={styles.modalSubtitle}>Etapa de {target.executionDate ? formatDate(target.executionDate) : "Em espera"} | ID: {target.id}</p>
           </div>
           <button type="button" className={styles.modalCloseButton} onClick={onClose}>Fechar</button>
         </header>
@@ -527,76 +564,32 @@ export function StageFormPanel(props: {
     }));
   }
 
-  function handleAddDateRow() {
-    setForm((current) => ({ ...current, additionalExecutionDates: [...current.additionalExecutionDates, ""] }));
-  }
-
-  function handleUpdateAdditionalDate(index: number, value: string) {
-    setForm((current) => ({
-      ...current,
-      additionalExecutionDates: current.additionalExecutionDates.map((date, itemIndex) => (itemIndex === index ? value : date)),
-    }));
-  }
-
-  function handleRemoveAdditionalDate(index: number) {
-    setForm((current) => ({
-      ...current,
-      additionalExecutionDates: current.additionalExecutionDates.filter((_, itemIndex) => itemIndex !== index),
-    }));
-  }
-
   return (
     <section className={styles.formCard}>
       <h3 className={styles.cardTitle}>{isEditing ? "Editar etapa" : "Nova etapa"}</h3>
 
       <div className={styles.formGrid}>
-        <div className={`${styles.field} ${styles.fieldFullRow}`}>
+        <label className={`${styles.field} ${styles.fieldFullRow}`}>
           <span>Data de execucao</span>
-          <div className={styles.dateAddRow}>
+          <input
+            type="date"
+            value={form.executionDate}
+            onChange={(event) => setField("executionDate", event.target.value)}
+            disabled={isSubmitting}
+          />
+        </label>
+
+        {!isEditing ? (
+          <label className={`${styles.pendenciaToggle} ${styles.fieldFullRow}`}>
             <input
-              type="date"
-              value={form.executionDate}
-              onChange={(event) => setField("executionDate", event.target.value)}
+              type="checkbox"
+              checked={form.isPendencia}
+              onChange={(event) => setField("isPendencia", event.target.checked)}
               disabled={isSubmitting}
             />
-            {!isEditing ? (
-              <button
-                type="button"
-                className={styles.buttonSecondary}
-                onClick={handleAddDateRow}
-                disabled={isSubmitting}
-                title="Adicionar outra data com o mesmo cadastro"
-              >
-                + Adicionar data
-              </button>
-            ) : null}
-          </div>
-          {!isEditing && form.additionalExecutionDates.length ? (
-            <div className={styles.additionalDatesList}>
-              {form.additionalExecutionDates.map((date, index) => (
-                <div key={index} className={styles.additionalDateRow}>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(event) => handleUpdateAdditionalDate(index, event.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  <button
-                    type="button"
-                    className={styles.buttonSecondary}
-                    onClick={() => handleRemoveAdditionalDate(index)}
-                    disabled={isSubmitting}
-                  >
-                    Remover
-                  </button>
-                </div>
-              ))}
-              <p className={styles.emptyHint}>
-                Cada data cria uma etapa com o mesmo cadastro desta tela (equipes, atividades, documentos e demais campos).
-              </p>
-            </div>
-          ) : null}
-        </div>
+            <span>Pendencia (permite criar mesmo com o projeto concluido, sem reabrir)</span>
+          </label>
+        ) : null}
 
         <label className={styles.field}>
           <span>Periodo <span className="requiredMark">*</span></span>

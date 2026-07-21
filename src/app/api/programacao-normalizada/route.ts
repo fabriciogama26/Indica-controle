@@ -13,6 +13,7 @@ import {
   reopenProgrammingStage,
   removeProgrammingTeam,
   saveProgrammingStage,
+  setProgrammingPendenciaFlag,
   setProgrammingWorkCompletionStatus,
 } from "@/server/modules/programacao-normalizada/handlers";
 import { normalizeIsoDate, normalizePositiveInteger, normalizeText, normalizeUniqueTextArray, resolveAppUserName } from "@/server/modules/programacao-normalizada/normalizers";
@@ -123,6 +124,7 @@ function mapStageRowToDto(
     etapaFinal: stage.etapa_final,
     status: stage.status,
     workCompletionStatus: stage.work_completion_status,
+    isPendencia: stage.is_pendencia === true,
     serviceDescription: normalizeText(stage.service_description),
     period: stage.period,
     startTime: stage.start_time,
@@ -289,6 +291,7 @@ export async function PATCH(request: NextRequest) {
   if (action === "COMPLETE") return completeProgrammingStage(request, payload ?? {});
   if (action === "REOPEN") return reopenProgrammingStage(request, payload ?? {});
   if (action === "SET_WORK_COMPLETION_STATUS") return setProgrammingWorkCompletionStatus(request, payload ?? {});
+  if (action === "SET_PENDENCIA") return setProgrammingPendenciaFlag(request, payload ?? {});
 
   return NextResponse.json({ message: "Acao invalida." }, { status: 400 });
 }

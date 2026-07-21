@@ -148,6 +148,7 @@ export type SaveStageRequestBody = {
   redeQty?: string;
   note?: string;
   historyReason?: string;
+  isPendencia?: boolean;
   activities?: Array<{ catalogId: string; quantity: string }>;
   documents?: Record<string, { number?: string; includedAt?: string; deliveredAt?: string }>;
 };
@@ -186,10 +187,11 @@ export async function removeProgrammingTeam(params: { accessToken: string; progr
   return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
 }
 
+// newExecutionDate null = "deixar em espera" (ADIADA sem data); com data = remarcar.
 export async function postponeProgrammingStage(params: {
   accessToken: string;
   programmingId: string;
-  newExecutionDate: string;
+  newExecutionDate: string | null;
   reason: string;
   expectedUpdatedAt: string;
 }) {
@@ -201,6 +203,26 @@ export async function postponeProgrammingStage(params: {
       programmingId: params.programmingId,
       newExecutionDate: params.newExecutionDate,
       reason: params.reason,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+    }),
+  });
+
+  return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
+}
+
+export async function setProgrammingPendenciaFlag(params: {
+  accessToken: string;
+  programmingId: string;
+  isPendencia: boolean;
+  expectedUpdatedAt: string;
+}) {
+  const response = await fetch("/api/programacao-normalizada", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(params.accessToken) },
+    body: JSON.stringify({
+      action: "SET_PENDENCIA",
+      programmingId: params.programmingId,
+      isPendencia: params.isPendencia,
       expectedUpdatedAt: params.expectedUpdatedAt,
     }),
   });

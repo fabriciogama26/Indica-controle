@@ -86,7 +86,7 @@ export async function fetchProgrammingStageList(params: {
   if (filters.statusChip === "PROGRAMADAS") {
     query = query.in("status", ["PROGRAMADA", "REPROGRAMADA"]);
   } else if (filters.statusChip === "PENDENCIAS") {
-    query = query.eq("work_completion_status", "PENDENCIA");
+    query = query.eq("is_pendencia", true);
   } else if (filters.statusChip === "ATRASADAS") {
     const todayIso = new Date().toISOString().slice(0, 10);
     query = query.in("status", ["PROGRAMADA", "REPROGRAMADA"]).lt("execution_date", todayIso);

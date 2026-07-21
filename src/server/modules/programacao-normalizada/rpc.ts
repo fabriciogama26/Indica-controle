@@ -61,6 +61,7 @@ export async function saveProgrammingStageViaRpc(params: {
   redeQty?: number | null;
   note?: string | null;
   historyReason?: string | null;
+  isPendencia?: boolean;
   documents?: Record<string, { number?: string | null; includedAt?: string | null; deliveredAt?: string | null }> | null;
   activities?: Array<{ catalogId: string; quantity: number }> | null;
 }) {
@@ -95,6 +96,7 @@ export async function saveProgrammingStageViaRpc(params: {
     p_history_reason: params.historyReason ?? null,
     p_documents: params.documents ?? {},
     p_activities: params.activities ?? [],
+    p_is_pendencia: params.isPendencia ?? false,
   });
 
   if (error) {
@@ -175,12 +177,13 @@ export async function removeProgrammingTeamViaRpc(params: {
   };
 }
 
+// newExecutionDate null = "deixar em espera" (ADIADA sem data); com data = remarcar.
 export async function postponeProgrammingStageViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
   actorUserId: string;
   programmingId: string;
-  newExecutionDate: string;
+  newExecutionDate: string | null;
   reason: string;
   expectedUpdatedAt?: string | null;
 }) {
@@ -205,9 +208,41 @@ export async function postponeProgrammingStageViaRpc(params: {
   return {
     ok: true as const,
     programmingId: result.programming_id,
-    newProgrammingId: normalizeText(result.new_programming_id),
     updatedAt: normalizeText(result.updated_at),
     message: result.message ?? "Etapa adiada com sucesso.",
+  };
+}
+
+export async function setProgrammingPendenciaFlagViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  isPendencia: boolean;
+  expectedUpdatedAt?: string | null;
+}) {
+  const rpcName = "set_project_programming_pendencia_flag";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_is_pendencia: params.isPendencia,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) return missingRpcResult(rpcName);
+    return failedRpcResult(rpcName, error.message);
+  }
+
+  const result = (data ?? {}) as ProgrammingRpcResult;
+  if (result.success !== true || !result.programming_id) return failedResultFromPayload(result);
+
+  return {
+    ok: true as const,
+    programmingId: result.programming_id,
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Pendencia atualizada com sucesso.",
   };
 }
 
@@ -308,8 +343,9 @@ export async function reopenProgrammingStageViaRpc(params: {
   };
 }
 
-// Cobre em branco/PARCIAL_PLANEJADO/PARCIAL_NAO_PLANEJADO/BENEFICIO_ATINGIDO/PENDENCIA
-// (edicao manual). CONCLUIDO/ANTECIPADO continuam so via complete/reopen acima.
+// Cobre em branco/PARCIAL_PLANEJADO/PARCIAL_NAO_PLANEJADO/BENEFICIO_ATINGIDO (edicao
+// manual). CONCLUIDO/ANTECIPADO continuam so via complete/reopen acima; PENDENCIA virou
+// flag (set_project_programming_pendencia_flag).
 export async function setProgrammingWorkCompletionStatusViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;

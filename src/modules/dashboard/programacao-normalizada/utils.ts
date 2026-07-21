@@ -1,6 +1,6 @@
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 
-import { HISTORY_ACTION_LABELS, HISTORY_FIELD_LABELS, STAGE_STATUS_LABELS, WORK_COMPLETION_LABELS } from "./constants";
+import { HISTORY_ACTION_LABELS, HISTORY_FIELD_LABELS, PENDENCIA_STATUS_LABEL, STAGE_STATUS_LABELS, WORK_COMPLETION_LABELS } from "./constants";
 import type { ProgrammingStage } from "./types";
 
 export { formatDate, formatDateTime };
@@ -38,10 +38,16 @@ export function startOfWeekMondayIso(dateIso: string) {
   return toIsoDate(date);
 }
 
+// "Ativa" = etapa no calendario (spec 5): recebe equipe, e editavel, conta na
+// numeracao — PROGRAMADA/REPROGRAMADA. A flag is_pendencia e ortogonal e nao
+// muda o status de agenda; quem sai do calendario e ADIADA/CANCELADA/ANTECIPADA.
 export function isActiveStageStatus(status: string) {
   return status === "PROGRAMADA" || status === "REPROGRAMADA";
 }
 
+// Coluna Etapa (spec 3.2): SO posicao — Etapa N/Final/Unica. Nunca "Pendencia"
+// aqui (a pendencia vive so na coluna Status, via flag). Etapa sem data (em
+// espera) ou fora do calendario nao numera.
 export function getStageClassificationLabel(stage: {
   etapaUnica: boolean;
   etapaFinal: boolean;
@@ -49,7 +55,6 @@ export function getStageClassificationLabel(stage: {
   workCompletionStatus: string | null;
   status: string;
 }) {
-  if (stage.workCompletionStatus === "PENDENCIA") return "Pendencia";
   if (!isActiveStageStatus(stage.status)) return "-";
   if (stage.etapaUnica) return "Unica";
   if (stage.etapaFinal) return "Final";
@@ -61,13 +66,21 @@ export function getStageStatusLabel(status: string) {
   return STAGE_STATUS_LABELS[status] ?? status;
 }
 
+// Coluna Status (spec 3.2): a flag is_pendencia mostra "Pendencia" por cima do
+// status de agenda; sem a flag, exibe o status normal.
+export function getStageStatusDisplayLabel(stage: { status: string; isPendencia: boolean }) {
+  if (stage.isPendencia) return PENDENCIA_STATUS_LABEL;
+  return getStageStatusLabel(stage.status);
+}
+
 export function getWorkCompletionLabel(code: string | null) {
   if (!code) return "Em branco";
   return WORK_COMPLETION_LABELS[code] ?? code;
 }
 
 export function sortStagesByDate(stages: ProgrammingStage[]) {
-  return [...stages].sort((left, right) => left.executionDate.localeCompare(right.executionDate));
+  // Etapa em espera (executionDate null) vai para o fim.
+  return [...stages].sort((left, right) => (left.executionDate ?? "9999").localeCompare(right.executionDate ?? "9999"));
 }
 
 export function findActiveCompletedStage(stages: ProgrammingStage[]) {
