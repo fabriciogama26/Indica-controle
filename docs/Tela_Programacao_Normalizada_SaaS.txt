@@ -371,3 +371,23 @@ Servicos e integracoes externas
 - Supabase Postgres com RLS.
 - RPCs `SECURITY DEFINER` da migration 311.
 - Next.js Route Handlers (`/api/programacao-normalizada/*`).
+
+Atualizacao 2026-07-22 - Data Execucao como data no ENEL NOVO
+--------------------------------------------------------------
+- Problema resolvido:
+  - Na `Extracao ENEL NOVO`, a coluna `Data Execucao` era exportada como texto formatado.
+- Solucao:
+  - `buildEnelNovoWorkbookData` passa a enviar a data de execucao como serial numerico do Excel.
+  - O workbook aplica formato `dd/mm/yyyy` na coluna D antes de gerar o arquivo `.xlsb`.
+- Mapa de Codigo:
+  - `src/modules/dashboard/programacao-normalizada/utils.ts`: adiciona `toExcelDateSerial`.
+  - `src/modules/dashboard/programacao-normalizada/exports.ts`: usa o serial de data na coluna `Data Execucao`.
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`: aplica o formato de data na planilha.
+  - `src/lib/utils/xlsx.ts`: helper compartilhado para formatar coluna de data em worksheets.
+- Comportamento antes/depois:
+  - Antes: Excel lia `Data Execucao` como texto.
+  - Depois: Excel abre a coluna como data, mantendo visual `dd/mm/yyyy`.
+- Como validar:
+  - Abrir Programacao Normalizada, gerar `Extracao ENEL NOVO` e confirmar no Excel que a coluna D permite filtro/ordenacao por data.
+- Impacto multi-tenant:
+  - Nenhuma query, RLS, migration, endpoint ou escopo de tenant alterado.

@@ -165,11 +165,16 @@ export function normalizeSgdNumberForExport(value: string | null | undefined) {
   return normalized.split("/").map((segment) => segment.trim()).filter(Boolean).join(" / ");
 }
 
-export function formatDateExecutionEnelNovo(value: string) {
+export function toExcelDateSerial(value: string | null | undefined) {
   const normalized = String(value ?? "").trim();
   const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return normalized;
-  return `${match[3]}/${match[2]}/${match[1]}`;
+  if (!match) return "";
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utcTime = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(utcTime)) return "";
+  return (utcTime / 86400000) + 25569;
 }
 
 export function formatWeekdayExecutionEnelNovo(value: string) {

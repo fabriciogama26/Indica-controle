@@ -9,6 +9,7 @@ import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { supabase } from "@/lib/supabase/client";
 import styles from "./ProgrammingSimplePageView.module.css";
 import { downloadCsvFile } from "@/lib/utils/csv";
+import { formatWorksheetDateColumn } from "@/lib/utils/xlsx";
 import {
   ProgrammingAddTeamModal,
   ProgrammingAlertModal,
@@ -2332,6 +2333,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
 
       const XLSX = await import("xlsx");
       const worksheet = XLSX.utils.aoa_to_sheet([workbookData.header, ...workbookData.rows]);
+      formatWorksheetDateColumn(worksheet, { columnLetter: "D", dataRowCount: workbookData.rows.length });
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "EXTRACAO_ENEL");
       const workbookArray = XLSX.write(workbook, {

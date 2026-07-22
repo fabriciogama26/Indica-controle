@@ -5,7 +5,6 @@ import {
   extractTextBeforeDash,
   formatAuditActor,
   formatDate,
-  formatDateExecutionEnelNovo,
   formatDateTime,
   formatExpectedHours,
   formatExpectedTimeAsClock,
@@ -20,6 +19,7 @@ import {
   resolveEnelNovoStatus,
   resolveScheduleTeamInfo,
   resolveTeamStructureCode,
+  toExcelDateSerial,
 } from "./utils";
 
 type CsvValue = string | number;
@@ -560,7 +560,7 @@ export function buildEnelNovoWorkbookData({ schedules, projectMap, teamMap }: Ex
       extractTextAfterDash(project?.base ?? ""),
       project?.serviceType ?? "",
       project?.code ?? "",
-      formatDateExecutionEnelNovo(schedule.date),
+      toExcelDateSerial(schedule.date),
       formatWeekdayExecutionEnelNovo(schedule.date),
       resolveEnelNovoPeriod(schedule.startTime, schedule.endTime),
       schedule.startTime ?? "",

@@ -4,7 +4,6 @@ import {
   extractTextAfterDash,
   extractTextBeforeDash,
   formatDate,
-  formatDateExecutionEnelNovo,
   formatDateTime,
   formatExpectedHours,
   formatExpectedTimeAsClock,
@@ -20,6 +19,7 @@ import {
   normalizeSgdNumberForExport,
   resolveEnelNovoPeriod,
   resolveTeamStructureCode,
+  toExcelDateSerial,
 } from "./utils";
 import type { ElectricalEqCatalogItem, ProjectItem, SgdTypeItem, StageListItem, SupportOptionItem, TeamItem } from "./types";
 
@@ -320,7 +320,7 @@ export function buildEnelNovoWorkbookData({ stages, projectMap, teamMap, sgdType
       extractTextAfterDash(project?.base ?? ""),
       project?.serviceType ?? "",
       stage.projectCode || project?.code || "",
-      formatDateExecutionEnelNovo(stage.executionDate ?? ""),
+      toExcelDateSerial(stage.executionDate),
       formatWeekdayExecutionEnelNovo(stage.executionDate ?? ""),
       resolveEnelNovoPeriod(stage.startTime, stage.endTime),
       (stage.startTime ?? "").slice(0, 5),

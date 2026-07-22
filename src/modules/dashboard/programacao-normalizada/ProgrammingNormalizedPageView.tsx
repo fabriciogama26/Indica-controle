@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { downloadCsvFile } from "@/lib/utils/csv";
+import { formatWorksheetDateColumn } from "@/lib/utils/xlsx";
 
 import { AddTeamModal, CancelModal, DetailsModal, HistoryModal, PostponeModal } from "./components";
 import { STAGE_LIST_PAGE_SIZE, createDefaultListFilters } from "./constants";
@@ -165,6 +166,7 @@ export function ProgrammingNormalizedPageView() {
 
       const XLSX = await import("xlsx");
       const worksheet = XLSX.utils.aoa_to_sheet([workbookData.header, ...workbookData.rows]);
+      formatWorksheetDateColumn(worksheet, { columnLetter: "D", dataRowCount: workbookData.rows.length });
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "EXTRACAO_ENEL");
       const workbookArray = XLSX.write(workbook, { bookType: "xlsb", type: "array" }) as ArrayBuffer;

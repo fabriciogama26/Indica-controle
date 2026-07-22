@@ -3033,3 +3033,23 @@ Atualizacao 2026-07-09 - Planejamento de ETAPA automatica entre datas
   - `docs/Mapa_Regras_Programacao.md`
   - `docs/Fluxo_Programacao.md`
   - `TASKS.md`
+
+Atualizacao 2026-07-22 - Data Execucao como data no ENEL NOVO
+--------------------------------------------------------------
+- Problema resolvido:
+  - Na `Extracao ENEL NOVO`, a coluna `Data Execucao` era exportada como texto formatado.
+- Solucao:
+  - `buildEnelNovoWorkbookData` passa a enviar a data de execucao como serial numerico do Excel.
+  - O workbook aplica formato `dd/mm/yyyy` na coluna D antes de gerar o arquivo `.xlsb`.
+- Mapa de Codigo:
+  - `src/modules/dashboard/programacao-simples/utils.ts`: adiciona `toExcelDateSerial`.
+  - `src/modules/dashboard/programacao-simples/exports.ts`: usa o serial de data na coluna `Data Execucao`.
+  - `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`: aplica o formato de data na planilha.
+  - `src/lib/utils/xlsx.ts`: helper compartilhado para formatar coluna de data em worksheets.
+- Comportamento antes/depois:
+  - Antes: Excel lia `Data Execucao` como texto.
+  - Depois: Excel abre a coluna como data, mantendo visual `dd/mm/yyyy`.
+- Como validar:
+  - Abrir Programacao Simples, gerar `Extracao ENEL NOVO` e confirmar no Excel que a coluna D permite filtro/ordenacao por data.
+- Impacto multi-tenant:
+  - Nenhuma query, RLS, migration, endpoint ou escopo de tenant alterado.

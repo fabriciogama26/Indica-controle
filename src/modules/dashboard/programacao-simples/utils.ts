@@ -266,22 +266,22 @@ export function formatExpectedTimeAsClock(value: number) {
   return `${String(hours).padStart(2, "0")}:${String(remainderMinutes).padStart(2, "0")}:00`;
 }
 
-export function formatDateExecutionEnelNovo(value: string) {
+export function toExcelDateSerial(value: string | null | undefined) {
   const normalized = String(value ?? "").trim();
-  if (!normalized) {
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
     return "";
   }
 
-  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return normalized;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utcTime = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(utcTime)) {
+    return "";
   }
 
-  const day = match[3];
-  const month = match[2];
-  const year = match[1];
-
-  return `${day}/${month}/${year}`;
+  return (utcTime / 86400000) + 25569;
 }
 
 export function formatWeekdayExecutionEnelNovo(value: string) {
