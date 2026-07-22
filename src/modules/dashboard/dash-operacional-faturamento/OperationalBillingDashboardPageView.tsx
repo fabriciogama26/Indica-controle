@@ -8,6 +8,7 @@ import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import styles from "./OperationalBillingDashboardPageView.module.css";
+import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDate } from "@/lib/utils/formatters";
 
 type Option = {
@@ -261,6 +262,11 @@ function formatSignedCurrency(value: number) {
   return formatCurrency(0);
 }
 
+function formatCsvCurrencyValue(value: number) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  return safeValue.toFixed(2).replace(".", ",");
+}
+
 function formatPercent(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "Sem base";
   return new Intl.NumberFormat("pt-BR", {
@@ -270,25 +276,10 @@ function formatPercent(value: number | null) {
   }).format(value);
 }
 
-function csvValue(value: unknown) {
-  const text = String(value ?? "");
-  if (/[;\n"]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
-
 function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
-  const content = rows.map((row) => row.map(csvValue).join(";")).join("\n");
-  const blob = new Blob([`\uFEFF${content}`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  const [headers, ...dataRows] = rows;
+  if (!headers) return;
+  downloadCsvFile(buildCsvContent(headers.map(String), dataRows), filename);
 }
 
 function filenameToken(value: string) {
@@ -976,15 +967,15 @@ export function OperationalBillingDashboardPageView() {
         row.unit,
         row.activityStatus,
         row.measurement.quantity,
-        formatCurrency(row.measurement.value),
+        formatCsvCurrencyValue(row.measurement.value),
         row.asbuilt.quantity,
-        formatCurrency(row.asbuilt.value),
+        formatCsvCurrencyValue(row.asbuilt.value),
         row.billing.quantity,
-        formatCurrency(row.billing.value),
+        formatCsvCurrencyValue(row.billing.value),
         row.quantityDiffAsbuiltMeasurement,
         row.quantityDiffBillingMeasurement,
-        formatCurrency(row.valueDiffAsbuiltMeasurement),
-        formatCurrency(row.valueDiffBillingMeasurement),
+        formatCsvCurrencyValue(row.valueDiffAsbuiltMeasurement),
+        formatCsvCurrencyValue(row.valueDiffBillingMeasurement),
         row.situation,
       ]),
     ]);
@@ -1013,8 +1004,8 @@ export function OperationalBillingDashboardPageView() {
         serviceCenterName,
         row.label,
         ...categoryColumns.map((category) => row.categories[category.categoryId]?.quantity ?? 0),
-        ...categoryColumns.map((category) => formatCurrency(row.categories[category.categoryId]?.value ?? 0)),
-        formatCurrency(row.totalValue),
+        ...categoryColumns.map((category) => formatCsvCurrencyValue(row.categories[category.categoryId]?.value ?? 0)),
+        formatCsvCurrencyValue(row.totalValue),
       ]),
     ]);
   }
@@ -1042,22 +1033,22 @@ export function OperationalBillingDashboardPageView() {
         row.serviceCenter,
         row.workCompletionStatusLabel,
         row.serviceTypeName || "Nao informado",
-        formatCurrency(row.measurementValue),
-        formatCurrency(row.asbuiltValue),
-        formatCurrency(row.billingValue),
-        formatSignedCurrency(row.asbuiltMeasurementDiff),
-        formatSignedCurrency(row.billingAsbuiltDiff),
+        formatCsvCurrencyValue(row.measurementValue),
+        formatCsvCurrencyValue(row.asbuiltValue),
+        formatCsvCurrencyValue(row.billingValue),
+        formatCsvCurrencyValue(row.asbuiltMeasurementDiff),
+        formatCsvCurrencyValue(row.billingAsbuiltDiff),
       ]),
       [
         "TOTAL",
         "",
         "",
         "",
-        formatCurrency(projectValueTotals.measurementValue),
-        formatCurrency(projectValueTotals.asbuiltValue),
-        formatCurrency(projectValueTotals.billingValue),
-        formatSignedCurrency(projectValueTotals.asbuiltMeasurementDiff),
-        formatSignedCurrency(projectValueTotals.billingAsbuiltDiff),
+        formatCsvCurrencyValue(projectValueTotals.measurementValue),
+        formatCsvCurrencyValue(projectValueTotals.asbuiltValue),
+        formatCsvCurrencyValue(projectValueTotals.billingValue),
+        formatCsvCurrencyValue(projectValueTotals.asbuiltMeasurementDiff),
+        formatCsvCurrencyValue(projectValueTotals.billingAsbuiltDiff),
       ],
     ]);
   }
@@ -2007,7 +1998,7 @@ export function OperationalBillingDashboardPageView() {
                         ...chartProjectDetailRows.map((row) => [
                           row.projectCode,
                           row.serviceCenter,
-                          row.value,
+                          formatCsvCurrencyValue(row.value),
                           row.orderCount,
                           row.rate ?? "",
                           row.asbuiltFaixaEnd ?? "",

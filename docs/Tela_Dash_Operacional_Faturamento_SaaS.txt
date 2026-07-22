@@ -79,7 +79,7 @@ Filtros, auto-complete e listagem
 - A tabela `Resumo por categoria` possui exportacao CSV propria.
 - O subtitulo do bloco `Resumo por categoria` exibe `Projeto | Centro de servico` do projeto selecionado, no mesmo formato de `Codigos por origem`, e exibe `Selecione Centro de servico e Projeto.` quando nao ha projeto selecionado.
 - As exportacoes CSV incluem o numero do Projeto (SOB) e o Centro de servico em todas as linhas.
-- As colunas de valor nas exportacoes CSV saem formatadas como moeda (`R$`).
+- As colunas de valor nas exportacoes CSV saem como numero decimal sem simbolo de moeda, usando virgula decimal, para permitir soma direta em planilhas brasileiras.
 - O nome dos arquivos CSV inclui o numero do Projeto (SOB), por exemplo `dash_operacional_faturamento_categorias_A044811036.csv`.
 - A tela possui exportacao CSV do resultado filtrado.
 - O botao `Exportar CSV` fica no bloco da tabela, acima do resumo de valores de Medicao, Asbuilt e Faturamento.
@@ -450,3 +450,24 @@ Atualizacao 2026-07-17 (projeto/centro no Resumo por categoria)
   - Depois: o subtitulo exibe `Projeto | Centro de servico` igual a `Codigos por origem`, com fallback `Selecione Centro de servico e Projeto.` quando nenhum projeto esta selecionado.
 - Impacto multi-tenant:
   - Sem alteracao de API, query, schema, RLS ou permissao; usa dado ja carregado na tela.
+
+Atualizacao 2026-07-22 (valores monetarios no CSV)
+--------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - `docs/Tela_Dash_Operacional_Faturamento_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `formatCsvCurrencyValue`
+  - `downloadCsv`
+  - `exportRows`
+  - `exportCategorySummary`
+  - `exportProjectValues`
+  - exportacao CSV do modal `Projetos do indicador`
+- Comportamento antes/depois:
+  - Antes: colunas monetarias dos CSVs eram exportadas com `R$` e, em alguns casos, sinal `+`, levando planilhas a abrir os valores como texto.
+  - Depois: colunas monetarias saem sem simbolo de moeda, com duas casas decimais e virgula decimal, mantendo valores negativos com `-`, para permitir soma direta.
+  - A tela continua exibindo valores em moeda (`R$`) na interface; a mudanca afeta somente os arquivos CSV.
+  - O helper local `downloadCsv` passa a usar `buildCsvContent` e `downloadCsvFile` de `src/lib/utils/csv.ts`.
+- Impacto multi-tenant:
+  - Sem alteracao de API, query, schema, RLS ou permissao; usa somente dados ja carregados no front autenticado.
