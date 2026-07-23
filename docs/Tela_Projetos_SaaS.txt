@@ -657,9 +657,16 @@ Atualizacao adicional 2026-07 - selecao de previstos por datalist
   - `findProjectActivityForecastCatalogItem`
   - `handleForecastSearchChange`
   - `handleActivityForecastSearchChange`
+  - `buildImportErrorReport`
+  - `isImportResponseFailure`
+  - `submitForecastImport`
+  - `submitActivityForecastImport`
   - estados `selectedProjectForecastOption` e `selectedProjectActivityForecastOption`
 - Comportamento antes/depois:
   - Antes: ao selecionar um item no `datalist`, o texto completo `codigo - descricao` disparava nova busca; quando a API nao retornava essa string composta, o catalogo local era esvaziado e a inclusao manual falhava como item invalido.
   - Depois: a opcao selecionada fica persistida separadamente do resultado da busca, aceita comparacao normalizada por `codigo` ou `codigo - descricao`, preenche a unidade/UMB e permite adicionar o previsto selecionado.
   - Depois: troca de projeto, limpeza do campo e inclusao bem-sucedida limpam a selecao para evitar reaproveitamento indevido.
+  - Antes: `Cadastro em massa` podia receber HTTP 207 de importacao parcial e ainda assim ser tratado pelo frontend como sucesso, sem destacar `projectsFailed` no CSV de erros.
+  - Depois: respostas `success=false` ou `partial=true` sao tratadas como falha parcial, mantem o modal aberto, mostram os projetos com erro no feedback e adicionam `projectsFailed` ao CSV.
+  - Depois: quando existe projeto selecionado na aba, a lista e recarregada mesmo em importacao parcial para refletir linhas que foram inseridas com sucesso.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao; a validacao do catalogo continua restrita ao tenant autenticado nas rotas existentes.
