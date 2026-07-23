@@ -6,8 +6,10 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 
 import {
   CancelModal,
+  CorrectDateModal,
   DetailsModal,
   HistoryModal,
+  PendenciaModal,
   PostponeModal,
   StageCard,
   StageFormPanel,
@@ -91,6 +93,16 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
   const [cancelTarget, setCancelTarget] = useState<ProgrammingStage | null>(null);
   const [cancelReasonCode, setCancelReasonCode] = useState("");
   const [cancelReasonNotes, setCancelReasonNotes] = useState("");
+
+  const [pendenciaTarget, setPendenciaTarget] = useState<ProgrammingStage | null>(null);
+  const [pendenciaNext, setPendenciaNext] = useState(false);
+  const [pendenciaReason, setPendenciaReason] = useState("");
+  const [pendenciaDescription, setPendenciaDescription] = useState("");
+  const [pendenciaOriginId, setPendenciaOriginId] = useState("");
+
+  const [correctDateTarget, setCorrectDateTarget] = useState<ProgrammingStage | null>(null);
+  const [correctDateValue, setCorrectDateValue] = useState("");
+  const [correctDateReason, setCorrectDateReason] = useState("");
 
   const [detailsTarget, setDetailsTarget] = useState<ProgrammingStage | null>(null);
 
@@ -226,6 +238,45 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
     if (result.ok) setCancelTarget(null);
   }
 
+  function openPendenciaModal(stage: ProgrammingStage, next: boolean) {
+    setPendenciaTarget(stage);
+    setPendenciaNext(next);
+    setPendenciaReason("");
+    setPendenciaDescription("");
+    setPendenciaOriginId("");
+  }
+
+  async function confirmPendencia() {
+    if (!pendenciaTarget) return;
+    const reason = pendenciaReason.trim();
+    if (!reason) return;
+
+    const result = await actions.togglePendencia(
+      pendenciaTarget.id,
+      pendenciaNext,
+      reason,
+      pendenciaTarget.updatedAt,
+      pendenciaNext ? pendenciaDescription.trim() : null,
+      pendenciaNext ? pendenciaOriginId || null : null,
+    );
+    if (result.ok) setPendenciaTarget(null);
+  }
+
+  function openCorrectDateModal(stage: ProgrammingStage) {
+    setCorrectDateTarget(stage);
+    setCorrectDateValue(stage.executionDate ?? "");
+    setCorrectDateReason("");
+  }
+
+  async function confirmCorrectDate() {
+    if (!correctDateTarget) return;
+    const reason = correctDateReason.trim();
+    if (!correctDateValue || !reason) return;
+
+    const result = await actions.correctDate(correctDateTarget.id, correctDateValue, reason, correctDateTarget.updatedAt);
+    if (result.ok) setCorrectDateTarget(null);
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.planHeader}>
@@ -296,7 +347,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
               onCancel={() => openCancelModal(stage)}
               onComplete={() => actions.complete(stage.id, stage.updatedAt)}
               onReopen={() => actions.reopen(stage.id, stage.updatedAt)}
-              onTogglePendencia={(next) => actions.togglePendencia(stage.id, next, stage.updatedAt)}
+              onTogglePendencia={(next) => openPendenciaModal(stage, next)}
+              onCorrectDate={() => openCorrectDateModal(stage)}
               onDetails={() => setDetailsTarget(stage)}
               onHistory={() => historyModal.openHistory(stage)}
             />
@@ -318,6 +370,32 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         onNewDateChange={setPostponeDate}
         onReasonCodeChange={setPostponeReasonCode}
         onReasonNotesChange={setPostponeReasonNotes}
+      />
+
+      <PendenciaModal
+        target={pendenciaTarget}
+        nextValue={pendenciaNext}
+        reason={pendenciaReason}
+        description={pendenciaDescription}
+        originId={pendenciaOriginId}
+        originOptions={sortedStages.filter((item) => item.id !== pendenciaTarget?.id && Boolean(item.workCompletionStatus))}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setPendenciaTarget(null)}
+        onConfirm={confirmPendencia}
+        onReasonChange={setPendenciaReason}
+        onDescriptionChange={setPendenciaDescription}
+        onOriginChange={setPendenciaOriginId}
+      />
+
+      <CorrectDateModal
+        target={correctDateTarget}
+        newDate={correctDateValue}
+        reason={correctDateReason}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setCorrectDateTarget(null)}
+        onConfirm={confirmCorrectDate}
+        onNewDateChange={setCorrectDateValue}
+        onReasonChange={setCorrectDateReason}
       />
 
       <CancelModal

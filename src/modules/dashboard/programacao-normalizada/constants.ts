@@ -18,6 +18,12 @@ export const STATUS_CHIP_OPTIONS: Array<{ value: StageListStatusChip; label: str
   { value: "PENDENCIAS", label: "Pendencias abertas" },
   { value: "ATRASADAS", label: "Atrasadas" },
   { value: "ADIADAS", label: "Adiadas" },
+  // "Em espera" = ADIADA sem data (Adiar > Deixar em espera). Ignora o filtro de
+  // periodo de proposito: essas etapas nao tem data (achado 9).
+  { value: "EM_ESPERA", label: "Em espera" },
+  // Interseccao operacional (migration 330): pendencia aberta + vencida + sem
+  // Estado do Trabalho lancado. Tambem ignora o filtro de periodo.
+  { value: "SEM_RETORNO", label: "Pendencias sem retorno" },
 ];
 
 export function createDefaultListFilters(todayIso: string): StageListFilters {
@@ -143,6 +149,7 @@ export const HISTORY_ACTION_LABELS: Record<string, string> = {
   SET_WORK_COMPLETION_STATUS: "Estado do trabalho",
   CHANGE_COMPLETED_WORK_STATUS: "Saida de Concluido",
   SET_PENDENCIA_FLAG: "Pendencia",
+  CORRECT_STAGE_DATE: "Correcao de data",
 };
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
@@ -168,6 +175,7 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   status: "Status",
   workCompletionStatus: "Estado Trabalho",
   isPendencia: "Pendencia",
+  resolvePendenciaDeId: "Etapa de origem da pendencia",
   newProgrammingId: "Nova etapa (adiamento)",
   sourceProgrammingId: "Etapa de origem",
   anticipatedById: "Etapa que antecipou",

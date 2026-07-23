@@ -81,6 +81,27 @@ export function getStageStatusDisplayLabel(stage: { status: string; isPendencia:
   return getStageStatusLabel(stage.status);
 }
 
+// Marcador derivado "sem retorno" (migration 330): pendencia aberta cuja data de
+// execucao ja passou e que ainda nao teve o Estado do Trabalho lancado. Retorna
+// ha quantos dias esta sem retorno, ou null quando nao se aplica. `todayIso` DEVE
+// vir do servidor (a lista devolve `today`), nunca de new Date() no navegador.
+export function getPendenciaSemRetornoDays(
+  stage: { isPendencia: boolean; status: string; workCompletionStatus: string | null; executionDate: string | null },
+  todayIso: string | null,
+): number | null {
+  if (!todayIso) return null;
+  if (!stage.isPendencia) return null;
+  if (!isActiveStageStatus(stage.status)) return null;
+  if (stage.workCompletionStatus) return null;
+  if (!stage.executionDate || stage.executionDate >= todayIso) return null;
+
+  const [ey, em, ed] = stage.executionDate.split("-").map(Number);
+  const [ty, tm, td] = todayIso.split("-").map(Number);
+  const diffMs = Date.UTC(ty, tm - 1, td) - Date.UTC(ey, em - 1, ed);
+  const days = Math.round(diffMs / 86400000);
+  return days > 0 ? days : null;
+}
+
 export function getWorkCompletionLabel(code: string | null) {
   if (!code) return "Em branco";
   return WORK_COMPLETION_LABELS[code] ?? code;

@@ -2,13 +2,18 @@
 
 Documento de estrutura. Data: 2026-07-12. Supersede o rascunho anterior.
 Complementa `Fluxo_Programacao.md`, `Mapa_Regras_Programacao.md` e `design_realtime_programacao_2026-07.md`.
-Status: PARCIALMENTE APLICADA. Migrations 310–318 e o módulo `programacao-normalizada`
+Status: PARCIALMENTE APLICADA. Migrations 310–318 e 320–330 e o módulo `programacao-normalizada`
 (front + server) já implementam o modelo. Pendente: importação em massa por Excel (§16),
 herança template+override no cadastro (§9), copiar/transferir equipe e vínculo
 `resolve_pendencia_de_id` (colunas existem, sem RPC que escreva).
 A migration 318 (pendência como flag booleana `is_pendencia` + Adiar in-place com
 "deixar em espera") supersede a 317 (que modelava pendência como status espelhado) — ver
 §2, §3.1, §3.2, §4, §4.2, §6, §9, §10.
+
+NUMERAÇÃO: há DOIS arquivos com o número 318 (`318_allow_generic_pending_serial_identification`
+de outro domínio e `318_pendencia_as_boolean_flag` deste modelo) — ambos já aplicados, portanto
+nenhum foi renomeado. O número **319 não existe** e fica vago. Sequência real: 310–318 (dois no
+318) · 319 vago · 320–330. Detalhes em `Mapa_Regras_Programacao.md`.
 
 ---
 
@@ -136,7 +141,7 @@ Onde fica a checkbox (dois lugares, papéis distintos):
 No formulário "Nova etapa": cria a etapa já nascendo com is_pendencia = true. É isto que aciona a exceção da trava — o backend só libera gravar numa obra CONCLUIDO se a etapa vier com pendência marcada. Sem marcar, projeto concluído bloqueia e pede reabrir.
 No card da etapa: liga/desliga is_pendencia de uma etapa que já existe (rastreio).
 
-Ponto a confirmar: ao concluir uma etapa que está com is_pendencia = true, a flag fica (rastreio histórico de que foi pendência) ou é limpa? Default proposto: fica, e o Estado Trabalho CONCLUIDO prevalece na exibição.
+RESOLVIDO: ao concluir uma etapa com is_pendencia = true, a flag FICA (rastreio histórico) e o Estado Trabalho CONCLUIDO prevalece na exibição.
 
 O vínculo resolve_pendencia_de_id (seção 7) permanece opcional, para rastreio.
 
@@ -250,17 +255,23 @@ Fundem/cortam: Reprogramar não é botão — sai do Adiar com nova data. Copiar
 
 Novas/alteradas, todas SECURITY DEFINER, chamadas server-side, transacionais:
 
-reclassify_project_stages(tenant, project) — coração (esqueleto na seção 12).
-save_project_programming_plan(...) — cria/edita etapas do plano com herança; chama reclassify + checagem de conflito.
-insert_project_programming_stage(...) — insere no meio/depois; usa reclassify.
+reclassify_project_programming_stages(tenant, project, actor) — coração (esqueleto na seção 12).
+save_project_programming_stage(...) — cria/edita a etapa (cadastro + equipes + atividades +
+documentos); chama reclassify + checagem de conflito. NOTA: os nomes antigos
+`save_project_programming_plan` e `insert_project_programming_stage` NAO existem no codigo —
+as duas operacoes foram unificadas nesta RPC.
 remove_project_programming_team(programming_team_id, expectedUpdatedAt) — marca equipe REMOVIDA; libera agenda; histórico REMOVE_TEAM.
 add_project_programming_team(...) — filha nova; checa conflito.
-mark_project_completed_and_anticipate(...) — conclui, antecipa por data, reclassify.
-reopen_project_completed(...) — restaura antecipadas, reclassify.
-postpone / cancel de etapa — passam a chamar reclassify.
-12. Esqueleto de reclassify_project_stages
+mark_project_programming_completed_and_anticipate(...) — conclui, antecipa por data, reclassify.
+reopen_project_programming_completed(...) — restaura antecipadas, reclassify.
+postpone_project_programming_stage / cancel_project_programming_stage — chamam reclassify.
+Também existem: set_project_programming_work_completion_status, change_completed_stage_work_status,
+set_project_programming_pendencia_flag, correct_project_programming_stage_date,
+programming_list_project_page, programming_team_schedule_conflict,
+programming_project_has_active_completion e append_programming_history_record.
+12. Esqueleto de reclassify_project_programming_stages
 sql
-create or replace function reclassify_project_stages(p_tenant_id uuid, p_project_id uuid)
+create or replace function reclassify_project_programming_stages(p_tenant_id uuid, p_project_id uuid, p_actor_user_id uuid default null)
 returns void
 language plpgsql
 security definer
@@ -416,7 +427,7 @@ import_job: id, tenant_id, user, page_key, file_path, status (uploaded/validatin
 import_row: import_job_id, row_number, payload bruto (jsonb), campos parseados, project_id/team_ids resolvidos, validation_status, errors (jsonb).
 Prévia/dry-run lê do import_row — mostra o que será criado e os erros por linha, sem tocar no banco final.
 
-Fase 2 — confirmar e gravar: 4. Ao confirmar, o commit lê as linhas válidas, agrupa por projeto e, numa transação por projeto (lock por projeto): cria programming + programming_team + atividades, roda reclassify_project_stages e revalida conflitos como última barreira. 5. Estampa import_batch_id nas linhas criadas; import_job → committed. Relatório final: criados / ignorados / erros.
+Fase 2 — confirmar e gravar: 4. Ao confirmar, o commit lê as linhas válidas, agrupa por projeto e, numa transação por projeto (lock por projeto): cria programming + programming_team + atividades, roda reclassify_project_programming_stages e revalida conflitos como última barreira. 5. Estampa import_batch_id nas linhas criadas; import_job → committed. Relatório final: criados / ignorados / erros.
 
 Benefícios sobre o modelo direto: arquivo guardado (auditoria/reprocessamento), erros persistidos e revisáveis sem re-upload, planilha grande não morre numa requisição (processo em lote/fila, sem estourar tempo/memória da Edge Function), e idempotência por import_batch_id (reenviar não duplica; chave natural projeto+data decide ignorar/atualizar/barrar).
 

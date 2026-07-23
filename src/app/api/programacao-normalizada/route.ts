@@ -9,6 +9,7 @@ import {
   cancelProgrammingStage,
   changeCompletedStageWorkStatus,
   completeProgrammingStage,
+  correctProgrammingStageDate,
   getProgrammingHistoryResponse,
   postponeProgrammingStage,
   reopenProgrammingStage,
@@ -31,7 +32,7 @@ import type {
   ServiceActivityRow,
 } from "@/server/modules/programacao-normalizada/types";
 
-const STAGE_LIST_STATUS_CHIPS: ProgrammingStageListStatusChip[] = ["TODAS", "PROGRAMADAS", "PENDENCIAS", "ATRASADAS", "ADIADAS"];
+const STAGE_LIST_STATUS_CHIPS: ProgrammingStageListStatusChip[] = ["TODAS", "PROGRAMADAS", "PENDENCIAS", "ATRASADAS", "ADIADAS", "EM_ESPERA", "SEM_RETORNO"];
 const STAGE_LIST_MAX_PAGE_SIZE = 100;
 // Exportacao (CSV/ENEL/ENEL NOVO) ignora a paginacao de tela e busca tudo que
 // bate no filtro atual, ate este teto (guia_backend regra 26 — limite explicito).
@@ -77,6 +78,7 @@ async function getProgrammingStageListResponse(request: NextRequest, resolution:
       supabase: resolution.supabase,
       filters: { tenantId: resolution.appUser.tenant_id, dateFrom, dateTo, statusChip, teamIds, search, municipality, page, pageSize },
       projectIdsFromSearch,
+      forExport: isExportRequest,
     });
     rows = result.rows;
     total = result.total;
@@ -107,12 +109,13 @@ async function getProgrammingStageListResponse(request: NextRequest, resolution:
     };
   });
 
-  // Truncamento (achado 13): no export (page 1, pageSize = teto) a lista pagina
-  // por PROJETO. Se ha mais projetos que o teto, o export saiu parcial.
-  const returnedProjectCount = new Set(list.map((item) => item.projectId)).size;
-  const truncated = isExportRequest && total > returnedProjectCount;
+  // Truncamento (achado 13/6): no export o teto e por ETAPA e `total` ja vem
+  // como total de etapas do filtro — o aviso consegue dizer "X de Y".
+  const truncated = isExportRequest && total > list.length;
 
-  return NextResponse.json({ list, total, page, pageSize, dateFrom, dateTo, truncated });
+  // `today` vai na resposta para o marcador "sem retorno ha N dias" usar a data
+  // do SERVIDOR, nunca o relogio do navegador (divergencia perto da meia-noite).
+  return NextResponse.json({ list, total, page, pageSize, dateFrom, dateTo, truncated, today });
 }
 
 function mapStageRowToDto(
@@ -299,6 +302,7 @@ export async function PATCH(request: NextRequest) {
   if (action === "SET_WORK_COMPLETION_STATUS") return setProgrammingWorkCompletionStatus(request, payload ?? {});
   if (action === "CHANGE_COMPLETED_WORK_STATUS") return changeCompletedStageWorkStatus(request, payload ?? {});
   if (action === "SET_PENDENCIA") return setProgrammingPendenciaFlag(request, payload ?? {});
+  if (action === "CORRECT_DATE") return correctProgrammingStageDate(request, payload ?? {});
 
   return NextResponse.json({ message: "Acao invalida." }, { status: 400 });
 }

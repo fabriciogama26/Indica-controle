@@ -11,6 +11,7 @@ import {
   postponeProgrammingStageViaRpc,
   reopenProgrammingStageViaRpc,
   removeProgrammingTeamViaRpc,
+  correctProgrammingStageDateViaRpc,
   saveProgrammingStageViaRpc,
   setProgrammingPendenciaFlagViaRpc,
   setProgrammingWorkCompletionStatusViaRpc,
@@ -34,12 +35,30 @@ import type {
   RemoveTeamPayload,
   ReopenStagePayload,
   ChangeCompletedWorkStatusPayload,
+  CorrectStageDatePayload,
   SaveProgrammingStagePayload,
   SetPendenciaFlagPayload,
   SetWorkCompletionStatusPayload,
 } from "./types";
 
 export const PROGRAMMING_NORMALIZADA_PAGE_KEY = "programacao-normalizada";
+
+// Permissoes granulares por operacao (padrao CLAUDE.md: page_key propria checada
+// DENTRO da operacao; as demais operacoes seguem sob a permissao da tela).
+// Registradas na migration 328.
+const PROGRAMMING_COMPLETE_PAGE_KEY = "programacao-concluir";
+const PROGRAMMING_PENDENCIA_PAGE_KEY = "programacao-pendencia";
+const PROGRAMMING_CORRECT_DATE_PAGE_KEY = "programacao-corrigir-data";
+
+async function authorizeGranularAction(context: AuthenticatedAppUserContext, pageKey: string) {
+  const authorization = await requirePageAction({ context, pageKey, action: "read" });
+  if (authorization.allowed) return null;
+
+  return NextResponse.json(
+    { message: authorization.error.message, code: authorization.error.code },
+    { status: authorization.error.status },
+  );
+}
 
 function normalizeDocumentsPayload(documents: SaveProgrammingStagePayload["documents"] | undefined) {
   const normalized: Record<string, { number: string | null; includedAt: string | null; deliveredAt: string | null }> = {};
@@ -113,6 +132,14 @@ export async function saveProgrammingStage(request: NextRequest, method: "POST" 
     return NextResponse.json({ message: "Atualize a etapa antes de salvar novamente." }, { status: 409 });
   }
 
+  // Criar/salvar etapa marcada como Pendencia exige a permissao propria (a flag
+  // libera a excecao da trava de projeto concluido) — padrao granular do CLAUDE.md.
+  const isPendencia = payload?.isPendencia === true;
+  if (isPendencia) {
+    const pendenciaError = await authorizeGranularAction(resolution, PROGRAMMING_PENDENCIA_PAGE_KEY);
+    if (pendenciaError) return pendenciaError;
+  }
+
   const teamIds = payload?.teamIds === undefined ? null : normalizeUniqueTextArray(payload.teamIds);
 
   const result = await saveProgrammingStageViaRpc({
@@ -144,7 +171,7 @@ export async function saveProgrammingStage(request: NextRequest, method: "POST" 
     redeQty: normalizeNonNegativeDecimal(payload?.redeQty),
     note: normalizeNullableText(payload?.note),
     historyReason: normalizeNullableText(payload?.historyReason),
-    isPendencia: payload?.isPendencia === true,
+    isPendencia,
     documents: normalizeDocumentsPayload(payload?.documents),
     activities: normalizeActivitiesPayload(payload?.activities),
   });
@@ -295,11 +322,19 @@ export async function setProgrammingPendenciaFlag(request: NextRequest, payload:
   const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
   if (authorizationError) return authorizationError;
 
+  const pendenciaError = await authorizeGranularAction(resolution, PROGRAMMING_PENDENCIA_PAGE_KEY);
+  if (pendenciaError) return pendenciaError;
+
   const programmingId = normalizeText(payload?.programmingId);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+  const reason = normalizeNullableText(payload?.reason);
 
   if (!programmingId) {
     return NextResponse.json({ message: "Informe a etapa a alterar." }, { status: 400 });
+  }
+
+  if (!reason) {
+    return NextResponse.json({ message: "Informe o motivo para marcar/desmarcar a pendencia." }, { status: 400 });
   }
 
   if (!expectedUpdatedAt) {
@@ -312,6 +347,9 @@ export async function setProgrammingPendenciaFlag(request: NextRequest, payload:
     actorUserId: resolution.appUser.id,
     programmingId,
     isPendencia: payload?.isPendencia === true,
+    reason,
+    description: normalizeNullableText(payload?.description),
+    resolvePendenciaDeId: normalizeNullableText(payload?.resolvePendenciaDeId),
     expectedUpdatedAt,
   });
 
@@ -379,6 +417,9 @@ export async function completeProgrammingStage(request: NextRequest, payload: Co
   const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
   if (authorizationError) return authorizationError;
 
+  const completeError = await authorizeGranularAction(resolution, PROGRAMMING_COMPLETE_PAGE_KEY);
+  if (completeError) return completeError;
+
   const programmingId = normalizeText(payload?.programmingId);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
 
@@ -422,6 +463,9 @@ export async function reopenProgrammingStage(request: NextRequest, payload: Reop
 
   const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
   if (authorizationError) return authorizationError;
+
+  const completeError = await authorizeGranularAction(resolution, PROGRAMMING_COMPLETE_PAGE_KEY);
+  if (completeError) return completeError;
 
   const programmingId = normalizeText(payload?.programmingId);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
@@ -512,6 +556,9 @@ export async function changeCompletedStageWorkStatus(request: NextRequest, paylo
   const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
   if (authorizationError) return authorizationError;
 
+  const completeError = await authorizeGranularAction(resolution, PROGRAMMING_COMPLETE_PAGE_KEY);
+  if (completeError) return completeError;
+
   const programmingId = normalizeText(payload?.programmingId);
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
   const newWorkCompletionStatus = normalizeNullableText(payload?.newWorkCompletionStatus);
@@ -530,6 +577,62 @@ export async function changeCompletedStageWorkStatus(request: NextRequest, paylo
     actorUserId: resolution.appUser.id,
     programmingId,
     newWorkCompletionStatus,
+    expectedUpdatedAt,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { message: result.message, reason: result.reason ?? null, currentUpdatedAt: "currentUpdatedAt" in result ? result.currentUpdatedAt ?? null : null },
+      { status: result.status },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    programmingId: result.programmingId,
+    updatedAt: result.updatedAt,
+    message: result.message,
+  });
+}
+
+// Corrigir data (achado 10): permissao PROPRIA (programacao-corrigir-data), pois
+// aceita data para tras. Mantem o registro e o status; remarcar continua no Adiar.
+export async function correctProgrammingStageDate(request: NextRequest, payload: CorrectStageDatePayload) {
+  const resolution = await authenticate(request, "Sessao invalida para corrigir a data da etapa.");
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
+  if (authorizationError) return authorizationError;
+
+  const correctDateError = await authorizeGranularAction(resolution, PROGRAMMING_CORRECT_DATE_PAGE_KEY);
+  if (correctDateError) return correctDateError;
+
+  const programmingId = normalizeText(payload?.programmingId);
+  const newExecutionDate = normalizeIsoDate(payload?.newExecutionDate);
+  const reason = normalizeNullableText(payload?.reason);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+
+  if (!programmingId || !newExecutionDate) {
+    return NextResponse.json({ message: "Informe a etapa e a data correta." }, { status: 400 });
+  }
+
+  if (!reason) {
+    return NextResponse.json({ message: "Informe o motivo da correcao de data." }, { status: 400 });
+  }
+
+  if (!expectedUpdatedAt) {
+    return NextResponse.json({ message: "Atualize a etapa antes de corrigir a data." }, { status: 409 });
+  }
+
+  const result = await correctProgrammingStageDateViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingId,
+    newExecutionDate,
+    reason,
     expectedUpdatedAt,
   });
 

@@ -6,6 +6,7 @@ import {
   cancelProgrammingStage,
   changeCompletedStageWorkStatus,
   completeProgrammingStage,
+  correctProgrammingStageDate,
   fetchActivityCatalog,
   fetchProgrammingMeta,
   fetchProgrammingPlan,
@@ -108,6 +109,8 @@ export function useProgrammingStageList(params: {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [isLoadingList, setIsLoadingList] = useState(false);
+  // Data de referencia do SERVIDOR (marcador "sem retorno ha N dias").
+  const [listToday, setListToday] = useState<string | null>(null);
   const teamIdsKey = filters.teamIds.join(",");
 
   useEffect(() => {
@@ -122,6 +125,7 @@ export function useProgrammingStageList(params: {
       const data = await fetchProgrammingStageList({ accessToken, filters, page, pageSize: STAGE_LIST_PAGE_SIZE });
       setItems(data.list ?? []);
       setTotal(data.total ?? 0);
+      setListToday(data.today ?? null);
     } catch (error) {
       setItems([]);
       setTotal(0);
@@ -135,7 +139,7 @@ export function useProgrammingStageList(params: {
     void loadList();
   }, [loadList]);
 
-  return { items, total, page, setPage, isLoadingList, reloadList: loadList };
+  return { items, total, page, setPage, isLoadingList, listToday, reloadList: loadList };
 }
 
 export function useProgrammingPlan(params: {
@@ -275,10 +279,26 @@ export function useProgrammingStageActions(params: {
     );
   }
 
-  async function togglePendencia(programmingId: string, isPendencia: boolean, expectedUpdatedAt: string) {
+  // Motivo obrigatorio; resolvePendenciaDeId opcional (etapa de origem da sobra).
+  async function togglePendencia(
+    programmingId: string,
+    isPendencia: boolean,
+    reason: string,
+    expectedUpdatedAt: string,
+    description?: string | null,
+    resolvePendenciaDeId?: string | null,
+  ) {
     if (!accessToken) return { ok: false as const, data: null };
     return runAction<ActionResponse>("toggle_pendencia", { programmingId, isPendencia }, () =>
-      setProgrammingPendenciaFlag({ accessToken, programmingId, isPendencia, expectedUpdatedAt }),
+      setProgrammingPendenciaFlag({ accessToken, programmingId, isPendencia, reason, description, resolvePendenciaDeId, expectedUpdatedAt }),
+    );
+  }
+
+  // Corrigir data (mantem o registro e o status; remarcar continua no Adiar).
+  async function correctDate(programmingId: string, newExecutionDate: string, reason: string, expectedUpdatedAt: string) {
+    if (!accessToken) return { ok: false as const, data: null };
+    return runAction<ActionResponse>("correct_stage_date", { programmingId }, () =>
+      correctProgrammingStageDate({ accessToken, programmingId, newExecutionDate, reason, expectedUpdatedAt }),
     );
   }
 
@@ -335,5 +355,5 @@ export function useProgrammingStageActions(params: {
     return setWorkCompletionStatus(stage.id, nextValue, stage.updatedAt);
   }
 
-  return { isSubmitting, saveStage, addTeam, removeTeam, postpone, togglePendencia, cancel, complete, reopen, setWorkCompletionStatus, changeCompletedWorkStatus, changeWorkCompletionStatus };
+  return { isSubmitting, saveStage, addTeam, removeTeam, postpone, togglePendencia, correctDate, cancel, complete, reopen, setWorkCompletionStatus, changeCompletedWorkStatus, changeWorkCompletionStatus };
 }

@@ -6,7 +6,7 @@ import { CsvExportButton } from "@/components/ui/CsvExportButton";
 
 import { DATE_RANGE_SHORTCUTS, LIST_SEARCH_DEBOUNCE_MS, PENDENCIA_STATUS_LABEL, STATUS_CHIP_OPTIONS, WORK_COMPLETION_SELECT_OPTIONS } from "./constants";
 import styles from "./ProgrammingNormalizedPageView.module.css";
-import { formatDate, getStageClassificationLabel, getStageStatusLabel, getWorkCompletionLabel, isActiveStageStatus, isPendenciaPrimary } from "./utils";
+import { formatDate, getPendenciaSemRetornoDays, getStageClassificationLabel, getStageStatusLabel, getWorkCompletionLabel, isActiveStageStatus, isPendenciaPrimary } from "./utils";
 import type { StageListFilters, StageListItem, TeamItem } from "./types";
 
 type ProjectListGroup = {
@@ -104,7 +104,13 @@ export function WorkCompletionCell(props: {
   );
 }
 
+// "Em espera" e "Pendencias sem retorno" ignoram o filtro de periodo de proposito
+// (etapa em espera nao tem data; pendencia sem retorno antiga ficaria escondida).
+const PERIOD_AGNOSTIC_CHIPS: Array<StageListFilters["statusChip"]> = ["EM_ESPERA", "SEM_RETORNO"];
+
 export function StatusChips(props: { value: StageListFilters["statusChip"]; onChange: (value: StageListFilters["statusChip"]) => void }) {
+  const ignoresPeriod = PERIOD_AGNOSTIC_CHIPS.includes(props.value);
+
   return (
     <div className={styles.chipRow}>
       {STATUS_CHIP_OPTIONS.map((option) => (
@@ -117,6 +123,11 @@ export function StatusChips(props: { value: StageListFilters["statusChip"]; onCh
           {option.label}
         </button>
       ))}
+      {ignoresPeriod ? (
+        <span className={styles.emptyHint}>
+          Este filtro mostra todos os registros, independentemente do periodo selecionado.
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -330,6 +341,7 @@ export function StageListTable(props: {
   items: StageListItem[];
   isLoading: boolean;
   isSubmitting: boolean;
+  todayIso: string | null;
   onOpenProject: (projectId: string) => void;
   fetchProjectStages: (projectId: string) => Promise<StageListItem[]>;
   onAddTeam: (stage: StageListItem) => void;
@@ -353,6 +365,7 @@ export function StageListTable(props: {
     items,
     isLoading,
     isSubmitting,
+    todayIso,
     onOpenProject,
     fetchProjectStages,
     onAddTeam,
@@ -556,6 +569,19 @@ export function StageListTable(props: {
                       </span>
                       <span>
                         <StatusBadge status={stage.status} isPendencia={stage.isPendencia} workCompletionStatus={stage.workCompletionStatus} />
+                        {(() => {
+                          // Alerta DERIVADO (330): nao substitui o status, so acompanha.
+                          const semRetornoDays = getPendenciaSemRetornoDays(stage, todayIso);
+                          if (semRetornoDays === null) return null;
+                          return (
+                            <span
+                              className={`${styles.badge} ${styles.badgeWarning}`}
+                              title="A data de execucao passou e o Estado do Trabalho ainda nao foi informado"
+                            >
+                              Sem retorno ha {semRetornoDays} {semRetornoDays === 1 ? "dia" : "dias"}
+                            </span>
+                          );
+                        })()}
                       </span>
                       <span>
                         <WorkCompletionCell stage={stage} isSubmitting={isSubmitting} onChange={onChangeWorkCompletionStatus} />

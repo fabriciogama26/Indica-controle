@@ -147,7 +147,7 @@ export type StageDetailsResponse = {
   message?: string;
 };
 
-export type StageListStatusChip = "TODAS" | "PROGRAMADAS" | "PENDENCIAS" | "ATRASADAS" | "ADIADAS";
+export type StageListStatusChip = "TODAS" | "PROGRAMADAS" | "PENDENCIAS" | "ATRASADAS" | "ADIADAS" | "EM_ESPERA" | "SEM_RETORNO";
 
 export type StageListFilters = {
   dateFrom: string;
@@ -176,6 +176,7 @@ export type StageListResponse = {
   dateFrom?: string;
   dateTo?: string;
   truncated?: boolean;
+  today?: string;
   message?: string;
 };
 

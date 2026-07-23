@@ -53,7 +53,7 @@ export function ProgrammingNormalizedPageView() {
   const enelExportCooldown = useExportCooldown();
 
   const { meta } = useProgrammingMeta({ accessToken, onError: logError });
-  const { items, total, page, setPage, isLoadingList, reloadList } = useProgrammingStageList({ accessToken, filters, onError: logError });
+  const { items, total, page, setPage, isLoadingList, listToday, reloadList } = useProgrammingStageList({ accessToken, filters, onError: logError });
   const historyModal = useHistoryModal({ accessToken, onError: logError });
   const actions = useProgrammingStageActions({ accessToken, setFeedback, onSuccess: reloadList, onError: logError });
 
@@ -66,9 +66,9 @@ export function ProgrammingNormalizedPageView() {
   const totalPages = Math.max(1, Math.ceil(total / STAGE_LIST_PAGE_SIZE));
 
   async function fetchAllFilteredStages() {
-    if (!accessToken) return { stages: [] as StageListItem[], truncated: false };
+    if (!accessToken) return { stages: [] as StageListItem[], truncated: false, total: 0 };
     const data = await fetchProgrammingStageList({ accessToken, filters, page: 1, pageSize: 1, forExport: true });
-    return { stages: data.list ?? [], truncated: data.truncated === true };
+    return { stages: data.list ?? [], truncated: data.truncated === true, total: data.total ?? 0 };
   }
 
   const fetchProjectStages = useCallback(
@@ -100,7 +100,7 @@ export function ProgrammingNormalizedPageView() {
 
     setIsExportingCsv(true);
     try {
-      const { stages, truncated } = await fetchAllFilteredStages();
+      const { stages, truncated, total } = await fetchAllFilteredStages();
       if (!stages.length) {
         setFeedback({ type: "error", message: "Nenhuma etapa encontrada para exportar com os filtros atuais." });
         return;
@@ -110,7 +110,7 @@ export function ProgrammingNormalizedPageView() {
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_normalizada_${exportDate}.csv`);
       if (truncated) {
-        setFeedback({ type: "error", message: "Exportacao parcial: ha mais projetos que o limite. Restrinja o periodo ou os filtros e exporte de novo." });
+        setFeedback({ type: "error", message: `Exportados ${stages.length} de ${total} registros. Restrinja o periodo ou os filtros para exportar o restante.` });
       }
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao exportar programacao em CSV." });
@@ -128,7 +128,7 @@ export function ProgrammingNormalizedPageView() {
 
     setIsExportingEnel(true);
     try {
-      const { stages, truncated } = await fetchAllFilteredStages();
+      const { stages, truncated, total } = await fetchAllFilteredStages();
       if (!stages.length) {
         setFeedback({ type: "error", message: "Nenhuma etapa encontrada para exportar no layout ENEL." });
         return;
@@ -138,7 +138,7 @@ export function ProgrammingNormalizedPageView() {
       const exportDate = new Date().toISOString().slice(0, 10);
       downloadCsvFile(csv, `programacao_normalizada_enel_${exportDate}.csv`);
       if (truncated) {
-        setFeedback({ type: "error", message: "Exportacao parcial: ha mais projetos que o limite. Restrinja o periodo ou os filtros e exporte de novo." });
+        setFeedback({ type: "error", message: `Exportados ${stages.length} de ${total} registros. Restrinja o periodo ou os filtros para exportar o restante.` });
       }
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao gerar extracao ENEL." });
@@ -156,7 +156,7 @@ export function ProgrammingNormalizedPageView() {
 
     setIsExportingEnelNovo(true);
     try {
-      const { stages, truncated } = await fetchAllFilteredStages();
+      const { stages, truncated, total } = await fetchAllFilteredStages();
       const workbookData = buildEnelNovoWorkbookData(buildExportContext(stages));
 
       if (!workbookData.eligibleCount) {
@@ -178,7 +178,7 @@ export function ProgrammingNormalizedPageView() {
       link.click();
       URL.revokeObjectURL(url);
       if (truncated) {
-        setFeedback({ type: "error", message: "Exportacao parcial: ha mais projetos que o limite. Restrinja o periodo ou os filtros e exporte de novo." });
+        setFeedback({ type: "error", message: `Exportados ${stages.length} de ${total} registros. Restrinja o periodo ou os filtros para exportar o restante.` });
       }
     } catch (error) {
       setFeedback({ type: "error", message: "Falha ao gerar EXTRACAO ENEL NOVO." });
@@ -301,6 +301,7 @@ export function ProgrammingNormalizedPageView() {
         items={items}
         isLoading={isLoadingList}
         isSubmitting={actions.isSubmitting}
+        todayIso={listToday}
         onOpenProject={openProject}
         fetchProjectStages={fetchProjectStages}
         onAddTeam={(stage) => setAddTeamTarget(stage)}

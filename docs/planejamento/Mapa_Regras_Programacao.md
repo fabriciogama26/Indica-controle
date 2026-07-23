@@ -9,8 +9,14 @@ Escopo:
 - API principal: `/api/programacao-normalizada` (+ `/meta`).
 - Server module: `src/server/modules/programacao-normalizada/*`.
 - Frontend module: `src/modules/dashboard/programacao-normalizada/*`.
-- Banco: migrations `310`–`318` (`programming`, `programming_team`, `programming_activity`,
+- Banco: migrations `310`–`318` e `320`–`330` (`programming`, `programming_team`, `programming_activity`,
   `programming_document`, `programming_history` + RPCs).
+- NUMERACAO DE MIGRATIONS (colisao historica, fechada em 2026-07-21): existem DOIS arquivos
+  com o numero **318** — `318_allow_generic_pending_serial_identification.sql` (outro dominio,
+  commit 047c8d7) e `318_pendencia_as_boolean_flag.sql` (este modelo). AMBOS JA FORAM APLICADOS,
+  entao nenhum foi renomeado (migration aplicada nunca se renomeia: o arquivo deixaria de
+  corresponder ao banco). O numero **319 NAO EXISTE** e fica permanentemente vago, reservado por
+  causa dessa colisao. A sequencia real e: 310–318 (dois no 318) · 319 vago · 320–330.
 - Fonte de desenho: `docs/planejamento/Spec_Nova_Programacao_Modelo_Normalizado.md`
   (secoes 2, 3.1, 3.2, 4, 4.2, 5, 6, 8, 9, 10).
 
@@ -208,6 +214,19 @@ Virou uma checkbox booleana, ortogonal a tudo, para rastreio e para liberar a ex
     trava de projeto concluido.
   - Card da etapa: toggle liga/desliga via `set_project_programming_pendencia_flag`
     (etapa existente; so status ativo).
+- MOTIVO OBRIGATORIO em marcar/desmarcar e DESCRICAO do servico restante obrigatoria ao LIGAR
+  (migration 329, achado 3), ambos no historico. Ao LIGAR, aceita o vinculo opcional de origem
+  (`resolve_pendencia_de_id`) — a etapa do mesmo projeto que gerou a sobra; ao desligar, o
+  vinculo e limpo. Exige `programacao-pendencia`.
+- NAO se obriga `work_completion_status` na PROPRIA pendencia (decisao 2026-07-21): `is_pendencia`
+  responde POR QUE a etapa existe; `work_completion_status` responde O QUE aconteceu na execucao.
+  Pendencia recem-programada ainda nao foi executada — o estado correto dela e EM BRANCO (a fazer);
+  obrigar preenchimento so produziria um valor falso.
+- O que SE obriga na ORIGEM: quando ha `resolve_pendencia_de_id`, a etapa de origem precisa ter o
+  Estado do Trabalho JA LANCADO (nao da para registrar sobra de uma etapa cujo resultado ainda nao
+  foi informado) e em um destes: `PARCIAL_NAO_PLANEJADO`, `PARCIAL_PLANEJADO`, `BENEFICIO_ATINGIDO`
+  ou `CONCLUIDO`. Pendencia SEM origem continua permitida (sobra descoberta depois), exigindo
+  motivo e descricao.
 - Excecao da trava de CONCLUIDO: `programming_project_has_active_completion` IGNORA etapas
   `is_pendencia` (uma pendencia concluida nao tranca o projeto). save/add_team/postpone/cancel/
   set_wcs liberam a operacao quando a etapa e `is_pendencia`, sem reabrir o projeto.
@@ -248,7 +267,8 @@ O editor comum mantem a data TRAVADA (`DATE_CHANGE_NOT_ALLOWED`); remarcar e sem
   `status = REPROGRAMADA`. Exige data posterior a atual (se a etapa tinha data). Checa conflito de
   agenda por equipe na nova data.
 - Rota "Deixar em espera" (`p_new_execution_date` NULL): `execution_date = NULL`,
-  `status = ADIADA`. Etapa sai da numeracao; nao ocupa agenda (sem data).
+  `status = ADIADA`. Etapa sai da numeracao; nao ocupa agenda (sem data). Fica visivel na lista
+  cross-projeto pelo chip "Em espera" (migration 327), alem do plano do projeto.
 - Dar data a uma etapa em espera (`ADIADA` sem data) -> `REPROGRAMADA` (mesma RPC, rota Nova data).
 - Motivo obrigatorio nas duas rotas. A mudanca de data De/Para vai para o historico
   (`POSTPONE_STAGE`).
@@ -320,7 +340,8 @@ por intervalo de data); e gerenciada pelo plano do projeto (`ProjectPlanView`).
 | `change_completed_stage_work_status` | Sai de CONCLUIDO atomicamente: reabre + restaura antecipadas + aplica novo estado (`PARCIAL_*`/`BENEFICIO_ATINGIDO`/em branco) num so commit (migration 322, achado 4). |
 | `set_project_programming_work_completion_status` | Estado Trabalho manual (em branco/`PARCIAL_*`/`BENEFICIO_ATINGIDO`) para etapa NAO concluida. |
 | `remove_project_programming_team` (guard) | Nao remove a ultima equipe ativa de uma etapa concluida (migration 322, achado 5). |
-| `set_project_programming_pendencia_flag` | Toggle da flag `is_pendencia` (card). Bloqueia `true->false` se houver CONCLUIDO ativo nao-pendencia no projeto (migration 321). |
+| `set_project_programming_pendencia_flag` | Toggle da flag `is_pendencia` (card). Bloqueia `true->false` se houver CONCLUIDO ativo nao-pendencia (321). Exige MOTIVO e aceita origem `resolve_pendencia_de_id` (329). |
+| `correct_project_programming_stage_date` | Corrige a data da etapa mantendo o registro e PRESERVANDO o status (nao vira REPROGRAMADA). Aceita data anterior/posterior; motivo obrigatorio; checa duplicidade e conflito de agenda; bloqueia CANCELADA/ANTECIPADA/CONCLUIDO e etapa em espera (329, achado 10). |
 | `programming_team_schedule_conflict` | Conflito de agenda por equipe (tenant-wide). |
 | `programming_project_has_active_completion` | Guarda de projeto CONCLUIDO (ignora `is_pendencia`). |
 | `programming_list_project_page` | Pagina os `project_id` distintos da lista (filtros + chip) + total (migration 323, achado 14). |
@@ -345,24 +366,42 @@ congelado no valor do INSERT e o `expectedUpdatedAt` nunca detectava conflito (b
   no frontend; ordenada por `project_id` + `execution_date`.
 - Chips de status: `TODAS`, `PROGRAMADAS` (`status in PROGRAMADA/REPROGRAMADA`),
   `PENDENCIAS` ("pendencias abertas": `is_pendencia = true` E `status in (PROGRAMADA, REPROGRAMADA)`
-  E `work_completion_status IS DISTINCT FROM 'CONCLUIDO'`), `ATRASADAS` (ativas + `execution_date < hoje`),
+  E `work_completion_status IS DISTINCT FROM 'CONCLUIDO'`), `SEM_RETORNO` ("Pendencias sem retorno":
+  condicao DERIVADA — `is_pendencia` E `status in (PROGRAMADA, REPROGRAMADA)` E `execution_date <`
+  `p_today` E `work_completion_status IS NULL`; IGNORA o periodo, e `p_today` vem do SERVIDOR;
+  migration 330), `EM_ESPERA` ("Em espera": `status = ADIADA`
+  E `execution_date IS NULL` — IGNORA o filtro de periodo, pois essas etapas nao tem data; migration
+  327, achado 9), `ATRASADAS` (ativas + `execution_date < hoje`),
   `ADIADAS` (`status = ADIADA`).
 - A lista filtra por intervalo de data (`gte/lte execution_date`); etapas em espera (data NULL)
   nao aparecem nela — so no plano do projeto.
-- Exports (CSV/ENEL/ENEL NOVO) usam a mesma consulta da lista (teto de 5000 projetos por export);
-  classificacao exibida e a gravada, nunca recalculada no front. Se houver mais projetos que o teto,
-  a resposta traz `truncated=true` e o front avisa "Exportacao parcial: restrinja o periodo/filtros"
-  (migration/achado 13).
+- Marcador derivado "Sem retorno ha N dias" (migration 330): na LINHA da lista, ao lado do Status,
+  em laranja, com tooltip "A data de execucao passou e o Estado do Trabalho ainda nao foi
+  informado". NAO substitui o status — e so um alerta. Some sozinho quando o Estado do Trabalho
+  for lancado, a pendencia for desmarcada, a etapa for adiada/cancelada/antecipada ou a data for
+  corrigida para hoje/futuro (nenhuma escrita nova; a condicao e derivada). Nao ha status nem
+  coluna persistida "sem retorno".
+- Exports (CSV/ENEL/ENEL NOVO) NAO usam a paginacao por projeto (o CSV e plano): consultam por
+  ETAPA com teto de 5000 ETAPAS e `count` exato; `total` volta como total de ETAPAS do filtro.
+  A classificacao exibida e a gravada, nunca recalculada no front. Se houver mais etapas que o
+  teto, a resposta traz `truncated=true` e o front avisa com numeros concretos: "Exportados X de
+  Y registros. Restrinja o periodo ou os filtros" (achados 13 e 6).
 
 ---
 
 ## Permissoes
 
-- `page_key`: `programacao-normalizada` (nasce `default_user_access = false`, liberada por
-  permissao explicita).
+- `page_key` da tela: `programacao-normalizada` (nasce `default_user_access = false`).
 - Acoes autorizadas por `requirePageAction`: `read` (GET), `create` (POST novo), `update`
-  (PUT/adicionar/remover equipe/adiar/concluir/reabrir/set-estado/toggle-pendencia), `cancel`
-  (cancelamento).
+  (PUT/adicionar/remover equipe/adiar/set-estado), `cancel` (cancelamento).
+- Permissoes GRANULARES por operacao (migration 328, achados 6 e 10) — padrao do CLAUDE.md:
+  page_key propria checada DENTRO da operacao, sobre a permissao da tela:
+  - `programacao-concluir` — Concluir, Reabrir e sair de CONCLUIDO (encerram/reabrem o projeto e
+    disparam a antecipacao em cascata).
+  - `programacao-pendencia` — marcar/desmarcar `is_pendencia` E criar etapa com pendencia pelo
+    formulario (a flag libera a excecao da trava de projeto concluido).
+  - `programacao-corrigir-data` — corrigir a data da etapa (aceita data para tras).
+  Todas nascem bloqueadas; admin liberado no backfill.
 
 ---
 
@@ -371,7 +410,8 @@ congelado no valor do INSERT e o `expectedUpdatedAt` nunca detectava conflito (b
 - Toda RPC de escrita grava em `programming_history` via `append_programming_history_record`.
 - Acoes: `CREATE_STAGE`, `UPDATE_STAGE`, `ADD_TEAM`, `REMOVE_TEAM`, `POSTPONE_STAGE`,
   `CANCEL_STAGE`, `ANTICIPATE_STAGE`, `COMPLETE_STAGE`, `RESTORE_ANTICIPATED_STAGE`, `REOPEN_STAGE`,
-  `RECLASSIFY_STAGE`, `SET_WORK_COMPLETION_STATUS`, `CHANGE_COMPLETED_WORK_STATUS`, `SET_PENDENCIA_FLAG`.
+  `RECLASSIFY_STAGE`, `SET_WORK_COMPLETION_STATUS`, `CHANGE_COMPLETED_WORK_STATUS`,
+  `SET_PENDENCIA_FLAG` (com motivo e origem), `CORRECT_STAGE_DATE` (com motivo e De/Para da data).
 - Mudancas registram De/Para por campo (ex.: `executionDate` no adiamento, `isPendencia` no toggle,
   `workCompletionStatus` na troca de estado). A edicao de cadastro (`UPDATE_STAGE`) tambem grava o
   diff De/Para de todos os campos escalares alterados (migration 324, achado 12) — antes gravava
@@ -458,7 +498,9 @@ Eixos e Estado Trabalho:
 Equipe e agenda:
 - Mesma equipe, mesma data, horario sobreposto, projetos diferentes -> bloqueia.
 - Horarios encostados (08–12 / 12–17) -> aceita.
-- Remover equipe libera a agenda; remover a ultima deixa a etapa sem equipe (nao cancela).
+- Remover equipe libera a agenda. Remover a ULTIMA equipe ativa:
+  - etapa NAO concluida -> permitido (a etapa fica sem equipe; nao cancela);
+  - etapa CONCLUIDA -> BLOQUEADO (`STAGE_COMPLETED_LAST_TEAM`); reabra antes (migration 322).
 
 Seguranca:
 - `npm run db:security-check` para grants de RPC `SECURITY DEFINER`.

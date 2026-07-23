@@ -1,7 +1,7 @@
 # Fluxograma de Regra de Negócio — Programação Normalizada
 
 Reescrito em 2026-07-21 para o modelo NORMALIZADO (tela `Programação (Normalizada)`,
-`/programacao-normalizada`, migrations 310–318). Supersede o fluxo anterior, que descrevia o
+`/programacao-normalizada`, migrations 310–318 e 320–330; o numero 319 nao existe — ver a nota de colisao no Mapa de Regras). Supersede o fluxo anterior, que descrevia o
 modelo legado (`programacao-simples`: `project_programming`, `programming_group_id`, ETAPA
 digitada, copiar, reprogramar por edição). A tela legada mantém seu próprio fluxo.
 
@@ -31,8 +31,10 @@ A etapa (`programming`) é o pai; as equipes (`programming_team`) são filhas.
 * `ATIVA`, `REMOVIDA`, `TRANSFERIDA`
 
 ### Flag ortogonal — `is_pendencia` (bool)
-* Não é status nem Estado Trabalho. Quando `true`, a coluna Status exibe "Pendência"
-  (vermelho) por cima do status de agenda; não afeta Etapa, Estado Trabalho nem numeração.
+* Não é status nem Estado Trabalho. Quando `true` **e a etapa está aberta** (ativa e não
+  concluída), a coluna Status exibe "Pendência" (vermelho); em estado terminal ou concluída o
+  status real prevalece e a pendência vira só um marcador "Pend.". Não afeta Etapa, Estado
+  Trabalho nem numeração.
 
 O Status informa o que aconteceu com a agenda. O Estado Trabalho informa a execução. A
 classificação de etapa (`Única`/`N`/`Final`) é DERIVADA por data, nunca digitada.
@@ -100,8 +102,8 @@ própria etapa (não cria linha nova).
 
 ### Rota "Deixar em espera" (sem data)
 * Exige motivo. Resultado: `execution_date = NULL`, `status = ADIADA`, Estado Trabalho em branco.
-* A etapa sai da numeração e não ocupa agenda (sem data). **Não aparece na lista cross-projeto**
-  (filtrada por intervalo de data) — só no plano do projeto.
+* A etapa sai da numeração e não ocupa agenda (sem data). Aparece na lista cross-projeto pelo chip
+  **"Em espera"** (migration 327), que ignora o filtro de período, além do plano do projeto.
 
 ### Dar data a uma etapa em espera
 * Aplicar Adiar > Nova data sobre uma etapa `ADIADA` sem data → `REPROGRAMADA` (volta à numeração).
@@ -123,8 +125,9 @@ A mudança de data De/Para vai para o histórico. Exceção da trava de concluí
 
 * **Adicionar**: só em etapa ativa; equipe do tenant e ativa; não duplicada; sem conflito de
   agenda. Cria `programming_team` `ATIVA`. Não altera o status da etapa.
-* **Remover**: marca a alocação `REMOVIDA`, libera a agenda. Remover a última deixa a etapa sem
-  equipe (não cancela a etapa).
+* **Remover**: marca a alocação `REMOVIDA`, libera a agenda. Remover a **última** equipe ativa:
+  * etapa **não concluída** → permitido (a etapa fica sem equipe; não cancela);
+  * etapa **concluída** → **bloqueado** (`STAGE_COMPLETED_LAST_TEAM`); reabra antes (migration 322).
 * Exceção da trava de concluído (adicionar) para etapa `is_pendencia`.
 
 ---
@@ -134,9 +137,34 @@ A mudança de data De/Para vai para o histórico. Exceção da trava de concluí
 * Liga/desliga `is_pendencia` de uma etapa existente e ativa
   (`set_project_programming_pendencia_flag`).
 * Ligar exibe "Pendência" no Status; desligar volta ao status de agenda.
+* **Motivo obrigatório** e, ao ligar, **descrição do serviço restante obrigatória** (migration 329);
+  vínculo opcional de **etapa de origem** (`resolve_pendencia_de_id`) — tudo no histórico. Exige a
+  permissão `programacao-pendencia`.
+* **O Estado do Trabalho da pendência NÃO é obrigatório** — ela ainda não foi executada, então
+  nasce **em branco (a fazer)**. `is_pendencia` diz *por que a etapa existe*; o Estado do Trabalho
+  diz *o que aconteceu na execução*. São eixos diferentes.
+* **A etapa de ORIGEM é que precisa ter o resultado lançado**: só é possível vincular uma origem
+  cujo Estado do Trabalho já esteja preenchido (`PARCIAL_NAO_PLANEJADO`, `PARCIAL_PLANEJADO`,
+  `BENEFICIO_ATINGIDO` ou `CONCLUIDO`). Caso contrário: *"Informe primeiro o resultado da etapa que
+  originou a pendência."* Pendência **sem origem** é permitida (sobra descoberta depois).
 * **Desligar é bloqueado** (409) se o projeto tiver um CONCLUIDO ativo não-pendência — reabra a
   etapa concluída antes (migration 321). Evita trazer a etapa de volta como comum sem reabrir.
 * Não toca Etapa, Estado Trabalho nem numeração.
+
+---
+
+## 8.1. Ação: CORRIGIR DATA (correção de cadastro)
+
+Para a data digitada errada — **não** é remarcação (remarcar continua no Adiar).
+
+* Exige a permissão própria **`programacao-corrigir-data`** e **motivo obrigatório**.
+* Aceita data **anterior ou posterior**; mantém o mesmo registro e **preserva o status atual**
+  (não vira REPROGRAMADA).
+* Checa duplicidade (projeto + data) e **conflito de agenda de todas as equipes** na data nova;
+  usa `expectedUpdatedAt`; roda `reclassify`; tudo numa transação. Grava De/Para no histórico.
+* **Bloqueado** em etapa `CANCELADA`, `ANTECIPADA` ou com Estado Trabalho `CONCLUIDO` (reabra
+  antes — evita alterar retroativamente a base usada na antecipação).
+* Etapa **em espera** (ADIADA sem data) segue pelo Adiar > Nova data, não por aqui.
 
 ---
 

@@ -248,12 +248,53 @@ export async function changeCompletedStageWorkStatusViaRpc(params: {
   };
 }
 
+// Corrige a data da etapa mantendo o mesmo registro e PRESERVANDO o status
+// (correcao de cadastro, nao remarcacao — remarcar continua no Adiar).
+export async function correctProgrammingStageDateViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingId: string;
+  newExecutionDate: string;
+  reason: string;
+  expectedUpdatedAt?: string | null;
+}) {
+  const rpcName = "correct_project_programming_stage_date";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_id: params.programmingId,
+    p_new_execution_date: params.newExecutionDate,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) return missingRpcResult(rpcName);
+    return failedRpcResult(rpcName, error.message);
+  }
+
+  const result = (data ?? {}) as ProgrammingRpcResult;
+  if (result.success !== true || !result.programming_id) return failedResultFromPayload(result);
+
+  return {
+    ok: true as const,
+    programmingId: result.programming_id,
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Data corrigida com sucesso.",
+  };
+}
+
+// Motivo obrigatorio; resolvePendenciaDeId opcional (etapa de origem da sobra).
 export async function setProgrammingPendenciaFlagViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
   actorUserId: string;
   programmingId: string;
   isPendencia: boolean;
+  reason: string;
+  description?: string | null;
+  resolvePendenciaDeId?: string | null;
   expectedUpdatedAt?: string | null;
 }) {
   const rpcName = "set_project_programming_pendencia_flag";
@@ -262,6 +303,9 @@ export async function setProgrammingPendenciaFlagViaRpc(params: {
     p_actor_user_id: params.actorUserId,
     p_programming_id: params.programmingId,
     p_is_pendencia: params.isPendencia,
+    p_reason: params.reason,
+    p_description: params.description ?? null,
+    p_resolve_pendencia_de_id: params.resolvePendenciaDeId ?? null,
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   });
 

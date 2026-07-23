@@ -18,7 +18,9 @@ Visao geral
   (reclassify volta a numerar so PROGRAMADA/REPROGRAMADA com data). Checkbox em dois lugares:
   no formulario "Nova etapa" (cria a etapa ja com is_pendencia=true, o que ACIONA a excecao
   da trava de projeto concluido) e no card da etapa (toggle liga/desliga via RPC; desligar e
-  bloqueado se o projeto tiver CONCLUIDO ativo nao-pendencia — migration 321). Ver secoes
+  bloqueado se o projeto tiver CONCLUIDO ativo nao-pendencia — migration 321). Marcar/desmarcar
+  exige MOTIVO e aceita vincular a etapa de origem (migration 329) e a permissao propria
+  `programacao-pendencia` (migration 328). Ver secoes
   4.2/6/9/10 da spec e "Decisoes registradas" no fim deste doc.
 
 Arquitetura
@@ -31,6 +33,8 @@ Arquitetura
 - API (plano + historico): `src/app/api/programacao-normalizada/route.ts`
 - API (catalogo): `src/app/api/programacao-normalizada/meta/route.ts`
 - Server module: `src/server/modules/programacao-normalizada/{types,selects,queries,catalogs,normalizers,rpc,handlers}.ts`
+- Migrations: 310–318 e 320–330 (o numero 319 nao existe; ha DOIS arquivos no 318, ambos
+  aplicados — ver a nota de colisao em `docs/planejamento/Mapa_Regras_Programacao.md`).
 - Banco (schema): `supabase/migrations/310_create_programming_normalized_module.sql`
 - Banco (RPCs): `supabase/migrations/311_create_programming_normalized_rpcs.sql`
 - Banco (pagina/permissao): `supabase/migrations/312_register_programming_normalized_page.sql`
@@ -102,6 +106,13 @@ Filtros, auto-complete e listagem
     nao concluida), exibe "Pendencia" (vermelho); em terminal (Adiada/Cancelada/Antecipada) ou
     concluida o status real prevalece e a pendencia vira so um marcador "Pend." (achado 8). Nunca
     editavel direto. O chip "Pendencias abertas" filtra is_pendencia=true + ativa + nao concluida.
+  - Chip "Pendencias sem retorno" (migration 330): interseccao operacional — pendencia aberta,
+    com data JA VENCIDA e Estado do Trabalho ainda em branco (a lista de cobranca). Condicao
+    DERIVADA (sem status/coluna nova) e IGNORA o filtro de periodo; a data de referencia vem do
+    SERVIDOR (`today` na resposta), nunca do relogio do navegador. Na linha, um marcador laranja
+    "Sem retorno ha N dias" acompanha o Status (NAO o substitui), com tooltip explicativo.
+    Sai da condicao sozinho ao lancar o Estado do Trabalho, desmarcar a pendencia, adiar/cancelar/
+    antecipar a etapa ou corrigir a data para hoje/futuro.
   - `Estado do trabalho` (execucao): UNICO eixo editavel pelo usuario, via select na
     propria linha — Em branco (cinza), Parcial planejado/Parcial nao planejado
     (amarelo), Beneficio atingido (azul), Concluido (verde). `Antecipado` (apagado) fica de
@@ -126,6 +137,14 @@ Filtros, auto-complete e listagem
     hoje cobre em branco/PARCIAL_PLANEJADO/PARCIAL_NAO_PLANEJADO/BENEFICIO_ATINGIDO (sem
     PENDENCIA). A flag e escrita por `set_project_programming_pendencia_flag` (toggle do card)
     e no INSERT de `save_project_programming_stage` (checkbox do formulario).
+- `Corrigir data` (icone de transferencia no card, migration 328/329): corrige a data cadastrada
+  aceitando data ANTERIOR ou posterior, mantendo a etapa e PRESERVANDO o status (nao vira
+  Reprogramada — remarcar continua no Adiar). Exige a permissao propria `programacao-corrigir-data`
+  e motivo; checa duplicidade projeto+data e conflito de agenda; bloqueada em Cancelada/Antecipada/
+  Concluida (reabra antes) e em etapa em espera (use Adiar).
+- Permissoes granulares (migration 328): `programacao-concluir` (Concluir/Reabrir/sair de
+  Concluido), `programacao-pendencia` (flag e criacao de etapa de pendencia) e
+  `programacao-corrigir-data`. Nascem bloqueadas; as demais operacoes seguem sob a permissao da tela.
 - Botoes essenciais por etapa: `Editar`, `Adicionar equipe`, `Remover equipe`, `Adiar`,
   `Cancelar`, `Concluir`/`Reabrir`, `Detalhes`, `Historico`, `Nova etapa a partir desta`
   (duplicar). Icones em botao redondo colorido (`.actionButton` + `.action<Tipo>`), mesmo
@@ -142,8 +161,12 @@ Exportacao
   `useExportCooldown`, 10s de cooldown por grupo — CSV tem cooldown proprio, ENEL/ENEL
   NOVO compartilham um segundo cooldown).
 - Exporta TODAS as etapas que batem no filtro atual (nao so a pagina exibida em tela):
-  o clique dispara uma segunda chamada a `GET /api/programacao-normalizada?forExport=1`
-  que ignora a paginacao de tela e busca ate `STAGE_LIST_EXPORT_MAX_ROWS` (5000) linhas.
+  o clique dispara uma segunda chamada a `GET /api/programacao-normalizada?forExport=1`.
+  O export NAO usa a paginacao por projeto da lista (o CSV e plano): consulta por ETAPA com
+  teto de `STAGE_LIST_EXPORT_MAX_ROWS` (5000) ETAPAS e `count` exato, e `total` volta como o
+  total de ETAPAS do filtro. Se houver mais etapas que o teto, a resposta traz `truncated=true`
+  e o front avisa com numeros concretos: "Exportados X de Y registros. Restrinja o periodo ou
+  os filtros para exportar o restante."
 - `Exportar Excel (CSV)`: 30 colunas (`buildProgrammingCsvContent` em `exports.ts`) —
   1 linha por etapa (nao por equipe, diferente de `programacao-simples`), com as equipes
   ativas da etapa juntadas em uma celula.
@@ -199,8 +222,9 @@ Cancelamento e saldo
   execution_date=NULL, status `ADIADA` (etapa sem data, fora da numeracao). Dar data depois a
   uma etapa em espera -> `REPROGRAMADA`. A data De/Para vai para o historico. O editor comum
   mantem a data travada; remarcar e sempre pelo Adiar. Conflito de agenda so na rota com data.
-  Nota: etapa em espera (execution_date NULL) nao aparece na LISTA cross-projeto (filtrada por
-  intervalo de data); e gerenciada pelo plano do projeto (ProjectPlanView).
+  Etapa em espera (execution_date NULL) aparece na LISTA cross-projeto pelo chip "Em espera"
+  (migration 327), que ignora o filtro de periodo de proposito (essas etapas nao tem data); tambem
+  e gerenciada pelo plano do projeto (ProjectPlanView).
 - `Cancelar` marca a etapa como `CANCELADA`, limpa Estado Trabalho e libera a agenda das
   equipes (o filtro de conflito considera apenas etapas `PROGRAMADA`/`REPROGRAMADA`). Aceita
   tambem etapa em espera (`ADIADA`).
@@ -263,9 +287,10 @@ Atualizacao 2026-07-19
   legivel (`getHistoryActionLabel`), nome de quem alterou (`changed_by_name`, resolvido
   via join com `app_users`, antes inexistente), diff De/Para por campo alterado
   (`getHistoryFieldLabel`/`formatHistoryChangeValue`), paginacao de 5 por pagina
-  (`HISTORY_PAGE_SIZE`). Limitacao conhecida: as RPCs de `UPDATE_STAGE` ainda nao
-  calculam o diff campo a campo (`changes` fica `{}`) — o card aparece com "Nenhum campo
-  alterado nesse evento." ate essa RPC ganhar o calculo do diff.
+  (`HISTORY_PAGE_SIZE`). HISTORICO (limitacao que existiu ate a migration 323): o
+  `UPDATE_STAGE` gravava `changes = {}` e o card mostrava "Nenhum campo alterado nesse
+  evento." CORRIGIDO pela migration 324 — o save passou a montar o diff De/Para dos campos
+  de cadastro e grava-lo em `programming_history.changes`.
 - Validacao obrigatoria: `isFormReadyToSave` passou a exigir periodo, hora inicio, hora
   termino, tipo de SGD, No EQ e descricao do servico (antes so validava projeto+data);
   equipe continua opcional.
