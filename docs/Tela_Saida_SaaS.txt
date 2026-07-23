@@ -670,7 +670,7 @@ Mapa de Codigo (funcoes, hooks e constantes)
   - `save_team_stock_operation_record`: prevalidacao de `p_items` para bloquear material rastreavel sem serial.
 - `supabase/migrations/308_identify_pending_serial_in_team_operations.sql`
   - `save_team_stock_operation_record`: identifica pendencia de serial para `RELIGADOR`/`CHAVE` antes de salvar Requisicao/Devolucao.
-- `supabase/migrations/318_allow_generic_pending_serial_identification.sql`
+- `supabase/migrations/319_allow_generic_pending_serial_identification.sql` (renomeada de 318_*)
   - `identify_pending_serial_tracked_unit`: usa pendencia geral do centro como fallback quando nao ha pendencia especifica do projeto.
 - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
   - `ensureSourceStockAvailability`: `TRAFO` continua validando unidade em `serial-options`; `RELIGADOR`/`CHAVE` validam saldo agregado e deixam a RPC identificar pendencia quando necessario.
