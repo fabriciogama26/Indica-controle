@@ -33,8 +33,10 @@ Arquitetura
 - API (plano + historico): `src/app/api/programacao-normalizada/route.ts`
 - API (catalogo): `src/app/api/programacao-normalizada/meta/route.ts`
 - Server module: `src/server/modules/programacao-normalizada/{types,selects,queries,catalogs,normalizers,rpc,handlers}.ts`
-- Migrations: 310–318 e 320–330 (o numero 319 nao existe; ha DOIS arquivos no 318, ambos
-  aplicados — ver a nota de colisao em `docs/planejamento/Mapa_Regras_Programacao.md`).
+- Migrations: 310–330 (sequencia continua). A colisao historica no numero 318 foi corrigida em
+  2026-07-21 movendo a migration idempotente da serie serial para 319 — ver a nota em
+  `docs/planejamento/Mapa_Regras_Programacao.md`. Bancos ja aplicados: reparar com
+  `supabase migration repair --status applied 319`.
 - Banco (schema): `supabase/migrations/310_create_programming_normalized_module.sql`
 - Banco (RPCs): `supabase/migrations/311_create_programming_normalized_rpcs.sql`
 - Banco (pagina/permissao): `supabase/migrations/312_register_programming_normalized_page.sql`

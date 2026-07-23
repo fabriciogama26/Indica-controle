@@ -1,7 +1,7 @@
 # Fluxograma de Regra de Negócio — Programação Normalizada
 
 Reescrito em 2026-07-21 para o modelo NORMALIZADO (tela `Programação (Normalizada)`,
-`/programacao-normalizada`, migrations 310–318 e 320–330; o numero 319 nao existe — ver a nota de colisao no Mapa de Regras). Supersede o fluxo anterior, que descrevia o
+`/programacao-normalizada`, migrations 310–330 (sequência contínua; a colisão do 318 foi corrigida por realinhamento — ver o Mapa de Regras)). Supersede o fluxo anterior, que descrevia o
 modelo legado (`programacao-simples`: `project_programming`, `programming_group_id`, ETAPA
 digitada, copiar, reprogramar por edição). A tela legada mantém seu próprio fluxo.
 

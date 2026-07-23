@@ -1,4 +1,8 @@
--- 318_allow_generic_pending_serial_identification.sql
+-- 319_allow_generic_pending_serial_identification.sql
+-- (Renomeada de 318_* em 2026-07-21 para desfazer a colisao de numero com
+--  318_pendencia_as_boolean_flag.sql. Conteudo inalterado e idempotente:
+--  create or replace + grants. Bancos ja aplicados: reparar o historico com
+--  `supabase migration repair --status applied 319` — NAO reexecutar o SQL.)
 -- Permite que a identificacao de CHAVE/RELIGADOR em Operacoes de Equipe
 -- consuma pendencia geral do centro quando nao existir pendencia especifica do projeto.
 

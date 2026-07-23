@@ -9,14 +9,16 @@ Escopo:
 - API principal: `/api/programacao-normalizada` (+ `/meta`).
 - Server module: `src/server/modules/programacao-normalizada/*`.
 - Frontend module: `src/modules/dashboard/programacao-normalizada/*`.
-- Banco: migrations `310`–`318` e `320`–`330` (`programming`, `programming_team`, `programming_activity`,
-  `programming_document`, `programming_history` + RPCs).
-- NUMERACAO DE MIGRATIONS (colisao historica, fechada em 2026-07-21): existem DOIS arquivos
-  com o numero **318** — `318_allow_generic_pending_serial_identification.sql` (outro dominio,
-  commit 047c8d7) e `318_pendencia_as_boolean_flag.sql` (este modelo). AMBOS JA FORAM APLICADOS,
-  entao nenhum foi renomeado (migration aplicada nunca se renomeia: o arquivo deixaria de
-  corresponder ao banco). O numero **319 NAO EXISTE** e fica permanentemente vago, reservado por
-  causa dessa colisao. A sequencia real e: 310–318 (dois no 318) · 319 vago · 320–330.
+- Banco: migrations `310`–`330` (sequencia continua) — `programming`, `programming_team`,
+  `programming_activity`, `programming_document`, `programming_history` + RPCs.
+- NUMERACAO DE MIGRATIONS (colisao CORRIGIDA em 2026-07-21 por realinhamento): existiu uma colisao
+  no numero **318** — `318_allow_generic_pending_serial_identification.sql` (dominio serial, commit
+  047c8d7) e `318_pendencia_as_boolean_flag.sql` (este modelo). Resolvida movendo o arquivo
+  IDEMPOTENTE (`create or replace` da funcao serial) para **319**
+  (`319_allow_generic_pending_serial_identification.sql`); `318_pendencia_as_boolean_flag.sql`
+  permaneceu em 318, pois a cadeia 320–330 depende dele. A sequencia agora e CONTINUA: 310–330.
+  Bancos que ja tinham os dois arquivos aplicados como "318" precisam reparar o historico:
+  `supabase migration repair --status applied 319` (marca 319 como aplicada SEM reexecutar o SQL).
 - Fonte de desenho: `docs/planejamento/Spec_Nova_Programacao_Modelo_Normalizado.md`
   (secoes 2, 3.1, 3.2, 4, 4.2, 5, 6, 8, 9, 10).
 
