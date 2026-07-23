@@ -644,3 +644,22 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: exportacoes usavam botoes locais sem o modal padrao.
 - Depois: exportacoes usam `CsvExportButton`, herdando `ExportProgressModal`.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao adicional 2026-07 - selecao de previstos por datalist
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `normalizeCatalogSelection`
+  - `findProjectForecastCatalogItem`
+  - `findProjectActivityForecastCatalogItem`
+  - `handleForecastSearchChange`
+  - `handleActivityForecastSearchChange`
+  - estados `selectedProjectForecastOption` e `selectedProjectActivityForecastOption`
+- Comportamento antes/depois:
+  - Antes: ao selecionar um item no `datalist`, o texto completo `codigo - descricao` disparava nova busca; quando a API nao retornava essa string composta, o catalogo local era esvaziado e a inclusao manual falhava como item invalido.
+  - Depois: a opcao selecionada fica persistida separadamente do resultado da busca, aceita comparacao normalizada por `codigo` ou `codigo - descricao`, preenche a unidade/UMB e permite adicionar o previsto selecionado.
+  - Depois: troca de projeto, limpeza do campo e inclusao bem-sucedida limpam a selecao para evitar reaproveitamento indevido.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao; a validacao do catalogo continua restrita ao tenant autenticado nas rotas existentes.
