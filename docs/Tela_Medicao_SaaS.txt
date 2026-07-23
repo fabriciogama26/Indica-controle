@@ -44,6 +44,7 @@ Arquitetura
   - `supabase/migrations/202_enforce_measurement_unique_project_team_date.sql`
   - `supabase/migrations/204_preserve_measurement_work_completion_snapshot.sql`
   - `supabase/migrations/293_create_measurement_project_activity_indicators.sql`
+  - `supabase/migrations/331_prevent_duplicate_active_measurement_items.sql`
 
 Cadastro
 --------
@@ -79,7 +80,7 @@ Cadastro
   - Nao e permitido cadastrar mais de uma ordem para o mesmo `Projeto + Equipe + Data de execucao` dentro do mesmo tenant, mesmo quando o vinculo de `Programacao` for diferente ou nulo.
   - A inclusao de atividades e independente da lista de atividades da Programacao.
   - A mesma atividade nao pode se repetir dentro da mesma ordem (`tenant + Projeto + Equipe + Data de execucao` no contexto operacional da medicao).
-  - A regra de nao repetir atividade vale no frontend, na API e na RPC `save_project_measurement_order`, cobrindo tambem o cadastro em massa.
+  - A regra de nao repetir atividade vale no frontend, na API, na RPC `save_project_measurement_order` e no indice unico parcial de `project_measurement_order_items`, cobrindo tambem o cadastro em massa.
   - O sistema salva snapshot do status `CONCLUIDO/PARCIAL` da programacao no momento da criacao.
   - Lista e detalhes avisam quando o status `CONCLUIDO/PARCIAL` da programacao foi atualizado apos a medicao.
   - `Data da medicao` nao e campo no formulario; no cadastro novo ela segue automaticamente a `Data execucao`.
@@ -217,6 +218,28 @@ Atalhos
 - Modelo cadastro em massa:
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
+
+Atualizacao 2026-07-23 (Bloqueio de atividade duplicada na Medicao)
+--------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `supabase/migrations/331_prevent_duplicate_active_measurement_items.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - Estado `isAddingActivity`
+  - Ref `isAddingActivityRef`
+  - Funcao `addActivity`
+  - Indice unico parcial `idx_project_measurement_order_items_unique_active_activity`
+- Comportamento antes/depois:
+  - Antes: dois cliques rapidos no botao `Adicionar`, principalmente durante a consulta assincrona do catalogo, podiam inserir a mesma atividade duas vezes na lista local antes do salvamento.
+  - Depois: o botao fica travado enquanto a inclusao esta em andamento e a funcao usa uma trava sincrona para impedir execucoes concorrentes.
+  - Depois: a insercao local revalida o estado atual antes de adicionar a linha, evitando que uma resposta atrasada insira atividade ja presente.
+  - Depois: o banco desativa duplicados ativos legados mantendo o item mais recente e cria um indice unico parcial por `tenant_id + measurement_order_id + service_activity_id` quando `is_active = true`.
+- Impacto multi-tenant:
+  - O indice unico usa `tenant_id` como prefixo e nao altera RLS, policies ou permissoes.
+  - A protecao continua por ordem de medicao dentro do tenant autenticado.
 
 Atualizacao 2026-07-06 (Indicadores configuraveis por codigo no cadastro)
 --------------------------------------------------------------------------

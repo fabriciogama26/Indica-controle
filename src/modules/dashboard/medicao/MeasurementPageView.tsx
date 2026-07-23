@@ -957,6 +957,7 @@ export function MeasurementPageView() {
   const [isRefreshingList, setIsRefreshingList] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAddingActivity, setIsAddingActivity] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isImportingMass, setIsImportingMass] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -974,6 +975,7 @@ export function MeasurementPageView() {
   const [minimumBillingPreview, setMinimumBillingPreview] = useState<MinimumBillingPreviewResponse | null>(null);
   const [isLoadingMinimumBillingPreview, setIsLoadingMinimumBillingPreview] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const isAddingActivityRef = useRef(false);
   const hasManualRateUserOverrideRef = useRef(false);
   const compositionPrefillAppliedRef = useRef<string | null>(null);
   const refreshRequestedRef = useRef(false);
@@ -1670,99 +1672,118 @@ export function MeasurementPageView() {
   }
 
   async function addActivity() {
+    if (isAddingActivityRef.current) {
+      return;
+    }
+
     if (form.measurementKind === "SEM_PRODUCAO") {
       setFeedback({ type: "error", message: "Ordem sem producao nao permite adicionar atividades." });
       return;
     }
 
-    let option = findActivityOption(form.activitySearch, resolvedActivityOptions);
-    if (!option && accessToken && form.activitySearch.trim().length >= 2) {
-      try {
-        const lookupQueries = buildActivityLookupQueries(form.activitySearch);
-        const responses = await Promise.all(
-          lookupQueries.map(async (query) => {
-            const response = await fetch(`/api/medicao/activities/catalog?q=${encodeURIComponent(query)}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-              cache: "no-store",
-            });
-            const data = (await response.json().catch(() => null)) as ActivityCatalogResponse | null;
-            return response.ok ? (data?.items ?? []) : [];
-          }),
-        );
+    isAddingActivityRef.current = true;
+    setIsAddingActivity(true);
 
-        const byId = new Map<string, ActivityCatalogItem>();
-        for (const item of responses.flat()) {
-          if (!byId.has(item.id)) {
-            byId.set(item.id, item);
+    try {
+      let option = findActivityOption(form.activitySearch, resolvedActivityOptions);
+      if (!option && accessToken && form.activitySearch.trim().length >= 2) {
+        try {
+          const lookupQueries = buildActivityLookupQueries(form.activitySearch);
+          const responses = await Promise.all(
+            lookupQueries.map(async (query) => {
+              const response = await fetch(`/api/medicao/activities/catalog?q=${encodeURIComponent(query)}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                cache: "no-store",
+              });
+              const data = (await response.json().catch(() => null)) as ActivityCatalogResponse | null;
+              return response.ok ? (data?.items ?? []) : [];
+            }),
+          );
+
+          const byId = new Map<string, ActivityCatalogItem>();
+          for (const item of responses.flat()) {
+            if (!byId.has(item.id)) {
+              byId.set(item.id, item);
+            }
           }
+
+          const fetchedItems = Array.from(byId.values());
+          option = findActivityOption(form.activitySearch, [...resolvedActivityOptions, ...fetchedItems]);
+        } catch {
+          // Mantem fluxo local sem interromper o usuario quando a consulta de fallback falha.
+        }
+      }
+
+      if (!option) {
+        setFeedback({ type: "error", message: "Atividade nao encontrada. Selecione uma opcao da lista." });
+        return;
+      }
+
+      if (accessToken) {
+        const refreshed = await resolveActivityByCode(option.code);
+        if (refreshed) {
+          option = refreshed;
+        }
+      }
+
+      if (form.items.some((item) => item.activityId === option.id)) {
+        setFeedback({ type: "error", message: "Atividade ja adicionada na ordem." });
+        return;
+      }
+
+      const selectedActivity = option;
+      const isCompositeActivity = isMvaHourUnit(selectedActivity.unit);
+      const mvaQuantity = parsePositiveNumber(form.activityMvaQuantity);
+      const workedHours = parsePositiveNumber(form.activityWorkedHours);
+      const quantity = isCompositeActivity
+        ? ((mvaQuantity && workedHours) ? Number((mvaQuantity * workedHours).toFixed(6)) : null)
+        : parsePositiveNumber(form.activityQuantity);
+      if (!quantity) {
+        setFeedback({
+          type: "error",
+          message: isCompositeActivity
+            ? "Para unidade MVA*hora informe Potencia (MVA) e Horas validas."
+            : "Informe quantidade valida para incluir a atividade.",
+        });
+        return;
+      }
+
+      setForm((current) => {
+        if (current.items.some((item) => item.activityId === selectedActivity.id)) {
+          return current;
         }
 
-        const fetchedItems = Array.from(byId.values());
-        option = findActivityOption(form.activitySearch, [...resolvedActivityOptions, ...fetchedItems]);
-      } catch {
-        // Mantem fluxo local sem interromper o usuario quando a consulta de fallback falha.
-      }
-    }
-
-    if (!option) {
-      setFeedback({ type: "error", message: "Atividade nao encontrada. Selecione uma opcao da lista." });
-      return;
-    }
-
-    if (accessToken) {
-      const refreshed = await resolveActivityByCode(option.code);
-      if (refreshed) {
-        option = refreshed;
-      }
-    }
-
-    if (form.items.some((item) => item.activityId === option.id)) {
-      setFeedback({ type: "error", message: "Atividade ja adicionada na ordem." });
-      return;
-    }
-
-    const isCompositeActivity = isMvaHourUnit(option.unit);
-    const mvaQuantity = parsePositiveNumber(form.activityMvaQuantity);
-    const workedHours = parsePositiveNumber(form.activityWorkedHours);
-    const quantity = isCompositeActivity
-      ? ((mvaQuantity && workedHours) ? Number((mvaQuantity * workedHours).toFixed(6)) : null)
-      : parsePositiveNumber(form.activityQuantity);
-    if (!quantity) {
-      setFeedback({
-        type: "error",
-        message: isCompositeActivity
-          ? "Para unidade MVA*hora informe Potencia (MVA) e Horas validas."
-          : "Informe quantidade valida para incluir a atividade.",
+        return {
+          ...current,
+          activitySearch: "",
+          activityQuantity: "1",
+          activityMvaQuantity: "",
+          activityWorkedHours: "",
+          items: [
+            ...current.items,
+            {
+              rowId: createRowId(),
+              activityId: selectedActivity.id,
+              programmingActivityId: null,
+              projectActivityForecastId: null,
+              code: selectedActivity.code,
+              description: selectedActivity.description,
+              unit: selectedActivity.unit,
+              quantity: String(quantity),
+              mvaQuantity: isCompositeActivity ? String(mvaQuantity) : "",
+              workedHours: isCompositeActivity ? String(workedHours) : "",
+              voicePoint: String(selectedActivity.voicePoint ?? 1),
+              unitValue: String(selectedActivity.unitValue ?? 0),
+              observation: "",
+            },
+          ],
+        };
       });
-      return;
+      setFeedback(null);
+    } finally {
+      isAddingActivityRef.current = false;
+      setIsAddingActivity(false);
     }
-
-    setForm((current) => ({
-      ...current,
-      activitySearch: "",
-      activityQuantity: "1",
-      activityMvaQuantity: "",
-      activityWorkedHours: "",
-      items: [
-        ...current.items,
-        {
-          rowId: createRowId(),
-          activityId: option.id,
-          programmingActivityId: null,
-          projectActivityForecastId: null,
-          code: option.code,
-          description: option.description,
-          unit: option.unit,
-          quantity: String(quantity),
-          mvaQuantity: isCompositeActivity ? String(mvaQuantity) : "",
-          workedHours: isCompositeActivity ? String(workedHours) : "",
-          voicePoint: String(option.voicePoint ?? 1),
-          unitValue: String(option.unitValue ?? 0),
-          observation: "",
-        },
-      ],
-    }));
-    setFeedback(null);
   }
 
   function downloadMassTemplate() {
@@ -2957,7 +2978,7 @@ export function MeasurementPageView() {
             <label className={`${styles.field} ${styles.compactField}`}><span>Potencia (MVA)</span><input type="number" min="0.01" step="0.01" value={form.activityMvaQuantity} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityMvaQuantity: event.target.value }))} /></label>
             <label className={`${styles.field} ${styles.compactField}`}><span>Horas</span><input type="number" min="0.01" step="0.01" value={form.activityWorkedHours} disabled={form.measurementKind === "SEM_PRODUCAO"} onChange={(event) => setForm((current) => ({ ...current, activityWorkedHours: event.target.value }))} /></label>
             <div className={styles.actions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => void addActivity()} disabled={form.measurementKind === "SEM_PRODUCAO"}>Adicionar</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => void addActivity()} disabled={form.measurementKind === "SEM_PRODUCAO" || isAddingActivity}>{isAddingActivity ? "Adicionando..." : "Adicionar"}</button>
               {isEditing && form.measurementKind === "COM_PRODUCAO" && form.items.length ? (
                 <button type="button" className={styles.ghostButton} onClick={recalculateItemsWithMeasurementRate}>
                   Recalcular totais
