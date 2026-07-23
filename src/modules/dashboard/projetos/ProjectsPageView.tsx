@@ -621,6 +621,42 @@ function activityForecastOptionLabel(item: ProjectActivityForecastCatalogItem) {
   return `${item.code} - ${item.description}`;
 }
 
+function normalizeCatalogSelection(value: string) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function findProjectForecastCatalogItem(items: ProjectForecastCatalogItem[], value: string) {
+  const normalizedValue = normalizeCatalogSelection(value);
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return (
+    items.find((item) => {
+      return (
+        normalizeCatalogSelection(item.code) === normalizedValue ||
+        normalizeCatalogSelection(forecastOptionLabel(item)) === normalizedValue
+      );
+    }) ?? null
+  );
+}
+
+function findProjectActivityForecastCatalogItem(items: ProjectActivityForecastCatalogItem[], value: string) {
+  const normalizedValue = normalizeCatalogSelection(value);
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return (
+    items.find((item) => {
+      return (
+        normalizeCatalogSelection(item.code) === normalizedValue ||
+        normalizeCatalogSelection(activityForecastOptionLabel(item)) === normalizedValue
+      );
+    }) ?? null
+  );
+}
+
 function scrollDashboardContentToTop() {
   if (typeof window === "undefined") {
     return;
@@ -735,6 +771,7 @@ export function ProjectsPageView() {
   const [forecastSearch, setForecastSearch] = useState("");
   const [forecastQty, setForecastQty] = useState("");
   const [forecastCatalogItems, setForecastCatalogItems] = useState<ProjectForecastCatalogItem[]>([]);
+  const [selectedProjectForecastOption, setSelectedProjectForecastOption] = useState<ProjectForecastCatalogItem | null>(null);
   const [forecastDrafts, setForecastDrafts] = useState<Record<string, ProjectForecastDraft>>({});
   const [isLoadingForecast, setIsLoadingForecast] = useState(false);
   const [isSavingProjectForecast, setIsSavingProjectForecast] = useState(false);
@@ -758,6 +795,8 @@ export function ProjectsPageView() {
   const [activityForecastSearch, setActivityForecastSearch] = useState("");
   const [activityForecastQty, setActivityForecastQty] = useState("");
   const [activityForecastCatalogItems, setActivityForecastCatalogItems] = useState<ProjectActivityForecastCatalogItem[]>([]);
+  const [selectedProjectActivityForecastOption, setSelectedProjectActivityForecastOption] =
+    useState<ProjectActivityForecastCatalogItem | null>(null);
   const [activityForecastDrafts, setActivityForecastDrafts] = useState<Record<string, ProjectActivityForecastDraft>>({});
   const [isSavingProjectActivityForecast, setIsSavingProjectActivityForecast] = useState(false);
   const [cancelProject, setCancelProject] = useState<ProjectItem | null>(null);
@@ -842,16 +881,6 @@ export function ProjectsPageView() {
       return true;
     });
   }, [activeActivityForecastFilters, activityForecastItems]);
-
-  const selectedProjectActivityForecastOption = useMemo(
-    () => activityForecastCatalogItems.find((item) => activityForecastOptionLabel(item) === activityForecastSearch) ?? null,
-    [activityForecastCatalogItems, activityForecastSearch],
-  );
-
-  const selectedProjectForecastOption = useMemo(
-    () => forecastCatalogItems.find((item) => forecastOptionLabel(item) === forecastSearch) ?? null,
-    [forecastCatalogItems, forecastSearch],
-  );
 
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) {
@@ -1010,6 +1039,30 @@ export function ProjectsPageView() {
       });
   }, [activityForecastProject, deferredActivityForecastSearch, session?.accessToken]);
 
+  useEffect(() => {
+    if (!forecastSearch.trim()) {
+      setSelectedProjectForecastOption(null);
+      return;
+    }
+
+    const matchedItem = findProjectForecastCatalogItem(forecastCatalogItems, forecastSearch);
+    if (matchedItem) {
+      setSelectedProjectForecastOption(matchedItem);
+    }
+  }, [forecastCatalogItems, forecastSearch]);
+
+  useEffect(() => {
+    if (!activityForecastSearch.trim()) {
+      setSelectedProjectActivityForecastOption(null);
+      return;
+    }
+
+    const matchedItem = findProjectActivityForecastCatalogItem(activityForecastCatalogItems, activityForecastSearch);
+    if (matchedItem) {
+      setSelectedProjectActivityForecastOption(matchedItem);
+    }
+  }, [activityForecastCatalogItems, activityForecastSearch]);
+
   function resetFormState() {
     setForm(INITIAL_FORM);
     setEditingProjectId(null);
@@ -1085,6 +1138,16 @@ export function ProjectsPageView() {
     setActivityForecastFilterDraft(INITIAL_FORECAST_FILTERS);
     setActiveActivityForecastFilters(INITIAL_FORECAST_FILTERS);
     setFeedback(null);
+  }
+
+  function handleForecastSearchChange(value: string) {
+    setForecastSearch(value);
+    setSelectedProjectForecastOption(findProjectForecastCatalogItem(forecastCatalogItems, value));
+  }
+
+  function handleActivityForecastSearchChange(value: string) {
+    setActivityForecastSearch(value);
+    setSelectedProjectActivityForecastOption(findProjectActivityForecastCatalogItem(activityForecastCatalogItems, value));
   }
 
   function handleEditProject(project: ProjectItem) {
@@ -1241,6 +1304,7 @@ export function ProjectsPageView() {
     setForecastProjectSearch(project.sob);
     setForecastItems([]);
     setForecastCatalogItems([]);
+    setSelectedProjectForecastOption(null);
     setForecastDrafts({});
     setForecastSearch("");
     setForecastQty("");
@@ -1288,6 +1352,7 @@ export function ProjectsPageView() {
       setForecastProjectSearch("");
       setForecastItems([]);
       setForecastCatalogItems([]);
+      setSelectedProjectForecastOption(null);
       setForecastDrafts({});
       setForecastSearch("");
       setForecastQty("");
@@ -1301,6 +1366,7 @@ export function ProjectsPageView() {
     setForecastProjectSearch(selectedProject?.sob ?? "");
     setForecastItems([]);
     setForecastCatalogItems([]);
+    setSelectedProjectForecastOption(null);
     setForecastDrafts({});
     setForecastSearch("");
     setForecastQty("");
@@ -1328,6 +1394,7 @@ export function ProjectsPageView() {
       setForecastProject(null);
       setForecastItems([]);
       setForecastDrafts({});
+      setSelectedProjectForecastOption(null);
     }
   }
 
@@ -1387,6 +1454,7 @@ export function ProjectsPageView() {
       setForecastSearch("");
       setForecastQty("");
       setForecastCatalogItems([]);
+      setSelectedProjectForecastOption(null);
       setFeedback({
         type: "success",
         message: data.message ?? "Material previsto adicionado ao projeto com sucesso.",
@@ -1540,6 +1608,7 @@ export function ProjectsPageView() {
     setActivityForecastProjectSearch(project.sob);
     setActivityForecastItems([]);
     setActivityForecastCatalogItems([]);
+    setSelectedProjectActivityForecastOption(null);
     setActivityForecastDrafts({});
     setActivityForecastSearch("");
     setActivityForecastQty("");
@@ -1556,6 +1625,7 @@ export function ProjectsPageView() {
       setActivityForecastProjectSearch("");
       setActivityForecastItems([]);
       setActivityForecastCatalogItems([]);
+      setSelectedProjectActivityForecastOption(null);
       setActivityForecastDrafts({});
       setActivityForecastSearch("");
       setActivityForecastQty("");
@@ -1569,6 +1639,7 @@ export function ProjectsPageView() {
     setActivityForecastProjectSearch(selectedProject?.sob ?? "");
     setActivityForecastItems([]);
     setActivityForecastCatalogItems([]);
+    setSelectedProjectActivityForecastOption(null);
     setActivityForecastDrafts({});
     setActivityForecastSearch("");
     setActivityForecastQty("");
@@ -1596,6 +1667,7 @@ export function ProjectsPageView() {
       setActivityForecastProject(null);
       setActivityForecastItems([]);
       setActivityForecastDrafts({});
+      setSelectedProjectActivityForecastOption(null);
     }
   }
 
@@ -1665,6 +1737,7 @@ export function ProjectsPageView() {
       setActivityForecastSearch("");
       setActivityForecastQty("");
       setActivityForecastCatalogItems([]);
+      setSelectedProjectActivityForecastOption(null);
       setFeedback({
         type: "success",
         message: data.message ?? "Atividade prevista adicionada ao projeto com sucesso.",
@@ -2736,7 +2809,7 @@ export function ProjectsPageView() {
                   type="text"
                   list="project-forecast-list"
                   value={forecastSearch}
-                  onChange={(event) => setForecastSearch(event.target.value)}
+                  onChange={(event) => handleForecastSearchChange(event.target.value)}
                   placeholder="Digite codigo ou descricao"
                   disabled={!forecastProject}
                 />
@@ -2833,7 +2906,7 @@ export function ProjectsPageView() {
                   type="text"
                   list="project-activity-forecast-list"
                   value={activityForecastSearch}
-                  onChange={(event) => setActivityForecastSearch(event.target.value)}
+                  onChange={(event) => handleActivityForecastSearchChange(event.target.value)}
                   placeholder="Digite codigo ou descricao"
                   disabled={!activityForecastProject}
                 />
