@@ -167,15 +167,20 @@ type ProjectForecastDraft = {
 
 type ProjectForecastImportResponse = {
   success?: boolean;
+  partial?: boolean;
   message?: string;
   errors?: string[];
   errorRows?: ProjectForecastImportIssue[];
+  projectsSucceeded?: string[];
+  projectsFailed?: ProjectForecastImportProjectFailure[];
   reason?: string;
   codes?: string[];
   summary?: {
     projectId?: string;
     projectSob?: string;
     rowsRead: number;
+    projectsSucceeded?: number;
+    projectsFailed?: number;
     projectsProcessed?: number;
     materialsRegistered?: number;
     activitiesRegistered?: number;
@@ -190,6 +195,11 @@ type ProjectForecastImportIssue = {
   column?: string;
   value?: string;
   error?: string;
+};
+
+type ProjectForecastImportProjectFailure = {
+  sob?: string;
+  reason?: string;
 };
 
 type ProjectForecastImportErrorReport = {
@@ -537,11 +547,13 @@ function buildImportErrorReport(
   response: ProjectForecastImportResponse,
   filePrefix: string,
 ): ProjectForecastImportErrorReport | null {
-  const issues: Array<{ line: number; column: string; value: string; error: string }> = [];
+  const issues: Array<{ line: string; sortOrder: number; column: string; value: string; error: string }> = [];
 
   (response.errorRows ?? []).forEach((issue) => {
+    const line = Number(issue.line ?? issue.rowNumber ?? 0);
     issues.push({
-      line: Number(issue.line ?? issue.rowNumber ?? 0),
+      line: String(line),
+      sortOrder: line,
       column: String(issue.column ?? "arquivo"),
       value: String(issue.value ?? ""),
       error: String(issue.error ?? "Erro de validacao."),
@@ -551,7 +563,8 @@ function buildImportErrorReport(
   if (issues.length === 0) {
     (response.errors ?? []).forEach((error, index) => {
       issues.push({
-        line: index + 1,
+        line: String(index + 1),
+        sortOrder: index + 1,
         column: "arquivo",
         value: "",
         error,
@@ -562,7 +575,8 @@ function buildImportErrorReport(
   if (issues.length === 0) {
     (response.codes ?? []).forEach((code, index) => {
       issues.push({
-        line: index + 1,
+        line: String(index + 1),
+        sortOrder: index + 1,
         column: "codigo",
         value: code,
         error: "Codigo bloqueado na importacao.",
@@ -570,13 +584,23 @@ function buildImportErrorReport(
     });
   }
 
+  (response.projectsFailed ?? []).forEach((projectFailure, index) => {
+    issues.push({
+      line: `projeto ${index + 1}`,
+      sortOrder: Number.MAX_SAFE_INTEGER - (response.projectsFailed?.length ?? 0) + index,
+      column: "projeto",
+      value: String(projectFailure.sob ?? ""),
+      error: String(projectFailure.reason ?? "Falha ao importar projeto."),
+    });
+  });
+
   if (issues.length === 0) {
     return null;
   }
 
   const sortedIssues = [...issues].sort((left, right) => {
-    if (left.line !== right.line) {
-      return left.line - right.line;
+    if (left.sortOrder !== right.sortOrder) {
+      return left.sortOrder - right.sortOrder;
     }
     return left.column.localeCompare(right.column);
   });
@@ -615,6 +639,10 @@ function normalizeSob(value: string) {
 
 function forecastOptionLabel(item: ProjectForecastCatalogItem) {
   return `${item.code} - ${item.description}`;
+}
+
+function isImportResponseFailure(response: Response, data: ProjectForecastImportResponse) {
+  return !response.ok || data.success === false || data.partial === true;
 }
 
 function activityForecastOptionLabel(item: ProjectActivityForecastCatalogItem) {
@@ -1992,12 +2020,15 @@ export function ProjectsPageView() {
       });
 
       const data = (await response.json().catch(() => ({}))) as ProjectForecastImportResponse;
-      if (!response.ok) {
+      if (isImportResponseFailure(response, data)) {
         const report = buildImportErrorReport(data, "materiais_previstos_import_erros");
         setForecastImportErrorReport(report);
         const errorList = (data.errors ?? []).slice(0, 5);
         const blockedCodes = (data.codes ?? []).slice(0, 5);
-        const details = [...errorList, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
+        const failedProjects = (data.projectsFailed ?? [])
+          .slice(0, 5)
+          .map((projectFailure) => `${projectFailure.sob ?? "Projeto"}: ${projectFailure.reason ?? "falha"}`);
+        const details = [...errorList, ...failedProjects, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
         const errorDetails = details.length > 0 ? ` (${details.join(" | ")})` : "";
         setFeedback({
           type: "error",
@@ -2005,6 +2036,9 @@ export function ProjectsPageView() {
             report ? " Baixe o CSV de erros para corrigir." : ""
           }`,
         });
+        if (data.partial && forecastProject) {
+          await loadForecast(forecastProject.id);
+        }
         return;
       }
 
@@ -2066,12 +2100,15 @@ export function ProjectsPageView() {
       });
 
       const data = (await response.json().catch(() => ({}))) as ProjectForecastImportResponse;
-      if (!response.ok) {
+      if (isImportResponseFailure(response, data)) {
         const report = buildImportErrorReport(data, "atividades_previstas_import_erros");
         setActivityForecastImportErrorReport(report);
         const errorList = (data.errors ?? []).slice(0, 5);
         const blockedCodes = (data.codes ?? []).slice(0, 5);
-        const details = [...errorList, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
+        const failedProjects = (data.projectsFailed ?? [])
+          .slice(0, 5)
+          .map((projectFailure) => `${projectFailure.sob ?? "Projeto"}: ${projectFailure.reason ?? "falha"}`);
+        const details = [...errorList, ...failedProjects, ...blockedCodes.map((code) => `Codigo bloqueado: ${code}`)];
         const errorDetails = details.length > 0 ? ` (${details.join(" | ")})` : "";
         setFeedback({
           type: "error",
@@ -2079,6 +2116,9 @@ export function ProjectsPageView() {
             report ? " Baixe o CSV de erros para corrigir." : ""
           }`,
         });
+        if (data.partial && activityForecastProject) {
+          await loadActivityForecast(activityForecastProject.id);
+        }
         return;
       }
 
