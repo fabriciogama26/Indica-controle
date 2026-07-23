@@ -161,7 +161,7 @@ export type ProgrammingStageRow = {
   programming_document: ProgrammingDocumentRow[] | null;
 };
 
-export type ProgrammingStageListStatusChip = "TODAS" | "PROGRAMADAS" | "PENDENCIAS" | "ATRASADAS" | "ADIADAS";
+export type ProgrammingStageListStatusChip = "TODAS" | "PROGRAMADAS" | "PENDENCIAS" | "ATRASADAS" | "ADIADAS" | "EM_ESPERA" | "SEM_RETORNO";
 
 export type ProgrammingStageListFilters = {
   tenantId: string;
@@ -249,6 +249,16 @@ export type PostponeStagePayload = {
 export type SetPendenciaFlagPayload = {
   programmingId?: string;
   isPendencia?: boolean;
+  reason?: string;
+  description?: string;
+  resolvePendenciaDeId?: string | null;
+  expectedUpdatedAt?: string;
+};
+
+export type CorrectStageDatePayload = {
+  programmingId?: string;
+  newExecutionDate?: string;
+  reason?: string;
   expectedUpdatedAt?: string;
 };
 

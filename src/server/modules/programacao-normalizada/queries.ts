@@ -82,8 +82,13 @@ export async function fetchProgrammingStageList(params: {
   supabase: SupabaseClient;
   filters: ProgrammingStageListFilters;
   projectIdsFromSearch: string[] | null;
+  // Export (CSV/ENEL/ENEL NOVO) gera um CSV PLANO de etapas — nao ha agrupamento
+  // por projeto para preservar, entao ele NAO usa a paginacao por projeto: o teto
+  // e por ETAPAS exportadas e o total devolvido e o total de ETAPAS que batem no
+  // filtro, para o aviso poder dizer "exportados X de Y".
+  forExport?: boolean;
 }) {
-  const { supabase, filters, projectIdsFromSearch } = params;
+  const { supabase, filters, projectIdsFromSearch, forExport } = params;
 
   if (projectIdsFromSearch !== null && !projectIdsFromSearch.length) {
     return { rows: [] as ProgrammingStageRow[], total: 0 };
@@ -100,6 +105,54 @@ export async function fetchProgrammingStageList(params: {
   }
 
   const todayIso = new Date().toISOString().slice(0, 10);
+  const isEmEsperaChip = filters.statusChip === "EM_ESPERA";
+  // "Sem retorno" (achado/migration 330): condicao DERIVADA — pendencia aberta,
+  // vencida e sem Estado do Trabalho lancado. Como o "Em espera", IGNORA o
+  // intervalo de data de proposito (senao a pendencia antiga — a que mais
+  // precisa de cobranca — ficaria escondida). todayIso vem do servidor.
+  const isSemRetornoChip = filters.statusChip === "SEM_RETORNO";
+
+  // Export: consulta plana por ETAPA, com total exato de etapas e teto por etapa.
+  if (forExport) {
+    let exportQuery = supabase
+      .from("programming")
+      .select(PROGRAMMING_STAGE_SELECT_WITH_CHILDREN, { count: "exact" })
+      .eq("tenant_id", filters.tenantId);
+
+    if (projectIdsFromSearch !== null) {
+      exportQuery = exportQuery.in("project_id", projectIdsFromSearch);
+    }
+
+    if (stageIdsFromTeamFilter !== null) {
+      exportQuery = exportQuery.in("id", stageIdsFromTeamFilter);
+    }
+
+    if (isEmEsperaChip) {
+      exportQuery = exportQuery.eq("status", "ADIADA").is("execution_date", null);
+    } else if (isSemRetornoChip) {
+      exportQuery = exportQuery
+        .eq("is_pendencia", true)
+        .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+        .lt("execution_date", todayIso)
+        .is("work_completion_status", null);
+    } else {
+      exportQuery = exportQuery.gte("execution_date", filters.dateFrom).lte("execution_date", filters.dateTo);
+      exportQuery = applyStatusChipToStageQuery(exportQuery, filters.statusChip, todayIso);
+    }
+
+    const { data: exportRows, error: exportError, count: exportCount } = await exportQuery
+      .order("project_id", { ascending: true })
+      .order("execution_date", { ascending: true })
+      .limit(filters.pageSize)
+      .returns<ProgrammingStageRow[]>();
+
+    if (exportError) {
+      throw new Error(`Falha ao carregar etapas para exportacao: ${exportError.message}`);
+    }
+
+    // total = total de ETAPAS que batem no filtro (nao so as devolvidas).
+    return { rows: exportRows ?? [], total: exportCount ?? 0 };
+  }
 
   // Passo 1: projetos distintos (paginados) + total de projetos.
   const { data: projectPage, error: projectError } = await supabase.rpc("programming_list_project_page", {
@@ -127,19 +180,30 @@ export async function fetchProgrammingStageList(params: {
   }
 
   // Passo 2: todas as etapas (matching) dos projetos da pagina.
+  // "Em espera" (achado 9) ignora o intervalo de data de proposito: sao etapas
+  // ADIADA sem data, que por definicao nao caem em nenhuma janela.
   let query = supabase
     .from("programming")
     .select(PROGRAMMING_STAGE_SELECT_WITH_CHILDREN)
     .eq("tenant_id", filters.tenantId)
-    .gte("execution_date", filters.dateFrom)
-    .lte("execution_date", filters.dateTo)
     .in("project_id", pageProjectIds);
+
+  if (isEmEsperaChip) {
+    query = query.eq("status", "ADIADA").is("execution_date", null);
+  } else if (isSemRetornoChip) {
+    query = query
+      .eq("is_pendencia", true)
+      .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+      .lt("execution_date", todayIso)
+      .is("work_completion_status", null);
+  } else {
+    query = query.gte("execution_date", filters.dateFrom).lte("execution_date", filters.dateTo);
+    query = applyStatusChipToStageQuery(query, filters.statusChip, todayIso);
+  }
 
   if (stageIdsFromTeamFilter !== null) {
     query = query.in("id", stageIdsFromTeamFilter);
   }
-
-  query = applyStatusChipToStageQuery(query, filters.statusChip, todayIso);
 
   const { data, error } = await query
     .order("project_id", { ascending: true })

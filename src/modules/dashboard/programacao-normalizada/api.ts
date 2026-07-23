@@ -231,10 +231,35 @@ export async function changeCompletedStageWorkStatus(params: {
   return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
 }
 
+export async function correctProgrammingStageDate(params: {
+  accessToken: string;
+  programmingId: string;
+  newExecutionDate: string;
+  reason: string;
+  expectedUpdatedAt: string;
+}) {
+  const response = await fetch("/api/programacao-normalizada", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(params.accessToken) },
+    body: JSON.stringify({
+      action: "CORRECT_DATE",
+      programmingId: params.programmingId,
+      newExecutionDate: params.newExecutionDate,
+      reason: params.reason,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+    }),
+  });
+
+  return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
+}
+
 export async function setProgrammingPendenciaFlag(params: {
   accessToken: string;
   programmingId: string;
   isPendencia: boolean;
+  reason: string;
+  description?: string | null;
+  resolvePendenciaDeId?: string | null;
   expectedUpdatedAt: string;
 }) {
   const response = await fetch("/api/programacao-normalizada", {
@@ -244,6 +269,9 @@ export async function setProgrammingPendenciaFlag(params: {
       action: "SET_PENDENCIA",
       programmingId: params.programmingId,
       isPendencia: params.isPendencia,
+      reason: params.reason,
+      description: params.description ?? null,
+      resolvePendenciaDeId: params.resolvePendenciaDeId ?? null,
       expectedUpdatedAt: params.expectedUpdatedAt,
     }),
   });

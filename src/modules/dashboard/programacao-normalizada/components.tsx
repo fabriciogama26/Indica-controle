@@ -63,6 +63,7 @@ export function StageCard(props: {
   onComplete: () => void;
   onReopen: () => void;
   onTogglePendencia: (next: boolean) => void;
+  onCorrectDate: () => void;
   onDetails: () => void;
   onHistory: () => void;
   isSubmitting: boolean;
@@ -79,6 +80,7 @@ export function StageCard(props: {
     onComplete,
     onReopen,
     onTogglePendencia,
+    onCorrectDate,
     onDetails,
     onHistory,
     isSubmitting,
@@ -126,6 +128,15 @@ export function StageCard(props: {
                 disabled={isSubmitting}
               >
                 <ActionIcon name="postpone" />
+              </button>
+              <button
+                type="button"
+                className={`${styles.actionButton} ${styles.actionEdit}`}
+                title="Corrigir data (mantem a etapa; para remarcar use Adiar)"
+                onClick={onCorrectDate}
+                disabled={isSubmitting}
+              >
+                <ActionIcon name="transfer" />
               </button>
               <button
                 type="button"
@@ -292,6 +303,123 @@ export function PostponeModal(props: {
             disabled={isSubmitting || !canConfirm}
           >
             {mode === "HOLD" ? "Deixar em espera" : "Confirmar remarcacao"}
+          </button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+// Marcar/desmarcar pendencia exige motivo (achado 3) e, ao LIGAR, permite
+// apontar a etapa de origem da sobra (grava resolve_pendencia_de_id).
+export function PendenciaModal(props: {
+  target: ProgrammingStage | null;
+  nextValue: boolean;
+  reason: string;
+  description: string;
+  originId: string;
+  originOptions: ProgrammingStage[];
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onReasonChange: (value: string) => void;
+  onDescriptionChange: (value: string) => void;
+  onOriginChange: (value: string) => void;
+}) {
+  const { target, nextValue, reason, description, originId, originOptions, isSubmitting, onClose, onConfirm, onReasonChange, onDescriptionChange, onOriginChange } = props;
+  if (!target) return null;
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <h4>{nextValue ? "Marcar pendencia" : "Desmarcar pendencia"}</h4>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>Fechar</button>
+        </header>
+        <div className={styles.modalBody}>
+          <label className={styles.field}>
+            <span>Motivo <span className="requiredMark">*</span></span>
+            <textarea value={reason} onChange={(event) => onReasonChange(event.target.value)} disabled={isSubmitting} />
+          </label>
+          {nextValue ? (
+            <label className={styles.field}>
+              <span>Descricao do servico restante <span className="requiredMark">*</span></span>
+              <textarea value={description} onChange={(event) => onDescriptionChange(event.target.value)} disabled={isSubmitting} />
+            </label>
+          ) : null}
+          {nextValue ? (
+            <label className={styles.field}>
+              <span>Etapa de origem (opcional — precisa ter o Estado do trabalho lancado)</span>
+              <select value={originId} onChange={(event) => onOriginChange(event.target.value)} disabled={isSubmitting}>
+                <option value="">Sem vinculo</option>
+                {originOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.executionDate ? formatDate(item.executionDate) : "Em espera"} — {getWorkCompletionLabel(item.workCompletionStatus)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <button
+            type="button"
+            className={styles.buttonPrimary}
+            onClick={onConfirm}
+            disabled={isSubmitting || !reason.trim() || (nextValue && !description.trim())}
+          >
+            {nextValue ? "Marcar pendencia" : "Desmarcar pendencia"}
+          </button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+// Corrigir data (achado 10): aceita data anterior ou posterior, mantem o
+// registro e o status. Remarcar continua sendo pelo Adiar.
+export function CorrectDateModal(props: {
+  target: ProgrammingStage | null;
+  newDate: string;
+  reason: string;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onNewDateChange: (value: string) => void;
+  onReasonChange: (value: string) => void;
+}) {
+  const { target, newDate, reason, isSubmitting, onClose, onConfirm, onNewDateChange, onReasonChange } = props;
+  if (!target) return null;
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <div className={styles.modalTitleBlock}>
+            <h4>Corrigir data</h4>
+            <p className={styles.modalSubtitle}>
+              Corrige a data cadastrada (mantem a etapa e o status). Para remarcar, use Adiar.
+            </p>
+          </div>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>Fechar</button>
+        </header>
+        <div className={styles.modalBody}>
+          <p className={styles.emptyHint}>
+            Data atual: {target.executionDate ? formatDate(target.executionDate) : "Em espera"}
+          </p>
+          <label className={styles.field}>
+            <span>Data correta <span className="requiredMark">*</span></span>
+            <input type="date" value={newDate} onChange={(event) => onNewDateChange(event.target.value)} disabled={isSubmitting} />
+          </label>
+          <label className={styles.field}>
+            <span>Motivo <span className="requiredMark">*</span></span>
+            <textarea value={reason} onChange={(event) => onReasonChange(event.target.value)} disabled={isSubmitting} />
+          </label>
+          <button
+            type="button"
+            className={styles.buttonPrimary}
+            onClick={onConfirm}
+            disabled={isSubmitting || !newDate || !reason.trim()}
+          >
+            Confirmar correcao
           </button>
         </div>
       </article>
