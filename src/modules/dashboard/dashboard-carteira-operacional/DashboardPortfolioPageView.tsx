@@ -29,6 +29,14 @@ const diagnosticCriteriaText = "Parametros: saudavel quando renovacao >= 20%, ex
 const flowCriteriaText = "Parametros: Projetos novos sao os trabalhados pela primeira vez no periodo filtrado. Em andamento sao os projetos pendentes. Concluidos usam o ultimo estado de trabalho da programacao ou snapshot da Medicao ate o fim do periodo.";
 const renewalCriteriaText = "Parametros: renovacao = projetos novos com producao no periodo / projetos trabalhados com producao no periodo. Novo tem primeira atuacao dentro do periodo; herdado ja tinha atuacao anterior. Ticket medio = valor do ciclo / quantidade de projetos da origem.";
 const agingCriteriaText = "Parametros: idade da carteira = quantidade de ciclos com producao por projeto. Sem producao indica projeto com atividade prevista, mas sem medicao produtiva ate o periodo. Ciclos sem producao compara a ultima atuacao com o ciclo selecionado.";
+const goalCoverageCriteriaText = "Parametros: cobertura = potencial restante da carteira / meta restante do ciclo. Verde acima de 120%, amarelo entre 80% e 120%, vermelho abaixo de 80%. Autonomia = potencial restante / meta diaria cadastrada.";
+
+const goalCoverageLabels = {
+  SAUDAVEL: "Carteira sustenta a meta",
+  ATENCAO: "Cobertura em atencao",
+  RISCO: "Carteira insuficiente",
+  SEM_META: "Sem meta cadastrada",
+} as const;
 
 function clampPercent(value: number) {
   return `${Math.max(0, Math.min(100, value)).toFixed(4)}%`;
@@ -79,6 +87,20 @@ function renderDaysWithoutProduction(project: DashboardPortfolioProject) {
   return `${project.daysWithoutProduction} dias`;
 }
 
+function goalCoverageTone(status: keyof typeof goalCoverageLabels): "green" | "orange" | "red" | undefined {
+  if (status === "SAUDAVEL") return "green";
+  if (status === "ATENCAO") return "orange";
+  if (status === "RISCO") return "red";
+  return undefined;
+}
+
+function goalCoverageBarClass(status: keyof typeof goalCoverageLabels) {
+  if (status === "SAUDAVEL") return styles.greenBar;
+  if (status === "ATENCAO") return styles.orangeBar;
+  if (status === "RISCO") return styles.redBar;
+  return styles.blueBar;
+}
+
 export function DashboardPortfolioPageView() {
   const dashboard = useDashboardPortfolio();
   const [projectPage, setProjectPage] = useState(1);
@@ -87,6 +109,7 @@ export function DashboardPortfolioPageView() {
     : dashboard.cycles.find((cycle) => cycle.cycleStart === dashboard.filters.cycleStart)?.label ?? "Ciclo selecionado";
   const quantitySummary = dashboard.quantitySummary;
   const financialSummary = dashboard.financialSummary;
+  const goalCoverage = dashboard.goalCoverage;
   const maxAgeCount = useMemo(() => maxPortfolioValue(dashboard.ageBuckets.map((item) => item.count)), [dashboard.ageBuckets]);
   const maxFlowValue = useMemo(() => maxPortfolioValue(dashboard.flow.map((item) => item.value)), [dashboard.flow]);
   const totalProjectPages = Math.max(1, Math.ceil(dashboard.projectRows.length / PORTFOLIO_PROJECT_PAGE_SIZE));
@@ -257,6 +280,43 @@ export function DashboardPortfolioPageView() {
           <MetricCard label="Media projetos novos" value={formatPortfolioCurrency(financialSummary?.averageNewProjectValue ?? 0, true)} />
           <MetricCard label="Media projetos herdados" value={formatPortfolioCurrency(financialSummary?.averageInheritedProjectValue ?? 0, true)} />
           <MetricCard label="Ticket medio concluidos" value={formatPortfolioCurrency(financialSummary?.completedAverageTicket ?? 0, true)} />
+        </div>
+      </article>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <div className={styles.titleWithInfo}>
+              <h2 className={styles.cardTitle}>Cobertura da meta</h2>
+              <InfoButton label="Parametros da cobertura da meta" text={goalCoverageCriteriaText} />
+            </div>
+            <p className={styles.cardSubtitle}>Leitura se a carteira atual sustenta a meta restante do ciclo.</p>
+          </div>
+          <span className={goalCoverage?.status === "RISCO" ? styles.statusRisk : goalCoverage?.status === "ATENCAO" ? styles.statusWarning : goalCoverage?.status === "SEM_META" ? styles.statusNeutral : styles.statusHealthy}>
+            {goalCoverage ? goalCoverageLabels[goalCoverage.status] : "Sem calculo"}
+          </span>
+        </div>
+        <div className={styles.metricGrid}>
+          <MetricCard label="Meta restante do ciclo" value={formatPortfolioCurrency(goalCoverage?.remainingCycleGoal ?? 0, true)} />
+          <MetricCard label="Potencial restante" value={formatPortfolioCurrency(goalCoverage?.remainingPotential ?? 0, true)} tone="green" />
+          <MetricCard label="Cobertura da meta" value={formatPortfolioPercent(goalCoverage?.coveragePercentage ?? 0)} tone={goalCoverage ? goalCoverageTone(goalCoverage.status) : undefined} />
+          <MetricCard label="Autonomia da carteira" value={`${formatPortfolioNumber(goalCoverage?.autonomyBusinessDays ?? 0, 1)} dias uteis`} />
+          <MetricCard label="Esgotamento previsto" value={goalCoverage?.depletionDateLabel ?? "-"} tone={goalCoverage ? goalCoverageTone(goalCoverage.status) : undefined} />
+          <MetricCard label="Meta diaria" value={formatPortfolioCurrency(goalCoverage?.dailyGoal ?? 0, true)} />
+        </div>
+        <div className={styles.coveragePanel}>
+          <div className={styles.coverageText}>
+            <strong>Cobertura da meta</strong>
+            <span>{goalCoverage?.message ?? "Carregue a carteira para calcular a cobertura da meta."}</span>
+          </div>
+          <div className={styles.coverageTrack}>
+            <span className={goalCoverage ? goalCoverageBarClass(goalCoverage.status) : styles.blueBar} style={{ width: clampPercent(((goalCoverage?.coveragePercentage ?? 0) / 120) * 100) }} />
+          </div>
+          <div className={styles.coverageScale}>
+            <span>0%</span>
+            <span>80%</span>
+            <span>120%</span>
+          </div>
         </div>
       </article>
 

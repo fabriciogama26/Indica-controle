@@ -45,6 +45,23 @@ export type DashboardPortfolioFinancialSummary = {
   completedAverageTicket: number;
 };
 
+export type DashboardPortfolioGoalCoverage = {
+  status: "SAUDAVEL" | "ATENCAO" | "RISCO" | "SEM_META";
+  cycleStart: string | null;
+  cycleEnd: string | null;
+  cycleEndLabel: string;
+  cycleGoal: number;
+  dailyGoal: number;
+  producedValue: number;
+  remainingCycleGoal: number;
+  remainingPotential: number;
+  coveragePercentage: number;
+  autonomyBusinessDays: number;
+  depletionDate: string | null;
+  depletionDateLabel: string;
+  message: string;
+};
+
 export type DashboardPortfolioFlowRow = {
   stage: string;
   projects: number;
@@ -103,6 +120,7 @@ export type DashboardPortfolioResponse = {
   diagnostic?: DashboardPortfolioDiagnostic;
   quantitySummary?: DashboardPortfolioQuantitySummary;
   financialSummary?: DashboardPortfolioFinancialSummary;
+  goalCoverage?: DashboardPortfolioGoalCoverage;
   flow?: DashboardPortfolioFlowRow[];
   renewalChart?: DashboardPortfolioRenewalRow[];
   ageBuckets?: DashboardPortfolioAgeBucket[];
