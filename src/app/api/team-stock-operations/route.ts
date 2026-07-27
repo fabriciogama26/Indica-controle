@@ -87,11 +87,13 @@ type TeamOperationMapRow = {
   technical_origin_stock_center_id: string | null;
   team_name_snapshot: string;
   foreman_name_snapshot: string;
+  created_at: string;
 };
 
 type LegacyTeamOperationMapRow = {
   transfer_id: string;
   team_id: string;
+  created_at: string;
 };
 
 type TeamRow = {
@@ -141,6 +143,7 @@ type HistoryValueMaps = {
 };
 
 const RELATION_QUERY_CHUNK_SIZE = 100;
+const TEAM_OPERATION_PAGE_SIZE = 1000;
 
 function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
   const chunks: string[][] = [];
@@ -218,6 +221,7 @@ function normalizeLegacyTeamOperationRows(rows: LegacyTeamOperationMapRow[] | nu
     technical_origin_stock_center_id: null,
     team_name_snapshot: "Equipe nao informada",
     foreman_name_snapshot: "Encarregado nao informado",
+    created_at: row.created_at,
   })) satisfies TeamOperationMapRow[];
 }
 
@@ -227,50 +231,91 @@ async function loadTeamOperationRows(
   teamIdFilter: string,
   operationKindFilter?: TeamOperationKind | null,
 ) {
-  let fullQuery = supabase
-    .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
-    .eq("tenant_id", tenantId);
+  const loadFullPage = (from: number, to: number) => {
+    let fullQuery = supabase
+      .from("stock_transfer_team_operations")
+      .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot, created_at")
+      .eq("tenant_id", tenantId);
 
-  if (teamIdFilter) {
-    fullQuery = fullQuery.eq("team_id", teamIdFilter);
+    if (teamIdFilter) {
+      fullQuery = fullQuery.eq("team_id", teamIdFilter);
+    }
+    if (operationKindFilter) {
+      fullQuery = fullQuery.eq("operation_kind", operationKindFilter);
+    }
+
+    return fullQuery
+      .order("created_at", { ascending: false })
+      .range(from, to)
+      .returns<TeamOperationMapRow[]>();
+  };
+
+  const firstFullResult = await loadFullPage(0, TEAM_OPERATION_PAGE_SIZE - 1);
+
+  if (!firstFullResult.error) {
+    const rows = [...(firstFullResult.data ?? [])];
+    let nextFrom = TEAM_OPERATION_PAGE_SIZE;
+
+    while ((rows.length % TEAM_OPERATION_PAGE_SIZE) === 0 && rows.length > 0) {
+      const pagedResult = await loadFullPage(nextFrom, nextFrom + TEAM_OPERATION_PAGE_SIZE - 1);
+      if (pagedResult.error) {
+        return { data: null, error: pagedResult.error };
+      }
+      const pageRows = pagedResult.data ?? [];
+      rows.push(...pageRows);
+      if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
+        break;
+      }
+      nextFrom += TEAM_OPERATION_PAGE_SIZE;
+    }
+
+    return { data: rows, error: null };
   }
-  if (operationKindFilter) {
-    fullQuery = fullQuery.eq("operation_kind", operationKindFilter);
+
+  if (!shouldFallbackToLegacyTeamOperationSelect(firstFullResult.error)) {
+    return firstFullResult;
   }
 
-  const fullResult = await fullQuery.returns<TeamOperationMapRow[]>();
+  logTeamOperationLoadError("team-operations-full-select", firstFullResult.error, { fallback: "legacy-select" });
 
-  if (!fullResult.error) {
-    return fullResult;
-  }
+  const loadLegacyPage = (from: number, to: number) => {
+    let legacyQuery = supabase
+      .from("stock_transfer_team_operations")
+      .select("transfer_id, team_id, created_at")
+      .eq("tenant_id", tenantId);
 
-  if (!shouldFallbackToLegacyTeamOperationSelect(fullResult.error)) {
-    return fullResult;
-  }
+    if (teamIdFilter) {
+      legacyQuery = legacyQuery.eq("team_id", teamIdFilter);
+    }
 
-  logTeamOperationLoadError("team-operations-full-select", fullResult.error, { fallback: "legacy-select" });
+    return legacyQuery
+      .order("created_at", { ascending: false })
+      .range(from, to)
+      .returns<LegacyTeamOperationMapRow[]>();
+  };
 
-  let legacyQuery = supabase
-    .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id")
-    .eq("tenant_id", tenantId);
+  const legacyRows: LegacyTeamOperationMapRow[] = [];
+  let nextLegacyFrom = 0;
 
-  if (teamIdFilter) {
-    legacyQuery = legacyQuery.eq("team_id", teamIdFilter);
-  }
+  while (true) {
+    const legacyResult = await loadLegacyPage(nextLegacyFrom, nextLegacyFrom + TEAM_OPERATION_PAGE_SIZE - 1);
+    if (legacyResult.error) {
+      return {
+        data: null,
+        error: legacyResult.error,
+      };
+    }
 
-  const legacyResult = await legacyQuery.returns<LegacyTeamOperationMapRow[]>();
-
-  if (legacyResult.error) {
-    return {
-      data: null,
-      error: legacyResult.error,
-    };
+    const pageRows = legacyResult.data ?? [];
+    legacyRows.push(...pageRows);
+    if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
+      break;
+    }
+    nextLegacyFrom += TEAM_OPERATION_PAGE_SIZE;
   }
 
   return {
-    data: normalizeLegacyTeamOperationRows(legacyResult.data),
+    data: normalizeLegacyTeamOperationRows(legacyRows),
     error: null,
   };
 }
@@ -282,7 +327,7 @@ async function loadTeamOperationRowByTransfer(
 ) {
   const fullResult = await supabase
     .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot")
+    .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot, created_at")
     .eq("tenant_id", tenantId)
     .eq("transfer_id", transferId)
     .maybeSingle<TeamOperationMapRow>();
@@ -299,7 +344,7 @@ async function loadTeamOperationRowByTransfer(
 
   const legacyResult = await supabase
     .from("stock_transfer_team_operations")
-    .select("transfer_id, team_id")
+    .select("transfer_id, team_id, created_at")
     .eq("tenant_id", tenantId)
     .eq("transfer_id", transferId)
     .maybeSingle<LegacyTeamOperationMapRow>();

@@ -743,3 +743,37 @@ Atualizacao 2026-07-16 (Correcao: bloqueio de Requisicao direta afetava Devoluca
   - Logar com esse usuario em `/saida`: o seletor `Operacao` deve mostrar apenas `Devolucao` e `Retorno de campo`.
   - Salvar uma `Devolucao`, aguardar o reset do formulario e salvar uma segunda `Devolucao` / `Retorno de campo`:
     ambas devem concluir sem 403.
+
+Atualizacao 2026-07-27 (Correcao: Atendimento encerrado nao aparecia na lista)
+-----------------------------------------------------------------------------
+- Causa:
+  - `GET /api/team-stock-operations` carregava `stock_transfer_team_operations` sem `range()` e sem
+    ordenacao por `created_at`.
+  - O Supabase/PostgREST retornava apenas a primeira janela implicita de 1000 linhas; em tenant com mais de
+    1000 operacoes, lancamentos recentes gerados pelo Atendimento de Requisicoes podiam ficar fora da tela.
+  - Diagnostico em producao: tenant com 1256 operacoes; o pedido `RC0323050671 / MK-03` encerrado em
+    `2026-07-27` gerou 38 transferencias de `2026-07-23`, mas 0 apareciam na janela implicita antiga.
+- Correcao:
+  - `loadTeamOperationRows()` passa a buscar `stock_transfer_team_operations` em paginas de 1000 via
+    `.range()` e ordenar por `created_at desc`, mantendo filtros por `tenant_id`, `team_id` e
+    `operation_kind`.
+  - O fallback de schema legado tambem passa a paginar e ordenar por `created_at desc`.
+  - `loadTeamOperationRowByTransfer()` passou a selecionar `created_at` para manter o contrato do tipo unico.
+- Comportamento antes/depois:
+  - Antes: Atendimento de Requisicoes podia encerrar corretamente e movimentar saldo, mas a lista de
+    Operacoes de Equipe nao mostrava os lancamentos se eles estivessem fora das 1000 linhas implicitas.
+  - Depois: a lista encontra os lancamentos recentes gerados pelo atendimento; no caso diagnosticado,
+    a janela ordenada encontra as 38 transferencias aceitas.
+- Mapa de Codigo:
+  - `src/app/api/team-stock-operations/route.ts`
+    - `TEAM_OPERATION_PAGE_SIZE`: tamanho de pagina interno para leitura segura.
+    - `loadTeamOperationRows()`: leitura paginada/ordenada das operacoes de equipe.
+    - `loadTeamOperationRowByTransfer()`: select alinhado com `created_at`.
+- Multi-tenant:
+  - Sem mudanca de schema, RLS ou permissoes. Todas as leituras continuam filtradas por `tenant_id` resolvido
+    no servidor.
+- Como validar:
+  - `cmd /c npx tsc --noEmit`
+  - `cmd /c npm run lint`
+  - Consultar `/saida` sem filtros ou filtrando por `Equipe = MK-03` e `Projeto = RC0323050671`; devem aparecer
+    os lancamentos de Requisicao com data de operacao `2026-07-23`.
