@@ -13,6 +13,7 @@ import type {
   DashboardPortfolioFilters,
   DashboardPortfolioFinancialSummary,
   DashboardPortfolioFlowRow,
+  DashboardPortfolioGoalCoverage,
   DashboardPortfolioOption,
   DashboardPortfolioProject,
   DashboardPortfolioQuantitySummary,
@@ -30,6 +31,7 @@ export function useDashboardPortfolio() {
   const [diagnostic, setDiagnostic] = useState<DashboardPortfolioDiagnostic | null>(null);
   const [quantitySummary, setQuantitySummary] = useState<DashboardPortfolioQuantitySummary | null>(null);
   const [financialSummary, setFinancialSummary] = useState<DashboardPortfolioFinancialSummary | null>(null);
+  const [goalCoverage, setGoalCoverage] = useState<DashboardPortfolioGoalCoverage | null>(null);
   const [flow, setFlow] = useState<DashboardPortfolioFlowRow[]>([]);
   const [renewalChart, setRenewalChart] = useState<DashboardPortfolioRenewalRow[]>([]);
   const [ageBuckets, setAgeBuckets] = useState<DashboardPortfolioAgeBucket[]>([]);
@@ -54,6 +56,7 @@ export function useDashboardPortfolio() {
       setDiagnostic(data.diagnostic ?? null);
       setQuantitySummary(data.quantitySummary ?? null);
       setFinancialSummary(data.financialSummary ?? null);
+      setGoalCoverage(data.goalCoverage ?? null);
       setFlow(data.flow ?? []);
       setRenewalChart(data.renewalChart ?? []);
       setAgeBuckets(data.ageBuckets ?? []);
@@ -95,6 +98,7 @@ export function useDashboardPortfolio() {
     diagnostic,
     quantitySummary,
     financialSummary,
+    goalCoverage,
     flow,
     renewalChart,
     ageBuckets,

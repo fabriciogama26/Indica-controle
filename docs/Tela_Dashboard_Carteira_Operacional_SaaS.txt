@@ -16,12 +16,14 @@ Arquitetura
 - Menu e titulo: `src/components/layout/AppShell.tsx`.
 - Permissao: `src/lib/auth/authorization.ts` e `src/modules/dashboard/permissoes/PermissionsPageView.tsx`.
 - Registro da pagina: `supabase/migrations/332_register_dashboard_portfolio_page.sql`.
+- RPC de cobertura da meta: `supabase/migrations/334_dashboard_portfolio_goal_coverage_rpc.sql`.
 
 Cadastro
 - A tela nao cadastra dados.
 - A entrada da carteira vem da aba `Atividades previstas` da tela Projetos.
 - O valor potencial da carteira e calculado pela RPC `dashboard_portfolio_forecast_values`, a partir de `project_activity_forecast` + `service_activities`: `voice_point x qty_planned x unit_value x taxa`.
 - Nesta versao a taxa considerada para o valor previsto e `1`.
+- A cobertura da meta e calculada pela RPC `dashboard_portfolio_goal_coverage`, usando a meta cadastrada do ciclo (`measurement_cycle_target_items`) e o potencial restante consolidado pelo controller da carteira.
 - A producao do ciclo usa ordens de medicao ativas, com `measurement_kind = COM_PRODUCAO`, status diferente de `CANCELADA` e itens ativos de `project_measurement_order_items`.
 - A conclusao do projeto e derivada da programacao (`project_programming.work_completion_status`) ate o fim do ciclo selecionado.
 
@@ -38,6 +40,7 @@ Filtros, auto-complete e listagem
 Indicadores
 - Saude da carteira: projetos trabalhados, novos, herdados, concluidos, pendentes, retirados, idade media e indice de renovacao.
 - Financeiro da carteira: valor produzido no ciclo, valor acumulado, potencial restante, exploracao da carteira, valor medio dos novos, valor medio dos herdados e ticket medio dos concluidos.
+- Cobertura da meta: meta restante do ciclo, potencial restante, cobertura percentual, autonomia em dias uteis, data prevista de esgotamento e meta diaria cadastrada.
 - Fluxo da carteira: projetos novos, em andamento e concluidos, com quantidade e valor.
 - Renovacao: compara novos e herdados, incluindo ticket medio.
 - Envelhecimento: agrupa projetos por idade em ciclos e inclui projetos sem producao no ciclo.
@@ -57,6 +60,7 @@ Cancelamento e saldo
 - Ordens de medicao canceladas nao entram no valor produzido, acumulado ou diagnostico.
 - Estados parciais da programacao (`PARCIAL`, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e variantes com beneficio atingido) contam como pendentes.
 - Quando o valor acumulado supera o valor previsto calculado, o restante e exibido como zero e a exploracao fica limitada a 100%.
+- A cobertura da meta usa status verde quando a carteira cobre acima de 120% da meta restante, amarelo entre 80% e 120%, e vermelho abaixo de 80%.
 
 Atalhos
 - Menu principal: `Visao Geral > Carteira Operacional`.
@@ -75,6 +79,7 @@ Atualizacao 2026-07
 - Incluido botao `Extrair CSV` na tabela analitica da carteira.
 - Incluido icone de informacao no diagnostico automatico para explicar os parametros de saude da carteira.
 - Incluidos icones de informacao nos blocos de fluxo, renovacao e envelhecimento da carteira.
+- Criada a RPC `334_dashboard_portfolio_goal_coverage_rpc.sql` e incluido o bloco `Cobertura da meta` para medir se a carteira sustenta a meta restante do ciclo.
 
 Mapa de Codigo
 - `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.
@@ -90,3 +95,4 @@ Mapa de Codigo
 - `src/lib/auth/authorization.ts`: mapeamento de rota para permissao.
 - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`: catalogo de permissoes.
 - `supabase/migrations/332_register_dashboard_portfolio_page.sql`: cadastro da pagina e permissoes iniciais.
+- `supabase/migrations/334_dashboard_portfolio_goal_coverage_rpc.sql`: calculo de meta restante, cobertura, autonomia e esgotamento previsto.

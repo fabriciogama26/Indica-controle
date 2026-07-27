@@ -14,6 +14,20 @@ type ProjectForecastValueRow = {
   total_forecast_value: number | string | null;
 };
 
+type GoalCoverageRow = {
+  cycle_start: string | null;
+  cycle_end: string | null;
+  cycle_goal: number | string | null;
+  daily_goal: number | string | null;
+  produced_value: number | string | null;
+  remaining_cycle_goal: number | string | null;
+  remaining_potential: number | string | null;
+  coverage_percentage: number | string | null;
+  autonomy_business_days: number | string | null;
+  depletion_date: string | null;
+  status: string | null;
+};
+
 type ProjectRow = {
   id: string;
   sob: string | null;
@@ -54,6 +68,7 @@ type Cycle = {
 };
 
 type PortfolioScope = "ACTIVE" | "WITHDRAWN" | "ALL";
+type GoalCoverageStatus = "SAUDAVEL" | "ATENCAO" | "RISCO" | "SEM_META";
 
 type ProjectPortfolioRow = {
   projectId: string;
@@ -118,6 +133,12 @@ function normalizePortfolioScope(value: unknown): PortfolioScope {
   if (token === "WITHDRAWN" || token === "RETIRADA" || token === "RETIRADOS") return "WITHDRAWN";
   if (token === "ALL" || token === "TODOS") return "ALL";
   return "ACTIVE";
+}
+
+function normalizeGoalCoverageStatus(value: unknown): GoalCoverageStatus {
+  const token = normalizeText(value).toUpperCase();
+  if (token === "SAUDAVEL" || token === "ATENCAO" || token === "RISCO") return token;
+  return "SEM_META";
 }
 
 function numberValue(value: unknown) {
@@ -203,6 +224,49 @@ function formatDatePtBr(value: string | null) {
   return year && month && day ? `${day}/${month}/${year}` : value;
 }
 
+function formatDecimalPtBr(value: number, digits = 1) {
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function buildGoalCoverageMessage(params: {
+  status: GoalCoverageStatus;
+  coveragePercentage: number;
+  autonomyBusinessDays: number;
+  depletionDate: string | null;
+  cycleEnd: string | null;
+}) {
+  if (params.status === "SEM_META") {
+    return "Sem meta cadastrada para o ciclo selecionado.";
+  }
+
+  if (params.coveragePercentage >= 100 && params.autonomyBusinessDays <= 0) {
+    return "Meta restante do ciclo ja esta coberta pela producao realizada.";
+  }
+
+  const coverage = formatDecimalPtBr(params.coveragePercentage);
+  const autonomy = formatDecimalPtBr(params.autonomyBusinessDays);
+  const depletionLabel = formatDatePtBr(params.depletionDate);
+  const cycleEndLabel = formatDatePtBr(params.cycleEnd);
+  const depletionSignal = params.depletionDate && params.cycleEnd && params.depletionDate < params.cycleEnd
+    ? ` Carteira tende a esgotar em ${depletionLabel}, antes do fim do ciclo (${cycleEndLabel}).`
+    : params.depletionDate
+      ? ` Carteira estimada ate ${depletionLabel}.`
+      : "";
+
+  if (params.status === "RISCO") {
+    return `Carteira cobre apenas ${coverage}% da meta restante, com autonomia de ${autonomy} dias uteis.${depletionSignal}`;
+  }
+
+  if (params.status === "ATENCAO") {
+    return `Cobertura em atencao: ${coverage}% da meta restante, com autonomia de ${autonomy} dias uteis.${depletionSignal}`;
+  }
+
+  return `Carteira sustenta a meta restante: cobertura de ${coverage}% e autonomia de ${autonomy} dias uteis.${depletionSignal}`;
+}
+
 function buildCycleWeeks(cycleStart: string, cycleEnd: string) {
   const weeks: Array<{ id: string; label: string; startDate: string; endDate: string }> = [];
   let start = parseIsoDate(cycleStart);
@@ -267,6 +331,27 @@ async function loadForecastPortfolioValues(supabase: AuthenticatedAppUserContext
     values,
     error: null,
   };
+}
+
+async function loadGoalCoverage(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  cycleStart: string;
+  producedValue: number;
+  remainingPotential: number;
+  referenceDate: string;
+}) {
+  const { data, error } = await params.supabase.rpc("dashboard_portfolio_goal_coverage", {
+    p_tenant_id: params.tenantId,
+    p_cycle_start: params.cycleStart,
+    p_produced_value: params.producedValue,
+    p_remaining_potential: params.remainingPotential,
+    p_reference_date: params.referenceDate,
+  });
+
+  if (error) return { data: null as GoalCoverageRow | null, error };
+  const rows = Array.isArray(data) ? data as GoalCoverageRow[] : [];
+  return { data: rows[0] ?? null, error: null };
 }
 
 async function loadProjects(params: {
@@ -589,6 +674,11 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const producedInCycle = filteredProjectRows.reduce((sum, project) => sum + project.valueInCycle, 0);
   const accumulatedValue = filteredProjectRows.reduce((sum, project) => sum + project.accumulatedValue, 0);
   const remainingPotential = filteredProjectRows.reduce((sum, project) => sum + project.remainingPotential, 0);
+  const filteredProjectIdSet = new Set(filteredProjectRows.map((project) => project.projectId));
+  const producedInSelectedCycle = orders
+    .filter((order) => filteredProjectIdSet.has(order.project_id))
+    .filter((order) => order.execution_date >= selectedCycle.cycleStart && order.execution_date <= selectedCycle.cycleEnd)
+    .reduce((sum, order) => sum + (valueResult.values.get(order.id) ?? 0), 0);
   const averageAge = filteredProjectRows.length > 0
     ? filteredProjectRows.reduce((sum, project) => sum + project.workedCycleCount, 0) / filteredProjectRows.length
     : 0;
@@ -648,12 +738,49 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
 
   const renewalRate = workedRows.length > 0 ? (newRows.length / workedRows.length) * 100 : 0;
   const explorationRate = totalForecastValue > 0 ? (accumulatedValue / totalForecastValue) * 100 : 0;
+  const goalCoverageResult = await loadGoalCoverage({
+    supabase: resolution.supabase,
+    tenantId,
+    cycleStart: selectedCycle.cycleStart,
+    producedValue: producedInSelectedCycle,
+    remainingPotential,
+    referenceDate,
+  });
+  if (goalCoverageResult.error) {
+    return NextResponse.json({ message: "Falha ao calcular cobertura da meta pela carteira." }, { status: 500 });
+  }
+  const goalCoverageRow = goalCoverageResult.data;
+  const goalCoverageStatus = normalizeGoalCoverageStatus(goalCoverageRow?.status);
+  const goalCoverage = {
+    status: goalCoverageStatus,
+    cycleStart: goalCoverageRow?.cycle_start ?? selectedCycle.cycleStart,
+    cycleEnd: goalCoverageRow?.cycle_end ?? selectedCycle.cycleEnd,
+    cycleEndLabel: formatDatePtBr(goalCoverageRow?.cycle_end ?? selectedCycle.cycleEnd),
+    cycleGoal: numberValue(goalCoverageRow?.cycle_goal),
+    dailyGoal: numberValue(goalCoverageRow?.daily_goal),
+    producedValue: numberValue(goalCoverageRow?.produced_value),
+    remainingCycleGoal: numberValue(goalCoverageRow?.remaining_cycle_goal),
+    remainingPotential: numberValue(goalCoverageRow?.remaining_potential),
+    coveragePercentage: numberValue(goalCoverageRow?.coverage_percentage),
+    autonomyBusinessDays: numberValue(goalCoverageRow?.autonomy_business_days),
+    depletionDate: goalCoverageRow?.depletion_date ?? null,
+    depletionDateLabel: formatDatePtBr(goalCoverageRow?.depletion_date ?? null),
+    message: buildGoalCoverageMessage({
+      status: goalCoverageStatus,
+      coveragePercentage: numberValue(goalCoverageRow?.coverage_percentage),
+      autonomyBusinessDays: numberValue(goalCoverageRow?.autonomy_business_days),
+      depletionDate: goalCoverageRow?.depletion_date ?? null,
+      cycleEnd: goalCoverageRow?.cycle_end ?? selectedCycle.cycleEnd,
+    }),
+  };
   const riskSignals = [
+    goalCoverage.status === "RISCO" ? "Carteira cobre apenas " + goalCoverage.coveragePercentage.toFixed(1).replace(".", ",") + "% da meta restante do ciclo." : "",
     renewalRate < 10 ? "Apenas " + renewalRate.toFixed(1).replace(".", ",") + "% dos projetos trabalhados sao novos." : "",
     explorationRate > 85 ? "Carteira " + explorationRate.toFixed(1).replace(".", ",") + "% explorada." : "",
     averageAge > 4 ? "Idade media elevada: " + averageAge.toFixed(1).replace(".", ",") + " ciclos." : "",
   ].filter(Boolean);
   const warningSignals = [
+    goalCoverage.status === "ATENCAO" ? "Cobertura da meta em atencao: " + goalCoverage.coveragePercentage.toFixed(1).replace(".", ",") + "%." : "",
     renewalRate >= 10 && renewalRate < 20 ? "Renovacao em atencao: " + renewalRate.toFixed(1).replace(".", ",") + "%." : "",
     explorationRate > 75 && explorationRate <= 85 ? "Exploracao em atencao: " + explorationRate.toFixed(1).replace(".", ",") + "%." : "",
     averageAge > 3 && averageAge <= 4 ? "Idade media em atencao: " + averageAge.toFixed(1).replace(".", ",") + " ciclos." : "",
@@ -698,6 +825,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
         ? concludedRows.reduce((sum, project) => sum + project.valueInCycle, 0) / concludedRows.length
         : 0,
     },
+    goalCoverage,
     flow: [
       {
         stage: "Projetos novos",

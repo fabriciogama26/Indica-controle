@@ -936,3 +936,8 @@ Observacao
 - Cria a RPC `dashboard_portfolio_forecast_values(p_tenant_id)` para consolidar o valor previsto da carteira por projeto.
 - Formula: `SUM(coalesce(nullif(service_activities.voice_point, 0), 1) * project_activity_forecast.qty_planned * coalesce(service_activities.unit_value, 0) * 1)`.
 - Mantem `SECURITY INVOKER`, revoga `public`/`anon` e concede `EXECUTE` para `authenticated` e `service_role`.
+
+334_dashboard_portfolio_goal_coverage_rpc.sql
+- Cria a RPC `dashboard_portfolio_goal_coverage(p_tenant_id, p_cycle_start, p_produced_value, p_remaining_potential, p_reference_date)` para calcular meta restante, cobertura da meta, autonomia em dias uteis e data prevista de esgotamento da carteira.
+- Usa a meta oficial salva em `measurement_cycle_workdays` e `measurement_cycle_target_items`, somando `cycle_goal` e `daily_goal` do ciclo.
+- Mantem `SECURITY INVOKER`, revoga `public`/`anon` e concede `EXECUTE` para `authenticated` e `service_role`.

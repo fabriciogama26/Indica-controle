@@ -16,10 +16,11 @@
 .diagnosticHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .diagnosticHeader strong { color: #42557d; font-size: 12px; }
 .statusGroup { display: inline-flex; position: relative; align-items: center; gap: 8px; }
-.statusHealthy, .statusWarning, .statusRisk { display: inline-flex; min-height: 28px; align-items: center; border-radius: 999px; padding: 0 12px; font-size: 12px; font-weight: 800; }
+.statusHealthy, .statusWarning, .statusRisk, .statusNeutral { display: inline-flex; min-height: 28px; align-items: center; border-radius: 999px; padding: 0 12px; font-size: 12px; font-weight: 800; }
 .statusHealthy { border: 1px solid #86efac; background: #dcfce7; color: #047857; }
 .statusWarning { border: 1px solid #fcd34d; background: #fef3c7; color: #92400e; }
 .statusRisk { border: 1px solid #fecaca; background: #fee2e2; color: #b91c1c; }
+.statusNeutral { border: 1px solid #c8d4ea; background: #f6f9ff; color: #42557d; }
 .infoButton { position: relative; display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; border: 1px solid #bfd0ea; border-radius: 999px; background: #f6f9ff; color: #1f4ea3; font-size: 13px; font-weight: 900; line-height: 1; cursor: help; }
 .infoButton:focus-visible { outline: 2px solid #1f4ea3; outline-offset: 2px; }
 .signalList { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -47,6 +48,13 @@
 .greenBar { background: #17a884; }
 .orangeBar { background: #f07f2f; }
 .redBar { background: #e25555; }
+.coveragePanel { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; border: 1px solid #d9e1ef; border-radius: 8px; background: #fbfdff; padding: 14px; }
+.coverageText { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px; color: #001f5b; }
+.coverageText strong { font-size: 13px; font-weight: 900; }
+.coverageText span { color: #42557d; font-size: 12px; font-weight: 700; }
+.coverageTrack { position: relative; height: 18px; overflow: hidden; border-radius: 999px; background: #e8edf6; }
+.coverageTrack span { position: absolute; inset-block: 0; left: 0; border-radius: 999px; }
+.coverageScale { display: flex; justify-content: space-between; color: #60708f; font-size: 11px; font-weight: 800; }
 .tableWrapper { overflow-x: auto; border: 1px solid #d9e1ef; border-radius: 8px; }
 .table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; }
 .table th { border-bottom: 1px solid #d9e1ef; background: #eef2f8; color: #002b7f; padding: 10px; text-align: left; font-weight: 800; white-space: nowrap; }
