@@ -33,6 +33,7 @@ Filtros, auto-complete e listagem
 - O carregamento inicial seleciona o ciclo mais recente com producao de projetos elegiveis; se nao houver historico, usa o ciclo corrente.
 - A tabela principal exibe projeto, regional, status, carteira, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor previsto, valor acumulado, valor no ciclo e restante.
 - A tabela e paginada no frontend para manter a leitura rapida.
+- O botao `Extrair CSV` exporta todas as linhas filtradas da tabela analitica, nao apenas a pagina visivel.
 
 Indicadores
 - Saude da carteira: projetos trabalhados, novos, herdados, concluidos, pendentes, retirados, idade media e indice de renovacao.
@@ -69,6 +70,7 @@ Atualizacao 2026-07
 - Ajustado o filtro para permitir `Todos os ciclos`, analise de projetos retirados da carteira e classificacao dos estados parciais como pendentes.
 - Ajustado o valor da carteira para usar `SUM(voice_point x qty_planned x unit_value x 1)` via RPC, alinhado a regra de pontos da Medicao.
 - Ajustado o filtro `Carteira` para explicitar `Sem retirados`, `Somente retirados` e `Com retirados`, e removidas as leituras por supervisor deste dashboard.
+- Incluido botao `Extrair CSV` na tabela analitica da carteira.
 
 Mapa de Codigo
 - `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.
