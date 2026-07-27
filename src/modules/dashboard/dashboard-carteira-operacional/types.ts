@@ -13,7 +13,6 @@ export type DashboardPortfolioFilters = {
   cycleStart: string;
   project: string;
   serviceCenterId: string;
-  supervisorId: string;
   portfolioScope: "ACTIVE" | "WITHDRAWN" | "ALL";
 };
 
@@ -66,23 +65,11 @@ export type DashboardPortfolioAgeBucket = {
   value: number;
 };
 
-export type DashboardPortfolioSupervisorPotential = {
-  supervisorId: string | null;
-  supervisorName: string;
-  projects: number;
-  accumulatedValue: number;
-  remainingPotential: number;
-  exploredPercentage: number;
-  totalForecastValue: number;
-};
-
 export type DashboardPortfolioProject = {
   projectId: string;
   projectCode: string;
   serviceCenterId: string | null;
   serviceCenter: string;
-  supervisorId: string | null;
-  supervisorName: string;
   status: "CONCLUIDO" | "PENDENTE";
   origin: "NOVO" | "HERDADO" | "SEM_PRODUCAO";
   portfolioStatus: "ATIVA" | "RETIRADA";
@@ -112,7 +99,6 @@ export type DashboardPortfolioResponse = {
   filters?: {
     projects: DashboardPortfolioOption[];
     serviceCenters: DashboardPortfolioOption[];
-    supervisors: DashboardPortfolioOption[];
   };
   diagnostic?: DashboardPortfolioDiagnostic;
   quantitySummary?: DashboardPortfolioQuantitySummary;
@@ -120,6 +106,5 @@ export type DashboardPortfolioResponse = {
   flow?: DashboardPortfolioFlowRow[];
   renewalChart?: DashboardPortfolioRenewalRow[];
   ageBuckets?: DashboardPortfolioAgeBucket[];
-  supervisorPotential?: DashboardPortfolioSupervisorPotential[];
   projects?: DashboardPortfolioProject[];
 };
