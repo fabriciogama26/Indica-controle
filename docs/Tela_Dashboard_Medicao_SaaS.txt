@@ -116,13 +116,17 @@ Filtros, auto-complete e listagem
 - A `Meta ciclo trabalhado` do comparativo principal usa o mesmo objetivo dinamico por equipe + data, em vez do total trabalhado pre-calculado sem considerar os filtros do dashboard.
 - Ao selecionar `Meta ciclo trabalhado`, `Dias reais` e recalculado no carregamento do Dashboard pela media arredondada dos dias distintos das equipes filtradas com producao valida; nao depende de abrir ou atualizar a tela Meta.
 - A coluna `Dif. prevista` exibe valores negativos em vermelho e valores positivos em verde.
-- O card `Ticket medio / Projetos` do ciclo calcula `Valor realizado / Projetos no ciclo`, usando projetos distintos do recorte filtrado.
+- O card `Ticket medio / Projetos` do ciclo calcula Valor realizado / Projetos no ciclo, usando todos os projetos distintos do ciclo filtrado.
+- O card `Ticket medio / Projetos (concluidos)` do ciclo calcula valor concluido / projetos concluidos no ciclo filtrado.
 - O card `Ticket medio / Servicos` do ciclo calcula `Valor realizado / Ordens`, usando a quantidade de ordens `COM_PRODUCAO` do recorte filtrado.
+- O card `Projetos no ciclo` do ciclo exibe todos os projetos distintos do ciclo e dos filtros gerais aplicados.
+- O card `Projetos no ciclo (concluidos)` do ciclo exibe somente projetos concluidos no ciclo e nos filtros gerais aplicados.
 - O card `Ordens de Servicos no ciclo` exibe a quantidade de ordens `COM_PRODUCAO` do ciclo e dos filtros gerais aplicados.
-- Na `Visao geral por periodo`, os cards `Ticket medio / Projetos`, `Ticket medio / Servicos`, `Projetos no ciclo` e `Ordens de Servicos no ciclo` ficam acima da tabela, em linha no desktop e com quebra responsiva, usando o total do recorte `De/Para`, incluindo as categorias exibidas na tabela do periodo e a Garantia de faturamento minimo quando aplicavel.
+- Na `Visao geral por periodo`, os cards ficam acima da tabela, em linha no desktop e com quebra responsiva; `Ticket medio / Projetos` usa o total do recorte `De/Para`, `Ticket medio / Projetos (concluidos)` usa somente `Concluidos`, e os demais cards usam o total do recorte, incluindo as categorias exibidas na tabela do periodo e a Garantia de faturamento minimo quando aplicavel.
 - As tabelas dos graficos de status exibem linha `Total` no rodape, usando o total de valor, ordens e projetos distintos do recorte para evitar duplicar projetos que aparecam em mais de uma categoria.
 - As tabelas de Concluidos/Parciais/Parcial planejado beneficio atingido/Pendencias, Ciclo da medicao, Equipes no ciclo, Encarregados no ciclo e Supervisor no ciclo exibem a quantidade de projetos distintos do respectivo recorte/linha.
 - Nas tabelas de categoria (`Concluidos X parciais no ciclo` e `Visao geral por periodo`), clicar na linha abre modal com os projetos daquela categoria no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
+- Na tabela `Ciclo da medicao`, clicar na linha do ciclo abre modal com todos os projetos atuados no ciclo filtrado, exibindo Projeto, Primeira atuacao, Valor antes do ciclo, Valor no ciclo, Valor acumulado, N de ciclos trabalhados e Semana da primeira atuacao no ciclo.
 - Nas tabelas `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo`, clicar na linha abre modal com os projetos da equipe ou do responsavel no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
 - O modal de projetos possui exportacao `Exportar Excel (CSV)` com o mesmo conteudo da tabela.
 - O bloco de encarregados permite marcar multiplas metas por checkbox; a primeira meta marcada vira referencia principal do ranking e do gap financeiro.
@@ -753,3 +757,26 @@ Atualizacao 2026-07-05 - Valores das medicoes em chunks:
 - Impacto multi-tenant:
   - Sem alteracao de schema, RLS, grants ou permissoes.
   - Cada chunk continua filtrado por `tenant_id` autenticado e `is_active = true`.
+
+Atualizacao 2026-07-27 - Projetos concluidos e modal do ciclo:
+- Arquivos alterados:
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/tipos tocados:
+  - `CycleProjectDetail`
+  - `PeriodSummary`
+  - `CycleComparison`
+  - `buildCycleProjectDetails`
+  - `openCycleProjectDetails`
+  - `exportProjectDetailsCsv`
+- Comportamento antes/depois:
+  - Antes: havia somente `Ticket medio / Projetos` com a base geral do recorte e `Projetos no ciclo` com todos os projetos medidos.
+  - Depois: `Ticket medio / Projetos` permanece com a base geral, e os novos cards `Ticket medio / Projetos (concluidos)` e `Projetos no ciclo (concluidos)` usam somente a categoria `Concluidos`.
+  - Antes: a linha do ciclo nao abria detalhamento proprio.
+  - Depois: clicar na linha de `Ciclo da medicao` abre modal com todos os projetos atuados no ciclo filtrado, trazendo primeira atuacao, valores antes/no/acumulado, quantidade de ciclos trabalhados e semana da primeira atuacao no ciclo, com exportacao CSV.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS, grants ou permissoes.
+  - A nova leitura historica usa `tenant_id` da sessao, ordens `COM_PRODUCAO`, ativas e nao canceladas, restrita aos projetos presentes no ciclo filtrado.

@@ -58,6 +58,17 @@ type ProjectProductionDetail = {
   orderCount: number;
 };
 
+type CycleProjectDetail = {
+  projectId: string;
+  projectCode: string;
+  firstActivity: string;
+  valueBeforeCycle: number;
+  valueInCycle: number;
+  accumulatedValue: number;
+  workedCycleCount: number;
+  week: number | null;
+};
+
 type CompletionAggregate = {
   value: number;
   orders: number;
@@ -360,6 +371,26 @@ function buildAnnualCycles(year: number) {
 function formatPeriodLabel(period: string) {
   const [year, month] = period.split("-");
   return `${month}/${year}`;
+}
+
+function formatMonthName(value: string | null) {
+  if (!value) return "Sem atuacao";
+  const date = parseIsoDate(value);
+  const months = [
+    "Janeiro",
+    "Fevereiro",
+    "Marco",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
+  ];
+  return months[date.getUTCMonth()] ?? "Sem atuacao";
 }
 
 async function fetchProjectMetaMap(params: {
@@ -1079,7 +1110,39 @@ export async function handleDashboardMeasurementGet(
     return true;
   });
 
-  const orderIds = Array.from(new Set([...filteredOrders, ...periodFilteredOrders, ...annualFilteredOrders].map((order) => order.id)));
+  const cycleDetailProjectIds = Array.from(new Set(filteredOrders.map((order) => order.project_id).filter(Boolean)));
+  const cycleDetailHistoryOrdersResult = !isTeamsDashboard && cycleDetailProjectIds.length
+    ? await resolution.supabase
+        .from("project_measurement_orders")
+        .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .eq("measurement_kind", "COM_PRODUCAO")
+        .neq("status", "CANCELADA")
+        .in("project_id", cycleDetailProjectIds)
+        .lte("execution_date", selectedCycle.cycleEnd)
+        .order("execution_date", { ascending: true })
+        .limit(5000)
+        .returns<MeasurementOrderRow[]>()
+    : { data: [] as MeasurementOrderRow[], error: null };
+
+  if (cycleDetailHistoryOrdersResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar historico dos projetos do ciclo." }, { status: 500 });
+  }
+
+  const cycleDetailHistoryOrders = (cycleDetailHistoryOrdersResult.data ?? [])
+    .filter((order) => normalizeIsoDate(order.execution_date))
+    .filter((order) => {
+      const projectMeta = projectMetaMap.get(order.project_id);
+      return !projectMeta?.isTest && !projectMeta?.isThirdParty;
+    });
+
+  const orderIds = Array.from(new Set([
+    ...filteredOrders,
+    ...periodFilteredOrders,
+    ...annualFilteredOrders,
+    ...cycleDetailHistoryOrders,
+  ].map((order) => order.id)));
   const { data: items, error: itemsError } = await fetchMeasurementOrderItems({
     supabase: resolution.supabase,
     tenantId,
@@ -1098,6 +1161,46 @@ export async function handleDashboardMeasurementGet(
   const valueByOrder = new Map<string, number>();
   for (const item of items ?? []) {
     valueByOrder.set(item.measurement_order_id, (valueByOrder.get(item.measurement_order_id) ?? 0) + Number(item.total_value ?? 0));
+  }
+
+  function buildCycleProjectDetails(): CycleProjectDetail[] {
+    if (isTeamsDashboard || !filteredOrders.length) return [];
+
+    const cycleOrdersByProject = new Map<string, MeasurementOrderRow[]>();
+    for (const order of filteredOrders) {
+      const current = cycleOrdersByProject.get(order.project_id) ?? [];
+      current.push(order);
+      cycleOrdersByProject.set(order.project_id, current);
+    }
+
+    return Array.from(cycleOrdersByProject.entries())
+      .map(([projectId, projectOrders]) => {
+        const historyOrders = cycleDetailHistoryOrders
+          .filter((order) => order.project_id === projectId)
+          .sort((left, right) => left.execution_date.localeCompare(right.execution_date));
+        const firstOrder = historyOrders[0] ?? projectOrders[0] ?? null;
+        const firstCycleOrder = [...projectOrders].sort((left, right) => left.execution_date.localeCompare(right.execution_date))[0] ?? null;
+        const firstWeekIndex = firstCycleOrder
+          ? cycleWeeks.findIndex((week) => firstCycleOrder.execution_date >= week.startDate && firstCycleOrder.execution_date <= week.endDate)
+          : -1;
+        const valueBeforeCycle = historyOrders
+          .filter((order) => order.execution_date < selectedCycle.cycleStart)
+          .reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
+        const valueInCycle = projectOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0);
+        const workedCycleCount = new Set(historyOrders.map((order) => buildCycleFromMeasurementDate(order.execution_date).cycleStart)).size;
+
+        return {
+          projectId,
+          projectCode: normalizeText(firstOrder?.project_code_snapshot) || "Projeto sem codigo",
+          firstActivity: formatMonthName(firstOrder?.execution_date ?? null),
+          valueBeforeCycle,
+          valueInCycle,
+          accumulatedValue: valueBeforeCycle + valueInCycle,
+          workedCycleCount,
+          week: firstWeekIndex >= 0 ? firstWeekIndex + 1 : null,
+        };
+      })
+      .sort((left, right) => left.projectCode.localeCompare(right.projectCode));
   }
 
   const selectedCycleRecordResult = await resolution.supabase
@@ -1421,6 +1524,10 @@ export async function handleDashboardMeasurementGet(
   const projectCount = new Set(performanceOrders.map((order) => order.project_id)).size;
   const averageTicketValue = projectCount > 0 ? realizedValue / projectCount : 0;
   const averageServiceTicketValue = performanceOrders.length > 0 ? realizedValue / performanceOrders.length : 0;
+  const cycleCompletedValue = cycleCompletionTotals.get("CONCLUIDO")?.value ?? 0;
+  const cycleCompletedProjectCount = cycleCompletionTotals.get("CONCLUIDO")?.projectIds.size ?? 0;
+  const cycleCompletedAverageTicketValue = cycleCompletedProjectCount > 0 ? cycleCompletedValue / cycleCompletedProjectCount : 0;
+  const cycleProjectDetails = buildCycleProjectDetails();
   const periodRealizedValue = periodFilteredOrders.reduce((sum, order) => sum + (valueByOrder.get(order.id) ?? 0), 0)
     + periodFilteredMinimumBillingGuaranteeOrders.reduce((sum, order) => sum + Number(order.minimum_billing_amount ?? 0), 0);
   const periodOrderCount = periodFilteredOrders.length + periodFilteredMinimumBillingGuaranteeOrders.length;
@@ -1430,6 +1537,9 @@ export async function handleDashboardMeasurementGet(
   ]).size;
   const periodAverageTicketValue = periodProjectCount > 0 ? periodRealizedValue / periodProjectCount : 0;
   const periodAverageServiceTicketValue = periodOrderCount > 0 ? periodRealizedValue / periodOrderCount : 0;
+  const periodCompletedValue = periodCompletionTotals.get("CONCLUIDO")?.value ?? 0;
+  const periodCompletedProjectCount = periodCompletionTotals.get("CONCLUIDO")?.projectIds.size ?? 0;
+  const periodCompletedAverageTicketValue = periodCompletedProjectCount > 0 ? periodCompletedValue / periodCompletedProjectCount : 0;
   const supervisorsProductionRows = cyclePerformance.supervisors;
   const performanceMetaValue = isTeamsDashboard
     ? teamsProductionRows.reduce((sum, team) => sum + team.metaValue, 0)
@@ -1532,6 +1642,8 @@ export async function handleDashboardMeasurementGet(
       projectCount,
       averageTicketValue,
       averageServiceTicketValue,
+      completedProjectCount: cycleCompletedProjectCount,
+      completedAverageTicketValue: cycleCompletedAverageTicketValue,
     },
     completionChart: buildCompletionChart(periodCompletionTotals, periodMinimumBillingGuaranteeTotal),
     cycleCompletionChart: buildCompletionChart(cycleCompletionTotals),
@@ -1542,6 +1654,8 @@ export async function handleDashboardMeasurementGet(
       projectCount: periodProjectCount,
       averageTicketValue: periodAverageTicketValue,
       averageServiceTicketValue: periodAverageServiceTicketValue,
+      completedProjectCount: periodCompletedProjectCount,
+      completedAverageTicketValue: periodCompletedAverageTicketValue,
     },
     cycleComparison: {
       label: selectedCycle.label,
@@ -1556,6 +1670,9 @@ export async function handleDashboardMeasurementGet(
       projectCount,
       averageTicketValue,
       averageServiceTicketValue,
+      completedProjectCount: cycleCompletedProjectCount,
+      completedAverageTicketValue: cycleCompletedAverageTicketValue,
+      projectDetails: cycleProjectDetails,
       executedWorkdays,
       averageDailyValue,
       workedObjectiveValue,

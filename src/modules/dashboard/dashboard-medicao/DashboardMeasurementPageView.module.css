@@ -130,7 +130,7 @@
 }
 
 .periodMetricGrid {
-  grid-template-columns: repeat(4, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
 }
 
 .periodMetricGrid .metric {
@@ -880,6 +880,17 @@
   background: #eef2f8;
   color: #002b7f;
   font-weight: 800;
+}
+
+.cycleProjectTable {
+  min-width: 980px;
+}
+
+.cycleProjectTable th:nth-child(n+3),
+.cycleProjectTable td:nth-child(n+3) {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .forecastDifferencePositive,
